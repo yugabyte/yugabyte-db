@@ -6,16 +6,19 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net/http"
 	"node-agent/app/executor"
 	"node-agent/app/scheduler"
 	"node-agent/app/task"
 	pb "node-agent/generated/service"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,10 +27,12 @@ import (
 )
 
 var (
-	server     *RPCServer
-	clientCtx  context.Context
-	dialOpts   []grpc.DialOption
-	serverAddr = "localhost:0"
+	server            *RPCServer
+	clientCtx         context.Context
+	dialOpts          []grpc.DialOption
+	serverAddr        = "localhost:0"
+	enableTLS         = false
+	disableMetricsTLS = false
 )
 
 func init() {
@@ -51,7 +56,13 @@ func TestMain(m *testing.M) {
 	scheduler.Init(ctx)
 	task.InitTaskManager(ctx)
 	dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	server, err = NewRPCServer(ctx, serverAddr, false)
+	serverConfig := &RPCServerConfig{
+		Address:           serverAddr,
+		EnableTLS:         enableTLS,
+		EnableMetrics:     true,
+		DisableMetricsTLS: disableMetricsTLS,
+	}
+	server, err = NewRPCServer(ctx, serverConfig)
 	if err != nil {
 		panic(err)
 	}
@@ -390,4 +401,31 @@ func TestRunPreflightCheck(t *testing.T) {
 		t.Fatalf("Expected exit code of 0, found %d", rc)
 	}
 	t.Logf("Output: %s\n", buffer.String())
+}
+
+func TestMetric(t *testing.T) {
+	var client *http.Client
+	var protocol string
+	if disableMetricsTLS {
+		client = &http.Client{}
+		protocol = "http"
+	} else {
+		client = &http.Client{Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}}
+		protocol = "https"
+	}
+	resp, err := client.Get(fmt.Sprintf("%s://%s/metrics", protocol, serverAddr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	output := string(body)
+	if !strings.Contains(output, "nodeagent_") {
+		log.Fatal("No nodeagent metric found")
+	}
+	t.Logf(output)
 }

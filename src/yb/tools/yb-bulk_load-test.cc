@@ -233,7 +233,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
 
-  void ValidateRow(const string& row, const QLRow& ql_row) {
+  void ValidateRow(const string& row, const qlexpr::QLRow& ql_row) {
     // Get individual columns.
     CsvTokenizer tokenizer = Tokenize(row);
     auto it = tokenizer.begin();
@@ -367,7 +367,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void PerformRead(const tserver::ReadRequestPB& req,
                    tserver::TabletServerServiceProxy* tserver_proxy,
-                   std::unique_ptr<QLRowBlock>* rowblock) {
+                   std::unique_ptr<qlexpr::QLRowBlock>* rowblock) {
     tserver::ReadResponsePB resp;
     rpc::RpcController controller;
     controller.set_timeout(15s);
@@ -666,12 +666,12 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
       QLReadRequestPB* ql_req = req.mutable_ql_batch()->Add();
       ASSERT_OK(CreateQLReadRequest(row, ql_req));
 
-      std::unique_ptr<QLRowBlock> rowblock;
+      std::unique_ptr<qlexpr::QLRowBlock> rowblock;
       PerformRead(req, tserver_proxy.get(), &rowblock);
 
       // Validate row.
       ASSERT_EQ(1, rowblock->row_count());
-      const QLRow& ql_row = rowblock->row(0);
+      const auto& ql_row = rowblock->row(0);
       ASSERT_EQ(schema_.num_columns(), ql_row.column_count());
       ValidateRow(row, ql_row);
     }
@@ -701,7 +701,7 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
       col.type()->ToQLTypePB(rscol_desc->mutable_ql_type());
     }
 
-    std::unique_ptr<QLRowBlock> rowblock;
+    std::unique_ptr<qlexpr::QLRowBlock> rowblock;
     PerformRead(req, tserver_proxy.get(), &rowblock);
     ASSERT_EQ(tabletid_to_line[tablet_id].size(), rowblock->row_count());
 

@@ -15,7 +15,7 @@
 
 #include <functional>
 
-#include "yb/dockv/ql_scanspec.h"
+#include "yb/qlexpr/ql_scanspec.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/docdb_fwd.h"
@@ -27,7 +27,7 @@ namespace yb {
 namespace docdb {
 
 // DocDB variant of scanspec.
-class DocPgsqlScanSpec : public dockv::PgsqlScanSpec {
+class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
  public:
 
   // Scan for the specified doc_key.
@@ -69,7 +69,7 @@ class DocPgsqlScanSpec : public dockv::PgsqlScanSpec {
       std::vector<bool>* inclusivities = nullptr,
       bool use_strictness = true) const override;
 
-  const std::shared_ptr<std::vector<dockv::OptionList>>& options() const override {
+  const std::shared_ptr<std::vector<qlexpr::OptionList>>& options() const override {
     return options_;
   }
 
@@ -92,7 +92,7 @@ class DocPgsqlScanSpec : public dockv::PgsqlScanSpec {
   void InitOptions(const PgsqlConditionPB& condition);
 
   // The range/hash value options if set (possibly more than one due to IN conditions).
-  std::shared_ptr<std::vector<dockv::OptionList>> options_;
+  std::shared_ptr<std::vector<qlexpr::OptionList>> options_;
 
   // Ids of key columns that have filters such as h1 IN (1, 5, 6, 9) or r1 IN (5, 6, 7)
   std::vector<ColumnId> options_col_ids_;

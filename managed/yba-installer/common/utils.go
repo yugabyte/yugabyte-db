@@ -7,6 +7,7 @@ package common
 import (
 	"bufio"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -512,4 +513,54 @@ func GetValidParent(dir string) (string, error) {
 		_, curError = os.Stat(curDir)
 	}
 	return curDir, curError
+}
+
+func GetPostgresConnection(dbname string) (*sql.DB, string, error) {
+	var user, host, port, pwd, connStr string
+	if viper.GetBool("postgres.useExisting.enabled") {
+		user = viper.GetString("postgres.useExisting.username")
+		host = viper.GetString("postgres.useExisting.host")
+		port = viper.GetString("postgres.useExisting.port")
+		pwd = viper.GetString("postgres.useExisting.password")
+	}
+	if viper.GetBool("postgres.install.enabled") {
+		user = "postgres"
+		host = "localhost"
+		port = viper.GetString("postgres.install.port")
+	}
+	nonPwdConnStr := fmt.Sprintf(
+		"user='%s' host=%s port=%s dbname=%s sslmode=disable",
+		user,
+		host,
+		port,
+		dbname)
+	log.Debug(fmt.Sprintf("Attempting to connect to db with conn str %s", nonPwdConnStr))
+	// add pwd later so we don't log it above
+	if pwd != "" {
+		connStr = nonPwdConnStr + fmt.Sprintf(" password='%s'")
+	} else {
+		connStr = nonPwdConnStr
+	}
+	db, err := sql.Open("postgres" /*driverName*/, connStr)
+	if err != nil {
+		log.Debug(err.Error())
+		return nil, nonPwdConnStr, err
+	}
+	return db, nonPwdConnStr, nil
+}
+
+// RunFromInstalled will return if yba-ctl is an "instanlled" yba-ctl or one locally executed
+func RunFromInstalled() bool {
+	path, err := os.Executable()
+	if err != nil {
+		log.Fatal("unable to determine yba-ctl executable path: " + err.Error())
+	}
+
+	matcher, err := regexp.Compile("(?:/opt/yba-ctl/yba-ctl)|(?:/usr/bin/yba-ctl)|" +
+		"(?:.*/yugabyte/software/.*/yba_installer/yba-ctl)")
+
+	if err != nil {
+		log.Fatal("could not compile regex: " + err.Error())
+	}
+	return matcher.MatchString(path)
 }

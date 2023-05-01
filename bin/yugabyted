@@ -4374,8 +4374,8 @@ class YsqlProxy(object):
         self.setup_env_init = EnvBasedCredentials()
         self.username, self.password, self.db = self.setup_env_init.get_ysql_credentials(
                                                     get_default_credentials)
-        self.cmd_with_password = [path, "postgresql://{}:{}@{}:{}/{}".format(self.username,
-                self.password, ip, port, self.db)]
+        self.cmd_with_password = [path, "postgresql://{}:{}@{}:{}".format(self.username,
+                self.password, ip, port)]
         self.cmd_without_password = [path, "-h", str(ip), "-p", str(port)]
         env_var = os.environ.copy()
         env_var["PGUSER"] = self.username

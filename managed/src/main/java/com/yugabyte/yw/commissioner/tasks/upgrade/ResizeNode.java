@@ -93,8 +93,7 @@ public class ResizeNode extends UpgradeTaskBase {
           // Create task sequence to resize allNodes.
           for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
             LinkedHashSet<NodeDetails> clusterNodes =
-                allNodes
-                    .stream()
+                allNodes.stream()
                     .filter(n -> cluster.uuid.equals(n.placementUuid))
                     .collect(Collectors.toCollection(LinkedHashSet::new));
 
@@ -177,13 +176,11 @@ public class ResizeNode extends UpgradeTaskBase {
           // Need to run gflag upgrades for the nodes that weren't updated.
           if (updateMasterFlags || updateTserverFlags) {
             List<NodeDetails> masterNodes =
-                nodesNotUpdated
-                    .stream()
+                nodesNotUpdated.stream()
                     .filter(n -> n.isMaster && updateMasterFlags)
                     .collect(Collectors.toList());
             List<NodeDetails> tserverNodes =
-                nodesNotUpdated
-                    .stream()
+                nodesNotUpdated.stream()
                     .filter(n -> n.isTserver && updateTserverFlags)
                     .collect(Collectors.toList());
             // Only rolling restart supported.

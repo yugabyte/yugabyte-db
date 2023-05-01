@@ -12,23 +12,31 @@
 //
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
+
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master.h"
+
 #include "yb/server/server_base.proxy.h"
+
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 
 DECLARE_bool(TEST_auto_flags_initialized);
+DECLARE_bool(TEST_auto_flags_new_install);
 DECLARE_bool(disable_auto_flags_management);
 DECLARE_int32(limit_auto_flag_promote_for_new_universe);
 DECLARE_int32(heartbeat_interval_ms);
@@ -37,12 +45,14 @@ DECLARE_int32(heartbeat_interval_ms);
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
 
 using std::string;
-using std::vector;
 
 namespace yb {
+
 using OK = Status::OK;
+
 const string kDisableAutoFlagsManagementFlagName = "disable_auto_flags_management";
 const string kTESTAutoFlagsInitializedFlagName = "TEST_auto_flags_initialized";
+const string kTESTAutoFlagsNewInstallFlagName  = "TEST_auto_flags_new_install";
 const string kTrue = "true";
 const string kFalse = "false";
 const MonoDelta kTimeout = 20s * kTimeMultiplier;
@@ -50,13 +60,26 @@ const int kNumMasterServers = 3;
 const int kNumTServers = 3;
 
 namespace {
+
+size_t CountFlag(
+    const std::string& flag_name,
+    decltype(std::declval<AutoFlagsConfigPB>().promoted_flags()) promoted_flags) {
+  size_t count = 0;
+  for (const auto& per_process_flags : promoted_flags) {
+    for (const auto& flag : per_process_flags.flags()) {
+      count += (flag == flag_name);
+    }
+  }
+  return count;
+}
+
 void TestPromote(
     std::function<Result<AutoFlagsConfigPB>()> get_current_config,
     std::function<Result<master::PromoteAutoFlagsResponsePB>(master::PromoteAutoFlagsRequestPB)>
         promote_auto_flags,
     std::function<Status(uint32)>
         validate_config_on_all_nodes) {
-  // Initial empty config
+  // Initial empty config.
   auto previous_config = ASSERT_RESULT(get_current_config());
   ASSERT_EQ(0, previous_config.config_version());
   ASSERT_EQ(0, previous_config.promoted_flags_size());
@@ -66,7 +89,7 @@ void TestPromote(
   req.set_promote_non_runtime_flags(true);
   req.set_force(false);
 
-  // Promote all AutoFlags
+  // Promote all AutoFlags.
   auto resp = ASSERT_RESULT(promote_auto_flags(req));
   ASSERT_TRUE(resp.has_new_config_version());
   ASSERT_EQ(resp.new_config_version(), previous_config.config_version() + 1);
@@ -75,24 +98,36 @@ void TestPromote(
   previous_config = ASSERT_RESULT(get_current_config());
   ASSERT_EQ(resp.new_config_version(), previous_config.config_version());
   ASSERT_GE(previous_config.promoted_flags_size(), 1);
+  ASSERT_EQ(0, CountFlag(kTESTAutoFlagsNewInstallFlagName, previous_config.promoted_flags()));
+  ASSERT_EQ(
+      previous_config.promoted_flags_size(),
+      CountFlag(kTESTAutoFlagsInitializedFlagName, previous_config.promoted_flags()));
 
-  // Running again should be no op
-  resp.Clear();
-  const auto result = promote_auto_flags(req);
+  // Running again should be no op.
+  auto result = promote_auto_flags(req);
   ASSERT_NOK(result);
-  const auto status = result.status();
-  ASSERT_TRUE(status.IsAlreadyPresent()) << status.ToString();
-  ASSERT_FALSE(resp.has_new_config_version()) << resp.new_config_version();
+  ASSERT_TRUE(result.status().IsAlreadyPresent()) << result.status().ToString();
 
-  // Force to bump up version alone
+  // Force to bump up version alone, make sure flags still have expected values.
   req.set_force(true);
   resp.Clear();
   resp = ASSERT_RESULT(promote_auto_flags(req));
-  ASSERT_EQ(resp.new_config_version(), previous_config.config_version() + 1);
   ASSERT_FALSE(resp.non_runtime_flags_promoted());
-
   ASSERT_OK(validate_config_on_all_nodes(resp.new_config_version()));
+  previous_config = ASSERT_RESULT(get_current_config());
+  ASSERT_EQ(resp.new_config_version(), previous_config.config_version());
+  ASSERT_EQ(0, CountFlag(kTESTAutoFlagsNewInstallFlagName, previous_config.promoted_flags()));
+  ASSERT_EQ(
+      previous_config.promoted_flags_size(),
+      CountFlag(kTESTAutoFlagsInitializedFlagName, previous_config.promoted_flags()));
+
+  // Verify it is not possible to promote with AutoFlagClass::kNewInstallsOnly.
+  req.set_max_flag_class(ToString(AutoFlagClass::kNewInstallsOnly));
+  result = promote_auto_flags(req);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsInvalidArgument()) << result.status().ToString();
 }
+
 }  // namespace
 
 class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
@@ -111,31 +146,31 @@ class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   Status ValidateConfig() {
-    int count_flags = 0;
     auto leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
     const AutoFlagsConfigPB leader_config = leader_master->master()->GetAutoFlagsConfig();
-    for (const auto& per_process_flags : leader_config.promoted_flags()) {
-      auto it = std::find(
-          per_process_flags.flags().begin(), per_process_flags.flags().end(),
-          kTESTAutoFlagsInitializedFlagName);
-      SCHECK(it != per_process_flags.flags().end(), IllegalState, "Unable to find");
-      count_flags++;
-    }
+    const auto leader_config_process_count =
+        static_cast<size_t>(leader_config.promoted_flags().size());
+    SCHECK_EQ(
+        CountFlag(kTESTAutoFlagsInitializedFlagName, leader_config.promoted_flags()),
+        leader_config_process_count, IllegalState, "Unable to find");
+    SCHECK_EQ(
+        CountFlag(kTESTAutoFlagsNewInstallFlagName, leader_config.promoted_flags()),
+        leader_config_process_count, IllegalState, "Unable to find");
 
     if (FLAGS_disable_auto_flags_management) {
       SCHECK(
           !FLAGS_TEST_auto_flags_initialized, IllegalState,
           "TEST_auto_flags_initialized should not be set");
-      SCHECK_EQ(
-          count_flags, 0, IllegalState,
-          "TEST_auto_flags_initialized should not be set in any process");
+      SCHECK(
+          !FLAGS_TEST_auto_flags_new_install, IllegalState,
+          "TEST_auto_flags_new_install should not be set");
     } else {
       SCHECK(
           FLAGS_TEST_auto_flags_initialized, IllegalState,
           "TEST_auto_flags_initialized should be set");
-      SCHECK_EQ(
-          count_flags, leader_config.promoted_flags().size(), IllegalState,
-          "TEST_auto_flags_initialized should be set in every process");
+      SCHECK(
+          FLAGS_TEST_auto_flags_new_install, IllegalState,
+          "TEST_auto_flags_new_install should be set");
     }
 
     for (size_t i = 0; i < cluster_->num_masters(); i++) {
@@ -309,6 +344,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, NewCluster) {
   ASSERT_NO_FATALS(BuildAndStart());
 
   ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kTrue));
+  ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsNewInstallFlagName, kTrue));
 
   ExternalMaster* new_master = nullptr;
   cluster_->StartShellMaster(&new_master);
@@ -319,16 +355,19 @@ TEST_F(AutoFlagsExternalMiniClusterTest, NewCluster) {
   ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(op_id.index()));
 
   ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kTrue, new_master));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kTrue, new_master));
 
   ASSERT_OK(cluster_->AddTabletServer());
   ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers + 1, kTimeout));
 
   ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kTrue));
+  ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsNewInstallFlagName, kTrue));
 
   for (auto* master : cluster_->master_daemons()) {
     master->Shutdown();
     ASSERT_OK(master->Restart());
     ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kTrue, master));
+    ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kTrue, master));
     ASSERT_EQ(GetAutoFlagConfigVersion(master), 1);
   }
 
@@ -336,6 +375,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, NewCluster) {
     tserver->Shutdown();
     ASSERT_OK(tserver->Restart());
     ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kTrue, tserver));
+    ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kTrue, tserver));
     ASSERT_EQ(GetAutoFlagConfigVersion(tserver), 1);
   }
 }
@@ -351,6 +391,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
 
   ASSERT_OK(CheckFlagOnAllNodes(kDisableAutoFlagsManagementFlagName, kTrue));
   ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kFalse));
+  ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsNewInstallFlagName, kFalse));
 
   // Remove the disable_auto_flag_management flag from cluster config
   ASSERT_TRUE(Erase(disable_auto_flag_management, cluster_->mutable_extra_master_flags()));
@@ -363,6 +404,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   auto* new_tserver = cluster_->tablet_server(cluster_->num_tablet_servers() - 1);
   ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_tserver));
   ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_tserver));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kFalse, new_tserver));
   ASSERT_EQ(GetAutoFlagConfigVersion(new_tserver), 0);
 
   // Restart the new tserver
@@ -372,6 +414,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers + 1, kTimeout));
   ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_tserver));
   ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_tserver));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kFalse, new_tserver));
   ASSERT_EQ(GetAutoFlagConfigVersion(new_tserver), 0);
 
   // Add a new master
@@ -384,6 +427,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(op_id.index()));
   ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_master));
   ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_master));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kFalse, new_master));
   ASSERT_EQ(GetAutoFlagConfigVersion(new_master), 0);
 
   // Restart the master
@@ -391,6 +435,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   ASSERT_OK(new_master->Restart());
   ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_master));
   ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_master));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kFalse, new_master));
   ASSERT_EQ(GetAutoFlagConfigVersion(new_master), 0);
 
   // Remove disable_auto_flag_management from each process config and restart
@@ -415,6 +460,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   }
 
   ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kFalse));
+  ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsNewInstallFlagName, kFalse));
 
   ASSERT_NO_FATALS(TestPromote(
       /* get_current_config */

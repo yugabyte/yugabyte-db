@@ -11,67 +11,145 @@ import (
 	"io"
 	"io/fs"
 	"net"
+	"net/http"
 	"node-agent/app/task"
 	pb "node-agent/generated/service"
+	"node-agent/metric"
 	"node-agent/model"
 	"node-agent/util"
 	"os"
 	"os/user"
 	"path/filepath"
 
+	"node-agent/cmux"
+
+	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
 
+// RPCServer is the struct for gRPC server.
 type RPCServer struct {
-	addr    net.Addr
-	gServer *grpc.Server
-	isTLS   bool
+	listener     net.Listener
+	gServer      *grpc.Server
+	metricServer *http.Server
+	isTLS        bool
+	done         chan struct{}
 }
 
-func (server *RPCServer) Addr() string {
-	return server.addr.String()
+// RPCServerConfig is the config for RPC server.
+type RPCServerConfig struct {
+	// Address is the server address.
+	Address string
+	// EnableTLS is to enable TLS for both RPC and metric servers.
+	EnableTLS bool
+	// EnableMetrics is to enable metrics.
+	EnableMetrics bool
+	// DisableMetricsTLS is to disable TLS for metrics when EnableTLS is to true.
+	DisableMetricsTLS bool
 }
 
-func NewRPCServer(ctx context.Context, addr string, isTLS bool) (*RPCServer, error) {
+// NewRPCServer creates an instance of gRPC server.
+func NewRPCServer(
+	ctx context.Context,
+	serverConfig *RPCServerConfig,
+) (*RPCServer, error) {
 	serverOpts := []grpc.ServerOption{}
-	if isTLS {
-		tlsCredentials, err := loadTLSCredentials()
+	unaryInterceptors := []grpc.UnaryServerInterceptor{UnaryPanicHandler()}
+	streamInterceptors := []grpc.StreamServerInterceptor{StreamPanicHandler()}
+	if serverConfig.EnableMetrics {
+		unaryInterceptors = append(unaryInterceptors, UnaryMetricHandler())
+		streamInterceptors = append(streamInterceptors, StreamMetricHandler())
+	}
+	var tlsConfig *tls.Config
+	if serverConfig.EnableTLS {
+		config, err := loadTLSConfig()
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in loading TLS credentials: %s", err)
 			return nil, err
 		}
-		authenticator := &Authenticator{util.CurrentConfig()}
-		serverOpts = append(serverOpts, grpc.Creds(tlsCredentials))
-		serverOpts = append(serverOpts, UnaryPanicHandler(authenticator.UnaryInterceptor()))
-		serverOpts = append(serverOpts, StreamPanicHandler(authenticator.StreamInterceptor()))
-	} else {
-		serverOpts = append(serverOpts, UnaryPanicHandler(nil))
-		serverOpts = append(serverOpts, StreamPanicHandler(nil))
+		tlsConfig = config
 	}
-	listener, err := net.Listen("tcp", addr)
+	listener, err := net.Listen("tcp", serverConfig.Address)
 	if err != nil {
-		util.FileLogger().Errorf(ctx, "Failed to listen to %s: %v", addr, err)
+		util.FileLogger().Errorf(ctx, "Failed to listen to %s: %v", serverConfig.Address, err)
 		return nil, err
 	}
+	if serverConfig.EnableTLS {
+		if serverConfig.DisableMetricsTLS {
+			// Let gRPC handle TLS for RPC server.
+			serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(tlsConfig)))
+		} else {
+			// Create a new listener with TLS for both RPC and metrics server.
+			listener = tls.NewListener(
+				listener,
+				&tls.Config{
+					Certificates: tlsConfig.Certificates,
+					NextProtos:   []string{http2.NextProtoTLS, "http/1.1"},
+				},
+			)
+		}
+	}
+	if serverConfig.EnableTLS {
+		authenticator := &Authenticator{util.CurrentConfig()}
+		unaryInterceptors = append(unaryInterceptors, authenticator.UnaryInterceptor())
+		streamInterceptors = append(streamInterceptors, authenticator.StreamInterceptor())
+	}
+	mux := cmux.New(listener)
+	mListener := mux.Match(cmux.HTTP1())
+	gListener := mux.Match(cmux.Any())
+	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(unaryInterceptors...))
+	serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(streamInterceptors...))
 	gServer := grpc.NewServer(serverOpts...)
 	server := &RPCServer{
-		addr:    listener.Addr(),
-		gServer: gServer,
-		isTLS:   isTLS,
+		listener:     listener,
+		gServer:      gServer,
+		metricServer: &http.Server{},
+		isTLS:        serverConfig.EnableTLS,
+		done:         make(chan struct{}),
 	}
 	pb.RegisterNodeAgentServer(gServer, server)
+	metric.GetInstance().PrepopulateMetrics(gServer)
+	http.Handle("/metrics", metric.GetInstance().HTTPHandler())
+	// Start metrics server.
 	go func() {
-		if err := gServer.Serve(listener); err != nil {
+		if err := server.metricServer.Serve(mListener); err != nil {
+			util.FileLogger().Errorf(ctx, "Failed to start metrics server: %v", err)
+		}
+		select {
+		case <-server.done:
+			return
+		}
+		close(server.done)
+	}()
+	// Start RPC server.
+	go func() {
+		if err := gServer.Serve(gListener); err != nil {
 			util.FileLogger().Errorf(ctx, "Failed to start RPC server: %v", err)
 		}
+		select {
+		case <-server.done:
+			return
+		}
+		close(server.done)
+	}()
+	// Start the root listener.
+	go func() {
+		if err := mux.Serve(); err != nil {
+			util.FileLogger().Errorf(ctx, "Failed to start server: %v", err)
+		}
+		select {
+		case <-server.done:
+			return
+		}
+		close(server.done)
 	}()
 	return server, nil
 }
 
-func loadTLSCredentials() (credentials.TransportCredentials, error) {
+func loadTLSConfig() (*tls.Config, error) {
 	config := util.CurrentConfig()
 	certFilePath := util.ServerCertPath(config)
 	keyFilepath := util.ServerKeyPath(config)
@@ -83,7 +161,7 @@ func loadTLSCredentials() (credentials.TransportCredentials, error) {
 		Certificates: []tls.Certificate{serverCert},
 		ClientAuth:   tls.NoClientCert,
 	}
-	return credentials.NewTLS(tlsConfig), nil
+	return tlsConfig, nil
 }
 
 func removeFileIfPresent(filename string) error {
@@ -100,11 +178,34 @@ func removeFileIfPresent(filename string) error {
 	return err
 }
 
+// Addr returns the server address.
+func (server *RPCServer) Addr() string {
+	var addr string
+	if server.listener != nil {
+		addr = server.listener.Addr().String()
+	}
+	return addr
+}
+
+// Done returns a channel to check the status of the services.
+func (server *RPCServer) Done() <-chan struct{} {
+	return server.done
+}
+
+// Stop stops the services.
 func (server *RPCServer) Stop() {
 	if server.gServer != nil {
 		server.gServer.GracefulStop()
 	}
 	server.gServer = nil
+	if server.metricServer != nil {
+		server.metricServer.Close()
+	}
+	server.metricServer = nil
+	if server.listener != nil {
+		server.listener.Close()
+	}
+	server.listener = nil
 }
 
 func (server *RPCServer) toPreflightCheckResponse(result any) (*pb.DescribeTaskResponse, error) {
@@ -132,6 +233,7 @@ func (server *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.Ping
 		ServerInfo: &pb.ServerInfo{
 			Version:       config.String(util.PlatformVersionKey),
 			RestartNeeded: config.Bool(util.NodeAgentRestartKey),
+			Offloadable:   util.IsPexEnvAvailable(),
 		},
 	}, nil
 }
@@ -406,6 +508,7 @@ func (server *RPCServer) DownloadFile(
 	return nil
 }
 
+// Update updates the config file on upgrade.
 func (server *RPCServer) Update(
 	ctx context.Context,
 	in *pb.UpdateRequest,

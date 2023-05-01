@@ -32,7 +32,12 @@ There are two priority buckets, each having a priority range of [reals](https://
 
 Note that a transaction with any priority P1 from the high-priority bucket can abort a transaction with any priority P2 from the normal-priority bucket. For example, a transaction with priority 0.1 from the high-priority bucket can abort a transaction with priority 0.9 from the normal-priority bucket.
 
-Priorities are randomly chosen from the applicable bucket. However, there are two user configurable session variables that can help control the priority assigned to transaction in a specific session: `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. These variables help set lower and upper bounds on the randomly assigned priority that a transaction should receive from the applicable bucket. These variables accept a value of `real` datatype in the range [0, 1]. Also note that the same bounds apply to both buckets.
+Priorities are randomly chosen from the applicable bucket. However, you can use the following two YSQL parameters to control the priority assigned to transactions in a specific session:
+
+- `yb_transaction_priority_lower_bound`
+- `yb_transaction_priority_upper_bound`
+
+These parameters help set lower and upper bounds on the randomly-assigned priority that a transaction should receive from the applicable bucket. These parameters accept a value of `real` datatype in the range [0, 1]. Also note that the same bounds apply to both buckets.
 
 {{< note title="All single shard transactions have a priority of 1 in the normal-priority bucket." >}}
 {{</note >}}
@@ -40,7 +45,7 @@ Priorities are randomly chosen from the applicable bucket. However, there are tw
 The `yb_get_current_transaction_priority` function can be used to fetch the transaction priority of the current active transaction. It outputs a pair `<priority> (bucket)`, where `<priority>` is of a real datatype between [0, 1] with 9 decimal units of precision, and `<bucket>` is either `Normal` or `High`.
 
 {{< note title="Note">}}
-As an exception, if a transaction is assigned the highest priority possible, that is, a priority of 1 in the high-priority bucket, then we simply return `highest priority transaction` without any real value.
+As an exception, if a transaction is assigned the highest priority possible, that is, a priority of 1 in the high-priority bucket, the function returns `highest priority transaction` without any real value.
 {{</note >}}
 
 A transaction's priority is `0.000000000 (normal-priority transaction)` until a transaction is really started.
@@ -183,5 +188,6 @@ Internally, both the normal and high-priority buckets are mapped to a `unit64_t`
 
 1. High-priority bucket: `[yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound]`, that is, `uint32_t_max` to `uint64_t_max`
 
-For ease of use, the bounds are expressed as a [0, 1] real range for each bucket in the lower or upper bound session variables and the `yb_get_current_transaction_priority` function. The [0, 1] real range map proportionally to the integer ranges for both buckets. In other words, the [0, 1] range in the normal-priority bucket maps to `[0, uint32_t_max-1]` and the [0, 1] range in the high-priority bucket maps to `[uint32_t_max, uint64_t_max]`.
-{{</note >}}
+For ease of use, the bounds are expressed as a [0, 1] real range for each bucket in the lower or upper bound YSQL parameters and the `yb_get_current_transaction_priority` function. The [0, 1] real range map proportionally to the integer ranges for both buckets. In other words, the [0, 1] range in the normal-priority bucket maps to `[0, uint32_t_max-1]` and the [0, 1] range in the high-priority bucket maps to `[uint32_t_max, uint64_t_max]`.
+
+{{< /note >}}

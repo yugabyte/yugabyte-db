@@ -974,6 +974,16 @@ Status PgApiImpl::AlterTableIncrementSchemaVersion(PgStatement *handle) {
   return pg_stmt->IncrementSchemaVersion();
 }
 
+Status PgApiImpl::AlterTableSetTableId(PgStatement *handle, const PgObjectId &table_id) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable *>(handle);
+  return pg_stmt->SetTableId(table_id);
+}
+
 Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
     // Invalid handle.
@@ -1828,9 +1838,9 @@ Status PgApiImpl::ExitSeparateDdlTxnMode() {
   return Status::OK();
 }
 
-void PgApiImpl::ClearSeparateDdlTxnMode() {
+Status PgApiImpl::ClearSeparateDdlTxnMode() {
   pg_session_->DropBufferedOperations();
-  CHECK_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kFalse));
+  return pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kFalse);
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {

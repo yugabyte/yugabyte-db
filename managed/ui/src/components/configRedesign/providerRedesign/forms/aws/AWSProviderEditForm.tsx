@@ -47,11 +47,13 @@ import {
   findExistingZone,
   getDeletedRegions,
   getDeletedZones,
+  getLatestAccessKey,
   getNtpSetupType,
   getYBAHost
 } from '../../utils';
 import {
   addItem,
+  constructAccessKeysPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -104,7 +106,7 @@ export interface AWSProviderEditFormFieldValues {
   secretAccessKey: string;
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
-  sshPort: number;
+  sshPort: number | null;
   sshPrivateKeyContent: File;
   sshUser: string;
   vpcSetupType: VPCSetupType;
@@ -309,6 +311,7 @@ export const AWSProviderEditForm = ({
   const providerCredentialType = formMethods.watch('providerCredentialType');
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
   const ybImageType = formMethods.watch('ybImageType');
+  const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const isFormDisabled =
     isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
   return (
@@ -372,7 +375,7 @@ export const AWSProviderEditForm = ({
                     />
                   </FormField>
                   <FormField>
-                    <FieldLabel>Change Access Key</FieldLabel>
+                    <FieldLabel>Change AWS Credentials</FieldLabel>
                     <YBToggleField
                       name="editAccessKey"
                       control={formMethods.control}
@@ -487,26 +490,18 @@ export const AWSProviderEditForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Keypair Name</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.keyPairName}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.keyPairName} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Private Key</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.privateKey}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.privateKey} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Change SSH Keypair</FieldLabel>
@@ -679,11 +674,12 @@ const constructDefaultFormValues = (
     ybImage: region.details.cloudInfo.aws.ybImage ?? '',
     zones: region.zones
   })),
-  sshKeypairManagement: providerConfig.allAccessKeys?.[0]?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort ?? '',
+  sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
+  sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
-  vpcSetupType: providerConfig.details.cloudInfo.aws.vpcType
+  vpcSetupType: providerConfig.details.cloudInfo.aws.vpcType,
+  ybImageType: YBImageType.CUSTOM_AMI
 });
 
 const constructProviderPayload = async (
@@ -701,16 +697,17 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
+  const allAccessKeysPayload = constructAccessKeysPayload(
+    formValues.editSSHKeypair,
+    formValues.sshKeypairManagement,
+    { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
+    providerConfig.allAccessKeys
+  );
+
   return {
     code: ProviderCode.AWS,
     name: formValues.providerName,
-    ...(formValues.editSSHKeypair &&
-      formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-        ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-        ...(formValues.sshPrivateKeyContent && {
-          sshPrivateKeyContent: sshPrivateKeyContent
-        })
-      }),
+    ...allAccessKeysPayload,
     details: {
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
@@ -728,8 +725,8 @@ const constructProviderPayload = async (
       },
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: [
       ...formValues.regions.map<AWSRegionMutation>((regionFormValues) => {
@@ -748,11 +745,15 @@ const constructProviderPayload = async (
               [ProviderCode.AWS]: {
                 ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
                   ? {
-                      ybImage: regionFormValues.ybImage
+                      ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
                     }
-                  : { arch: formValues.ybImageType }),
-                securityGroupId: regionFormValues.securityGroupId,
-                vnet: regionFormValues.vnet
+                  : { ...(formValues.ybImageType && { arch: formValues.ybImageType }) }),
+                ...(regionFormValues.securityGroupId && {
+                  securityGroupId: regionFormValues.securityGroupId
+                }),
+                ...(regionFormValues.vnet && {
+                  vnet: regionFormValues.vnet
+                })
               }
             }
           },

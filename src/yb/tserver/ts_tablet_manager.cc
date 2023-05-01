@@ -250,7 +250,13 @@ DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
 DEFINE_UNKNOWN_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
+DEFINE_RUNTIME_int32(bg_superblock_flush_interval_secs, 60,
+    "The interval at which tablet superblocks are flushed to disk (if dirty) by a background "
+    "thread. Applicable only when lazily_flush_superblock is enabled. 0 indicates that the "
+    "background task is fully disabled.");
+
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(lazily_flush_superblock);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -583,6 +589,15 @@ Status TSTabletManager::Init() {
         "tablet manager", "scheduled full compactions",
         MonoDelta::FromMinutes(compaction_check_interval_min).ToChronoMilliseconds()));
     RETURN_NOT_OK(scheduled_full_compaction_bg_task_->Init());
+  }
+
+  const int32_t bg_superblock_flush_interval_secs = FLAGS_bg_superblock_flush_interval_secs;
+  if (FLAGS_lazily_flush_superblock && bg_superblock_flush_interval_secs > 0) {
+    superblock_flush_bg_task_.reset(new BackgroundTask(
+        std::function<void()>([this]() { FlushDirtySuperblocks(); }), "tablet manager",
+        "bg superblock flush",
+        MonoDelta::FromSeconds(bg_superblock_flush_interval_secs).ToChronoMilliseconds()));
+    RETURN_NOT_OK(superblock_flush_bg_task_->Init());
   }
 
   {
@@ -1549,33 +1564,34 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
 
     tablet::TabletInitData tablet_init_data = {
-      .metadata = meta,
-      .client_future = server_->client_future(),
-      .clock = scoped_refptr<server::Clock>(server_->clock()),
-      .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
-      .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
-      .metric_registry = metric_registry_,
-      .log_anchor_registry = tablet_peer->log_anchor_registry(),
-      .tablet_options = tablet_options_,
-      .log_prefix_suffix = " P " + tablet_peer->permanent_uuid(),
-      .transaction_participant_context = tablet_peer.get(),
-      .local_tablet_filter = std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
-      .transaction_coordinator_context = tablet_peer.get(),
-      .txns_enabled = tablet::TransactionsEnabled::kTrue,
-      // We are assuming we're never dealing with the system catalog tablet in TSTabletManager.
-      .is_sys_catalog = tablet::IsSysCatalogTablet::kFalse,
-      .snapshot_coordinator = nullptr,
-      .tablet_splitter = this,
-      .allowed_history_cutoff_provider = std::bind(
-          &TSTabletManager::AllowedHistoryCutoff, this, _1),
-      .transaction_manager_provider = [server = server_]() -> client::TransactionManager& {
-        return server->TransactionManager();
-      },
-      .waiting_txn_registry = waiting_txn_registry_.get(),
-      .wait_queue_pool = waiting_txn_pool_.get(),
-      .full_compaction_pool = full_compaction_pool(),
-      .post_split_compaction_added = ts_post_split_compaction_added_
-    };
+        .metadata = meta,
+        .client_future = server_->client_future(),
+        .clock = scoped_refptr<server::Clock>(server_->clock()),
+        .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
+        .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
+        .metric_registry = metric_registry_,
+        .log_anchor_registry = tablet_peer->log_anchor_registry(),
+        .tablet_options = tablet_options_,
+        .log_prefix_suffix = " P " + tablet_peer->permanent_uuid(),
+        .transaction_participant_context = tablet_peer.get(),
+        .local_tablet_filter = std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
+        .transaction_coordinator_context = tablet_peer.get(),
+        .txns_enabled = tablet::TransactionsEnabled::kTrue,
+        // We are assuming we're never dealing with the system catalog tablet in TSTabletManager.
+        .is_sys_catalog = tablet::IsSysCatalogTablet::kFalse,
+        .snapshot_coordinator = nullptr,
+        .tablet_splitter = this,
+        .allowed_history_cutoff_provider = std::bind(
+            &TSTabletManager::AllowedHistoryCutoff, this, _1),
+        .transaction_manager_provider = [server = server_]() -> client::TransactionManager& {
+          return server->TransactionManager();
+        },
+        .waiting_txn_registry = waiting_txn_registry_.get(),
+        .wait_queue_pool = waiting_txn_pool_.get(),
+        .full_compaction_pool = full_compaction_pool(),
+        .admin_triggered_compaction_pool = admin_triggered_compaction_pool(),
+        .post_split_compaction_added = ts_post_split_compaction_added_
+      };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = tablet_peer->status_listener(),
@@ -1649,26 +1665,31 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   }
 }
 
-Status TSTabletManager::TriggerAdminCompactionAndWait(const TabletPtrs& tablets) {
+Status TSTabletManager::TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait) {
   CountDownLatch latch(tablets.size());
-  auto token = admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
   std::vector<TabletId> tablet_ids;
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
   for (auto tablet : tablets) {
-    RETURN_NOT_OK(token->SubmitFunc([&latch, tablet]() {
-      WARN_NOT_OK(tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kAdminCompaction),
-          "Failed to submit compaction for tablet.");
-      latch.CountDown();
-    }));
+    Status status;
+    if (should_wait) {
+      status = tablet->TriggerAdminFullCompactionWithCallbackIfNeeded(latch.CountDownCallback());
+    } else {
+      status = tablet->TriggerAdminFullCompactionIfNeeded();
+    }
+    RETURN_NOT_OK(status);
     tablet_ids.push_back(tablet->tablet_id());
     total_size += tablet->GetCurrentVersionSstFilesSize();
   }
-  VLOG(1) << yb::Format("Beginning batch admin compaction for tablets $0, $1 bytes",
-      tablet_ids, total_size);
-  latch.Wait();
-  LOG(INFO) << yb::Format("Admin compaction finished for tablets $0, $1 bytes took $2 seconds",
-      tablet_ids, total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
+  VLOG(1) << yb::Format(
+      "Beginning batch admin compaction for tablets $0, $1 bytes", tablet_ids, total_size);
+
+  if (should_wait) {
+    latch.Wait();
+    LOG(INFO) << yb::Format(
+        "Admin compaction finished for tablets $0, $1 bytes took $2 seconds", tablet_ids,
+        total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
+  }
   return Status::OK();
 }
 
@@ -1940,6 +1961,18 @@ TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers(TabletPtrs* tablet_
     }
   }
   return peers;
+}
+
+TSTabletManager::TabletPeers TSTabletManager::GetTabletPeersWithTableId(
+    const TableId& table_id) const {
+  const auto peers = GetTabletPeers();
+  TabletPeers filtered_peers;
+  for (const auto& peer : peers) {
+    if (peer && peer->tablet_metadata()->table_id() == table_id) {
+      filtered_peers.push_back(peer);
+    }
+  }
+  return filtered_peers;
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
@@ -2738,6 +2771,18 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
   VLOG(1) << "Setting the allowed historycutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
   return result;
+}
+
+void TSTabletManager::FlushDirtySuperblocks() {
+  for (const auto& peer : GetTabletPeers()) {
+    if (peer->state() == RUNNING && peer->tablet_metadata()->IsLazySuperblockFlushEnabled()) {
+      auto s = peer->tablet_metadata()->Flush(tablet::OnlyIfDirty::kTrue);
+      if (!s.ok()) {
+        LOG(WARNING) << "Failed flushing superblock for tablet " << peer->tablet_id()
+                     << " from background thread: " << s;
+      }
+    }
+  }
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

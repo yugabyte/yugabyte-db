@@ -75,6 +75,8 @@ class XClusterTestBase : public YBTest {
   };
 
   void SetUp() override {
+    HybridTime::TEST_SetPrettyToString(true);
+
     YBTest::SetUp();
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
     FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
@@ -188,6 +190,10 @@ class XClusterTestBase : public YBTest {
       MiniCluster* producer_cluster, YBClient* producer_client,
       const std::vector<std::shared_ptr<yb::client::YBTable>>& tables);
 
+  Result<std::vector<CDCStreamId>> BootstrapProducer(
+      MiniCluster* producer_cluster, YBClient* producer_client,
+      const std::vector<std::string>& table_ids);
+
   // Wait for replication drain on a list of tables.
   Status WaitForReplicationDrain(
       const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
@@ -245,6 +251,8 @@ class XClusterTestBase : public YBTest {
     }
     return result;
   }
+
+  Status WaitForSafeTime(const NamespaceId& namespace_id, const HybridTime& min_safe_time);
 
   void VerifyReplicationError(
       const std::string& consumer_table_id,

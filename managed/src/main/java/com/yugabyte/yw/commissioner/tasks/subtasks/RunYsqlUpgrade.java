@@ -95,10 +95,7 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
         numAttempts++;
         final String leaderMasterAddress = universe.getMasterLeaderHostText();
         NodeDetails leaderMasterNode =
-            universe
-                .getUniverseDetails()
-                .getNodesInCluster(primaryCluster.uuid)
-                .stream()
+            universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid).stream()
                 .filter(nodeDetails -> nodeDetails.isMaster)
                 .filter(nodeDetails -> leaderMasterAddress.equals(nodeDetails.cloudInfo.private_ip))
                 .findFirst()

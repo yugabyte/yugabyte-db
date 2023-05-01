@@ -245,6 +245,9 @@ YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
 
 YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle);
 
+YBCStatus YBCPgAlterTableSetTableId(
+    YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_oid);
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropTable(YBCPgOid database_oid,
@@ -542,7 +545,7 @@ YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
 YBCStatus YBCPgExitSeparateDdlTxnMode();
-void YBCPgClearSeparateDdlTxnMode();
+YBCStatus YBCPgClearSeparateDdlTxnMode();
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
 YBCStatus YBCPgRollbackToSubTransaction(uint32_t id);
 double YBCGetTransactionPriority();

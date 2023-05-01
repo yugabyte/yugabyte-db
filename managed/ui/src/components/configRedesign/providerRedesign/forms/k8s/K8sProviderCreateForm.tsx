@@ -6,7 +6,7 @@
  */
 import React, { useState } from 'react';
 import JsYaml from 'js-yaml';
-import { Box, FormHelperText, Typography } from '@material-ui/core';
+import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
 import { toast } from 'react-toastify';
@@ -159,15 +159,21 @@ export const K8sProviderCreateForm = ({
             [ProviderCode.KUBERNETES]: {
               ...(formValues.kubeConfigContent && {
                 kubeConfigContent: (await readFileAsText(formValues.kubeConfigContent)) ?? '',
-                kubeConfigName: formValues.kubeConfigContent?.name ?? ''
+                ...(formValues.kubeConfigContent.name && {
+                  kubeConfigName: formValues.kubeConfigContent.name
+                })
               }),
               kubernetesImageRegistry: formValues.kubernetesImageRegistry,
               kubernetesProvider: formValues.kubernetesProvider.value,
               ...(formValues.kubernetesPullSecretContent && {
                 kubernetesPullSecretContent:
                   (await readFileAsText(formValues.kubernetesPullSecretContent)) ?? '',
-                kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name ?? '',
-                kubernetesImagePullSecretName: kubernetesPullSecretYAML?.metadata?.name ?? ''
+                ...(formValues.kubernetesPullSecretContent.name && {
+                  kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
+                }),
+                ...(kubernetesPullSecretYAML?.metadata?.name && {
+                  kubernetesImagePullSecretName: kubernetesPullSecretYAML?.metadata?.name
+                })
               })
             }
           }
@@ -187,16 +193,24 @@ export const K8sProviderCreateForm = ({
                         kubeConfigContent:
                           (await readFileAsText(azFormValues.kubeConfigContent)) ?? ''
                       }),
-                      kubeDomain: azFormValues.kubeDomain,
-                      kubeNamespace: azFormValues.kubeNamespace,
-                      kubePodAddressTemplate: azFormValues.kubePodAddressTemplate,
-                      kubernetesStorageClass: azFormValues.kubernetesStorageClass,
-                      overrides: azFormValues.overrides,
-                      ...(azFormValues.certIssuerType === K8sCertIssuerType.CLUSTER_ISSUER && {
-                        certManagerClusterIssuer: azFormValues.certIssuerName
+                      ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
+                      ...(azFormValues.kubeNamespace && {
+                        kubeNamespace: azFormValues.kubeNamespace
                       }),
-                      ...(azFormValues.certIssuerType === K8sCertIssuerType.ISSUER && {
-                        certManagerIssuer: azFormValues.certIssuerName
+                      ...(azFormValues.kubePodAddressTemplate && {
+                        kubePodAddressTemplate: azFormValues.kubePodAddressTemplate
+                      }),
+                      ...(azFormValues.kubernetesStorageClass && {
+                        kubernetesStorageClass: azFormValues.kubernetesStorageClass
+                      }),
+                      ...(azFormValues.overrides && { overrides: azFormValues.overrides }),
+                      ...(azFormValues.certIssuerName && {
+                        ...(azFormValues.certIssuerType === K8sCertIssuerType.CLUSTER_ISSUER && {
+                          certManagerClusterIssuer: azFormValues.certIssuerName
+                        }),
+                        ...(azFormValues.certIssuerType === K8sCertIssuerType.ISSUER && {
+                          certManagerIssuer: azFormValues.certIssuerName
+                        })
                       })
                     }
                   }
@@ -370,6 +384,11 @@ export const K8sProviderCreateForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
+            {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
+              <Box display="flex" gridGap="5px" marginLeft="auto">
+                <CircularProgress size={16} color="primary" thickness={5} />
+              </Box>
+            )}
           </Box>
           <Box marginTop="16px">
             <YBButton

@@ -18,7 +18,6 @@ set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
     yb_common
-    yb_ql_common
     yb_pggate_flags
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
@@ -30,6 +29,7 @@ add_dependencies(
   yb_pgwrapper
   gen_src_yb_tserver_backup_proto
   gen_src_yb_docdb_docdb_proto
+  gen_src_yb_dockv_dockv_proto
   gen_src_yb_util_opid_proto
   gen_src_yb_tablet_metadata_proto
   gen_src_yb_tablet_operations_proto
@@ -95,6 +95,7 @@ set(YB_TEST_LINK_LIBS yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_t
 ADD_YB_TEST(pg_auto_analyze-test)
 ADD_YB_TEST(pg_backends-test)
 ADD_YB_TEST(pg_catalog_perf-test)
+ADD_YB_TEST(pg_catalog_version-test)
 ADD_YB_TEST(pg_clock_skew-test)
 ADD_YB_TEST(pg_conn-test)
 ADD_YB_TEST(pg_ddl_concurrency-test)

@@ -20,7 +20,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -34,20 +33,23 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
-  protected boolean isBlacklistLeaders = false;
   protected int leaderBacklistWaitTimeMs;
   public static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
 
   @Inject
   protected KubernetesTaskBase(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
+  }
+
+  @Override
+  protected boolean isBlacklistLeaders() {
+    return false; // TODO: Modify blacklist is disabled by default for k8s now for some reason.
   }
 
   public static class KubernetesPlacement {
@@ -450,9 +452,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         createSubTaskGroup(CommandType.HELM_UPGRADE.getSubTaskGroupName(), true);
     List<NodeDetails> tserverNodes = new ArrayList<>();
     List<NodeDetails> masterNodes = new ArrayList<>();
-    serversToUpdate
-        .entrySet()
-        .stream()
+    serversToUpdate.entrySet().stream()
         .forEach(
             serverEntry -> {
               UUID azUUID = serverEntry.getKey();
@@ -716,26 +716,21 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           PlacementInfoUtil.getPlacementAZMap(newPlacement.placementInfo);
 
       List<UUID> sortedZonesToUpdate =
-          serversToUpdate
-              .keySet()
-              .stream()
+          serversToUpdate.keySet().stream()
               .sorted(Comparator.comparing(zoneUUID -> !placementAZMap.get(zoneUUID).isAffinitized))
               .collect(Collectors.toList());
 
       // Put isAffinitized availability zones first
       serversToUpdate =
-          sortedZonesToUpdate
-              .stream()
+          sortedZonesToUpdate.stream()
               .collect(
                   Collectors.toMap(
                       Function.identity(), serversToUpdate::get, (a, b) -> a, LinkedHashMap::new));
     }
 
-    if (serverType == ServerType.TSERVER && isBlacklistLeaders && !edit) {
+    if (serverType == ServerType.TSERVER && !edit) {
       // clear blacklist
-      List<NodeDetails> tServerNodes = getUniverse().getTServers();
-      createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse);
     }
 
     Map<String, Object> universeOverrides = HelmUtils.convertYamlToMap(universeOverridesStr);
@@ -757,7 +752,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         currNumTservers = currPlacement.tservers.getOrDefault(azUUID, 0);
         if (serverType == ServerType.TSERVER) {
           // Since we only want to roll the old pods and not the new ones.
-          numPods = newNumTservers > currNumTservers ? currNumTservers : newNumTservers;
+          numPods = Math.min(newNumTservers, currNumTservers);
           if (currNumTservers == 0) {
             continue;
           }
@@ -791,18 +786,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         tserverPartition = serverType == ServerType.TSERVER ? partition : tserverPartition;
         NodeDetails node =
             getKubernetesNodeName(partition, azCode, serverType, isMultiAz, isReadOnlyCluster);
-        boolean isLeaderBlacklistValidRF = isLeaderBlacklistValidRF(node.nodeName);
         List<NodeDetails> nodeList = new ArrayList<>();
         nodeList.add(node);
-        if (serverType == ServerType.TSERVER
-            && isBlacklistLeaders
-            && isLeaderBlacklistValidRF
-            && !edit) {
-          createModifyBlackListTask(
-                  Arrays.asList(node), true /* isAdd */, true /* isLeaderBlacklist */)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-          createWaitForLeaderBlacklistCompletionTask(leaderBacklistWaitTimeMs)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        if (serverType == ServerType.TSERVER && !edit) {
+          addLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
         }
 
         String podName =
@@ -852,13 +839,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         createWaitForServerReady(node, serverType, waitTime)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-        if (serverType == ServerType.TSERVER
-            && isBlacklistLeaders
-            && isLeaderBlacklistValidRF
-            && !edit) {
-          createModifyBlackListTask(
-                  Arrays.asList(node), false /* isAdd */, true /* isLeaderBlacklist */)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        if (serverType == ServerType.TSERVER && !edit) {
+          removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
         }
       }
     }
@@ -1049,7 +1031,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isMultiAz,
       boolean isReadCluster) {
 
-    Set<NodeDetails> podsToAdd = new HashSet<NodeDetails>();
+    Set<NodeDetails> podsToAdd = new HashSet<>();
     for (Entry<UUID, Integer> entry : newPlacement.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = AvailabilityZone.get(azUUID).getCode();
@@ -1076,7 +1058,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Universe universe,
       boolean isMultiAz,
       boolean isReadCluster) {
-    Set<NodeDetails> podsToRemove = new HashSet<NodeDetails>();
+    Set<NodeDetails> podsToRemove = new HashSet<>();
     for (Entry<UUID, Integer> entry : currPlacement.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = AvailabilityZone.get(azUUID).getCode();

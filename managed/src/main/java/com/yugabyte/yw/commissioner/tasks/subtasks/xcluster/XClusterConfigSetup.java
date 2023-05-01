@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
@@ -33,8 +34,9 @@ import org.yb.util.NetUtil;
 public class XClusterConfigSetup extends XClusterConfigTaskBase {
 
   @Inject
-  protected XClusterConfigSetup(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected XClusterConfigSetup(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   public static class Params extends XClusterConfigTaskParams {

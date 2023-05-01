@@ -207,8 +207,8 @@ message SysTablesEntryPB {
 
   repeated StatefulServiceKind hosted_stateful_services = 39;
 
-  // Time when a full compaction was last requested by the user.
-  optional fixed64 last_full_compaction_time = 41;
+  // Time when an admin compaction was last requested. Raw representation of a HybridTime.
+  optional fixed64 last_full_compaction_request_time = 41;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -261,8 +261,9 @@ message SysTabletsEntryPB {
   // the DocKey for the next row to be backfilled.
   map<string, bytes> backfilled_until = 12;
 
-  // Tablet IDs for the children of this tablet after splitting, if they have been registered in
-  // master.
+  // Tablet IDs for the children of this tablet after splitting. It is possible for a tablet to
+  // temporarily exist in this field but not be registered as part of the table or the catalog
+  // manager's tablet map.
   repeated bytes split_tablet_ids = 14;
 
   // Time when tablet was hidden.

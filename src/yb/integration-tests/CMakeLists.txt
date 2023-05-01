@@ -82,6 +82,7 @@ target_link_libraries(integration-tests
   yb_test_util
   yb-redis
   yb_pgwrapper
+  master_test_common
   master_proto
   cdc_test_util
   test_echo_service_proto)
@@ -106,7 +107,6 @@ target_link_libraries(tablet-split-itest-base integration-tests ql-dml-test-base
 set(YB_TEST_LINK_LIBS
     cql_test_util
     integration-tests
-    master_test_common
     ql-dml-test-base
     rpc_test_util
     tablet-split-itest-base
@@ -137,6 +137,7 @@ ADD_YB_TEST(master_heartbeat-itest)
 # ADD_YB_TEST(non_gtest_failures-test.sh)
 
 # Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
+ADD_YB_TEST(tserver_metrics_heartbeat_data_provider-itest)
 ADD_YB_TEST(are_leaders_on_preferred_only-itest)
 ADD_YB_TEST(compaction-test)
 ADD_YB_TEST(compressed_stream-test)
@@ -199,6 +200,7 @@ ADD_YB_TEST(xcluster_topologies-test)
 ADD_YB_TEST(transaction-test)
 ADD_YB_TEST(encryption-test)
 ADD_YB_TEST(secure_connection_test)
+ADD_YB_TEST(xcluster/xcluster_ysql_index-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)

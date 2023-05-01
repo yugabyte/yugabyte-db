@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.models.migrations;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
@@ -26,18 +28,15 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import javax.persistence.*;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
-
-import javax.persistence.*;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 /** Snapshot View of ORM entities at the time migration V231 was added. */
 @Slf4j

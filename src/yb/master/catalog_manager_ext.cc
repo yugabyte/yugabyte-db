@@ -24,10 +24,10 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/ql_name.h"
+#include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -3114,6 +3114,13 @@ Status CatalogManager::ValidateTableSchema(
                       info->table_id, resp->identifier().table_id(), source_clc_id, target_clc_id));
   }
 
+  {
+    SharedLock lock(mutex_);
+    if (xcluster_consumer_tables_to_stream_map_.contains(table->table_id())) {
+      return STATUS(IllegalState, "N:1 replication topology not supported");
+    }
+  }
+
   return Status::OK();
 }
 
@@ -3155,6 +3162,10 @@ void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
   std::lock_guard<simple_spinlock> l(state_lock_);
   is_catalog_loaded_ = false;
+}
+
+HybridTime CatalogManager::AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+  return snapshot_coordinator_.AllowedHistoryCutoffProvider(metadata);
 }
 
 }  // namespace master

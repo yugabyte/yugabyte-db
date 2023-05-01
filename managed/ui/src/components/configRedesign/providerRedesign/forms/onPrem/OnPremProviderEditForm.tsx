@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Box, FormHelperText, Typography } from '@material-ui/core';
+import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { toast } from 'react-toastify';
 
-import { NTPSetupType, ProviderCode } from '../../constants';
+import { KeyPairManagement, NTPSetupType, ProviderCode } from '../../constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import {
   ConfigureOnPremRegionModal,
@@ -25,6 +25,7 @@ import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInput, YBInputField, YBToggleField } from '../../../../../redesign/components';
 import {
   addItem,
+  constructAccessKeysPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -36,6 +37,7 @@ import {
   findExistingZone,
   getDeletedRegions,
   getDeletedZones,
+  getLatestAccessKey,
   getNtpSetupType
 } from '../../utils';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
@@ -67,12 +69,12 @@ interface OnPremProviderEditFormFieldValues {
   regions: ConfigureOnPremRegionFormValues[];
   skipProvisioning: boolean;
   sshKeypairName: string;
-  sshPort: number;
+  sshPort: number | null;
   sshPrivateKeyContent: File;
   sshUser: string;
   version: number;
 
-  nodeExporterPort?: number;
+  nodeExporterPort?: number | null;
   nodeExporterUser?: string;
   ybHomeDir?: string;
 }
@@ -180,6 +182,8 @@ export const OnPremProviderEditForm = ({
   );
   const currentProviderVersion = formMethods.watch('version', defaultValues.version);
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
+
+  const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const isFormDisabled =
     isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
   return (
@@ -248,26 +252,18 @@ export const OnPremProviderEditForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   fullWidth
                   disabled={isFormDisabled}
                 />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Keypair Name</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.keyPairName}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.keyPairName} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Private Key</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.privateKey}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.privateKey} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Change SSH Keypair</FieldLabel>
@@ -372,6 +368,11 @@ export const OnPremProviderEditForm = ({
                 <NTPConfigField isDisabled={isFormDisabled} providerCode={ProviderCode.ON_PREM} />
               </FormField>
             </FieldGroup>
+            {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
+              <Box display="flex" gridGap="5px" marginLeft="auto">
+                <CircularProgress size={16} color="primary" thickness={5} />
+              </Box>
+            )}
           </Box>
           <Box marginTop="16px">
             <YBButton
@@ -398,6 +399,7 @@ export const OnPremProviderEditForm = ({
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
           regionSelection={regionSelection}
+          regionOperation={regionOperation}
         />
       )}
       {isDeleteRegionModalOpen && (
@@ -418,7 +420,7 @@ const constructDefaultFormValues = (
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
   editSSHKeypair: false,
   installNodeExporter: !!providerConfig.details.installNodeExporter,
-  nodeExporterPort: providerConfig.details.nodeExporterPort,
+  nodeExporterPort: providerConfig.details.nodeExporterPort ?? null,
   nodeExporterUser: providerConfig.details.nodeExporterUser ?? '',
   ntpServers: providerConfig.details.ntpServers,
   ntpSetupType: getNtpSetupType(providerConfig),
@@ -432,7 +434,7 @@ const constructDefaultFormValues = (
     }))
   })),
   skipProvisioning: providerConfig.details.skipProvisioning,
-  sshPort: providerConfig.details.sshPort ?? '',
+  sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
   ybHomeDir: providerConfig.details.cloudInfo.onprem.ybHomeDir ?? ''
@@ -451,34 +453,34 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
+  const allAccessKeysPayload = constructAccessKeysPayload(
+    formValues.editSSHKeypair,
+    KeyPairManagement.SELF_MANAGED,
+    { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
+    providerConfig.allAccessKeys
+  );
+
   return {
     code: ProviderCode.ON_PREM,
     name: formValues.providerName,
-    allAccessKeys: [
-      {
-        keyInfo: {
-          ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-          ...(formValues.sshPrivateKeyContent && {
-            sshPrivateKeyContent: sshPrivateKeyContent
-          })
-        }
-      }
-    ],
+    ...allAccessKeysPayload,
     details: {
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.ON_PREM]: {
-          ybHomeDir: formValues.ybHomeDir
+          ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir })
         }
       },
       installNodeExporter: formValues.installNodeExporter,
-      nodeExporterPort: formValues.nodeExporterPort,
-      nodeExporterUser: formValues.nodeExporterUser,
+      ...(formValues.nodeExporterPort && { nodeExporterPort: formValues.nodeExporterPort }),
+      ...(formValues.nodeExporterUser && { nodeExporterUser: formValues.nodeExporterUser }),
       ntpServers: formValues.ntpServers,
+      passwordlessSudoAccess: providerConfig.details.passwordlessSudoAccess,
+      provisionInstanceScript: providerConfig.details.provisionInstanceScript,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
       skipProvisioning: formValues.skipProvisioning,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: [
       ...formValues.regions.map<OnPremRegionMutation>((regionFormValues) => {

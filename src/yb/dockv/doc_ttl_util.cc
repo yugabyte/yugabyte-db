@@ -14,7 +14,6 @@
 
 #include "yb/common/schema.h"
 #include "yb/dockv/value.h"
-#include "yb/server/hybrid_clock.h"
 #include "yb/util/monotime.h"
 
 using std::string;
@@ -26,8 +25,7 @@ bool HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta &ttl,
   if (ttl.Equals(ValueControlFields::kMaxTtl) || ttl.Equals(ValueControlFields::kResetTtl)) {
     return false;
   }
-  return server::HybridClock::CompareHybridClocksToDelta(
-      key_hybrid_time, read_hybrid_time, ttl) > 0;
+  return CompareHybridTimesToDelta(key_hybrid_time, read_hybrid_time, ttl) > 0;
 }
 
 Result<bool> HasExpiredTTL(const EncodedDocHybridTime& key_hybrid_time, const MonoDelta& ttl,
@@ -35,7 +33,7 @@ Result<bool> HasExpiredTTL(const EncodedDocHybridTime& key_hybrid_time, const Mo
   if (ttl.Equals(ValueControlFields::kMaxTtl) || ttl.Equals(ValueControlFields::kResetTtl)) {
     return false;
   }
-  return server::HybridClock::CompareHybridClocksToDelta(
+  return CompareHybridTimesToDelta(
       VERIFY_RESULT(key_hybrid_time.Decode()).hybrid_time(), read_hybrid_time, ttl) > 0;
 }
 
@@ -82,10 +80,9 @@ const HybridTime FileExpirationFromValueTTL(
   } else if (value_ttl.Equals(ValueControlFields::kResetTtl)) {
     return kNoExpiration;
   }
-  auto exp_time = server::HybridClock::AddPhysicalTimeToHybridTime(key_hybrid_time, value_ttl);
+  auto exp_time = key_hybrid_time.AddDelta(value_ttl);
   // Sanity check for overflow, return no expiration if detected.
-  if (server::HybridClock::CompareHybridClocksToDelta(
-      key_hybrid_time, exp_time, value_ttl) != 0) {
+  if (CompareHybridTimesToDelta(key_hybrid_time, exp_time, value_ttl) != 0) {
     return kNoExpiration;
   }
   return exp_time;
@@ -105,10 +102,9 @@ const HybridTime MaxExpirationFromValueAndTableTTL(const HybridTime& key_hybrid_
   }
 
   // Calculate the expiration time based on table TTL only.
-  auto table_expiry = server::HybridClock::AddPhysicalTimeToHybridTime(key_hybrid_time, table_ttl);
+  auto table_expiry = key_hybrid_time.AddDelta(table_ttl);
   // Sanity check for overflow, return no expiration if overflow detected.
-  if (server::HybridClock::CompareHybridClocksToDelta(
-      key_hybrid_time, table_expiry, table_ttl) != 0) {
+  if (CompareHybridTimesToDelta(key_hybrid_time, table_expiry, table_ttl) != 0) {
     return kNoExpiration;
   }
   // Return the greater of the table expiration time and the value expiration time.

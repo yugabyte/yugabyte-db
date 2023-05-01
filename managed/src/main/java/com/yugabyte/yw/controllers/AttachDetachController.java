@@ -131,8 +131,7 @@ public class AttachDetachController extends AuthenticatedController {
           EncryptionAtRestUtil.getAllUniverseKeys(universe.getUniverseUUID());
       kmsHistoryList.sort((h1, h2) -> h1.getTimestamp().compareTo(h2.getTimestamp()));
       List<KmsConfig> kmsConfigs =
-          kmsHistoryList
-              .stream()
+          kmsHistoryList.stream()
               .map(KmsHistory::getConfigUuid)
               .distinct()
               .map(KmsConfig::get)
@@ -144,8 +143,7 @@ public class AttachDetachController extends AuthenticatedController {
           Schedule.getAllSchedulesByOwnerUUIDAndType(
               universe.getUniverseUUID(), TaskType.CreateBackup);
       List<CustomerConfig> customerConfigs =
-          backups
-              .stream()
+          backups.stream()
               .map(Backup::getStorageConfigUUID)
               .distinct()
               .map(CustomerConfig::get)
@@ -156,7 +154,7 @@ public class AttachDetachController extends AuthenticatedController {
       ReleaseMetadata ybReleaseMetadata =
           releaseManager.getReleaseByVersion(
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-      if (ybReleaseMetadata != null && ybReleaseMetadata.isLocalRelease()) {
+      if (ybReleaseMetadata != null && ybReleaseMetadata.hasLocalRelease()) {
         ybReleaseMetadata = null;
       }
 

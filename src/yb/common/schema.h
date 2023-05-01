@@ -39,7 +39,7 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional/optional.hpp>
+#include <boost/range/iterator_range_core.hpp>
 
 #include <glog/logging.h>
 
@@ -496,6 +496,7 @@ class Schema {
       cotable_id_(Uuid::Nil()),
       colocation_id_(kColocationIdNotSet),
       pgschema_name_("") {
+    UpdateKeyPrefixEncodedLen();
   }
 
   Schema(const Schema& other);
@@ -614,6 +615,14 @@ class Schema {
 
   const std::vector<ColumnId>& column_ids() const {
     return col_ids_;
+  }
+
+  auto hash_key_column_ids() const {
+    return boost::make_iterator_range(col_ids_.begin(), col_ids_.begin() + num_hash_key_columns_);
+  }
+
+  auto key_column_ids() const {
+    return boost::make_iterator_range(col_ids_.begin(), col_ids_.begin() + num_key_columns_);
   }
 
   const std::vector<std::string> column_names() const {
@@ -750,6 +759,7 @@ class Schema {
       DCHECK_EQ(colocation_id_, kColocationIdNotSet);
     }
     cotable_id_ = cotable_id;
+    UpdateKeyPrefixEncodedLen();
   }
 
   bool has_yb_hash_code() const {
@@ -779,6 +789,7 @@ class Schema {
       DCHECK(cotable_id_.IsNil());
     }
     colocation_id_ = colocation_id;
+    UpdateKeyPrefixEncodedLen();
   }
 
   bool is_colocated() const {
@@ -828,12 +839,6 @@ class Schema {
   // Initialize column IDs by default values.
   // Requires that this schema has no column IDs.
   void InitColumnIdsByDefault();
-
-  // Return a new Schema which is the same as this one, but without any column
-  // IDs assigned.
-  //
-  // Requires that this schema has column IDs.
-  Schema CopyWithoutColumnIds() const;
 
   // Create a new schema containing only the selected columns.
   // The resulting schema will have no key columns defined.
@@ -999,6 +1004,11 @@ class Schema {
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
 
+  // The number of bytes before actual key values for all encoded keys in this table.
+  size_t key_prefix_encoded_len() const {
+    return key_prefix_encoded_len_;
+  }
+
   static ColumnId first_column_id();
 
   // Should account for every field in Schema.
@@ -1006,6 +1016,7 @@ class Schema {
   static bool TEST_Equals(const Schema& lhs, const Schema& rhs);
 
  private:
+  void UpdateKeyPrefixEncodedLen();
 
   void ResetColumnIds(const std::vector<ColumnId>& ids);
 
@@ -1073,6 +1084,7 @@ class Schema {
 
   PgSchemaName pgschema_name_;
 
+  size_t key_prefix_encoded_len_ = 0;
   // NOTE: if you add more members, make sure to add the appropriate
   // code to swap() and CopyFrom() as well to prevent subtle bugs.
 };
@@ -1210,6 +1222,7 @@ class SchemaBuilder {
 
   DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);
 };
+
 } // namespace yb
 
 // Specialize std::hash for ColumnId

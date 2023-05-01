@@ -36,8 +36,8 @@
 #include <glog/logging.h>
 
 #include "yb/dockv/partition.h"
-#include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -471,7 +471,7 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
     return STATUS(IOError, "Failed to read: ", resp.error().ShortDebugString());
   }
 
-  QLRowBlock row_block(schema);
+  qlexpr::QLRowBlock row_block(schema);
   auto data_buffer = VERIFY_RESULT(rpc.ExtractSidecar(0));
   auto data = data_buffer.AsSlice();
   if (!data.empty()) {

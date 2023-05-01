@@ -213,6 +213,12 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
     table_.AddInt32Condition(condition, "r1", QL_OP_EQUAL, r1);
     table_.AddStringCondition(condition, "r2", QL_OP_EQUAL, r2);
     table_.AddColumns(columns, req);
+    if (std::find(columns.begin(), columns.end(), "r1") == columns.end()) {
+      table_.AddColumns({"r1"}, req);
+    }
+    if (std::find(columns.begin(), columns.end(), "r2") == columns.end()) {
+      table_.AddColumns({"r2"}, req);
+    }
     session->Apply(op);
     return op;
   }
@@ -289,9 +295,9 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
-    EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
+    ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK) << AsString(op->response());
     auto rowblock = RowsResult(op.get()).GetRowBlock();
-    EXPECT_EQ(rowblock->row_count(), 1);
+    ASSERT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
 
@@ -307,9 +313,9 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     table_.AddInt32ColumnValue(req, "c1", 4);
     table_.AddStringColumnValue(req, "c2", "d");
     const YBSessionPtr session(NewSession());
-    CHECK_OK(session->TEST_ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
 
-    EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
+    ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
 
   {
@@ -317,15 +323,15 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const YBSessionPtr session = NewSession();
     const YBqlReadOpPtr op = SelectRow(session, {"c1", "c2"}, 1, "a", 2, "b");
-    EXPECT_OK(session->TEST_Flush());
+    ASSERT_OK(session->TEST_Flush());
 
     // Expect 4, 'd' returned
-    EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
+    ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK) << AsString(op->response());
     auto rowblock = RowsResult(op.get()).GetRowBlock();
-    EXPECT_EQ(rowblock->row_count(), 1);
+    ASSERT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
-    EXPECT_EQ(row.column(0).int32_value(), 4);
-    EXPECT_EQ(row.column(1).string_value(), "d");
+    ASSERT_EQ(row.column(0).int32_value(), 4);
+    ASSERT_EQ(row.column(1).string_value(), "d");
   }
 }
 
@@ -814,7 +820,9 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
     condition->set_op(QL_OP_OR);
     table_.AddCondition(condition, QL_OP_NOT_EXISTS);
     table_.AddStringCondition(condition, "c2", QL_OP_EQUAL, "d");
-    req->mutable_column_refs()->add_ids(table_.ColumnId("c2"));
+    for (const auto& column_name : {"h1", "h2", "r1", "r2", "c2"}) {
+      req->mutable_column_refs()->add_ids(table_.ColumnId(column_name));
+    }
     CHECK_OK(session->TEST_ApplyAndFlush(op));
 
     // Expect not applied, return c2 = 'd'. Verify column names ("[applied]" and "c2") also.
@@ -822,6 +830,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
     auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
+    LOG(INFO) << "Schema: " << rowblock->schema().ToString() << ", row: " << row.ToString();
     EXPECT_EQ(rowblock->schema().num_columns(), 6);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
     EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
@@ -1035,7 +1044,9 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
     QLAddStringRangeValue(req, "b");
     table_.SetColumn(req->add_column_values(), "c1");
     table_.SetInt32Condition(req->mutable_if_expr()->mutable_condition(), "c1", QL_OP_EQUAL, 4);
-    req->mutable_column_refs()->add_ids(table_.ColumnId("c1"));
+    for (const auto& column_name : {"h1", "h2", "r1", "r2", "c1"}) {
+      req->mutable_column_refs()->add_ids(table_.ColumnId(column_name));
+    }
     CHECK_OK(session->TEST_ApplyAndFlush(op));
 
     // Expect not applied, return c1 = 3. Verify column names also.
@@ -1170,7 +1181,7 @@ TEST_F(QLDmlTest, TestError) {
     condition->set_op(QL_OP_AND);
     table_.AddStringCondition(condition, "r1", QL_OP_NOT_EQUAL, "2");
     table_.AddStringCondition(condition, "r2", QL_OP_NOT_EQUAL, "b");
-    table_.AddColumns({"c1", "c2"}, req);
+    table_.AddColumns({"r1", "r2", "c1", "c2"}, req);
 
     CHECK_OK(session->TEST_ApplyAndFlush(op));
 

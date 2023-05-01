@@ -20,9 +20,10 @@
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/ybc_util.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/doc_scanspec_util.h"
+#include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/dockv/primitive_value_util.h"
 
 #include "yb/yql/pggate/pg_tabledesc.h"
@@ -102,8 +103,9 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
   // number of rows. Here the operation fetches next page, so the estimation is proven incorrect.
   // So resetting the limit to prevent excessive RPCs due to too small fetch size, if the estimation
   // is too far from reality.
-  if (req->limit() < FLAGS_ysql_prefetch_limit) {
-    req->set_limit(FLAGS_ysql_prefetch_limit);
+  uint64_t prefetch_limit = yb_fetch_row_limit;
+  if (req->limit() < prefetch_limit) {
+    req->set_limit(prefetch_limit);
   }
 
   return true;

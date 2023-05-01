@@ -126,7 +126,7 @@ DECLARE_int32(max_create_tablets_per_ts);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_int32(replication_factor);
 
-DEFINE_UNKNOWN_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
+DEFINE_NON_RUNTIME_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
 DECLARE_int32(min_backoff_ms_exponent);
 DECLARE_int32(max_backoff_ms_exponent);
 DECLARE_bool(TEST_force_master_lookup_all_tablets);
@@ -134,6 +134,9 @@ DECLARE_double(TEST_simulate_lookup_timeout_probability);
 
 DECLARE_bool(ysql_legacy_colocated_database_creation);
 DECLARE_int32(pgsql_proxy_webserver_port);
+
+DECLARE_int32(scheduled_full_compaction_frequency_hours);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
@@ -2325,7 +2328,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
     auto tserver_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
         &proxy_cache, HostPortFromPB(ts_info.private_rpc_addresses(0)));
 
-    std::unique_ptr<QLRowBlock> row_block;
+    std::unique_ptr<qlexpr::QLRowBlock> row_block;
     ASSERT_OK(WaitFor([&]() -> bool {
       // Setup read request.
       tserver::ReadRequestPB req;
@@ -2364,7 +2367,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
 
     std::vector<bool> seen_key(row_block->row_count());
     for (size_t i = 0; i < row_block->row_count(); i++) {
-      const QLRow& row = row_block->row(i);
+      const auto& row = row_block->row(i);
       auto key = row.column(0).int32_value();
       ASSERT_LT(key, seen_key.size());
       ASSERT_FALSE(seen_key[key]);
@@ -2524,6 +2527,112 @@ TEST_F(ClientTest, FlushTable) {
       YQLDatabase::YQL_DATABASE_CQL,
       "bad namespace name",
       "bad table name"));
+}
+
+class CompactionClientTest : public ClientTest {
+  void SetUp() override {
+    // Disable automatic compactions.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+    ClientTest::SetUp();
+    time_before_compaction_ =
+        ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->clock()->Now();
+  }
+
+ protected:
+  Status WaitForCompactionStatusSatisfying(
+      std::function<Result<bool>(const TableCompactionStatus&)> status_check) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          return status_check(VERIFY_RESULT(
+              client_->GetCompactionStatus(client_table2_.name(), true /* show_tablets*/)));
+        },
+        30s /* timeout */,
+        "Wait for compaction status to satisfy status check");
+  }
+
+  HybridTime time_before_compaction_;
+};
+
+TEST_F_EX(ClientTest, CompactionStatusWaitingForHeartbeats, CompactionClientTest) {
+  // Wait for initial heartbeats to arrive.
+  ASSERT_OK(WaitForCompactionStatusSatisfying([](const TableCompactionStatus& compaction_status) {
+    return compaction_status.full_compaction_state == tablet::IDLE;
+  }));
+
+  // Put us in the waiting for heartbeats stage.
+  for (const auto& tserver : cluster_->mini_tablet_servers()) {
+    tserver->FailHeartbeats();
+  }
+
+  ASSERT_OK(client_->FlushTables(
+      {client_table2_->id()}, false /* add_indexes */, 30 /* timeout */, true /* is_compaction */));
+
+  ASSERT_OK(WaitForCompactionStatusSatisfying([&](const TableCompactionStatus& compaction_status) {
+    // Expect request to have been made but no tablet to be compacting yet.
+    if (compaction_status.last_request_time < time_before_compaction_ ||
+        compaction_status.last_full_compaction_time.ToUint64() != 0) {
+      return false;
+    }
+    for (const auto& replica_status : compaction_status.replica_statuses) {
+      if (replica_status.full_compaction_state != tablet::IDLE ||
+          replica_status.last_full_compaction_time.ToUint64() != 0) {
+        return false;
+      }
+    }
+    return true;
+  }));
+
+  for (const auto& tserver : cluster_->mini_tablet_servers()) {
+    tserver->FailHeartbeats(false);
+  }
+}
+
+TEST_F_EX(ClientTest, CompactionStatus, CompactionClientTest) {
+  InsertTestRows(client_table2_, 1 /* num_rows */);
+
+  ASSERT_OK(client_->FlushTables(
+      {client_table2_->id()}, false /* add_indexes */, 30 /* timeout */, true /* is_compaction */));
+
+  ASSERT_OK(
+      WaitForCompactionStatusSatisfying([&](const TableCompactionStatus& table_compaction_status) {
+        // Expect the status to reflect a finished compaction.
+        if (table_compaction_status.last_request_time < time_before_compaction_ ||
+            table_compaction_status.last_full_compaction_time <
+                table_compaction_status.last_request_time) {
+          return false;
+        }
+        for (const auto& replica_status : table_compaction_status.replica_statuses) {
+          if (replica_status.full_compaction_state != tablet::IDLE ||
+              replica_status.last_full_compaction_time <
+                  table_compaction_status.last_full_compaction_time) {
+            return false;
+          }
+        }
+        return true;
+      }));
+
+  const auto prev_compaction_status =
+      ASSERT_RESULT(client_->GetCompactionStatus(client_table2_.name(), true /* show_tablets*/));
+  SleepFor(1s);
+  ASSERT_OK(client_->FlushTables(
+      {client_table2_->id()}, false /* add_indexes */, 30 /* timeout */, true /* is_compaction */));
+  ASSERT_OK(WaitForCompactionStatusSatisfying([&](const TableCompactionStatus& compaction_status) {
+    // Expect compaction times to be later than the previous.
+    if (prev_compaction_status.last_full_compaction_time >
+            compaction_status.last_full_compaction_time ||
+        prev_compaction_status.last_request_time > compaction_status.last_request_time) {
+      return false;
+    }
+    for (const auto& replica_status : compaction_status.replica_statuses) {
+      if (replica_status.full_compaction_state != tablet::IDLE ||
+          replica_status.last_full_compaction_time <
+              prev_compaction_status.last_full_compaction_time) {
+        return false;
+      }
+    }
+    return true;
+  }));
 }
 
 TEST_F(ClientTest, GetNamespaceInfo) {

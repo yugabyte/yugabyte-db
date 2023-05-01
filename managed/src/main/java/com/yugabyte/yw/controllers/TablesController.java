@@ -78,12 +78,12 @@ import lombok.ToString;
 import lombok.extern.jackson.Jacksonized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.CommonTypes.TableType;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
-import org.yb.CommonTypes.TableType;
-import org.yb.CommonTypes.YQLDatabase;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 import org.yb.master.MasterTypes.RelationType;
@@ -391,8 +391,7 @@ public class TablesController extends AuthenticatedController {
     if (excludeColocatedTables) {
       Set<String> colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
       tableInfoList =
-          tableInfoList
-              .stream()
+          tableInfoList.stream()
               .filter(t -> !colocatedKeySpaces.contains(t.getNamespace().getName()))
               .collect(Collectors.toList());
     }
@@ -1018,8 +1017,7 @@ public class TablesController extends AuthenticatedController {
       List<TableSpaceQueryResponse> tablespaceList =
           objectMapper.readValue(jsonData, new TypeReference<List<TableSpaceQueryResponse>>() {});
       tableSpaceInfoRespList =
-          tablespaceList
-              .stream()
+          tablespaceList.stream()
               .filter(x -> !x.tableSpaceName.startsWith("pg_"))
               .map(TableSpaceUtil::parseToTableSpaceInfo)
               .collect(Collectors.toList());
@@ -1121,8 +1119,7 @@ public class TablesController extends AuthenticatedController {
     }
 
     Map<TablePartitionInfoKey, TableInfo> tablePartitionInfoToTableInfoMap =
-        tableInfoList
-            .stream()
+        tableInfoList.stream()
             .collect(
                 Collectors.toMap(
                     ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
@@ -1244,8 +1241,7 @@ public class TablesController extends AuthenticatedController {
       ObjectMapper objectMapper = Json.mapper();
       List<TablePartitionInfo> partitionList =
           objectMapper.readValue(jsonData, new TypeReference<List<TablePartitionInfo>>() {});
-      return partitionList
-          .stream()
+      return partitionList.stream()
           .map(
               partition -> {
                 partition.keyspace = dbName;

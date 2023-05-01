@@ -16,7 +16,7 @@ import {
   ExposedAZProperties,
   ConfigureAvailabilityZoneField
 } from './ConfigureAvailabilityZoneField';
-import { ProviderCode, VPCSetupType, YBImageType } from '../../constants';
+import { ProviderCode, RegionOperationLabel, VPCSetupType, YBImageType } from '../../constants';
 import { RegionOperation } from './constants';
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import {
@@ -90,7 +90,7 @@ export const ConfigureRegionModal = ({
       providerCode === ProviderCode.AZU ? 'Security Group Name (Optional)' : 'Security Group ID',
     ybImage:
       providerCode === ProviderCode.AWS
-        ? 'Custom AMI ID'
+        ? 'AMI ID'
         : providerCode === ProviderCode.AZU
         ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
         : 'Custom Machine Image ID (Optional)',
@@ -193,9 +193,9 @@ export const ConfigureRegionModal = ({
   return (
     <FormProvider {...formMethods}>
       <YBModal
-        title="Add Region"
+        title={`${RegionOperationLabel[regionOperation]} Region`}
         titleIcon={<i className={clsx('fa fa-plus', classes.titleIcon)} />}
-        submitLabel="Add Region"
+        submitLabel={`${RegionOperationLabel[regionOperation]} Region`}
         cancelLabel="Cancel"
         onSubmit={formMethods.handleSubmit(onSubmit)}
         onClose={onClose}

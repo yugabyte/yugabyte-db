@@ -2,11 +2,10 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
@@ -21,14 +20,10 @@ var reconfigureCmd = &cobra.Command{
     The reconfigure command is used to apply changes made to yba-ctl.yml to running 
 	YugabyteDB Anywhere services. The process involves restarting all associated services.`,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		if !skipVersionChecks {
-			yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
-			if err != nil {
-				log.Fatal("Cannot reconfigure: " + err.Error())
-			}
-			if yugawareVersion != ybactl.Version {
-				log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
-			}
+		if !common.RunFromInstalled() {
+			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
+			log.Fatal("reconfigure must be run from " + path +
+				". It may be in the systems $PATH for easy of use.")
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {

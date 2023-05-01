@@ -75,16 +75,16 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_int32(test_delete_leader_num_iters, 3,
+DEFINE_NON_RUNTIME_int32(test_delete_leader_num_iters, 3,
              "Number of iterations to run in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
-DEFINE_UNKNOWN_int32(test_delete_leader_min_rows_per_iter, 200,
+DEFINE_NON_RUNTIME_int32(test_delete_leader_min_rows_per_iter, 200,
              "Minimum number of rows to insert per iteration "
               "in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
-DEFINE_UNKNOWN_int32(test_delete_leader_payload_bytes, 16 * 1024,
+DEFINE_NON_RUNTIME_int32(test_delete_leader_payload_bytes, 16 * 1024,
              "Payload byte size in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
-DEFINE_UNKNOWN_int32(test_delete_leader_num_writer_threads, 1,
+DEFINE_NON_RUNTIME_int32(test_delete_leader_num_writer_threads, 1,
              "Number of writer threads in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
-DEFINE_UNKNOWN_int32(remote_bootstrap_itest_timeout_sec, 180,
+DEFINE_NON_RUNTIME_int32(remote_bootstrap_itest_timeout_sec, 180,
              "Timeout in seconds to use in remote bootstrap integration test.");
 
 using yb::client::YBSchema;

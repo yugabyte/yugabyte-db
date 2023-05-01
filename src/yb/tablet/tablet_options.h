@@ -49,6 +49,8 @@ class MetricRegistry;
 
 namespace tablet {
 
+struct TabletFullCompactionListener;
+
 // Common for all tablets within TabletManager.
 struct TabletOptions {
   std::shared_ptr<rocksdb::Cache> block_cache;
@@ -85,6 +87,7 @@ struct TabletInitData {
   ThreadPool* wait_queue_pool = nullptr;
   AutoFlagsManager* auto_flags_manager = nullptr;
   ThreadPool* full_compaction_pool;
+  ThreadPool* admin_triggered_compaction_pool;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
 };
 

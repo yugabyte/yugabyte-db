@@ -594,14 +594,25 @@ Status XClusterTestBase::WaitForRoleChangeToPropogateToAllTServers(
 Result<std::vector<CDCStreamId>> XClusterTestBase::BootstrapProducer(
     MiniCluster* producer_cluster, YBClient* producer_client,
     const std::vector<std::shared_ptr<yb::client::YBTable>>& tables) {
+  std::vector<string> table_ids;
+  for (const auto& table : tables) {
+    table_ids.push_back(table->id());
+  }
+
+  return BootstrapProducer(producer_cluster, producer_client, table_ids);
+}
+
+Result<std::vector<CDCStreamId>> XClusterTestBase::BootstrapProducer(
+    MiniCluster* producer_cluster, YBClient* producer_client,
+    const std::vector<string>& table_ids) {
   std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
       &producer_client->proxy_cache(),
       HostPort::FromBoundEndpoint(producer_cluster->mini_tablet_server(0)->bound_rpc_addr()));
   cdc::BootstrapProducerRequestPB req;
   cdc::BootstrapProducerResponsePB resp;
 
-  for (const auto& producer_table : tables) {
-    req.add_table_ids(producer_table->id());
+  for (const auto& table_id : table_ids) {
+    req.add_table_ids(table_id);
   }
 
   rpc::RpcController rpc;
@@ -729,6 +740,31 @@ Result<CDCStreamId> XClusterTestBase::GetCDCStreamID(const std::string& producer
   return stream_resp.streams(0).stream_id();
 }
 
+Status XClusterTestBase::WaitForSafeTime(
+    const NamespaceId& namespace_id, const HybridTime& min_safe_time) {
+  for (auto tserver : consumer_cluster()->mini_tablet_servers()) {
+    if (!tserver->is_started()) {
+      continue;
+    }
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto safe_time_result =
+              tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+          if (!safe_time_result) {
+            CHECK(safe_time_result.status().IsTryAgain());
+
+            return false;
+          }
+          auto safe_time = safe_time_result.get();
+          return safe_time && safe_time->is_valid() && *safe_time > min_safe_time;
+        },
+        propagation_timeout_,
+        Format("Wait for safe_time to move above $0", min_safe_time.ToDebugString())));
+  }
+
+  return Status::OK();
+}
+
 Status XClusterTestBase::PauseResumeXClusterProducerStreams(
     const std::vector<std::string>& stream_ids, bool is_paused) {
   master::PauseResumeXClusterProducerStreamsRequestPB req;
@@ -745,7 +781,10 @@ Status XClusterTestBase::PauseResumeXClusterProducerStreams(
   }
   req.set_is_paused(is_paused);
   RETURN_NOT_OK(master_proxy->PauseResumeXClusterProducerStreams(req, &resp, &rpc));
-  return StatusFromPB(resp.error().status());
+  SCHECK(
+      !resp.has_error(), IllegalState,
+      Format("PauseResumeXClusterProducerStreams returned error: $0", resp.error().DebugString()));
+  return Status::OK();
 }
 
 } // namespace yb

@@ -12,10 +12,14 @@
 //
 
 #include <chrono>
+#include <regex>
 
+#include "yb/client/session.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/dockv/partition.h"
@@ -24,6 +28,8 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/mini_master.h"
 
@@ -47,6 +53,8 @@ DECLARE_int32(follower_unavailable_considered_failed_sec);
 
 DECLARE_uint64(master_maximum_heartbeats_without_lease);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_bool(enable_automatic_tablet_splitting);
 
 namespace yb {
 namespace master {
@@ -56,13 +64,26 @@ using std::string;
 using namespace std::literals;
 
 const std::string kKeyspaceName("my_keyspace");
-const std::string kTableName("test_table");
+const client::YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "test_table");
 const uint kNumMasters(3);
 const uint kNumTablets(3);
 
 template <class T>
 class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
  public:
+  virtual void InitCluster() = 0;
+
+  virtual void SetMasterHTTPURL() = 0;
+
+  void SetUp() override {
+    YBMiniClusterTestBase<T>::SetUp();
+    InitCluster();
+    SetMasterHTTPURL();
+    yb_admin_client_ = std::make_unique<tools::ClusterAdminClient>(
+        cluster_->GetMasterAddresses(), 30s /* timeout */);
+    ASSERT_OK(yb_admin_client_->Init());
+  }
+
   void DoTearDown() override {
     cluster_->Shutdown();
   }
@@ -78,14 +99,38 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
     return kNumMasters;
   }
 
+  std::shared_ptr<client::YBTable> CreateTestTable(const int num_tablets = 0) {
+    auto client = CHECK_RESULT(cluster_->CreateClient());
+    CHECK_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
+
+    client::YBSchema schema;
+    client::YBSchemaBuilder b;
+    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("int_val")->Type(INT32)->NotNull();
+    b.AddColumn("string_val")->Type(STRING)->NotNull();
+    CHECK_OK(b.Build(&schema));
+    std::unique_ptr<client::YBTableCreator> table_creator(client->NewTableCreator());
+    if (num_tablets) {
+      table_creator->num_tablets(num_tablets);
+    }
+    CHECK_OK(table_creator->table_name(table_name)
+                 .schema(&schema)
+                 .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
+                 .Create());
+
+    std::shared_ptr<client::YBTable> table;
+    CHECK_OK(client->OpenTable(table_name, &table));
+    return table;
+  }
+
   using YBMiniClusterTestBase<T>::cluster_;
+  std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
   string master_http_url_;
 };
 
 class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> {
  public:
-  void SetUp() override {
-    YBMiniClusterTestBase::SetUp();
+  void InitCluster() override {
     MiniClusterOptions opts;
     // Set low heartbeat timeout.
     FLAGS_tserver_unresponsive_timeout_ms = 5000;
@@ -93,11 +138,21 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
     opts.num_masters = num_masters();
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
+  }
 
+  void SetMasterHTTPURL() override {
     Endpoint master_http_endpoint =
         ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_http_addr();
     master_http_url_ = "http://" + AsString(master_http_endpoint);
   }
+
+  void SetUp() override {
+    MasterPathHandlersBaseItest<MiniCluster>::SetUp();
+    client_ = ASSERT_RESULT(cluster_->CreateClient());
+  }
+
+ protected:
+  std::unique_ptr<client::YBClient> client_;
 };
 
 bool verifyTServersAlive(int n, const string& result) {
@@ -141,37 +196,21 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
   // Startup the tserver and wait for heartbeats.
   ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
-  ASSERT_OK(WaitFor([&]() -> bool {
-    TestUrl("/tablet-servers", &result);
-    return verifyTServersAlive(3, result.ToString());
-  }, MonoDelta::FromSeconds(10), "Waiting for tserver heartbeat to master"));
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        TestUrl("/tablet-servers", &result);
+        return verifyTServersAlive(3, result.ToString());
+      },
+      10s /* timeout */, "Waiting for tserver heartbeat to master"));
 }
 
 TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  ASSERT_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
-
-  // Create table.
-  // TODO(5016): Consolidate into some standardized helper code.
-  client::YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "test_table");
-  client::YBSchema schema;
-  client::YBSchemaBuilder b;
-  b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
-  b.AddColumn("int_val")->Type(INT32)->NotNull();
-  b.AddColumn("string_val")->Type(STRING)->NotNull();
-  ASSERT_OK(b.Build(&schema));
-  std::unique_ptr<client::YBTableCreator> table_creator(client->NewTableCreator());
-  ASSERT_OK(table_creator->table_name(table_name)
-      .schema(&schema)
-      .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
-      .Create());
-  std::shared_ptr<client::YBTable> table;
-  ASSERT_OK(client->OpenTable(table_name, &table));
+  auto table = CreateTestTable();
 
   // Choose a tablet to orphan and take note of the servers which are leaders/followers for this
   // tablet.
   google::protobuf::RepeatedPtrField<TabletLocationsPB> tablets;
-  ASSERT_OK(client->GetTabletsFromTableId(table->id(), kNumTablets, &tablets));
+  ASSERT_OK(client_->GetTabletsFromTableId(table->id(), kNumTablets, &tablets));
   std::vector<yb::tserver::MiniTabletServer *> followers;
   yb::tserver::MiniTabletServer* leader = nullptr;
   auto orphan_tablet = tablets.Get(0);
@@ -230,28 +269,11 @@ TEST_F(MasterPathHandlersItest, TestTabletUnderReplicationEndpoint) {
   // Set test specific flag
   FLAGS_follower_unavailable_considered_failed_sec = 30;
 
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  ASSERT_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
-
-  // Create table.
-  client::YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "test_table");
-  client::YBSchema schema;
-  client::YBSchemaBuilder b;
-  b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
-  b.AddColumn("int_val")->Type(INT32)->NotNull();
-  b.AddColumn("string_val")->Type(STRING)->NotNull();
-  ASSERT_OK(b.Build(&schema));
-  std::unique_ptr<client::YBTableCreator> table_creator(client->NewTableCreator());
-  ASSERT_OK(table_creator->table_name(table_name)
-      .schema(&schema)
-      .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
-      .Create());
-  std::shared_ptr<client::YBTable> table;
-  ASSERT_OK(client->OpenTable(table_name, &table));
+  auto table = CreateTestTable();
 
   // Get all the tablets of this table and store them
   google::protobuf::RepeatedPtrField<TabletLocationsPB> tablets;
-  ASSERT_OK(client->GetTabletsFromTableId(table->id(), kNumTablets, &tablets));
+  ASSERT_OK(client_->GetTabletsFromTableId(table->id(), kNumTablets, &tablets));
 
   std::vector<std::string> tIds;
   bool isTestTrue = true;
@@ -325,10 +347,62 @@ TEST_F_EX(MasterPathHandlersItest, Forward, MultiMasterPathHandlersItest) {
   }
 }
 
-class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<ExternalMiniCluster> {
+class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
  public:
   void SetUp() override {
-    YBMiniClusterTestBase::SetUp();
+    FLAGS_cleanup_split_tablets_interval_sec = 1;
+    FLAGS_enable_automatic_tablet_splitting = false;
+    MasterPathHandlersItest::SetUp();
+  }
+};
+
+TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHandlersItest) {
+  const int num_rows_to_insert = 500;
+
+  CreateTestTable(1 /* num_tablets */);
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+
+  auto session = client_->NewSession();
+  for (int i = 0; i < num_rows_to_insert; i++) {
+    auto insert = table.NewInsertOp();
+    auto req = insert->mutable_request();
+    QLAddInt32HashValue(req, i);
+    ASSERT_OK(session->ApplyAndFlushSync(insert));
+  }
+
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablet = catalog_manager.GetTableInfo(table->id())->GetTablets()[0];
+
+  const auto webpage_shows_deleted_tablets = [this, &table](const bool should_show_deleted) {
+    faststring result;
+    TestUrl("/table?id=" + table->id() + (should_show_deleted ? "&show_deleted" : ""), &result);
+    const auto webpage = result.ToString();
+    std::smatch match;
+    const std::regex regex(
+        "<tr>.*<td>Delete*d</td><td>0</td><td>Not serving tablet deleted upon request "
+        "at(.|\n)*</tr>");
+    std::regex_search(webpage, match, regex);
+    return !match.empty();
+  };
+
+  ASSERT_OK(yb_admin_client_->FlushTables(
+      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
+
+  ASSERT_OK(WaitFor(
+      [&]() { return tablet->LockForRead()->is_deleted(); },
+      30s /* timeout */,
+      "Wait for tablet split to complete and parent to be deleted"));
+
+  ASSERT_FALSE(webpage_shows_deleted_tablets(false /* should_show_deleted */));
+  ASSERT_TRUE(webpage_shows_deleted_tablets(true /* should_show_deleted */));
+}
+
+class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<ExternalMiniCluster> {
+ public:
+  void InitCluster() override {
     ExternalMiniClusterOptions opts;
     // Set low heartbeat timeout.
     FLAGS_tserver_unresponsive_timeout_ms = 5000;
@@ -336,32 +410,11 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     opts.num_masters = num_masters();
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
-
-    HostPort master_http_endpoint = cluster_->master(0)->bound_http_hostport();
-    master_http_url_ = "http://" + ToString(master_http_endpoint);
   }
 
-  std::shared_ptr<client::YBTable> CreateTestTable(int num_tablets) {
-    auto client = CHECK_RESULT(cluster_->CreateClient());
-    CHECK_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
-
-    // Create table.
-    client::YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, kTableName);
-    client::YBSchema schema;
-    client::YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("int_val")->Type(INT32)->NotNull();
-    b.AddColumn("string_val")->Type(STRING)->NotNull();
-    CHECK_OK(b.Build(&schema));
-    std::unique_ptr<client::YBTableCreator> table_creator(client->NewTableCreator());
-    CHECK_OK(table_creator->table_name(table_name)
-        .num_tablets(num_tablets)
-        .schema(&schema)
-        .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
-        .Create());
-    std::shared_ptr<client::YBTable> table;
-    CHECK_OK(client->OpenTable(table_name, &table));
-    return table;
+  void SetMasterHTTPURL() override {
+    HostPort master_http_endpoint = cluster_->master(0)->bound_http_hostport();
+    master_http_url_ = "http://" + ToString(master_http_endpoint);
   }
 };
 
@@ -378,9 +431,6 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   ASSERT_EQ(result_str.find("live_replicas", pos + 1), string::npos);
 
   // Verify cluster level replication info.
-  auto yb_admin_client_ = std::make_unique<yb::tools::ClusterAdminClient>(
-      cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
-  ASSERT_OK(yb_admin_client_->Init());
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone", 3, "table_uuid"));
   TestUrl(url, &result);
   const string& cluster_str = result.ToString();

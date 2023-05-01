@@ -113,8 +113,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
             boolean applyToAllNodes = changedByMasterFlags || changedByTserverFlags;
             masterNodes =
-                masterNodes
-                    .stream()
+                masterNodes.stream()
                     .filter(n -> n.placementUuid.equals(curCluster.uuid))
                     .filter(
                         n ->
@@ -128,8 +127,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                                     newClusters.values()))
                     .collect(Collectors.toList());
             tServerNodes =
-                tServerNodes
-                    .stream()
+                tServerNodes.stream()
                     .filter(n -> n.placementUuid.equals(curCluster.uuid))
                     .filter(
                         n ->

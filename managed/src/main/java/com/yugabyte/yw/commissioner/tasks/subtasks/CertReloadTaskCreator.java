@@ -44,8 +44,7 @@ public class CertReloadTaskCreator implements IUpgradeSubTask {
     this.taskExecutor = taskExecutor;
     this.runnableTask = runnableTask;
     List<String> masterHostPortList =
-        masterNodes
-            .stream()
+        masterNodes.stream()
             .map(n -> getHostPort(getHost(n), getMasterPort(n)))
             .collect(Collectors.toList());
     this.masterHostPorts = String.join(",", masterHostPortList);

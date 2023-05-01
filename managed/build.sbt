@@ -443,9 +443,9 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b25"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b26"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.51-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b22"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b24"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

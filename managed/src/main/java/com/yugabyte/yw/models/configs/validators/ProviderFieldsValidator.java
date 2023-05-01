@@ -8,6 +8,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
 import java.util.List;
@@ -52,4 +53,6 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
   }
 
   public abstract void validate(Provider provider);
+
+  public abstract void validate(AvailabilityZone zone);
 }

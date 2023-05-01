@@ -15,8 +15,8 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
-#include "yb/common/index.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/qlexpr/index.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
 
@@ -67,7 +67,7 @@ std::string TabletMetadataFile(const std::string& dir) {
 
 struct TabletSnapshots::RestoreMetadata {
   boost::optional<Schema> schema;
-  boost::optional<IndexMap> index_map;
+  boost::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
   bool hide;
   google::protobuf::RepeatedPtrField<ColocatedTableMetadata> colocated_tables_metadata;
@@ -75,7 +75,7 @@ struct TabletSnapshots::RestoreMetadata {
 
 struct TabletSnapshots::ColocatedTableMetadata {
   boost::optional<Schema> schema;
-  boost::optional<IndexMap> index_map;
+  boost::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
   std::string table_id;
 };

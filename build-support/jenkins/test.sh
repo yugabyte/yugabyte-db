@@ -125,6 +125,8 @@ export BUILD_ROOT
 # End of build root setup and build directory cleanup
 # -------------------------------------------------------------------------------------------------
 
+export YB_SKIP_LLVM_TOOLCHAIN_SYMLINK_CREATION=1
+
 # We need to set this prior to the first invocation of yb_build.sh.
 export YB_SKIP_FINAL_LTO_LINK=1
 

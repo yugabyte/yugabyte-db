@@ -80,9 +80,7 @@ public class AlertChannelPagerDuty extends AlertChannelWebBase {
           severity = Severity.WARNING;
         }
         ObjectNode customDetails = Json.newObject();
-        alert
-            .getLabels()
-            .stream()
+        alert.getLabels().stream()
             .sorted(Comparator.comparing(AlertLabel::getName))
             .forEach(label -> customDetails.put(label.getName(), label.getValue()));
         Payload payload =

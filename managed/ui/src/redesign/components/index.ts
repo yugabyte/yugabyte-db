@@ -29,3 +29,4 @@ export * from './YBAutoComplete/YBAutoComplete';
 export * from './YBButton/YBButton';
 export * from './YBFormComponents/YBLabel';
 export * from './YBFormComponents/YBHelper';
+export * from './YBTextarea/YBTextarea';

@@ -321,18 +321,15 @@ public class UniverseResourceDetails {
       this.config = config;
       this.isCreateOrEdit = isCreateOrEdit;
       providerMap =
-          Provider.getAll(customer.getUuid())
-              .stream()
+          Provider.getAll(customer.getUuid()).stream()
               .collect(Collectors.toMap(provider -> provider.getUuid(), Function.identity()));
 
       Set<InstanceTypeKey> instanceTypes =
-          universeParams
-              .stream()
+          universeParams.stream()
               .filter(ud -> ud.nodeDetailsSet != null)
               .flatMap(
                   ud ->
-                      ud.nodeDetailsSet
-                          .stream()
+                      ud.nodeDetailsSet.stream()
                           .filter(this::isNodeCounted)
                           .filter(nodeDetails -> nodeDetails.cloudInfo != null)
                           .filter(nodeDetails -> nodeDetails.cloudInfo.instance_type != null)
@@ -345,18 +342,15 @@ public class UniverseResourceDetails {
               .collect(Collectors.toSet());
 
       instanceTypeMap =
-          InstanceType.findByKeys(instanceTypes)
-              .stream()
+          InstanceType.findByKeys(instanceTypes).stream()
               .collect(Collectors.toMap(InstanceType::getIdKey, Function.identity()));
 
       Set<ProviderAndRegion> providersAndRegions =
-          universeParams
-              .stream()
+          universeParams.stream()
               .filter(ud -> ud.nodeDetailsSet != null)
               .flatMap(
                   ud ->
-                      ud.nodeDetailsSet
-                          .stream()
+                      ud.nodeDetailsSet.stream()
                           .filter(this::isNodeCounted)
                           .filter(nodeDetails -> nodeDetails.cloudInfo != null)
                           .filter(nodeDetails -> nodeDetails.cloudInfo.region != null)
@@ -368,20 +362,17 @@ public class UniverseResourceDetails {
               .collect(Collectors.toSet());
 
       regionsMap =
-          Region.findByKeys(providersAndRegions)
-              .stream()
+          Region.findByKeys(providersAndRegions).stream()
               .collect(Collectors.toMap(ProviderAndRegion::from, Function.identity()));
 
       priceComponentMap =
-          PriceComponent.findByProvidersAndRegions(providersAndRegions)
-              .stream()
+          PriceComponent.findByProvidersAndRegions(providersAndRegions).stream()
               .collect(Collectors.toMap(PriceComponent::getIdKey, Function.identity()));
     }
 
     private UUID getProviderByPlacementUUID(UniverseDefinitionTaskParams ud, UUID placementUuid) {
       String providerUUIDStr =
-          ud.clusters
-              .stream()
+          ud.clusters.stream()
               .filter(c -> c.uuid.equals(placementUuid))
               .findFirst()
               .get()

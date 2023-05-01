@@ -23,8 +23,9 @@
 #include "yb/common/column_id.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_rowblock.h"
 #include "yb/common/read_hybrid_time.h"
+
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -160,7 +161,8 @@ struct TableIteratorOptions {
 };
 
 class TableIterator : public std::iterator<
-                          std::forward_iterator_tag, QLRow, ptrdiff_t, const QLRow*, const QLRow&> {
+    std::forward_iterator_tag, qlexpr::QLRow, ptrdiff_t, const qlexpr::QLRow*,
+    const qlexpr::QLRow&> {
  public:
   TableIterator();
   explicit TableIterator(const TableHandle* table, const TableIteratorOptions& options);
@@ -175,9 +177,9 @@ class TableIterator : public std::iterator<
     return result;
   }
 
-  const QLRow& operator*() const;
+  const qlexpr::QLRow& operator*() const;
 
-  const QLRow* operator->() const { return &**this; }
+  const qlexpr::QLRow* operator->() const { return &**this; }
 
  private:
   bool ExecuteOps();
@@ -190,7 +192,7 @@ class TableIterator : public std::iterator<
   std::vector<std::string> partition_key_ends_;
   size_t executed_ops_ = 0;
   size_t ops_index_ = 0;
-  boost::optional<QLRowBlock> current_block_;
+  boost::optional<qlexpr::QLRowBlock> current_block_;
   const QLPagingStatePB* paging_state_ = nullptr;
   size_t row_index_;
   YBSessionPtr session_;

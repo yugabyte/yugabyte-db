@@ -2,6 +2,17 @@
 
 package com.yugabyte.yw.common;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -29,16 +40,6 @@ import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.ArgumentMatchers.nullable;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class SnapshotCleanupTest extends FakeDBApplication {
@@ -155,8 +156,7 @@ public class SnapshotCleanupTest extends FakeDBApplication {
     assertTrue(
         CollectionUtils.isEqualCollection(
             uuidCaptor.getAllValues(),
-            allSnapshotInfos
-                .stream()
+            allSnapshotInfos.stream()
                 .map(sI -> sI.getSnapshotUUID())
                 .collect(Collectors.toList())));
   }

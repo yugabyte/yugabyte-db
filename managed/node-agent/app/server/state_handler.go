@@ -90,28 +90,13 @@ func HandleRestart(ctx context.Context, config *util.Config) error {
 
 // Removes all the releases except the current one and removes version_update from the config.
 func removeReleasesExceptCurrent(ctx context.Context) error {
-	d, err := os.Open(util.ReleaseDir())
-	if err != nil {
-		util.FileLogger().
-			Errorf(ctx, "Unable to open releases dir to delete previous releases - %s", err)
-		return err
-	}
-	defer d.Close()
-	names, err := d.Readdirnames(-1)
+	version := util.CurrentConfig().String(util.PlatformVersionKey)
+	err := util.DeleteReleasesExcept(ctx, version)
 	if err != nil {
 		util.FileLogger().
 			Errorf(ctx, "Unable to read release names to delete previous releases - %s", err)
-		return err
 	}
-	for _, name := range names {
-		if name != util.CurrentConfig().String(util.PlatformVersionKey) {
-			err := util.DeleteRelease(ctx, name)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return err
 }
 
 func cleanUpConfigAfterUpdate(ctx context.Context, config *util.Config) error {
@@ -119,13 +104,12 @@ func cleanUpConfigAfterUpdate(ctx context.Context, config *util.Config) error {
 	upgradeCertDir := config.String(util.PlatformCertsUpgradeKey)
 	if upgradeCertDir != "" && upgradeCertDir != certDir {
 		util.FileLogger().Infof(ctx, "Starting config clean up after update")
-		if err := util.DeleteCerts(ctx, certDir); err != nil &&
-			!os.IsNotExist(err) {
+		err := util.DeleteCertsExcept(ctx, upgradeCertDir)
+		if err != nil {
 			util.FileLogger().Errorf(
 				ctx,
 				"Error in deleting the certs during cleanup - %s",
-				err.Error(),
-			)
+				err.Error())
 			return err
 		}
 		// Point current certs to the new certs.
@@ -140,8 +124,8 @@ func cleanUpConfigAfterIncompleteUpdate(ctx context.Context, config *util.Config
 	upgradeCertDir := config.String(util.PlatformCertsUpgradeKey)
 	if upgradeCertDir != "" && upgradeCertDir != certDir {
 		util.FileLogger().Infof(ctx, "Starting config clean up after incomplete update")
-		if err := util.DeleteCerts(ctx, upgradeCertDir); err != nil &&
-			!os.IsNotExist(err) {
+		err := util.DeleteCertsExcept(ctx, certDir)
+		if err != nil {
 			util.FileLogger().Errorf(
 				ctx,
 				"Error in deleting the certs during cleanup - %s",

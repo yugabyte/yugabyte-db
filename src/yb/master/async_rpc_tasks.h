@@ -178,6 +178,12 @@ class RetryingTSRpcTask : public server::MonitoredTask {
   // Transition this task state from expected to failed with specified status.
   void TransitionToFailedState(server::MonitoredTaskState expected, const Status& status);
 
+  // Some tasks needs to transition to a certain state in case of replica lookup failure
+  virtual std::optional<std::pair<server::MonitoredTaskState, Status>> HandleReplicaLookupFailure(
+      const Status& replica_lookup_status) {
+    return std::nullopt;
+  }
+
   virtual void Finished(const Status& status) {}
 
   void AbortTask(const Status& status);

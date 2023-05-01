@@ -98,19 +98,15 @@ export const OverviewDetails: FC = () => {
             />
           ))}
         </Tabs>
-        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
-          {t('clusterDetail.performance.actions.refresh')}
-        </YBButton>
+        {currentTab === "tabOverview" &&
+          <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
+            {t('clusterDetail.performance.actions.refresh')}
+          </YBButton>
+        }
       </div>
 
       <Box mt={2}>
-          {TabComponent && <TabComponent />}
-          {/* <Switch>
-            {tabList.filter(tab => tab.name !== 'tabActivity').map((tab, index) => (
-              <Route key={tab.name} path={index === 0 ? '/' : `/cluster/${tab.name}/:subTab?`}
-                component={tab.component} />
-            ))}
-          </Switch> */}
+        {TabComponent && <TabComponent />}
       </Box>
     </Box>
   );

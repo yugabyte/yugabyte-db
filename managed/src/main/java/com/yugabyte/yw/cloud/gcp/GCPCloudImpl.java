@@ -18,16 +18,11 @@ import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeID;
-import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
-
-import org.apache.commons.lang3.StringUtils;
-
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -38,6 +33,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Slf4j
 public class GCPCloudImpl implements CloudAPI {

@@ -534,14 +534,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable scope strictness while setting runtime keys",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<String> ansibleOffloadSupportedVersion =
-      new ConfKeyInfo<>(
-          "yb.node_agent.ansible_offloading.min_supported_version",
-          ScopeType.GLOBAL,
-          "Ansible Offloading Supported Version",
-          "Minimum supported version for ansible offloading",
-          ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> nodeAgentPollerInterval =
       new ConfKeyInfo<>(
           "yb.node_agent.poller_interval",
@@ -591,7 +583,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Whether YBA supports transactional xCluster configs",
           "It indicates whether YBA should support transactional xCluster configs",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowDbVersionMoreThanYbaVersion =
       new ConfKeyInfo<>(
           "yb.allow_db_version_more_than_yba_version",
@@ -643,4 +635,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Regex pattern used to find Yugabyte DB helm .tar.gz files",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableTaskAndFailedRequestDetailedLogging =
+      new ConfKeyInfo<>(
+          "yb.logging.enable_task_failed_request_logs",
+          ScopeType.GLOBAL,
+          "Enables extra logging",
+          "Enables extra logging for task params and request body",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> fixDatabaseFullPaths =
+      new ConfKeyInfo<>(
+          "yb.fixPaths",
+          ScopeType.GLOBAL,
+          "Whether YBA should fix paths on startup",
+          "When enabled YBA will try to replace all filepaths in the database with updated values "
+              + "for the configurable part of the path (like storage or releases path)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

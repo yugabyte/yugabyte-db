@@ -11,7 +11,7 @@ import React, { FC, useCallback, useState } from 'react';
 
 import clsx from 'clsx';
 import pluralize from 'pluralize';
-import { Element, Text, Transforms } from 'slate';
+import { BaseSelection, Element, Text, Transforms } from 'slate';
 import { ReactEditor, useSlate } from 'slate-react';
 import { jsx } from 'slate-hyperscript';
 import { useTranslation } from 'react-i18next';
@@ -359,6 +359,7 @@ const VariableDetailsPopover: FC<VariableDetailsPopoverProps> = ({
   const titleStyles = useStylesBootstrap();
 
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
+  const [editorSelection, setEditorSelection] = useState<BaseSelection>(null);
   const open = Boolean(anchorEl);
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -382,6 +383,17 @@ const VariableDetailsPopover: FC<VariableDetailsPopoverProps> = ({
           anchorEl={anchorEl}
           open={open}
           onClose={handleClose}
+          TransitionProps={{
+            onEnter: () => {
+              setEditorSelection(editor.selection);
+            },
+            onExit: () => {
+              if (editorSelection) {
+                ReactEditor.focus(editor);
+                Transforms.setSelection(editor, editorSelection);
+              }
+            }
+          }}
           anchorOrigin={{
             vertical: 'top',
             horizontal: 'right'

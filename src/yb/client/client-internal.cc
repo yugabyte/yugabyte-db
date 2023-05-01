@@ -53,11 +53,11 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/table_info.h"
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/schema.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -82,7 +82,6 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -104,6 +103,14 @@ DEFINE_test_flag(bool, assert_local_tablet_server_selected, false, "Verify that 
 DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "",
                  "Verify that SelectTServer selected a talet server in the AZ specified by this "
                  "flag.");
+
+DEFINE_RUNTIME_uint32(change_metadata_backoff_max_jitter_ms, 0,
+    "Max jitter (in ms) in the exponential backoff loop that checks if a change metadata operation "
+    "is finished. Only used for colocated table creation for now.");
+
+DEFINE_RUNTIME_uint32(change_metadata_backoff_init_exponent, 1,
+    "Initial exponent of 2 in the exponential backoff loop that checks if a change metadata "
+    "operation is finished. Only used for colocated table creation for now.");
 
 DECLARE_int64(reset_master_leader_timeout_ms);
 
@@ -289,6 +296,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetTableSchemaFromSysCatalog);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTime);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, BootstrapProducer);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
@@ -545,11 +553,14 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
 Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
                                                   const YBTableName& table_name,
                                                   const string& table_id,
-                                                  CoarseTimePoint deadline) {
+                                                  CoarseTimePoint deadline,
+                                                  const uint32_t max_jitter_ms,
+                                                  const uint32_t init_exponent) {
   return RetryFunc(
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
-      std::bind(&YBClient::Data::IsCreateTableInProgress, this, client,
-                table_name, table_id, _1, _2));
+      std::bind(
+          &YBClient::Data::IsCreateTableInProgress, this, client, table_name, table_id, _1, _2),
+      2s, max_jitter_ms, init_exponent);
 }
 
 Status YBClient::Data::DeleteTable(YBClient* client,
@@ -895,7 +906,7 @@ Status YBClient::Data::IsBackfillIndexInProgress(YBClient* client,
                                table_id,
                                deadline,
                                &yb_table_info));
-  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+  const auto* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
 
   *backfill_in_progress = true;
   if (!index_info->backfill_error_message().empty()) {
@@ -1141,8 +1152,8 @@ Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
       std::bind(&YBClient::Data::IsFlushTableInProgress, this, client, flush_id, _1, _2));
 }
 
-Status YBClient::Data::GetCompactionStatus(
-    const YBTableName& table_name, const CoarseTimePoint deadline, MonoTime* last_request_time) {
+Result<TableCompactionStatus> YBClient::Data::GetCompactionStatus(
+    const YBTableName& table_name, bool show_tablets, const CoarseTimePoint deadline) {
   GetCompactionStatusRequestPB req;
   GetCompactionStatusResponsePB resp;
 
@@ -1153,13 +1164,33 @@ Status YBClient::Data::GetCompactionStatus(
   }
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
 
+  if (show_tablets) {
+    req.set_show_tablets(true);
+  }
+
   RETURN_NOT_OK(SyncLeaderMasterRpc(
       deadline, req, &resp, "GetCompactionStatus",
       &master::MasterAdminProxy::GetCompactionStatusAsync));
 
-  *last_request_time = MonoTime::FromUint64(resp.last_request_time());
+  if (!resp.has_full_compaction_state()) {
+    return STATUS(InternalError, "Missing full compaction state in table full compaction status");
+  }
 
-  return Status::OK();
+  std::vector<TabletReplicaFullCompactionStatus> replica_statuses;
+  for (const auto& replica_status : resp.replica_statuses()) {
+    if (!replica_status.has_ts_id() || !replica_status.has_tablet_id() ||
+        !replica_status.has_full_compaction_state()) {
+      return STATUS(InternalError, "Missing field(s) in tablet replica full compaction status");
+    }
+
+    replica_statuses.push_back(TabletReplicaFullCompactionStatus{
+        replica_status.ts_id(), replica_status.tablet_id(), replica_status.full_compaction_state(),
+        HybridTime(replica_status.last_full_compaction_time())});
+  }
+
+  return TableCompactionStatus{
+      resp.full_compaction_state(), HybridTime(resp.last_full_compaction_time()),
+      HybridTime(resp.last_request_time()), std::move(replica_statuses)};
 }
 
 bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {
@@ -1959,7 +1990,7 @@ Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
                                deadline,
                                &yb_table_info));
 
-  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+  const auto* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
   return index_info->index_permissions();
 }
 
@@ -1975,7 +2006,7 @@ Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
                                deadline,
                                &yb_table_info));
 
-  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+  const auto* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
   return index_info->index_permissions();
 }
 

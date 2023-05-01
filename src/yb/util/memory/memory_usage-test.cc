@@ -22,7 +22,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_bool(print_memory_usage, false, "Print real memory usage instead of assert.");
+DEFINE_NON_RUNTIME_bool(print_memory_usage, false, "Print real memory usage instead of assert.");
 
 namespace yb {
 

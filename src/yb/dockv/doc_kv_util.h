@@ -65,11 +65,11 @@ void AppendUInt64ToKey(uint64_t val, Buffer* dest) {
 
 // Encodes the given string by replacing '\x00' with "\x00\x01" and appends it to the given
 // destination string.
-void AppendZeroEncodedStrToKey(const std::string &s, KeyBuffer *dest);
+void AppendZeroEncodedStrToKey(const Slice& s, KeyBuffer *dest);
 
 // Encodes the given string by replacing '\xff' with "\xff\xfe" and appends it to the given
 // destination string.
-void AppendComplementZeroEncodedStrToKey(const std::string &s, KeyBuffer *dest);
+void AppendComplementZeroEncodedStrToKey(const Slice& s, KeyBuffer *dest);
 
 // Appends two zero characters to the given string. We don't add final end-of-string characters in
 // this function.
@@ -79,19 +79,25 @@ void TerminateZeroEncodedKeyStr(KeyBuffer *dest);
 // in this function.
 void TerminateComplementZeroEncodedKeyStr(KeyBuffer *dest);
 
-inline void ZeroEncodeAndAppendStrToKey(const std::string &s, KeyBuffer *dest) {
+inline void ZeroEncodeAndAppendStrToKey(const Slice& s, KeyBuffer *dest) {
   AppendZeroEncodedStrToKey(s, dest);
   TerminateZeroEncodedKeyStr(dest);
 }
 
-inline void ComplementZeroEncodeAndAppendStrToKey(const std::string &s, KeyBuffer* dest) {
+inline void ComplementZeroEncodeAndAppendStrToKey(const Slice& s, KeyBuffer* dest) {
   AppendComplementZeroEncodedStrToKey(s, dest);
   TerminateComplementZeroEncodedKeyStr(dest);
 }
 
-inline std::string ZeroEncodeStr(const std::string& s) {
+inline std::string ZeroEncodeStr(const Slice& s) {
   KeyBuffer result;
   ZeroEncodeAndAppendStrToKey(s, &result);
+  return result.ToStringBuffer();
+}
+
+inline std::string ComplementZeroEncodeStr(const Slice& s) {
+  KeyBuffer result;
+  ComplementZeroEncodeAndAppendStrToKey(s, &result);
   return result.ToStringBuffer();
 }
 
@@ -102,11 +108,11 @@ inline std::string ZeroEncodeStr(const std::string& s) {
 //           this slice is consumed.
 // Output (undefined in case of an error):
 //   result - the resulting decoded string
-yb::Status DecodeZeroEncodedStr(rocksdb::Slice* slice, std::string* result);
+Status DecodeZeroEncodedStr(Slice* slice, std::string* result);
 
 // A version of the above function that ensures the encoding is correct and all characters are
 // consumed.
-std::string DecodeZeroEncodedStr(std::string encoded_str);
+Result<std::string> DecodeZeroEncodedStr(const Slice& encoded_str);
 
 // Reverses the encoding for a string that was encoded with ComplementZeroEncodeAndAppendStrToKey.
 // In this representation the string termination changes from \x00\x00 to
@@ -116,7 +122,9 @@ std::string DecodeZeroEncodedStr(std::string encoded_str);
 //           this slice is consumed.
 // Output (undefined in case of an error):
 //   result - the resulting decoded string
-yb::Status DecodeComplementZeroEncodedStr(rocksdb::Slice* slice, std::string* result);
+Status DecodeComplementZeroEncodedStr(Slice* slice, std::string* result);
+
+Result<std::string> DecodeComplementZeroEncodedStr(const Slice& encoded_str);
 
 // We try to use up to this number of characters when converting raw bytes to strings for debug
 // purposes.
@@ -125,10 +133,10 @@ constexpr int kShortDebugStringLength = 40;
 // Produces a debug-friendly representation of a sequence of bytes that may contain non-printable
 // characters.
 // @return A human-readable representation of the given slice, capped at a fixed short length.
-std::string ToShortDebugStr(rocksdb::Slice slice);
+std::string ToShortDebugStr(Slice slice);
 
 inline std::string ToShortDebugStr(const std::string& raw_str) {
-  return ToShortDebugStr(rocksdb::Slice(raw_str));
+  return ToShortDebugStr(Slice(raw_str));
 }
 
 Result<DocHybridTime> DecodeInvertedDocHt(Slice key_slice);

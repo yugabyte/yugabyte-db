@@ -429,6 +429,7 @@ message PgsqlReadRequestPB {
   // Limit number of rows to return. For SELECT, this limit is the smaller of the page size (max
   // (max number of rows to return per fetch) & the LIMIT clause if present in the SELECT statement.
   optional uint64 limit = 13;
+  optional uint64 size_limit = 40;
 
   //------------------------------------------------------------------------------------------------
   // Paging state retrieved from the last response.

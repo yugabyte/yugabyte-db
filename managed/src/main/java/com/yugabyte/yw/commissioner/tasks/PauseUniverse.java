@@ -60,22 +60,15 @@ public class PauseUniverse extends UniverseTaskBase {
       preTaskActions();
 
       Map<UUID, UniverseDefinitionTaskParams.Cluster> clusterMap =
-          universe
-              .getUniverseDetails()
-              .clusters
-              .stream()
+          universe.getUniverseDetails().clusters.stream()
               .collect(Collectors.toMap(c -> c.uuid, c -> c));
 
       Set<NodeDetails> tserverNodes =
-          universe
-              .getTServers()
-              .stream()
+          universe.getTServers().stream()
               .filter(tserverNode -> tserverNode.state == NodeDetails.NodeState.Live)
               .collect(Collectors.toSet());
       Set<NodeDetails> masterNodes =
-          universe
-              .getMasters()
-              .stream()
+          universe.getMasters().stream()
               .filter(masterNode -> masterNode.state == NodeDetails.NodeState.Live)
               .collect(Collectors.toSet());
 

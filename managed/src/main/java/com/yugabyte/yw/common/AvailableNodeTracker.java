@@ -69,8 +69,7 @@ public class AvailableNodeTracker {
         .forEach(
             az -> {
               AtomicInteger cnt = new AtomicInteger();
-              getNodesForCurrentCluster()
-                  .stream()
+              getNodesForCurrentCluster().stream()
                   .filter(n -> az.uuid.equals(n.azUuid))
                   .forEach(
                       n -> {
@@ -179,8 +178,7 @@ public class AvailableNodeTracker {
   public int getWillBeFreed(UUID uuid, UniverseTaskBase.ServerType serverType) {
     String instanceType = getUserIntent().getInstanceTypeForProcessType(serverType);
     return (int)
-        currentNodes
-            .stream()
+        currentNodes.stream()
             .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
             .filter(n -> instanceType.equals(n.cloudInfo.instance_type) && uuid.equals(n.azUuid))
             .count();
@@ -199,8 +197,7 @@ public class AvailableNodeTracker {
   }
 
   private Collection<NodeDetails> getNodesForCurrentCluster() {
-    return currentNodes
-        .stream()
+    return currentNodes.stream()
         .filter(n -> n.isInPlacement(currentClusterId))
         .collect(Collectors.toList());
   }

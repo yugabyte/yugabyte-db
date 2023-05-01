@@ -21,7 +21,7 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_ql_filefilter.h"
-#include "yb/dockv/doc_scanspec_util.h"
+#include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/result.h"
@@ -102,7 +102,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const size_t prefix_length)
     : PgsqlScanSpec(
           schema, is_forward_scan, query_id,
-          condition ? std::make_unique<dockv::QLScanRange>(schema, *condition) : nullptr,
+          condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
           prefix_length, where_expr),
       hashed_components_(&hashed_components.get()),
       range_components_(&range_components.get()),
@@ -118,7 +118,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
   }
 
   if (!hashed_components_->empty() && schema.num_hash_key_columns() > 0) {
-    options_ = std::make_shared<std::vector<dockv::OptionList>>(schema.num_dockey_components());
+    options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
     options_col_ids_.reserve(schema.num_dockey_components());
 
     // should come here if we are not batching hash keys as a part of IN condition
@@ -149,7 +149,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       (rangebounds->has_in_range_options() || rangebounds->has_in_hash_options())) {
     DCHECK(condition);
     if (options_ == nullptr)
-      options_ = std::make_shared<std::vector<dockv::OptionList>>(schema.num_dockey_components());
+      options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
     InitOptions(*condition);
   }
 
@@ -363,12 +363,12 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
     for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
       DCHECK_GE(options_->size(),
                 schema.num_hash_key_columns() + schema.has_yb_hash_code());
-      KeyEntryValue keyval = (*options_)[schema.get_dockey_component_idx(i)].front();
+      const auto& current_options = (*options_)[schema.get_dockey_component_idx(i)];
+      KeyEntryValue keyval = lower_bound ? current_options.front() : current_options.back();
       hashed_components.push_back(keyval);
     }
-    hash_code = static_cast<int32_t>(options_.get()[0][0][0].GetUInt16Hash());
-    max_hash_code = (*options_)[0].size() == 1 ? hash_code
-        : max_hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::max());
+    hash_code = static_cast<int32_t>((*options_)[0].front().GetUInt16Hash());
+    max_hash_code = static_cast<int32_t>((*options_)[0].back().GetUInt16Hash());
   } else {
     hash_code = hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::min());
     max_hash_code = max_hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::max());

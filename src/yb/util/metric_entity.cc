@@ -291,7 +291,12 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     attrs = attributes_;
     external_metrics_cbs = external_prometheus_metrics_cbs_;
     for (const auto& [prototype, metric] : metric_map_) {
-      if (MatchMetricInList(prototype->name(), entity_options.exclude_metrics)) {
+      // Since AggregationMetricLevel is attached to each individual metric rather than the writer's
+      // AggregationMetricLevel, we need to check that the metric's aggregation level matches the
+      // writer's.
+      if ((writer->GetAggregationMetricLevel() != AggregationMetricLevel::kServer &&
+           writer->GetAggregationMetricLevel() != prototype->aggregation_metric_level()) ||
+          MatchMetricInList(prototype->name(), entity_options.exclude_metrics)) {
         continue;
       }
       if (select_all || MatchMetricInList(prototype->name(), entity_options.metrics)) {

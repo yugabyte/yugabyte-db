@@ -67,7 +67,6 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_util.h"
 #include "yb/master/master_replication.proxy.h"
-#include "yb/master/master-test-util.h"
 
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet.h"
@@ -106,7 +105,6 @@ DECLARE_int32(log_min_segments_to_retain);
 DECLARE_bool(check_bootstrap_required);
 DECLARE_bool(enable_load_balancing);
 DECLARE_string(pgsql_proxy_bind_address);
-DECLARE_uint64(TEST_pg_auth_key);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
@@ -156,22 +154,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
       std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
       uint32_t num_tablet_servers = 1, bool range_partitioned = false);
 
-  void TestReplicationWithPackedColumnsAndSchemaVersionMismatch(bool colocated);
-
-  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1) {
-    // In this test, the tservers in each cluster share the same postgres proxy. As each tserver
-    // initializes, it will overwrite the auth key for the "postgres" user. Force an identical key
-    // so that all tservers can authenticate as "postgres".
-    FLAGS_TEST_pg_auth_key = RandomUniformInt<uint64_t>();
-
-    MiniClusterOptions opts;
-    opts.num_tablet_servers = replication_factor;
-    opts.num_masters = num_masters;
-
-    RETURN_NOT_OK(InitClusters(opts));
-
-    return Status::OK();
-  }
+  void TestReplicationWithPackedColumns(bool colocated, bool bootstrap);
 
   Result<std::vector<std::shared_ptr<client::YBTable>>> SetUpWithParams(
       std::vector<uint32_t> num_consumer_tablets,
@@ -226,23 +209,6 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     EXPECT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1",
                                  namespace_name, colocated ? " colocation = true" : ""));
     return Status::OK();
-  }
-
-  Result<string> GetUniverseId(Cluster* cluster) {
-    master::GetMasterClusterConfigRequestPB req;
-    master::GetMasterClusterConfigResponsePB resp;
-
-    master::MasterClusterProxy master_proxy(
-        &cluster->client_->proxy_cache(),
-        VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMasterBoundRpcAddr()));
-
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-    RETURN_NOT_OK(master_proxy.GetMasterClusterConfig(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return STATUS(IllegalState, "Error getting cluster config");
-    }
-    return resp.cluster_config().cluster_uuid();
   }
 
   std::string GetCompleteTableName(const YBTableName& table) {
@@ -1299,6 +1265,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   ASSERT_OK(producer_client()->AddTransactionStatusTablet(global_txn_table_id));
 
   setup_write_verify_delete();
+
+  // Restart cluster to clear meta cache partition ranges.
+  // TODO: don't check partition bounds for txn status tablets.
+  ASSERT_OK(consumer_cluster()->RestartSync());
 
   // Now add 2 txn tablets on the consumer, then rerun test.
   global_txn_table_id = ASSERT_RESULT(client::GetTableId(consumer_client(), global_txn_table));
@@ -2786,7 +2756,7 @@ TEST_F(XClusterYsqlTest, SetupReplicationWithMaterializedViews) {
   LOG(INFO) << "Replication verification failed : " << status.ToString();
 }
 
-void XClusterYsqlTest::TestReplicationWithPackedColumnsAndSchemaVersionMismatch(bool colocated) {
+void XClusterYsqlTest::TestReplicationWithPackedColumns(bool colocated, bool bootstrap) {
   FLAGS_ysql_enable_packed_row = true;
   FLAGS_ysql_enable_packed_row_for_colocated_table = true;
   constexpr int kNTabletsPerTable = 1;
@@ -2814,8 +2784,16 @@ void XClusterYsqlTest::TestReplicationWithPackedColumnsAndSchemaVersionMismatch(
     producer_table_id = ASSERT_RESULT(GetColocatedDatabaseParentTableId());
   }
 
+  // If bootstrap is requested, run bootstrap
+  std::vector<CDCStreamId> bootstrap_ids = {};
+  if (bootstrap) {
+    bootstrap_ids = ASSERT_RESULT(
+        BootstrapProducer(producer_cluster(), producer_client(), {producer_table_id}));
+  }
+
   ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table_id}));
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table_id},
+      true /* leader_only */, bootstrap_ids));
 
   ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
 
@@ -2889,11 +2867,68 @@ void XClusterYsqlTest::TestReplicationWithPackedColumnsAndSchemaVersionMismatch(
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
-  TestReplicationWithPackedColumnsAndSchemaVersionMismatch(false /* colocated */);
+  TestReplicationWithPackedColumns(false /* colocated */, false /* boostrap */);
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatchColocated) {
-  TestReplicationWithPackedColumnsAndSchemaVersionMismatch(true /* colocated */);
+  TestReplicationWithPackedColumns(true /* colocated */, false /* boostrap */);
+}
+
+TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndBootstrap) {
+  TestReplicationWithPackedColumns(false /* colocated */, true /* boostrap */);
+}
+
+TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndBootstrapColocated) {
+  TestReplicationWithPackedColumns(true /* colocated */, true /* boostrap */);
+}
+
+TEST_F(XClusterYsqlTest, ReplicationWithDefaultProducerSchemaVersion) {
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+
+  const auto namespace_name = "demo";
+  const auto table_name = "test_table";
+  ASSERT_OK(Initialize(3 /* replication_factor */, 1 /* num_masters */));
+
+  ASSERT_OK(RunOnBothClusters(
+      [&](Cluster* cluster) { return CreateDatabase(cluster, namespace_name); }));
+
+  // Create producer/consumer clusters with different schemas and then
+  // modify schema on consumer to match producer schema.
+  auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(p_conn.ExecuteFormat("create table $0(key int)", table_name));
+
+  auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(c_conn.ExecuteFormat("create table $0(key int, name text)", table_name));
+  ASSERT_OK(c_conn.ExecuteFormat("alter table $0 drop column name", table_name));
+
+  // Producer schema version will be 0 and consumer schema version will be 2.
+  auto producer_table_name_with_id_list = ASSERT_RESULT(producer_client()->ListTables(table_name));
+  ASSERT_EQ(producer_table_name_with_id_list.size(), 1);
+  auto producer_table_name_with_id = producer_table_name_with_id_list[0];
+  ASSERT_TRUE(producer_table_name_with_id.has_table_id());
+  auto producer_table = ASSERT_RESULT(producer_client()->OpenTable(
+      producer_table_name_with_id.table_id()));
+
+  auto consumer_table_name_with_id_list = ASSERT_RESULT(consumer_client()->ListTables(table_name));
+  ASSERT_EQ(consumer_table_name_with_id_list.size(), 1);
+  auto consumer_table_name_with_id = consumer_table_name_with_id_list[0];
+  ASSERT_TRUE(consumer_table_name_with_id.has_table_id());
+  auto consumer_table = ASSERT_RESULT(consumer_client()->OpenTable(
+      consumer_table_name_with_id.table_id()));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(resp.entry().tables_size(), 1);
+  ASSERT_EQ(resp.entry().tables(0), producer_table->id());
+
+  // Verify that schema version is fixed up correctly and target can be read.
+  ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
 void PrepareChangeRequest(

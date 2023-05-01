@@ -185,6 +185,7 @@ export interface AccessKeyMutation {
   keyInfo?: Partial<KeyInfo>;
 }
 export interface AccessKey {
+  creationDate: string;
   idKey: IdKey;
   keyInfo: KeyInfo;
 }
@@ -196,9 +197,9 @@ interface ProviderDetailsBase {
   airGapInstall: boolean;
   ntpServers: string[];
   setUpChrony: boolean;
-  sshPort: number;
-  sshUser: string;
 
+  sshPort?: number;
+  sshUser?: string;
   installNodeExporter?: boolean;
   nodeExporterPort?: number;
   nodeExporterUser?: string;
@@ -227,10 +228,11 @@ interface AWSCloudInfo extends AWSCloudInfoBase {
 interface AZUCloudInfoBase {
   azuClientId: string;
   azuClientSecret: string;
-  azuHostedZoneId: string;
   azuRG: string; // azure resource group
   azuSubscriptionId: string;
   azuTenantId: string;
+
+  azuHostedZoneId?: string;
 }
 type AZUCloudInfoMutation = AZUCloudInfoBase;
 interface AZUCloudInfo extends AZUCloudInfoBase {
@@ -240,8 +242,8 @@ interface AZUCloudInfo extends AZUCloudInfoBase {
 interface GCPCloudInfoBase {
   useHostCredentials: boolean;
   useHostVPC: boolean;
-  ybFirewallTags: string;
 
+  ybFirewallTags?: string;
   gceProject?: string;
   destVpcId?: string;
 }

@@ -321,7 +321,9 @@ class CDCServiceImpl : public CDCServiceIf {
       const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
       bool enable_update_local_peer_min_index, bool ignore_rpc_failures = true);
 
-  Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
+  // Returns the latest OpId and safe time from the leader of given tablet.
+  Result<std::pair<OpId, HybridTime>> TabletLeaderLatestEntryOpIdAndSafeTime(
+      const TabletId& tablet_id);
 
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
@@ -395,6 +397,14 @@ class CDCServiceImpl : public CDCServiceIf {
   void RefreshCdcStateTable() EXCLUDES(mutex_);
 
   Status RefreshCacheOnFail(const Status& s) EXCLUDES(mutex_);
+
+  template <class T>
+  Result<T> RefreshCacheOnFail(Result<T> res) EXCLUDES(mutex_) {
+    if (!res.ok()) {
+      return RefreshCacheOnFail(res.status());
+    }
+    return res;
+  }
 
   client::YBClient* client();
 

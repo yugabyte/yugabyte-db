@@ -9,10 +9,9 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.Users;
-
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Test;

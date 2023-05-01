@@ -41,7 +41,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
@@ -52,6 +52,8 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/pgsql_operation.h"
+
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
@@ -104,6 +106,8 @@ namespace tablet {
 using dockv::Partition;
 using util::DereferencedEqual;
 using util::MapsEqual;
+using qlexpr::IndexInfo;
+using qlexpr::IndexMap;
 
 namespace {
 
@@ -131,6 +135,7 @@ TableInfo::TableInfo(const std::string& log_prefix_, TableType table_type, Priva
     : log_prefix(log_prefix_),
       doc_read_context(new docdb::DocReadContext(log_prefix, table_type)),
       index_map(std::make_shared<IndexMap>()) {
+  CompleteInit();
 }
 
 TableInfo::TableInfo(const std::string& tablet_log_prefix,
@@ -156,6 +161,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(std::move(partition_schema)) {
+  CompleteInit();
 }
 
 TableInfo::TableInfo(const TableInfo& other,
@@ -179,6 +185,7 @@ TableInfo::TableInfo(const TableInfo& other,
       partition_schema(other.partition_schema),
       deleted_cols(other.deleted_cols) {
   this->deleted_cols.insert(this->deleted_cols.end(), deleted_cols.begin(), deleted_cols.end());
+  CompleteInit();
 }
 
 TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
@@ -195,9 +202,18 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       schema_version(other.schema_version),
       partition_schema(other.partition_schema),
       deleted_cols(other.deleted_cols) {
+  CompleteInit();
 }
 
 TableInfo::~TableInfo() = default;
+
+void TableInfo::CompleteInit() {
+  if (!index_info || !index_info->is_unique()) {
+    return;
+  }
+  unique_index_key_projection = std::make_shared<dockv::ReaderProjection>(
+      doc_read_context->schema, index_info->index_key_column_ids());
+}
 
 Result<TableInfoPtr> TableInfo::LoadFromPB(
     const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb) {
@@ -205,6 +221,7 @@ Result<TableInfoPtr> TableInfo::LoadFromPB(
   auto log_prefix = MakeTableInfoLogPrefix(tablet_log_prefix, primary, pb.table_id());
   auto result = std::make_shared<TableInfo>(log_prefix, pb.table_type(), PrivateTag());
   RETURN_NOT_OK(result->DoLoadFromPB(primary, pb));
+  result->CompleteInit();
   return result;
 }
 

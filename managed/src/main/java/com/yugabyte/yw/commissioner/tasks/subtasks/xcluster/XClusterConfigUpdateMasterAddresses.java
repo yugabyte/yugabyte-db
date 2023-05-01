@@ -12,7 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
@@ -21,7 +21,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -36,8 +35,9 @@ import org.yb.client.YBClient;
 public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase {
 
   @Inject
-  protected XClusterConfigUpdateMasterAddresses(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected XClusterConfigUpdateMasterAddresses(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   public static class Params extends XClusterConfigTaskParams {

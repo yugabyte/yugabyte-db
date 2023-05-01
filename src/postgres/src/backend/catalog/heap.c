@@ -3800,3 +3800,9 @@ StorePartitionBound(Relation rel, Relation parent, PartitionBoundSpec *bound)
 
 	CacheInvalidateRelcache(parent);
 }
+
+Node *
+YbCookConstraint(ParseState *pstate, Node *raw_constraint, char *relname)
+{
+	return cookConstraint(pstate, raw_constraint, relname);
+}

@@ -53,7 +53,6 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_replication.proxy.h"
-#include "yb/master/master-test-util.h"
 
 #include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/rpc/rpc_controller.h"
@@ -521,29 +520,6 @@ class XClusterTest : public XClusterTestBase,
     }
 
     RETURN_NOT_OK(DeleteUniverseReplication());
-    return Status::OK();
-  }
-
-  Status PauseResumeXClusterProducerStreams(
-      const std::vector<std::string>& stream_ids, bool is_paused) {
-    master::PauseResumeXClusterProducerStreamsRequestPB req;
-    master::PauseResumeXClusterProducerStreamsResponsePB resp;
-
-    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-        &producer_client()->proxy_cache(),
-        VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-    for (const auto& stream_id : stream_ids) {
-      req.add_stream_ids(stream_id);
-    }
-    req.set_is_paused(is_paused);
-    RETURN_NOT_OK(master_proxy->PauseResumeXClusterProducerStreams(req, &resp, &rpc));
-    SCHECK(
-        !resp.has_error(), IllegalState,
-        Format(
-            "PauseResumeXClusterProducerStreams returned error: $0", resp.error().DebugString()));
     return Status::OK();
   }
 

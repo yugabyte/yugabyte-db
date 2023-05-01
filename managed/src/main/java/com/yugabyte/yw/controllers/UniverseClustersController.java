@@ -69,9 +69,7 @@ public class UniverseClustersController extends AuthenticatedController {
     taskParams.currentClusterType = ClusterType.PRIMARY;
     universeCRUDHandler.configure(customer, taskParams);
 
-    if (taskParams
-        .clusters
-        .stream()
+    if (taskParams.clusters.stream()
         .anyMatch(cluster -> cluster.clusterType == ClusterType.ASYNC)) {
       taskParams.currentClusterType = ClusterType.ASYNC;
       universeCRUDHandler.configure(customer, taskParams);

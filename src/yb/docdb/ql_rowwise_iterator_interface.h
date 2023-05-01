@@ -39,10 +39,10 @@ class YQLRowwiseIteratorIf {
   //------------------------------------------------------------------------------------------------
   // Checks whether next row exists.
   Result<bool> FetchNext(
-      QLTableRow* table_row,
-      const Schema* projection = nullptr,
-      QLTableRow* static_row = nullptr,
-      const Schema* static_projection = nullptr) {
+      qlexpr::QLTableRow* table_row,
+      const dockv::ReaderProjection* projection = nullptr,
+      qlexpr::QLTableRow* static_row = nullptr,
+      const dockv::ReaderProjection* static_projection = nullptr) {
     return DoFetchNext(table_row, projection, static_row, static_projection);
   }
 
@@ -54,9 +54,6 @@ class YQLRowwiseIteratorIf {
   virtual HybridTime TEST_MaxSeenHt();
 
   virtual std::string ToString() const = 0;
-
-  // Could be subset of actual table schema.
-  virtual const Schema& schema() const = 0;
 
   //------------------------------------------------------------------------------------------------
   // Virtual API methods.
@@ -78,15 +75,14 @@ class YQLRowwiseIteratorIf {
   // Seeks to the given tuple by its id. See DocRowwiseIterator for details.
   virtual void SeekTuple(const Slice& tuple_id);
 
-  virtual Result<bool> FetchTuple(const Slice& tuple_id, QLTableRow* row);
+  virtual Result<bool> FetchTuple(const Slice& tuple_id, qlexpr::QLTableRow* row);
 
  protected:
   virtual Result<bool> DoFetchNext(
-      QLTableRow* table_row,
-      const Schema* projection,
-      QLTableRow* static_row,
-      const Schema* static_projection) = 0;
-
+      qlexpr::QLTableRow* table_row,
+      const dockv::ReaderProjection* projection,
+      qlexpr::QLTableRow* static_row,
+      const dockv::ReaderProjection* static_projection) = 0;
 };
 
 }  // namespace docdb

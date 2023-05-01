@@ -6,11 +6,10 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
-import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
-import com.yugabyte.yw.common.inject.StaticInjectorHolder;
-import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import java.util.List;
 import java.util.Map;

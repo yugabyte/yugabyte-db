@@ -1,14 +1,14 @@
 package com.yugabyte.yw.common.logging;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+
 import akka.dispatch.Batchable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Test;
 import org.slf4j.MDC;
 import scala.concurrent.ExecutionContextExecutor;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
 
 public class MDCPropagatingDispatcherTest extends MDCPropagatingDispatcherTestBase {
   public MDCPropagatingDispatcherTest() {

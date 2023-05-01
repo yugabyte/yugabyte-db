@@ -91,8 +91,8 @@
 using namespace std::literals;
 using strings::Substitute;
 
-DEFINE_UNKNOWN_string(mini_cluster_base_dir, "", "Directory for master/ts data");
-DEFINE_UNKNOWN_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
+DEFINE_NON_RUNTIME_string(mini_cluster_base_dir, "", "Directory for master/ts data");
+DEFINE_NON_RUNTIME_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
 DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeMultiplier,
                  "Time to wait for tservers to register to master.");
 DECLARE_int32(master_svc_num_threads);
@@ -240,19 +240,23 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
         "tservers: $1", extra_tserver_options.size(), options_.num_tablet_servers);
   }
 
-  for (size_t i = 0; i < options_.num_tablet_servers; i++) {
-    if (!extra_tserver_options.empty()) {
-      RETURN_NOT_OK_PREPEND(AddTabletServer(extra_tserver_options[i]),
-                            Substitute("Error adding TS $0", i));
-    } else {
-      RETURN_NOT_OK_PREPEND(AddTabletServer(),
-                            Substitute("Error adding TS $0", i));
+  if (mini_tablet_servers_.empty()) {
+    for (size_t i = 0; i < options_.num_tablet_servers; i++) {
+      if (!extra_tserver_options.empty()) {
+        RETURN_NOT_OK_PREPEND(
+            AddTabletServer(extra_tserver_options[i]), Substitute("Error adding TS $0", i));
+      } else {
+        RETURN_NOT_OK_PREPEND(AddTabletServer(), Substitute("Error adding TS $0", i));
+      }
     }
-
+    RETURN_NOT_OK_PREPEND(
+        WaitForTabletServerCount(options_.num_tablet_servers),
+        "Waiting for tablet servers to start");
+  } else {
+    for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
+      RETURN_NOT_OK(tablet_server->Start());
+    }
   }
-
-  RETURN_NOT_OK_PREPEND(WaitForTabletServerCount(options_.num_tablet_servers),
-                        "Waiting for tablet servers to start");
 
   running_ = true;
   return Status::OK();
@@ -490,6 +494,25 @@ Result<MiniMaster*> MiniCluster::GetLeaderMiniMaster() {
     return STATUS(TimedOut, "No leader master has been elected");
   }
   return mini_master(idx);
+}
+
+void MiniCluster::StopSync() {
+  if (!running_) {
+    LOG(INFO) << "MiniCluster is not running.";
+    return;
+  }
+
+  for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
+    CHECK(tablet_server);
+    tablet_server->Shutdown();
+  }
+
+  for (shared_ptr<MiniMaster>& master_server : mini_masters_) {
+    CHECK(master_server);
+    master_server->Shutdown();
+  }
+
+  running_ = false;
 }
 
 void MiniCluster::Shutdown() {
