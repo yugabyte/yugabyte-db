@@ -309,20 +309,6 @@ DROP INDEX
 
   In case the backfill really needs more time, increase YB-TServer flag `backfill_index_client_rpc_timeout_ms` to as long as you expect the backfill to take (for example, one week).
 
-- `ERROR:  backfill failed to connect to DB`
-
-  **Reason**: You may be hitting an issue with authentication.
-
-  If you're on a stable version prior to 2.4 or a preview (2.3.x or 2.5.x) version prior to 2.5.2, online `CREATE INDEX` does not work with authentication enabled.
-
-  **Fixes**
-
-  For version 2.5.1, you can use `CREATE INDEX NONCONCURRENTLY` as a workaround.
-
-  If the version is at least 2.3, you can set `ysql_disable_index_backfill=false` as a workaround.
-
-  In all supported versions, you can disable authentication (for example, by using `ysql_enable_auth`, `ysql_hba_conf`, or `ysql_hba_conf_csv`) as a workaround.
-
 [backfill-master-failover-issue]: https://github.com/yugabyte/yugabyte-db/issues/6218
 
 **To prioritize keeping other transactions alive** during the index backfill, set each of the following to be longer than the longest transaction anticipated:
