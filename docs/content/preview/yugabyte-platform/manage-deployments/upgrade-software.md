@@ -15,7 +15,7 @@ The YugabyteDB release that is powering a universe can be upgraded to get new fe
 
 Before starting the upgrade:
 
-- Ensure that port 18018 is open on all YugabyteDB nodes, so that YB Controller (introduced in 2.16.0 and later) can operate.
+- If you're upgrading a universe from v2.15.x or earlier to v2.16.0 or later, ensure that port 18018 is open on all YugabyteDB nodes so that YB Controller (introduced in 2.16.0) can operate.
 
 - Consider importing a specific YugabyteDB release into YugabyteDB Anywhere, as follows:
 
@@ -72,6 +72,6 @@ curl --location --request PUT '<YBA-url>/api/v1/customers/<customerID>/universes
 
 To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YugabyteDB Anywhere window.
 
-You can view your Universe ID from your YugabyteDB Anywhere universe URL (`<node-ip>/universes/<universeID>`).
+You can view your Universe ID from your YugabyteDB Anywhere universe URL (`<YB-Anywhere-IP-address>/universes/<universeID>`).
 
 {{< /note >}}
