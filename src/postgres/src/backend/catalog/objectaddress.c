@@ -440,8 +440,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		YbTablegroupOidIndexId,
 		YBTABLEGROUPOID,
 		-1,
-		/* ObjectIdAttributeNumber */
-		Anum_pg_tablegroup_oid,
+		Anum_pg_yb_tablegroup_oid,
 		Anum_pg_yb_tablegroup_grpname,
 		InvalidAttrNumber,
 		Anum_pg_yb_tablegroup_grpowner,
@@ -640,12 +639,12 @@ static const ObjectPropertyType ObjectProperty[] =
 		false
 	},
 	{
-		/* YB_TODO(neil) Need name for the new entry */
 		"ybprofile",
 		YbProfileRelationId,
 		YbProfileOidIndexId,
 		-1,
 		-1,
+		Anum_pg_yb_profile_oid,
 		Anum_pg_yb_profile_prfname,
 		InvalidAttrNumber,
 		InvalidAttrNumber,

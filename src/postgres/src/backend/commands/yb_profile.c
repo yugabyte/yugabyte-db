@@ -31,6 +31,7 @@
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
@@ -137,14 +138,9 @@ YbCreateProfile(YbCreateProfileStmt *stmt)
 	/* Set lock time to 0 as it is not implemented yet. */
 	values[Anum_pg_yb_profile_prfpasswordlocktime - 1] = 0;
 
-	/* YB_TODO
-	 * Need to assign oid to values.
-	 *   prfid = ??;
-	 *   Anum_pg_ybprofile_oid = ??
-	 *   values[Anum_pg_ybprofile_oid] = prfid;
-	 */
-	prfid = 0;
-	values[0] = prfid;
+	prfid =
+		GetNewOidWithIndex(rel, YbProfileOidIndexId, Anum_pg_yb_profile_oid);
+	values[Anum_pg_yb_profile_oid - 1] = ObjectIdGetDatum(prfid);
 	tuple = heap_form_tuple(rel->rd_att, values, nulls);
 
 	CatalogTupleInsert(rel, tuple);
@@ -398,11 +394,11 @@ yb_create_role_profile_map(Oid roleid, Oid prfid)
 
 	nulls[Anum_pg_yb_role_profile_rolprflockeduntil - 1] = true;
 
-	tuple = heap_form_tuple(rel->rd_att, values, nulls);
+	roleprfid = GetNewOidWithIndex(rel, YbRoleProfileOidIndexId,
+								   Anum_pg_yb_role_profile_oid);
+	values[Anum_pg_yb_role_profile_oid - 1] = ObjectIdGetDatum(roleprfid);
 
-	/* YB_TODO(neil) Need to define role id and assign to values */
-	roleprfid = 0;
-	values[0] = roleprfid;
+	tuple = heap_form_tuple(rel->rd_att, values, nulls);
 	CatalogTupleInsert(rel, tuple);
 
 	ybRecordDependencyOnProfile(AuthIdRelationId, roleid, prfid);

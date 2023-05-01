@@ -49,4 +49,6 @@ CATALOG(pg_yb_catalog_version,8010,YBCatalogVersionRelationId) BKI_SHARED_RELATI
  */
 typedef FormData_yb_pg_catalog_version *Form_yb_pg_catalog_version;
 
+DECLARE_UNIQUE_INDEX_PKEY(pg_yb_catalog_version_db_oid_index, 8012, YBCatalogVersionDbOidIndexId, on pg_yb_catalog_version using btree(db_oid oid_ops));
+
 #endif							/* PG_YB_CATALOG_VERSION_H */
