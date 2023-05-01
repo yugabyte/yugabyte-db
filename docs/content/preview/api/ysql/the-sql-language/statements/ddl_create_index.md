@@ -316,6 +316,6 @@ DROP INDEX
 
 **To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL parameter `yb_index_state_flags_update_delay` to zero.
 
+[backfill-master-failover-issue]: https://github.com/yugabyte/yugabyte-db/issues/6218
 [yb-master]: ../../../../../reference/configuration/yb-master/
 [yb-tserver]: ../../../../../reference/configuration/yb-tserver/
-[backfill-master-failover-issue]: https://github.com/yugabyte/yugabyte-db/issues/6218
