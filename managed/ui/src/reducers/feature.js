@@ -27,7 +27,7 @@ const initialStateFeatureInTest = {
   enablePrefillKubeConfig: true,
   enableNewUI: true, // feature flag to enable new revamped UI,
   enableCustomEmailTemplates: false,
-  enableAWSProviderValidation: false,
+  enableAWSProviderValidation: true,
   enableGFlagHBAConf: false,
   enableMKR: true,
   enableS3BackupProxy: false
