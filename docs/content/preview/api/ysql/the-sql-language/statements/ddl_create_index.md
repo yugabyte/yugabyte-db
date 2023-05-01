@@ -293,9 +293,9 @@ DROP INDEX
 
   Do any or all of the following:
 
-  - Increase [YB-Master flag](../../../../../reference/configuration/yb-master/) `ysql_index_backfill_rpc_timeout_ms` from 60000 (one minute) to 300000 (five minutes).
-  - Increase [YB-TServer flag](../../../../../reference/configuration/yb-tserver/) `backfill_index_timeout_grace_margin_ms` from -1 (one second) to 60000 (one minute).
-  - Decrease [YB-TServer flag](../../../../../reference/configuration/yb-tserver/) `backfill_index_write_batch_size` from 128 to 32.
+  - Increase [YB-Master flag][yb-master] `ysql_index_backfill_rpc_timeout_ms` from 60000 (one minute) to 300000 (five minutes).
+  - Increase [YB-TServer flag][yb-tserver] `backfill_index_timeout_grace_margin_ms` from -1 (one second) to 60000 (one minute).
+  - Decrease [YB-TServer flag][yb-tserver] `backfill_index_write_batch_size` from 128 to 32.
 
 - `ERROR:  BackfillIndex RPC (request call id 123) to 127.0.0.1:9100 timed out after 86400.000s`
 
@@ -307,13 +307,15 @@ DROP INDEX
 
   Try increasing parallelism. Index backfill happens in parallel across each tablet of the table. A one-tablet table in an RF-3 setup would not take advantage of the parallelism. (One-tablet tables are default for range-partitioned tables and colocated tables.) On the other hand, no matter how much parallelism there is, a one-tablet index would be a bottleneck for index backfill writes. Partitioning could be improved with tablet splitting.
 
-  In case the backfill really needs more time, increase YB-TServer flag `backfill_index_client_rpc_timeout_ms` to as long as you expect the backfill to take (for example, one week).
-
-[backfill-master-failover-issue]: https://github.com/yugabyte/yugabyte-db/issues/6218
+  In case the backfill really needs more time, increase [YB-TServer flag][yb-tserver] `backfill_index_client_rpc_timeout_ms` to as long as you expect the backfill to take (for example, one week).
 
 **To prioritize keeping other transactions alive** during the index backfill, set each of the following to be longer than the longest transaction anticipated:
 
-- YB-Master flag `index_backfill_wait_for_old_txns_ms`
+- [YB-Master flag][yb-master] `index_backfill_wait_for_old_txns_ms`
 - YSQL parameter `yb_index_state_flags_update_delay`
 
 **To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL parameter `yb_index_state_flags_update_delay` to zero.
+
+[yb-master]: ../../../../../reference/configuration/yb-master/
+[yb-tserver]: ../../../../../reference/configuration/yb-tserver/
+[backfill-master-failover-issue]: https://github.com/yugabyte/yugabyte-db/issues/6218
