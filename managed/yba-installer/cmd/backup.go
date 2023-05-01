@@ -230,7 +230,7 @@ func restoreBackupCmd() *cobra.Command {
 					}
 					if err := plat.Stop(); err != nil {
 						log.Warn(fmt.Sprintf(
-							"Error %s stopping yb-platform. Continuing with yugabundle restore."))
+							"Error %s stopping yb-platform. Continuing with yugabundle restore.", err.Error()))
 					}
 					var db *sql.DB
 					var connStr string
