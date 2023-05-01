@@ -264,8 +264,10 @@ export const AWSProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT_NEW);
+  const showEditRegionFormModal = (options?: { isExistingRegion: boolean }) => {
+    setRegionOperation(
+      options?.isExistingRegion ? RegionOperation.EDIT_EXISTING : RegionOperation.EDIT_NEW
+    );
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -312,6 +314,7 @@ export const AWSProviderEditForm = ({
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
   const ybImageType = formMethods.watch('ybImageType');
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
+  const existingRegions = providerConfig.regions.map((region) => region.code);
   const isFormDisabled =
     isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
   return (
@@ -457,6 +460,7 @@ export const AWSProviderEditForm = ({
               <RegionList
                 providerCode={ProviderCode.AWS}
                 regions={regions}
+                existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
@@ -632,6 +636,7 @@ export const AWSProviderEditForm = ({
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           configuredRegions={regions}
+          isEditProvider={true}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -743,11 +748,23 @@ const constructProviderPayload = async (
           details: {
             cloudInfo: {
               [ProviderCode.AWS]: {
-                ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
+                ...(existingRegion
                   ? {
-                      ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
+                      ...(existingRegion.details.cloudInfo.aws.ybImage && {
+                        ybImage: existingRegion.details.cloudInfo.aws.ybImage
+                      }),
+                      ...(existingRegion.details.cloudInfo.aws.arch && {
+                        arch: existingRegion.details.cloudInfo.aws.arch
+                      })
                     }
-                  : { ...(formValues.ybImageType && { arch: formValues.ybImageType }) }),
+                  : regionFormValues.ybImage
+                  ? {
+                      ybImage: regionFormValues.ybImage
+                    }
+                  : {
+                      arch:
+                        providerConfig.regions[0]?.details.cloudInfo.aws.arch ?? YBImageType.X86_64
+                    }),
                 ...(regionFormValues.securityGroupId && {
                   securityGroupId: regionFormValues.securityGroupId
                 }),

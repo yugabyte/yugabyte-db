@@ -154,8 +154,10 @@ export const AZUProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT_NEW);
+  const showEditRegionFormModal = (options?: { isExistingRegion: boolean }) => {
+    setRegionOperation(
+      options?.isExistingRegion ? RegionOperation.EDIT_EXISTING : RegionOperation.EDIT_NEW
+    );
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -207,6 +209,7 @@ export const AZUProviderEditForm = ({
   const keyPairManagement = formMethods.watch('sshKeypairManagement');
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
+  const existingRegions = providerConfig.regions.map((region) => region.code);
   const isFormDisabled =
     isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
   return (
@@ -302,6 +305,7 @@ export const AZUProviderEditForm = ({
               <RegionList
                 providerCode={ProviderCode.AZU}
                 regions={regions}
+                existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
@@ -438,6 +442,7 @@ export const AZUProviderEditForm = ({
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           configuredRegions={regions}
+          isEditProvider={true}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
