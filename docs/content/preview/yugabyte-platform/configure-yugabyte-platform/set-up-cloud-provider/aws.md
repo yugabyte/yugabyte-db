@@ -103,18 +103,21 @@ Integrating with hosted zones can make YugabyteDB universes easily discoverable.
 You can customize your network, including the virtual network, as follows:
 
 - Choose the type of Amazon Machine Image (AMI) to use for deployments that use this configuration.
-  - Default x86
-  - Default AArch64
+  - Default x86;
+  - Default AArch64; or
   - Custom
+
 - Choose the VPC setup to use.
   - Specify an existing VPC.
   - Create a new VPC. Note that this option is considered beta and is not recommended for production use cases, as creating a new VPC can silently fail if there are any classless inter-domain routing (CIDR) conflicts. For example, the following will result in a silent failure:
     - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
     - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
 
-  To use this option, contact {{% support-platform %}}.
+    To use this option, contact {{% support-platform %}}.
 
-For information on configuring your regions, see [Add regions](#add-regions).
+- Click **Add Region** to add a region to the configuration.
+
+  For information on configuring your regions, see [Add regions](#add-regions).
 
 #### SSH Key Pairs
 
@@ -135,9 +138,33 @@ You can customize the Network Time Protocol server, as follows:
 
 ## Add regions
 
-For deployment, YugabyteDB Anywhere aims to provide you with access to the many regions that AWS makes available globally. To that end, YugabyteDB Anywhere allows you to select which regions to which you wish to deploy and supports two different ways of configuring your setup, based on your environment: YugabyteDB Anywhere-managed configuration and self-managed configuration.
+For deployment, YugabyteDB Anywhere aims to provide you with access to the many regions that AWS makes available globally. To that end, YugabyteDB Anywhere allows you to select which regions to which you wish to deploy.
 
-### YugabyteDB Anywhere-managed configuration
+### Specify an existing VPC
+
+If you choose to use VPCs that you have configured, you are responsible for having preconfigured networking connectivity. For single-region deployments, this might just be a matter of region or VPC local Security Groups. Across regions, however, the setup can get quite complex. It is recommended that you use the [VPC peering](https://docs.aws.amazon.com/vpc/latest/peering/working-with-vpc-peering.html) feature of [Amazon Virtual Private Cloud (Amazon VPC)](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html) to set up private IP connectivity between nodes located across regions, as follows:
+
+- VPC peering connections must be established in an N x N matrix, such that every VPC in every region you configure must be peered to every other VPC in every other region.
+- Routing table entries in every regional VPC should route traffic to every other VPC CIDR block across the PeeringConnection to that respective VPC. This must match the Subnets that you provided during the configuration step.
+- Security groups in each VPC can be hardened by only opening up the relevant ports to the CIDR blocks of the VPCs from which you are expecting traffic.
+- If you deploy YugabyteDB Anywhere in a different VPC than the ones in which you intend to deploy YugabyteDB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up routing table entries in the source VPC (YugabyteDB Anywhere) and allowing one further CIDR block (or public IP) ingress rule on the security groups for the YugabyteDB nodes (to allow traffic from YugabyteDB Anywhere or its VPC).
+- When a public IP address is not enabled on a universe, a network address translation (NAT) gateway or device is required. You must configure the NAT gateway before creating the VPC that you add to the YugabyteDB Anywhere UI. For more information, see [NAT](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat.html) and [Creating a VPC with public and private subnets](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/create-public-private-vpc.html) in the AWS documentation.
+
+To configure a region using your own custom VPCs, click **Add Region** and do the following:
+
+1. Select the **Region**.
+1. Specify the **VPC ID** of the VPC to use for the region.
+1. Specify the **Security Group ID** to use for the region. This is attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
+1. If you chose to use a custom AMI, specify the **Custom AMI ID**. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle Linux 8 support](#ubuntu-18-and-oracle-linux-8-support).
+
+For each availability zone in which you wish to be able to deploy in the region, do the following:
+
+1. Click **Add Zone**.
+1. Select the zone.
+1. Enter the Subnet ID to use for the zone. This is required to ensure that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you desire in your environment.
+
+<!--
+### Create a new VPC
 
 If you use YugabyteDB Anywhere to configure, own, and manage a full cross-region deployment of Virtual Private Clouds (VPCs), YugabyteDB Anywhere generates a YugabyteDB-specific VPC in each selected region, then interconnects them (including the VPC in which YugabyteDB Anywhere is deployed) using [VPC peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant sub-components in all regions, such as subnets, security groups, and routing table entries.
 
@@ -152,23 +179,7 @@ You have an option to provide the following:
   If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS). See [Supported operating systems and architectures](../../supported-os-and-arch/) for a complete list of supported operating systems.
 
 To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)). YugabyteDB Anywhere enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
-
-### Self-managed configuration
-
-You can use your own custom VPCs. This allows you the highest level of customization for your VPC setup. You can provide the following:
-
-- A VPC ID to use for each region.
-- A Security Group ID to use for each region. This is attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
-- A custom AMI ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle Linux 8 support](#ubuntu-18-and-oracle-linux-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.
-- A mapping of what Subnet IDs to use for each Availability Zone in which you wish to be able to deploy. This is required to ensure that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you desire in your environment.
-
-If you choose to provide your own VPC information, you will be responsible for having preconfigured networking connectivity. For single-region deployments, this might just be a matter of region or VPC local Security Groups. Across regions, however, the setup can get quite complex. It is recommended that you use the [VPC peering](https://docs.aws.amazon.com/vpc/latest/peering/working-with-vpc-peering.html) feature of [Amazon Virtual Private Cloud (Amazon VPC)](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html) to set up private IP connectivity between nodes located across regions, as follows:
-
-- VPC peering connections must be established in an N x N matrix, such that every VPC in every region you configure must be peered to every other VPC in every other region.
-- Routing table entries in every regional VPC should route traffic to every other VPC CIDR block across the PeeringConnection to that respective VPC. This must match the Subnets that you provided during the configuration step.
-- Security groups in each VPC can be hardened by only opening up the relevant ports to the CIDR blocks of the VPCs from which you are expecting traffic.
-- If you deploy YugabyteDB Anywhere in a different VPC than the ones in which you intend to deploy YugabyteDB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up routing table entries in the source VPC (YugabyteDB Anywhere) and allowing one further CIDR block (or public IP) ingress rule on the security groups for the YugabyteDB nodes (to allow traffic from YugabyteDB Anywhere or its VPC).
-- When a public IP address is not enabled on a universe, a network address translation (NAT) gateway or device is required. You must configure the NAT gateway before creating the VPC that you add to the YugabyteDB Anywhere UI. For more information, see [NAT](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat.html) and [Creating a VPC with public and private subnets](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/create-public-private-vpc.html) in the AWS documentation.
+-->
 
 ### Limitations
 

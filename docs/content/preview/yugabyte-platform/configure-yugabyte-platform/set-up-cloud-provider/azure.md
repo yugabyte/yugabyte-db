@@ -118,29 +118,29 @@ You can specify a region as follows:
 
 1. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [Use a shared image gallery](#use-a-shared-image-gallery). If you are using custom images, you need to specify the SSH port and user, as described in [SSH Key Pairs](#ssh-key-pairs).
 
-1. Provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you need in your environment.
+1. Click **Add Zone** and provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you need in your environment.
 
-   ![Prepare Azure cloud to install YugabyteDB Anywhere](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-5.png)
-
-1. Click **Add Region** on the **Specify Region Info** dialog.
+1. Click **Add Region**.
 
 #### SSH Key Pairs
 
 - **SSH User** represents the user name for the **SSH Port**.
 - **SSH Port** allows you to specify the connection port number if you use custom images. The default port is 54422.
 
+<!--
 - **Virtual Network Setup** allows you to customize your network, including the virtual network, as follows:
   - Select an existing Virtual Private Cloud (VPC).
   - Create a new VPC. Note that this option is considered beta and is not recommended for production use cases, as creating a new VPC can silently fail if there are any classless inter-domain routing (CIDR) conflicts. For example, the following will result in a silent failure:
     - Configure more than one Azure cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
     - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
+-->
 
 #### Advanced
 
 - **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
-  - Select **Use provider’s NTP server** to enable cluster nodes to connect to the Azure internal time servers. For more information, consult the Microsoft Azure documentation such as [Time sync for Linux VMs in Azure](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/time-sync).
-  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-  - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+  - Select **Use AZU's NTP server** to enable cluster nodes to connect to the Azure internal time servers. For more information, consult the Microsoft Azure documentation such as [Time sync for Linux VMs in Azure](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/time-sync).
+- Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
+- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ## Create the configuration
 
