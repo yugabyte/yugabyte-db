@@ -102,12 +102,19 @@ Integrating with hosted zones can make YugabyteDB universes easily discoverable.
 
 You can customize your network, including the virtual network, as follows:
 
-- Select an existing Virtual Private Cloud (VPC).
-- Create a new VPC. Note that this option is considered beta and is not recommended for production use cases, as creating a new VPC can silently fail if there are any classless inter-domain routing (CIDR) conflicts. For example, the following will result in a silent failure:
-  - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
-  - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
+- Choose the type of Amazon Machine Image (AMI) to use for deployments that use this configuration.
+  - Default x86
+  - Default AArch64
+  - Custom
+- Choose the VPC setup to use.
+  - Specify an existing VPC.
+  - Create a new VPC. Note that this option is considered beta and is not recommended for production use cases, as creating a new VPC can silently fail if there are any classless inter-domain routing (CIDR) conflicts. For example, the following will result in a silent failure:
+    - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
+    - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
 
-For information on configuring your regions, see [Global deployment](#global-deployment).
+  To use this option, contact {{% support-platform %}}.
+
+For information on configuring your regions, see [Add regions](#add-regions).
 
 #### SSH Key Pairs
 
@@ -126,7 +133,7 @@ You can customize the Network Time Protocol server, as follows:
 - Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
 - Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
-## Global deployment
+## Add regions
 
 For deployment, YugabyteDB Anywhere aims to provide you with access to the many regions that AWS makes available globally. To that end, YugabyteDB Anywhere allows you to select which regions to which you wish to deploy and supports two different ways of configuring your setup, based on your environment: YugabyteDB Anywhere-managed configuration and self-managed configuration.
 
@@ -171,13 +178,16 @@ If you create more than one AWS cloud provider with different CIDR block prefixe
 
 If you did not provide your own custom AMI IDs, before you can proceed to creating a universe, verify that you can actually spin up EC2 instances with the default AMIs in YugabyteDB Anywhere.
 
-While logged into your AWS account, navigate to the AWS site [AlmaLinux OS 8 (x86_64) product](https://aws.amazon.com/marketplace/pp/prodview-mku4y3g4sjrye) and click **Continue to Subscribe**.
+While logged into your AWS account, do the following:
+
+- For the default x86 AMI, go to [AlmaLinux OS 8 (x86_64) product](https://aws.amazon.com/marketplace/pp/prodview-mku4y3g4sjrye) and click **Continue to Subscribe**.
+- For the default aarch64 AMI, go to [AlmaLinux OS 8 (arm64) product](https://aws.amazon.com/marketplace/pp/prodview-zgsymdwitnxmm) and click **Continue to Subscribe**.
 
 If you are not already subscribed and have not accepted the **Terms and Conditions**, then you should see the following message:
 
 ![Marketplace accept](/images/ee/aws-setup/marketplace-accept.png)
 
-If that is the case, click **Accept Terms** and wait for the page to switch to a successful state. After the operation completes, or if you previously subscribed and accepted the terms, you should see the following:
+If that is the case, click **Accept Terms** and wait for the page to switch to a successful state. After the operation completes, or if you previously subscribed and accepted the terms, you should see a message similar to the following:
 
 ![Marketplace success](/images/ee/aws-setup/marketplace-success-almalinux.png)
 
