@@ -132,7 +132,7 @@ For deployment, YugabyteDB Anywhere aims to provide you with access to the many 
 
 ### YugabyteDB Anywhere-managed configuration
 
-If you use YugabyteDB Anywhere to configure, own, and manage a full cross-region deployment of Virtual Private Cloud (VPC), YugabyteDB Anywhere generates a YugabyteDB-specific VPC in each selected region, then interconnects them, as well as the VPC in which YugabyteDB Anywhere is deployed, using [VPC peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant sub-components in all regions, such as subnets, security groups, and routing table entries.
+If you use YugabyteDB Anywhere to configure, own, and manage a full cross-region deployment of Virtual Private Clouds (VPCs), YugabyteDB Anywhere generates a YugabyteDB-specific VPC in each selected region, then interconnects them (including the VPC in which YugabyteDB Anywhere is deployed) using [VPC peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant sub-components in all regions, such as subnets, security groups, and routing table entries.
 
 You have an option to provide the following:
 
@@ -140,11 +140,9 @@ You have an option to provide the following:
 
 - A custom Amazon Machine Image (AMI) ID to use in each region.
 
-  YugabyteDB Anywhere supports both x86 and ARM (aarch64) CPU architectures. See [Supported operating systems and architectures](../../supported-os-and-arch/) for a complete list of supported operating systems. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
+  YugabyteDB Anywhere supports x86 and ARM (aarch64) CPU architectures. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
 
-  If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS).
-
-![New Region Modal](/images/ee/aws-setup/aws_new_region.png)
+  If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS). See [Supported operating systems and architectures](../../supported-os-and-arch/) for a complete list of supported operating systems.
 
 To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)). YugabyteDB Anywhere enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
 
@@ -156,8 +154,6 @@ You can use your own custom VPCs. This allows you the highest level of customiza
 - A Security Group ID to use for each region. This is attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
 - A custom AMI ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle Linux 8 support](#ubuntu-18-and-oracle-linux-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.
 - A mapping of what Subnet IDs to use for each Availability Zone in which you wish to be able to deploy. This is required to ensure that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you desire in your environment.
-
-![Custom Region Modal](/images/ee/aws-setup/aws_custom_region.png)
 
 If you choose to provide your own VPC information, you will be responsible for having preconfigured networking connectivity. For single-region deployments, this might just be a matter of region or VPC local Security Groups. Across regions, however, the setup can get quite complex. It is recommended that you use the [VPC peering](https://docs.aws.amazon.com/vpc/latest/peering/working-with-vpc-peering.html) feature of [Amazon Virtual Private Cloud (Amazon VPC)](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html) to set up private IP connectivity between nodes located across regions, as follows:
 
