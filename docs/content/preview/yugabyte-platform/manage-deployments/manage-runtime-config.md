@@ -21,18 +21,21 @@ YugabyteDB Anywhere has a configuration mechanism that is fully compatible with 
 
 Currently, the scopes can be categorized as follows:
 
-| Scope | Description |
-|:--- |:---|
-| Global | Applies to the entire platform, persists across installs and any value defined in this scope overrides the defaults. |
-| Customer | Applies to a specific customer, persists across installs and any value defined in this scope overrides defaults in Global scope.|
-| Provider | Applies to a specific provider, persists across installs and any value defined in this scope overrides defaults in Customer scope. |
-| Universe | Applies to a specific universe, persists across installs and any value defined in this scope overrides defaults in Customer scope. |
+| Scope | Description | User Access |
+|:--- |:--- | :--- |
+| Global | Applies to the entire platform, persists across installs and any value defined in this scope overrides the defaults. | Super Admin |
+| Customer | Applies to a specific customer, persists across installs and any value defined in this scope overrides defaults in Global scope.| Super Admin, Admin |
+| Provider | Applies to a specific provider, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin, Admin |
+| Universe | Applies to a specific universe, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin, Admin |
+
 
 ## Edit or reset runtime configuration keys
 
 To modify the runtime configuration keys, navigate to your YugabyteDB Anywhere UI and click **Admin** > **Advanced** to open the different configuration scopes similar to the following illustration:
 
 ![Runtime configuration overview](/images/ee/runtime-config-overview.png)
+
+
 
 Note that only a Super Admin user has edit or reset access for Global configuration level keys, an Admin user has access for Customer, Provider, and Universe configuration level keys, and all other users only have read-only access.
 
