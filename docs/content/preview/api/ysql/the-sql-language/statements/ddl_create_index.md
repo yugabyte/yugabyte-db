@@ -281,7 +281,7 @@ DROP INDEX
 
 - `ERROR:  duplicate key value violates unique constraint "uniqueerror_i_idx"`
 
-  **Reason**: When creating a unique index, a unique constraint violation was found.
+  **Reason**: When creating a [unique index](#unique), a unique constraint violation was found.
 
   **Fix**: Resolve the conflicting row(s).
 
