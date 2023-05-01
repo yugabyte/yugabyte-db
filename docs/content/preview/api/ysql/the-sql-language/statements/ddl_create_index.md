@@ -305,7 +305,7 @@ DROP INDEX
 
   The master leader may have changed during backfill. This is currently [not supported][backfill-master-failover-issue]. Retry creating the index, and keep an eye on the master leader.
 
-  Try increasing parallelism. Index backfill happens in parallel across each tablet of the table. A one-tablet table in an RF-3 setup would not take advantage of the parallelism. (One-tablet tables are default for range-partitioned tables and colocated tables.) On the other hand, no matter how much parallelism there is, a one-tablet index would be a bottleneck for index backfill writes. Partitioning could be improved with tablet splitting.
+  Try increasing parallelism. Index backfill happens in parallel across each tablet of the table. A one-tablet table in an [RF-3][rf] setup would not take advantage of the parallelism. (One-tablet tables are default for range-partitioned tables and colocated tables.) On the other hand, no matter how much parallelism there is, a one-tablet index would be a bottleneck for index backfill writes. Partitioning could be improved with tablet splitting.
 
   In case the backfill really needs more time, increase [YB-TServer flag][yb-tserver] `backfill_index_client_rpc_timeout_ms` to as long as you expect the backfill to take (for example, one week).
 
@@ -317,5 +317,6 @@ DROP INDEX
 **To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL parameter `yb_index_state_flags_update_delay` to zero.
 
 [backfill-master-failover-issue]: https://github.com/yugabyte/yugabyte-db/issues/6218
+[rf]: ../../../../../architecture/docdb-replication/replication/#replication-factor
 [yb-master]: ../../../../../reference/configuration/yb-master/
 [yb-tserver]: ../../../../../reference/configuration/yb-tserver/
