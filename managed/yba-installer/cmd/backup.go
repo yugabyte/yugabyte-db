@@ -51,7 +51,7 @@ func CreateBackupScript(outputPath string, dataDir string,
 			log.Fatal("pg_dump path must be set. Stopping backup process")
 		}
 	} else {
-		args = append(args, "--pg_dump_path", plat.PgBin + "/pg_dump")
+		args = append(args, "--pg_dump_path", plat.PgBin+"/pg_dump")
 	}
 
 	args = addPostgresArgs(args)
@@ -110,7 +110,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 			log.Fatal("pg_restore path must be set. Stopping restore process.")
 		}
 	} else {
-		args = append(args, "--pg_restore_path", plat.PgBin + "/pg_restore")
+		args = append(args, "--pg_restore_path", plat.PgBin+"/pg_restore")
 	}
 	args = addPostgresArgs(args)
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
@@ -240,14 +240,14 @@ func restoreBackupCmd() *cobra.Command {
 					}
 					if err := plat.Stop(); err != nil {
 						log.Warn(fmt.Sprintf(
-							"Error %s stopping yb-platform. Continuing with yugabundle restore."))
+							"Error %s stopping yb-platform. Continuing with yugabundle restore.", err.Error()))
 					}
 					var db *sql.DB
 					var connStr string
 					var err error
 					if viper.GetBool("postgres.useExisting.enabled") {
 						db, connStr, err = common.GetPostgresConnection(
-																	viper.GetString("postgres.useExisting.username"))
+							viper.GetString("postgres.useExisting.username"))
 					} else {
 						db, connStr, err = common.GetPostgresConnection("postgres")
 					}
@@ -266,7 +266,7 @@ func restoreBackupCmd() *cobra.Command {
 					}
 				}
 				RestoreBackupScript(inputPath, destination, skipRestart, verbose, plat, yugabundle,
-														useSystemPostgres)
+					useSystemPostgres)
 				if err := plat.SetDataDirPerms(); err != nil {
 					log.Warn(fmt.Sprintf("Could not set %s permissions.", plat.DataDir))
 				}
@@ -293,7 +293,7 @@ func restoreBackupCmd() *cobra.Command {
 	restoreBackup.Flags().BoolVar(&verbose, "verbose", false,
 		"verbose output of script (default: false)")
 	restoreBackup.Flags().BoolVar(&yugabundle, "yugabundle", false,
-    "restoring from a yugabundle installation (default: false)")
+		"restoring from a yugabundle installation (default: false)")
 	restoreBackup.Flags().BoolVar(&useSystemPostgres, "use_system_pg", false,
 		"use system path's pg_restore as opposed to installed binary (default: false)")
 	restoreBackup.Flags().BoolVar(&skipYugawareDrop, "skip_dbdrop", false,
