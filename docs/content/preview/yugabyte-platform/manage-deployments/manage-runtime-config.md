@@ -1,6 +1,6 @@
 ---
-title: Manage Runtime configuration
-headerTitle: Manage Runtime configuration
+title: Manage runtime configuration settings
+headerTitle: Manage runtime configuration settings
 linkTitle: Manage Runtime configuration
 description: Manage your universes by setting runtime configuration keys based on different scopes.
 menu:
@@ -27,7 +27,6 @@ Currently, the scopes can be categorized as follows:
 | Customer | Applies to a specific customer, persists across installs and any value defined in this scope overrides defaults in Global scope.| Super Admin, Admin |
 | Provider | Applies to a specific provider, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin, Admin |
 | Universe | Applies to a specific universe, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin, Admin |
-
 
 ## Edit or reset runtime configuration keys
 

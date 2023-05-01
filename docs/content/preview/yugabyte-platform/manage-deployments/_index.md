@@ -153,10 +153,10 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
     <a class="section-link icon-offset" href="manage-runtime-config/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="title">Manage Runtime configuration</div>
+        <div class="title">Manage runtime configuration settings</div>
       </div>
       <div class="body">
-        Manage your universes by setting scopes on runtime configuration keys.
+        Manage your YB Anywhere universe by setting scopes for runtime configuration keys.
       </div>
     </a>
   </div>
