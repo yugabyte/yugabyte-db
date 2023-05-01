@@ -27,6 +27,7 @@
  */
 CATALOG(pg_yb_role_profile,8054,YbRoleProfileRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(8056,YbRoleProfileRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
+	Oid			    oid;			            /* oid */
 	Oid				rolprfrole;					/* OID of the role */
 	Oid				rolprfprofile;				/* OID of the profile */
 	char			rolprfstatus;				/* Refer to the status
@@ -44,6 +45,8 @@ CATALOG(pg_yb_role_profile,8054,YbRoleProfileRelationId) BKI_SHARED_RELATION BKI
  * ----------------
  */
 typedef FormData_pg_yb_role_profile *Form_pg_yb_role_profile;
+
+DECLARE_UNIQUE_INDEX_PKEY(pg_yb_role_profile_oid_index, 8055, YbRoleProfileOidIndexId, on pg_yb_role_profile using btree(oid oid_ops));
 
 /*
  * Symbolic values for rolprfstatus
