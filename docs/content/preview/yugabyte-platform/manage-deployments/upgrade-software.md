@@ -15,7 +15,7 @@ The YugabyteDB release that is powering a universe can be upgraded to get new fe
 
 Before starting the upgrade:
 
-- Ensure that the YB Controller port 18018 is open on all YugabyteDB nodes.
+- Ensure that port 18018 is open on all YugabyteDB nodes, so that YB Controller (introduced in 2.16.0 and later) can operate.
 
 - Consider importing a specific YugabyteDB release into YugabyteDB Anywhere, as follows:
 
@@ -27,9 +27,9 @@ Before starting the upgrade:
 
   - Specify the release version to import.
 
-    {{< note title="Manually-provisioned on-premises universe upgrades" >}}
+    {{< note title="For manually-provisioned on-premises universe upgrades" >}}
 
-  For v2.16.3, YB Controller does not get installed during a YugabyteDB software upgrade of a manually provisioned [on-premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) cron-managed universe.
+  If you are performing a software upgrade on a universe whose cloud provider is of the type [On-Prem](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) and is manually-provisioned, then the following steps are additionally required to install YB Controller manually after the otherwise-automated software upgrade procedure completes; YB Controller was newly introduced in YB Anywhere 2.16.0, and is required for YB Anywhere 2.16.0 and later.
 
   The workaround is to explicitly install the YB Controller by calling the following API after the software upgrade:
 
