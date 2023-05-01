@@ -151,8 +151,10 @@ export const OnPremProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT_NEW);
+  const showEditRegionFormModal = (options?: { isExistingRegion: boolean }) => {
+    setRegionOperation(
+      options?.isExistingRegion ? RegionOperation.EDIT_EXISTING : RegionOperation.EDIT_NEW
+    );
     setIsRegionFormModalOpen(true);
   };
   const hideRegionFormModal = () => {
@@ -184,6 +186,7 @@ export const OnPremProviderEditForm = ({
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
 
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
+  const existingRegions = providerConfig.regions.map((region) => region.code);
   const isFormDisabled =
     isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
   return (
@@ -223,6 +226,7 @@ export const OnPremProviderEditForm = ({
               <RegionList
                 providerCode={ProviderCode.ON_PREM}
                 regions={regions}
+                existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}

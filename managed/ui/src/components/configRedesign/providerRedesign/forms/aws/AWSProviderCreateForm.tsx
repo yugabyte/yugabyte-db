@@ -572,13 +572,14 @@ export const AWSProviderCreateForm = ({
       {/* Modals */}
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
+          configuredRegions={regions}
+          isEditProvider={false}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
           providerCode={ProviderCode.AWS}
           regionOperation={regionOperation}
           regionSelection={regionSelection}
-          configuredRegions={regions}
           vpcSetupType={vpcSetupType}
           ybImageType={ybImageType}
         />

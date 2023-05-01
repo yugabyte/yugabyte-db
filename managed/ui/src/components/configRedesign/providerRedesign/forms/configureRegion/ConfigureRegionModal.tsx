@@ -32,6 +32,7 @@ interface ConfigureRegionModalProps extends YBModalProps {
   onClose: () => void;
   providerCode: ProviderCode;
   regionOperation: RegionOperation;
+  isEditProvider: boolean;
 
   ybImageType?: YBImageType;
   regionSelection?: CloudVendorRegionField;
@@ -74,6 +75,7 @@ const useStyles = makeStyles((theme) => ({
 
 export const ConfigureRegionModal = ({
   configuredRegions,
+  isEditProvider,
   onClose,
   onRegionSubmit,
   providerCode,
@@ -117,7 +119,8 @@ export const ConfigureRegionModal = ({
       then: string().required(`${fieldLabel.securityGroupId} is required.`)
     }),
     ybImage: string().when([], {
-      is: () => shouldExposeField.ybImage && ybImageType === YBImageType.CUSTOM_AMI,
+      is: () =>
+        shouldExposeField.ybImage && ybImageType === YBImageType.CUSTOM_AMI && !isEditProvider,
       then: string().required(`${fieldLabel.ybImage} is required.`)
     }),
     sharedSubnet: string().when([], {
@@ -243,6 +246,10 @@ export const ConfigureRegionModal = ({
               control={formMethods.control}
               name="ybImage"
               placeholder="Enter..."
+              disabled={
+                providerCode === ProviderCode.AWS &&
+                regionOperation === RegionOperation.EDIT_EXISTING
+              }
               fullWidth
             />
           </div>
