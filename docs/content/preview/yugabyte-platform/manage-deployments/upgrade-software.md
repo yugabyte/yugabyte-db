@@ -15,7 +15,7 @@ The YugabyteDB release that is powering a universe can be upgraded to get new fe
 
 Before starting the upgrade:
 
-- Ensure that the YB Controller port 18018 is open on all YugabyteDB nodes.
+- If you're upgrading a universe from v2.15.x or earlier to v2.16.0 or later, ensure that port 18018 is open on all YugabyteDB nodes so that YB Controller (introduced in v2.16.0) can operate.
 
 - Consider importing a specific YugabyteDB release into YugabyteDB Anywhere, as follows:
 
@@ -26,23 +26,6 @@ Before starting the upgrade:
     ![Import Releases](/images/yp/import-releases.png)
 
   - Specify the release version to import.
-
-    {{< note title="Manually-provisioned on-premises universe upgrades" >}}
-
-  For v2.16.3, YB Controller does not get installed during a YugabyteDB software upgrade of a manually provisioned [on-premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) cron-managed universe.
-
-  The workaround is to explicitly install the YB Controller by calling the following API after the software upgrade:
-
-  ```sh
-  curl --location --request PUT '<YBA-url>/api/v1/customers/<customerID>/universes/<UniverseID>/ybc/install' \
-       --header 'X-AUTH-YW-API-TOKEN: <YBA-api-auth-token>'
-  ```
-
-  To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YugabyteDB Anywhere window.
-
-  You can view your Universe ID from your YugabyteDB Anywhere universe URL (`<node-ip>/universes/<universeID>`).
-
-    {{< /note >}}
 
   - Select the storage or URL that contains the release. If the release is located on Amazon S3, you would need to provide the access information; if the release is located on Google Cloud Storage, you would need to copy and paste the contents of the JSON file with the access credentials; if the release is accessible via a HTTP, you would need to specify the checksum value of the download.
 
@@ -73,5 +56,22 @@ For information on how rolling upgrades are performed in YugabyteDB, see [Upgrad
 {{< note title="Note" >}}
 
 Currently, you cannot downgrade a universe to an older YugabyteDB release. For assistance with downgrades, contact Yugabyte Support.
+
+{{< /note >}}
+
+{{< note title="For manually-provisioned on-premises universe upgrades" >}}
+
+If you are performing a software upgrade on a universe whose cloud provider is of the type [On-Prem](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) and is manually-provisioned, then the following steps are additionally required to install YB Controller manually after the otherwise-automated software upgrade procedure completes; YB Controller was newly introduced in YB Anywhere 2.16.0, and is required for YB Anywhere 2.16.0 and later.
+
+The workaround is to explicitly install the YB Controller by calling the following API after the software upgrade:
+
+```sh
+curl --location --request PUT '<YBA-url>/api/v1/customers/<customerID>/universes/<UniverseID>/ybc/install' \
+     --header 'X-AUTH-YW-API-TOKEN: <YBA-api-auth-token>'
+```
+
+To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YugabyteDB Anywhere window.
+
+You can view your Universe ID from your YugabyteDB Anywhere universe URL (`<YB-Anywhere-IP-address>/universes/<universeID>`).
 
 {{< /note >}}
