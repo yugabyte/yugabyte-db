@@ -15,7 +15,7 @@ The YugabyteDB release that is powering a universe can be upgraded to get new fe
 
 Before starting the upgrade:
 
-- If you're upgrading a universe from v2.15.x or earlier to v2.16.0 or later, ensure that port 18018 is open on all YugabyteDB nodes so that YB Controller (introduced in 2.16.0) can operate.
+- If you're upgrading a universe from v2.15.x or earlier to v2.16.0 or later, ensure that port 18018 is open on all YugabyteDB nodes so that YB Controller (introduced in v2.16.0) can operate.
 
 - Consider importing a specific YugabyteDB release into YugabyteDB Anywhere, as follows:
 
