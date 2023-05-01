@@ -34,8 +34,6 @@ To modify the runtime configuration keys, navigate to your YugabyteDB Anywhere U
 
 ![Runtime configuration overview](/images/ee/runtime-config-overview.png)
 
-
-
 Note that only a Super Admin user has edit or reset access for Global configuration level keys, an Admin user has access for Customer, Provider, and Universe configuration level keys, and all other users only have read-only access.
 
 ### Example
