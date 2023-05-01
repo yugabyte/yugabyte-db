@@ -102,14 +102,14 @@ Integrating with hosted zones can make YugabyteDB universes easily discoverable.
 
 You can customize your network, including the virtual network, as follows:
 
-- Choose the type of Amazon Machine Image (AMI) to use for deployments that use this configuration.
+- **AMI Type**. Choose the type of Amazon Machine Image (AMI) to use for deployments that use this configuration.
   - Default x86;
   - Default AArch64; or
   - Custom
 
-- Choose the VPC setup to use.
-  - Specify an existing VPC.
-  - Create a new VPC. Note that this option is considered beta and is not recommended for production use cases, as creating a new VPC can silently fail if there are any classless inter-domain routing (CIDR) conflicts. For example, the following will result in a silent failure:
+- **VPC Setup**. Choose the VPC setup to use:
+  - **Specify an existing VPC**. Select this option to use a VPC that you have created in AWS.
+  - **Create a new VPC**. Select this option to create a new VPC using YugabyteDB Anywhere. This option is considered beta and is not recommended for production use cases. If there are any classless inter-domain routing (CIDR) conflicts, using this option can result in a silent failure. For example, the following will result in a silent failure:
     - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
     - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
 
@@ -155,7 +155,7 @@ To configure a region using your own custom VPCs, click **Add Region** and do th
 1. Select the **Region**.
 1. Specify the **VPC ID** of the VPC to use for the region.
 1. Specify the **Security Group ID** to use for the region. This is attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
-1. If you chose to use a custom AMI, specify the **Custom AMI ID**. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle Linux 8 support](#ubuntu-18-and-oracle-linux-8-support).
+1. If you chose to use a custom AMI, specify the **Custom AMI ID**.
 
 For each availability zone in which you wish to be able to deploy in the region, do the following:
 
@@ -172,7 +172,7 @@ You have an option to provide the following:
 
 - A custom CIDR block for each regional VPC. If not provided, YugabyteDB Anywhere chooses defaults, aiming to not overlap across regions.
 
-- A custom Amazon Machine Image (AMI) ID to use in each region.
+- A custom AMI ID to use in each region.
 
   YugabyteDB Anywhere supports x86 and ARM (aarch64) CPU architectures. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
 
