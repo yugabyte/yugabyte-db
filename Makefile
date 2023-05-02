@@ -18,7 +18,7 @@ REGRESS = basic version guc pgsm_query_id functions counters relations database 
 # which typical installcheck users do not have (e.g. buildfarm clients).
 # NO_INSTALLCHECK = 1
 
-PG_CONFIG = pg_config
+PG_CONFIG ?= pg_config
 
 ifdef USE_PGXS
 MAJORVERSION := $(shell pg_config --version | awk {'print $$2'} | cut -f1 -d".")
