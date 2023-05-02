@@ -35,7 +35,7 @@ const replaceVariablesWithHTMLSyntax = (line: string, variablesList: IVariableLi
       ? 'System'
       : '';
 
-    return `<span variableType="${variableType}" type="${ALERT_VARIABLE_ELEMENT_TYPE}"  variableName="${variableName}" variableValue="${ALERT_VARIABLE_START_TAG}${variableName}${ALERT_VARIABLE_END_TAG}">${ALERT_VARIABLE_START_TAG}${variableName}${ALERT_VARIABLE_END_TAG}</span>`;
+    return `<span variableType="${variableType}" type="${ALERT_VARIABLE_ELEMENT_TYPE}"  variableName="${variableName}" >${ALERT_VARIABLE_START_TAG}${variableName}${ALERT_VARIABLE_END_TAG}</span>`;
   });
 };
 

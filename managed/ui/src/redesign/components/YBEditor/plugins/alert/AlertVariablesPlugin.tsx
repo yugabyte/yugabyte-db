@@ -201,9 +201,7 @@ export const useAlertVariablesPlugin: IYBSlatePlugin = ({ editor, enabled }) => 
             {...attributes}
           >
             {children}
-            {element.view === 'PREVIEW'
-              ? element.variableValue
-              : `${ALERT_VARIABLE_START_TAG}${element.variableName}${ALERT_VARIABLE_END_TAG}`}
+            {element.variableValue ? element.variableValue : 'null'}
           </span>
         </Tooltip>
       );
@@ -466,7 +464,7 @@ const serialize = (node: CustomElement | CustomText, children: string) => {
   }
 
   if (node.type === ALERT_VARIABLE_ELEMENT_TYPE) {
-    return `<span type="${node.type}" variableType="${node.variableType}" variableName="${node.variableName}" variableValue="${ALERT_VARIABLE_START_TAG}${node.variableName}${ALERT_VARIABLE_END_TAG}">${ALERT_VARIABLE_START_TAG}${node.variableName}${ALERT_VARIABLE_END_TAG}${children}</span>`;
+    return `<span type="${node.type}" variableType="${node.variableType}" variableName="${node.variableName}">${ALERT_VARIABLE_START_TAG}${node.variableName}${ALERT_VARIABLE_END_TAG}${children}</span>`;
   }
 
   return undefined;
@@ -490,7 +488,7 @@ const deSerialize = (
         type: ALERT_VARIABLE_ELEMENT_TYPE,
         variableType: el.getAttribute('variableType'),
         variableName: el.getAttribute('variableName'),
-        variableValue: el.getAttribute('variableValue'),
+        variableValue: el.textContent,
         view: 'EDIT'
       },
       [{ text: '' }]
