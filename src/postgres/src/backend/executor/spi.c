@@ -35,6 +35,9 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 
 /*
  * These global variables are part of the API for various SPI functions
