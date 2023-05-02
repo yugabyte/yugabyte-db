@@ -38,6 +38,9 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 PG_MODULE_MAGIC;
 
 void _PG_init(void);
