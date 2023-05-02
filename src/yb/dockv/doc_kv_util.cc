@@ -58,6 +58,7 @@ Result<size_t> CheckHybridTimeSizeAndValueType(const Slice& key) {
 namespace {
 
 // Finds a compile-time constant character in string.
+// Returns end if the character is not found.
 template<char kChar>
 const char* Find(const char* begin, const char* end) {
   if (kChar == 0) {
@@ -112,9 +113,20 @@ Status DecodeEncodedStr(Slice* slice, Out* result) {
   const char* end = p + slice->size();
   auto old_size = result->size();
 
-  while (p != end) {
+  // Loop invariant: remaining bytes to be processed are [p, end)
+  do {
     auto stop = Find<kEndOfString>(p, end);
-    if (PREDICT_FALSE(stop > end - 1)) {
+    if (PREDICT_FALSE(stop >= end - 1)) {
+      if (stop == end) {
+        if (slice->empty()) {
+          return STATUS(Corruption, "Encoded string is empty");
+        }
+        return STATUS(
+            Corruption, StringPrintf(
+                            "Encoded string is not terminated with \\0x%02x\\0x%02x", kEndOfString,
+                            kEndOfString));
+      }
+      DCHECK_EQ(stop, end - 1);
       return STATUS(
           Corruption, StringPrintf("Encoded string ends with only one \\0x%02x ", kEndOfString));
     }
@@ -123,17 +135,17 @@ Status DecodeEncodedStr(Slice* slice, Out* result) {
       p = stop + 2;
       break;
     }
-    if (stop[1] != kEndOfStringEscape) {
+    if (PREDICT_FALSE(stop[1] != kEndOfStringEscape)) {
       return STATUS(
           Corruption,
           StringPrintf(
               "Invalid sequence in encoded string: "
               R"#(\0x%02x\0x%02x (must be either \0x%02x\0x%02x or \0x%02x\0x%02x))#",
-              kEndOfString, *p, kEndOfString, kEndOfString, kEndOfString, kEndOfStringEscape));
+              kEndOfString, stop[1], kEndOfString, kEndOfString, kEndOfString, kEndOfStringEscape));
     }
     result->append(p, stop + 1);
     p = stop + 2;
-  }
+  } while (p != end);
   slice->remove_prefix(p - slice->cdata());
   Xor<kEndOfString>(result->data() + old_size, result->data() + result->size());
   return Status::OK();
