@@ -1,6 +1,7 @@
 ---
 title: Redpanda tutorial for YugabyteDB CDC
 headerTitle: Redpanda
+linkTitle: Redpanda
 description: Redpanda for Change Data Capture in YugabyteDB.
 headcontent: 
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
