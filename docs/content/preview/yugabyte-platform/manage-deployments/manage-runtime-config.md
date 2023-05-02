@@ -1,7 +1,7 @@
 ---
 title: Manage runtime configuration settings
 headerTitle: Manage runtime configuration settings
-linkTitle: Manage Runtime configuration
+linkTitle: Manage runtime configuration
 description: Manage your universes by setting runtime configuration keys based on different scopes.
 menu:
   preview_yugabyte-platform:
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere has a configuration mechanism that is fully compatible with the existing [typesafe config](https://github.com/lightbend/config) format and has the following additional properties:
+YugabyteDB Anywhere has a runtime configuration mechanism that is fully compatible with the existing [typesafe config](https://github.com/lightbend/config) format and has the following additional properties:
 
 - Runtime/Dynamic: The configuration keys can be set or changed at runtime via the API.
 - Persistent: The site-specific configuration changes won't be lost in an install.
@@ -27,6 +27,8 @@ Currently, the scopes can be categorized as follows:
 | Customer | Applies to a specific customer, persists across installs and any value defined in this scope overrides defaults in Global scope.| Super Admin, Admin |
 | Provider | Applies to a specific provider, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin, Admin |
 | Universe | Applies to a specific universe, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin, Admin |
+
+For more details about the flags and their scopes, refer to the [list of supported runtime configuration flags](https://github.com/yugabyte/yugabyte-db/blob/2.17.3/managed/RUNTIME-FLAGS.md)
 
 ## Edit or reset runtime configuration keys
 
@@ -44,9 +46,4 @@ To modify the `Enforce Auth` runtime configuration key (applicable only at Globa
 1. In the **Search** bar, enter "Enforce Auth".
 1. Click **Actions** and choose **Edit Configuration**.
 1. Change the **Config value** to "True" and click **Save**.
-To verify the change, navigate to **Universes**, click **Create Universe**, and verify that for the  **Authentication Settings** section, "Enable YSQL Auth" is not be displayed and you are must enter a password in the **YSQL Password** and **Confirm Password** fields.
-
-## Learn more
-
-- [List of supported runtime configuration flags](https://github.com/yugabyte/yugabyte-db/blob/2.17.3/managed/RUNTIME-FLAGS.md)
-
+1. To verify the change, navigate to **Universes**, click **Create Universe**, and verify that for the  **Authentication Settings** section, "Enable YSQL Auth" is not be displayed and you are must enter a password in the **YSQL Password** and **Confirm Password** fields.
