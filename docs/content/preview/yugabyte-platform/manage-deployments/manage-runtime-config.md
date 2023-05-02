@@ -42,5 +42,6 @@ Consider you want to modify the runtime configuration key: `Enforce Auth` (appli
 
 1. From your YugabyteDB Anywhere UI, navigate to **Admin** > **Advanced** and select the **Global Configuration** or **Customer Configuration** tab.
 1. From the **Search** bar, enter "Enforce Auth".
-1. From the **Actions** dropdown, select **Edit Configuration** and change the **Config value** to "True".
+1. Click **Actions** and choose **Edit Configuration**.
+1. Change the **Config value** to "True" and click **Save**.
 1. Navigate to **Universes**, click **Create Universe**, and verify that for the  **Authentication Settings** section, "Enable YSQL Auth" will not be displayed and you are forced to enter a password for **YSQL Password** and **Confirm Password** fields.
