@@ -14,7 +14,7 @@ type: docs
 YugabyteDB Anywhere has a configuration mechanism that is fully compatible with the existing [typesafe config](https://github.com/lightbend/config) format and has the following additional properties:
 
 - Runtime/Dynamic: The configuration keys can be set or changed at runtime via the API.
-- Persistent: The site specific configuration changes won't be lost in an install.
+- Persistent: The site-specific configuration changes won't be lost in an install.
 - Backwards compatibility: Fully compatible with existing mechanism with default values residing in the file `application.conf` or `reference.conf`.
 - Scoped: Configuration can be applied to a smaller scope, for example, even a single universe can be configured to have certain features.
 - Hierarchical: Scopes are nested and allow for overriding outer scope values in inner scope.
