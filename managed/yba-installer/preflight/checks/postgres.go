@@ -120,6 +120,7 @@ func (p postgresCheck) testExistingPostgres() error {
 	if !slices.Contains(p.supportedMajorVersions, pgMajorVersion) {
 		return fmt.Errorf("Unsupported postgres major version %d", pgMajorVersion)
 	}
+	log.Debug("validated existing postgres version")
 	return nil
 }
 
@@ -133,5 +134,6 @@ func (p postgresCheck) testPgcryptoAvailable() error {
 	if err != nil {
 		log.Error("could not create pgcrypto extension: " + err.Error())
 	}
+	log.Debug("found and loaded pgcrypto module")
 	return err
 }
