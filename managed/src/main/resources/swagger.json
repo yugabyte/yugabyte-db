@@ -7210,6 +7210,12 @@
           "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.SshUser instead. Only supported in create request",
           "type" : "string"
         },
+        "usabilityState" : {
+          "description" : "Current usability state",
+          "enum" : [ "READY", "UPDATING", "ERROR" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
         "uuid" : {
           "description" : "Provider uuid",
           "format" : "uuid",
@@ -15748,6 +15754,12 @@
           "required" : false,
           "type" : "boolean"
         }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "ignoreValidationErrors",
+          "required" : false,
+          "type" : "boolean"
+        }, {
           "in" : "query",
           "name" : "request",
           "required" : false
@@ -16213,6 +16225,12 @@
           "default" : false,
           "in" : "query",
           "name" : "validate",
+          "required" : false,
+          "type" : "boolean"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "ignoreValidationErrors",
           "required" : false,
           "type" : "boolean"
         }, {

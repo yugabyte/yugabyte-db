@@ -68,6 +68,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
             cloudProviderFormData.code,
             cloudProviderFormData.name,
             reqProvider,
+            false,
             false);
     CloudInfoInterface.mayBeMassageResponse(provider);
     auditService()

@@ -7155,6 +7155,12 @@
           },
           "type" : "array"
         },
+        "usabilityState" : {
+          "description" : "Current usability state",
+          "enum" : [ "READY", "UPDATING", "ERROR" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
         "uuid" : {
           "description" : "Provider uuid",
           "format" : "uuid",
@@ -15680,6 +15686,12 @@
           "required" : false,
           "type" : "boolean"
         }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "ignoreValidationErrors",
+          "required" : false,
+          "type" : "boolean"
+        }, {
           "in" : "query",
           "name" : "request",
           "required" : false
@@ -16145,6 +16157,12 @@
           "default" : false,
           "in" : "query",
           "name" : "validate",
+          "required" : false,
+          "type" : "boolean"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "ignoreValidationErrors",
           "required" : false,
           "type" : "boolean"
         }, {

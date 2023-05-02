@@ -83,6 +83,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -161,7 +162,8 @@ public class CloudProviderHandler {
       Common.CloudType providerCode,
       String providerName,
       Provider reqProvider,
-      boolean validate) {
+      boolean validate,
+      boolean ignoreValidationErrors) {
     Provider existentProvider = Provider.get(customer.getUuid(), providerName, providerCode);
     if (existentProvider != null) {
       throw new PlatformServiceException(
@@ -179,8 +181,19 @@ public class CloudProviderHandler {
           BAD_REQUEST,
           String.format("Invalid %s Credentials.", providerCode.toString().toUpperCase()));
     }
+    JsonNode errors = null;
     if (validate) {
-      providerValidator.validate(reqProvider);
+      try {
+        providerValidator.validate(reqProvider);
+      } catch (PlatformServiceException e) {
+        LOG.error(
+            "Received validation error,  ignoreValidationErrors=" + ignoreValidationErrors, e);
+        if (!ignoreValidationErrors) {
+          throw e;
+        } else {
+          errors = e.getContentJson();
+        }
+      }
     }
     Provider provider =
         Provider.create(customer.getUuid(), providerCode, providerName, reqProvider.getDetails());
@@ -200,6 +213,11 @@ public class CloudProviderHandler {
         maybeUpdateCloudProviderConfig(provider, providerConfig);
       }
     }
+    provider.setUsabilityState(
+        providerCode.isRequiresBootstrap()
+            ? Provider.UsabilityState.UPDATING
+            : Provider.UsabilityState.READY);
+    provider.setLastValidationErrors(errors);
     provider.save();
 
     return provider;
@@ -865,13 +883,23 @@ public class CloudProviderHandler {
   }
 
   public UUID editProvider(
-      Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
+      Customer customer,
+      Provider provider,
+      Provider editProviderReq,
+      boolean validate,
+      boolean ignoreValidationErrors) {
     return providerEditRestrictionManager.tryEditProvider(
-        provider.getUuid(), () -> doEditProvider(customer, provider, editProviderReq, validate));
+        provider.getUuid(),
+        () ->
+            doEditProvider(customer, provider, editProviderReq, validate, ignoreValidationErrors));
   }
 
   private UUID doEditProvider(
-      Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
+      Customer customer,
+      Provider provider,
+      Provider editProviderReq,
+      boolean validate,
+      boolean ignoreValidationErrors) {
     provider.setVersion(editProviderReq.getVersion());
     // We cannot change the provider type for the given provider.
     if (!provider.getCloudCode().equals(editProviderReq.getCloudCode())) {
@@ -896,7 +924,8 @@ public class CloudProviderHandler {
         providerModified
             | addOrRemoveAZs(editProviderReq, provider)
             | removeAndUpdateRegions(editProviderReq, provider)
-            | updateProviderData(customer, provider, editProviderReq, validate)
+            | updateProviderData(
+                customer, provider, editProviderReq, validate, ignoreValidationErrors)
             | updateAccessKeys(editProviderReq, provider);
 
     if (!providerModified && taskUUID == null) {
@@ -908,7 +937,11 @@ public class CloudProviderHandler {
 
   @Transactional
   private boolean updateProviderData(
-      Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
+      Customer customer,
+      Provider provider,
+      Provider editProviderReq,
+      boolean validate,
+      boolean ignoreValidationErrors) {
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(editProviderReq);
     boolean updatedProviderDetails = false;
     boolean updatedProviderConfig = false;
@@ -919,9 +952,31 @@ public class CloudProviderHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid %s Credentials.", provider.getCode().toUpperCase()));
     }
+    JsonNode newErrors = null;
+    Provider.UsabilityState state = Provider.UsabilityState.READY;
+
     if (validate) {
-      providerValidator.validate(editProviderReq);
+      try {
+        providerValidator.validate(editProviderReq);
+      } catch (PlatformServiceException e) {
+        LOG.error(
+            "Received validation error,  ignoreValidationErrors=" + ignoreValidationErrors, e);
+        newErrors = e.getContentJson();
+        if (!ignoreValidationErrors) {
+          provider.setLastValidationErrors(newErrors);
+          provider.save();
+          throw e;
+        }
+      }
     }
+    boolean validationStateChanged = false;
+    if (!Objects.equals(provider.getLastValidationErrors(), newErrors)
+        || provider.getUsabilityState() != state) {
+      provider.setLastValidationErrors(newErrors);
+      provider.setUsabilityState(state);
+      validationStateChanged = true;
+    }
+
     if (!provider.getName().equals(editProviderReq.getName())) {
       updatedProviderDetails = true;
       List<Provider> providers =
@@ -948,7 +1003,7 @@ public class CloudProviderHandler {
       updatedProviderConfig = true;
     }
     boolean providerDataUpdated = updatedProviderConfig || updatedProviderDetails;
-    if (providerDataUpdated) {
+    if (providerDataUpdated || validationStateChanged) {
       // Should not increment the version number in case of no change.
       provider.save();
     }
