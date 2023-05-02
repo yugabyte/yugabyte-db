@@ -2013,7 +2013,9 @@ Status CatalogManager::SetupUniverseReplication(
     }
   }
 
-  std::unordered_map<TableId, std::string> table_id_to_bootstrap_id;
+  SetupReplicationInfo setup_info;
+  setup_info.transactional = req->transactional();
+  auto& table_id_to_bootstrap_id = setup_info.table_bootstrap_ids;
 
   if (!req->producer_bootstrap_ids().empty()) {
     if (req->producer_table_ids().size() != req->producer_bootstrap_ids_size()) {
@@ -2030,7 +2032,7 @@ Status CatalogManager::SetupUniverseReplication(
 
   auto ri = VERIFY_RESULT(CreateUniverseReplicationInfoForProducer(
       req->producer_id(), req->producer_master_addresses(), req->producer_table_ids(),
-      req->transactional()));
+      setup_info.transactional));
 
   // Initialize the CDC Stream by querying the Producer server for RPC sanity checks.
   auto result = ri->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
@@ -2050,7 +2052,7 @@ Status CatalogManager::SetupUniverseReplication(
           req->producer_table_ids(i), tables_info,
           Bind(
               &CatalogManager::GetColocatedTabletSchemaCallback, Unretained(this), ri->id(),
-              tables_info, table_id_to_bootstrap_id));
+              tables_info, setup_info));
     } else if (IsTablegroupParentTableId(req->producer_table_ids(i))) {
       auto tablegroup_id = GetTablegroupIdFromParentTableId(req->producer_table_ids(i));
       auto tables_info = std::make_shared<std::vector<client::YBTableInfo>>();
@@ -2058,14 +2060,14 @@ Status CatalogManager::SetupUniverseReplication(
           tablegroup_id, tables_info,
           Bind(
               &CatalogManager::GetTablegroupSchemaCallback, Unretained(this), ri->id(), tables_info,
-              tablegroup_id, table_id_to_bootstrap_id));
+              tablegroup_id, setup_info));
     } else {
       auto table_info = std::make_shared<client::YBTableInfo>();
       s = cdc_rpc->client()->GetTableSchemaById(
           req->producer_table_ids(i), table_info,
           Bind(
               &CatalogManager::GetTableSchemaCallback, Unretained(this), ri->id(), table_info,
-              table_id_to_bootstrap_id));
+              setup_info));
     }
 
     if (!s.ok()) {
@@ -2320,7 +2322,8 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
 
 void CatalogManager::GetTableSchemaCallback(
     const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& producer_info,
-    const std::unordered_map<TableId, std::string>& table_bootstrap_ids, const Status& s) {
+    const SetupReplicationInfo& setup_info,
+    const Status& s) {
   // First get the universe.
   scoped_refptr<UniverseReplicationInfo> universe;
   {
@@ -2338,7 +2341,7 @@ void CatalogManager::GetTableSchemaCallback(
   auto status = s;
   if (status.ok()) {
     action = "validating table schema and creating CDC stream";
-    status = ValidateTableAndCreateCdcStreams(universe, producer_info, table_bootstrap_ids);
+    status = ValidateTableAndCreateCdcStreams(universe, producer_info, setup_info);
   }
 
   if (!status.ok()) {
@@ -2351,7 +2354,7 @@ void CatalogManager::GetTableSchemaCallback(
 Status CatalogManager::ValidateTableAndCreateCdcStreams(
     scoped_refptr<UniverseReplicationInfo> universe,
     const std::shared_ptr<client::YBTableInfo>& producer_info,
-    const std::unordered_map<TableId, std::string>& producer_bootstrap_ids) {
+      const SetupReplicationInfo& setup_info) {
   auto l = universe->LockForWrite();
   if (producer_info->table_name.namespace_name() == master::kSystemNamespaceName) {
     auto status = STATUS(IllegalState, "Cannot replicate system tables.");
@@ -2364,9 +2367,10 @@ Status CatalogManager::ValidateTableAndCreateCdcStreams(
   l.Commit();
 
   GetTableSchemaResponsePB consumer_schema;
-  RETURN_NOT_OK(ValidateTableSchema(producer_info, producer_bootstrap_ids, &consumer_schema));
+  RETURN_NOT_OK(ValidateTableSchema(producer_info, setup_info, &consumer_schema));
 
   // If Bootstrap Id is passed in then it must be provided for all tables.
+  const auto& producer_bootstrap_ids = setup_info.table_bootstrap_ids;
   SCHECK(
       producer_bootstrap_ids.empty() || producer_bootstrap_ids.contains(producer_info->table_id),
       NotFound,
@@ -2389,7 +2393,7 @@ void CatalogManager::GetTablegroupSchemaCallback(
     const std::string& universe_id,
     const std::shared_ptr<std::vector<client::YBTableInfo>>& infos,
     const TablegroupId& producer_tablegroup_id,
-    const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
+    const SetupReplicationInfo& setup_info,
     const Status& s) {
   // First get the universe.
   scoped_refptr<UniverseReplicationInfo> universe;
@@ -2428,7 +2432,7 @@ void CatalogManager::GetTablegroupSchemaCallback(
     // Validate each of the member table in the tablegroup.
     GetTableSchemaResponsePB resp;
     Status table_status = ValidateTableSchema(
-        std::make_shared<client::YBTableInfo>(info), table_bootstrap_ids, &resp);
+        std::make_shared<client::YBTableInfo>(info), setup_info, &resp);
 
     if (!table_status.ok()) {
       MarkUniverseReplicationFailed(universe, table_status);
@@ -2513,8 +2517,8 @@ void CatalogManager::GetTablegroupSchemaCallback(
     return;
   }
 
-  Status status =
-      IsBootstrapRequiredOnProducer(universe, producer_tablegroup_id, table_bootstrap_ids);
+  Status status = IsBootstrapRequiredOnProducer(
+      universe, producer_tablegroup_id, setup_info.table_bootstrap_ids);
   if (!status.ok()) {
     MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table "
@@ -2543,7 +2547,7 @@ void CatalogManager::GetTablegroupSchemaCallback(
 
   status = AddValidatedTableAndCreateCdcStreams(
       universe,
-      table_bootstrap_ids,
+      setup_info.table_bootstrap_ids,
       producer_parent_table_id,
       consumer_parent_table_id,
       colocated_schema_versions);
@@ -2556,7 +2560,8 @@ void CatalogManager::GetTablegroupSchemaCallback(
 
 void CatalogManager::GetColocatedTabletSchemaCallback(
     const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& infos,
-    const std::unordered_map<TableId, std::string>& table_bootstrap_ids, const Status& s) {
+    const SetupReplicationInfo& setup_info,
+    const Status& s) {
   // First get the universe.
   scoped_refptr<UniverseReplicationInfo> universe;
   {
@@ -2602,7 +2607,7 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     // Validate each table, and get the parent colocated table id for the consumer.
     GetTableSchemaResponsePB resp;
     Status table_status = ValidateTableSchema(
-        std::make_shared<client::YBTableInfo>(info), table_bootstrap_ids, &resp);
+        std::make_shared<client::YBTableInfo>(info), setup_info, &resp);
     if (!table_status.ok()) {
       MarkUniverseReplicationFailed(universe, table_status);
       LOG(ERROR) << "Found error while validating table schema for table " << info.table_id << ": "
@@ -2613,9 +2618,8 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     producer_parent_table_ids.insert(GetColocatedDbParentTableId(info.table_name.namespace_id()));
     consumer_parent_table_ids.insert(
         GetColocatedDbParentTableId(resp.identifier().namespace_().id()));
-    colocated_schema_versions.emplace_back(resp.schema().colocated_table_id().colocation_id(),
-                                           info.schema.version(),
-                                           resp.version());
+    colocated_schema_versions.emplace_back(
+        resp.schema().colocated_table_id().colocation_id(), info.schema.version(), resp.version());
   }
 
   // Verify that we only found one producer and one consumer colocated parent table id.
@@ -2663,7 +2667,7 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
   }
 
   Status status = IsBootstrapRequiredOnProducer(
-      universe, *producer_parent_table_ids.begin(), table_bootstrap_ids);
+      universe, *producer_parent_table_ids.begin(), setup_info.table_bootstrap_ids);
   if (!status.ok()) {
     MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table "
@@ -2672,7 +2676,7 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
 
   status = AddValidatedTableAndCreateCdcStreams(
       universe,
-      table_bootstrap_ids,
+      setup_info.table_bootstrap_ids,
       *producer_parent_table_ids.begin(),
       *consumer_parent_table_ids.begin(),
       colocated_schema_versions);
