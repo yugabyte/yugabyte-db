@@ -23,9 +23,7 @@ import {
   clearEditor,
   DefaultElement,
   isBlockActive,
-  isEditorDirty,
-  isEditorEmpty,
-  isMarkActive,
+  isEditorDirty, isMarkActive,
   IYBEditor,
   resetEditorHistory,
   TextDecorators,
@@ -356,6 +354,9 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                     onClick={() => {
                       clearEditor(bodyEditorRef.current!);
                       bodyEditorRef.current!.insertNode(DefaultElement);
+
+                      clearEditor(subjectEditorRef.current!);
+                      subjectEditorRef.current!.insertNode(DefaultElement);
                     }}
                     data-testid="webhook-clear-template"
                   >
