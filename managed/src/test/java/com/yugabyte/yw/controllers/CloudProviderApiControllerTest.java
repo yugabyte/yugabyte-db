@@ -855,7 +855,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}]}";
 
     Result result =
-        assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.getUuid()));
+        assertPlatformException(
+            () -> editProvider(Json.parse(jsonString), provider.getUuid(), false));
     assertBadRequest(result, "Required field vnet name (VPC ID) for region: us-west-1");
   }
 

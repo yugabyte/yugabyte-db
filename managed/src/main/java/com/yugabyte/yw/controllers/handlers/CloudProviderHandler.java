@@ -840,7 +840,7 @@ public class CloudProviderHandler {
           regions.add(region);
           bootstrapKubernetesProvider(provider, editProviderReq, regions, true);
         } else {
-          regionHandler.editRegion(
+          regionHandler.doEditRegion(
               provider.getCustomerUUID(),
               provider.getUuid(),
               oldRegion.getUuid(),
@@ -849,7 +849,7 @@ public class CloudProviderHandler {
         result = true;
       } else if (oldRegion != null && !region.isActive() && oldRegion.isActive()) {
         LOG.debug("Deleting region {}", region.getCode());
-        regionHandler.deleteRegion(
+        regionHandler.doDeleteRegion(
             provider.getCustomerUUID(), provider.getUuid(), region.getUuid());
         result = true;
       }
@@ -921,12 +921,14 @@ public class CloudProviderHandler {
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     UUID taskUUID = null;
-    boolean providerModified = false;
+    boolean providerModified =
+        updateProviderData(customer, provider, editProviderReq, validate, ignoreValidationErrors);
     if (provider.getCloudCode().equals(CloudType.kubernetes)) {
       // Edit the kubernetes provider
       LOG.debug("Trying to add regions to kubernetes provider");
       // Updating the flag based on if we have regions to add or not.
-      providerModified = editKubernetesProvider(provider, editProviderReq, regionsToAdd);
+      providerModified =
+          providerModified | editKubernetesProvider(provider, editProviderReq, regionsToAdd);
     }
     if (!regionsToAdd.isEmpty() && !provider.getCloudCode().equals(CloudType.kubernetes)) {
       // TODO: PLAT-7258 allow adding region for auto-creating VPC case
@@ -936,8 +938,6 @@ public class CloudProviderHandler {
         providerModified
             | addOrRemoveAZs(editProviderReq, provider)
             | removeAndUpdateRegions(editProviderReq, provider)
-            | updateProviderData(
-                customer, provider, editProviderReq, validate, ignoreValidationErrors)
             | updateAccessKeys(editProviderReq, provider);
 
     if (!providerModified && taskUUID == null) {
@@ -966,6 +966,10 @@ public class CloudProviderHandler {
     }
     JsonNode newErrors = null;
     Provider.UsabilityState state = Provider.UsabilityState.READY;
+
+    if (provider.getCloudCode().equals(CloudType.kubernetes)) {
+      validateKubernetesProviderConfig(editProviderReq);
+    }
 
     if (validate) {
       try {
@@ -1108,7 +1112,6 @@ public class CloudProviderHandler {
 
   public boolean editKubernetesProvider(
       Provider provider, Provider editProviderReq, Set<Region> regionsToAdd) {
-    validateKubernetesProviderConfig(editProviderReq);
     if (regionsToAdd == null || regionsToAdd.size() == 0) {
       return false;
     }
@@ -1239,7 +1242,7 @@ public class CloudProviderHandler {
           } else if (!zone.isActive() && currentAZ.isActive()) {
             LOG.debug(
                 "Deleting zone {} from region {}", currentAZ.getCode(), currentRegion.getCode());
-            availabilityZoneHandler.deleteZone(currentAZ.getUuid(), currentRegion.getUuid());
+            availabilityZoneHandler.doDeleteZone(currentAZ.getUuid(), currentRegion.getUuid());
             result = true;
           } else if (currentAZ.shouldBeUpdated(zone) && currentAZ.isActive()) {
             LOG.debug("updating zone {}", zone.getCode());
@@ -1248,7 +1251,7 @@ public class CloudProviderHandler {
               azList.add(zone);
               bootstrapKubernetesProvider(provider, editProviderReq, currentRegion, azList, true);
             } else {
-              availabilityZoneHandler.editZone(
+              availabilityZoneHandler.doEditZone(
                   currentAZ.getUuid(),
                   currentRegion.getUuid(),
                   az -> {
