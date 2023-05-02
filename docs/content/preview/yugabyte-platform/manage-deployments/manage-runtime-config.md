@@ -45,3 +45,8 @@ To modify the `Enforce Auth` runtime configuration key (applicable only at Globa
 1. Click **Actions** and choose **Edit Configuration**.
 1. Change the **Config value** to "True" and click **Save**.
 To verify the change, navigate to **Universes**, click **Create Universe**, and verify that for the  **Authentication Settings** section, "Enable YSQL Auth" is not be displayed and you are must enter a password in the **YSQL Password** and **Confirm Password** fields.
+
+## Learn more
+
+- [List of supported runtime configuration flags](https://github.com/yugabyte/yugabyte-db/blob/2.17.3/managed/RUNTIME-FLAGS.md)
+
