@@ -6851,6 +6851,10 @@ void CatalogManager::EnableTabletSplitting(const std::string& feature) {
   DisableTabletSplittingInternal(MonoDelta::FromMilliseconds(0), feature);
 }
 
+HybridTime CatalogManager::AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+  return snapshot_coordinator_.AllowedHistoryCutoffProvider(metadata);
+}
+
 }  // namespace enterprise
 }  // namespace master
 }  // namespace yb

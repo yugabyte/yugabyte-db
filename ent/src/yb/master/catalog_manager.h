@@ -276,6 +276,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void ScheduleCDCParentTabletDeletionTask();
 
+  HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) override;
+
  private:
   friend class SnapshotLoader;
   friend class yb::master::ClusterLoadBalancer;

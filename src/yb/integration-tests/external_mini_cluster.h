@@ -863,7 +863,13 @@ T ExternalMiniCluster::GetProxy(const ExternalDaemon* daemon) {
 
 Status RestartAllMasters(ExternalMiniCluster* cluster);
 
-Status CompactTablets(ExternalMiniCluster* cluster);
+Status CompactTablets(
+    ExternalMiniCluster* cluster,
+    const MonoDelta& timeout = MonoDelta::FromSeconds(60* kTimeMultiplier));
+
+Status FlushAndCompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout);
+
+Status CompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout);
 
 }  // namespace yb
 

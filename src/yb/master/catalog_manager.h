@@ -946,6 +946,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CheckIfPitrActive(
     const CheckIfPitrActiveRequestPB* req, CheckIfPitrActiveResponsePB* resp);
 
+  virtual HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+    return HybridTime();
+  }
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
