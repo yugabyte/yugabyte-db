@@ -11,12 +11,14 @@
 // under the License.
 
 #include "yb/cdc/cdc_service.h"
+
 #include "yb/client/meta_cache.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
+#include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/pg_system_attr.h"
@@ -24,31 +26,33 @@
 #include "yb/common/ql_wire_protocol.h"
 
 #include "yb/docdb/docdb_pgapi.h"
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/bind_helpers.h"
+
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog-internal.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/ysql_tablegroup_manager.h"
+
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
+#include "yb/util/thread.h"
 #include "yb/util/trace.h"
-#include "yb/client/schema.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/master/catalog_manager-internal.h"
-#include "yb/client/yb_op.h"
-#include "yb/master/master_util.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/thread.h"
 
 using std::string;
 using namespace std::literals;
@@ -5174,29 +5178,19 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
         // Check parent entry, if it doesn't exist, then it was already deleted.
         // If the entry for the tablet does not exist, then we can go ahead with deletion of the
         // tablet.
-        auto read_op = cdc_state_table.NewReadOp();
-        auto* read_req = read_op->mutable_request();
-        QLAddStringHashValue(read_req, tablet_id);
-        auto cond = read_req->mutable_where_expr()->mutable_condition();
-        cond->set_op(QLOperator::QL_OP_AND);
-        QLAddStringCondition(
-            cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream);
-        cdc_state_table.AddColumns({master::kCdcLastReplicationTime}, read_req);
-        cdc_state_table.AddColumns({master::kCdcCheckpoint}, read_req);
-
-        // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-        RETURN_NOT_OK(session->TEST_ReadSync(read_op));
-        auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
+        auto row = VERIFY_RESULT(cdc::FetchOptionalCdcStreamInfo(
+            &cdc_state_table, session.get(), tablet_id, stream,
+            {master::kCdcLastReplicationTime, master::kCdcCheckpoint}));
 
         // This means we already deleted the entry for this stream in a previous iteration.
-        if (row_block->row_count() == 0) {
+        if (!row) {
           VLOG(2) << "Did not find an entry corresponding to the tablet: " << tablet_id
                   << ", and stream: " << stream << ", in the cdc_state table";
           streams_already_deleted.push_back(stream);
           continue;
         }
         if (request_source == cdc::XCLUSTER) {
-          if (row_block->row(0).column(0).IsNull()) {
+          if (row->column(0).IsNull()) {
             // Still haven't processed this tablet since timestamp is null, no need to check
             // children.
             break;
@@ -5209,19 +5203,19 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
           // 2. The checkpoint is 0.0 and 'CdcLastReplicationTime' is Null (when the tablet was a
           // result of a tablet split, and was added to the cdc_state table when the tablet split is
           // initiated.)
-          auto checkpoint_result = OpId::FromString(row_block->row(0).column(1).string_value());
+          auto checkpoint_result = OpId::FromString(row->column(1).string_value());
           if (checkpoint_result.ok()) {
             OpId checkpoint = *checkpoint_result;
 
             if (checkpoint == OpId::Invalid() ||
-                (checkpoint == OpId::Min() && row_block->row(0).column(0).IsNull())) {
+                (checkpoint == OpId::Min() && row->column(0).IsNull())) {
               VLOG(2) << "The stream: " << stream << ", is not active for tablet: " << tablet_id;
               streams_to_delete.push_back(stream);
               streams_where_parent_unpolled.push_back(stream);
               continue;
             }
           } else {
-            LOG(WARNING) << "Read invalid op id " << row_block->row(0).column(1).string_value()
+            LOG(WARNING) << "Read invalid op id " << row->column(1).string_value()
                          << " for tablet " << tablet_id << ": " << checkpoint_result.status()
                          << "from cdc_state table.";
           }
@@ -5232,25 +5226,17 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
         // tablet.
         bool found_all_children = true;
         for (auto& child_tablet : hidden_tablet.split_tablets_) {
-          auto read_op = cdc_state_table.NewReadOp();
-          auto read_req = read_op->mutable_request();
-          QLAddStringHashValue(read_req, child_tablet);
-          auto cond = read_req->mutable_where_expr()->mutable_condition();
-          cond->set_op(QLOperator::QL_OP_AND);
-          QLAddStringCondition(
-              cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream);
-          cdc_state_table.AddColumns({master::kCdcLastReplicationTime}, read_req);
-          // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-          RETURN_NOT_OK(session->TEST_ReadSync(read_op));
-          row_block = ql::RowsResult(read_op.get()).GetRowBlock();
+          auto row = VERIFY_RESULT(cdc::FetchOptionalCdcStreamInfo(
+              &cdc_state_table, session.get(), child_tablet, stream,
+              {master::kCdcLastReplicationTime}));
 
-          if (row_block->row_count() < 1) {
+          if (!row) {
             // This tablet stream still hasn't been found yet.
             found_all_children = false;
             break;
           }
 
-          const auto& last_replicated_time = row_block->row(0).column(0);
+          const auto& last_replicated_time = row->column(0);
           // Check checkpoint to ensure that there has been a poll for this tablet, or if the
           // split has been reported.
           if (last_replicated_time.IsNull()) {
