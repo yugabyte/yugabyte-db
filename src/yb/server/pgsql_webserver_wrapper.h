@@ -51,7 +51,6 @@ typedef struct rpczEntry {
   int64 query_start_timestamp;
   char *backend_type;
   uint8 backend_active;
-  int new_conn;
   char *backend_status;
   char *host;
   char *port;
@@ -80,11 +79,22 @@ typedef struct {
   const char *(*getTimestampTzToStr)(int64);
 } postgresCallbacks;
 
+typedef struct {
+  /* # of connections rejected due to the connection limit. */
+  int *too_many_conn;
+
+  /* maximum # of concurrent sql connections allowed. */
+  int *max_conn;
+
+  /* # of connections established since start of postmaster. */
+  uint64_t *new_conn;
+} YbConnectionMetrics;
+
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name);
 void RegisterRpczEntries(
     postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer,
-    int* too_many_conn_ptr, int* max_conn_ptr);
+    YbConnectionMetrics *conn_metrics_ptr);
 YBCStatus StartWebserver(struct WebserverWrapper *webserver);
 void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *));
 void RegisterResetYsqlStatStatements(void (*fn)());
