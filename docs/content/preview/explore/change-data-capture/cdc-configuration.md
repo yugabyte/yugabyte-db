@@ -1,4 +1,4 @@
-<!---
+---
 title: CDC configuration in YugabyteDB
 headerTitle: Advanced configuration
 linkTitle: Advanced configuration
@@ -20,4 +20,3 @@ type: docs
 ## YB-TServer configuration
 
 There are several flags you can use to fine-tune YugabyteDB's CDC behavior. These flags are documented in the [Change data capture flags](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) section of the yb-tserver reference page.
--->

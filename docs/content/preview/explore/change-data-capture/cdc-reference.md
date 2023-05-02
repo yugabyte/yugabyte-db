@@ -1,4 +1,4 @@
-<!---
+---
 title: CDC monitoring and debugging in YugabyteDB
 headerTitle: Reference
 linkTitle: Reference
@@ -17,4 +17,3 @@ type: docs
 
 The commands used to manipulate CDC DB streams are described in the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) reference documentation.
 
--->
