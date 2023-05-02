@@ -840,7 +840,7 @@ public class CloudProviderHandler {
           regions.add(region);
           bootstrapKubernetesProvider(provider, editProviderReq, regions, true);
         } else {
-          regionHandler.editRegion(
+          regionHandler.doEditRegion(
               provider.getCustomerUUID(),
               provider.getUuid(),
               oldRegion.getUuid(),
@@ -849,7 +849,7 @@ public class CloudProviderHandler {
         result = true;
       } else if (oldRegion != null && !region.isActive() && oldRegion.isActive()) {
         LOG.debug("Deleting region {}", region.getCode());
-        regionHandler.deleteRegion(
+        regionHandler.doDeleteRegion(
             provider.getCustomerUUID(), provider.getUuid(), region.getUuid());
         result = true;
       }
@@ -894,6 +894,7 @@ public class CloudProviderHandler {
     return result;
   }
 
+  @Transactional
   public UUID editProvider(
       Customer customer,
       Provider provider,
@@ -950,7 +951,6 @@ public class CloudProviderHandler {
     return taskUUID;
   }
 
-  @Transactional
   private boolean updateProviderData(
       Customer customer,
       Provider provider,
@@ -1242,7 +1242,7 @@ public class CloudProviderHandler {
           } else if (!zone.isActive() && currentAZ.isActive()) {
             LOG.debug(
                 "Deleting zone {} from region {}", currentAZ.getCode(), currentRegion.getCode());
-            availabilityZoneHandler.deleteZone(currentAZ.getUuid(), currentRegion.getUuid());
+            availabilityZoneHandler.doDeleteZone(currentAZ.getUuid(), currentRegion.getUuid());
             result = true;
           } else if (currentAZ.shouldBeUpdated(zone) && currentAZ.isActive()) {
             LOG.debug("updating zone {}", zone.getCode());
@@ -1251,7 +1251,7 @@ public class CloudProviderHandler {
               azList.add(zone);
               bootstrapKubernetesProvider(provider, editProviderReq, currentRegion, azList, true);
             } else {
-              availabilityZoneHandler.editZone(
+              availabilityZoneHandler.doEditZone(
                   currentAZ.getUuid(),
                   currentRegion.getUuid(),
                   az -> {
