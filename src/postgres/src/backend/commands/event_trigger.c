@@ -47,6 +47,9 @@
 #include "utils/syscache.h"
 #include "tcop/utility.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 typedef struct EventTriggerQueryState
 {
 	/* memory context for this state's objects */

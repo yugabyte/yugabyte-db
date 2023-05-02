@@ -44,6 +44,7 @@
 #include "commands/yb_profile.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "executor/ybcModifyTable.h"
+#include "pg_yb_utils.h"
 
 static void
 CheckProfileCatalogsExist()

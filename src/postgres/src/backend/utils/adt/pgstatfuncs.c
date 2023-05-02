@@ -32,6 +32,7 @@
 
 /* YB includes */
 #include "commands/progress.h"
+#include "pg_yb_utils.h"
 
 #define UINT32_ACCESS_ONCE(var)		 ((uint32)(*((volatile uint32 *)&(var))))
 
