@@ -14,13 +14,3 @@ type: docs
 ---
 
 ## Confluent Cloud
-
-## AWS MSK
-
-## Azure Events Hub
-
-## Redpanda
-
-## Google Pub/Sub
-
-## CDC examples

@@ -13,4 +13,4 @@ menu:
 type: docs
 ---
 
-## Azure Events Hub
+## Azure Event Hub
