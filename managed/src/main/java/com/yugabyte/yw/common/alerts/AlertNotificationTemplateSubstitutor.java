@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -40,15 +41,19 @@ public class AlertNotificationTemplateSubstitutor {
 
   private final PlaceholderSubstitutor placeholderSubstitutor;
 
+  private final boolean escapeHtml;
+
   public AlertNotificationTemplateSubstitutor(
       Alert alert,
       AlertChannel alertChannel,
       Map<String, String> labelDefaultValues,
-      boolean json) {
+      boolean json,
+      boolean escapeHtml) {
     this.alert = alert;
     this.alertChannel = alertChannel;
     this.placeholderDefaultValues = labelDefaultValues;
     this.json = json;
+    this.escapeHtml = escapeHtml;
     jsonStringSubstitutor =
         new PlaceholderSubstitutor("\"{{", "}}\"", key -> getPlaceholderValue(key, true));
     placeholderSubstitutor =
@@ -103,6 +108,9 @@ public class AlertNotificationTemplateSubstitutor {
 
   public String processValue(String value, boolean jsonString) {
     if (value != null) {
+      if (escapeHtml) {
+        value = StringEscapeUtils.escapeHtml4(value);
+      }
       return jsonString ? "\"" + value + "\"" : value;
     }
     if (json) {
