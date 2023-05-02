@@ -27,6 +27,7 @@ import { useCommonStyles } from '../../CommonStyles';
 import { HTMLSerializer } from '../../../../../components/YBEditor/serializers';
 import { createErrorMessage } from '../../../../universe/universe-form/utils/helpers';
 import { fillAlertVariablesWithValue } from '../ComposerUtils';
+import { convertNodesToText } from '../../../../../components/YBEditor/serializers/Text/TextSerializer';
 
 type EmailPreviewModalProps = {
   visible: boolean;
@@ -90,26 +91,32 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
 
   const fillTemplateWithValue = useMutation(
     ({
-      textTemplate,
-      titleTemplate,
+      subjectAsText,
+      bodyAsText,
+      subjectAsHTML,
+      bodyAsHTML,
       alertConfigUUID
     }: {
-      textTemplate: string;
-      titleTemplate: string;
+      subjectAsText: string;
+      bodyAsText: string;
+      subjectAsHTML: string;
+      bodyAsHTML: string;
       alertConfigUUID: string;
     }) =>
       previewAlertNotification(
         {
           type: 'Email',
-          textTemplate,
-          titleTemplate
+          textTemplate: bodyAsText,
+          titleTemplate: subjectAsText,
+          highlightedTextTemplate: bodyAsHTML,
+          highlightedTitleTemplate: subjectAsHTML
         },
         alertConfigUUID
       ),
     {
       onSuccess(data) {
-        fillAlertVariablesWithValue(bodyEditorRef.current!, data.data.text);
-        fillAlertVariablesWithValue(subjectEditorRef.current!, data.data.title);
+        fillAlertVariablesWithValue(bodyEditorRef.current!, data.data.highlightedText);
+        fillAlertVariablesWithValue(subjectEditorRef.current!, data.data.highlightedTitle);
       },
       onError(err) {
         toast.error(createErrorMessage(err));
@@ -130,12 +137,15 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
   });
 
   const previewTemplate = (alertConfigUUID: string) => {
-    const textTemplate = new HTMLSerializer(bodyEditorRef.current!).serializeElement(bodyValue);
-    const titleTemplate = new HTMLSerializer(subjectEditorRef.current!).serializeElement(
+    const bodyAsHTML = new HTMLSerializer(bodyEditorRef.current!).serializeElement(bodyValue);
+    const subjectAsHTML = new HTMLSerializer(subjectEditorRef.current!).serializeElement(
       subjectValue
     );
 
-    fillTemplateWithValue.mutate({ textTemplate, titleTemplate, alertConfigUUID });
+    const bodyAsText = convertNodesToText(bodyValue);
+    const subjectAsText = convertNodesToText(subjectValue);
+
+    fillTemplateWithValue.mutate({ bodyAsHTML, subjectAsHTML, bodyAsText, subjectAsText, alertConfigUUID });
   };
 
   return (
