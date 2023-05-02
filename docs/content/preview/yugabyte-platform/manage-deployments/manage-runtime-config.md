@@ -17,7 +17,7 @@ YugabyteDB Anywhere has a configuration mechanism that is fully compatible with 
 - Persistent: The site-specific configuration changes won't be lost in an install.
 - Backwards compatibility: Fully compatible with the existing mechanism with default values residing in the file `application.conf` or `reference.conf`.
 - Scoped: Configuration can be applied to a smaller scope, for example, even a single universe can be configured to have certain features.
-- Hierarchical: Scopes are nested and allow for overriding outer scope values in inner scope.
+- Hierarchical: Scopes are nested and allow for overriding outer scope values in the inner scope.
 
 Currently, the scopes can be categorized as follows:
 
