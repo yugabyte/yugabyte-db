@@ -3550,6 +3550,22 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_wait_for_backends_catalog_version_timeout", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Timeout in milliseconds to wait for backends to reach"
+						 " desired catalog versions."),
+			gettext_noop("The actual time spent may be longer than that by as"
+						 " much as master flag"
+						 " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms."
+						 " Setting to zero or less results in no timeout."
+						 " Currently used by concurrent CREATE INDEX."),
+			GUC_UNIT_MS
+		},
+		&yb_wait_for_backends_catalog_version_timeout,
+		5 * 60 * 1000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_planner_custom_plan_threshold", PGC_USERSET, QUERY_TUNING,
 			gettext_noop("The number of times to force custom plan generation "
 						 "for prepared statements before considering a "

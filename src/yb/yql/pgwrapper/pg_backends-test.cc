@@ -392,6 +392,55 @@ TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(ConnectionLimit), PgBackendsTe
   ASSERT_EQ(0, num_backends);
 }
 
+class PgBackendsTestPgTimeout : public PgBackendsTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgBackendsTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.insert(
+        options->extra_tserver_flags.end(),
+        {
+          Format("--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=$0",
+                 kRpcTimeout.ToMilliseconds()),
+          Format("--ysql_yb_wait_for_backends_catalog_version_timeout=$0",
+                 kTimeout.ToMilliseconds()),
+        });
+  }
+
+ protected:
+  const MonoDelta kRpcTimeout = 1s;
+  const MonoDelta kTimeout = 3s;
+};
+
+// Test ysql_yb_wait_for_backends_catalog_version_timeout.
+TEST_F_EX(PgBackendsTest,
+          YB_DISABLE_TEST_IN_TSAN(PgTimeout),
+          PgBackendsTestPgTimeout) {
+  LOG(INFO) << "Start connection that will be behind";
+  PGConn conn_begin = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_begin.Execute("BEGIN"));
+
+  LOG(INFO) << "Start create index connection";
+  PGConn conn_index = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_index.Execute("CREATE TABLE t (i int)"));
+
+  LOG(INFO) << "Do create index";
+  const auto start = MonoTime::Now();
+  Status s = conn_index.Execute("CREATE INDEX ON t (i)");
+  const auto end = MonoTime::Now();
+  ASSERT_NOK(s);
+  ASSERT_TRUE(s.IsNetworkError()) << s;
+  LOG(INFO) << "Error message: " << s.message().ToBuffer();
+  ASSERT_STR_CONTAINS(s.message().ToBuffer(), "timed out waiting for postgres backends");
+
+  const auto time_spent = end - start;
+  LOG(INFO) << "Time spent: " << time_spent;
+  // Add margin to cover time spent in setup (and teardown), such as creating the docdb index.  The
+  // timeout timer starts on the first wait-for-backends call, which is after committing the initial
+  // state.
+  constexpr auto kMargin = 5s;
+  ASSERT_LT(time_spent, kTimeout + kRpcTimeout + kMargin);
+}
+
 class PgBackendsTestRf3 : public PgBackendsTest {
  public:
   int GetNumMasters() const override {
