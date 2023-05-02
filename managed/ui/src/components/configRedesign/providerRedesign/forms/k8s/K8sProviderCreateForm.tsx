@@ -191,7 +191,10 @@ export const K8sProviderCreateForm = ({
                     [ProviderCode.KUBERNETES]: {
                       ...(azFormValues.kubeConfigContent && {
                         kubeConfigContent:
-                          (await readFileAsText(azFormValues.kubeConfigContent)) ?? ''
+                          (await readFileAsText(azFormValues.kubeConfigContent)) ?? '',
+                        ...(azFormValues.kubeConfigContent.name && {
+                          kubeConfigName: azFormValues.kubeConfigContent.name
+                        })
                       }),
                       ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
                       ...(azFormValues.kubeNamespace && {

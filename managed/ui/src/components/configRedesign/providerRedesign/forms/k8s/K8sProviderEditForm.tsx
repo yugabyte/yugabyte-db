@@ -459,6 +459,7 @@ const constructDefaultFormValues = (
           certIssuerName:
             zone.details?.cloudInfo.kubernetes.certManagerClusterIssuer ??
             zone.details?.cloudInfo.kubernetes.certManagerIssuer,
+          kubeConfigFilepath: zone.details.cloudInfo.kubernetes.kubeConfig,
           kubeDomain: zone.details.cloudInfo.kubernetes.kubeDomain,
           kubeNamespace: zone.details.cloudInfo.kubernetes.kubeNamespace,
           kubePodAddressTemplate: zone.details.cloudInfo.kubernetes.kubePodAddressTemplate,
@@ -529,11 +530,22 @@ const constructProviderPayload = async (
               details: {
                 cloudInfo: {
                   [ProviderCode.KUBERNETES]: {
-                    ...((!existingZone?.kubeconfigPath || azFormValues.editKubeConfigContent) &&
-                      azFormValues.kubeConfigContent && {
-                        kubeConfigContent:
-                          (await readFileAsText(azFormValues.kubeConfigContent)) ?? ''
-                      }),
+                    ...(!existingZone?.details?.cloudInfo.kubernetes.kubeConfig ||
+                    azFormValues.editKubeConfigContent
+                      ? {
+                          ...(azFormValues.kubeConfigContent && {
+                            kubeConfigContent:
+                              (await readFileAsText(azFormValues.kubeConfigContent)) ?? '',
+                            ...(azFormValues.kubeConfigContent.name && {
+                              kubeConfigName: azFormValues.kubeConfigContent.name
+                            })
+                          })
+                        }
+                      : {
+                          ...(existingZone?.details.cloudInfo.kubernetes.kubeConfig && {
+                            kubeConfig: existingZone?.details.cloudInfo.kubernetes.kubeConfig
+                          })
+                        }),
                     ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
                     ...(azFormValues.kubeNamespace && {
                       kubeNamespace: azFormValues.kubeNamespace
@@ -590,13 +602,18 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.KUBERNETES]: {
-          ...(formValues.editKubeConfigContent &&
-            formValues.kubeConfigContent && {
-              kubeConfigContent: kubeConfigContent,
-              ...(formValues.kubeConfigContent.name && {
-                kubeConfigName: formValues.kubeConfigContent.name
-              })
-            }),
+          ...(formValues.editKubeConfigContent && formValues.kubeConfigContent
+            ? {
+                kubeConfigContent: kubeConfigContent,
+                ...(formValues.kubeConfigContent.name && {
+                  kubeConfigName: formValues.kubeConfigContent.name
+                })
+              }
+            : {
+                ...(providerConfig?.details.cloudInfo.kubernetes.kubeConfig && {
+                  kubeConfig: providerConfig?.details.cloudInfo.kubernetes.kubeConfig
+                })
+              }),
           kubernetesImageRegistry: formValues.kubernetesImageRegistry,
           kubernetesProvider: formValues.kubernetesProvider.value,
           ...(formValues.editPullSecretContent &&

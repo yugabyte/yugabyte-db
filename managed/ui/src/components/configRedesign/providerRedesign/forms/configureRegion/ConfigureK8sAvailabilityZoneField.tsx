@@ -125,7 +125,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                 <>
                   <div className={classes.formField}>
                     <div>{K8sRegionFieldLabel.CURRENT_KUBE_CONFIG_FILEPATH}</div>
-                    <YBInput value={zones[index].kubeConfigFilepath} disabled={true} />
+                    <YBInput value={zones[index].kubeConfigFilepath} disabled={true} fullWidth />
                   </div>
                   <div className={classes.formField}>
                     <div>{K8sRegionFieldLabel.EDIT_KUBE_CONFIG}</div>
