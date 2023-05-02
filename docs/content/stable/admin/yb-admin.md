@@ -573,8 +573,7 @@ yb-admin \
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    add_transaction_tablet \
-    system transactions
+    add_transaction_tablet 000033eb000030008000000000004002
 ```
 
 To verify that the new status tablet has been created, run the [`list_tablets`](#list-tablets) command.
