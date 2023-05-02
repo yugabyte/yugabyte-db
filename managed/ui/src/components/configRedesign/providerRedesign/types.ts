@@ -270,6 +270,7 @@ interface K8sCloudInfoMutation extends K8sCloudInfoBase {
   kubernetesPullSecretContent?: string;
 
   kubeConfigContent?: string; // Kube Config can be specified at the Provider, Region and Zone level
+  kubeConfig?: string; // filepath - EDIT ONLY.
 }
 interface K8sCloudInfo extends K8sCloudInfoBase {
   kubernetesProvider: KubernetesProvider;
