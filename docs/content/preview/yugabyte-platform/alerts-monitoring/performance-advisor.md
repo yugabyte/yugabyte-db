@@ -119,7 +119,7 @@ Any of these conditions can result in a hot spot.
 
 Review the sharding strategies for your primary and secondary indexes. Consistent hash sharding is better for scalability and preventing hot spots, while range sharding is better for range-based queries.
 
-### Rejected connections
+### Rejected connection recommendations
 
 Advisor monitors rejected YSQL connections. Advisor flags nodes that rejected one or more connections in the last hour. By default each YB-TServer can handle up to 300 simultaneous connections. This number can be configured using the [ysql-max-connections](../../../reference/configuration/yb-tserver/#ysql-max-connections) YB-Tserver flag.
 
@@ -137,6 +137,10 @@ Review your YSQL client's configuration to see if connection pooling is configur
 ### Hot shard
 
 Advisor monitors per-table read and write statistics on each node. Advisor flags nodes that processed 8x more reads or writes for a particular table in the last 10 minutes. Hot shard recommendations are not raised until a node processes at least 600 reads or writes during the last 10 minutes.
+
+In YugabyteDB, a "hot shard" problem can occur when one or a few tablets (or shards) of a table receive a disproportionately high volume of read or write requests, compared to the other shards. This can lead to performance issues, as the hot shards become a bottleneck and are unable to handle the load efficiently.
+
+A hot shard problem can cause uneven data distribution across the cluster, leading to slower query response times and increased resource utilization on the hot shards. In extreme cases, it can lead to node failures or cluster instability.
 
 A hot shard can be caused by:
 
