@@ -475,6 +475,11 @@ extern bool yb_enable_sequence_pushdown;
  */
 extern bool yb_disable_wait_for_backends_catalog_version;
 
+/*
+ * Total timeout for waiting for backends to have up-to-date catalog version.
+ */
+extern int yb_wait_for_backends_catalog_version_timeout;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

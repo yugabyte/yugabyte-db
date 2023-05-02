@@ -161,6 +161,12 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
     "Delay in milliseconds between stages of online index build. For testing purposes.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 60 * 1000, // 5 min
+    "Timeout in milliseconds to wait for backends to reach desired catalog versions. The actual"
+    " time spent may be longer than that by as much as master flag"
+    " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms. Setting to zero or less"
+    " results in no timeout. Currently used by concurrent CREATE INDEX.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1,
     "Batch size of nested loop joins.");
 
