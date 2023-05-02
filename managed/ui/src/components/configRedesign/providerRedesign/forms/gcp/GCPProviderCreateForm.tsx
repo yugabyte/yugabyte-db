@@ -246,20 +246,20 @@ export const GCPProviderCreateForm = ({
           [ProviderCode.GCP]: {
             ...vpcConfig,
             ...gcpCredentials,
-            ybFirewallTags: formValues.ybFirewallTags
+            ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
           }
         },
         ntpServers: formValues.ntpServers,
         setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-        sshPort: formValues.sshPort,
-        sshUser: formValues.sshUser
+        ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+        ...(formValues.sshUser && { sshUser: formValues.sshUser })
       },
       regions: formValues.regions.map<GCPRegionMutation>((regionFormValues) => ({
         code: regionFormValues.code,
         details: {
           cloudInfo: {
             [ProviderCode.GCP]: {
-              ybImage: regionFormValues.ybImage
+              ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
             }
           }
         },
@@ -474,7 +474,7 @@ export const GCPProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />

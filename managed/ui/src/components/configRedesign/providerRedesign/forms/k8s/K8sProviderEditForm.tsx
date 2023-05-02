@@ -534,16 +534,24 @@ const constructProviderPayload = async (
                         kubeConfigContent:
                           (await readFileAsText(azFormValues.kubeConfigContent)) ?? ''
                       }),
-                    kubeDomain: azFormValues.kubeDomain,
-                    kubeNamespace: azFormValues.kubeNamespace,
-                    kubePodAddressTemplate: azFormValues.kubePodAddressTemplate,
-                    kubernetesStorageClass: azFormValues.kubernetesStorageClass,
-                    overrides: azFormValues.overrides,
-                    ...(azFormValues.certIssuerType === K8sCertIssuerType.CLUSTER_ISSUER && {
-                      certManagerClusterIssuer: azFormValues.certIssuerName
+                    ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
+                    ...(azFormValues.kubeNamespace && {
+                      kubeNamespace: azFormValues.kubeNamespace
                     }),
-                    ...(azFormValues.certIssuerType === K8sCertIssuerType.ISSUER && {
-                      certManagerIssuer: azFormValues.certIssuerName
+                    ...(azFormValues.kubePodAddressTemplate && {
+                      kubePodAddressTemplate: azFormValues.kubePodAddressTemplate
+                    }),
+                    ...(azFormValues.kubernetesStorageClass && {
+                      kubernetesStorageClass: azFormValues.kubernetesStorageClass
+                    }),
+                    ...(azFormValues.overrides && { overrides: azFormValues.overrides }),
+                    ...(azFormValues.certIssuerName && {
+                      ...(azFormValues.certIssuerType === K8sCertIssuerType.CLUSTER_ISSUER && {
+                        certManagerClusterIssuer: azFormValues.certIssuerName
+                      }),
+                      ...(azFormValues.certIssuerType === K8sCertIssuerType.ISSUER && {
+                        certManagerIssuer: azFormValues.certIssuerName
+                      })
                     })
                   }
                 }
@@ -585,15 +593,21 @@ const constructProviderPayload = async (
           ...(formValues.editKubeConfigContent &&
             formValues.kubeConfigContent && {
               kubeConfigContent: kubeConfigContent,
-              kubeConfigName: formValues.kubeConfigContent?.name ?? ''
+              ...(formValues.kubeConfigContent.name && {
+                kubeConfigName: formValues.kubeConfigContent.name
+              })
             }),
           kubernetesImageRegistry: formValues.kubernetesImageRegistry,
           kubernetesProvider: formValues.kubernetesProvider.value,
           ...(formValues.editPullSecretContent &&
             formValues.kubernetesPullSecretContent && {
               kubernetesPullSecretContent: kubernetesPullSecretContent,
-              kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name ?? '',
-              kubernetesImagePullSecretName: kubernetesImagePullSecretName
+              ...(formValues.kubernetesPullSecretContent.name && {
+                kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
+              }),
+              ...(kubernetesImagePullSecretName && {
+                kubernetesImagePullSecretName: kubernetesImagePullSecretName
+              })
             })
         }
       }

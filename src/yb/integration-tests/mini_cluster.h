@@ -129,6 +129,8 @@ class MiniCluster : public MiniClusterBase {
   // Stop and restart the mini cluster synchronously. The cluster's persistent state will be kept.
   Status RestartSync();
 
+  void StopSync();
+
   void Shutdown();
   Status FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
@@ -352,9 +354,6 @@ Result<scoped_refptr<master::TableInfo>> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name);
 
 Status WaitForInitDb(MiniCluster* cluster);
-
-// Counts the total number of external transactions on coordinator tablets.
-size_t CountExternalTransactions(MiniCluster* cluster);
 
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = TabletPeerFilter());
 

@@ -86,6 +86,7 @@ export enum RecommendationType {
   UNUSED_INDEX = 'UNUSED_INDEX',
   CPU_SKEW = 'CPU_SKEW',
   HOT_SHARD = 'HOT_SHARD',
+  REJECTED_CONNECTIONS = 'REJECTED_CONNECTIONS'
 }
 
 export enum SortDirection {

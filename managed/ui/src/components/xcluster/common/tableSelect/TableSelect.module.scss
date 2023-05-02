@@ -1,5 +1,11 @@
 @use '../../../../_style/colors.scss';
 
+.transactionalSupportTooltip {
+  &:hover {
+    cursor: pointer;
+  }
+}
+
 .tableDescriptor {
   display: flex;
   justify-content: flex-start;

@@ -111,6 +111,9 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Schedule Name")
   public String scheduleName = null;
 
+  @ApiModelProperty(value = "Take table by table backups")
+  public boolean tableByTableBackup = false;
+
   // Specifies number of backups to retain in case of recurring backups.
   @ApiModelProperty(value = "Minimum number of backups to retain for a particular backup schedule")
   public int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN;
@@ -124,12 +127,14 @@ public class BackupRequestParams extends UniverseTaskParams {
   // Intermediate states to resume ybc backups
   public UUID backupUUID;
 
+  @ApiModelProperty(hidden = true)
   public int currentIdx;
 
+  @ApiModelProperty(hidden = true)
   public String currentYbcTaskId;
 
   @ApiModelProperty(hidden = true)
-  public final Map<String, ParallelBackupState> backupDBStates = new ConcurrentHashMap<>();
+  public final Map<UUID, ParallelBackupState> backupDBStates = new ConcurrentHashMap<>();
 
   // This param precedes in value even if YBC is installed and enabled on the universe.
   // If null, proceeds with usual behaviour.
@@ -155,9 +160,13 @@ public class BackupRequestParams extends UniverseTaskParams {
   }
 
   @JsonIgnore
-  public void initializeBackupDBStates(List<BackupTableParams> backupsList) {
-    backupsList.stream()
-        .forEach(bTP -> this.backupDBStates.put(bTP.getKeyspace(), new ParallelBackupState()));
+  public void initializeBackupDBStates(List<BackupTableParams> paramsList) {
+    paramsList
+        .parallelStream()
+        .forEach(
+            paramsEntry ->
+                this.backupDBStates.put(
+                    paramsEntry.backupParamsIdentifier, new ParallelBackupState()));
   }
 
   public BackupRequestParams(BackupRequestParams backupRequestParams) {
@@ -215,10 +224,10 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ToString
   public static class KeyspaceTable {
     @ApiModelProperty(value = "Tables")
-    public List<String> tableNameList;
+    public List<String> tableNameList = new ArrayList<>();
 
     @ApiModelProperty(value = "Table UUIDs")
-    public List<UUID> tableUUIDList;
+    public List<UUID> tableUUIDList = new ArrayList<>();
 
     @ApiModelProperty(value = "keyspace")
     public String keyspace;

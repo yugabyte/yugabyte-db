@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.Provider;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import com.yugabyte.yw.models.helpers.provider.region.azs.DefaultAZCloudInfo;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import play.libs.Json;
 
 public interface CloudInfoInterface {
@@ -431,6 +433,22 @@ public interface CloudInfoInterface {
     editProviderCloudInfo.mergeMaskedFields(providerCloudInfo);
     // ToDo: Add the same for regions/zones. Should we assume the indexing of region/zone
     // won't change? Will revisit once edit region/zone are checked in.
+
+    if (!provider.getCloudCode().equals(CloudType.kubernetes)) {
+      // Merge the accessKey Private Content.
+      Map<String, AccessKey> currentAccessKeyMap =
+          provider.getAllAccessKeys().stream()
+              .collect(Collectors.toMap(aK -> aK.getKeyCode(), aK -> aK));
+      for (AccessKey accessKey : editProviderReq.getAllAccessKeys()) {
+        // As part of access Key edit we will always create a new key.
+        // We can safely assume for the given keyCode content won't change.
+        if (accessKey.getKeyCode() != null
+            && currentAccessKeyMap.containsKey(accessKey.getKeyCode())) {
+          accessKey.getKeyInfo().sshPrivateKeyContent =
+              currentAccessKeyMap.get(accessKey.getKeyCode()).getKeyInfo().sshPrivateKeyContent;
+        }
+      }
+    }
   }
 
   public static JsonNode mayBeMassageRequest(JsonNode requestBody, Boolean isV2API) {

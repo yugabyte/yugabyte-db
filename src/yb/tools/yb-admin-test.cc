@@ -59,6 +59,7 @@
 #include "yb/tools/admin-test-base.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/date_time.h"
 #include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
@@ -1260,11 +1261,33 @@ TEST_F(AdminCliTest, PrintArgumentExpressions) {
   ASSERT_EQ(status.ToString().find(index_expression), std::string::npos);
 }
 
+TEST_F(AdminCliTest, TestCompactionStatusBeforeCompaction) {
+  BuildAndStart();
+  const string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        const string output = VERIFY_RESULT(
+            CallAdmin("compaction_status", kTableName.namespace_name(), kTableName.table_name()));
+
+        std::smatch match;
+        const std::regex regex(
+            "No full compaction taking place\n"
+            "A full compaction has never been completed\n"
+            "An admin compaction has never been requested");
+        std::regex_search(output, match, regex);
+        return !match.empty();
+      },
+      30s, "Wait for initial metrics heartbeats to report full compaction statuses"));
+}
+
 TEST_F(AdminCliTest, TestCompactionStatusAfterCompactionFinishes) {
   BuildAndStart();
   const string master_address = ToString(cluster_->master()->bound_rpc_addr());
   auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
 
+  const auto time_before_compaction = DateTime::TimestampNow();
   ASSERT_OK(CallAdmin("compact_table", kTableName.namespace_name(), kTableName.table_name()));
 
   string output;
@@ -1283,11 +1306,15 @@ TEST_F(AdminCliTest, TestCompactionStatusAfterCompactionFinishes) {
       },
       30s /* timeout */, "Wait for compaction status to report no compaction"));
 
-  const std::regex regex("Last admin full compaction request time: *([0-9]+)");
+  const std::regex regex(
+      "Last full compaction completion time: (.+)\nLast admin compaction request time: (.+)");
   std::regex_search(output, match, regex);
   ASSERT_FALSE(match.empty());
-  const int64 last_request_time = stol(match[1].str());
-  ASSERT_NE(last_request_time, 0);
+  const auto last_full_compaction_time =
+      ASSERT_RESULT(DateTime::TimestampFromString(match[1].str()));
+  ASSERT_GT(last_full_compaction_time, time_before_compaction);
+  const auto last_request_time = ASSERT_RESULT(DateTime::TimestampFromString(match[2].str()));
+  ASSERT_GT(last_request_time, time_before_compaction);
 }
 
 }  // namespace tools

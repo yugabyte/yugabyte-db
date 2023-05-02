@@ -3561,6 +3561,26 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_fetch_row_limit", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Maximum number of rows to fetch per scan. 0 = No limit"),
+			NULL
+		},
+		&yb_fetch_row_limit,
+		1024, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_fetch_size_limit", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Maximum size of a fetch response. 0 = No limit"),
+			NULL, GUC_UNIT_KB
+		},
+		&yb_fetch_size_limit,
+		0, 0, MAX_KILOBYTES,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -5454,6 +5474,15 @@ InitializeGUCOptionsFromEnvironment(void)
 	env = getenv("PGCLIENTENCODING");
 	if (env != NULL)
 		SetConfigOption("client_encoding", env, PGC_POSTMASTER, PGC_S_ENV_VAR);
+
+	/*
+	* YB: For backwards compatibility, set the value of yb_fetch_row_limit
+	* to the value of ysql_prefetch_limit (which is deprecated).
+	*/
+	env = getenv("FLAGS_ysql_prefetch_limit");
+	if (env != NULL)
+		SetConfigOption("yb_fetch_row_limit", env,
+				PGC_POSTMASTER, PGC_S_ENV_VAR);
 
 	/*
 	 * rlimit isn't exactly an "environment variable", but it behaves about

@@ -94,7 +94,11 @@ const getRecommendation = (type: RecommendationType, summary: ReactNode | string
     };
     return <CpuSkew data={cpuSkewData} summary={summary} />;
   }
-  if (type === RecommendationType.CPU_USAGE || type === RecommendationType.HOT_SHARD) {
+  if (
+    type === RecommendationType.CPU_USAGE ||
+    type === RecommendationType.HOT_SHARD ||
+    type === RecommendationType.REJECTED_CONNECTIONS
+  ) {
     return <CustomRecommendations summary={summary} suggestion={data.suggestion} />;
   }
   return null;
@@ -152,6 +156,12 @@ export const RecommendationBox: FC<RecommendationProps> = ({
         return (
           <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
             {t('clusterDetail.performance.typeTag.HotShard')}
+          </span>
+        );
+      case RecommendationType.REJECTED_CONNECTIONS:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.RejectedConnections')}
           </span>
         );
       case RecommendationType.ALL:

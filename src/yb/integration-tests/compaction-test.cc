@@ -1562,25 +1562,23 @@ TEST_F_EX(
   ExpirationWhenReplicated(false);
 }
 
-class AsyncUserTriggeredCompactionTest : public CompactionTest {};
-
-TEST_F(AsyncUserTriggeredCompactionTest, CheckLastRequestTimePersistence) {
+TEST_F(CompactionTest, CheckLastRequestTimePersistence) {
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
   auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
 
-  ASSERT_EQ(table_info->LockForRead()->pb.last_full_compaction_time(), 0);
+  ASSERT_EQ(table_info->LockForRead()->pb.last_full_compaction_request_time(), 0);
 
   ASSERT_OK(ExecuteManualCompaction());
-  const auto last_request_time = table_info->LockForRead()->pb.last_full_compaction_time();
+  const auto last_request_time = table_info->LockForRead()->pb.last_full_compaction_request_time();
   ASSERT_NE(last_request_time, 0);
 
   ASSERT_OK(cluster_->RestartSync());
   table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
-  ASSERT_EQ(table_info->LockForRead()->pb.last_full_compaction_time(), last_request_time);
+  ASSERT_EQ(table_info->LockForRead()->pb.last_full_compaction_request_time(), last_request_time);
 
   SleepFor(MonoDelta::FromSeconds(1));
   ASSERT_OK(ExecuteManualCompaction());
-  ASSERT_GT(table_info->LockForRead()->pb.last_full_compaction_time(), last_request_time);
+  ASSERT_GT(table_info->LockForRead()->pb.last_full_compaction_request_time(), last_request_time);
 }
 
 class FullCompactionMonitoringTest : public CompactionTest {
@@ -1665,9 +1663,9 @@ class MasterFullCompactionMonitoringTest : public FullCompactionMonitoringTest {
  protected:
   int NumTabletServers() override { return 3; }
 
-  Status WaitForCompactionStatesToSatisfy(
+  Status WaitForCompactionStatusesToSatisfy(
       const master::TabletInfos& tablet_infos,
-      std::function<bool(const TabletServerId&, const tablet::FullCompactionState)>
+      std::function<bool(const TabletServerId&, const master::FullCompactionStatus&)>
           check,
       const int expected_num_peers = FLAGS_replication_factor) {
     return WaitFor(
@@ -1678,7 +1676,7 @@ class MasterFullCompactionMonitoringTest : public FullCompactionMonitoringTest {
               return false;
             }
             for (const auto& pair : *replica_locations) {
-              if (!check(pair.first, pair.second.full_compaction_state)) {
+              if (!check(pair.first, pair.second.full_compaction_status)) {
                 return false;
               }
             }
@@ -1709,10 +1707,11 @@ TEST_F(MasterFullCompactionMonitoringTest, UnknownStateAfterReplicaLocationChang
   itest::TServerDetails* leader_ts;
   ASSERT_OK(itest::FindTabletLeader(ts_map, test_tablet->id(), 10s /* timeout */, &leader_ts));
 
-  // Wait for all the full tablet reports to come in.
-  ASSERT_OK(WaitForCompactionStatesToSatisfy(
-      {test_tablet}, [](const TabletServerId&, const tablet::FullCompactionState state) {
-        return state == tablet::IDLE;
+  // Wait for all the metrics heartbeats to come in.
+  ASSERT_OK(WaitForCompactionStatusesToSatisfy(
+      {test_tablet}, [](const TabletServerId&, const master::FullCompactionStatus& status) {
+        return status.full_compaction_state == tablet::IDLE &&
+               status.last_full_compaction_time.ToUint64() == 0;
       }));
 
   // Fail heartbeats of the old tservers so we know the new tserver will send the config change.
@@ -1726,12 +1725,15 @@ TEST_F(MasterFullCompactionMonitoringTest, UnknownStateAfterReplicaLocationChang
       boost::none /* cas_config_opid_index */, 10s /* timeout */));
 
   // Check that the full compaction states on master are all reset to UNKNOWN except for the tserver
-  // that send the config change heartbeat.
-  ASSERT_OK(WaitForCompactionStatesToSatisfy(
+  // that sent the config change heartbeat.
+  ASSERT_OK(WaitForCompactionStatusesToSatisfy(
       {test_tablet},
-      [&new_ts_uuid](const TabletServerId& tserver_id, const tablet::FullCompactionState state) {
-        return state ==
-               (tserver_id == new_ts_uuid ? tablet::IDLE : tablet::FULL_COMPACTION_STATE_UNKNOWN);
+      [&new_ts_uuid](const TabletServerId& tserver_id, const master::FullCompactionStatus& status) {
+        if (tserver_id == new_ts_uuid) {
+          return status.full_compaction_state == tablet::IDLE &&
+                 status.last_full_compaction_time.ToUint64() == 0;
+        }
+        return status.full_compaction_state == tablet::FULL_COMPACTION_STATE_UNKNOWN;
       },
       FLAGS_replication_factor + 1 /* num_peers */));
 
@@ -1740,10 +1742,11 @@ TEST_F(MasterFullCompactionMonitoringTest, UnknownStateAfterReplicaLocationChang
   for (auto& ts : cluster_->mini_tablet_servers()) {
     ts->FailHeartbeats(false);
   }
-  ASSERT_OK(WaitForCompactionStatesToSatisfy(
+  ASSERT_OK(WaitForCompactionStatusesToSatisfy(
       {test_tablet},
-      [](const TabletServerId&, const tablet::FullCompactionState state) {
-        return state == tablet::IDLE;
+      [](const TabletServerId&, const master::FullCompactionStatus& status) {
+        return status.full_compaction_state == tablet::IDLE &&
+               status.last_full_compaction_time.ToUint64() == 0;
       },
       FLAGS_replication_factor + 1 /* num_peers */));
 
@@ -1756,11 +1759,14 @@ TEST_F(MasterFullCompactionMonitoringTest, UnknownStateAfterReplicaLocationChang
   ASSERT_OK(itest::RemoveServer(
       leader_ts, test_tablet->id(), new_ts, boost::none /* cas_config_opid_index */,
       10s /* timeout */));
-  ASSERT_OK(WaitForCompactionStatesToSatisfy(
+  ASSERT_OK(WaitForCompactionStatusesToSatisfy(
       {test_tablet},
-      [&leader_ts](const TabletServerId& tserver_id, const tablet::FullCompactionState state) {
-        return state == (tserver_id == leader_ts->uuid() ? tablet::IDLE
-                                                         : tablet::FULL_COMPACTION_STATE_UNKNOWN);
+      [&leader_ts](const TabletServerId& tserver_id, const master::FullCompactionStatus& status) {
+        if (tserver_id == leader_ts->uuid()) {
+          return status.full_compaction_state == tablet::IDLE &&
+                 status.last_full_compaction_time.ToUint64() == 0;
+        }
+        return status.full_compaction_state == tablet::FULL_COMPACTION_STATE_UNKNOWN;
       },
       FLAGS_replication_factor /* num_peers */));
 }
@@ -1768,17 +1774,19 @@ TEST_F(MasterFullCompactionMonitoringTest, UnknownStateAfterReplicaLocationChang
 TEST_F(MasterFullCompactionMonitoringTest, CompactionStateDuringAdminCompaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
   TriggerAdminCompactions(false /* should_wait */);
-  ASSERT_OK(WaitForCompactionStatesToSatisfy(
-      test_tablets_, [](const TabletServerId&, const tablet::FullCompactionState state) {
-        return state == tablet::COMPACTING;
+  ASSERT_OK(WaitForCompactionStatusesToSatisfy(
+      test_tablets_, [](const TabletServerId&, const master::FullCompactionStatus& status) {
+        return status.full_compaction_state == tablet::COMPACTING &&
+               status.last_full_compaction_time.ToUint64() == 0;
       }));
 }
 
 TEST_F(MasterFullCompactionMonitoringTest, IdleStateAfterAdminCompactionCompletion) {
   TriggerAdminCompactions(true /* should_wait */);
-  ASSERT_OK(WaitForCompactionStatesToSatisfy(
-      test_tablets_, [](const TabletServerId&, const tablet::FullCompactionState state) {
-        return state == tablet::IDLE;
+  ASSERT_OK(WaitForCompactionStatusesToSatisfy(
+      test_tablets_, [](const TabletServerId&, const master::FullCompactionStatus& status) {
+        return status.full_compaction_state == tablet::IDLE &&
+               status.last_full_compaction_time.ToUint64() > 0;
       }));
 }
 

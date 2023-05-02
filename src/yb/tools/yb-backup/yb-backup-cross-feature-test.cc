@@ -159,6 +159,65 @@ TEST_F(YBBackupTest, DeleteSnapshotAfterTabletSplitting) {
   ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
 }
 
+// Test fixture class for tests that need multiple masters (ex: master failover scenarios)
+class YBBackupTestMultipleMasters : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->num_masters = 3;
+  }
+};
+
+// Test delete_snapshot operation completes successfully when one of the tablets involved in the
+// delete snapshot operation is already deleted (For example: due to tablet splitting) and a master
+// failover happens after that.
+// 1. create a table with 3 pre-split tablets.
+// 2. create a database snapshot
+// 3. split one of the tablets to make 4 tablets and wait for the parent tablet to be deleted
+// 4. perform a master leader failover - the new master will not have any state for this deleted
+// parent tablet
+// 5. delete the snapshot created at 2
+TEST_F_EX(
+    YBBackupTest, DeleteSnapshotAfterTabletSplittingAndMasterFailover,
+    YBBackupTestMultipleMasters) {
+  const string table_name = "mytbl";
+  const string default_db = "yugabyte";
+  LOG(INFO) << Format("Create table '$0'", table_name);
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT, v INT)", table_name)));
+  LOG(INFO) << "Insert values";
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 (k,v) SELECT i,i FROM generate_series(1,1000) AS i", table_name),
+      1000));
+  // Verify tablets count and get table_id
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db, table_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 3);
+  TableId table_id = tablets[0].table_id();
+  LOG(INFO) << "Create snapshot";
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_id));
+  LOG(INFO) << "Split one tablet Manually and wait for parent tablet to be deleted.";
+  constexpr int middle_index = 1;
+  string tablet_id = tablets[middle_index].tablet_id();
+  // Split it && Wait for split to complete.
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db, table_name, /* wait_for_parent_deletion */ true, tablet_id));
+  LOG(INFO) << "Finish tablet splitting";
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db, table_name));
+  LogTabletsInfo(tablets);
+  constexpr int num_tablets = 4;
+  ASSERT_EQ(tablets.size(), num_tablets);
+  // Perform a master failover. the new master will not have any state for this deleted parent
+  // tablet.
+  LOG(INFO) << "Fail over the master leader";
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  // Delete the snapshot after the parent tablet has been deleted
+  LOG(INFO) << "Delete snapshot";
+  ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
+  // Make sure the snapshot has been deleted
+  LOG(INFO) << "Wait snapshot to be Deleted";
+  ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
+}
+
 // Test backup/restore when a hash-partitioned table undergoes manual tablet splitting.  Most
 // often, if tablets are split after creation, the partition boundaries will not be evenly spaced.
 // This then differs from the boundaries of a hash table that is pre-split with the same number of

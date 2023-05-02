@@ -227,7 +227,7 @@ export const OnPremProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   fullWidth
                   disabled={isFormDisabled}
                 />
@@ -354,6 +354,7 @@ export const OnPremProviderCreateForm = ({
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
           regionSelection={regionSelection}
+          regionOperation={regionOperation}
         />
       )}
       {isDeleteRegionModalOpen && (
@@ -397,17 +398,17 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.ON_PREM]: {
-          ybHomeDir: formValues.ybHomeDir
+          ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir })
         }
       },
       installNodeExporter: formValues.installNodeExporter,
-      nodeExporterPort: formValues.nodeExporterPort,
-      nodeExporterUser: formValues.nodeExporterUser,
+      ...(formValues.nodeExporterPort && { nodeExporterPort: formValues.nodeExporterPort }),
+      ...(formValues.nodeExporterUser && { nodeExporterUser: formValues.nodeExporterUser }),
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
       skipProvisioning: formValues.skipProvisioning,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: formValues.regions.map<OnPremRegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,

@@ -550,6 +550,12 @@ YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->AlterTableIncrementSchemaVersion(handle));
 }
 
+YBCStatus YBCPgAlterTableSetTableId(
+    YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_oid) {
+  const PgObjectId table_id(database_oid, table_oid);
+  return ToYBCStatus(pgapi->AlterTableSetTableId(handle, table_id));
+}
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecAlterTable(handle));
 }

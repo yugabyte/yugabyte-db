@@ -10,6 +10,7 @@ import { useQueries, useQuery, UseQueryResult } from 'react-query';
 import Select, { ValueType } from 'react-select';
 import clsx from 'clsx';
 import { Field } from 'formik';
+import { Box } from '@material-ui/core';
 
 import {
   fetchTablesInUniverse,
@@ -25,7 +26,12 @@ import {
   getSharedXClusterConfigs,
   tableSort
 } from '../../ReplicationUtils';
-import { XClusterConfigAction, XCLUSTER_TABLE_INELIGIBLE_STATUSES } from '../../constants';
+import {
+  TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+  XClusterConfigAction,
+  XCLUSTER_REPLICATION_DOCUMENTATION_URL,
+  XCLUSTER_TABLE_INELIGIBLE_STATUSES
+} from '../../constants';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { CollapsibleNote } from '../CollapsibleNote';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
@@ -37,6 +43,9 @@ import {
   YBTableRelationType
 } from '../../../../redesign/helpers/constants';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../../actions/customers';
+import { YBTooltip } from '../../../../redesign/components';
+import InfoMessageIcon from '../../../../redesign/assets/info-message.svg';
+import { compareYBSoftwareVersions, getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
 
 import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { XClusterConfig, XClusterTableType } from '../../XClusterTypes';
@@ -190,6 +199,8 @@ export const TableSelect = (props: TableSelectProps) => {
   const [activePage, setActivePage] = useState(1);
   const [sortField, setSortField] = useState<keyof KeyspaceRow>('keyspace');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
+  const [isTooltipOpen, setIsTooltipOpen] = useState<boolean>(false);
+  const [isMouseOverTooltip, setIsMouseOverTooltip] = useState<boolean>(false);
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(sourceUniverseUUID, { excludeColocatedTables: true }),
@@ -399,21 +410,62 @@ export const TableSelect = (props: TableSelectProps) => {
     }
   };
   const runtimeConfigEntries = globalRuntimeConfigQuery.data.configEntries ?? [];
-  const isTransactionalAtomicitySupported = runtimeConfigEntries.some(
+  const isTransactionalAtomicityEnabled = runtimeConfigEntries.some(
     (config: any) =>
       config.key === RuntimeConfigKey.XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG &&
       config.value === 'true'
   );
+  const ybSoftwareVersion = getPrimaryCluster(sourceUniverseQuery.data.universeDetails.clusters)
+    ?.userIntent.ybSoftwareVersion;
+  const isTransactionalAtomicitySupported =
+    !!ybSoftwareVersion &&
+    compareYBSoftwareVersions(
+      TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+      ybSoftwareVersion,
+      true
+    ) < 0;
   return (
     <>
-      {isTransactionalAtomicitySupported &&
+      {isTransactionalAtomicityEnabled &&
         props.configAction === XClusterConfigAction.CREATE &&
         tableType === TableType.PGSQL_TABLE_TYPE && (
-          <Field
-            name="isTransactionalConfig"
-            component={YBCheckBox}
-            label="Enable transactional atomicity"
-          />
+          <Box display="flex" gridGap="5px">
+            <Field
+              name="isTransactionalConfig"
+              component={YBCheckBox}
+              label="Enable transactional atomicity"
+              disabled={!isTransactionalAtomicitySupported}
+            />
+            {/* This tooltip needs to be have a z-index greater than the z-index on the modal (3100)*/}
+            <YBTooltip
+              open={isTooltipOpen || isMouseOverTooltip}
+              title={
+                <p>
+                  YBA support for transactional atomicity has the following constraints:
+                  <ol>
+                    <li>
+                      The minimum YBDB version that supports transactional atomicity is 2.17.3.0-b2.
+                    </li>
+                    <li>PITR must be enabled on the target universe.</li>
+                    <li>enable_pg_savepoint must be set to false for both tserver and master</li>
+                  </ol>
+                  You may find further information on this feature on our{' '}
+                  <a href={XCLUSTER_REPLICATION_DOCUMENTATION_URL}>public docs.</a>
+                </p>
+              }
+              PopperProps={{ style: { zIndex: 4000, pointerEvents: 'auto' } }}
+              style={{ marginBottom: '5px' }}
+            >
+              <img
+                className={styles.transactionalSupportTooltip}
+                alt="Info"
+                src={InfoMessageIcon}
+                onClick={() => setIsTooltipOpen(!isTooltipOpen)}
+                onMouseOver={() => setIsMouseOverTooltip(true)}
+                onMouseOut={() => setIsMouseOverTooltip(false)}
+              />
+            </YBTooltip>
+          </Box>
         )}
       <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
       <div className={styles.tableToolbar}>

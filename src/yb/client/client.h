@@ -122,9 +122,24 @@ struct TransactionStatusTablets {
   std::vector<TabletId> placement_local_tablets;
 };
 
+struct TabletReplicaFullCompactionStatus {
+  TabletServerId ts_id;
+  TabletId tablet_id;
+  tablet::FullCompactionState full_compaction_state;
+  // Not valid if full_compaction_state == UNKNOWN.
+  // No full compaction ever been completed is represented as 0 time.
+  HybridTime last_full_compaction_time;
+};
+
 struct TableCompactionStatus {
   tablet::FullCompactionState full_compaction_state;
-  MonoTime last_request_time;
+
+  // Not valid if full_compaction_state == UNKNOWN.
+  // No full compaction ever been completed is represented as 0 time.
+  HybridTime last_full_compaction_time;
+  // No admin compaction ever been requested is represented as 0 time.
+  HybridTime last_request_time;
+  std::vector<TabletReplicaFullCompactionStatus> replica_statuses;
 };
 
 // Creates a new YBClient with the desired options.
@@ -306,7 +321,8 @@ class YBClient {
                      int timeout_secs,
                      bool is_compaction);
 
-  Result<TableCompactionStatus> GetCompactionStatus(const YBTableName& table_name);
+  Result<TableCompactionStatus> GetCompactionStatus(
+      const YBTableName& table_name, bool show_tablets);
 
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const std::string id);

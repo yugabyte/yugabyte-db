@@ -7,10 +7,11 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useCallback, useState } from 'react';
+import React, { FC, useCallback, useRef, useState } from 'react';
 
 import clsx from 'clsx';
 import pluralize from 'pluralize';
+import { useClickAway } from 'react-use';
 import { BaseSelection, Element, Text, Transforms } from 'slate';
 import { ReactEditor, useSlate } from 'slate-react';
 import { jsx } from 'slate-hyperscript';
@@ -100,6 +101,12 @@ const useStyle = makeStyles((theme) => ({
 export const useAlertVariablesPlugin: IYBSlatePlugin = ({ editor, enabled }) => {
   const classes = useStyle();
   const [position, setPosition] = useState<DOMRect | null>(null);
+
+  const alertPopupRef = useRef(null);
+
+  useClickAway(alertPopupRef, () => {
+    hidePopver();
+  });
 
   const { t } = useTranslation();
 
@@ -306,6 +313,7 @@ export const useAlertVariablesPlugin: IYBSlatePlugin = ({ editor, enabled }) => 
                   position: 'absolute',
                   zIndex: '999'
                 }}
+                ref={alertPopupRef}
               >
                 <AddAlertVariablesPopup
                   show={Boolean(position)}

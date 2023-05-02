@@ -64,13 +64,11 @@ public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
 
       // We will need to setup server again in case of systemd to register yb-controller service.
       if (universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
-        // We would fail this task as the manually provisioned systemd enabled on-prem universe
-        // could lack sudo user permission.
-        if (Util.isOnPremManualProvisioning(universe)) {
-          throw new RuntimeException(
-              "Cannot install ybc on manually provisioned systemd enabled on-prem universes");
+        // We assume that user has provisioned nodes again with new service files in case of
+        // on-prem manual provisioned universe.
+        if (!Util.isOnPremManualProvisioning(universe)) {
+          createSetupServerTasks(universe.getNodes(), param -> param.isSystemdUpgrade = true);
         }
-        createSetupServerTasks(universe.getNodes(), param -> param.isSystemdUpgrade = true);
       }
 
       // create task for installing yb-controller on each DB node.

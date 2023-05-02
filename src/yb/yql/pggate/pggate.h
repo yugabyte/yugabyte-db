@@ -321,6 +321,8 @@ class PgApiImpl {
 
   Status AlterTableIncrementSchemaVersion(PgStatement *handle);
 
+  Status AlterTableSetTableId(PgStatement* handle, const PgObjectId& table_id);
+
   Status ExecAlterTable(PgStatement *handle);
 
   Status NewDropTable(const PgObjectId& table_id,

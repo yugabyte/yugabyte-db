@@ -66,6 +66,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/common_util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
@@ -236,16 +237,22 @@ TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 DEFINE_RUNTIME_int32(ycql_num_tablets, -1,
     "The number of tablets per YCQL table. Default value is -1. "
     "Colocated tables are not affected. "
-    "If it's value is not set then the value of yb_num_shards_per_tserver is used "
-    "in conjunction with the number of tservers to determine the tablet count. "
+    "If its value is not set then (1) the value of yb_num_shards_per_tserver is used "
+    "in conjunction with the number of tservers to determine the tablet count, (2) in case of "
+    "low number of CPU cores (<4) and enable_automatic_tablet_splitting is set to true, "
+    "neither the number of tservers nor yb_num_shards_per_tserver are taken into account "
+    "to determine the tablet count, the value is determined on base the number of CPU cores only."
     "If the user explicitly specifies a value of the tablet count in the Create Table "
     "DDL statement (with tablets = x syntax) then it takes precedence over the value "
     "of this flag. Needs to be set at tserver.");
 
 DEFINE_RUNTIME_int32(ysql_num_tablets, -1,
     "The number of tablets per YSQL table. Default value is -1. "
-    "If it's value is not set then the value of ysql_num_shards_per_tserver is used "
-    "in conjunction with the number of tservers to determine the tablet count. "
+    "If its value is not set then (1) the value of ysql_num_shards_per_tserver is used "
+    "in conjunction with the number of tservers to determine the tablet count, (2) in case of "
+    "low number of CPU cores (<4) and enable_automatic_tablet_splitting is set to true, "
+    "neither the number of tservers nor ysql_num_shards_per_tserver are taken into account "
+    "to determine the tablet count, the value is determined on base the number of CPU cores only."
     "If the user explicitly specifies a value of the tablet count in the Create Table "
     "DDL statement (split into x tablets syntax) then it takes precedence over the "
     "value of this flag. Needs to be set at tserver.");
@@ -720,9 +727,10 @@ Status YBClient::FlushTables(const std::vector<YBTableName>& table_names,
                             is_compaction);
 }
 
-Result<TableCompactionStatus> YBClient::GetCompactionStatus(const YBTableName& table_name) {
+Result<TableCompactionStatus> YBClient::GetCompactionStatus(
+    const YBTableName& table_name, bool show_tablets) {
   return data_->GetCompactionStatus(
-      table_name, CoarseMonoClock::Now() + default_admin_operation_timeout());
+      table_name, show_tablets, CoarseMonoClock::Now() + default_admin_operation_timeout());
 }
 
 std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {
@@ -2410,29 +2418,25 @@ Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {
   if (table_type == TableType::PGSQL_TABLE_TYPE &&
         FLAGS_ysql_num_tablets > 0) {
     VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ysql_num_tablets
-              << ": --ysql_num_tablets is specified.";
+                        << ": --ysql_num_tablets is specified.";
     return FLAGS_ysql_num_tablets;
-  } else if (FLAGS_ycql_num_tablets > 0) {
-    VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ycql_num_tablets
-              << ": --ycql_num_tablets is specified.";
-    return FLAGS_ycql_num_tablets;
-  } else {
-    int tserver_count = 0;
-    RETURN_NOT_OK(TabletServerCount(&tserver_count, true /* primary_only */));
-    int num_tablets = 0;
-    if (table_type == TableType::PGSQL_TABLE_TYPE) {
-      num_tablets = tserver_count * FLAGS_ysql_num_shards_per_tserver;
-      VLOG_WITH_PREFIX(1) << "num_tablets = " << num_tablets << ": "
-              << "calculated as tserver_count * FLAGS_ysql_num_shards_per_tserver ("
-              << tserver_count << " * " << FLAGS_ysql_num_shards_per_tserver << ")";
-    } else {
-      num_tablets = tserver_count * FLAGS_yb_num_shards_per_tserver;
-      VLOG_WITH_PREFIX(1) << "num_tablets = " << num_tablets << ": "
-              << "calculated as tserver_count * FLAGS_yb_num_shards_per_tserver ("
-              << tserver_count << " * " << FLAGS_yb_num_shards_per_tserver << ")";
-    }
-    return num_tablets;
   }
+
+  if (FLAGS_ycql_num_tablets > 0) {
+    VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ycql_num_tablets
+                        << ": --ycql_num_tablets is specified.";
+    return FLAGS_ycql_num_tablets;
+  }
+
+  int tserver_count = 0;
+  RETURN_NOT_OK(TabletServerCount(&tserver_count, true /* primary_only */));
+  SCHECK_GE(tserver_count, 0, IllegalState, "Number of tservers cannot be negative.");
+
+  const auto num_tablets = GetInitialNumTabletsPerTable(table_type, tserver_count);
+  VLOG_WITH_PREFIX(1) << "num_tablets = " << num_tablets
+                      << " with " << tserver_count << " tservers.";
+
+  return num_tablets;
 }
 
 void YBClient::TEST_set_admin_operation_timeout(const MonoDelta& timeout) {

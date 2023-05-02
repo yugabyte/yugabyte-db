@@ -96,12 +96,12 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     assertNotNull(nodeAgent.getUuid());
     UUID nodeAgentUuid = nodeAgent.getUuid();
     verify(mockAppConfig, times(1)).getString(eq("yb.storage.path"));
-    String serverCert = nodeAgent.getConfig().get(NodeAgent.SERVER_CERT_PROPERTY);
+    String serverCert = nodeAgent.getConfig().getServerCert();
     assertNotNull(serverCert);
     Path serverCertPath = nodeAgent.getServerCertFilePath();
     assertNotNull(serverCertPath);
     assertTrue(Files.exists(serverCertPath));
-    String serverKey = nodeAgent.getConfig().get(NodeAgent.SERVER_KEY_PROPERTY);
+    String serverKey = nodeAgent.getConfig().getServerKey();
     assertNotNull(serverKey);
     Path serverKeyPath = nodeAgent.getServerKeyFilePath();
     assertNotNull(serverKeyPath);

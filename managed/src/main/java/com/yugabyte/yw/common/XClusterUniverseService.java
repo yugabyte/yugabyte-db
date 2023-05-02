@@ -150,18 +150,20 @@ public class XClusterUniverseService {
    *
    * @param universeSet
    * @param univUpgradeInProgress
+   * @param upgradeUniverseSoftwareVersion
    * @return true if auto flags can be promoted on all universes.
    * @throws IOException
    * @throws PlatformServiceException
    */
-  public boolean canPromoteAutoFlags(Set<Universe> universeSet, Universe univUpgradeInProgress)
+  public boolean canPromoteAutoFlags(
+      Set<Universe> universeSet,
+      Universe univUpgradeInProgress,
+      String upgradeUniverseSoftwareVersion)
       throws IOException, PlatformServiceException {
-    String univSoftwareVersion =
-        univUpgradeInProgress.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     GFlagsValidation.AutoFlagsPerServer masterAutoFlags =
-        gFlagsValidation.extractAutoFlags(univSoftwareVersion, "yb-master");
+        gFlagsValidation.extractAutoFlags(upgradeUniverseSoftwareVersion, "yb-master");
     GFlagsValidation.AutoFlagsPerServer tserverAutoFlags =
-        gFlagsValidation.extractAutoFlags(univSoftwareVersion, "yb-tserver");
+        gFlagsValidation.extractAutoFlags(upgradeUniverseSoftwareVersion, "yb-tserver");
     // Compare auto flags json for each universe.
     for (Universe univ : universeSet) {
       if (univ.getUniverseUUID().equals(univUpgradeInProgress.getUniverseUUID())) {

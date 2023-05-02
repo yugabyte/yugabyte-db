@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
@@ -222,7 +223,9 @@ public class PerfAdvisorScheduler {
       UniversePerfAdvisorRun run) {
     try {
       run.setStartTime(new Date()).setState(State.RUNNING).save();
+      List<RecommendationType> dbQueryRecommendationTypes = DB_QUERY_RECOMMENDATION_TYPES;
       JsonNode databaseNamesResult = queryHelper.listDatabaseNames(universe);
+      List<String> databases = new ArrayList<>();
       if (databaseNamesResult.has("error")) {
         String errorMessage = databaseNamesResult.get("error").toString();
         log.error(
@@ -230,13 +233,14 @@ public class PerfAdvisorScheduler {
                 + universe.getUniverseUUID()
                 + ": "
                 + errorMessage);
-        run.setEndTime(new Date()).setState(State.FAILED).save();
-        return;
-      }
-      List<String> databases = new ArrayList<>();
-      Iterator<JsonNode> queryIterator = databaseNamesResult.get("result").elements();
-      while (queryIterator.hasNext()) {
-        databases.add(queryIterator.next().get("datname").asText());
+        // We'll not retrieve any recommendation types from DB nodes in these case - just pass
+        // empty recommendation types list to leave existing recommendations active.
+        dbQueryRecommendationTypes = Collections.emptyList();
+      } else {
+        Iterator<JsonNode> queryIterator = databaseNamesResult.get("result").elements();
+        while (queryIterator.hasNext()) {
+          databases.add(queryIterator.next().get("datname").asText());
+        }
       }
       Provider provider =
           Provider.getOrBadRequest(
@@ -252,7 +256,7 @@ public class PerfAdvisorScheduler {
               databases,
               NodeManager.YUGABYTE_USER,
               tserverNode.ysqlServerRpcPort,
-              DB_QUERY_RECOMMENDATION_TYPES,
+              dbQueryRecommendationTypes,
               ysqlAuth,
               tlsClient);
       UniverseConfig uConfig =

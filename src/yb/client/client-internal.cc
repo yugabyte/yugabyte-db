@@ -1153,7 +1153,7 @@ Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
 }
 
 Result<TableCompactionStatus> YBClient::Data::GetCompactionStatus(
-    const YBTableName& table_name, const CoarseTimePoint deadline) {
+    const YBTableName& table_name, bool show_tablets, const CoarseTimePoint deadline) {
   GetCompactionStatusRequestPB req;
   GetCompactionStatusResponsePB resp;
 
@@ -1164,12 +1164,33 @@ Result<TableCompactionStatus> YBClient::Data::GetCompactionStatus(
   }
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
 
+  if (show_tablets) {
+    req.set_show_tablets(true);
+  }
+
   RETURN_NOT_OK(SyncLeaderMasterRpc(
       deadline, req, &resp, "GetCompactionStatus",
       &master::MasterAdminProxy::GetCompactionStatusAsync));
 
+  if (!resp.has_full_compaction_state()) {
+    return STATUS(InternalError, "Missing full compaction state in table full compaction status");
+  }
+
+  std::vector<TabletReplicaFullCompactionStatus> replica_statuses;
+  for (const auto& replica_status : resp.replica_statuses()) {
+    if (!replica_status.has_ts_id() || !replica_status.has_tablet_id() ||
+        !replica_status.has_full_compaction_state()) {
+      return STATUS(InternalError, "Missing field(s) in tablet replica full compaction status");
+    }
+
+    replica_statuses.push_back(TabletReplicaFullCompactionStatus{
+        replica_status.ts_id(), replica_status.tablet_id(), replica_status.full_compaction_state(),
+        HybridTime(replica_status.last_full_compaction_time())});
+  }
+
   return TableCompactionStatus{
-      resp.full_compaction_state(), MonoTime::FromUint64(resp.last_request_time())};
+      resp.full_compaction_state(), HybridTime(resp.last_full_compaction_time()),
+      HybridTime(resp.last_request_time()), std::move(replica_statuses)};
 }
 
 bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {

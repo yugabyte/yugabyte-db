@@ -221,15 +221,12 @@ UPDATE tbl SET c2 = 2 WHERE c1 = 1;
 DELETE FROM tbl WHERE c1 = 5 OR c3 = 12;
 DROP TABLE tbl;
 
--- NOT SUPPORTED
---
--- /*
---  * 9. Alter column type.
---  */
--- CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int, UNIQUE(c1, c2) INCLUDE(c3,c4));
--- INSERT INTO tbl SELECT x, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
--- ALTER TABLE tbl ALTER c1 TYPE bigint;
--- ALTER TABLE tbl ALTER c3 TYPE bigint;
--- \d tbl
--- DROP TABLE tbl;
---
+/*
+ * 9. Alter column type.
+ */
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
+INSERT INTO tbl SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
+ALTER TABLE tbl ALTER c1 TYPE bigint;
+ALTER TABLE tbl ALTER c3 TYPE bigint;
+\d tbl
+DROP TABLE tbl;

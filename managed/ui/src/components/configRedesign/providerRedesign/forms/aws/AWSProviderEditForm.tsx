@@ -106,7 +106,7 @@ export interface AWSProviderEditFormFieldValues {
   secretAccessKey: string;
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
-  sshPort: number;
+  sshPort: number | null;
   sshPrivateKeyContent: File;
   sshUser: string;
   vpcSetupType: VPCSetupType;
@@ -375,7 +375,7 @@ export const AWSProviderEditForm = ({
                     />
                   </FormField>
                   <FormField>
-                    <FieldLabel>Change Access Key</FieldLabel>
+                    <FieldLabel>Change AWS Credentials</FieldLabel>
                     <YBToggleField
                       name="editAccessKey"
                       control={formMethods.control}
@@ -490,7 +490,7 @@ export const AWSProviderEditForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -675,10 +675,11 @@ const constructDefaultFormValues = (
     zones: region.zones
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort ?? '',
+  sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
-  vpcSetupType: providerConfig.details.cloudInfo.aws.vpcType
+  vpcSetupType: providerConfig.details.cloudInfo.aws.vpcType,
+  ybImageType: YBImageType.CUSTOM_AMI
 });
 
 const constructProviderPayload = async (
@@ -724,8 +725,8 @@ const constructProviderPayload = async (
       },
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: [
       ...formValues.regions.map<AWSRegionMutation>((regionFormValues) => {
@@ -744,11 +745,15 @@ const constructProviderPayload = async (
               [ProviderCode.AWS]: {
                 ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
                   ? {
-                      ybImage: regionFormValues.ybImage
+                      ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
                     }
-                  : { arch: formValues.ybImageType }),
-                securityGroupId: regionFormValues.securityGroupId,
-                vnet: regionFormValues.vnet
+                  : { ...(formValues.ybImageType && { arch: formValues.ybImageType }) }),
+                ...(regionFormValues.securityGroupId && {
+                  securityGroupId: regionFormValues.securityGroupId
+                }),
+                ...(regionFormValues.vnet && {
+                  vnet: regionFormValues.vnet
+                })
               }
             }
           },

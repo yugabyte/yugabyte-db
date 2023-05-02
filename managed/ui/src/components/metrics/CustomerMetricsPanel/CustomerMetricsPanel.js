@@ -52,7 +52,7 @@ const PanelBody = ({
     let defaultTabToDisplay = isYSQLOpsEnabled ? MetricTypes.YSQL_OPS : MetricTypes.YCQL_OPS;
 
     if (origin === MetricOrigin.TABLE) {
-      defaultTabToDisplay = MetricTypes.LSMDB_TABLE;
+      defaultTabToDisplay = MetricTypes.TSERVER_TABLE;
     } else if (origin === MetricOrigin.CUSTOMER) {
       if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
         defaultTabToDisplay = MetricTypes.CONTAINER;
@@ -77,7 +77,7 @@ const PanelBody = ({
         : invalidTabType.push(MetricTypes.CONTAINER);
     }
 
-    if (currentSelectedNodeType !== NodeType.ALL) {
+    if (currentSelectedNodeType !== NodeType.ALL && origin === MetricOrigin.CUSTOMER) {
       currentSelectedNodeType === NodeType.MASTER
         ? invalidTabType.push(MetricTypes.TSERVER, MetricTypes.YSQL_OPS, MetricTypes.YCQL_OPS)
         : invalidTabType.push(MetricTypes.MASTER, MetricTypes.MASTER_ADVANCED);

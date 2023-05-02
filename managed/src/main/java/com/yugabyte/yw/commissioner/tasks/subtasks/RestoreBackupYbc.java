@@ -102,8 +102,10 @@ public class RestoreBackupYbc extends YbcTaskBase {
     }
 
     Optional<RestoreKeyspace> restoreKeyspaceIfPresent =
-        RestoreKeyspace.fetchRestoreKeyspaceByRestoreIdAndKeyspaceName(
-            restoreBackupParams.prefixUUID, backupStorageInfo.keyspace);
+        RestoreKeyspace.fetchRestoreKeyspace(
+            restoreBackupParams.prefixUUID,
+            backupStorageInfo.keyspace,
+            backupStorageInfo.storageLocation);
     RestoreKeyspace restoreKeyspace = null;
     boolean updateRestoreSizeInBytes = true;
     if (!restoreKeyspaceIfPresent.isPresent()) {
@@ -121,9 +123,10 @@ public class RestoreBackupYbc extends YbcTaskBase {
       if (taskId == null) {
         taskId =
             ybcBackupUtil.getYbcTaskID(
-                taskParams().prefixUUID,
-                backupStorageInfo.backupType.toString(),
-                backupStorageInfo.keyspace);
+                    taskParams().prefixUUID,
+                    backupStorageInfo.backupType.toString(),
+                    backupStorageInfo.keyspace)
+                + Integer.toString(taskParams().index);
         try {
           String dsmTaskId = taskId.concat(YbcBackupUtil.YBC_SUCCESS_MARKER_TASK_SUFFIX);
           BackupServiceTaskCreateRequest downloadSuccessMarkerRequest =

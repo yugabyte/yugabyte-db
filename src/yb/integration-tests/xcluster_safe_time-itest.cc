@@ -46,7 +46,6 @@ using namespace std::chrono_literals;
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
-DECLARE_bool(enable_replicate_transaction_status_table);
 DECLARE_string(ysql_yb_xcluster_consistency_level);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
@@ -79,8 +78,6 @@ class XClusterSafeTimeTest : public XClusterTestBase {
   void SetUp() override {
     // Disable LB as we dont want tablets moving during the test.
     FLAGS_enable_load_balancing = false;
-    FLAGS_enable_replicate_transaction_status_table = true;
-
     super::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = kMasterCount;
@@ -126,14 +123,14 @@ class XClusterSafeTimeTest : public XClusterTestBase {
     ASSERT_OK(producer_cluster_.client_->GetTablets(
         global_tran_table_name, 0 /* max_tablets */, &global_tran_tablet_ids_, NULL));
 
-    ASSERT_OK(SetupUniverseReplication({producer_table_}));
+    ASSERT_OK(SetupUniverseReplication(
+        {producer_table_, global_tran_table}, {LeaderOnly::kTrue, Transactional::kTrue}));
 
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
     ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
     ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
-    ASSERT_EQ(resp.entry().tables_size(), 1);
-    ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
+    ASSERT_EQ(resp.entry().tables_size(), 2);
 
     ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
 
@@ -339,7 +336,6 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     FLAGS_enable_load_balancing = false;
     FLAGS_ysql_yb_xcluster_consistency_level = "database";
     FLAGS_transaction_table_num_tablets = 1;
-    FLAGS_enable_replicate_transaction_status_table = true;
 
     super::SetUp();
     MiniClusterOptions opts;
@@ -410,13 +406,8 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
     ASSERT_OK(PreReplicationSetup());
 
-    ASSERT_OK(SetupUniverseReplication({producer_table1_, producer_table2_}));
-
-    // Verify that universe was setup on consumer.
-    master::GetUniverseReplicationResponsePB resp;
-    ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
-    ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
-    ASSERT_EQ(resp.entry().tables_size(), 2);
+    ASSERT_OK(SetupUniverseReplication({producer_table1_, producer_table2_, producer_tran_table_},
+                                       {LeaderOnly::kTrue, Transactional::kTrue}));
 
     ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
 
@@ -728,10 +719,10 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
 
   // Override the Setup the replication and perform it with Bootstrap.
   Status SetupUniverseReplication(
-      const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only) override {
+      const std::vector<std::shared_ptr<client::YBTable>>& tables,
+      SetupReplicationOptions opts) override {
     // 1. Bootstrap the producer
     std::vector<std::shared_ptr<client::YBTable>> new_tables = tables;
-    new_tables.emplace_back(producer_tran_table_);
     bootstrap_ids_ = VERIFY_RESULT(BootstrapCluster(new_tables, &producer_cluster_));
 
     // 2. Write some rows transactonally.
@@ -749,7 +740,7 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
     // 4. Setup replication.
     return XClusterConsistencyTest::SetupUniverseReplication(
         producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, new_tables,
-        leader_only, bootstrap_ids_);
+        bootstrap_ids_, opts);
   }
 
   std::vector<string> bootstrap_ids_;
@@ -780,8 +771,6 @@ class XClusterSingleClusterTest : public XClusterYsqlTestBase {
   void SetUp() override {
     // Skip in TSAN as InitDB times out.
     YB_SKIP_TEST_IN_TSAN();
-
-    FLAGS_enable_replicate_transaction_status_table = true;
 
     XClusterYsqlTestBase::SetUp();
     MiniClusterOptions opts;
