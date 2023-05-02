@@ -43,7 +43,7 @@ public class AlertChannelSlack extends AlertChannelWebBase {
     AlertChannelSlackParams params = (AlertChannelSlackParams) channel.getParams();
     List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customer.getUuid());
     Context context = new Context(channel, channelTemplates, variables);
-    String text = getNotificationText(alert, context);
+    String text = getNotificationText(alert, context, false);
 
     SlackMessage message = new SlackMessage();
     message.username = params.getUsername();

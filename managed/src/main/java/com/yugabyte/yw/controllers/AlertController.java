@@ -38,6 +38,7 @@ import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelFormData;
 import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
+import com.yugabyte.yw.forms.AlertChannelTemplatesPreview;
 import com.yugabyte.yw.forms.AlertDestinationFormData;
 import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
 import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
@@ -765,20 +766,38 @@ public class AlertController extends AuthenticatedController {
     AlertConfiguration alertConfiguration =
         alertConfigurationService.getOrBadRequest(previewFormData.getAlertConfigUuid());
 
-    AlertChannelTemplates channelTemplates = previewFormData.getAlertChannelTemplates();
+    AlertChannelTemplatesPreview channelTemplates = previewFormData.getAlertChannelTemplates();
+    channelTemplates.getChannelTemplates().setCustomerUUID(customerUUID);
+    alertChannelTemplateService.validate(channelTemplates.getChannelTemplates());
+
+    ChannelType channelType = channelTemplates.getChannelTemplates().getType();
     Alert testAlert = createTestAlert(customer, alertConfiguration, false);
     AlertChannel channel = new AlertChannel().setName("Channel name");
     List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customerUUID);
     AlertChannelTemplatesExt templatesExt =
         alertChannelTemplateService.appendDefaults(
-            channelTemplates, customerUUID, channelTemplates.getType());
+            channelTemplates.getChannelTemplates(), customerUUID, channelType);
     Context context = new Context(channel, templatesExt, variables);
 
     NotificationPreview preview = new NotificationPreview();
-    if (channelTemplates.getType().isHasTitle()) {
-      preview.setTitle(AlertChannelBase.getNotificationTitle(testAlert, context));
+    if (channelType.isHasTitle()) {
+      preview.setTitle(AlertChannelBase.getNotificationTitle(testAlert, context, false));
+      if (StringUtils.isNotEmpty(channelTemplates.getHighlightedTextTemplate())) {
+        templatesExt
+            .getChannelTemplates()
+            .setTitleTemplate(channelTemplates.getHighlightedTitleTemplate());
+        preview.setHighlightedTitle(
+            AlertChannelBase.getNotificationTitle(testAlert, context, true));
+      }
     }
-    preview.setText(AlertChannelBase.getNotificationText(testAlert, context));
+    boolean escapeHtml = channelType == ChannelType.Email;
+    preview.setText(AlertChannelBase.getNotificationText(testAlert, context, escapeHtml));
+    if (StringUtils.isNotEmpty(channelTemplates.getHighlightedTextTemplate())) {
+      templatesExt
+          .getChannelTemplates()
+          .setTextTemplate(channelTemplates.getHighlightedTextTemplate());
+      preview.setHighlightedText(AlertChannelBase.getNotificationText(testAlert, context, true));
+    }
     return PlatformResults.withData(preview);
   }
 
