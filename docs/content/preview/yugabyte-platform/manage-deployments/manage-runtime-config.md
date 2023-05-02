@@ -38,7 +38,7 @@ Note that only a Super Admin user has edit or reset access for Global configurat
 
 ### Example
 
-Consider you want to modify the runtime configuration key: `Enforce Auth` (applicable only at Global or Customer scope). Perform the following steps:
+To modify the `Enforce Auth` runtime configuration key (applicable only at Global or Customer scope), perform the following steps:
 
 1. From your YugabyteDB Anywhere UI, navigate to **Admin** > **Advanced** and select the **Global Configuration** or **Customer Configuration** tab.
 1. In the **Search** bar, enter "Enforce Auth".
