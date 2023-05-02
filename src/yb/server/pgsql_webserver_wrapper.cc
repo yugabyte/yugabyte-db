@@ -37,8 +37,7 @@ MetricEntity::AttributeMap prometheus_attr;
 static void (*pullYsqlStatementStats)(void *);
 static void (*resetYsqlStatementStats)();
 static rpczEntry **rpczResultPointer;
-static int* too_many_conn_p = NULL;
-static int* max_conn_p = NULL;
+static YbConnectionMetrics *conn_metrics = NULL;
 
 static postgresCallbacks pgCallbacks;
 
@@ -63,7 +62,6 @@ void emitConnectionMetrics(PrometheusWriter *pwriter) {
   rpczEntry *entry = *rpczResultPointer;
 
   uint64_t tot_connections = 0;
-  uint64_t new_connections = 0;
   uint64_t tot_active_connections = 0;
   for (int i = 0; i < *num_backends; ++i, ++entry) {
     if (entry->proc_id > 0) {
@@ -72,7 +70,6 @@ void emitConnectionMetrics(PrometheusWriter *pwriter) {
       }
       tot_connections++;
     }
-    new_connections += entry->new_conn;
   }
 
   std::ostringstream errMsg;
@@ -87,22 +84,28 @@ void emitConnectionMetrics(PrometheusWriter *pwriter) {
       pwriter->WriteSingleEntryNonTable(
           prometheus_attr, PSQL_SERVER_CONNECTION_TOTAL, tot_connections),
       errMsg.str());
-  if (max_conn_p) {
-    WARN_NOT_OK(
-      pwriter->WriteSingleEntryNonTable(
-          prometheus_attr, PSQL_SERVER_MAX_CONNECTION_TOTAL, *max_conn_p),
-      errMsg.str());
+
+  if (conn_metrics) {
+    if (conn_metrics->max_conn) {
+      WARN_NOT_OK(
+          pwriter->WriteSingleEntryNonTable(
+              prometheus_attr, PSQL_SERVER_MAX_CONNECTION_TOTAL, *conn_metrics->max_conn),
+          errMsg.str());
+    }
+    if (conn_metrics->too_many_conn) {
+      WARN_NOT_OK(
+          pwriter->WriteSingleEntryNonTable(
+              prometheus_attr, PSQL_SERVER_CONNECTION_OVER_LIMIT, *conn_metrics->too_many_conn),
+          errMsg.str());
+    }
+    if (conn_metrics->new_conn) {
+      WARN_NOT_OK(
+          pwriter->WriteSingleEntryNonTable(
+              prometheus_attr, PSQL_SERVER_NEW_CONNECTION_TOTAL, *conn_metrics->new_conn),
+          errMsg.str());
+    }
   }
-  if (too_many_conn_p) {
-    WARN_NOT_OK(
-      pwriter->WriteSingleEntryNonTable(
-          prometheus_attr, PSQL_SERVER_CONNECTION_OVER_LIMIT, *too_many_conn_p),
-      errMsg.str());
-  }
-  WARN_NOT_OK(
-    pwriter->WriteSingleEntryNonTable(
-          prometheus_attr, PSQL_SERVER_NEW_CONNECTION_TOTAL, new_connections),
-    errMsg.str());
+
   pgCallbacks.freeRpczEntries();
 }
 
@@ -367,12 +370,11 @@ void RegisterResetYsqlStatStatements(void (*fn)()) {
 
 void RegisterRpczEntries(
     postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer,
-    int* too_many_conn_ptr, int* max_conn_ptr) {
+    YbConnectionMetrics *conn_metrics_ptr) {
   pgCallbacks = *callbacks;
   num_backends = num_backends_ptr;
   rpczResultPointer = rpczEntriesPointer;
-  too_many_conn_p = too_many_conn_ptr;
-  max_conn_p = max_conn_ptr;
+  conn_metrics = conn_metrics_ptr;
 }
 
 YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
