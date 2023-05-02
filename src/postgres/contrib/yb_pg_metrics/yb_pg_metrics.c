@@ -96,7 +96,7 @@ int port = 0;
 static int num_backends = 0;
 static rpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
-PgBackendStatus **backendStatusArrayPointer = NULL;
+PgBackendStatus *backendStatusArray = NULL;
 extern int MaxConnections;
 
 static long last_cache_misses_val = 0;
@@ -206,9 +206,6 @@ getElapsedMs(TimestampTz start_time, TimestampTz stop_time)
 void
 pullRpczEntries(void)
 {
-  if (!(*backendStatusArrayPointer))
-    elog(LOG, "Backend Status Array hasn't been initialized yet.");
-
   ybrpczMemoryContext = AllocSetContextCreate(TopMemoryContext,
                                              "YB RPCz memory context",
                                              ALLOCSET_SMALL_SIZES);
@@ -217,9 +214,7 @@ pullRpczEntries(void)
   rpcz = (rpczEntry *) palloc(sizeof(rpczEntry) * NumBackendStatSlots);
 
   num_backends = NumBackendStatSlots;
-  volatile PgBackendStatus *beentry;
-
-  beentry = *backendStatusArrayPointer;
+  volatile PgBackendStatus *beentry = backendStatusArray;
 
   for (int i = 0; i < NumBackendStatSlots; i++)
   {
@@ -237,7 +232,6 @@ pullRpczEntries(void)
       before_changecount = beentry->st_changecount;
 
       rpcz[i].proc_id = beentry->st_procpid;
-      rpcz[i].new_conn = beentry->yb_new_conn;
 
       /* avoid filling any more fields if invalid */
       if (beentry->st_procpid <= 0) {
@@ -340,19 +334,22 @@ freeRpczEntries(void)
 void
 webserver_worker_main(Datum unused)
 {
-  /*
-   * We need to use a pointer to a pointer here because the shared memory for BackendStatusArray
-   * is not allocated when we enter this function. The memory is allocated after the background
-   * works are registered.
-   */
-
   YBCInitThreading();
 
-  backendStatusArrayPointer = getBackendStatusArrayPointer();
+  backendStatusArray = getBackendStatusArray();
 
   BackgroundWorkerUnblockSignals();
 
   HandleYBStatus(YBCInitGFlags(NULL /* argv[0] */));
+
+  /*
+   * Assert that shared memory is allocated to backendStatusArray before this webserver
+   * is started.
+  */
+  if (!backendStatusArray)
+    ereport(FATAL,
+            (errcode(ERRCODE_INTERNAL_ERROR),
+             errmsg("Shared memory not allocated to BackendStatusArray before starting YSQL webserver")));
 
   webserver = CreateWebserver(ListenAddresses, port);
 
@@ -365,7 +362,12 @@ webserver_worker_main(Datum unused)
   callbacks.getTimestampTzDiffMs = getElapsedMs;
   callbacks.getTimestampTzToStr  = timestamptz_to_str;
 
-  RegisterRpczEntries(&callbacks, &num_backends, &rpcz, yb_too_many_conn, &MaxConnections);
+  YbConnectionMetrics conn_metrics;
+  conn_metrics.max_conn = &MaxConnections;
+  conn_metrics.too_many_conn = yb_too_many_conn;
+  conn_metrics.new_conn = yb_new_conn;
+
+  RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &conn_metrics);
 
   HandleYBStatus(StartWebserver(webserver));
 

@@ -1077,8 +1077,6 @@ typedef struct PgBackendStatus
 
 	/* current state */
 	BackendState st_state;
-	/* new connection count */
-	int yb_new_conn;
 
 	/* application name; MUST be null-terminated */
 	char	   *st_appname;
@@ -1469,6 +1467,12 @@ extern PgStat_StatFuncEntry *pgstat_fetch_stat_funcentry(Oid funcid);
 extern int	pgstat_fetch_stat_numbackends(void);
 extern PgStat_ArchiverStats *pgstat_fetch_stat_archiver(void);
 extern PgStat_GlobalStats *pgstat_fetch_global(void);
-extern PgBackendStatus **getBackendStatusArrayPointer(void);
+extern PgBackendStatus		*getBackendStatusArray(void);
+
+/*
+ * Metric to track number of sql connections established since
+ * postmaster started.
+ */
+extern uint64_t *yb_new_conn;
 
 #endif							/* PGSTAT_H */

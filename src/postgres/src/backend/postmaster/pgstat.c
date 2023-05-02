@@ -2653,6 +2653,8 @@ static Size BackendActivityBufferSize = 0;
 static PgBackendSSLStatus *BackendSslStatusBuffer = NULL;
 #endif
 
+uint64_t *yb_new_conn = NULL;
+
 
 /*
  * Report shared-memory space needed by CreateSharedBackendStatus.
@@ -2679,6 +2681,10 @@ BackendStatusShmemSize(void)
 					mul_size(sizeof(PgBackendSSLStatus), NumBackendStatSlots));
 #endif
 	size = add_size(size, mul_size(NAMEDATALEN, NumBackendStatSlots));
+
+	/* yb_new_conn metric */
+	size = add_size(size, sizeof(uint64_t));
+
 	return size;
 }
 
@@ -2805,6 +2811,9 @@ CreateSharedBackendStatus(void)
 		}
 	}
 #endif
+
+	yb_new_conn = (uint64_t *) ShmemAlloc(sizeof(uint64_t));
+	(*yb_new_conn) = 0;
 }
 
 
@@ -2993,6 +3002,11 @@ pgstat_bestart(void)
 	lbeentry.st_state_start_timestamp = 0;
 	lbeentry.st_xact_start_timestamp = 0;
 	lbeentry.st_databaseid = MyDatabaseId;
+
+	/* Increment the total connections counter */
+	if (lbeentry.st_procpid > 0 && lbeentry.st_backendType == B_BACKEND)
+		(*yb_new_conn)++;
+
 
 	if (YBIsEnabledInPostgresEnvVar() && lbeentry.st_databaseid > 0) {
 		HeapTuple tuple;
@@ -3196,7 +3210,6 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 			PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 			beentry->st_state = STATE_DISABLED;
 			beentry->st_state_start_timestamp = 0;
-			beentry->yb_new_conn = 0;
 			beentry->st_activity_raw[0] = '\0';
 			beentry->st_activity_start_timestamp = 0;
 			/* st_xact_start_timestamp and wait_event_info are also disabled */
@@ -3228,10 +3241,6 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 	 */
 	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 
-	if ((state == STATE_RUNNING || state == STATE_FASTPATH) &&
-		beentry->st_state != state) {
-		beentry->yb_new_conn++;
-	}
 	beentry->st_state = state;
 	beentry->st_state_start_timestamp = current_timestamp;
 
@@ -6908,8 +6917,8 @@ pgstat_clip_activity(const char *raw_activity)
 	return activity;
 }
 
-PgBackendStatus **
-getBackendStatusArrayPointer(void)
+PgBackendStatus *
+getBackendStatusArray(void)
 {
-	return &BackendStatusArray;
+  return BackendStatusArray;
 }
