@@ -30,7 +30,7 @@ Currently, the scopes can be categorized as follows:
 
 ## Edit or reset runtime configuration keys
 
-To modify the runtime configuration keys, navigate to your YugabyteDB Anywhere UI and click **Admin** > **Advanced** to open the different configuration scopes similar to the following illustration:
+To modify the runtime configuration keys, in YugabyteDB Anywhere, navigate to **Admin** > **Advanced** to display the runtime configuration settings, similar to the following illustration:
 
 ![Runtime configuration overview](/images/ee/runtime-config-overview.png)
 
