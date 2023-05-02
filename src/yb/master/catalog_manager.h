@@ -2503,16 +2503,21 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Helper functions for GetTableSchemaCallback, GetTablegroupSchemaCallback
   // and GetColocatedTabletSchemaCallback.
 
-  // Helper container to track colocationid and the producer to consumer schema version mapping.
+  // Helper container to track colocationId and the producer to consumer schema version mapping.
   typedef std::vector<std::tuple<ColocationId, SchemaVersion, SchemaVersion>>
       ColocationSchemaVersions;
+
+  struct SetupReplicationInfo {
+    std::unordered_map<TableId, std::string> table_bootstrap_ids;
+    bool transactional;
+  };
 
   // Validates a single table's schema with the corresponding table on the consumer side, and
   // updates consumer_table_id with the new table id. Return the consumer table schema if the
   // validation is successful.
   Status ValidateTableSchema(
       const std::shared_ptr<client::YBTableInfo>& info,
-      const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
+      const SetupReplicationInfo& setup_info,
       GetTableSchemaResponsePB* resp);
 
   // Adds a validated table to the sys catalog table map for the given universe
@@ -2542,22 +2547,24 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableId& consumer_table,
       const ColocationSchemaVersions& colocated_schema_versions);
 
-  void GetTableSchemaCallback(
-      const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& producer_info,
-      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
-
   Status ValidateTableAndCreateCdcStreams(
       scoped_refptr<UniverseReplicationInfo> universe,
       const std::shared_ptr<client::YBTableInfo>& producer_info,
-      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids);
+      const SetupReplicationInfo& setup_info);
 
+  void GetTableSchemaCallback(
+      const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& producer_info,
+      const SetupReplicationInfo& setup_info,
+      const Status& s);
   void GetTablegroupSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
       const TablegroupId& producer_tablegroup_id,
-      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
+      const SetupReplicationInfo& setup_info,
+      const Status& s);
   void GetColocatedTabletSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
-      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
+      const SetupReplicationInfo& setup_info,
+      const Status& s);
   typedef std::vector<
       std::tuple<CDCStreamId, TableId, std::unordered_map<std::string, std::string>>>
       StreamUpdateInfos;
