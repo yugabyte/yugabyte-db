@@ -14,10 +14,10 @@ type: docs
 YugabyteDB Anywhere has a configuration mechanism that is fully compatible with the existing [typesafe config](https://github.com/lightbend/config) format and has the following additional properties:
 
 - Runtime/Dynamic: The configuration keys can be set or changed at runtime via the API.
-- Persistent: The site specific configuration changes won't be lost in an install.
-- Backwards compatibility: Fully compatible with existing mechanism with default values residing in the file `application.conf` or `reference.conf`.
+- Persistent: The site-specific configuration changes won't be lost in an install.
+- Backwards compatibility: Fully compatible with the existing mechanism with default values residing in the file `application.conf` or `reference.conf`.
 - Scoped: Configuration can be applied to a smaller scope, for example, even a single universe can be configured to have certain features.
-- Hierarchical: Scopes are nested and allow for overriding outer scope values in inner scope.
+- Hierarchical: Scopes are nested and allow for overriding outer scope values in the inner scope.
 
 Currently, the scopes can be categorized as follows:
 
@@ -30,7 +30,7 @@ Currently, the scopes can be categorized as follows:
 
 ## Edit or reset runtime configuration keys
 
-To modify the runtime configuration keys, navigate to your YugabyteDB Anywhere UI and click **Admin** > **Advanced** to open the different configuration scopes similar to the following illustration:
+To modify the runtime configuration keys, in YugabyteDB Anywhere, navigate to **Admin** > **Advanced** to display the runtime configuration settings, similar to the following illustration:
 
 ![Runtime configuration overview](/images/ee/runtime-config-overview.png)
 
@@ -38,9 +38,10 @@ Note that only a Super Admin user has edit or reset access for Global configurat
 
 ### Example
 
-Consider you want to modify the runtime configuration key: `Enforce Auth` (applicable only at Global or Customer scope). Perform the following steps:
+To modify the `Enforce Auth` runtime configuration key (applicable only at Global or Customer scope), perform the following steps:
 
-1. From your YugabyteDB Anywhere UI, navigate to **Admin** > **Advanced** and click the **Global Configuration** or **Customer Configuration** tab.
-1. From the **Search** bar, enter "Enforce Auth".
-1. From the **Actions** dropdown, select **Edit Configuration** and change the **Config value** to "True".
-1. Navigate to **Universes**, click **Create Universe**, and verify that for the  **Authentication Settings** section, "Enable YSQL Auth" will not be displayed and you are forced to enter a password for **YSQL Password** and **Confirm Password** fields.
+1. From your YugabyteDB Anywhere UI, navigate to **Admin** > **Advanced** and select the **Global Configuration** or **Customer Configuration** tab.
+1. In the **Search** bar, enter "Enforce Auth".
+1. Click **Actions** and choose **Edit Configuration**.
+1. Change the **Config value** to "True" and click **Save**.
+To verify the change, navigate to **Universes**, click **Create Universe**, and verify that for the  **Authentication Settings** section, "Enable YSQL Auth" is not be displayed and you are must enter a password in the **YSQL Password** and **Confirm Password** fields.
