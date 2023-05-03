@@ -173,6 +173,7 @@ export const AWSProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isForceSubmitting, setIsForceSubmitting] = useState<boolean>(false);
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const [
     quickValidationErrors,
@@ -243,10 +244,16 @@ export const AWSProviderEditForm = ({
     try {
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
+        setIsForceSubmitting(ignoreValidationErrors);
         await editProvider(providerPayload, {
           shouldValidate: shouldValidate,
           ignoreValidationErrors: ignoreValidationErrors,
-          mutateOptions: { onError: handleFormSubmitServerError }
+          mutateOptions: {
+            onError: handleFormSubmitServerError,
+            onSettled: () => {
+              setIsForceSubmitting(false);
+            }
+          }
         });
       } catch (_) {
         // Handled by onError callback
@@ -317,7 +324,8 @@ export const AWSProviderEditForm = ({
   const ybImageType = formMethods.watch('ybImageType');
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
-  const isFormDisabled = getIsFormDisabled(providerConfig, isProviderInUse, formMethods.formState);
+  const isFormDisabled =
+    getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig) || isForceSubmitting;
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -620,7 +628,7 @@ export const AWSProviderEditForm = ({
               }
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
