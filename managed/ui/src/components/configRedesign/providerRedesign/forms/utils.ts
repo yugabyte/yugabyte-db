@@ -122,13 +122,12 @@ export const constructAccessKeysPayload = (
 };
 
 export const getIsFormDisabled = <TFieldValues extends FieldValues>(
-  providerConfig: YBProvider,
-  isProviderInUse: boolean,
-  formState: FormState<TFieldValues>
+  formState: FormState<TFieldValues>,
+  isProviderInUse = false,
+  providerConfig?: YBProvider
 ) =>
-  providerConfig.usabilityState === ProviderStatus.UPDATING ||
+  providerConfig?.usabilityState === ProviderStatus.UPDATING ||
   isProviderInUse ||
-  formState.isValidating ||
   formState.isSubmitting;
 
 export const getIsRegionFormDisabled = <TFieldValues extends FieldValues>(
