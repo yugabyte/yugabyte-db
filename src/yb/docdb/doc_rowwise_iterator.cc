@@ -28,6 +28,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
@@ -51,7 +52,11 @@
 
 #include "yb/rocksdb/db.h"
 
+#include "yb/tablet/tablet_metrics.h"
+
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -1015,9 +1020,7 @@ DocRowwiseIterator::DocRowwiseIterator(
       deadline_(deadline),
       read_time_(read_time),
       doc_db_(doc_db),
-      has_bound_key_(false),
-      pending_op_(pending_op_counter),
-      done_(false) {
+      pending_op_(pending_op_counter) {
   SetupProjectionSubkeys();
 }
 
@@ -1036,9 +1039,7 @@ DocRowwiseIterator::DocRowwiseIterator(
       deadline_(deadline),
       read_time_(read_time),
       doc_db_(doc_db),
-      has_bound_key_(false),
-      pending_op_(pending_op_counter),
-      done_(false) {
+      pending_op_(pending_op_counter) {
   SetupProjectionSubkeys();
 }
 
@@ -1058,9 +1059,7 @@ DocRowwiseIterator::DocRowwiseIterator(
       deadline_(deadline),
       read_time_(read_time),
       doc_db_(doc_db),
-      has_bound_key_(false),
-      pending_op_(pending_op_counter),
-      done_(false) {
+      pending_op_(pending_op_counter) {
   SetupProjectionSubkeys();
 }
 
@@ -1074,6 +1073,7 @@ void DocRowwiseIterator::SetupProjectionSubkeys() {
 }
 
 DocRowwiseIterator::~DocRowwiseIterator() {
+  FinalizeKeyFoundStats();
 }
 
 Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) {
@@ -1237,6 +1237,21 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
   return Status::OK();
 }
 
+void DocRowwiseIterator::FinalizeKeyFoundStats() {
+  if (!doc_db_.metrics || !keys_found_) {
+    return;
+  }
+
+  doc_db_.metrics->docdb_keys_found->IncrementBy(keys_found_);
+  if (obsolete_keys_found_) {
+    doc_db_.metrics->docdb_obsolete_keys_found->IncrementBy(obsolete_keys_found_);
+    if (obsolete_keys_found_past_cutoff_) {
+      doc_db_.metrics->docdb_obsolete_keys_found_past_cutoff->IncrementBy(
+          obsolete_keys_found_past_cutoff_);
+    }
+  }
+}
+
 Result<bool> DocRowwiseIterator::HasNext() {
   VLOG(4) << __PRETTY_FUNCTION__;
 
@@ -1260,17 +1275,18 @@ Result<bool> DocRowwiseIterator::HasNext() {
       return false;
     }
 
-    const auto key_data = db_iter_->FetchKey();
-    if (!key_data.ok()) {
-      VLOG(4) << __func__ << ", key data: " << key_data.status();
-      has_next_status_ = key_data.status();
+    const auto key_data_result = db_iter_->FetchKey();
+    if (!key_data_result.ok()) {
+      VLOG(4) << __func__ << ", key data: " << key_data_result.status();
+      has_next_status_ = key_data_result.status();
       return has_next_status_;
     }
+    const auto& key_data = *key_data_result;
 
-    VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(key_data->key);
+    VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(key_data.key);
     if (debug_dump_) {
-      LOG(INFO) << __func__ << ", fetched key: " << SubDocKey::DebugSliceToString(key_data->key)
-                << ", " << key_data->key.ToDebugHexString();
+      LOG(INFO) << __func__ << ", fetched key: " << SubDocKey::DebugSliceToString(key_data.key)
+                << ", " << key_data.key.ToDebugHexString();
     }
 
     // The iterator is positioned by the previous GetSubDocument call (which places the iterator
@@ -1278,14 +1294,14 @@ Result<bool> DocRowwiseIterator::HasNext() {
     // check it here instead of after GetSubDocument() below because we want to avoid the extra
     // expensive FetchKey() call just to fetch and validate the key.
     if (!iter_key_.data().empty() &&
-        (is_forward_scan_ ? iter_key_.CompareTo(key_data->key) >= 0
-                          : iter_key_.CompareTo(key_data->key) <= 0)) {
+        (is_forward_scan_ ? iter_key_.CompareTo(key_data.key) >= 0
+                          : iter_key_.CompareTo(key_data.key) <= 0)) {
       // TODO -- could turn this check off in TPCC?
       has_next_status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
-                                           FormatSliceAsStr(key_data->key));
+                                           FormatSliceAsStr(key_data.key));
       return has_next_status_;
     }
-    iter_key_.Reset(key_data->key);
+    iter_key_.Reset(key_data.key);
     VLOG(4) << " Current iter_key_ is " << iter_key_;
 
     const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(iter_key_);
@@ -1339,9 +1355,12 @@ Result<bool> DocRowwiseIterator::HasNext() {
     if (!doc_found_res.ok()) {
       has_next_status_ = doc_found_res.status();
       return has_next_status_;
-    } else {
-      doc_found = *doc_found_res;
     }
+    doc_found = *doc_found_res;
+    // Use the write_time of the entire row.
+    // May lose some precision by not examining write time of every column.
+    IncrementKeyFoundStats(!doc_found, key_data.write_time);
+
     if (scan_choices_ && !is_static_column) {
       has_next_status_ = scan_choices_->DoneWithCurrentTarget();
       RETURN_NOT_OK(has_next_status_);
@@ -1351,6 +1370,26 @@ Result<bool> DocRowwiseIterator::HasNext() {
   }
   row_ready_ = true;
   return true;
+}
+
+void DocRowwiseIterator::IncrementKeyFoundStats(
+    const bool obsolete, const DocHybridTime& write_time) {
+  if (doc_db_.metrics) {
+    ++keys_found_;
+    if (obsolete) {
+      ++obsolete_keys_found_;
+      if (!history_cutoff_.is_valid() && doc_db_.retention_policy) {
+        // Lazy initialization to avoid extra steps in most cases.
+        // It is expected that we will find obsolete keys quite rarely.
+        history_cutoff_ = DocHybridTime(doc_db_.retention_policy->ProposedHistoryCutoff());
+      }
+      if (write_time < history_cutoff_) {
+        // If the obsolete key found was written before the history cutoff, then count
+        // record this in addition (since it can be removed via compaction).
+        ++obsolete_keys_found_past_cutoff_;
+      }
+    }
+  }
 }
 
 string DocRowwiseIterator::ToString() const {

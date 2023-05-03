@@ -14,11 +14,20 @@
 #ifndef YB_DOCDB_KEY_BOUNDS_H
 #define YB_DOCDB_KEY_BOUNDS_H
 
+#include "yb/common/hybrid_time.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 namespace yb {
+namespace tablet {
+
+struct TabletMetrics;
+
+}  // namespace tablet
+
 namespace docdb {
+
+class HistoryRetentionPolicy;
 
 // Optional inclusive lower bound and exclusive upper bound for keys served by DocDB.
 // Could be used to split tablet without doing actual splitting of RocksDB files.
@@ -52,13 +61,16 @@ struct DocDB {
   rocksdb::DB* regular = nullptr;
   rocksdb::DB* intents = nullptr;
   const KeyBounds* key_bounds = nullptr;
+  HistoryRetentionPolicy* retention_policy = nullptr;
+  tablet::TabletMetrics* metrics = nullptr;
 
   static DocDB FromRegularUnbounded(rocksdb::DB* regular) {
-    return {regular, nullptr /* intents */, &KeyBounds::kNoBounds};
+    return {regular, nullptr /* intents */, &KeyBounds::kNoBounds,
+        nullptr /* retention_policy */, nullptr /* metrics */};
   }
 
   DocDB WithoutIntents() {
-    return {regular, nullptr /* intents */, key_bounds};
+    return {regular, nullptr /* intents */, key_bounds, retention_policy, metrics};
   }
 };
 

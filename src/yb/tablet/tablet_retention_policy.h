@@ -35,6 +35,9 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
 
   docdb::HistoryRetentionDirective GetRetentionDirective() override;
 
+  // Returns history cutoff without updating committed_history_cutoff_.
+  HybridTime ProposedHistoryCutoff() override;
+
   // Tries to update history cutoff to proposed value, not allowing it to decrease.
   // Returns new committed history cutoff value.
   HybridTime UpdateCommittedHistoryCutoff(HybridTime new_value);
