@@ -494,9 +494,9 @@ const validateForm = async (
           };
         }
         // Check if bootstrap is required, for each selected table
-        let bootstrapTests: { [tableUUID: string]: boolean }[] | null = null;
+        let bootstrapTest: { [tableUUID: string]: boolean } = {};
         try {
-          bootstrapTests = await isBootstrapRequired(
+          bootstrapTest = await isBootstrapRequired(
             sourceUniveres.universeUUID,
             values.tableUUIDs.map(adaptTableUUID),
             values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC
@@ -520,22 +520,9 @@ const validateForm = async (
               'An error occured while verifying whether the selected tables require bootstrapping.'
           };
         }
-        if (bootstrapTests !== null) {
-          const bootstrapTableUUIDs = bootstrapTests.reduce(
-            (bootstrapTableUUIDs: string[], bootstrapTest) => {
-              // Each bootstrapTest response is of the form {<tableUUID>: boolean}.
-              // Until the backend supports multiple tableUUIDs per request, the response object
-              // will only contain one tableUUID.
-              // Note: Once backend does support multiple tableUUIDs per request, we will replace this
-              //       logic with one that simply filters on the keys (tableUUIDs) of the returned object.
-              const tableUUID = Object.keys(bootstrapTest)[0];
-
-              if (bootstrapTest[tableUUID]) {
-                bootstrapTableUUIDs.push(tableUUID);
-              }
-              return bootstrapTableUUIDs;
-            },
-            []
+        if (bootstrapTest) {
+          const bootstrapTableUUIDs = Object.keys(bootstrapTest).filter(
+            (tableUUID) => bootstrapTest?.[tableUUID]
           );
           setBootstrapRequiredTableUUIDs(bootstrapTableUUIDs);
 
