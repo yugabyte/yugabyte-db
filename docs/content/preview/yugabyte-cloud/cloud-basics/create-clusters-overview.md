@@ -137,6 +137,13 @@ If you need a feature from a preview release (that isn't yet available in a stab
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
 
+{{< warning title="Important" >}}
+
+There is currently no migration path from a preview release to a stable release.
+
+{{< /warning >}}
+
+
 ### Staging cluster
 
 Use a staging cluster for the following tasks:
