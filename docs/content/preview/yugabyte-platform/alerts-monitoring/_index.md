@@ -4,7 +4,7 @@ headerTitle: Alerts and monitoring
 linkTitle: Alerts and monitoring
 description: Use YugabyteDB Anywhere for alerts and monitoring of YugabyteDB universe data.
 image: /images/section_icons/manage/backup.png
-headcontent: Use YugabyteDB Anywhere for alerts and monitoring of YugabyteDB universe data.
+headcontent: Review universe alerts and metrics
 menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
@@ -12,6 +12,14 @@ menu:
 weight: 647
 type: indexpage
 ---
+
+YugabyteDB Anywhere has default, preconfigured alerts, both at the YugabyteDB Anywhere and universe level, to notify you of potential problems with universes and your YugabyteDB Anywhere installation.
+
+Use the Live Queries and Slow Queries dashboards to monitor and display current running queries and analyze statistics of past queries on your YugabyteDB universes.
+
+For information on creating and customizing alerts, both for universe and YugabyteDB Anywhere metrics, refer to [Create and configure alerts](../configure-yugabyte-platform/set-up-alerts-health-check/).
+
+To view performance metrics, refer to [Use metrics](../troubleshoot/universe-issues/#use-metrics/).
 
 <div class="row">
 

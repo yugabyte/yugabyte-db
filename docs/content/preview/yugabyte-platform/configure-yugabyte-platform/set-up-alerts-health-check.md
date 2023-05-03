@@ -13,11 +13,7 @@ type: docs
 
 YugabyteDB Anywhere has default, preconfigured alerts, both at the YugabyteDB Anywhere and universe level. Universe alerts can be configured globally for all universes, or per specific universe. In addition to the default alerts, you can configure your own alerts based on a specific condition on any available metric.
 
-For additional information, see the following:
-
-- [Alerts](../../alerts-monitoring/alert/)
-- [Metrics](../../troubleshoot/universe-issues/#use-metrics/)
-- [Alerts and Notifications in YugabyteDB Anywhere](https://www.yugabyte.com/blog/yugabytedb-2-8-alerts-and-notifications/)
+To review alerts that have triggered, refer to [Alerts](../../alerts-monitoring/alert/). To view performance metrics, refer to [Use metrics](../../troubleshoot/universe-issues/#use-metrics/).
 
 You can access YugabyteDB Anywhere health monitor and configure alerts by navigating to **Admin > Alert Configurations**.
 
