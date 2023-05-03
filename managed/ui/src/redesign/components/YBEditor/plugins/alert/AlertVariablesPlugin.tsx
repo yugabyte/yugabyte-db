@@ -56,7 +56,8 @@ const useStyle = makeStyles((theme) => ({
     fontWeight: 500,
     padding: theme.spacing(0.5),
     cursor: 'pointer',
-    display: 'inline-flex'
+    display: 'inline-flex',
+    userSelect: 'none'
   },
   custom: {
     background: theme.palette.primary[200]
