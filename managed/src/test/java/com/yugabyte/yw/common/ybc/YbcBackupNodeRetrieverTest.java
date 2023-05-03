@@ -12,7 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
+import com.yugabyte.yw.forms.BackupTableParams.ParallelBackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.HashMap;
