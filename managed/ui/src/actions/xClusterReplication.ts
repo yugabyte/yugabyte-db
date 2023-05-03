@@ -79,17 +79,13 @@ export function isBootstrapRequired(
   configType: XClusterConfigType = XClusterConfigType.BASIC
 ) {
   const customerId = localStorage.getItem('customerId');
-  return Promise.all(
-    tableUUIDs.map((tableUUID) => {
-      return axios
-        .post<{ [tableUUID: string]: boolean }>(
-          `${ROOT_URL}/customers/${customerId}/universes/${sourceUniverseUUID}/need_bootstrap`,
-          { tables: [tableUUID] },
-          { params: { configType } }
-        )
-        .then((response) => response.data);
-    })
-  );
+  return axios
+    .post<{ [tableUUID: string]: boolean }>(
+      `${ROOT_URL}/customers/${customerId}/universes/${sourceUniverseUUID}/need_bootstrap`,
+      { tables: tableUUIDs },
+      { params: { configType } }
+    )
+    .then((response) => response.data);
 }
 
 export function isCatchUpBootstrapRequired(
@@ -98,16 +94,12 @@ export function isCatchUpBootstrapRequired(
 ) {
   const customerId = localStorage.getItem('customerId');
   if (tableUUIDs && xClusterConfigUUID) {
-    return Promise.all(
-      tableUUIDs.map((tableUUID) => {
-        return axios
-          .post<{ [tableUUID: string]: boolean }>(
-            `${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}/need_bootstrap`,
-            { tables: [tableUUID] }
-          )
-          .then((response) => response.data);
-      })
-    );
+    return axios
+      .post<{ [tableUUID: string]: boolean }>(
+        `${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}/need_bootstrap`,
+        { tables: tableUUIDs }
+      )
+      .then((response) => response.data);
   }
   const errorMsg = xClusterConfigUUID ? 'No table UUIDs provided' : 'No xCluster UUID provided';
   return Promise.reject(`Querying bootstrap requirement failed: ${errorMsg}.`);
