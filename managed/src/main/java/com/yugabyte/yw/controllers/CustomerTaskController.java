@@ -314,6 +314,12 @@ public class CustomerTaskController extends AuthenticatedController {
         if (oldTaskParams.has("rootCA")) {
           nodeTaskParams.rootCA = UUID.fromString(oldTaskParams.get("rootCA").textValue());
         }
+        if (universe.isYbcEnabled()) {
+          nodeTaskParams.setEnableYbc(true);
+          nodeTaskParams.setYbcInstalled(true);
+          nodeTaskParams.setYbcSoftwareVersion(
+              universe.getUniverseDetails().getYbcSoftwareVersion());
+        }
         taskParams = nodeTaskParams;
         break;
       case BackupUniverse:
