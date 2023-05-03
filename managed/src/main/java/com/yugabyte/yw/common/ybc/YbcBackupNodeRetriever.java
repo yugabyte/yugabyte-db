@@ -4,7 +4,7 @@ package com.yugabyte.yw.common.ybc;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
-import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
+import com.yugabyte.yw.forms.BackupTableParams.ParallelBackupState;
 import com.yugabyte.yw.models.Universe;
 import java.util.Map;
 import java.util.Set;
