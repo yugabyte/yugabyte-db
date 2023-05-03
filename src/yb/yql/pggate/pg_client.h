@@ -102,6 +102,8 @@ class PgClient {
   Result<client::YBTableName> DropTable(
       tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline);
 
+  Result<int> WaitForBackendsCatalogVersion(
+      tserver::PgWaitForBackendsCatalogVersionRequestPB* req, CoarseTimePoint deadline);
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
 
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,

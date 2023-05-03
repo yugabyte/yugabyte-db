@@ -64,6 +64,7 @@ module.exports = {
     'no-undef': 0,
     'one-var': [2, 'never'],
     'import/no-unresolved': [0, { caseSensitive: false }],
+    'no-control-regex': 0,
     // TODO: Handle null check in a separate diff
     eqeqeq: 2,
     'no-useless-return': 2,

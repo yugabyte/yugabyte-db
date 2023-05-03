@@ -1,7 +1,8 @@
 package com.yugabyte.yw.commissioner;
 
-import static com.yugabyte.yw.common.metrics.MetricService.STATUS_OK;
 import static com.yugabyte.yw.common.metrics.MetricService.STATUS_NOT_OK;
+import static com.yugabyte.yw.common.metrics.MetricService.STATUS_OK;
+
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.BackupUtil;
@@ -14,9 +15,9 @@ import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import java.util.Collections;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -67,8 +68,7 @@ public class PitrConfigPoller {
     log.info("Running PITR Config Poller");
     List<PitrConfig> pitrConfigList = PitrConfig.getAll();
     Map<UUID, Map<UUID, PitrConfig>> scheduleMap =
-        pitrConfigList
-            .stream()
+        pitrConfigList.stream()
             .collect(
                 Collectors.groupingBy(
                     p -> p.getUniverse().getUniverseUUID(),

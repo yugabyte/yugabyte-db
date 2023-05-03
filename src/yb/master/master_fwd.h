@@ -82,11 +82,13 @@ class UDTypeInfo;
 class XClusterSafeTimeService;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
+class YsqlBackendsManager;
 class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
 
 struct CDCConsumerStreamInfo;
+struct PgTableReadData;
 struct TableDescription;
 struct TabletReplica;
 struct TabletReplicaDriveInfo;

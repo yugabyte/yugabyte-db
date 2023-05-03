@@ -30,10 +30,10 @@
 // under the License.
 //
 
-#include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/qlexpr/index.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/consensus/log-test-base.h"
 
@@ -69,24 +69,17 @@
 #include "yb/util/status_log.h"
 #include "yb/util/flags.h"
 
-using yb::consensus::RaftConfigPB;
-using yb::consensus::RaftPeerPB;
-using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
-using yb::server::Clock;
 using yb::server::HybridClock;
-using yb::tablet::Tablet;
-using yb::tablet::TabletPeer;
-using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 
-DEFINE_UNKNOWN_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
+DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
              "Number of rows to insert in the warmup phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
-DEFINE_UNKNOWN_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
+DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
              "Number of rows to insert in the testing phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
@@ -425,13 +418,10 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   RpcController controller;
 
   auto tablet = ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
-  // get the current time
-  HybridTime current = mini_server_->server()->clock()->Now();
-  // advance current to some time in the future. we do 5 secs to make
+  // Advance current to some time in the future. we do 5 secs to make
   // sure this hybrid_time will still be in the future when it reaches the
   // server.
-  current = HybridClock::HybridTimeFromMicroseconds(
-      HybridClock::GetPhysicalValueMicros(current) + 5000000);
+  HybridTime current = mini_server_->server()->clock()->Now().AddMicroseconds(5000000);
 
   AddTestRowInsert(1234, 5678, "hello world via RPC", &req);
 
@@ -446,11 +436,11 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   // its clock with the client's value.
   HybridTime write_hybrid_time(resp.propagated_hybrid_time());
 
-  ASSERT_EQ(HybridClock::GetPhysicalValueMicros(current),
-            HybridClock::GetPhysicalValueMicros(write_hybrid_time));
+  ASSERT_EQ(current.GetPhysicalValueMicros(),
+            write_hybrid_time.GetPhysicalValueMicros());
 
-  ASSERT_LE(HybridClock::GetLogicalValue(current) + 1,
-            HybridClock::GetLogicalValue(write_hybrid_time));
+  ASSERT_LE(current.GetLogicalValue() + 1,
+            write_hybrid_time.GetLogicalValue());
 }
 
 TEST_F(TabletServerTest, TestInsertAndMutate) {
@@ -858,14 +848,14 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   const char *tabletId = "TestWriteOutOfBoundsTablet";
   Schema schema = SchemaBuilder(schema_).Build();
 
-  PartitionSchema partition_schema;
-  CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
+  dockv::PartitionSchema partition_schema;
+  CHECK_OK(dockv::PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
-  Partition partition;
+  dockv::Partition partition;
   auto table_info = std::make_shared<tablet::TableInfo>(
       "TEST: ", tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId,
-      YQL_TABLE_TYPE, schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
-      partition_schema);
+      YQL_TABLE_TYPE, schema, qlexpr::IndexMap(), boost::none /* index_info */,
+      0 /* schema_version */, partition_schema);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
       table_info, tabletId, partition, mini_server_->CreateLocalConfig()));
 

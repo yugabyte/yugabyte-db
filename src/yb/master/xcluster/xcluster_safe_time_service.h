@@ -63,6 +63,8 @@ class XClusterSafeTimeService {
   // Calculate the max_safe_time - min_safe_time for each namespace.
   Result<std::unordered_map<NamespaceId, uint64_t>> GetEstimatedDataLossMicroSec();
 
+  Status GetXClusterSafeTimeInfoFromMap(GetXClusterSafeTimeResponsePB* resp);
+
   Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap();
 
   xcluster::XClusterConsumerClusterMetrics* TEST_GetMetricsForNamespace(
@@ -122,6 +124,8 @@ class XClusterSafeTimeService {
       const XClusterNamespaceToSafeTimeMap& current_safe_time_map) REQUIRES(mutex_);
 
   void EnterIdleMode(const std::string& reason);
+
+  static std::string TabletIdsToLimitedString(const std::vector<TabletId>& tablet_ids);
 
   Master* const master_;
   CatalogManager* const catalog_manager_;

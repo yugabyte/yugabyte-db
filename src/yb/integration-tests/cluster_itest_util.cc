@@ -101,18 +101,14 @@
 namespace yb {
 namespace itest {
 
-using client::YBClient;
 using client::YBSchema;
 using client::YBSchemaBuilder;
-using client::YBTable;
 using client::YBTableName;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
 using consensus::ChangeConfigRequestPB;
 using consensus::ChangeConfigResponsePB;
-using consensus::ConsensusConfigType;
 using consensus::ConsensusStatePB;
-using consensus::CountVoters;
 using consensus::GetConsensusStateRequestPB;
 using consensus::GetConsensusStateResponsePB;
 using consensus::GetLastOpIdRequestPB;
@@ -127,21 +123,17 @@ using consensus::LeaderLeaseCheckMode;
 using consensus::LeaderLeaseStatus;
 using master::ListTabletServersResponsePB;
 using master::TabletLocationsPB;
-using rpc::Messenger;
 using rpc::RpcController;
 using std::min;
 using std::shared_ptr;
 using std::string;
-using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 using tserver::CreateTsClientProxies;
 using tserver::ListTabletsResponsePB;
 using tserver::DeleteTabletRequestPB;
 using tserver::DeleteTabletResponsePB;
-using tserver::TabletServerAdminServiceProxy;
 using tserver::TabletServerErrorPB;
-using tserver::TabletServerServiceProxy;
 using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 
@@ -1257,15 +1249,8 @@ Status GetTableLocations(MiniCluster* cluster,
   return Status::OK();
 }
 
-int GetNumTabletsOfTableOnTS(tserver::TabletServer* const tserver, const TableId& table_id) {
-  const auto peers = tserver->tablet_manager()->GetTabletPeers();
-  int num = 0;
-  for (const auto& peer : peers) {
-    if (peer->tablet_metadata()->table_id() == table_id) {
-      ++num;
-    }
-  }
-  return num;
+size_t GetNumTabletsOfTableOnTS(tserver::TabletServer* tserver, const TableId& table_id) {
+  return tserver->tablet_manager()->GetTabletPeersWithTableId(table_id).size();
 }
 
 Status WaitForNumVotersInConfigOnMaster(

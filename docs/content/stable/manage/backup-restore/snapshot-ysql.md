@@ -95,16 +95,18 @@ To mitigate these issues, consider storing backups outside of the cluster, in ch
 
 To move a snapshot to external storage, gather all the relevant files from all the nodes and copy them along with the additional metadata required for restoring on a different cluster, as follows:
 
-1. Obtain the current YSQL schema catalog version by running the [`ysql_catalog_version`](../../../admin/yb-admin/#ysql-catalog-version) command, as follows:
+1. Obtain the current YSQL schema catalog version by running the following query in [ysqlsh](../../../admin/ysqlsh/):
 
-    ```sh
-    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> ysql_catalog_version
+    ```sql
+    SELECT yb_catalog_version();
     ```
 
     The following is a sample output:
 
     ```output
-    Version: 1
+     yb_catalog_version 
+    --------------------
+                    13
     ```
 
 1. [Create an in-cluster snapshot](#create-a-snapshot).
@@ -112,13 +114,13 @@ To move a snapshot to external storage, gather all the relevant files from all t
 1. Back up the YSQL metadata using the [`ysql_dump`](../../../admin/ysql-dump) command, as follows:
 
     ```sh
-    ./postgres/bin/ysql_dump -h <ip> --masters <ip1:7100,ip2:7100,ip3:7100> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file <database_name>_schema.sql
+    ./postgres/bin/ysql_dump -h <ip> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file <database_name>_schema.sql
     ```
 
-1. Verify that the catalog version is the same as it was prior to creating the snapshot, as follows:
+1. Using ysqlsh, verify that the catalog version is the same as it was prior to creating the snapshot, as follows:
 
-    ```sh
-    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> ysql_catalog_version
+    ```sql
+    SELECT yb_catalog_version();
     ```
 
     If the catalog version is not the same, you are not guaranteed to get a consistent restorable snapshot and you should restart the process.
@@ -134,7 +136,7 @@ To move a snapshot to external storage, gather all the relevant files from all t
 1. Copy the tablet snapshot data into the external storage directory. Do this for all tablets of all tables in the database, as follows:
 
     ```sh
-    cp -r ~/yugabyte-data/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004003/tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots snapshot/
+    cp -r ~/yugabyte-data/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004003/tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots/snapshot_id/
     ```
 
     The following is the file path structure:

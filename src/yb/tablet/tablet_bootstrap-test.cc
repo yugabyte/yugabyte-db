@@ -32,7 +32,7 @@
 
 #include <vector>
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/consensus_meta.h"
@@ -41,6 +41,8 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/server/logical_clock.h"
 
@@ -78,7 +80,6 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::kMinimumTerm;
 using consensus::MakeOpId;
-using consensus::ReplicateMsg;
 using consensus::ReplicateMsgPtr;
 using log::LogAnchorRegistry;
 using log::LogTestBase;
@@ -176,11 +177,12 @@ class BootstrapTest : public LogTestBase {
 
   Result<RaftGroupMetadataPtr> LoadOrCreateTestRaftGroupMetadata(const Schema& src_schema) {
     Schema schema = SchemaBuilder(src_schema).Build();
-    std::pair<PartitionSchema, Partition> partition = CreateDefaultPartition(schema);
+    auto partition = CreateDefaultPartition(schema);
 
     auto table_info = std::make_shared<TableInfo>(
         "TEST: ", Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType,
-        schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition.first);
+        schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
+        partition.first);
     auto result = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
       .fs_manager = fs_manager_.get(),
       .table_info = table_info,
@@ -189,7 +191,6 @@ class BootstrapTest : public LogTestBase {
       .tablet_data_state = TABLET_DATA_READY,
       .snapshot_schedules = {},
       .hosted_services = {},
-      .last_change_metadata_op_id = OpId::Min(),
     }));
     RETURN_NOT_OK(result->Flush());
     return result;
@@ -229,6 +230,7 @@ class BootstrapTest : public LogTestBase {
       .allowed_history_cutoff_provider = {},
       .transaction_manager_provider = nullptr,
       .full_compaction_pool = nullptr,
+      .admin_triggered_compaction_pool = nullptr,
       .post_split_compaction_added = nullptr
     };
     BootstrapTabletData data = {
@@ -268,9 +270,10 @@ class BootstrapTest : public LogTestBase {
 
   void IterateTabletRows(const Tablet* tablet,
                          vector<string>* results) {
-    auto iter = tablet->NewRowIterator(schema_);
+    dockv::ReaderProjection projection(*tablet->schema());
+    auto iter = tablet->NewRowIterator(projection);
     ASSERT_OK(iter);
-    ASSERT_OK(IterateToStringList(iter->get(), results));
+    ASSERT_OK(IterateToStringList(iter->get(), *tablet->schema(), results));
     for (const string& result : *results) {
       VLOG(1) << result;
     }

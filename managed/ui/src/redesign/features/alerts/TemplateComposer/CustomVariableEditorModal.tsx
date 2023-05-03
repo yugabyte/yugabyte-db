@@ -86,7 +86,7 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
 
   const validationSchema = Yup.object()
     .shape({
-      customVariableName: Yup.string().required(t('common.requiredField')),
+      customVariableName: Yup.string().required(t('common.requiredField')).matches(/^[a-zA-Z0-9_]*$/, t('alertCustomTemplates.customVariables.createNewVariableModal.nameError')),
       possibleValues: Yup.array()
         .min(1, t('common.requiredField'))
         .of(
@@ -174,6 +174,21 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
     doCreateVariable.mutate(variables);
   });
 
+  // if no default value is selected, make the first option as default
+  useEffect(() => {
+    if (!open || formValues.possibleValues.length == 0) return;
+    const isDefaultAvailable = formValues.possibleValues.some(v => v.isDefault);
+    if (!isDefaultAvailable) {
+      setValue('possibleValues', [
+        ...formValues.possibleValues.map((t, i) => {
+          return { ...t, isDefault: i === 0 };
+        })
+      ]);
+    }
+  }, [formValues.possibleValues, open])
+
+  if (!open) return null;
+
   return (
     <YBModal
       open={open}
@@ -202,12 +217,14 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
         className: classes.root,
         dividers: true
       }}
+      enableBackdropDismiss
     >
       <YBInputField
         fullWidth
         name="customVariableName"
         control={control}
         label={t('alertCustomTemplates.customVariables.createNewVariableModal.name')}
+        data-testid="custom-variable-name-input"
         disabled={isEditMode}
       />
       <Box mt={4}>{t('alertCustomTemplates.customVariables.createNewVariableModal.values')}</Box>
@@ -241,6 +258,8 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
                     placeholder={`value ${index + 1}`}
                     fullWidth
                     name={`possibleValues.${index}.text` as FieldArrayPath<string[]>}
+                    data-testid={`custom-variable-input-${index}`}
+
                     control={control}
                   />
                 </Grid>
@@ -248,6 +267,7 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
                   <YBRadio
                     name={`possibleValues.${index}.isDefault`}
                     checked={formValues.possibleValues[index].isDefault}
+                    data-testid={`custom-variable-radio-${index}`}
                     onChange={() => {
                       setValue('possibleValues', [
                         ...formValues.possibleValues.map((t, i) => {
@@ -261,6 +281,7 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
                 <Grid item md={1} xs={1} lg={1}>
                   <Trash
                     className={classes.deleteIcon}
+                    data-testid={`custom-variable-delete-${index}`}
                     onClick={() => {
                       remove(index);
                     }}
@@ -277,6 +298,7 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
           variant="secondary"
           startIcon={<Add />}
           onClick={() => append({ text: '', isDefault: formValues.possibleValues.length === 0 })}
+          data-testid={`custom-variable-add-button`}
         >
           {t('alertCustomTemplates.customVariables.createNewVariableModal.addValuesButton')}
         </YBButton>

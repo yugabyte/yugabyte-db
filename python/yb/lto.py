@@ -25,12 +25,8 @@ from yb.dep_graph_common import (
     DYLIB_SUFFIX,
 )
 
-from yb.common_util import (
-    read_file,
-    write_file,
-    shlex_join,
-    create_symlink,
-)
+from yb.common_util import shlex_join, create_symlink
+from yb.file_util import read_file, write_file
 from yb.build_paths import BuildPaths
 
 from yugabyte_pycommon import WorkDirContext  # type: ignore
@@ -564,7 +560,8 @@ class LinkHelper:
     def write_link_cmd_file(self, out_path: str) -> None:
         logging.info("Writing the linker command line (one argument per line) to %s",
                      os.path.abspath(out_path))
-        write_file('\n'.join(self.new_args.as_list()), out_path)
+        write_file(content='\n'.join(self.new_args.as_list()),
+                   output_file_path=out_path)
 
 
 def wait_for_free_memory(

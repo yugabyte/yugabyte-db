@@ -9,6 +9,7 @@ import { MutateOptions, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 import { isFunction } from 'lodash';
+import { useDispatch } from 'react-redux';
 
 import { api, providerQueryKey } from '../../../redesign/helpers/api';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
@@ -23,6 +24,7 @@ import { ProviderListView } from './ProviderListView';
 import { fetchTaskUntilItCompletes } from '../../../actions/xClusterReplication';
 import { ProviderCreateView } from './forms/ProviderCreateView';
 import { useCreateProvider, UseCreateProviderParams } from '../../../redesign/helpers/hooks';
+import { fetchCloudMetadata } from '../../../actions/cloud';
 
 import { YBProviderMutation } from './types';
 import { YBPBeanValidationError, YBPError, YBPTask } from '../../../redesign/helpers/dtos';
@@ -62,11 +64,13 @@ export const InfraProvider = (props: InfraProviderProps) => {
   const { providerCode } = props;
   const [currentView, setCurrentView] = useState<ProviderDashboardView>(DEFAULT_VIEW);
 
+  const dispatch = useDispatch();
   const queryClient = useQueryClient();
   const providerListQuery = useQuery(providerQueryKey.ALL, () => api.fetchProviderList());
   const createProviderMutation = useCreateProvider(queryClient, {
     onSuccess: (response) => {
       queryClient.invalidateQueries(providerQueryKey.ALL);
+      dispatch(fetchCloudMetadata());
 
       fetchTaskUntilItCompletes(response.taskUUID, (error: boolean) => {
         if (error) {
@@ -81,6 +85,7 @@ export const InfraProvider = (props: InfraProviderProps) => {
           );
         }
         queryClient.invalidateQueries(providerQueryKey.ALL);
+        dispatch(fetchCloudMetadata());
       });
     }
   });

@@ -210,6 +210,9 @@ class HybridTime {
     return v >> kBitsForLogicalComponent;
   }
 
+  uint64_t GetPhysicalValueMillis() const;
+  uint64_t GetPhysicalValueNanos() const;
+
   MicrosTime CeilPhysicalValueMicros() const;
 
   inline int64_t PhysicalDiff(const HybridTime& other) const {
@@ -268,6 +271,11 @@ inline int HybridTime::CompareTo(const HybridTime &other) const {
   }
   return 0;
 }
+
+// Given two hybrid times, determines whether the delta between end and begin them is higher,
+// lower or equal to the given delta and returns 1, -1 and 0 respectively. Note that if end <
+// begin we return -1.
+int CompareHybridTimesToDelta(HybridTime begin, HybridTime end, MonoDelta delta);
 
 inline std::ostream &operator <<(std::ostream &o, const HybridTime &hybridTime) {
   return o << hybridTime.ToString();

@@ -14,7 +14,6 @@
 
 namespace yb {
 
-using client::YBClient;
 using client::YBTableName;
 
 using pgwrapper::PGConn;
@@ -259,17 +258,22 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
 
+  // Sleep to induce cdc lag.
   SleepFor(MonoDelta::FromSeconds(5));
+
   ASSERT_OK(WriteRowsHelper(3, 4, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
                 {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
-        return metrics->cdcsdk_sent_lag_micros->value() <= 5500000 &&
-               metrics->cdcsdk_sent_lag_micros->value() > 5000000;
+        return metrics->cdcsdk_sent_lag_micros->value() >= 5000000;
       },
-      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
 }
 
 // Begin transaction, perform some operations and abort transaction.
@@ -3305,24 +3309,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCreateStreamAfterSetCheckpoin
   EXPECT_OK(session->TEST_ApplyAndFlush(op));
 
   // Now Read the cdc_state table check checkpoint is updated to MAX.
-  const auto read_op = cdc_state.NewReadOp();
-  auto* const req_read = read_op->mutable_request();
-  QLAddStringHashValue(req_read, tablets[0].tablet_id());
-  auto req_cond = req->mutable_where_expr()->mutable_condition();
-  req_cond->set_op(QLOperator::QL_OP_AND);
-  QLAddStringCondition(
-      req_cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-  cdc_state.AddColumns({master::kCdcCheckpoint}, req_read);
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        EXPECT_OK(session->TEST_ApplyAndFlush(read_op));
-        auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
-        if (row_block->row_count() == 1 &&
-            row_block->row(0).column(0).string_value() == OpId::Max().ToString()) {
-          return true;
-        }
-        return false;
+        auto row = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
+            &cdc_state, session.get(), tablets[0].tablet_id(), stream_id,
+            {master::kCdcCheckpoint}));
+        return row && row->column(0).string_value() == OpId::Max().ToString();
       },
       MonoDelta::FromSeconds(60),
       "Failed to read from cdc_state table."));
@@ -5116,23 +5109,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
   EXPECT_OK(session->TEST_ApplyAndFlush(op));
 
   // Now Read the cdc_state table check active_time is set to null.
-  const auto read_op = cdc_state.NewReadOp();
-  auto* const req_read = read_op->mutable_request();
-  QLAddStringHashValue(req_read, tablets[0].tablet_id());
-  auto req_cond = req_read->mutable_where_expr()->mutable_condition();
-  req_cond->set_op(QLOperator::QL_OP_AND);
-  QLAddStringCondition(
-      req_cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-  cdc_state.AddColumns({master::kCdcData}, req_read);
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        EXPECT_OK(session->TEST_ApplyAndFlush(read_op));
-        auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
-        if (row_block->row_count() == 1 && row_block->row(0).column(0).IsNull()) {
-          return true;
-        }
-        return false;
+        auto row = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
+            &cdc_state, session.get(), tablets[0].tablet_id(), stream_id,
+            {master::kCdcData}));
+
+        return row && row->column(0).IsNull();
       },
       MonoDelta::FromSeconds(60),
       "Failed to update active_time null in cdc_state table."));
@@ -7730,6 +7714,47 @@ TEST_F(
   ASSERT_EQ(
       OpId::FromPB(streaming_checkpoint_resp.checkpoint().op_id()),
       OpId::FromPB(added_table_checkpoint_resp.checkpoint().op_id()));
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotNoData)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // We are calling 'GetChanges' in snapshot mode, but sine there is no data in the tablet, the
+  // first response itself should indicate the end of snapshot.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+  // 'write_id' must be set to 0, 'key' must to empty, to indicate that the snapshot is done.
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().write_id(), 0);
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().key(), "");
+
+  ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_GT(change_resp.cdc_sdk_proto_records_size(), 1000);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddManyColocatedTablesOnNamesapceWithStream)) {
+  ASSERT_OK(SetUpWithParams(3 /* replication_factor */, 2 /* num_masters */, true /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  for (int i = 1; i <= 400; i++) {
+    std::string table_name = "test" + std::to_string(i);
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0(id1 int primary key, value_2 int, value_3 int);", table_name));
+    LOG(INFO) << "Done create table: " << table_name;
+  }
 }
 
 }  // namespace cdc

@@ -27,8 +27,10 @@ const initialStateFeatureInTest = {
   enablePrefillKubeConfig: true,
   enableNewUI: true, // feature flag to enable new revamped UI,
   enableCustomEmailTemplates: false,
-  enableAWSProviderValidation: false,
-  enableMKR: false
+  enableAWSProviderValidation: true,
+  enableGFlagHBAConf: false,
+  enableMKR: true,
+  enableS3BackupProxy: false
 };
 
 const initialStateFeatureReleased = {
@@ -56,7 +58,8 @@ const initialStateFeatureReleased = {
   enableNotificationTemplates: false,
   enableRestore: true,
   enablePrefillKubeConfig: true,
-  enableCustomEmailTemplates: false
+  enableCustomEmailTemplates: false,
+  enableGFlagHBAConf: false
 };
 
 export const FeatureFlag = (

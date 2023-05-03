@@ -20,7 +20,7 @@
 namespace yb {
 namespace docdb {
 
-Status YQLRowwiseIteratorIf::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
+Status YQLRowwiseIteratorIf::GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) {
   return Status::OK();
 }
 
@@ -36,7 +36,7 @@ HybridTime YQLRowwiseIteratorIf::TEST_MaxSeenHt() {
   return HybridTime::kInvalid;
 }
 
-Result<bool> YQLRowwiseIteratorIf::FetchTuple(const Slice& tuple_id, QLTableRow* row) {
+Result<bool> YQLRowwiseIteratorIf::FetchTuple(const Slice& tuple_id, qlexpr::QLTableRow* row) {
   return STATUS(NotSupported, "This iterator cannot fetch tuple id");
 }
 

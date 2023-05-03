@@ -49,7 +49,6 @@
 using namespace std::literals; // NOLINT
 
 using std::string;
-using std::shared_ptr;
 
 namespace yb {
 namespace rpc {

@@ -146,6 +146,16 @@ public class Util {
 
   private static final Pattern GO_DURATION_REGEX =
       Pattern.compile("(\\d+)(ms|us|\\u00b5s|ns|s|m|h|d)");
+
+  public static volatile String YBA_VERSION;
+
+  public static String getYbaVersion() {
+    return YBA_VERSION;
+  }
+
+  public static void setYbaVersion(String version) {
+    YBA_VERSION = version;
+  }
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -710,9 +720,9 @@ public class Util {
     return dirPath;
   }
 
-  public static String getNodeHomeDir(UUID universeUUID, String nodeName) {
+  public static String getNodeHomeDir(UUID universeUUID, NodeDetails node) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    String providerUUID = Universe.getCluster(universe, nodeName).userIntent.provider;
+    String providerUUID = universe.getCluster(node.placementUuid).userIntent.provider;
     Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
     return provider.getYbHome();
   }
@@ -930,5 +940,16 @@ public class Util {
     } catch (IOException e) {
     }
     return false;
+  }
+
+  public static long getExponentialBackoffDelayMs(
+      long initialDelayMs, long maxDelayMs, int iterationNumber) {
+    double multiplier = 2.0;
+    long delay =
+        (long) (initialDelayMs * Math.pow(multiplier, iterationNumber) + Math.random() * 1000);
+    if (delay > maxDelayMs) {
+      delay = maxDelayMs;
+    }
+    return delay;
   }
 }

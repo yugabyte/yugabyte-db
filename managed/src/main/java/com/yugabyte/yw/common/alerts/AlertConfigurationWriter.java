@@ -171,8 +171,7 @@ public class AlertConfigurationWriter {
         List<AlertConfiguration> configurations =
             alertConfigurationService.list(alertConfigurationFilter);
         List<AlertConfiguration> toSave =
-            configurations
-                .stream()
+            configurations.stream()
                 .filter(
                     configuration ->
                         !configuration.getMaintenanceWindowUuidsSet().contains(window.getUuid())
@@ -215,8 +214,7 @@ public class AlertConfigurationWriter {
               toUnsuspend.add(configuration);
             }
           });
-      toUnsuspend
-          .stream()
+      toUnsuspend.stream()
           .collect(Collectors.groupingBy(AlertConfiguration::getCustomerUUID))
           .forEach(alertConfigurationService::save);
 
@@ -255,8 +253,7 @@ public class AlertConfigurationWriter {
           new HashSet<>(alertDefinitionService.listIds(AlertDefinitionFilter.builder().build()));
 
       results.addAll(
-          configUuids
-              .stream()
+          configUuids.stream()
               .filter(uuid -> !definitionUuids.contains(uuid))
               .map(this::syncDefinition)
               .collect(Collectors.toList()));

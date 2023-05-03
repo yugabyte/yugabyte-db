@@ -19,7 +19,7 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/docdb/docdb_test_util.h"
@@ -63,9 +63,6 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
-using master::GetTableLocationsRequestPB;
-using master::GetTableLocationsResponsePB;
-using master::TableIdentifierPB;
 using test::Partitioning;
 
 template <class TabletSplitBase>
@@ -121,7 +118,7 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
     return s;
   }
 
-  Result<std::vector<QLRow>> GetRowsFromCdcStateTable(const string& stream_id = "") {
+  Result<std::vector<qlexpr::QLRow>> GetRowsFromCdcStateTable(const string& stream_id = "") {
     client::YBClient* producer_client(
         producer_cluster_ ? producer_client_.get() : TabletSplitBase::client_.get());
     client::TableHandle table;
@@ -129,7 +126,7 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
         YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
     RETURN_NOT_OK(table.Open(cdc_state_table, producer_client));
 
-    std::vector<QLRow> rows;
+    std::vector<qlexpr::QLRow> rows;
     for (const auto& row : client::TableRange(table)) {
       if (stream_id.empty() || row.column(master::kCdcStreamIdIdx).string_value() == stream_id) {
         rows.emplace_back(row);
@@ -454,7 +451,7 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
             [&](const auto& tablet) { return tablet->tablet_id() == mapped_producer_tablet; });
         ASSERT_NE(producer_tablet, producer_tablet_peers.end());
 
-        ASSERT_TRUE(PartitionSchema::HasOverlap(
+        ASSERT_TRUE(dockv::PartitionSchema::HasOverlap(
             (*consumer_tablet)->tablet_metadata()->partition()->partition_key_start(),
             (*consumer_tablet)->tablet_metadata()->partition()->partition_key_end(),
             (*producer_tablet)->tablet_metadata()->partition()->partition_key_start(),

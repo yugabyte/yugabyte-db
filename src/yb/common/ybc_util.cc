@@ -65,6 +65,10 @@ int ysql_max_in_flight_ops = 0;
 
 int yb_xcluster_consistency_level = XCLUSTER_CONSISTENCY_DATABASE;
 
+int yb_fetch_row_limit = 0;
+
+int yb_fetch_size_limit = 0;
+
 namespace yb {
 
 namespace {
@@ -220,6 +224,10 @@ bool YBCStatusIsDuplicateKey(YBCStatus s) {
 
 bool YBCStatusIsSnapshotTooOld(YBCStatus s) {
   return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
+}
+
+bool YBCStatusIsTryAgain(YBCStatus s) {
+  return StatusWrapper(s)->IsTryAgain();
 }
 
 uint32_t YBCStatusPgsqlError(YBCStatus s) {

@@ -2546,6 +2546,7 @@ void DBImpl::NotifyOnTrivialCompactionCompleted(
     info.status = Status::OK();
     info.thread_id = env_->GetThreadID();
     info.is_full_compaction = true;
+    info.compaction_reason = compaction_reason;
     for (auto listener : db_options_.listeners) {
       listener->OnCompactionCompleted(this, info);
     }

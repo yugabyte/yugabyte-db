@@ -170,8 +170,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     assertThat(definitions, hasSize(2));
     Map<UUID, AlertDefinition> definitionMap =
-        definitions
-            .stream()
+        definitions.stream()
             .collect(
                 Collectors.toMap(
                     definition ->
@@ -290,7 +289,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
             .targetType(TargetType.UNIVERSE)
             .target(
                 new AlertConfigurationTarget()
-                    .setAll(false)
+                    .setAll(true)
                     .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
             .build();
     assertFind(filter, configuration, configuration2);
@@ -301,6 +300,16 @@ public class AlertConfigurationTest extends FakeDBApplication {
             .target(
                 new AlertConfigurationTarget()
                     .setAll(false)
+                    .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
+            .build();
+    assertFind(filter, configuration2);
+
+    filter =
+        AlertConfigurationFilter.builder()
+            .targetType(TargetType.UNIVERSE)
+            .target(
+                new AlertConfigurationTarget()
+                    .setAll(true)
                     .setUuids(ImmutableSet.of(UUID.randomUUID())))
             .build();
     assertFind(filter, configuration);
@@ -510,9 +519,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
             .setQuery(definition.getQuery())
             .setConfigurationUUID(definition.getConfigurationUUID())
             .setLabels(
-                definition
-                    .getLabels()
-                    .stream()
+                definition.getLabels().stream()
                     .map(label -> new AlertDefinitionLabel(label.getName(), label.getValue()))
                     .collect(Collectors.toList()));
     alertDefinitionService.save(duplicate);

@@ -10,13 +10,13 @@
 
 package com.yugabyte.yw.common.config;
 
-import java.time.Duration;
-import java.util.List;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
 import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import java.time.Duration;
+import java.util.List;
 
 public class UniverseConfKeys extends RuntimeConfigKeysModule {
 
@@ -484,7 +484,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Performance Advisor query skew threshold",
           "Defines max difference between avg queries count and"
-              + " node queries count before cpu skew recommendation is raised",
+              + " node queries count before query skew recommendation is raised",
           ConfDataType.DoubleType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> perfAdvisorQuerySkewMinQueries =
@@ -635,5 +635,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Minimum Incremental backup schedule frequency",
           "Minimum Incremental backup schedule frequency in seconds",
           ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> universeLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.universe_logs_regex_pattern",
+          ScopeType.UNIVERSE,
+          "Universe logs regex pattern",
+          "Universe logs regex pattern in support bundle",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> postgresLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.postgres_logs_regex_pattern",
+          ScopeType.UNIVERSE,
+          "Postgres logs regex pattern",
+          "Postgres logs regex pattern in support bundle",
+          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -45,28 +45,12 @@ using namespace std::literals;
 
 using std::string;
 using std::vector;
-using std::unique_ptr;
-
-using yb::client::YBValue;
-
-using std::shared_ptr;
 
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
 
 namespace yb {
 namespace integration_tests {
-
-using client::YBClient;
-using client::YBClientBuilder;
-using client::YBColumnSchema;
-using client::YBSchema;
-using client::YBSchemaBuilder;
-using client::YBSession;
-using client::YBStatusMemberCallback;
-using client::YBTable;
-using client::YBTableCreator;
-using strings::Split;
 
 class KVTableTest : public YBTableTestBase {
  protected:

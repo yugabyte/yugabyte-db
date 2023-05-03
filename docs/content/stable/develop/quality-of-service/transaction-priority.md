@@ -14,7 +14,11 @@ menu:
 type: docs
 ---
 
-YugabyteDB allows external applications to set the priority of individual transactions. When using optimistic concurrency control, it is possible to ensure that a higher priority transaction gets priority over a lower priority transaction. In this scenario, if these transactions conflict, the lower priority transaction is aborted. This behavior can be achieved by setting the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is computed and assigned as the transaction priority for the transactions in that session. If this transaction conflicts with another, the value of transaction priority is compared with that of the conflicting transaction. The transaction with a higher priority value wins. To view the transaction priority of the active transaction in current session, run `SHOW yb_transaction_priority` inside the transaction block. If `SHOW yb_transaction_priority` is run outside a transaction block, it will output 0.
+YugabyteDB allows external applications to set the priority of individual transactions. When using optimistic concurrency control, it is possible to ensure that a higher priority transaction gets priority over a lower priority transaction. In this scenario, if these transactions conflict, the lower priority transaction is aborted. This behavior can be achieved by setting the pair of YSQL parameters `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`.
+
+A random number between the lower and upper bound is computed and assigned as the transaction priority for the transactions in that session. If this transaction conflicts with another, the value of transaction priority is compared with that of the conflicting transaction. The transaction with a higher priority value wins.
+
+To view the transaction priority of the active transaction in current session, run `SHOW yb_transaction_priority` inside the transaction block. If `SHOW yb_transaction_priority` is run outside a transaction block, it will output 0.
 
 | Flag | Valid Range | Description |
 | :--- | :---------- | :---------- |
@@ -171,8 +175,8 @@ The following example demonstrates the usage of `ybtransaction_priority`.
 1. Start by setting the lower and upper bound values for your transaction.
 
     ```sql
-    set yb_transaction_priority_lower_bound = 0.4;
-    set yb_transaction_priority_upper_bound = 0.6;
+    SET yb_transaction_priority_lower_bound = 0.4;
+    SET yb_transaction_priority_upper_bound = 0.6;
     ```
 
 1. In a transaction block, perform an insert and view the transaction priority as follows:
@@ -180,13 +184,13 @@ The following example demonstrates the usage of `ybtransaction_priority`.
     ```sql
    BEGIN TRANSACTION;
    INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
-   show yb_transaction_priority;
+   SHOW yb_transaction_priority;
    COMMIT;
 
     ```
 
     ```output
-        yb_get_current_transaction_priority
+        yb_transaction_priority
     -------------------------------------------
       0.537144608 (Normal priority transaction)
     (1 row)
@@ -195,17 +199,17 @@ The following example demonstrates the usage of `ybtransaction_priority`.
 1. In the next transaction block, perform a `SELECT ... FOR UPDATE`, which results in a high priority transaction.
 
     ```sql
-    set yb_transaction_priority_lower_bound = 0.1;
-    set yb_transaction_priority_lower_bound = 0.4;
+    SET yb_transaction_priority_lower_bound = 0.1;
+    SET yb_transaction_priority_lower_bound = 0.4;
     BEGIN TRANSACTION;
     SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
-    show yb_transaction_priority;
+    SHOW yb_transaction_priority;
     COMMIT;
 
     ```
 
     ```output
-        yb_get_current_transaction_priority
+        yb_transaction_priority
     -------------------------------------------
      0.212004009 (High priority transaction)
     (1 row)
@@ -216,11 +220,11 @@ The following example demonstrates the usage of `ybtransaction_priority`.
 1. In the final transaction block, set `yb_transaction_priority_upper_bound` and `yb_transaction_priority_lower_bound` to be 1, and perform the same `SELECT ... FOR UPDATE` query as the previous one. This transaction type is of the highest priority.
 
     ```sql
-    set yb_transaction_priority_upper_bound = 1;
-    set yb_transaction_priority_lower_bound = 1;
+    SET yb_transaction_priority_upper_bound = 1;
+    SET yb_transaction_priority_lower_bound = 1;
     BEGIN TRANSACTION;
     SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
-    show yb_transaction_priority;
+    SHOW yb_transaction_priority;
     COMMIT;
     ```
 
@@ -234,7 +238,7 @@ The following example demonstrates the usage of `ybtransaction_priority`.
 1. View the transaction priority outside a transaction block as follows:
 
     ```sql
-    show yb_transaction_priority;
+    SHOW yb_transaction_priority;
     ```
 
     ```output

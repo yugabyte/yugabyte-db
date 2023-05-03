@@ -137,21 +137,11 @@ except Exception as e:
 The `select_accounts` method queries your distributed data using the SQL `SELECT` statement.
 
 ```python
-rows, err := db.Query("SELECT name, age, country, balance FROM DemoAccount")
-checkIfError(err)
-
-defer rows.Close()
-
-var name, country string
-var age, balance int
-
-for rows.Next() {
-    err = rows.Scan(&name, &age, &country, &balance)
-    checkIfError(err)
-
-    fmt.Printf("name = %s, age = %v, country = %s, balance = %v\n",
-        name, age, country, balance)
-}
+with yb.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as yb_cursor:
+        yb_cursor.execute("SELECT name, age, country, balance FROM DemoAccount")
+        results = yb_cursor.fetchall()
+        for row in results:
+            print("name = {name}, age = {age}, country = {country}, balance = {balance}".format(**row))
 ```
 
 ### transfer_money_between_accounts

@@ -13,7 +13,7 @@ import { array, boolean, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import { YBModal, YBModalProps } from '../../../../../redesign/components';
-import { ProviderCode, VPCSetupType } from '../../constants';
+import { ProviderCode, RegionOperationLabel, VPCSetupType } from '../../constants';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
 import { ConfigureK8sAvailabilityZoneField } from './ConfigureK8sAvailabilityZoneField';
 import { K8sCertIssuerType, K8sRegionFieldLabel, RegionOperation } from './constants';
@@ -135,14 +135,14 @@ export const ConfigureK8sRegionModal = ({
   return (
     <FormProvider {...formMethods}>
       <YBModal
-        title="Add Region"
+        title={`${RegionOperationLabel[regionOperation]} Region`}
         titleIcon={<i className={clsx('fa fa-plus', classes.titleIcon)} />}
-        submitLabel="Add Region"
+        submitLabel={`${RegionOperationLabel[regionOperation]} Region`}
         cancelLabel="Cancel"
-        submitTestId="ConfigureK8sRegionModal-SubmitButton"
-        cancelTestId="ConfigureK8sRegionModal-CancelButton"
         onSubmit={formMethods.handleSubmit(onSubmit)}
         onClose={onClose}
+        submitTestId="ConfigureRegionModal-SubmitButton"
+        cancelTestId="ConfigureRegionModal-CancelButton"
         {...modalProps}
       >
         <div className={classes.formField}>

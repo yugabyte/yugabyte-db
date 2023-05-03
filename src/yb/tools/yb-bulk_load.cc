@@ -25,7 +25,7 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -122,7 +122,7 @@ class BulkLoadTask : public Runnable {
   Status InsertRow(const string &row,
                    const Schema &schema,
                    uint32_t schema_version,
-                   const IndexMap& index_map,
+                   const qlexpr::IndexMap& index_map,
                    BulkLoadDocDBUtil *const db_fixture,
                    docdb::DocWriteBatch *const doc_write_batch,
                    YBPartitionGenerator *const partition_generator);
@@ -260,7 +260,7 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
 Status BulkLoadTask::InsertRow(const string &row,
                                const Schema &schema,
                                uint32_t schema_version,
-                               const IndexMap& index_map,
+                               const qlexpr::IndexMap& index_map,
                                BulkLoadDocDBUtil *const db_fixture,
                                docdb::DocWriteBatch *const doc_write_batch,
                                YBPartitionGenerator *const partition_generator) {
@@ -321,7 +321,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   string partition_key;
   RETURN_NOT_OK(partition_generator->LookupTabletIdWithTokenizer(
       tokenizer, skipped_cols_, &tablet_id, &partition_key));
-  req.set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(partition_key));
+  req.set_hash_code(dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key));
 
   // Finally apply the operation to the doc_write_batch.
   // TODO(dtxn) pass correct TransactionContext.
@@ -331,7 +331,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(
       "BULK LOAD: ", TableType::YQL_TABLE_TYPE, schema, schema_version);
   docdb::QLWriteOperation op(
-      req, schema_version, doc_read_context, index_map, nullptr /* unique_index_key_schema */,
+      req, schema_version, doc_read_context, index_map, /* unique_index_key_projection= */ nullptr,
       TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&resp));
   RETURN_NOT_OK(op.Apply(docdb::DocOperationApplyData{

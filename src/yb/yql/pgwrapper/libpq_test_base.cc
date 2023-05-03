@@ -53,6 +53,13 @@ Result<PGConn> LibPqTestBase::ConnectToDBAsUser(
   }).Connect(simple_query_protocol);
 }
 
+Result<PGConn> LibPqTestBase::ConnectToTs(const ExternalTabletServer& pg_ts) {
+  return PGConnBuilder({
+    .host = pg_ts.bind_host(),
+    .port = pg_ts.pgsql_rpc_port(),
+  }).Connect();
+}
+
 Result<PGConn> LibPqTestBase::ConnectUsingString(
     const string& conn_str, CoarseTimePoint deadline, bool simple_query_protocol) {
   return PGConn::Connect(
@@ -66,6 +73,11 @@ bool LibPqTestBase::TransactionalFailure(const Status& status) {
   }
   YBPgErrorCode code = PgsqlErrorTag::Decode(pgerr);
   return code == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
+}
+
+Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
+  return conn->FetchValue<PGOid>(
+      Format("SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
 }
 
 } // namespace pgwrapper

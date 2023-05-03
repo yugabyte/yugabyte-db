@@ -75,6 +75,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   private static final Set<String> AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY =
       ImmutableSet.of("i3.", "c5d.", "c6gd.");
 
+  public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
+
   @Constraints.Required()
   @Size(min = 1)
   public List<Cluster> clusters = new LinkedList<>();
@@ -165,13 +167,18 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Place all masters into default region flag.
   @ApiModelProperty public boolean mastersInDefaultRegion = true;
 
+  // true iff created through a k8s CR and controlled by the
+  // Kubernetes Operator.
+  @ApiModelProperty public boolean isKubernetesOperatorControlled = false;
+
   @ApiModelProperty public Map<ClusterAZ, String> existingLBs = null;
 
   // Override the default DB present in pre-built Ami
   @ApiModelProperty(hidden = true)
   public boolean overridePrebuiltAmiDBVersion = false;
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
-  @Nullable @ApiModelProperty public String sshUserOverride;
+  // Use imagebundle to overwrite the sshPort
+  @Nullable @ApiModelProperty @Deprecated public String sshUserOverride;
 
   /** Allowed states for an imported universe. */
   public enum ImportedState {
@@ -491,6 +498,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public String ycqlPassword;
 
+    @ApiModelProperty() public Long kubernetesOperatorVersion;
+
     @ApiModelProperty() public boolean enableYSQLAuth = false;
 
     @ApiModelProperty() public boolean enableYCQLAuth = false;
@@ -507,6 +516,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty() public boolean enableVolumeEncryption = false;
 
     @ApiModelProperty() public boolean enableIPV6 = false;
+
+    @ApiModelProperty() public UUID imageBundleUUID;
 
     // Flag to use if we need to deploy a loadbalancer/some kind of
     // exposing service for the cluster.
@@ -591,7 +602,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           + ", tags="
           + instanceTags
           + ", masterInstanceType="
-          + masterInstanceType;
+          + masterInstanceType
+          + ", kubernetesOperatorVersion="
+          + kubernetesOperatorVersion;
     }
 
     @Override
@@ -852,8 +865,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @JsonIgnore
   public Cluster getPrimaryCluster() {
     List<Cluster> foundClusters =
-        clusters
-            .stream()
+        clusters.stream()
             .filter(c -> c.clusterType.equals(ClusterType.PRIMARY))
             .collect(Collectors.toList());
     if (foundClusters.size() > 1) {
@@ -896,16 +908,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @JsonIgnore
   public List<Cluster> getClusterByType(ClusterType clusterType) {
-    return clusters
-        .stream()
+    return clusters.stream()
         .filter(c -> c.clusterType.equals(clusterType))
         .collect(Collectors.toList());
   }
 
   @JsonIgnore
   public List<Cluster> getNonPrimaryClusters() {
-    return clusters
-        .stream()
+    return clusters.stream()
         .filter(c -> !c.clusterType.equals(ClusterType.PRIMARY))
         .collect(Collectors.toList());
   }
@@ -1034,8 +1044,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (universeUuid == null) {
         return new ArrayList<>();
       }
-      return XClusterConfig.getByTargetUniverseUUID(universeUuid)
-          .stream()
+      return XClusterConfig.getByTargetUniverseUUID(universeUuid).stream()
           .map(xClusterConfig -> xClusterConfig.getUuid())
           .collect(Collectors.toList());
     }
@@ -1046,8 +1055,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (universeUuid == null) {
         return Collections.emptyList();
       }
-      return XClusterConfig.getBySourceUniverseUUID(universeUuid)
-          .stream()
+      return XClusterConfig.getBySourceUniverseUUID(universeUuid).stream()
           .map(xClusterConfig -> xClusterConfig.getUuid())
           .collect(Collectors.toList());
     }
@@ -1085,6 +1093,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return new File(xClusterInfo.sourceRootCertDirPath);
     }
     return null;
+  }
+
+  @JsonIgnore
+  public boolean isUniverseBusyByTask() {
+    return updateInProgress
+        && updatingTask != TaskType.BackupTable
+        && updatingTask != TaskType.MultiTableBackup
+        && updatingTask != TaskType.CreateBackup
+        && updatingTask != TaskType.RestoreBackup;
   }
   // --------------------------------------------------------------------------------
   // End of XCluster.

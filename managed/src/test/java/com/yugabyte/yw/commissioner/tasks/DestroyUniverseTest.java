@@ -11,15 +11,21 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -29,15 +35,21 @@ import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yb.client.DeleteUniverseReplicationResponse;
+import org.yb.client.PromoteAutoFlagsResponse;
+import org.yb.client.YBClient;
+import org.yb.master.MasterClusterOuterClass;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DestroyUniverseTest extends CommissionerBaseTest {
@@ -51,6 +63,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
   private CertificateInfo certInfo;
 
   private File certFolder;
+
+  private YBClient mockClient;
 
   @Override
   @Before
@@ -88,6 +102,30 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    mockClient = mock(YBClient.class);
+    when(mockYBClient.getClient(
+            defaultUniverse.getMasterAddresses(), defaultUniverse.getCertificateNodetoNode()))
+        .thenReturn(mockClient);
+    try {
+      GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+          new GFlagsValidation.AutoFlagsPerServer();
+      autoFlagsPerServer.autoFlagDetails = new ArrayList<>();
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+          .thenReturn(autoFlagsPerServer);
+      lenient()
+          .when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+          .thenReturn(
+              new PromoteAutoFlagsResponse(
+                  0,
+                  "uuid",
+                  MasterClusterOuterClass.PromoteAutoFlagsResponsePB.getDefaultInstance()));
+      DeleteUniverseReplicationResponse mockDeleteResponse =
+          new DeleteUniverseReplicationResponse(0, "", null, null);
+      when(mockClient.deleteUniverseReplication(anyString(), anyBoolean()))
+          .thenReturn(mockDeleteResponse);
+    } catch (Exception ignored) {
+      fail();
+    }
   }
 
   @Test
@@ -215,6 +253,30 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     Backup backup = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
     // We will deleting any backup object associated with the universe.
     assertEquals(Backup.BackupState.QueuedForDeletion, backup.getState());
+    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.getName()));
+  }
+
+  @Test
+  public void testDestroyUniverseAndPromoteAutoFlagsOnOthers() {
+    Universe xClusterUniv = ModelFactory.createUniverse("univ-2");
+    XClusterConfig.create(
+        "test-2", defaultUniverse.getUniverseUUID(), xClusterUniv.getUniverseUUID());
+    Universe xClusterUniv2 = ModelFactory.createUniverse("univ-3");
+    XClusterConfig.create(
+        "test-3", xClusterUniv.getUniverseUUID(), xClusterUniv2.getUniverseUUID());
+    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.isForceDelete = Boolean.FALSE;
+    taskParams.isDeleteBackups = Boolean.FALSE;
+    taskParams.isDeleteAssociatedCerts = Boolean.TRUE;
+    TaskInfo taskInfo = submitTask(taskParams, 4);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(
+        2,
+        taskInfo.getSubTasks().stream()
+            .filter(task -> task.getTaskType().equals(TaskType.PromoteAutoFlags))
+            .count());
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.getName()));
   }
 }

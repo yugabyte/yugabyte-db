@@ -27,8 +27,8 @@
 #include "yb/util/flags.h"
 
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/qlexpr/index.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
@@ -110,7 +110,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   Status Launch();
 
-  Status UpdateSafeTime(const Status& s, HybridTime ht);
+  Status UpdateSafeTime(const Status& s, HybridTime ht) EXCLUDES(mutex_);
 
   Status Done(const Status& s, const std::unordered_set<TableId>& failed_indexes);
 
@@ -134,7 +134,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
     return timestamp_chosen_.load(std::memory_order_acquire);
   }
 
-  HybridTime read_time_for_backfill() const {
+  HybridTime read_time_for_backfill() const EXCLUDES(mutex_) {
     std::lock_guard<simple_spinlock> l(mutex_);
     return read_time_for_backfill_;
   }
@@ -180,6 +180,10 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status CheckIfDone();
   Status UpdateIndexPermissionsForIndexes();
   Status ClearCheckpointStateInTablets();
+  Status SetSafeTimeAndStartBackfill(const HybridTime& read_time) EXCLUDES(mutex_);
+
+  // Persist the value in read_time_for_backfill_ to the sys-catalog and start the backfill job.
+  Status PersistSafeTimeAndStartBackfill() EXCLUDES(mutex_);
 
   // We want to prevent major compactions from garbage collecting delete markers
   // on an index table, until the backfill process is complete.
@@ -303,7 +307,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
   std::shared_ptr<BackfillTable> backfill_table_;
   const scoped_refptr<TabletInfo> tablet_;
-  Partition partition_;
+  dockv::Partition partition_;
 
   // if non-empty, corresponds to the row in the tablet up to which
   // backfill has been already processed (non-inclusive). The next

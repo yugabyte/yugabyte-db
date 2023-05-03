@@ -41,7 +41,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
@@ -105,11 +105,11 @@ DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_int32(catalog_manager_report_batch_size);
 DECLARE_int32(tablet_report_limit);
 
-DEFINE_UNKNOWN_int32(num_test_tablets, 60, "Number of tablets for stress test");
-DEFINE_UNKNOWN_int32(benchmark_runtime_secs, 5, "Number of seconds to run the benchmark");
-DEFINE_UNKNOWN_int32(benchmark_num_threads, 16, "Number of threads to run the benchmark");
+DEFINE_NON_RUNTIME_int32(num_test_tablets, 60, "Number of tablets for stress test");
+DEFINE_NON_RUNTIME_int32(benchmark_runtime_secs, 5, "Number of seconds to run the benchmark");
+DEFINE_NON_RUNTIME_int32(benchmark_num_threads, 16, "Number of threads to run the benchmark");
 // Increase this for actually using this as a benchmark test.
-DEFINE_UNKNOWN_int32(benchmark_num_tablets, 8, "Number of tablets to create");
+DEFINE_NON_RUNTIME_int32(benchmark_num_tablets, 8, "Number of tablets to create");
 
 METRIC_DECLARE_histogram(handler_latency_yb_master_MasterClient_GetTableLocations);
 
@@ -637,7 +637,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
       unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
       s = table_creator->table_name(table_name)
           .schema(&schema_)
-          .hash_schema(YBHashSchema::kMultiColumnHash)
+          .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
           .set_range_partition_columns({ "key" })
           .num_tablets(1)
           .wait(false)

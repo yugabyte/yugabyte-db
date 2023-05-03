@@ -156,15 +156,31 @@ bool XClusterPoller::CheckOffline() { return shutdown_.load(); }
 
 void XClusterPoller::UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& schema_versions) {
   RETURN_WHEN_OFFLINE();
-  std::lock_guard l(schema_version_lock_);
-  schema_version_map_ = schema_versions;
+  {
+    std::lock_guard l(schema_version_lock_);
+    schema_version_map_ = schema_versions;
+  }
+  for (const auto& [producer_schema_version, consumer_schema_version] : schema_versions) {
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
+        "Producer Schema Version:$0, Consumer Schema Version:$1",
+        producer_schema_version, consumer_schema_version);
+  }
 }
 
 void XClusterPoller::UpdateColocatedSchemaVersionMap(
-    const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) {
+    const cdc::ColocatedSchemaVersionMap& input_colocated_schema_version_map) {
   RETURN_WHEN_OFFLINE();
-  std::lock_guard l(schema_version_lock_);
-  colocated_schema_version_map_ = colocated_schema_version_map;
+  {
+    std::lock_guard l(schema_version_lock_);
+    colocated_schema_version_map_ = input_colocated_schema_version_map;
+  }
+  for (const auto& [colocation_id, schema_versions] : input_colocated_schema_version_map) {
+    for (const auto& [producer_schema_version, consumer_schema_version] : schema_versions) {
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
+          "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2",
+          colocation_id, producer_schema_version, consumer_schema_version);
+    }
+  }
 }
 
 void XClusterPoller::SetSchemaVersion(SchemaVersion cur_version,

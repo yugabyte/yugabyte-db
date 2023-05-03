@@ -43,8 +43,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 
-DEFINE_UNKNOWN_bool(verbose, false,
-            "Print additional information (e.g., log segment headers)");
+DEFINE_NON_RUNTIME_bool(verbose, false, "Print additional information (e.g., log segment headers)");
 
 namespace yb {
 namespace tools {

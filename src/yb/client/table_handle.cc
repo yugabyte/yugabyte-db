@@ -21,7 +21,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -228,7 +228,7 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
 
     const auto& key_start = tablet.partition().partition_key_start();
     if (!key_start.empty()) {
-      req->set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(key_start));
+      req->set_hash_code(dockv::PartitionSchema::DecodeMultiColumnHashValue(key_start));
     }
 
     if (options.filter) {
@@ -283,7 +283,7 @@ TableIterator& TableIterator::operator++() {
   return *this;
 }
 
-const QLRow& TableIterator::operator*() const {
+const qlexpr::QLRow& TableIterator::operator*() const {
   return current_block_->rows()[row_index_];
 }
 

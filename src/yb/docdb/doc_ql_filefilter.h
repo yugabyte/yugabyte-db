@@ -24,17 +24,17 @@ namespace docdb {
 
 class QLRangeBasedFileFilter : public rocksdb::ReadFileFilter {
  public:
-  QLRangeBasedFileFilter(const std::vector<KeyEntryValue>& lower_bounds,
+  QLRangeBasedFileFilter(const dockv::KeyEntryValues& lower_bounds,
                          const std::vector<bool>& lower_bounds_inclusive_,
-                         const std::vector<KeyEntryValue>& upper_bounds,
+                         const dockv::KeyEntryValues& upper_bounds,
                          const std::vector<bool>& upper_bounds_inclusive_);
 
   bool Filter(const rocksdb::FdWithBoundaries& file) const override;
 
  private:
-  std::vector<KeyBytes> lower_bounds_;
+  std::vector<dockv::KeyBytes> lower_bounds_;
   std::vector<bool> lower_bounds_inclusive_;
-  std::vector<KeyBytes> upper_bounds_;
+  std::vector<dockv::KeyBytes> upper_bounds_;
   std::vector<bool> upper_bounds_inclusive_;
 };
 

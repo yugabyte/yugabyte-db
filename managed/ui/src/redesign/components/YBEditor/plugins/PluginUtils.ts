@@ -9,9 +9,16 @@
 
 import ReactDOM from 'react-dom';
 import { head } from 'lodash';
-import { Editor, Transforms, Element as SlateElement, Range, Element } from 'slate';
+import { Editor, Transforms, Element as SlateElement, Range, Element, Node } from 'slate';
 import { ReactEditor } from 'slate-react';
-import { CustomElement, IYBEditor, Paragraph, TextDecorators } from './custom-types';
+import {
+  CustomElement,
+  CustomText,
+  IYBEditor,
+  JSONCodeBlock,
+  Paragraph,
+  TextDecorators
+} from './custom-types';
 import {
   IYBSlatePluginReturnProps,
   SlateRenderElementProps,
@@ -23,6 +30,14 @@ export const DefaultElement: Paragraph = {
   align: 'left',
   children: [{ text: '' }]
 };
+
+export const DefaultJSONElement: JSONCodeBlock = {
+  type: 'jsonCode',
+  children: [{ text: '' }]
+};
+
+export const ALERT_VARIABLE_REGEX = /{{\s*\w+\s*}}/g;
+export const MATCH_ALL_BETWEEN_BRACKET_REGEX = /{{(.*?)}}/g;
 
 /**
  * common function which can be used to return for non enabled plugins.
@@ -44,7 +59,8 @@ const TEXT_ALIGN_TYPES = ['left', 'center', 'right', 'justify'];
 /**
  * check if the current block is active
  */
-export const isBlockActive = (editor: IYBEditor, format: string, blockType = 'type') => {
+export const isBlockActive = (editor: IYBEditor | null, format: string, blockType = 'type') => {
+  if (!editor) return false;
   const { selection } = editor;
   if (!selection) return false;
 
@@ -58,7 +74,8 @@ export const isBlockActive = (editor: IYBEditor, format: string, blockType = 'ty
   return !!match;
 };
 
-export const isMarkActive = (editor: IYBEditor, mark: TextDecorators) => {
+export const isMarkActive = (editor: IYBEditor | null, mark: TextDecorators) => {
+  if (!editor) return false;
   const marks = Editor.marks(editor);
   return marks ? marks[mark] === true : false;
 };
@@ -82,15 +99,10 @@ export const toggleBlock = (editor: IYBEditor, block: string) => {
     };
   } else {
     newProperties = {
-      type: (isActive ? 'paragraph' : block) as any
+      align: block
     };
   }
   Transforms.setNodes<SlateElement>(editor, newProperties);
-
-  if (!isActive) {
-    const b = { type: block, children: [] };
-    Transforms.wrapNodes(editor, b as any);
-  }
 };
 
 export const toggleMark = (editor: IYBEditor, mark: TextDecorators) => {
@@ -162,4 +174,29 @@ export const isEmptyElement = (element: Element): boolean => {
   if (element.children.length > 1) return false;
 
   return isEmptyElement(head(element.children) as any);
+};
+
+/**
+ * returns if editor is empty. (i.e) even if it has elements, it should be empty
+ */
+export const isEditorEmpty = (editor: IYBEditor | null): boolean => {
+  if (!editor) return false;
+  return editor.children.every((child) => isEmptyElement(child as CustomElement));
+};
+
+/**
+ * extract text from the element
+ */
+export const serializeToText = (node: CustomText | CustomElement) => {
+  return Node.string(node);
+};
+
+/**
+ * reset the editor history
+ */
+export const resetEditorHistory = (editor: IYBEditor) => {
+  editor.history = {
+    redos: [],
+    undos: []
+  };
 };

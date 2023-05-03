@@ -11,23 +11,20 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse;
+import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.yb.CommonTypes.TableType;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.BackupServiceTaskCreateResponse;
@@ -44,8 +41,7 @@ public class BackupTableYbc extends YbcTaskBase {
   private TaskExecutor taskExecutor;
   private String baseLogMessage = null;
   private Backup previousBackup = null;
-  private Map<ImmutablePair<TableType, String>, BackupTableParams> previousBackupKeyspaces =
-      new HashMap<>();
+  private BackupTableParams previousBackupParams = null;
 
   @Inject
   public BackupTableYbc(
@@ -81,13 +77,18 @@ public class BackupTableYbc extends YbcTaskBase {
     try {
       // Check if previous backup usable
       if (taskParams().previousBackup != null) {
-        previousBackupKeyspaces =
-            ybcBackupUtil.getBackupKeyspaceToParamsMap(
-                taskParams().previousBackup.getBackupInfo().backupList);
+        Optional<BackupTableParams> oParams =
+            taskParams()
+                .previousBackup
+                .getParamsWithIdentifier(taskParams().backupParamsIdentifier);
+        previousBackupParams = oParams.isPresent() ? oParams.get() : null;
       }
 
       baseLogMessage =
-          ybcBackupUtil.getBaseLogMessage(taskParams().backupUuid, taskParams().getKeyspace());
+          ybcBackupUtil.getBaseLogMessage(
+              taskParams().backupUuid,
+              taskParams().getKeyspace(),
+              taskParams().backupParamsIdentifier);
 
       // Wait on node-ip
       if (StringUtils.isBlank(taskParams().nodeIp)) {
@@ -110,15 +111,11 @@ public class BackupTableYbc extends YbcTaskBase {
             ybcBackupUtil.getYbcTaskID(
                 taskParams().backupUuid,
                 taskParams().backupType.name(),
-                taskParams().getKeyspace());
+                taskParams().getKeyspace(),
+                taskParams().backupParamsIdentifier);
+
         String successMarkerString = null;
-        BackupTableParams previousKeyspaceParams = null;
-        if (MapUtils.isNotEmpty(previousBackupKeyspaces)
-            && previousBackupKeyspaces.containsKey(
-                ImmutablePair.of(taskParams().backupType, taskParams().getKeyspace()))) {
-          previousKeyspaceParams =
-              previousBackupKeyspaces.get(
-                  ImmutablePair.of(taskParams().backupType, taskParams().getKeyspace()));
+        if (previousBackupParams != null) {
           String dsmTaskId =
               taskParams().taskID.concat(YbcBackupUtil.YBC_SUCCESS_MARKER_TASK_SUFFIX);
           successMarkerString =
@@ -127,26 +124,26 @@ public class BackupTableYbc extends YbcTaskBase {
                       taskParams().customerUuid,
                       taskParams().storageConfigUUID,
                       dsmTaskId,
-                      previousKeyspaceParams),
+                      previousBackupParams),
                   taskParams().getUniverseUUID(),
                   dsmTaskId);
           if (StringUtils.isBlank(successMarkerString)) {
             throw new RuntimeException(
                 String.format(
-                    "Got empty success marker for base backup with keyspace %s",
-                    taskParams().getKeyspace()));
+                    "Got empty success marker for base backup with params identifier %s",
+                    taskParams().backupParamsIdentifier.toString()));
           }
         }
-        // Send create backup request to yb-controller.
+
         try {
           // For full backup, new keyspaces may have been introduced which were not in previous
           // backup, in such a case, previous backup won't have any context of it, even though
           // it's an incremental backup.
           BackupServiceTaskCreateRequest backupServiceTaskCreateRequest =
-              previousKeyspaceParams == null
+              previousBackupParams == null
                   ? ybcBackupUtil.createYbcBackupRequest(taskParams())
-                  : ybcBackupUtil.createYbcBackupRequest(taskParams(), previousKeyspaceParams);
-          if (previousKeyspaceParams != null) {
+                  : ybcBackupUtil.createYbcBackupRequest(taskParams(), previousBackupParams);
+          if (previousBackupParams != null) {
             // Fail if validation fails.
             YbcBackupResponse successMarker =
                 ybcBackupUtil.parseYbcBackupResponse(successMarkerString);
@@ -158,9 +155,10 @@ public class BackupTableYbc extends YbcTaskBase {
           if (response.getStatus().getCode().equals(ControllerStatus.OK)) {
             Backup.BackupUpdater bUpdater =
                 b -> {
-                  BackupTableParams tableParams =
-                      Backup.getBackupTableParamsFromKeyspaceOrNull(b, taskParams().getKeyspace());
-                  if (tableParams != null) {
+                  Optional<BackupTableParams> tableParamsOptional =
+                      b.getParamsWithIdentifier(taskParams().backupParamsIdentifier);
+                  if (tableParamsOptional.isPresent()) {
+                    BackupTableParams tableParams = tableParamsOptional.get();
                     tableParams.thisBackupSubTaskStartTime = (new Date()).getTime();
                   }
                 };
@@ -168,7 +166,7 @@ public class BackupTableYbc extends YbcTaskBase {
             if (isResumable) {
               backupRequestParams
                   .backupDBStates
-                  .get(taskParams().getKeyspace())
+                  .get(taskParams().backupParamsIdentifier)
                   .setIntermediate(taskParams().nodeIp, taskParams().taskID);
               getRunnableTask().setTaskDetails(Json.toJson(backupRequestParams));
             }
@@ -203,7 +201,10 @@ public class BackupTableYbc extends YbcTaskBase {
         pollTaskProgress(ybcClient, taskParams().taskID);
         handleBackupResult();
         if (isResumable) {
-          backupRequestParams.backupDBStates.get(taskParams().getKeyspace()).resetOnComplete();
+          backupRequestParams
+              .backupDBStates
+              .get(taskParams().backupParamsIdentifier)
+              .resetOnComplete();
           getRunnableTask().setTaskDetails(Json.toJson(backupRequestParams));
         }
         ybcManager.deleteYbcBackupTask(
@@ -263,9 +264,10 @@ public class BackupTableYbc extends YbcTaskBase {
       long backupSize = Long.parseLong(response.backupSize);
       Backup.BackupUpdater bUpdater =
           b -> {
-            BackupTableParams tableParams =
-                Backup.getBackupTableParamsFromKeyspaceOrNull(b, taskParams().getKeyspace());
-            if (tableParams != null) {
+            Optional<BackupTableParams> tableParamsOptional =
+                b.getParamsWithIdentifier(taskParams().backupParamsIdentifier);
+            if (tableParamsOptional.isPresent()) {
+              BackupTableParams tableParams = tableParamsOptional.get();
               tableParams.backupSizeInBytes = backupSize;
               tableParams.timeTakenPartial = backupServiceTaskResultResponse.getTimeTakenMs();
               // Add specific storage locations for regional backups

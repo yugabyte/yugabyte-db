@@ -24,10 +24,10 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/ql_name.h"
+#include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -112,7 +112,6 @@ using std::string;
 using std::unique_ptr;
 using std::unordered_set;
 using std::vector;
-using std::set;
 
 using strings::Substitute;
 
@@ -1578,9 +1577,9 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
   // Get partitions from external snapshot.
   size_t i = 0;
-  vector<Partition> partitions(table_data->partitions.size());
+  vector<dockv::Partition> partitions(table_data->partitions.size());
   for (const auto& partition_pb : table_data->partitions) {
-    Partition::FromPB(partition_pb, &partitions[i++]);
+    dockv::Partition::FromPB(partition_pb, &partitions[i++]);
   }
   VLOG_WITH_FUNC(3) << "Got " << partitions.size()
                     << " partitions from external snapshot for table " << table->id();
@@ -3115,6 +3114,13 @@ Status CatalogManager::ValidateTableSchema(
                       info->table_id, resp->identifier().table_id(), source_clc_id, target_clc_id));
   }
 
+  {
+    SharedLock lock(mutex_);
+    if (xcluster_consumer_tables_to_stream_map_.contains(table->table_id())) {
+      return STATUS(IllegalState, "N:1 replication topology not supported");
+    }
+  }
+
   return Status::OK();
 }
 
@@ -3156,6 +3162,10 @@ void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
   std::lock_guard<simple_spinlock> l(state_lock_);
   is_catalog_loaded_ = false;
+}
+
+HybridTime CatalogManager::AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+  return snapshot_coordinator_.AllowedHistoryCutoffProvider(metadata);
 }
 
 }  // namespace master

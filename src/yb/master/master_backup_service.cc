@@ -29,8 +29,6 @@
 namespace yb {
 namespace master {
 
-using rpc::RpcContext;
-
 MasterBackupServiceImpl::MasterBackupServiceImpl(Master* server)
     : MasterBackupIf(server->metric_entity()),
       MasterServiceBase(server) {

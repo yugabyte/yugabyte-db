@@ -188,7 +188,18 @@ Status RetryingTSRpcTask::Run() {
     std::this_thread::yield();
   }
 
-  Status s = ResetTSProxy();
+  auto s = replica_picker_->PickReplica(&target_ts_desc_);
+  if (!s.ok()) {
+    auto opt_transition = HandleReplicaLookupFailure(s);
+    if (opt_transition) {
+      TransitionToTerminalState(
+          MonitoredTaskState::kWaiting, opt_transition->first, opt_transition->second);
+      UnregisterAsyncTask();
+      return opt_transition->second;
+    }
+  } else {
+    s = ResetTSProxy();
+  }
   if (!s.ok()) {
     s = s.CloneAndPrepend("Failed to reset TS proxy");
     LOG_WITH_PREFIX(INFO) << s;
@@ -319,11 +330,26 @@ void RetryingTSRpcTask::DoRpcCallback() {
     LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc_->permanent_uuid() << ": "
                              << type_name() << " RPC failed for tablet "
                              << tablet_id() << ": " << rpc_.status().ToString();
-    if (!target_ts_desc_->IsLive() && type() == MonitoredTaskType::kDeleteReplica) {
-      LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
-          << tablet_id() << ". TS is DEAD. No further retry.";
-      TransitionToCompleteState();
+    if (!target_ts_desc_->IsLive()) {
+      switch (type()) {
+        case MonitoredTaskType::kBackendsCatalogVersionTs:
+          // A similar check is done in BackendsCatalogVersionTS::HandleResponse.  This check is hit
+          // when this RPC failed and tserver is dead.  That check is hit when this RPC succeeded
+          // and tserver is dead.
+          LOG_WITH_PREFIX(WARNING)
+              << "TS " << target_ts_desc_->permanent_uuid() << "is DEAD. Assume backends on that TS"
+              << " will be resolved to sufficient catalog version";
+          TransitionToCompleteState();
+          break;
+        case MonitoredTaskType::kDeleteReplica:
+          LOG_WITH_PREFIX(WARNING)
+              << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
+              << tablet_id() << ". TS is DEAD. No further retry.";
+          TransitionToCompleteState();
+          break;
+        default:
+          break;
+      }
     }
   } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.
@@ -483,9 +509,6 @@ void RetryingTSRpcTask::AbortIfScheduled() {
 }
 
 Status RetryingTSRpcTask::ResetTSProxy() {
-  // TODO: if there is no replica available, should we still keep the task running?
-  RETURN_NOT_OK(replica_picker_->PickReplica(&target_ts_desc_));
-
   shared_ptr<tserver::TabletServerServiceProxy> ts_proxy;
   shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy;
   shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy;

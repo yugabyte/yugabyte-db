@@ -13,8 +13,8 @@
 
 #include "yb/tablet/tablet-harness.h"
 
-#include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/qlexpr/index.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/consensus/log_anchor_registry.h"
 
@@ -30,20 +30,20 @@ using std::vector;
 namespace yb {
 namespace tablet {
 
-std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schema) {
+std::pair<dockv::PartitionSchema, dockv::Partition> CreateDefaultPartition(const Schema& schema) {
   // Create a default partition schema.
-  PartitionSchema partition_schema;
-  CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
+  dockv::PartitionSchema partition_schema;
+  CHECK_OK(dockv::PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
   // Create the tablet partitions.
-  vector<Partition> partitions;
-  CHECK_OK(partition_schema.CreatePartitions(vector<YBPartialRow>(), schema, &partitions));
+  vector<dockv::Partition> partitions;
+  CHECK_OK(partition_schema.CreatePartitions({}, schema, &partitions));
   CHECK_EQ(1, partitions.size());
   return std::make_pair(partition_schema, partitions[0]);
 }
 
 Status TabletHarness::Create(bool first_time) {
-  std::pair<PartitionSchema, Partition> partition(CreateDefaultPartition(schema_));
+  std::pair<dockv::PartitionSchema, dockv::Partition> partition(CreateDefaultPartition(schema_));
 
   // Build the Tablet
   fs_manager_.reset(new FsManager(options_.env, options_.root_dir, "tserver_test"));
@@ -54,7 +54,7 @@ Status TabletHarness::Create(bool first_time) {
 
   auto table_info = std::make_shared<TableInfo>(
       "test-tablet", Primary::kTrue, "YBTableTest", "test", "YBTableTest", options_.table_type,
-      schema_, IndexMap(), boost::none, 0 /* schema_version */, partition.first);
+      schema_, qlexpr::IndexMap(), boost::none, 0 /* schema_version */, partition.first);
   auto metadata = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
     .fs_manager = fs_manager_.get(),
     .table_info = table_info,
@@ -63,7 +63,6 @@ Status TabletHarness::Create(bool first_time) {
     .tablet_data_state = TABLET_DATA_READY,
     .snapshot_schedules = {},
     .hosted_services = {},
-    .last_change_metadata_op_id = OpId::Min(),
   }));
   if (options_.enable_metrics) {
     metrics_registry_.reset(new MetricRegistry());
@@ -91,27 +90,28 @@ Result<TabletPtr> TabletHarness::OpenTablet(const TabletId& tablet_id) {
 
 TabletInitData TabletHarness::MakeTabletInitData(const RaftGroupMetadataPtr& metadata) {
   return TabletInitData {
-    .metadata = metadata,
-    .client_future = std::shared_future<client::YBClient*>(),
-    .clock = clock_,
-    .parent_mem_tracker = std::shared_ptr<MemTracker>(),
-    .block_based_table_mem_tracker = std::shared_ptr<MemTracker>(),
-    .metric_registry = metrics_registry_.get(),
-    .log_anchor_registry = new log::LogAnchorRegistry(),
-    .tablet_options = TabletOptions(),
-    .log_prefix_suffix = std::string(),
-    .transaction_participant_context = nullptr,
-    .local_tablet_filter = client::LocalTabletFilter(),
-    .transaction_coordinator_context = nullptr,
-    .txns_enabled = TransactionsEnabled::kFalse,
-    .is_sys_catalog = IsSysCatalogTablet::kFalse,
-    .snapshot_coordinator = nullptr,
-    .tablet_splitter = nullptr,
-    .allowed_history_cutoff_provider = {},
-    .transaction_manager_provider = nullptr,
-    .full_compaction_pool = nullptr,
-    .post_split_compaction_added = nullptr
-  };
+      .metadata = metadata,
+      .client_future = std::shared_future<client::YBClient*>(),
+      .clock = clock_,
+      .parent_mem_tracker = std::shared_ptr<MemTracker>(),
+      .block_based_table_mem_tracker = std::shared_ptr<MemTracker>(),
+      .metric_registry = metrics_registry_.get(),
+      .log_anchor_registry = new log::LogAnchorRegistry(),
+      .tablet_options = TabletOptions(),
+      .log_prefix_suffix = std::string(),
+      .transaction_participant_context = nullptr,
+      .local_tablet_filter = client::LocalTabletFilter(),
+      .transaction_coordinator_context = nullptr,
+      .txns_enabled = TransactionsEnabled::kFalse,
+      .is_sys_catalog = IsSysCatalogTablet::kFalse,
+      .snapshot_coordinator = nullptr,
+      .tablet_splitter = nullptr,
+      .allowed_history_cutoff_provider = {},
+      .transaction_manager_provider = nullptr,
+      .full_compaction_pool = nullptr,
+      .admin_triggered_compaction_pool = nullptr,
+      .post_split_compaction_added = nullptr
+    };
 }
 
 } // namespace tablet

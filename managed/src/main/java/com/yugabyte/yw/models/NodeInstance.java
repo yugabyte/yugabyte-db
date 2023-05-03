@@ -24,10 +24,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.stream.Collectors;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -168,8 +168,7 @@ public class NodeInstance extends Model {
         universe.getNodes().stream().map(NodeDetails::getNodeUuid).collect(Collectors.toSet());
     List<NodeInstance> nodeInstances = NodeInstance.listByProvider(providerUUID);
     List<NodeInstance> filteredInstances =
-        nodeInstances
-            .stream()
+        nodeInstances.stream()
             .filter(instance -> nodeUUIDS.contains(instance.getNodeUuid()))
             .collect(Collectors.toList());
 

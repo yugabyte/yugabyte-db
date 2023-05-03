@@ -32,7 +32,6 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/master-test-util.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -64,10 +63,8 @@ DECLARE_bool(enable_ysql);
 
 namespace yb {
 
-using std::make_shared;
 using std::shared_ptr;
 using std::unique_ptr;
-using std::tuple;
 using std::set;
 using std::vector;
 using std::string;
@@ -80,11 +77,9 @@ using master::SysRowEntry;
 using master::SysRowEntryType;
 using master::BackupRowEntryPB;
 using master::TableInfo;
-using master::TabletInfo;
 using rpc::Messenger;
 using rpc::MessengerBuilder;
 using rpc::RpcController;
-using tablet::Tablet;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 

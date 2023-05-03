@@ -36,8 +36,6 @@ namespace ql {
 using std::string;
 using std::vector;
 using std::shared_ptr;
-using client::YBClient;
-using client::YBSession;
 using client::YBClientBuilder;
 
 ClockHolder::ClockHolder() : clock_(new server::HybridClock()) {
@@ -180,11 +178,12 @@ void TestQLProcessor::RemoveCachedTableDesc(const client::YBTableName& table_nam
   processor_->ql_env_.RemoveCachedTableDesc(table_name);
 }
 
-std::shared_ptr<QLRowBlock> TestQLProcessor::row_block() const {
+std::shared_ptr<qlexpr::QLRowBlock> TestQLProcessor::row_block() const {
   LOG(INFO) << (result_ == NULL ? "Result is NULL." : "Got result.")
             << " Return type = " << static_cast<int>(ExecutedResult::Type::ROWS);
   if (result_ != nullptr && result_->type() == ExecutedResult::Type::ROWS) {
-    return std::shared_ptr<QLRowBlock>(static_cast<RowsResult*>(result_.get())->GetRowBlock());
+    return std::shared_ptr<qlexpr::QLRowBlock>(
+        static_cast<RowsResult*>(result_.get())->GetRowBlock());
   }
   return nullptr;
 }
@@ -198,7 +197,7 @@ void QLTestBase::VerifyPaginationSelect(TestQLProcessor* processor,
   string rows;
   do {
     CHECK_OK(processor->Run(select_query, params));
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    auto row_block = processor->row_block();
     if (row_block->row_count() > 0) {
       rows.append(row_block->ToString());
     } else {

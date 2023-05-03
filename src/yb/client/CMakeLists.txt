@@ -75,8 +75,6 @@ set(CLIENT_SRCS
 
 set(CLIENT_LIBS
   yb_common
-  yb_ql_common
-  yb_partition
   master_proto
   master_rpc
   master_util
@@ -86,11 +84,11 @@ set(CLIENT_LIBS
   pg_auto_analyze_service_proto
   test_echo_service_proto
   tserver_util
+  yb_ql_expr
   yb_util
   gutil
   yrpc
-  yb_docdb_encoding
-  yb_docdb_encoding_util)
+  yb_dockv)
 
 # We customize the output name/directory of the exported library so that we can
 # call it "yb_client" without it colliding with the regular library.

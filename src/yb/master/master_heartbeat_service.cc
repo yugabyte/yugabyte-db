@@ -184,6 +184,16 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
         }
       }
 
+      // Only process the full compaction statuses if we have plenty of time to process the work (>
+      // 50% of timeout).
+      safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
+      if (rpc.GetClientDeadline() > safe_time_left) {
+        for (const auto& full_compaction_status : req->full_compaction_statuses()) {
+          server_->catalog_manager_impl()->ProcessTabletReplicaFullCompactionStatus(
+              ts_desc->permanent_uuid(), full_compaction_status);
+        }
+      }
+
       // Only set once. It may take multiple heartbeats to receive a full tablet report.
       if (!ts_desc->has_tablet_report()) {
         resp->set_needs_full_tablet_report(true);

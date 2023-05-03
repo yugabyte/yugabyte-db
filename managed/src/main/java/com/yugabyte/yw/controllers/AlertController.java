@@ -412,7 +412,7 @@ public class AlertController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     AlertConfiguration configuration = alertConfigurationService.getOrBadRequest(configurationUUID);
-    Alert alert = createTestAlert(customer, configuration);
+    Alert alert = createTestAlert(customer, configuration, true);
     SendNotificationResult result = alertManager.sendNotification(alert);
     if (result.getStatus() != SendNotificationStatus.SUCCEEDED) {
       throw new PlatformServiceException(BAD_REQUEST, result.getMessage());
@@ -439,7 +439,7 @@ public class AlertController extends AuthenticatedController {
             Audit.TargetType.AlertChannel,
             Objects.toString(channel.getUuid(), null),
             Audit.ActionType.Create);
-    return PlatformResults.withData(channel);
+    return PlatformResults.withData(CommonUtils.maskObject(channel));
   }
 
   @ApiOperation(value = "Get an alert channel", response = AlertChannel.class)
@@ -496,9 +496,7 @@ public class AlertController extends AuthenticatedController {
   public Result listAlertChannels(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(
-        alertChannelService
-            .list(customerUUID)
-            .stream()
+        alertChannelService.list(customerUUID).stream()
             .map(channel -> CommonUtils.maskObject(channel))
             .collect(Collectors.toList()));
   }
@@ -768,7 +766,7 @@ public class AlertController extends AuthenticatedController {
         alertConfigurationService.getOrBadRequest(previewFormData.getAlertConfigUuid());
 
     AlertChannelTemplates channelTemplates = previewFormData.getAlertChannelTemplates();
-    Alert testAlert = createTestAlert(customer, alertConfiguration);
+    Alert testAlert = createTestAlert(customer, alertConfiguration, false);
     AlertChannel channel = new AlertChannel().setName("Channel name");
     List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customerUUID);
     AlertChannelTemplatesExt templatesExt =
@@ -790,18 +788,15 @@ public class AlertController extends AuthenticatedController {
 
   private List<AlertData> convert(List<Alert> alerts) {
     List<Alert> alertsWithoutExpressionLabel =
-        alerts
-            .stream()
+        alerts.stream()
             .filter(alert -> alert.getLabelValue(KnownAlertLabels.ALERT_EXPRESSION) == null)
             .collect(Collectors.toList());
     List<UUID> alertsConfigurationUuids =
-        alertsWithoutExpressionLabel
-            .stream()
+        alertsWithoutExpressionLabel.stream()
             .map(Alert::getConfigurationUuid)
             .collect(Collectors.toList());
     List<UUID> alertDefinitionUuids =
-        alertsWithoutExpressionLabel
-            .stream()
+        alertsWithoutExpressionLabel.stream()
             .map(Alert::getDefinitionUuid)
             .collect(Collectors.toList());
     Map<UUID, AlertConfiguration> alertConfigurationMap =
@@ -814,12 +809,10 @@ public class AlertController extends AuthenticatedController {
     Map<UUID, AlertDefinition> alertDefinitionMap =
         CollectionUtils.isNotEmpty(alertDefinitionUuids)
             ? alertDefinitionService
-                .list(AlertDefinitionFilter.builder().uuids(alertDefinitionUuids).build())
-                .stream()
+                .list(AlertDefinitionFilter.builder().uuids(alertDefinitionUuids).build()).stream()
                 .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()))
             : Collections.emptyMap();
-    return alerts
-        .stream()
+    return alerts.stream()
         .map(
             alert ->
                 convertInternal(
@@ -861,7 +854,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @VisibleForTesting
-  Alert createTestAlert(Customer customer, AlertConfiguration configuration) {
+  Alert createTestAlert(
+      Customer customer, AlertConfiguration configuration, boolean testAlertPrefix) {
     AlertDefinition definition =
         alertDefinitionService
             .list(
@@ -871,7 +865,16 @@ public class AlertController extends AuthenticatedController {
             .orElse(null);
     if (definition == null) {
       if (configuration.getTargetType() == AlertConfiguration.TargetType.UNIVERSE) {
+        Universe universe = new Universe();
+        universe.setUniverseUUID(UUID.randomUUID());
+        UniverseDefinitionTaskParams details = new UniverseDefinitionTaskParams();
+        details.nodePrefix = "node_prefix";
+        universe.setUniverseDetails(details);
         definition = new AlertDefinition();
+        definition.setCustomerUUID(customer.getUuid());
+        definition.setConfigurationUUID(configuration.getUuid());
+        definition.setQuery(configuration.getTemplate().buildTemplate(customer, universe));
+        definition.generateUUID();
         definition.setLabels(
             MetricLabelsBuilder.create()
                 .appendSource(getOrCreateUniverseForTestAlert(customer))
@@ -890,9 +893,7 @@ public class AlertController extends AuthenticatedController {
         alertTemplateSettingsService.get(
             configuration.getCustomerUUID(), configuration.getTemplate().name());
     List<AlertLabel> labels =
-        definition
-            .getEffectiveLabels(configuration, alertTemplateSettings, severity)
-            .stream()
+        definition.getEffectiveLabels(configuration, alertTemplateSettings, severity).stream()
             .map(label -> new AlertLabel(label.getName(), label.getValue()))
             .collect(Collectors.toList());
     labels.add(new AlertLabel(KnownAlertLabels.ALERTNAME.labelName(), configuration.getName()));
@@ -915,11 +916,12 @@ public class AlertController extends AuthenticatedController {
     if (StringUtils.isNotEmpty(sourceUuid)) {
       alert.setSourceUUID(UUID.fromString(sourceUuid));
     }
-    alert.setMessage(buildTestAlertMessage(configuration, alert));
+    alert.setMessage(buildTestAlertMessage(configuration, alert, testAlertPrefix));
     return alert;
   }
 
-  private String buildTestAlertMessage(AlertConfiguration configuration, Alert alert) {
+  private String buildTestAlertMessage(
+      AlertConfiguration configuration, Alert alert, boolean testAlertPrefix) {
     AlertTemplate template = configuration.getTemplate();
     TestAlertSettings settings = template.getTestAlertSettings();
     if (settings.getCustomMessage() != null) {
@@ -932,14 +934,13 @@ public class AlertController extends AuthenticatedController {
     TestAlertTemplateSubstitutor testAlertTemplateSubstitutor =
         new TestAlertTemplateSubstitutor(alert, configuration);
     message = testAlertTemplateSubstitutor.replace(message);
-    return "[TEST ALERT!!!] " + message;
+    return testAlertPrefix ? "[TEST ALERT!!!] " + message : message;
   }
 
   private Universe getOrCreateUniverseForTestAlert(Customer customer) {
     Set<Universe> allUniverses = Universe.getAllWithoutResources(customer);
     Universe firstUniverse =
-        allUniverses
-            .stream()
+        allUniverses.stream()
             .filter(universe -> universe.getUniverseDetails().nodePrefix != null)
             .min(Comparator.comparing(universe -> universe.getCreationDate()))
             .orElse(null);

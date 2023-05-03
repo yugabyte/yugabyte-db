@@ -1,3 +1,6 @@
+import static org.junit.Assert.*;
+import static play.mvc.Results.ok;
+
 import akka.actor.ActorSystem;
 import akka.stream.ActorMaterializer;
 import akka.stream.ActorMaterializerSettings;
@@ -6,6 +9,9 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
 import com.yugabyte.yw.common.logging.LogUtil;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -13,13 +19,6 @@ import org.slf4j.MDC;
 import play.mvc.Filter;
 import play.mvc.Http;
 import play.mvc.Result;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.function.Function;
-
-import static org.junit.Assert.*;
-import static play.mvc.Results.ok;
 
 public class RequestLoggingFilterTest {
   private static final String header = "X-REQUEST-ID";

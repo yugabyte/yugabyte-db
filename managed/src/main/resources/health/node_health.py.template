@@ -55,6 +55,8 @@ POSTGRES = "postgres"
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
 RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
 BUILD_NUMBER_PATTERN = "b(\\d+).*"
+CQL_AUTH_FAILURE_MESSAGE = \
+        "AuthenticationFailed('Remote end requires authentication"
 
 K8S_CERTS_PATH = "/opt/certs/yugabyte/"
 K8S_CERT_FILE_PATH = os.path.join(K8S_CERTS_PATH, "ca.crt")
@@ -1154,7 +1156,7 @@ class NodeChecker():
         errors = []
         if not ('Connected to local cluster at {}:{}'
                 .format(self.node, self.ycql_port) in output or
-                "AuthenticationFailed('Remote end requires authentication'" in output):
+                CQL_AUTH_FAILURE_MESSAGE in output):
             errors = [output]
 
         has_errors = len(errors) > 0

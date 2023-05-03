@@ -87,7 +87,7 @@ public class RegionTest extends FakeDBApplication {
     assertEquals(region.getName(), "region 1");
     assertTrue(region.isActive());
 
-    region.setActiveFlag(false);
+    region.setActive(false);
     region.save();
 
     Region fetch = Region.find.byId(region.getUuid());

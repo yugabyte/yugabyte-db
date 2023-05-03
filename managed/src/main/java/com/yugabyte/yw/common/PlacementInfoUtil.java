@@ -136,12 +136,7 @@ public class PlacementInfoUtil {
    */
   static boolean checkFaultToleranceCorrect(Cluster cluster, boolean allowGeopartitioning) {
     Map<UUID, PlacementRegion> regionsMap =
-        cluster
-            .placementInfo
-            .cloudList
-            .get(0)
-            .regionList
-            .stream()
+        cluster.placementInfo.cloudList.get(0).regionList.stream()
             .collect(Collectors.toMap(r -> r.uuid, r -> r));
     int regionsCount = regionsMap.size();
     int intentRegionsCount = (int) cluster.userIntent.regionList.stream().distinct().count();
@@ -188,8 +183,7 @@ public class PlacementInfoUtil {
     // Filter out zones which doesn't have enough nodes.
     if (userIntent.providerType.equals(CloudType.onprem)) {
       zones =
-          zones
-              .stream()
+          zones.stream()
               .filter(
                   az -> NodeInstance.listByZone(az.getUuid(), userIntent.instanceType).size() > 0)
               .collect(Collectors.toList());
@@ -426,9 +420,7 @@ public class PlacementInfoUtil {
     // STEP 3: Remove nodes.
 
     // Removing unnecessary nodes (full/part move or dedicated switch)
-    taskParams
-        .getNodesInCluster(cluster.uuid)
-        .stream()
+    taskParams.getNodesInCluster(cluster.uuid).stream()
         .filter(n -> n.state != NodeState.ToBeRemoved)
         .forEach(
             node -> {
@@ -542,8 +534,7 @@ public class PlacementInfoUtil {
 
   private static Set<UUID> getAllRegionUUIDs(Collection<NodeDetails> nodes) {
     Map<UUID, AvailabilityZone> azMap = new HashMap<>();
-    return nodes
-        .stream()
+    return nodes.stream()
         .map(
             n ->
                 azMap.computeIfAbsent(n.azUuid, azUuid -> AvailabilityZone.getOrBadRequest(azUuid)))
@@ -639,9 +630,7 @@ public class PlacementInfoUtil {
         if (!allZonesUsed) { // Trying to add some more zones if any possible.
           allZonesUsed = true;
           // Adding more zones to the end of the list.
-          userIntent
-              .regionList
-              .stream()
+          userIntent.regionList.stream()
               .flatMap(regionUUID -> getAvailabilityZonesByRegion(regionUUID, userIntent).stream())
               .map(zone -> zone.getUuid())
               .filter(zoneUUID -> !placementAZMap.containsKey(zoneUUID))
@@ -711,8 +700,7 @@ public class PlacementInfoUtil {
 
   private static boolean isDedicatedModeChanged(Cluster cluster, Set<NodeDetails> nodeDetailsSet) {
     boolean dedicatedInNodes =
-        nodeDetailsSet
-            .stream()
+        nodeDetailsSet.stream()
             .filter(node -> cluster.uuid.equals(node.placementUuid))
             .filter(node -> node.dedicatedTo != null)
             .findFirst()
@@ -732,9 +720,7 @@ public class PlacementInfoUtil {
     if (defaultRegionUUID != null) {
       // If default region is set, placing replicas only in its zones (removing all
       // other zones).
-      placementInfo
-          .cloudList
-          .stream()
+      placementInfo.cloudList.stream()
           .flatMap(cloud -> cloud.regionList.stream())
           .filter(region -> !defaultRegionUUID.equals(region.uuid))
           .flatMap(region -> region.azList.stream())
@@ -870,15 +856,13 @@ public class PlacementInfoUtil {
   }
 
   public static Set<NodeDetails> getNodesToBeRemoved(Set<NodeDetails> nodeDetailsSet) {
-    return nodeDetailsSet
-        .stream()
+    return nodeDetailsSet.stream()
         .filter(node -> node.state == NodeState.ToBeRemoved)
         .collect(Collectors.toSet());
   }
 
   public static Set<NodeDetails> getLiveNodes(Set<NodeDetails> nodeDetailsSet) {
-    return nodeDetailsSet
-        .stream()
+    return nodeDetailsSet.stream()
         .filter(n -> n.state.equals(NodeDetails.NodeState.Live))
         .collect(Collectors.toSet());
   }
@@ -897,8 +881,7 @@ public class PlacementInfoUtil {
 
   private static Set<NodeDetails> getServersToProvision(
       Set<NodeDetails> nodeDetailsSet, ServerType serverType) {
-    return nodeDetailsSet
-        .stream()
+    return nodeDetailsSet.stream()
         .filter(
             n ->
                 n.state == NodeState.ToBeAdded
@@ -1160,8 +1143,7 @@ public class PlacementInfoUtil {
       UUID targetAZUuid,
       boolean mastersPreferable) {
     List<NodeDetails> items =
-        nodes
-            .stream()
+        nodes.stream()
             .filter(node -> nodeFilter.test(node) && node.azUuid.equals(targetAZUuid))
             .collect(Collectors.toList());
     items.sort(
@@ -1249,10 +1231,7 @@ public class PlacementInfoUtil {
   }
 
   public static Map<UUID, Map<UUID, PlacementAZ>> getPlacementAZMapPerCluster(Universe universe) {
-    return universe
-        .getUniverseDetails()
-        .clusters
-        .stream()
+    return universe.getUniverseDetails().clusters.stream()
         .collect(
             Collectors.toMap(
                 cluster -> cluster.uuid, cluster -> getPlacementAZMap(cluster.placementInfo)));
@@ -1287,8 +1266,7 @@ public class PlacementInfoUtil {
     LinkedHashSet<PlacementIndexes> indexes =
         getDeltaPlacementIndices(
             cluster.placementInfo,
-            nodesInCluster
-                .stream()
+            nodesInCluster.stream()
                 .filter(n -> n.placementUuid.equals(cluster.uuid))
                 .collect(Collectors.toSet()));
     Set<NodeDetails> deltaNodesSet = new HashSet<>();
@@ -1470,9 +1448,7 @@ public class PlacementInfoUtil {
       return;
     }
     Set<NodeDetails> clusterNodes =
-        taskParams
-            .nodeDetailsSet
-            .stream()
+        taskParams.nodeDetailsSet.stream()
             .filter(n -> n.placementUuid.equals(cluster.uuid))
             .collect(Collectors.toSet());
     if (cluster.userIntent.dedicatedNodes) {
@@ -1485,8 +1461,7 @@ public class PlacementInfoUtil {
         }
       }
       Set<NodeDetails> ephemeralDedicatedMasters =
-          clusterNodes
-              .stream()
+          clusterNodes.stream()
               .filter(node -> node.dedicatedTo == ServerType.MASTER)
               .filter(node -> node.state == NodeState.ToBeAdded)
               .collect(Collectors.toSet());
@@ -1678,8 +1653,7 @@ public class PlacementInfoUtil {
     AvailableNodeTracker availableNodeTracker =
         new AvailableNodeTracker(cluster.uuid, clusters, allNodes);
     AtomicInteger numCandidates = new AtomicInteger(0);
-    nodes
-        .stream()
+    nodes.stream()
         .filter(NodeDetails::isActive)
         .forEach(
             node -> {
@@ -1718,8 +1692,8 @@ public class PlacementInfoUtil {
             });
     new ArrayList<>(availableForMastersNodes.entrySet())
         .stream()
-        .filter(e -> e.getValue() == 0)
-        .forEach(e -> availableForMastersNodes.remove(e.getKey()));
+            .filter(e -> e.getValue() == 0)
+            .forEach(e -> availableForMastersNodes.remove(e.getKey()));
 
     if (replicationFactor > numCandidates.get()) {
       if (defaultRegionCode == null) {
@@ -1771,8 +1745,7 @@ public class PlacementInfoUtil {
     Map<RegionWithAz, Integer> allocatedMastersRgAz =
         getIdealMasterAlloc(
             replicationFactor,
-            zones
-                .stream()
+            zones.stream()
                 .filter(availableForMastersNodes::containsKey)
                 .collect(Collectors.toList()),
             availableForMastersNodes,
@@ -1935,8 +1908,7 @@ public class PlacementInfoUtil {
       Collection<NodeDetails> nodes, int replicationFactor, SelectMastersResult selection) {
     int allocatedMasters =
         (int)
-            nodes
-                .stream()
+            nodes.stream()
                 .filter(
                     n ->
                         (n.state == NodeState.Live || n.state == NodeState.ToBeAdded)
@@ -2038,8 +2010,7 @@ public class PlacementInfoUtil {
 
   // Get the zones with the number of tservers for each zone.
   public static Map<UUID, Integer> getNumTServerPerAZ(PlacementInfo pi) {
-    return pi.cloudList
-        .stream()
+    return pi.cloudList.stream()
         .flatMap(pc -> pc.regionList.stream())
         .flatMap(pr -> pr.azList.stream())
         .collect(Collectors.toMap(pa -> pa.uuid, pa -> pa.numNodesInAZ));
@@ -2125,8 +2096,7 @@ public class PlacementInfoUtil {
 
     for (UUID regionUuid : userIntent.regionList) {
       List<AvailabilityZone> zones =
-          AvailabilityZone.getAZsForRegion(regionUuid)
-              .stream()
+          AvailabilityZone.getAZsForRegion(regionUuid).stream()
               .filter(
                   az -> {
                     boolean res = availableNodeTracker.getAvailableForZone(az.getUuid()) > 0;
@@ -2233,9 +2203,7 @@ public class PlacementInfoUtil {
         az.getUuid());
     // Find the placement cloud if it already exists, or create a new one if one does not exist.
     PlacementCloud placementCloud =
-        placementInfo
-            .cloudList
-            .stream()
+        placementInfo.cloudList.stream()
             .filter(p -> p.uuid.equals(cloud.getUuid()))
             .findFirst()
             .orElseGet(
@@ -2250,9 +2218,7 @@ public class PlacementInfoUtil {
 
     // Find the placement region if it already exists, or create a new one.
     PlacementRegion placementRegion =
-        placementCloud
-            .regionList
-            .stream()
+        placementCloud.regionList.stream()
             .filter(p -> p.uuid.equals(region.getUuid()))
             .findFirst()
             .orElseGet(
@@ -2268,9 +2234,7 @@ public class PlacementInfoUtil {
 
     // Find the placement AZ in the region if it already exists, or create a new one.
     PlacementAZ placementAZ =
-        placementRegion
-            .azList
-            .stream()
+        placementRegion.azList.stream()
             .filter(p -> p.uuid.equals(az.getUuid()))
             .findFirst()
             .orElseGet(
@@ -2312,8 +2276,7 @@ public class PlacementInfoUtil {
   }
 
   public static int getZoneRF(PlacementInfo pi, String cloud, String region, String zone) {
-    return pi.cloudList
-        .stream()
+    return pi.cloudList.stream()
         .filter(pc -> pc.code.equals(cloud))
         .flatMap(pc -> pc.regionList.stream())
         .filter(pr -> pr.code.equals(region))
@@ -2326,11 +2289,11 @@ public class PlacementInfoUtil {
 
   public static long getNumActiveTserversInZone(
       Collection<NodeDetails> nodes, String cloud, String region, String zone) {
-    return nodes
-        .stream()
+    return nodes.stream()
         .filter(
             node ->
                 node.isActive()
+                    && node.isTserver
                     && node.cloudInfo.cloud.equals(cloud)
                     && node.cloudInfo.region.equals(region)
                     && node.cloudInfo.az.equals(zone))

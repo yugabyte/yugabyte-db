@@ -52,8 +52,12 @@
 #include "yb/common/clock.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
+
+#include "yb/dockv/dockv_fwd.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
@@ -118,6 +122,25 @@ struct TransactionStatusTablets {
   std::vector<TabletId> placement_local_tablets;
 };
 
+struct TabletReplicaFullCompactionStatus {
+  TabletServerId ts_id;
+  TabletId tablet_id;
+  tablet::FullCompactionState full_compaction_state;
+  // Not valid if full_compaction_state == UNKNOWN.
+  // No full compaction ever been completed is represented as 0 time.
+  HybridTime last_full_compaction_time;
+};
+
+struct TableCompactionStatus {
+  tablet::FullCompactionState full_compaction_state;
+
+  // Not valid if full_compaction_state == UNKNOWN.
+  // No full compaction ever been completed is represented as 0 time.
+  HybridTime last_full_compaction_time;
+  // No admin compaction ever been requested is represented as 0 time.
+  HybridTime last_request_time;
+  std::vector<TabletReplicaFullCompactionStatus> replica_statuses;
+};
 
 // Creates a new YBClient with the desired options.
 //
@@ -298,7 +321,8 @@ class YBClient {
                      int timeout_secs,
                      bool is_compaction);
 
-  Result<MonoTime> GetCompactionStatus(const YBTableName& table_name);
+  Result<TableCompactionStatus> GetCompactionStatus(
+      const YBTableName& table_name, bool show_tablets);
 
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const std::string id);
@@ -310,7 +334,7 @@ class YBClient {
 
   Status GetTableSchema(const YBTableName& table_name,
                         YBSchema* schema,
-                        PartitionSchema* partition_schema);
+                        dockv::PartitionSchema* partition_schema);
   Status GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback);
   Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);
@@ -560,6 +584,17 @@ class YBClient {
   Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
 
+  // Bootstrap the given list of tables. Returns the corresponding list of table ids, bootstrap ids
+  // and the bootstrap time.
+  Status BootstrapProducer(
+      const YQLDatabase& db_type,
+      const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName> pg_schema_names,
+      const std::vector<TableName>& table_name,
+      std::vector<TableId>* producer_table_ids,
+      std::vector<std::string>* bootstrap_ids,
+      HybridTime* bootstrap_time);
+
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(const std::string& producer_id,
                                        const TableId& table_id,
@@ -653,6 +688,27 @@ class YBClient {
   // Get a list of global transaction status tablets, and local transaction status tablets
   // that are local to 'placement'.
   Result<TransactionStatusTablets> GetTransactionStatusTablets(const CloudInfoPB& placement);
+
+  // Wait for YSQL backends on specified DB to reach specified catalog version.
+  //
+  // There is a slight risk of database name changes happening at the same time.  Therefore, prefer
+  // specifying database oid unless it is certain that the database names won't change (like tests).
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      const std::string& database_name,
+      uint64_t version,
+      const MonoDelta& timeout = MonoDelta());
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      const std::string& database_name,
+      uint64_t version,
+      const CoarseTimePoint& deadline);
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      PgOid database_oid,
+      uint64_t version,
+      const MonoDelta& timeout = MonoDelta());
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      PgOid database_oid,
+      uint64_t version,
+      const CoarseTimePoint& deadline);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   Status ListMasters(

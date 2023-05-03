@@ -12,7 +12,7 @@
 
 import os
 
-from yb.common_util import read_file
+from yb.file_util import read_file
 
 from typing import Optional, Set
 

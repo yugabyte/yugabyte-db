@@ -43,12 +43,12 @@
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
-#include "yb/docdb/schema_packing.h"
+#include "yb/dockv/schema_packing.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -76,6 +76,8 @@ extern const std::string kSnapshotsDirSuffix;
 const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 
 YB_STRONGLY_TYPED_BOOL(Primary);
+YB_STRONGLY_TYPED_BOOL(OnlyIfDirty);
+YB_STRONGLY_TYPED_BOOL(LazySuperblockFlushEnabled);
 
 struct TableInfo {
  private:
@@ -94,12 +96,13 @@ struct TableInfo {
   std::string log_prefix;
   // The table schema, secondary index map, index info (for index table only) and schema version.
   const std::shared_ptr<docdb::DocReadContext> doc_read_context;
-  const std::shared_ptr<IndexMap> index_map;
-  std::unique_ptr<IndexInfo> index_info;
+  const std::shared_ptr<qlexpr::IndexMap> index_map;
+  std::unique_ptr<qlexpr::IndexInfo> index_info;
+  std::shared_ptr<dockv::ReaderProjection> unique_index_key_projection;
   SchemaVersion schema_version = 0;
 
   // Partition schema of the table.
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
 
   // A vector of column IDs that have been deleted, so that the compaction filter can free the
   // associated memory. As of 01/2019, deleted column IDs are persisted forever, even if all the
@@ -119,13 +122,13 @@ struct TableInfo {
             std::string table_name,
             TableType table_type,
             const Schema& schema,
-            const IndexMap& index_map,
-            const boost::optional<IndexInfo>& index_info,
+            const qlexpr::IndexMap& index_map,
+            const boost::optional<qlexpr::IndexInfo>& index_info,
             SchemaVersion schema_version,
-            PartitionSchema partition_schema);
+            dockv::PartitionSchema partition_schema);
   TableInfo(const TableInfo& other,
             const Schema& schema,
-            const IndexMap& index_map,
+            const qlexpr::IndexMap& index_map,
             const std::vector<DeletedColumn>& deleted_cols,
             SchemaVersion schema_version);
   TableInfo(const TableInfo& other, SchemaVersion min_schema_version);
@@ -135,7 +138,7 @@ struct TableInfo {
       const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb);
   void ToPB(TableInfoPB* pb) const;
 
-  Status MergeSchemaPackings(const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite);
+  Status MergeSchemaPackings(const TableInfoPB& pb, dockv::OverwriteSchemaPacking overwrite);
 
   std::string ToString() const {
     TableInfoPB pb;
@@ -164,6 +167,8 @@ struct TableInfo {
 
  private:
   Status DoLoadFromPB(Primary primary, const TableInfoPB& pb);
+
+  void CompleteInit();
 };
 
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
@@ -185,11 +190,11 @@ struct KvStoreInfo {
 
   Status MergeWithRestored(
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
-      docdb::OverwriteSchemaPacking overwrite);
+      dockv::OverwriteSchemaPacking overwrite);
 
   Status MergeTableSchemaPackings(
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
-      docdb::OverwriteSchemaPacking overwrite);
+      dockv::OverwriteSchemaPacking overwrite);
 
   // Given the table info from the tablet metadata in a snapshot, return the corresponding live
   // table.  Used to map tables that existed in the snapshot to tables that are live in the current
@@ -243,12 +248,11 @@ struct RaftGroupMetadataData {
   FsManager* fs_manager;
   TableInfoPtr table_info;
   RaftGroupId raft_group_id;
-  Partition partition;
+  dockv::Partition partition;
   TabletDataState tablet_data_state;
   bool colocated = false;
   std::vector<SnapshotScheduleId> snapshot_schedules;
   std::unordered_set<StatefulServiceKind> hosted_services;
-  OpId last_change_metadata_op_id;
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
@@ -290,7 +294,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   }
 
   // Returns the partition of the Raft group.
-  std::shared_ptr<Partition> partition() const {
+  std::shared_ptr<dockv::Partition> partition() const {
     DCHECK_NE(state_, kNotLoadedYet);
     std::lock_guard<MutexType> lock(data_mutex_);
     return partition_;
@@ -317,7 +321,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   yb::SchemaPtr schema(
       const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
-  std::shared_ptr<IndexMap> index_map(const TableId& table_id = "") const;
+  std::shared_ptr<qlexpr::IndexMap> index_map(const TableId& table_id = "") const;
 
   SchemaVersion schema_version(
       const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
@@ -337,10 +341,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::vector<ColumnId> index_key_column_ids(const TableId& table_id = "") const;
 
   // Returns the partition schema of the Raft group's tables.
-  std::shared_ptr<PartitionSchema> partition_schema() const {
+  std::shared_ptr<dockv::PartitionSchema> partition_schema() const {
     DCHECK_NE(state_, kNotLoadedYet);
     const TableInfoPtr table_info = primary_table_info();
-    return std::shared_ptr<PartitionSchema>(table_info, &table_info->partition_schema);
+    return std::shared_ptr<dockv::PartitionSchema>(table_info, &table_info->partition_schema);
   }
 
   std::shared_ptr<std::vector<DeletedColumn>> deleted_cols(
@@ -428,20 +432,20 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Set table_id for altering the schema of a colocated user table.
   void SetSchema(const Schema& schema,
-                 const IndexMap& index_map,
+                 const qlexpr::IndexMap& index_map,
                  const std::vector<DeletedColumn>& deleted_cols,
                  const SchemaVersion version,
                  const OpId& op_id,
                  const TableId& table_id = "");
 
   void SetSchemaUnlocked(const Schema& schema,
-                 const IndexMap& index_map,
+                 const qlexpr::IndexMap& index_map,
                  const std::vector<DeletedColumn>& deleted_cols,
                  const SchemaVersion version,
                  const OpId& op_id,
                  const TableId& table_id = "") REQUIRES(data_mutex_);
 
-  void SetPartitionSchema(const PartitionSchema& partition_schema);
+  void SetPartitionSchema(const dockv::PartitionSchema& partition_schema);
 
   void SetTableName(
       const std::string& namespace_name, const std::string& table_name,
@@ -452,7 +456,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const OpId& op_id, const TableId& table_id = "") REQUIRES(data_mutex_);
 
   void SetSchemaAndTableName(
-      const Schema& schema, const IndexMap& index_map,
+      const Schema& schema, const qlexpr::IndexMap& index_map,
       const std::vector<DeletedColumn>& deleted_cols,
       const SchemaVersion version, const std::string& namespace_name,
       const std::string& table_name, const OpId& op_id, const TableId& table_id = "");
@@ -462,9 +466,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                 const std::string& table_name,
                 const TableType table_type,
                 const Schema& schema,
-                const IndexMap& index_map,
-                const PartitionSchema& partition_schema,
-                const boost::optional<IndexInfo>& index_info,
+                const qlexpr::IndexMap& index_map,
+                const dockv::PartitionSchema& partition_schema,
+                const boost::optional<qlexpr::IndexInfo>& index_info,
                 const SchemaVersion schema_version,
                 const OpId& op_id);
 
@@ -483,12 +487,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void SetRestorationHybridTime(HybridTime value);
   HybridTime restoration_hybrid_time() const;
 
-  Status Flush();
+  // Flushes the superblock to disk.
+  // If only_if_dirty is true, flushes only if there are metadata updates that have been applied but
+  // not flushed to disk. This is checked by comparing last_applied_change_metadata_op_id_ and
+  // last_flushed_change_metadata_op_id_.
+  Status Flush(OnlyIfDirty only_if_dirty = OnlyIfDirty::kFalse);
 
   Status SaveTo(const std::string& path);
 
   // Merge this metadata with restored metadata located at specified path.
-  Status MergeWithRestored(const std::string& path, docdb::OverwriteSchemaPacking overwrite);
+  Status MergeWithRestored(const std::string& path, dockv::OverwriteSchemaPacking overwrite);
 
   // Mark the superblock to be in state 'delete_type', sync it to disk, and
   // then delete all of the rowsets in this tablet.
@@ -550,7 +558,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Creates a new Raft group metadata for the part of existing tablet contained in this Raft group.
   // Assigns specified Raft group ID, partition and key bounds for a new tablet.
   Result<RaftGroupMetadataPtr> CreateSubtabletMetadata(
-      const RaftGroupId& raft_group_id, const Partition& partition,
+      const RaftGroupId& raft_group_id, const dockv::Partition& partition,
       const std::string& lower_bound_key, const std::string& upper_bound_key) const;
 
   TableInfoPtr primary_table_info() const {
@@ -558,7 +566,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
     return primary_table_info_unlocked();
   }
 
+  bool IsSysCatalog() const;
+
   bool colocated() const;
+
+  LazySuperblockFlushEnabled IsLazySuperblockFlushEnabled() const;
 
   Result<std::string> TopSnapshotsDir() const;
 
@@ -606,11 +618,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
     return kv_store_;
   }
 
-  OpId LastChangeMetadataOperationOpId() const;
+  OpId LastFlushedChangeMetadataOperationOpId() const;
 
-  void SetLastChangeMetadataOperationOpIdUnlocked(const OpId& op_id) REQUIRES(data_mutex_);
+  OpId TEST_LastAppliedChangeMetadataOperationOpId() const;
 
-  void SetLastChangeMetadataOperationOpId(const OpId& op_id);
+  void SetLastAppliedChangeMetadataOperationOpId(const OpId& op_id);
+
+  // Takes OpId of the change metadata operation applied as argument.
+  void OnChangeMetadataOperationApplied(const OpId& applied_opid);
+
+  OpId MinUnflushedChangeMetadataOpId() const;
 
  private:
   typedef simple_spinlock MutexType;
@@ -652,6 +669,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
     return itr->second;
   }
 
+  void ResetMinUnflushedChangeMetadataOpIdUnlocked() REQUIRES(data_mutex_);
+
+  void SetLastAppliedChangeMetadataOperationOpIdUnlocked(const OpId& op_id) REQUIRES(data_mutex_);
+
+  void OnChangeMetadataOperationAppliedUnlocked(const OpId& applied_op_id) REQUIRES(data_mutex_);
+
   enum State {
     kNotLoadedYet,
     kNotWrittenYet,
@@ -668,7 +691,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   mutable Mutex flush_lock_;
 
   RaftGroupId raft_group_id_ GUARDED_BY(data_mutex_);
-  std::shared_ptr<Partition> partition_ GUARDED_BY(data_mutex_);
+  std::shared_ptr<dockv::Partition> partition_ GUARDED_BY(data_mutex_);
 
   // The primary table id. Primary table is the first table this Raft group is created for.
   // Additional tables can be added to this Raft group to co-locate with this table.
@@ -720,9 +743,17 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   std::unordered_set<StatefulServiceKind> hosted_services_;
 
-  // OpId of the last change metadata operation. Used to determine if at the time
+  // OpId of the last applied change metadata operation. Used to determine if the in-memory metadata
+  // state is dirty and set last_flushed_change_metadata_op_id_ on flush.
+  OpId last_applied_change_metadata_op_id_ GUARDED_BY(data_mutex_) = OpId::Invalid();
+
+  // OpId of the last flushed change metadata operation. Used to determine if at the time
   // of local tablet bootstrap we should replay a particular change_metadata op.
-  OpId last_change_metadata_op_id_ GUARDED_BY(data_mutex_) = OpId::Invalid();
+  OpId last_flushed_change_metadata_op_id_ GUARDED_BY(data_mutex_) = OpId::Invalid();
+
+  // OpId of the earliest applied change metadata operation that has not been flushed to disk. Used
+  // to prevent WAL GC of such operations.
+  OpId min_unflushed_change_metadata_op_id_ GUARDED_BY(data_mutex_) = OpId::Max();
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

@@ -11,6 +11,7 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -46,10 +47,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import junitparams.converters.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Rule;
@@ -72,12 +74,15 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
   private static final int DEFAULT_VOLUME_SIZE = 100;
   private static final int NEW_VOLUME_SIZE = 200;
+  private static final int DEFAULT_DISK_IOPS = 3000;
+  private static final int NEW_DISK_IOPS = 5000;
+  private static final int DEFAULT_DISK_THROUGHPUT = 125;
+  private static final int NEW_DISK_THROUGHPUT = 250;
 
   // Tasks for RF1 configuration do not create sub-tasks for
   // leader blacklisting. So create two PLACEHOLDER indexes
   // as well as two separate base task sequences
   private static final int PLACEHOLDER_INDEX = 3;
-
   private static final int PLACEHOLDER_INDEX_RF1 = 1;
 
   private static final List<TaskType> TASK_SEQUENCE =
@@ -88,10 +93,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState);
-
-  private static final List<TaskType> TASK_SEQUENCE_RF1 =
-      ImmutableList.of(
-          TaskType.SetNodeState, TaskType.WaitForEncryptionKeyInMemory, TaskType.SetNodeState);
 
   private static final List<TaskType> PROCESS_START_SEQ =
       ImmutableList.of(
@@ -166,9 +167,48 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       String curInstanceTypeCode,
       String targetInstanceTypeCode,
       boolean expected) {
+    testResizeNodeAvailable(
+        cloudTypeStr,
+        numOfVolumesDiff,
+        volumeSizeDiff,
+        curInstanceTypeCode,
+        targetInstanceTypeCode,
+        false /* volumeIopsChange */,
+        false /* volumeThroughputChange */,
+        null /* storageType */,
+        expected);
+  }
+
+  @Parameters({"aws, GP3, true", "aws, GP2, false", "gcp, null, false", "azu, null, false"})
+  @Test
+  public void testResizeNodeIopsThroughputAvailable(
+      String cloudTypeStr, @Nullable String storageTypeStr, boolean expected) {
+    testResizeNodeAvailable(
+        cloudTypeStr,
+        0,
+        10,
+        "m3.medium",
+        "m3.medium",
+        true /* volumeIopsChange */,
+        true /* volumeThroughputChange */,
+        storageTypeStr != null ? PublicCloudConstants.StorageType.valueOf(storageTypeStr) : null,
+        expected);
+  }
+
+  private void testResizeNodeAvailable(
+      String cloudTypeStr,
+      int numOfVolumesDiff,
+      int volumeSizeDiff,
+      String curInstanceTypeCode,
+      String targetInstanceTypeCode,
+      boolean volumeIopsChange,
+      boolean volumeThroughputChange,
+      PublicCloudConstants.StorageType storageType,
+      boolean expected) {
     Common.CloudType cloudType = Common.CloudType.valueOf(cloudTypeStr);
-    PublicCloudConstants.StorageType storageType =
-        chooseStorageType(cloudType, curInstanceTypeCode.equals("scratch"));
+    if (storageType == null) {
+      storageType = chooseStorageType(cloudType, curInstanceTypeCode.equals("scratch"));
+    }
     UniverseDefinitionTaskParams.UserIntent currentIntent =
         createIntent(cloudType, curInstanceTypeCode, storageType);
 
@@ -176,6 +216,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         createIntent(cloudType, targetInstanceTypeCode, storageType);
     targetIntent.deviceInfo.volumeSize += volumeSizeDiff;
     targetIntent.deviceInfo.numVolumes += numOfVolumesDiff;
+    if (volumeIopsChange) {
+      targetIntent.deviceInfo.diskIops = NEW_DISK_IOPS;
+    }
+    if (volumeThroughputChange) {
+      targetIntent.deviceInfo.throughput = NEW_DISK_THROUGHPUT;
+    }
 
     createInstanceType(UUID.fromString(currentIntent.provider), targetInstanceTypeCode);
     assertEquals(
@@ -342,7 +388,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertEquals(Failure, taskInfo.getTaskState());
     assertThat(
         taskInfo.getErrorMessage(),
-        containsString("Only volume size should be changed to do smart resize"));
+        containsString("Smart resize only supports modifying volumeSize, diskIops, throughput"));
     verifyNoMoreInteractions(mockNodeManager);
   }
 
@@ -357,7 +403,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertEquals(Failure, taskInfo.getTaskState());
     assertThat(
         taskInfo.getErrorMessage(),
-        containsString("Only volume size should be changed to do smart resize"));
+        containsString("Smart resize only supports modifying volumeSize, diskIops, throughput"));
     verifyNoMoreInteractions(mockNodeManager);
   }
 
@@ -399,12 +445,40 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.diskIops = NEW_DISK_IOPS;
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.throughput = NEW_DISK_THROUGHPUT;
     taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     assertTasksSequence(subTasks, true, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    assertEquals(NEW_DISK_IOPS, (int) userIntent.deviceInfo.diskIops);
+    assertEquals(NEW_DISK_THROUGHPUT, (int) userIntent.deviceInfo.throughput);
+  }
+
+  @Test
+  public void testChangingOnlyThroughput() {
+    ResizeNodeParams taskParams = createResizeParams();
+    defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.diskIops =
+        DEFAULT_DISK_IOPS;
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    UniverseDefinitionTaskParams.UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
+    userIntent.providerType = Common.CloudType.aws;
+    userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.GP3;
+    userIntent.deviceInfo.throughput = NEW_DISK_THROUGHPUT;
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, false);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    assertEquals(DEFAULT_VOLUME_SIZE, (int) userIntent.deviceInfo.volumeSize);
+    assertEquals(DEFAULT_DISK_IOPS, (int) userIntent.deviceInfo.diskIops);
+    assertEquals(NEW_DISK_THROUGHPUT, (int) userIntent.deviceInfo.throughput);
   }
 
   @Test
@@ -605,8 +679,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.diskIops = NEW_DISK_IOPS;
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.throughput = NEW_DISK_THROUGHPUT;
     taskParams.getPrimaryCluster().userIntent.masterInstanceType = NEW_READ_ONLY_INSTANCE_TYPE;
     taskParams.getPrimaryCluster().userIntent.masterDeviceInfo.volumeSize = NEW_VOLUME_SIZE * 2;
+    taskParams.getPrimaryCluster().userIntent.masterDeviceInfo.diskIops = NEW_DISK_IOPS * 2;
+    taskParams.getPrimaryCluster().userIntent.masterDeviceInfo.throughput = NEW_DISK_THROUGHPUT * 2;
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     assertEquals(Success, taskInfo.getTaskState());
@@ -617,6 +695,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         counts.getFirst() + counts.getSecond());
     assertDedicatedIntent(
         NEW_INSTANCE_TYPE, NEW_VOLUME_SIZE, NEW_READ_ONLY_INSTANCE_TYPE, NEW_VOLUME_SIZE * 2);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    UniverseDefinitionTaskParams.UserIntent intent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    assertNotNull(intent.masterDeviceInfo);
+    assertEquals(NEW_DISK_IOPS * 2, (int) (intent.masterDeviceInfo.diskIops));
+    assertEquals(NEW_DISK_THROUGHPUT * 2, (int) (intent.masterDeviceInfo.throughput));
   }
 
   @Test
@@ -647,6 +731,32 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertSubtasks(subTasks, counts.getSecond(), counts.getSecond(), counts.getSecond());
     assertDedicatedIntent(
         DEFAULT_INSTANCE_TYPE, DEFAULT_VOLUME_SIZE, NEW_INSTANCE_TYPE, NEW_VOLUME_SIZE);
+  }
+
+  @Test
+  public void testDedicatedNodesResizeOnlyMasterIops() {
+    Pair<Integer, Integer> counts = modifyToDedicated();
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    userIntent.providerType = Common.CloudType.aws;
+    userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.GP3;
+    userIntent.masterDeviceInfo.diskIops = DEFAULT_DISK_IOPS;
+    userIntent.masterDeviceInfo.throughput = DEFAULT_DISK_THROUGHPUT;
+    ResizeNodeParams taskParams = createResizeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.masterDeviceInfo.diskIops = NEW_DISK_IOPS;
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertEquals(Success, taskInfo.getTaskState());
+    assertSubtasks(subTasks, 0, 0, counts.getSecond());
+    assertDedicatedIntent(
+        DEFAULT_INSTANCE_TYPE, DEFAULT_VOLUME_SIZE, DEFAULT_INSTANCE_TYPE, DEFAULT_VOLUME_SIZE);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    UniverseDefinitionTaskParams.UserIntent intent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    assertNotNull(intent.masterDeviceInfo);
+    assertEquals(NEW_DISK_IOPS, (int) (intent.masterDeviceInfo.diskIops));
+    assertEquals(DEFAULT_DISK_THROUGHPUT, (int) (intent.masterDeviceInfo.throughput));
   }
 
   @Test
@@ -839,8 +949,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = new ArrayList<>(taskInfo.getSubTasks());
     List<TaskInfo> updateMounts =
-        subTasks
-            .stream()
+        subTasks.stream()
             .filter(t -> t.getTaskType() == TaskType.UpdateMountedDisks)
             .collect(Collectors.toList());
 
@@ -960,92 +1069,92 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     assertEquals(subTasks.size(), subTasksByPosition.size());
     int position = startPosition;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
+    List<TaskType> expectedTaskTypes = new ArrayList<>();
+    Map<Integer, Map<String, Object>> expectedParams = new HashMap<>();
+    expectedTaskTypes.add(TaskType.ModifyBlackList); // removing all tservers from BL
 
-    position =
-        assertTasksSequence(
-            subTasksByPosition,
-            EITHER,
-            position,
-            increaseVolume,
-            changeInstance,
-            waitForMasterLeader,
-            isRf1,
-            updateMasterGflags,
-            updateTserverGflags);
-    position =
-        assertTasksSequence(
-            subTasksByPosition,
-            TSERVER,
-            position,
-            increaseVolume,
-            changeInstance,
-            false,
-            isRf1,
-            updateMasterGflags,
-            updateTserverGflags);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.PersistResizeNode);
+    createTasksSequence(
+        EITHER,
+        increaseVolume,
+        changeInstance,
+        waitForMasterLeader,
+        isRf1,
+        updateMasterGflags,
+        updateTserverGflags,
+        (taskType, params) -> {
+          expectedTaskTypes.add(taskType);
+          expectedParams.put(expectedTaskTypes.size() - 1, params);
+        });
+    createTasksSequence(
+        TSERVER,
+        increaseVolume,
+        changeInstance,
+        false,
+        isRf1,
+        updateMasterGflags,
+        updateTserverGflags,
+        (taskType, params) -> {
+          expectedTaskTypes.add(taskType);
+          expectedParams.put(expectedTaskTypes.size() - 1, params);
+        });
+    expectedTaskTypes.add(TaskType.PersistResizeNode);
     if (updateMasterGflags || updateTserverGflags) {
-      assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateAndPersistGFlags);
+      expectedTaskTypes.add(TaskType.UpdateAndPersistGFlags);
     }
-    assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
-    assertEquals(position, subTasks.size() - 1);
+    expectedTaskTypes.add(TaskType.UniverseUpdateSucceeded);
+    if (!isRf1) {
+      expectedTaskTypes.add(TaskType.ModifyBlackList);
+    }
+    assertTasksSequence(position, subTasksByPosition, expectedTaskTypes, expectedParams, true);
   }
 
-  private int assertTasksSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition,
+  private void createTasksSequence(
       ServerType serverType,
-      int position,
       boolean increaseVolume,
       boolean changeInstance,
       boolean waitForMasterLeader,
       boolean isRf1,
       boolean updateMasterGflags,
-      boolean updateTserverGflags) {
+      boolean updateTserverGflags,
+      BiConsumer<TaskType, Map<String, Object>> taskCallback) {
     List<Integer> nodeIndexes =
         serverType == EITHER ? Arrays.asList(1, 3, 2) : Collections.singletonList(4);
 
     for (Integer nodeIndex : nodeIndexes) {
       String nodeName = String.format("host-n%d", nodeIndex);
       Map<Integer, Map<String, Object>> paramsForTask = new HashMap<>();
-      List<TaskType> taskTypesSequence =
-          isRf1 ? new ArrayList<>(TASK_SEQUENCE_RF1) : new ArrayList<>(TASK_SEQUENCE);
+      List<TaskType> taskTypesSequence = new ArrayList<>(TASK_SEQUENCE);
+      if (isRf1) {
+        taskTypesSequence.removeIf(
+            type ->
+                type == TaskType.ModifyBlackList
+                    || type == TaskType.WaitForLeaderBlacklistCompletion);
+      }
       createTasksTypesForNode(
+          isRf1,
           serverType != EITHER,
           increaseVolume,
           changeInstance,
           taskTypesSequence,
           paramsForTask,
           waitForMasterLeader,
-          isRf1,
           updateMasterGflags,
           updateTserverGflags);
-
       int idx = 0;
-      log.debug(nodeName + " :" + taskTypesSequence);
-      log.debug(
-          "current:"
-              + IntStream.range(position, position + taskTypesSequence.size())
-                  .mapToObj(p -> subTasksByPosition.get(p).get(0).getTaskType())
-                  .collect(Collectors.toList()));
-
-      for (TaskType expectedTaskType : taskTypesSequence) {
-        List<TaskInfo> tasks = subTasksByPosition.get(position++);
-        TaskType taskType = tasks.get(0).getTaskType();
-        assertEquals(1, tasks.size());
-        assertEquals(
-            String.format("Host %s at %d positon", nodeName, idx), expectedTaskType, taskType);
+      boolean stopped = false;
+      for (TaskType taskType : taskTypesSequence) {
+        Map<String, Object> expectedParams = new HashMap<>();
+        expectedParams.putAll(paramsForTask.getOrDefault(idx++, Collections.emptyMap()));
         if (!NON_NODE_TASKS.contains(taskType)) {
-          Map<String, Object> assertValues =
-              new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
-          assertValues.putAll(paramsForTask.getOrDefault(idx, Collections.emptyMap()));
-          log.debug("checking " + tasks.get(0).getTaskType());
-          assertNodeSubTask(tasks, assertValues);
+          expectedParams.put("nodeName", nodeName);
         }
-        idx++;
+        if (taskType == TaskType.SetNodeState) {
+          expectedParams.put("state", !stopped ? "Resizing" : "Live");
+          stopped = !stopped;
+        }
+        taskCallback.accept(taskType, expectedParams);
       }
     }
-    return position;
   }
 
   private List<TaskType> getTasksForInstanceResize(
@@ -1062,13 +1171,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   private void createTasksTypesForNode(
+      boolean isRf1,
       boolean onlyTserver,
       boolean increaseVolume,
       boolean changeInstance,
       List<TaskType> taskTypesSequence,
       Map<Integer, Map<String, Object>> paramsForTask,
       boolean waitForMasterLeader,
-      boolean isRf1,
       boolean updateMasterGflags,
       boolean updateTserverGflags) {
     List<TaskType> nodeUpgradeTasks = new ArrayList<>();
@@ -1121,7 +1230,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         taskTypesSequence.add(index++, taskType);
       }
     }
-    index = isRf1 ? index + 1 : index + 2;
+    // Skipping WaitForEncryptionKeyInMemory and ModifyBlacklist (if not RF1).
+    index += isRf1 ? 1 : 2;
     for (ServerType processType : processTypes) {
       taskTypesSequence.add(index++, TaskType.WaitForFollowerLag);
     }

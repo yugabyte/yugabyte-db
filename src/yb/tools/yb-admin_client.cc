@@ -143,7 +143,6 @@ using google::protobuf::util::MessageToJsonString;
 
 using client::YBClientBuilder;
 using client::YBTableName;
-using rpc::MessengerBuilder;
 using rpc::RpcController;
 using pb_util::ParseFromSlice;
 using strings::Substitute;
@@ -160,8 +159,6 @@ using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 
 using master::BackupRowEntryPB;
-using master::ChangeEncryptionInfoRequestPB;
-using master::ChangeEncryptionInfoResponsePB;
 using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;
 using master::DeleteSnapshotRequestPB;
@@ -172,7 +169,6 @@ using master::ImportSnapshotMetaResponsePB;
 using master::ImportSnapshotMetaResponsePB_TableMetaPB;
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
-using master::ListSnapshotRestorationsRequestPB;
 using master::ListSnapshotRestorationsResponsePB;
 using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
@@ -1763,9 +1759,71 @@ Status ClusterAdminClient::FlushTablesById(
   return Status::OK();
 }
 
-Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name) {
-  const auto last_request_time = VERIFY_RESULT(yb_client_->GetCompactionStatus(table_name));
-  cout << "Last full compaction request time: " << last_request_time.ToUint64() << endl;
+Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name, bool show_tablets) {
+  const auto compaction_status =
+      VERIFY_RESULT(yb_client_->GetCompactionStatus(table_name, show_tablets));
+
+  const auto ShowTablets = [&compaction_status]() {
+    std::map<TabletServerId, std::vector<client::TabletReplicaFullCompactionStatus>>
+        replica_statuses;
+    for (const auto& replica_status : compaction_status.replica_statuses) {
+      replica_statuses[replica_status.ts_id].push_back(replica_status);
+    }
+
+    for (const auto& [ts_id, statuses] : replica_statuses) {
+      cout << "tserver uuid: " << ts_id << endl
+           << " tablet id | full compaction state | last full compaction completion time" << endl
+           << endl;
+      for (const auto& status : statuses) {
+        cout << " " << status.tablet_id << " ";
+        if (status.full_compaction_state == tablet::FULL_COMPACTION_STATE_UNKNOWN) {
+          cout << "UNKNOWN" << endl;
+          continue;
+        }
+        cout << tablet::FullCompactionState_Name(status.full_compaction_state) << " ";
+        if (status.last_full_compaction_time.ToUint64() == 0) {
+          cout << "never been full compacted" << endl;
+        } else {
+          cout << HybridTimeToString(status.last_full_compaction_time) << endl;
+        }
+      }
+      cout << endl;
+    }
+  };
+
+  switch (compaction_status.full_compaction_state) {
+    case tablet::FULL_COMPACTION_STATE_UNKNOWN:
+      cout << "Compaction status unavailable. Waiting for heartbeats" << endl;
+      break;
+    case tablet::COMPACTING:
+      cout << "A full compaction is currently ongoing" << endl;
+      break;
+    case tablet::IDLE:
+      cout << "No full compaction taking place" << endl;
+      break;
+  }
+
+  if (show_tablets) {
+    cout << endl;
+    ShowTablets();
+  }
+
+  if (compaction_status.full_compaction_state == tablet::COMPACTING ||
+      compaction_status.full_compaction_state == tablet::IDLE) {
+    if (compaction_status.last_full_compaction_time.ToUint64() == 0) {
+      cout << "A full compaction has never been completed" << endl;
+    } else {
+      cout << "Last full compaction completion time: "
+           << HybridTimeToString(compaction_status.last_full_compaction_time) << endl;
+    }
+  }
+
+  if (compaction_status.last_request_time.ToUint64() == 0) {
+    cout << "An admin compaction has never been requested" << endl;
+  } else {
+    cout << "Last admin compaction request time: "
+         << HybridTimeToString(compaction_status.last_request_time) << endl;
+  }
   return Status::OK();
 }
 
@@ -3833,10 +3891,12 @@ Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(const string&
 
 Status ClusterAdminClient::SetupUniverseReplication(
     const string& producer_uuid, const vector<string>& producer_addresses,
-    const vector<TableId>& tables, const vector<string>& producer_bootstrap_ids) {
+    const vector<TableId>& tables, const vector<string>& producer_bootstrap_ids,
+    bool transactional) {
   master::SetupUniverseReplicationRequestPB req;
   master::SetupUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_uuid);
+  req.set_transactional(transactional);
 
   req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
   for (const auto& addr : producer_addresses) {
@@ -4193,37 +4253,7 @@ Status ClusterAdminClient::GetReplicationInfo(const std::string& universe_uuid) 
   return Status::OK();
 }
 
-Result<rapidjson::Document> ClusterAdminClient::GetXClusterEstimatedDataLoss() {
-  master::GetXClusterEstimatedDataLossRequestPB req;
-  master::GetXClusterEstimatedDataLossResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_replication_proxy_->GetXClusterEstimatedDataLoss(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-        cout << "Error getting xCluster estimated data loss values: "
-             << resp.error().status().message() << endl;
-        return StatusFromPB(resp.error().status());
-  }
-
-  rapidjson::Document document;
-  document.SetArray();
-  for (const auto& data_loss : resp.namespace_data_loss()) {
-        rapidjson::Value json_entry(rapidjson::kObjectType);
-        AddStringField(
-            "namespace_id", data_loss.namespace_id(), &json_entry, &document.GetAllocator());
-
-        // Use 1 second granularity.
-        int64_t data_loss_s = MonoDelta::FromMicroseconds(data_loss.data_loss_us()).ToSeconds();
-        AddStringField(
-            "data_loss_sec", std::to_string(data_loss_s), &json_entry, &document.GetAllocator());
-        document.PushBack(json_entry, document.GetAllocator());
-  }
-
-  return document;
-}
-
-Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime() {
+Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime(bool include_lag_and_skew) {
   master::GetXClusterSafeTimeRequestPB req;
   master::GetXClusterSafeTimeResponsePB resp;
   RpcController rpc;
@@ -4231,23 +4261,38 @@ Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime() {
   RETURN_NOT_OK(master_replication_proxy_->GetXClusterSafeTime(req, &resp, &rpc));
 
   if (resp.has_error()) {
-        cout << "Error getting xCluster safe time values: " << resp.error().status().message()
-             << endl;
-        return StatusFromPB(resp.error().status());
+    cout << "Error getting xCluster safe time values: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
   }
 
   rapidjson::Document document;
   document.SetArray();
   for (const auto& safe_time : resp.namespace_safe_times()) {
-        rapidjson::Value json_entry(rapidjson::kObjectType);
-        AddStringField(
-            "namespace_id", safe_time.namespace_id(), &json_entry, &document.GetAllocator());
-        const auto& st = HybridTime::FromPB(safe_time.safe_time_ht());
-        AddStringField("safe_time", HybridTimeToString(st), &json_entry, &document.GetAllocator());
-        AddStringField(
-            "safe_time_epoch", std::to_string(st.GetPhysicalValueMicros()), &json_entry,
-            &document.GetAllocator());
-        document.PushBack(json_entry, document.GetAllocator());
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("namespace_id", safe_time.namespace_id(), &json_entry, &document.GetAllocator());
+    AddStringField(
+        "namespace_name", safe_time.namespace_name(), &json_entry, &document.GetAllocator());
+    const auto& safe_time_ht = HybridTime::FromPB(safe_time.safe_time_ht());
+    AddStringField(
+        "safe_time", HybridTimeToString(safe_time_ht), &json_entry, &document.GetAllocator());
+    AddStringField(
+        "safe_time_epoch", std::to_string(safe_time_ht.GetPhysicalValueMicros()), &json_entry,
+        &document.GetAllocator());
+
+    if (include_lag_and_skew) {
+      // Print safe lag and skew in seconds with 2 decimal points.
+      // Safe time lag is calculated as (current time - current safe time).
+      std::string safe_time_lag = FormatDouble(
+          MonoDelta::FromMicroseconds(safe_time.safe_time_lag()).ToMilliseconds() / 1000.0);
+      AddStringField("safe_time_lag_sec", safe_time_lag, &json_entry, &document.GetAllocator());
+      // Safe time skew is calculated as (safe time of most caught up tablet - safe time of
+      // laggiest tablet).
+      std::string safe_time_skew = FormatDouble(
+          MonoDelta::FromMicroseconds(safe_time.safe_time_skew()).ToMilliseconds() / 1000.0);
+      AddStringField("safe_time_skew_sec", safe_time_skew, &json_entry, &document.GetAllocator());
+    }
+
+    document.PushBack(json_entry, document.GetAllocator());
   }
 
   return document;

@@ -13,12 +13,12 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
@@ -30,10 +30,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import org.apache.commons.lang3.StringUtils;
-
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Singleton
@@ -100,8 +98,7 @@ public class RestoreManagerYb extends DevopsBase {
         && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")
         && !legacyNet) {
       secondaryToPrimaryIP =
-          tservers
-              .stream()
+          tservers.stream()
               .collect(
                   Collectors.toMap(
                       t -> t.cloudInfo.secondary_private_ip, t -> t.cloudInfo.private_ip));
@@ -141,12 +138,6 @@ public class RestoreManagerYb extends DevopsBase {
     BackupStorageInfo backupStorageInfo = restoreBackupParams.backupStorageInfoList.get(0);
     ActionType actionType = restoreBackupParams.actionType;
     if (actionType.equals(ActionType.RESTORE)) {
-      if (backupStorageInfo.tableNameList != null) {
-        for (String tableName : backupStorageInfo.tableNameList) {
-          commandArgs.add("--table");
-          commandArgs.add(tableName);
-        }
-      }
       if (backupStorageInfo.keyspace != null) {
         commandArgs.add("--keyspace");
         commandArgs.add(backupStorageInfo.keyspace);

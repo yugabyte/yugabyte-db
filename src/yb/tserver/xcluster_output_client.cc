@@ -27,7 +27,7 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb.h"
 
 #include "yb/gutil/strings/join.h"
@@ -344,12 +344,6 @@ Status XClusterOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* polle
         local_client_->client->OpenTable(consumer_tablet_info_.table_id, &table_));
   }
 
-  if (PREDICT_FALSE(FLAGS_TEST_xcluster_disable_replication_transaction_status_table) &&
-      table_->table_type() == client::YBTableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    HANDLE_ERROR_AND_RETURN_IF_NOT_OK(
-        STATUS(TryAgain, "Failing ApplyChanges for transaction status table for test"));
-  }
-
   xcluster_resp_copy_ = *poller_resp;
   timeout_ms_ = MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms);
   // Using this future as a barrier to get all the tablets before processing.  Ordered iteration
@@ -557,7 +551,7 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
     const cdc::CDCRecordPB& record) {
   cdc::XClusterSchemaVersionMap* cached_schema_versions = nullptr;
   auto& kv_pair = record.changes(0);
-  auto decoder = docdb::DocKeyDecoder(kv_pair.key());
+  auto decoder = dockv::DocKeyDecoder(kv_pair.key());
   ColocationId colocationId = kColocationIdNotSet;
   if (VERIFY_RESULT(decoder.DecodeColocationId(&colocationId))) {
     // Can't find the table, so we most likely need an update
@@ -566,6 +560,14 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
     SCHECK(cached_schema_versions, NotFound, Format("ColocationId $0 not found.", colocationId));
   } else {
     cached_schema_versions = &schema_versions_;
+  }
+
+  if (PREDICT_FALSE(VLOG_IS_ON(3))) {
+    for (const auto& [producer_schema_version, consumer_schema_version] : *cached_schema_versions) {
+        VLOG_WITH_PREFIX_UNLOCKED(3) << Format(
+            "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2",
+            colocationId, producer_schema_version, consumer_schema_version);
+    }
   }
 
   return *cached_schema_versions;
@@ -904,10 +906,17 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
         response.DebugString(), req.schema().DebugString(), producer_tablet_info_.tablet_id);
     DCHECK(schema_version_map);
     auto resp_schema_versions = response.schema_versions();
-    (*schema_version_map)[resp_schema_versions.current_producer_schema_version()]
-        = resp_schema_versions.current_consumer_schema_version();
-    (*schema_version_map)[resp_schema_versions.old_producer_schema_version()]
-        =  resp_schema_versions.old_consumer_schema_version();
+    (*schema_version_map)[resp_schema_versions.current_producer_schema_version()] =
+        resp_schema_versions.current_consumer_schema_version();
+
+    // Update the old producer schema version, only if it is not the same as
+    // current producer schema version.
+    if (resp_schema_versions.old_producer_schema_version() !=
+        resp_schema_versions.current_producer_schema_version()) {
+      (*schema_version_map)[resp_schema_versions.old_producer_schema_version()] =
+          resp_schema_versions.old_consumer_schema_version();
+    }
+
     IncProcessedRecordCount();
   }
 

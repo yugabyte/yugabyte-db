@@ -68,9 +68,7 @@
 
 using namespace std::literals;
 using namespace std::placeholders;
-using std::shared_ptr;
 using std::string;
-using strings::Substitute;
 
 DEFINE_RUNTIME_int64(max_time_in_queue_ms, 6000,
     "Fail calls that get stuck in the queue longer than the specified amount of time (in ms)");

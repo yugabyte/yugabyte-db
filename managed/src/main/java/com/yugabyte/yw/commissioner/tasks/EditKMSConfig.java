@@ -34,8 +34,7 @@ public class EditKMSConfig extends KMSConfigTaskBase {
     // keyValue.
     try {
       List<UUID> universeUUIDList =
-          EncryptionAtRestUtil.getUniverses(taskParams().configUUID)
-              .stream()
+          EncryptionAtRestUtil.getUniverses(taskParams().configUUID).stream()
               .map(UniverseDetailSubset::getUuid)
               .collect(Collectors.toList());
       for (UUID universeUUID : universeUUIDList) {

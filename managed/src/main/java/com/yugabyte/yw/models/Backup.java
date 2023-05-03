@@ -12,13 +12,13 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.KeyLock;
-import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
@@ -58,12 +58,11 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections4.IterableUtils;
-import org.apache.commons.collections4.Predicate;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.CommonTypes.TableType;
 
 @ApiModel(
     description =
@@ -321,8 +320,13 @@ public class Backup extends Model {
       UUID customerUUID, BackupTableParams params, BackupCategory category, BackupVersion version) {
     Backup backup = new Backup();
     backup.setBackupUUID(UUID.randomUUID());
-    backup.setBaseBackupUUID(
-        params.baseBackupUUID == null ? backup.getBackupUUID() : params.baseBackupUUID);
+    Backup previousBackup = null;
+    if (params.baseBackupUUID != null) {
+      backup.setBaseBackupUUID(params.baseBackupUUID);
+      previousBackup = getLastSuccessfulBackupInChain(customerUUID, params.baseBackupUUID);
+    } else {
+      backup.setBaseBackupUUID(backup.getBackupUUID());
+    }
     backup.setCustomerUUID(customerUUID);
     backup.setUniverseUUID(params.getUniverseUUID());
     backup.setStorageConfigUUID(params.storageConfigUUID);
@@ -347,18 +351,27 @@ public class Backup extends Model {
     if (params.backupList != null) {
       params.backupUuid = backup.getBackupUUID();
       params.baseBackupUUID = backup.getBaseBackupUUID();
-      // In event of universe backup
-      for (BackupTableParams childBackup : params.backupList) {
-        childBackup.backupUuid = backup.getBackupUUID();
-        childBackup.baseBackupUUID = backup.getBaseBackupUUID();
-        if (childBackup.storageLocation == null) {
-          BackupUtil.updateDefaultStorageLocation(childBackup, customerUUID, backup.getCategory());
+      if (version.equals(BackupVersion.V1)
+          || backup.getCategory().equals(BackupCategory.YB_BACKUP_SCRIPT)
+          || previousBackup == null) {
+        for (BackupTableParams childBackup : params.backupList) {
+          childBackup.backupUuid = backup.getBackupUUID();
+          childBackup.baseBackupUUID = backup.getBaseBackupUUID();
+          childBackup.backupParamsIdentifier = UUID.randomUUID();
+          if (childBackup.storageLocation == null) {
+            BackupUtil.updateDefaultStorageLocation(
+                childBackup, customerUUID, backup.getCategory(), backup.getVersion());
+          }
         }
+      } else {
+        // Only for incremental backup object creation
+        populateChildParams(params, previousBackup);
       }
     } else if (params.storageLocation == null) {
       params.backupUuid = backup.getBackupUUID();
       // We would derive the storage location based on the parameters
-      BackupUtil.updateDefaultStorageLocation(params, customerUUID, backup.getCategory());
+      BackupUtil.updateDefaultStorageLocation(
+          params, customerUUID, backup.getCategory(), backup.getVersion());
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     if (storageConfig != null) {
@@ -367,6 +380,42 @@ public class Backup extends Model {
     backup.setBackupInfo(params);
     backup.save();
     return backup;
+  }
+
+  // For incremental backup requests, populate child params based on previous backup's params
+  // If a previous sub-param consist of a keyspace-tables match with this request, assign the
+  // same params identifier to this child param.
+  private static void populateChildParams(BackupTableParams params, Backup previousBackup) {
+    BackupTableParams previousBackupInfo = previousBackup.getBackupInfo();
+    List<BackupTableParams> paramsCollection = previousBackup.getBackupParamsCollection();
+    for (BackupTableParams childParams : params.backupList) {
+      childParams.backupUuid = params.backupUuid;
+      childParams.baseBackupUUID = params.baseBackupUUID;
+      if (!previousBackupInfo.backupType.equals(params.backupType)) {
+        childParams.backupParamsIdentifier = UUID.randomUUID();
+      } else {
+        Optional<BackupTableParams> oParams =
+            getMatchingParamsIncrementalBackup(paramsCollection, childParams, params.backupType);
+        if (oParams.isPresent()) {
+          BackupTableParams previousChildParams = oParams.get();
+          if (previousChildParams.backupParamsIdentifier == null) {
+            childParams.backupParamsIdentifier =
+                previousChildParams.backupParamsIdentifier = UUID.randomUUID();
+          } else {
+            childParams.backupParamsIdentifier = previousChildParams.backupParamsIdentifier;
+          }
+        } else {
+          childParams.backupParamsIdentifier = UUID.randomUUID();
+        }
+      }
+      if (childParams.storageLocation == null) {
+        BackupUtil.updateDefaultStorageLocation(
+            childParams, params.customerUuid, BackupCategory.YB_CONTROLLER, BackupVersion.V2);
+      }
+    }
+    if (previousBackup != null) {
+      previousBackup.updateBackupInfo(previousBackupInfo);
+    }
   }
 
   public static Backup create(UUID customerUUID, BackupTableParams params) {
@@ -378,18 +427,69 @@ public class Backup extends Model {
     save();
   }
 
+  // Find if Incremental backup's child param matches any of Previous backup's params.
+  // If yes, we set params identifier same as previous backup.
+  // For YSQL: keyspace name match.
+  // For YCQL: keyspace name + any table UUID from previous backup param matches this
+  // child param.
+  private static Optional<BackupTableParams> getMatchingParamsIncrementalBackup(
+      List<BackupTableParams> paramsCollection,
+      BackupTableParams incrementalParam,
+      TableType backupType) {
+    return paramsCollection
+        .parallelStream()
+        .filter(
+            backupParams ->
+                incrementalParam.getKeyspace().equals(backupParams.getKeyspace())
+                    && (backupType.equals(TableType.PGSQL_TABLE_TYPE)
+                        ? true
+                        : (CollectionUtils.containsAny(
+                            backupParams.getTableUUIDList(), incrementalParam.getTableUUIDList()))))
+        .findAny();
+  }
+
+  @JsonIgnore
+  public List<BackupTableParams> getBackupParamsCollection() {
+    BackupTableParams backupParams = getBackupInfo();
+    if (CollectionUtils.isNotEmpty(backupParams.backupList)) {
+      return backupParams.backupList;
+    } else {
+      return ImmutableList.of(backupParams);
+    }
+  }
+
+  /**
+   * Return the BackupTableParam object from the list of params which matches the give
+   * param-identifier UUID.
+   *
+   * @param params
+   * @return Optional of BackupTableParams
+   */
+  @JsonIgnore
+  public Optional<BackupTableParams> getParamsWithIdentifier(UUID paramsIdentifier) {
+    Optional<BackupTableParams> oParams = Optional.empty();
+    List<BackupTableParams> params = getBackupParamsCollection();
+    if (CollectionUtils.isNotEmpty(params)) {
+      oParams =
+          params
+              .parallelStream()
+              .filter(bP -> bP.backupParamsIdentifier.equals(paramsIdentifier))
+              .findAny();
+    }
+    return oParams;
+  }
+
   public void onCompletion() {
-    this.backupInfo.backupSizeInBytes =
-        this.backupInfo.backupList.stream().mapToLong(bI -> bI.backupSizeInBytes).sum();
+    List<BackupTableParams> params = this.getBackupParamsCollection();
+    this.backupInfo.backupSizeInBytes = params.stream().mapToLong(bI -> bI.backupSizeInBytes).sum();
     // Full chain size is same as total size for single backup.
     this.backupInfo.fullChainSizeInBytes = this.backupInfo.backupSizeInBytes;
 
     long totalTimeTaken = 0L;
     if (this.getCategory().equals(BackupCategory.YB_BACKUP_SCRIPT)) {
-      totalTimeTaken =
-          this.backupInfo.backupList.stream().mapToLong(bI -> bI.timeTakenPartial).sum();
+      totalTimeTaken = params.stream().mapToLong(bI -> bI.timeTakenPartial).sum();
     } else {
-      totalTimeTaken = BackupUtil.getTimeTakenForParallelBackups(this.backupInfo.backupList);
+      totalTimeTaken = BackupUtil.getTimeTakenForParallelBackups(params);
     }
     this.completionTime = new Date(totalTimeTaken + this.createTime.getTime());
     this.setState(BackupState.Completed);
@@ -400,17 +500,6 @@ public class Backup extends Model {
     this.backupInfo.backupList.get(idx).backupSizeInBytes = totalSizeInBytes;
     this.backupInfo.backupList.get(idx).timeTakenPartial = totalTimeTaken;
     this.save();
-  }
-
-  public static BackupTableParams getBackupTableParamsFromKeyspaceOrNull(
-      Backup backup, String keyspace) {
-    return IterableUtils.find(
-        backup.backupInfo.backupList,
-        new Predicate<BackupTableParams>() {
-          public boolean evaluate(BackupTableParams tableParams) {
-            return tableParams.getKeyspace().equals(keyspace);
-          }
-        });
   }
 
   public interface BackupUpdater {
@@ -443,8 +532,7 @@ public class Backup extends Model {
       this.expiry = newExpiryDate;
     }
     this.backupInfo.fullChainSizeInBytes =
-        fetchAllBackupsByBaseBackupUUID(this.customerUUID, this.getBaseBackupUUID())
-            .stream()
+        fetchAllBackupsByBaseBackupUUID(this.customerUUID, this.getBaseBackupUUID()).stream()
             .filter(b -> b.getState() == BackupState.Completed)
             .mapToLong(b -> b.backupInfo.backupSizeInBytes)
             .sum();
@@ -458,8 +546,7 @@ public class Backup extends Model {
             .eq("customer_uuid", customerUUID)
             .orderBy("create_time desc")
             .findList();
-    return backupList
-        .stream()
+    return backupList.stream()
         .filter(backup -> backup.getBackupInfo().getUniverseUUID().equals(universeUUID))
         .collect(Collectors.toList());
   }
@@ -484,8 +571,7 @@ public class Backup extends Model {
 
   public static List<Backup> fetchBackupToDeleteByUniverseUUID(
       UUID customerUUID, UUID universeUUID) {
-    return fetchByUniverseUUID(customerUUID, universeUUID)
-        .stream()
+    return fetchByUniverseUUID(customerUUID, universeUUID).stream()
         .filter(b -> !Backup.IN_PROGRESS_STATES.contains(b.getState()))
         .collect(Collectors.toList());
   }
@@ -532,14 +618,8 @@ public class Backup extends Model {
   }
 
   public static Optional<Backup> fetchLatestByState(UUID customerUuid, BackupState state) {
-    return Backup.find
-        .query()
-        .where()
-        .eq("customer_uuid", customerUuid)
-        .eq("state", state)
-        .orderBy("create_time DESC")
-        .findList()
-        .stream()
+    return Backup.find.query().where().eq("customer_uuid", customerUuid).eq("state", state)
+        .orderBy("create_time DESC").findList().stream()
         .findFirst();
   }
 
@@ -560,8 +640,7 @@ public class Backup extends Model {
         (customerUUID, backups) -> {
           Customer customer = Customer.get(customerUUID);
           List<Backup> backupList =
-              backups
-                  .stream()
+              backups.stream()
                   .filter(
                       backup ->
                           !Universe.isUniversePaused(backup.getBackupInfo().getUniverseUUID())
@@ -644,8 +723,7 @@ public class Backup extends Model {
             .endOr()
             .findList();
     backupList =
-        backupList
-            .stream()
+        backupList.stream()
             .filter(b -> b.backupInfo.actionType == BackupTableParams.ActionType.CREATE)
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
@@ -656,8 +734,7 @@ public class Backup extends Model {
       UUID customerConfigUUID, UUID customerUUID) {
     List<Backup> backupList = findAllBackupsQueuedForDeletion(customerUUID);
     backupList =
-        backupList
-            .stream()
+        backupList.stream()
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList;
@@ -672,8 +749,7 @@ public class Backup extends Model {
             .notIn("state", IN_PROGRESS_STATES)
             .findList();
     backupList =
-        backupList
-            .stream()
+        backupList.stream()
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList;
@@ -682,8 +758,7 @@ public class Backup extends Model {
   public static boolean findIfBackupsRunningWithCustomerConfig(UUID customerConfigUUID) {
     List<Backup> backupList = find.query().where().eq("state", BackupState.InProgress).findList();
     backupList =
-        backupList
-            .stream()
+        backupList.stream()
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList.size() != 0;
@@ -708,9 +783,7 @@ public class Backup extends Model {
         }
       } else {
         Optional<BackupTableParams> backupTableParams =
-            backupInfo
-                .backupList
-                .stream()
+            backupInfo.backupList.stream()
                 .filter(bL -> storageLocation.equals(bL.storageLocation))
                 .findFirst();
         if (backupTableParams.isPresent()) {
@@ -728,8 +801,7 @@ public class Backup extends Model {
     Set<UUID> universeUUIDs = new HashSet<>();
     List<Backup> backupList = getInProgressAndCompleted(customerUUID);
     backupList =
-        backupList
-            .stream()
+        backupList.stream()
             .filter(
                 b ->
                     b.getBackupInfo().storageConfigUUID.equals(configUUID)
@@ -744,8 +816,7 @@ public class Backup extends Model {
             .eq("status", "Active")
             .findList();
     scheduleList =
-        scheduleList
-            .stream()
+        scheduleList.stream()
             .filter(
                 s ->
                     s.getTaskParams()

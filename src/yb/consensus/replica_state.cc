@@ -70,7 +70,6 @@ namespace consensus {
 
 using std::string;
 using strings::Substitute;
-using strings::SubstituteAndAppend;
 
 //////////////////////////////////////////////////
 // ReplicaState

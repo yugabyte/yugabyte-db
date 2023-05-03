@@ -31,8 +31,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <glog/logging.h>
 
-#include "yb/common/partial_row.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partial_row.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -154,18 +154,14 @@ Result<bool> GetPgIndexStatus(
   const Schema& pg_index_schema =
       VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_index_id))->schema();
 
-  Schema projection;
-  RETURN_NOT_OK(pg_index_schema.CreateProjectionByNames({"indexrelid", status_col_name},
-                                                        &projection,
-                                                        pg_index_schema.num_key_columns()));
-
-  const auto indexrelid_col_id = VERIFY_RESULT(projection.ColumnIdByName("indexrelid")).rep();
-  const auto status_col_id     = VERIFY_RESULT(projection.ColumnIdByName(status_col_name)).rep();
+  const auto indexrelid_col_id = VERIFY_RESULT(pg_index_schema.ColumnIdByName("indexrelid")).rep();
+  const auto status_col_id = VERIFY_RESULT(pg_index_schema.ColumnIdByName(status_col_name)).rep();
+  dockv::ReaderProjection projection(pg_index_schema, {indexrelid_col_id, status_col_id});
 
   const auto idx_oid = VERIFY_RESULT(GetPgsqlTableOid(idx_id));
 
   auto iter = VERIFY_RESULT(catalog_tablet->NewUninitializedDocRowIterator(
-      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_index_id));
+      projection, {} /* read_hybrid_time */, pg_index_id));
 
   // Filtering by 'indexrelid' == idx_oid.
   {
@@ -173,8 +169,8 @@ Result<bool> GetPgIndexStatus(
     cond.add_operands()->set_column_id(indexrelid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(idx_oid);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
-    docdb::DocPgsqlScanSpec spec(projection,
+    const dockv::KeyEntryValues empty_key_components;
+    docdb::DocPgsqlScanSpec spec(pg_index_schema,
                                  rocksdb::kDefaultQueryId,
                                  empty_key_components,
                                  empty_key_components,
@@ -186,7 +182,7 @@ Result<bool> GetPgIndexStatus(
   }
 
   // Expecting one row at most.
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
     return row.GetColumn(status_col_id)->bool_value();
   }
@@ -774,8 +770,28 @@ void BackfillTable::LaunchBackfillOrAbort() {
 }
 
 Status BackfillTable::LaunchComputeSafeTimeForRead() {
-  auto tablets = indexed_table_->GetTablets();
+  RSTATUS_DCHECK(!timestamp_chosen(), IllegalState, "Backfill timestamp already set");
 
+  if (master_->catalog_manager_impl()->IsTableXClusterConsumer(*indexed_table_)) {
+    auto res = master_->catalog_manager_impl()->GetXClusterSafeTime(indexed_table_->namespace_id());
+    if (res.ok()) {
+      SCHECK(!res->is_special(), InvalidArgument, "Invalid xCluster safe time for namespace ",
+             indexed_table_->namespace_id());
+
+      LOG_WITH_PREFIX(INFO) << "Using xCluster safe time " << read_time_for_backfill_
+                            << " as the backfill read time";
+      return SetSafeTimeAndStartBackfill(*res);
+    } else {
+      if (res.status().IsNotFound()) {
+        VLOG_WITH_PREFIX(1) << "Table does not belong to transactional replication, continue with "
+                               "GetSafeTimeForTablet";
+      } else {
+        return res.status();
+      }
+    }
+  }
+
+  auto tablets = indexed_table_->GetTablets();
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
   auto min_cutoff = master()->clock()->Now();
@@ -858,28 +874,45 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
     LOG_WITH_PREFIX(INFO) << "Completed fetching SafeTime for the table "
                           << yb::ToString(indexed_table_) << " will be using "
                           << read_timestamp.ToString();
-    {
-      auto l = indexed_table_->LockForWrite();
-      DCHECK_EQ(l.mutable_data()->pb.backfill_jobs_size(), 1);
-      auto* backfill_job = l.mutable_data()->pb.mutable_backfill_jobs(0);
-      backfill_job->set_backfilling_timestamp(read_timestamp.ToUint64());
-      RETURN_NOT_OK_PREPEND(
-          master_->catalog_manager_impl()->sys_catalog_->Upsert(
-              leader_term(), indexed_table_),
-          "Failed to persist backfilling timestamp. Abandoning.");
-      l.Commit();
-    }
-    VLOG_WITH_PREFIX(2) << "Saved " << read_timestamp
-                        << " as backfilling_timestamp";
-    timestamp_chosen_.store(true, std::memory_order_release);
-    Status backfill_status = DoBackfill();
-    if (!backfill_status.ok()) {
-      // Mark indexes as failed so CREATE INDEX will stop waiting and return.
-      RETURN_NOT_OK(Abort());
-      return backfill_status;
-    }
+    return PersistSafeTimeAndStartBackfill();
   }
   return Status::OK();
+}
+
+Status BackfillTable::PersistSafeTimeAndStartBackfill() {
+  {
+    std::lock_guard mutex_lock(mutex_);
+    auto l = indexed_table_->LockForWrite();
+    DCHECK_EQ(l.mutable_data()->pb.backfill_jobs_size(), 1);
+    auto* backfill_job = l.mutable_data()->pb.mutable_backfill_jobs(0);
+    backfill_job->set_backfilling_timestamp(read_time_for_backfill_.ToUint64());
+    RETURN_NOT_OK_PREPEND(
+        master_->catalog_manager_impl()->sys_catalog_->Upsert(leader_term(), indexed_table_),
+        "Failed to persist backfilling timestamp. Abandoning.");
+    l.Commit();
+    VLOG_WITH_PREFIX(2) << "Saved " << read_time_for_backfill_ << " as backfilling_timestamp";
+  }
+
+  timestamp_chosen_.store(true, std::memory_order_release);
+  Status backfill_status = DoBackfill();
+  if (!backfill_status.ok()) {
+    // Mark indexes as failed so CREATE INDEX will stop waiting and return.
+    RETURN_NOT_OK(Abort());
+    return backfill_status;
+  }
+  return Status::OK();
+}
+
+Status BackfillTable::SetSafeTimeAndStartBackfill(const HybridTime& read_time) {
+  RSTATUS_DCHECK(!timestamp_chosen(), IllegalState, "Backfill timestamp already set");
+  {
+    std::lock_guard mutex_lock(mutex_);
+    // We only expect the time to be set once.
+    DCHECK(read_time_for_backfill_.is_special());
+    read_time_for_backfill_.MakeAtLeast(read_time);
+  }
+
+  return PersistSafeTimeAndStartBackfill();
 }
 
 Status BackfillTable::WaitForTabletSplitting() {
@@ -902,7 +935,7 @@ Status BackfillTable::WaitForTabletSplitting() {
 }
 
 Status BackfillTable::DoLaunchBackfill() {
-  if (!timestamp_chosen_.load(std::memory_order_acquire)) {
+  if (!timestamp_chosen()) {
     RETURN_NOT_OK(LaunchComputeSafeTimeForRead());
   } else {
     RETURN_NOT_OK(DoBackfill());
@@ -1214,7 +1247,7 @@ BackfillTablet::BackfillTablet(
   {
     auto l = tablet_->LockForRead();
     const auto& pb = tablet_->metadata().state().pb;
-    Partition::FromPB(pb.partition(), &partition_);
+    dockv::Partition::FromPB(pb.partition(), &partition_);
     // calculate backfilled_until_ as the largest key which all (active) indexes have backfilled.
     for (const TableId& idx_id : index_ids) {
       if (pb.backfilled_until().find(idx_id) != pb.backfilled_until().end()) {

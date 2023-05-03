@@ -91,8 +91,6 @@ DECLARE_bool(rpc_dump_all_traces);
 namespace yb {
 namespace rpc {
 
-using strings::Substitute;
-using google::protobuf::Message;
 using google::protobuf::io::CodedOutputStream;
 
 OutboundCallMetrics::OutboundCallMetrics(const scoped_refptr<MetricEntity>& entity)

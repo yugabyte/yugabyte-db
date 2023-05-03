@@ -45,7 +45,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
@@ -59,8 +59,8 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/strcat.h"
@@ -99,11 +99,11 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_int32(num_client_threads, 8,
+DEFINE_NON_RUNTIME_int32(num_client_threads, 8,
              "Number of client threads to launch");
-DEFINE_UNKNOWN_int32(client_inserts_per_thread, 50,
+DEFINE_NON_RUNTIME_int32(client_inserts_per_thread, 50,
              "Number of rows inserted by each client thread");
-DEFINE_UNKNOWN_int32(client_num_batches_per_thread, 5,
+DEFINE_NON_RUNTIME_int32(client_num_batches_per_thread, 5,
              "In how many batches to group the rows, for each client");
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int32(leader_lease_duration_ms);
@@ -126,21 +126,12 @@ using std::shared_ptr;
 using std::string;
 
 using client::YBSession;
-using client::YBTable;
-using client::YBTableName;
-using consensus::ConsensusRequestPB;
-using consensus::ConsensusResponsePB;
 using consensus::ConsensusServiceProxy;
 using consensus::MajoritySize;
 using consensus::MakeOpId;
 using consensus::PeerMemberType;
 using consensus::RaftPeerPB;
-using consensus::ReplicateMsg;
 using consensus::LeaderLeaseCheckMode;
-using docdb::KeyValuePairPB;
-using docdb::SubDocKey;
-using docdb::DocKey;
-using docdb::PrimitiveValue;
 using itest::AddServer;
 using itest::GetReplicaStatusAndCheckIfLeader;
 using itest::LeaderStepDown;
@@ -154,7 +145,6 @@ using itest::WaitUntilLeader;
 using itest::WriteSimpleTestRow;
 using master::GetTabletLocationsRequestPB;
 using master::GetTabletLocationsResponsePB;
-using master::TabletLocationsPB;
 using rpc::RpcController;
 using server::SetFlagRequestPB;
 using server::SetFlagResponsePB;
@@ -216,7 +206,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     }
 
     Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()), 0);
-    QLRowBlock result(schema);
+    qlexpr::QLRowBlock result(schema);
     auto data_buffer = ASSERT_RESULT(rpc.ExtractSidecar(0));
     auto data = data_buffer.AsSlice();
     if (!data.empty()) {
@@ -3433,10 +3423,10 @@ TEST_F(RaftConsensusITest, SplitOpId) {
     const auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
     const auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
     const auto split_hash_code = (max_hash_code - min_hash_code) / 2 + min_hash_code;
-    const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
-    docdb::KeyBytes encoded_doc_key;
-    docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
-        split_hash_code, std::vector<docdb::KeyEntryValue>());
+    const auto partition_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
+    dockv::KeyBytes encoded_doc_key;
+    dockv::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
+        split_hash_code, dockv::KeyEntryValues());
     req.set_split_encoded_key(encoded_doc_key.ToStringBuffer());
     req.set_split_partition_key(partition_key);
   }

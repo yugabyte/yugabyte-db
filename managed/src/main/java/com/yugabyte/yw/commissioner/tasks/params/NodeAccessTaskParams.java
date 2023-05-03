@@ -1,8 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks.params;
 
-import java.util.UUID;
-
 import com.yugabyte.yw.models.AccessKey;
+import java.util.UUID;
 
 public class NodeAccessTaskParams extends NodeTaskParams {
 

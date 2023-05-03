@@ -19,9 +19,8 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import org.yb.perf_advisor.Utils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -35,6 +34,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.perf_advisor.Utils;
 import play.libs.Json;
 import play.libs.ws.WSClient;
 
@@ -59,7 +59,7 @@ public class QueryHelper {
 
   public static final String LIST_USER_DATABASES_SQL =
       "SELECT datname from pg_database where datname NOT IN "
-          + "('postgres', 'template1', 'template0', 'system_platform')";
+          + "('template1', 'template0', 'system_platform')";
 
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final ExecutorService threadPool;

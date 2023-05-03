@@ -947,7 +947,6 @@ find_compiler_by_type() {
   fi
 
   validate_compiler_type "$YB_COMPILER_TYPE"
-
   unset cc_executable
   unset cxx_executable
   case "$YB_COMPILER_TYPE" in
@@ -992,7 +991,8 @@ find_compiler_by_type() {
         cxx_executable=$(which "g++-$gcc_major_version")
       fi
     ;;
-    # This is the old Linuxbrew-based Clang 7 build type.
+    # Default Clang compiler on macOS, or a custom Clang installation with explicitly specified
+    # prefix.
     clang)
       if [[ -n ${YB_CLANG_PREFIX:-} ]]; then
         if [[ ! -d $YB_CLANG_PREFIX/bin ]]; then
@@ -1002,25 +1002,7 @@ find_compiler_by_type() {
       elif [[ $OSTYPE =~ ^darwin ]]; then
         cc_executable=/usr/bin/clang
       else
-        local clang_path
-        local clang_found=false
-        local clang_paths_to_try=(
-          "$YB_THIRDPARTY_DIR/clang-toolchain/bin/clang"
-          # clang is present in this location in pre-built third-party archives built before
-          # the transition to Linuxbrew (https://phabricator.dev.yugabyte.com/D982). This can be
-          # removed when the transition is complete.
-          "$YB_THIRDPARTY_DIR/installed/common/bin/clang"
-        )
-        for clang_path in "${clang_paths_to_try[@]}"; do
-          if [[ -f $clang_path ]]; then
-            cc_executable=$clang_path
-            clang_found=true
-            break
-          fi
-        done
-        if ! "$clang_found"; then
-          fatal "Failed to find clang at the following locations: ${clang_paths_to_try[*]}"
-        fi
+        fatal "Cannot determine Clang executable for YB_COMPILER_TYPE=${YB_COMPILER_TYPE}"
       fi
       if [[ -z ${cxx_executable:-} ]]; then
         cxx_executable=$cc_executable++  # clang -> clang++
@@ -1028,6 +1010,7 @@ find_compiler_by_type() {
       cc_executable+=${YB_CLANG_SUFFIX:-}
       cxx_executable+=${YB_CLANG_SUFFIX:-}
     ;;
+    # Clang of a specific version. We will download our pre-built LLVM package if necessary.
     clang*)
       if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
         cc_executable=$YB_LLVM_TOOLCHAIN_DIR/bin/clang
@@ -1203,6 +1186,19 @@ download_thirdparty() {
   download_toolchain
 }
 
+create_llvm_toolchain_symlink() {
+  local symlink_path=${BUILD_ROOT}/toolchain
+  if [[ ${YB_SKIP_LLVM_TOOLCHAIN_SYMLINK_CREATION:-0} != "1" &&
+        -n ${YB_LLVM_TOOLCHAIN_DIR:-} &&
+        ! -L ${symlink_path} ]]; then
+    if ! ln -s "${YB_LLVM_TOOLCHAIN_DIR}" "${symlink_path}" &&
+       # If someone else created this symlink in the meantime, that's OK.
+       [[ ! -L ${symlink_path} ]]; then
+      fatal "Could not create symlink from ${symlink_path} to ${YB_LLVM_TOOLCHAIN_DIR}"
+    fi
+  fi
+}
+
 download_toolchain() {
   expect_vars_to_be_set YB_COMPILER_TYPE
   local toolchain_urls=()
@@ -1238,6 +1234,7 @@ download_toolchain() {
   if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
     toolchain_urls+=( "${YB_LLVM_TOOLCHAIN_URL}" )
   fi
+  create_llvm_toolchain_symlink
 
   if [[ ${#toolchain_urls[@]} -eq 0 ]]; then
     return
@@ -1294,10 +1291,6 @@ download_toolchain() {
       fi
     fi
   done
-
-  if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} && ! -e ${BUILD_ROOT}/toolchain ]]; then
-    ln -s "${YB_LLVM_TOOLCHAIN_DIR}" "${BUILD_ROOT}/toolchain"
-  fi
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -2213,11 +2206,13 @@ run_shellcheck() {
 
 activate_virtualenv() {
   detect_architecture
+
   local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
 
   # On Apple Silicon, use separate virtualenv directories per architecture.
-  if is_apple_silicon && [[ -n ${YB_TARGET_ARCH:-} ]]; then
+  if is_apple_silicon; then
+    detect_architecture
     virtualenv_dir+="-${YB_TARGET_ARCH}"
   fi
 
@@ -2251,19 +2246,35 @@ activate_virtualenv() {
       mkdir -p "$virtualenv_parent_dir"
       cd "$virtualenv_parent_dir"
       local python3_interpreter=python3
-      if is_mac && [[ ${YB_TARGET_ARCH:-} == "arm64" ]]; then
-        python3_interpreter=/opt/homebrew/bin/python3
+      local arch_prefix=""
+      if is_apple_silicon; then
+        # On Apple Silicon, use the system Python 3 interpreter. This is necessary because the
+        # Homebrew Python was upgraded to version 3.11 in April 2023, and setup.py fails for
+        # the typed-ast module.
+        python3_interpreter=/usr/bin/python3
+        arch_prefix="arch -${YB_TARGET_ARCH}"
       fi
 
       # Require Python version at least 3.7.
       local python3_version
-      python3_version=$("$python3_interpreter" -V)
+      python3_version=$( "$python3_interpreter" -V )
       if [ "$(echo "$python3_version" | cut -d. -f2)" -lt 7 ]; then
         fatal "Python version too low: $python3_version"
       fi
 
-      set -x
-      "$python3_interpreter" -m venv "${virtualenv_dir##*/}"
+      $arch_prefix "$python3_interpreter" -m venv "${virtualenv_dir##*/}"
+
+      # Validate the architecture of the virtualenv.
+      if [[ -n ${YB_TARGET_ARCH:-} ]]; then
+        local actual_python_arch
+        actual_python_arch=$(
+          "${virtualenv_dir}/bin/python3" -c "import platform; print(platform.machine())"
+        )
+        if [[ $actual_python_arch != "$YB_TARGET_ARCH" ]]; then
+          fatal "Failed to create virtualenv for $YB_TARGET_ARCH, got $actual_python_arch instead" \
+                "for virtualenv at $virtualenv_dir"
+        fi
+      fi
     )
   fi
 

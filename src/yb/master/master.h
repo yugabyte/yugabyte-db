@@ -107,6 +107,10 @@ class Master : public tserver::DbServerBase {
 
   FlushManager* flush_manager() const { return flush_manager_.get(); }
 
+  YsqlBackendsManager* ysql_backends_manager() const {
+    return ysql_backends_manager_.get();
+  }
+
   AutoFlagsManager* auto_flags_manager() { return auto_flags_manager_.get(); }
 
   PermissionsManager& permissions_manager();
@@ -232,6 +236,7 @@ class Master : public tserver::DbServerBase {
   std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<CatalogManager> catalog_manager_;
+  std::unique_ptr<YsqlBackendsManager> ysql_backends_manager_;
   std::unique_ptr<MasterPathHandlers> path_handlers_;
   std::unique_ptr<FlushManager> flush_manager_;
 

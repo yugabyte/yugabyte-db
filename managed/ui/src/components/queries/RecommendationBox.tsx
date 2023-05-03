@@ -23,6 +23,9 @@ interface RecommendationProps {
   type: RecommendationType;
   data: PerfRecommendationData | IndexAndShardingRecommendationData;
   key: string;
+  idKey: string;
+  resolved: boolean;
+  onResolve: (key: string, value: boolean) => void;
 }
 
 const getRecommendation = (type: RecommendationType, summary: ReactNode | string, data: any) => {
@@ -91,13 +94,23 @@ const getRecommendation = (type: RecommendationType, summary: ReactNode | string
     };
     return <CpuSkew data={cpuSkewData} summary={summary} />;
   }
-  if (type === RecommendationType.CPU_USAGE || type === RecommendationType.HOT_SHARD) {
+  if (
+    type === RecommendationType.CPU_USAGE ||
+    type === RecommendationType.HOT_SHARD ||
+    type === RecommendationType.REJECTED_CONNECTIONS
+  ) {
     return <CustomRecommendations summary={summary} suggestion={data.suggestion} />;
   }
   return null;
 };
 
-export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) => {
+export const RecommendationBox: FC<RecommendationProps> = ({
+  idKey,
+  type,
+  data,
+  resolved,
+  onResolve
+}) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
@@ -145,6 +158,12 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
             {t('clusterDetail.performance.typeTag.HotShard')}
           </span>
         );
+      case RecommendationType.REJECTED_CONNECTIONS:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.RejectedConnections')}
+          </span>
+        );
       case RecommendationType.ALL:
         return null;
       default:
@@ -186,11 +205,12 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
   };
 
   const [open, setOpen] = useState(false);
-  const [resolved, setResolved] = useState(false);
+  // const [resolved1, setResolved] = useState(false);
 
   const handleResolveRecommendation = (event: ChangeEvent<HTMLInputElement>) => {
     const isChecked = event.target.checked;
-    setResolved(isChecked);
+    onResolve(idKey, isChecked);
+    // setResolved(isChecked);
     if (isChecked) {
       setOpen(false);
     }

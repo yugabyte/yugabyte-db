@@ -34,8 +34,8 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/index.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/qlexpr/index.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.h"
@@ -114,12 +114,9 @@ namespace yb {
 namespace tserver {
 
 using consensus::ConsensusMetadata;
-using consensus::ConsensusStatePB;
 using consensus::PeerMemberType;
 using consensus::RaftConfigPB;
-using consensus::RaftPeerPB;
 using env_util::CopyFile;
-using rpc::Messenger;
 using std::shared_ptr;
 using std::string;
 using std::vector;
@@ -130,7 +127,6 @@ using tablet::TabletDataState_Name;
 using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletStatusListener;
-using tablet::RaftGroupReplicaSuperBlockPB;
 
 std::atomic<int32_t> remote_bootstrap_clients_started_{0};
 
@@ -345,10 +341,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                         wal_root_dir);
     }
   } else {
-    Partition partition;
-    Partition::FromPB(superblock_->partition(), &partition);
-    PartitionSchema partition_schema;
-    RETURN_NOT_OK(PartitionSchema::FromPB(table.partition_schema(), schema, &partition_schema));
+    dockv::Partition partition;
+    dockv::Partition::FromPB(superblock_->partition(), &partition);
+    dockv::PartitionSchema partition_schema;
+    RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+        table.partition_schema(), schema, &partition_schema));
     // Create the superblock on disk.
     if (ts_manager != nullptr) {
       ts_manager->GetAndRegisterDataAndWalDir(&fs_manager(),
@@ -360,8 +357,9 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     auto table_info = std::make_shared<tablet::TableInfo>(
         consensus::MakeTabletLogPrefix(tablet_id_, fs_manager().uuid()),
         tablet::Primary::kTrue, table_id, table.namespace_name(), table.table_name(),
-        table.table_type(), schema, IndexMap(table.indexes()),
-        table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,
+        table.table_type(), schema, qlexpr::IndexMap(table.indexes()),
+        table.has_index_info() ? boost::optional<qlexpr::IndexInfo>(table.index_info())
+                               : boost::none,
         table.schema_version(), partition_schema);
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
     auto create_result = RaftGroupMetadata::CreateNew(
@@ -374,7 +372,6 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
             .colocated = colocated,
             .snapshot_schedules = {},
             .hosted_services = hosted_services,
-            .last_change_metadata_op_id = OpId::Min(),
         },
         data_root_dir, wal_root_dir);
     if (ts_manager != nullptr && !create_result.ok()) {
@@ -390,9 +387,9 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
       deleted_cols.push_back(col);
     }
     // OpId::Invalid() is used to indicate the callee to not
-    // set last_change_metadata_op_id field of tablet metadata.
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     meta_->SetSchema(schema,
-                     IndexMap(table.indexes()),
+                     qlexpr::IndexMap(table.indexes()),
                      deleted_cols,
                      table.schema_version(),
                      OpId::Invalid());

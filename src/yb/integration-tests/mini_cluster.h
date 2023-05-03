@@ -129,6 +129,8 @@ class MiniCluster : public MiniClusterBase {
   // Stop and restart the mini cluster synchronously. The cluster's persistent state will be kept.
   Status RestartSync();
 
+  void StopSync();
+
   void Shutdown();
   Status FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
@@ -205,7 +207,7 @@ class MiniCluster : public MiniClusterBase {
   // Requires that the master has started;
   // Returns a bad Status if the tablet does not reach the required count
   // within kTabletReportWaitTimeSeconds.
-  Status WaitForReplicaCount(const std::string& tablet_id,
+  Status WaitForReplicaCount(const TableId& tablet_id,
                              int expected_count,
                              master::TabletLocationsPB* locations);
 
@@ -225,6 +227,8 @@ class MiniCluster : public MiniClusterBase {
   }
 
   Status WaitForLoadBalancerToStabilize(MonoDelta timeout);
+
+  std::string GetClusterId() { return options_.cluster_id; }
 
  private:
 
@@ -351,9 +355,6 @@ Result<scoped_refptr<master::TableInfo>> FindTable(
 
 Status WaitForInitDb(MiniCluster* cluster);
 
-// Counts the total number of external transactions on coordinator tablets.
-size_t CountExternalTransactions(MiniCluster* cluster);
-
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = TabletPeerFilter());
 
 tserver::MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id);
@@ -387,6 +388,10 @@ Status WaitForAnySstFiles(
 Status WaitForPeersAreFullyCompacted(
     MiniCluster* cluster, const std::vector<TabletId>& tablet_ids,
     MonoDelta timeout = MonoDelta::FromSeconds(15) * kTimeMultiplier);
+
+Status WaitForTableIntentsApplied(
+    MiniCluster* cluster, const TableId& table_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(30));
 
 // Activate compaction time logging on existing cluster tablet server.
 // Multiple calls will result in duplicate logging.

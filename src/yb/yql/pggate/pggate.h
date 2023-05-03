@@ -15,6 +15,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -23,8 +24,8 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/key_bytes.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -320,6 +321,8 @@ class PgApiImpl {
 
   Status AlterTableIncrementSchemaVersion(PgStatement *handle);
 
+  Status AlterTableSetTableId(PgStatement* handle, const PgObjectId& table_id);
+
   Status ExecAlterTable(PgStatement *handle);
 
   Status NewDropTable(const PgObjectId& table_id,
@@ -381,6 +384,8 @@ class PgApiImpl {
   Status ExecPostponedDdlStmt(PgStatement *handle);
 
   Status ExecDropTable(PgStatement *handle);
+
+  Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version);
 
   Status BackfillIndex(const PgObjectId& table_id);
 
@@ -455,7 +460,7 @@ class PgApiImpl {
   Status DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
                                bool is_null, const YBCPgTypeEntity *type_entity);
 
-  Result<docdb::KeyBytes> BuildTupleId(const YBCPgYBTupleIdDescriptor& descr);
+  Result<dockv::KeyBytes> BuildTupleId(const YBCPgYBTupleIdDescriptor& descr);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.
@@ -562,7 +567,7 @@ class PgApiImpl {
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
   Status ExitSeparateDdlTxnMode();
-  void ClearSeparateDdlTxnMode();
+  Status ClearSeparateDdlTxnMode();
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
   double GetTransactionPriority() const;
@@ -646,13 +651,13 @@ class PgApiImpl {
 
   class TupleIdBuilder {
    public:
-    Result<docdb::KeyBytes> Build(PgSession* session, const YBCPgYBTupleIdDescriptor& descr);
+    Result<dockv::KeyBytes> Build(PgSession* session, const YBCPgYBTupleIdDescriptor& descr);
 
    private:
     void Prepare();
 
     ThreadSafeArena arena_;
-    docdb::DocKey doc_key_;
+    dockv::DocKey doc_key_;
     size_t counter_ = 0;
   };
 

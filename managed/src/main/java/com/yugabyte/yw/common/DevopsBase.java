@@ -116,9 +116,15 @@ public abstract class DevopsBase {
     commandList.add(getCommandType().toLowerCase());
     commandList.add(devopsCommand.command);
     commandList.addAll(commandArgs);
-    return (devopsCommand.sensitiveData != null && !devopsCommand.sensitiveData.isEmpty())
-        ? shellProcessHandler.run(commandList, extraVars, description, devopsCommand.sensitiveData)
-        : shellProcessHandler.run(commandList, extraVars, description);
+    return shellProcessHandler.run(
+        commandList,
+        ShellProcessContext.builder()
+            .logCmdOutput(true)
+            .description(description)
+            .extraEnvVars(extraVars)
+            .redactedVals(devopsCommand.redactedVals)
+            .sensitiveData(devopsCommand.sensitiveData)
+            .build());
   }
 
   @Builder
@@ -129,7 +135,11 @@ public abstract class DevopsBase {
     String command;
     List<String> commandArgs;
     @Builder.Default List<String> cloudArgs = Collections.emptyList();
+    // Env vars for this command.
     Map<String, String> envVars;
+    // Args that are in the cmd, but need to be redacted.
+    Map<String, String> redactedVals;
+    // Args that will be added to the cmd but will be redacted in logs.
     Map<String, String> sensitiveData;
   }
 }

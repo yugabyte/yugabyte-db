@@ -251,8 +251,7 @@ public class XClusterConfig extends Model {
 
   public Optional<XClusterTableConfig> maybeGetTableById(String tableId) {
     // There will be at most one tableConfig for a tableId within each xCluster config.
-    return this.getTableDetails(true /* includeTxnTableIfExists */)
-        .stream()
+    return this.getTableDetails(true /* includeTxnTableIfExists */).stream()
         .filter(tableConfig -> tableConfig.getTableId().equals(tableId))
         .findAny();
   }
@@ -329,8 +328,7 @@ public class XClusterConfig extends Model {
 
   public Set<XClusterTableConfig> getTablesById(Set<String> tableIds) {
     Map<String, XClusterTableConfig> tableConfigMap =
-        this.getTableDetails(true /* includeTxnTableIfExists */)
-            .stream()
+        this.getTableDetails(true /* includeTxnTableIfExists */).stream()
             .collect(
                 Collectors.toMap(
                     tableConfig -> tableConfig.getTableId(), tableConfig -> tableConfig));
@@ -369,8 +367,7 @@ public class XClusterConfig extends Model {
   @JsonIgnore
   public Set<String> getTableIds(boolean includeTxnTableIfExists) {
     if (includeTxnTableIfExists) {
-      return this.getTableDetails(true /* includeTxnTableIfExists */)
-          .stream()
+      return this.getTableDetails(true /* includeTxnTableIfExists */).stream()
           .map(XClusterTableConfig::getTableId)
           .collect(Collectors.toSet());
     }
@@ -384,8 +381,7 @@ public class XClusterConfig extends Model {
 
   @JsonIgnore
   public Set<String> getTableIdsWithReplicationSetup(Set<String> tableIds, boolean done) {
-    return this.getTableDetails(true /* includeTxnTableIfExists */)
-        .stream()
+    return this.getTableDetails(true /* includeTxnTableIfExists */).stream()
         .filter(
             table ->
                 tableIds.contains(table.getTableId()) && table.isReplicationSetupDone() == done)
@@ -412,8 +408,7 @@ public class XClusterConfig extends Model {
     if (includeMainTables && includeIndexTables) {
       return this.getTableIds();
     }
-    return this.getTables()
-        .stream()
+    return this.getTables().stream()
         .filter(table -> table.isIndexTable() == includeIndexTables)
         .map(table -> table.getTableId())
         .collect(Collectors.toSet());
@@ -465,16 +460,14 @@ public class XClusterConfig extends Model {
       return;
     }
     Set<String> nonExistingTableIds =
-        tableIds
-            .stream()
+        tableIds.stream()
             .filter(
                 tableId -> !this.getTableIds(true /* includeTxnTableIfExists */).contains(tableId))
             .collect(Collectors.toSet());
     Set<String> nonExistingTableIdsNeedBootstrap = null;
     if (tableIdsNeedBootstrap != null) {
       nonExistingTableIdsNeedBootstrap =
-          tableIdsNeedBootstrap
-              .stream()
+          tableIdsNeedBootstrap.stream()
               .filter(nonExistingTableIds::contains)
               .collect(Collectors.toSet());
     }
@@ -516,8 +509,7 @@ public class XClusterConfig extends Model {
 
   @JsonIgnore
   public Set<String> getStreamIdsWithReplicationSetup() {
-    return this.getTables()
-        .stream()
+    return this.getTables().stream()
         .filter(table -> table.isReplicationSetupDone())
         .map(table -> table.getStreamId())
         .collect(Collectors.toSet());
@@ -584,8 +576,7 @@ public class XClusterConfig extends Model {
   @Transactional
   public void updateBackupForTables(Set<String> tableIds, Backup backup) {
     ensureTableIdsExist(tableIds);
-    this.getTableDetails(true /* includeTxnTableIfExists */)
-        .stream()
+    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setBackup(backup));
     update();
@@ -594,8 +585,7 @@ public class XClusterConfig extends Model {
   @Transactional
   public void updateRestoreForTables(Set<String> tableIds, Restore restore) {
     ensureTableIdsExist(tableIds);
-    this.getTableDetails(true /* includeTxnTableIfExists */)
-        .stream()
+    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setRestore(restore));
     update();
@@ -604,8 +594,7 @@ public class XClusterConfig extends Model {
   @Transactional
   public void updateRestoreTimeForTables(Set<String> tableIds, Date restoreTime, UUID taskUUID) {
     ensureTableIdsExist(tableIds);
-    this.getTableDetails(true /* includeTxnTableIfExists */)
-        .stream()
+    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(
             tableConfig -> {
@@ -618,8 +607,7 @@ public class XClusterConfig extends Model {
   @Transactional
   public void updateNeedBootstrapForTables(Collection<String> tableIds, boolean needBootstrap) {
     ensureTableIdsExist(tableIds);
-    this.getTableDetails(true /* includeTxnTableIfExists */)
-        .stream()
+    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setNeedBootstrap(needBootstrap));
     update();
@@ -628,8 +616,7 @@ public class XClusterConfig extends Model {
   @Transactional
   public void updateIndexTableForTables(Collection<String> tableIds, boolean indexTable) {
     ensureTableIdsExist(tableIds);
-    this.getTableDetails(true /* includeTxnTableIfExists */)
-        .stream()
+    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setIndexTable(indexTable));
     update();
@@ -638,8 +625,7 @@ public class XClusterConfig extends Model {
   @Transactional
   public void updateBootstrapCreateTimeForTables(Collection<String> tableIds, Date moment) {
     ensureTableIdsExist(new HashSet<>(tableIds));
-    this.getTableDetails(true /* includeTxnTableIfExists */)
-        .stream()
+    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setBootstrapCreateTime(moment));
     update();
@@ -649,8 +635,7 @@ public class XClusterConfig extends Model {
   public void updateStatusForTables(
       Collection<String> tableIds, XClusterTableConfig.Status status) {
     ensureTableIdsExist(new HashSet<>(tableIds));
-    this.getTableDetails(true /* includeTxnTableIfExists */)
-        .stream()
+    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setStatus(status));
     update();
@@ -666,8 +651,7 @@ public class XClusterConfig extends Model {
   public Set<String> getTableIdsInStatus(
       Collection<String> tableIds, Collection<XClusterTableConfig.Status> statuses) {
     ensureTableIdsExist(new HashSet<>(tableIds));
-    return this.getTableDetails(true /* includeTxnTableIfExists */)
-        .stream()
+    return this.getTableDetails(true /* includeTxnTableIfExists */).stream()
         .filter(
             tableConfig ->
                 tableIds.contains(tableConfig.getTableId())
@@ -889,8 +873,7 @@ public class XClusterConfig extends Model {
                   + "AND NOT ( table_id IN (:nonOrphanTableIds) )");
       orphanRemovalSqlQuery.setParameter(
           "nonOrphanTableIds",
-          allTableConfigs
-              .stream()
+          allTableConfigs.stream()
               .map(XClusterTableConfig::getTableId)
               .collect(Collectors.toList()));
     }

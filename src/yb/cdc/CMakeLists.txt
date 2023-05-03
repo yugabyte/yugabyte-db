@@ -66,7 +66,7 @@ set(CDC_YRPC_LIBS
   opid_proto)
 ADD_YB_LIBRARY(cdc_service_proto
   SRCS ${CDC_YRPC_SRCS} cdc_error.cc
-  DEPS yb_ql_common ${CDC_YRPC_LIBS}
+  DEPS ${CDC_YRPC_LIBS}
   NONLINK_DEPS ${CDC_YRPC_TGTS})
 
 #########################################
@@ -88,6 +88,11 @@ ADD_YB_LIBRARY(xcluster_producer_proto
   DEPS ${XCLUSTER_PRODUCER_YRPC_LIBS}
   NONLINK_DEPS ${XCLUSTER_PRODUCER_YRPC_TGTS})
 
+ADD_YB_LIBRARY(
+    cdc_util
+    SRCS cdc_util.cc
+    DEPS yb_client ql_util)
+
 #########################################
 # cdc_service
 #########################################
@@ -102,5 +107,5 @@ set(CDC_SRCS
 ADD_YB_LIBRARY(
     cdc
     SRCS ${CDC_SRCS}
-    DEPS protobuf cdc_service_proto master_proto consensus_proto log_proto log consensus
+    DEPS protobuf cdc_service_proto cdc_util master_proto consensus_proto log_proto log consensus
          yrpc server_common server_process tablet yb_util ql_util gutil yb_client)

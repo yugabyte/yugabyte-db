@@ -64,7 +64,6 @@ namespace consensus {
 
 using log::Log;
 using log::LogOptions;
-using log::LogAnchorRegistry;
 using rpc::Messenger;
 using rpc::MessengerBuilder;
 using std::shared_ptr;

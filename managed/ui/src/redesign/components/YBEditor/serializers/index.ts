@@ -7,5 +7,5 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-export * from './HTMLSerializer';
-export * from './HTMLDeSerializer';
+export * from './HTML/HTMLSerializer';
+export * from './HTML/HTMLDeSerializer';

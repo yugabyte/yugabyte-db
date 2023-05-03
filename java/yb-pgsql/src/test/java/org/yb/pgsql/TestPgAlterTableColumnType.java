@@ -1,0 +1,229 @@
+// Copyright (c) Yugabyte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+package org.yb.pgsql;
+
+import java.sql.ResultSet;
+import java.sql.Statement;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.YBTestRunner;
+
+import static org.yb.AssertionWrappers.*;
+
+@RunWith(value = YBTestRunner.class)
+public class TestPgAlterTableColumnType extends BasePgSQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestPgAlterTable.class);
+
+  private double roundToDecimalPlaces(double value, int numDecimalPlaces) {
+    return Math.round(value * Math.pow(10, numDecimalPlaces)) / Math.pow(10, numDecimalPlaces);
+  }
+
+  @Before
+  public void setupTableWithVarcharAndIntColumn() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE varchar_table(id SERIAL PRIMARY KEY, c1 varchar(10))");
+      statement.execute("CREATE TABLE text_table(c1 text)");
+      statement.execute("CREATE TABLE int4_table(id SERIAL PRIMARY KEY, c1 int4)");
+    }
+  }
+
+  @After
+  public void cleanupTables() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("DROP TABLE varchar_table");
+      statement.execute("DROP TABLE text_table");
+      statement.execute("DROP TABLE int4_table CASCADE");
+    }
+  }
+
+  @Test
+  public void testWithInvalidConversion() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      runInvalidQuery(statement, "ALTER TABLE varchar_table ALTER c1 TYPE int",
+          "ERROR: column \"c1\" cannot be cast automatically to type integer" +
+              "\n  Hint: You might need to specify \"USING c1::integer\".");
+
+      statement.execute("ALTER TABLE int4_table ALTER c1 TYPE int8");
+      statement.execute("INSERT INTO int4_table(c1) VALUES (2 ^ 40)");
+      runInvalidQuery(statement, "ALTER TABLE int4_table ALTER c1 TYPE int4",
+          "ERROR: integer out of range");
+
+      statement.execute("INSERT INTO varchar_table(c1) VALUES ('aa')");
+      runInvalidQuery(statement, "ALTER TABLE varchar_table ALTER c1 TYPE varchar(1)",
+          "ERROR: value too long for type character varying(1)");
+    }
+  }
+
+  @Test
+  public void testStringConversion() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("INSERT INTO varchar_table(c1) VALUES ('a'), (2), ('aaa')");
+      statement.execute("ALTER TABLE varchar_table ALTER c1 TYPE text");
+
+      String[] rows = { "a", "2", "aaa" };
+      ResultSet rs = statement.executeQuery("SELECT * from varchar_table ORDER BY id ASC");
+      for (int i = 0; i < 3; i++) {
+        assertTrue(rs.next());
+        assertEquals(rows[i], rs.getString("c1"));
+      }
+    }
+  }
+
+  @Test
+  public void testUsingExpression() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("INSERT INTO varchar_table(c1) VALUES ('a'), ('bb'), ('ccc')");
+      statement.execute("ALTER TABLE varchar_table ALTER c1 TYPE int USING length(c1)");
+      ResultSet rs = statement.executeQuery("SELECT * from varchar_table ORDER BY c1 ASC");
+      for (int i = 1; i <= 3; i++) {
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("c1"));
+      }
+
+      statement.execute("ALTER TABLE varchar_table ALTER c1 TYPE double precision USING " +
+          "sqrt(c1)");
+      rs = statement.executeQuery("SELECT * from varchar_table ORDER BY c1 ASC");
+      for (int i = 1; i <= 3; i++) {
+        assertTrue(rs.next());
+        assertEquals(roundToDecimalPlaces(Math.sqrt(i), 5),
+          roundToDecimalPlaces(rs.getDouble("c1"), 5));
+      }
+    }
+  }
+
+  @Test
+  public void testOtherCommands() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("ALTER TABLE int4_table ADD COLUMN c2 varchar, ADD COLUMN c3 int, " +
+          "ALTER c1 TYPE varchar");
+      statement.execute("INSERT INTO int4_table(c1, c2, c3) VALUES ('a', 'a', 1), " +
+          "('b', 'b', 2), ('c', 'c', 3)");
+
+      ResultSet rs = statement.executeQuery("SELECT * from int4_table ORDER BY c3 ASC");
+      for (int i = 1; i <= 2; i++) {
+        assertTrue(rs.next());
+        assertEquals(Character.toString((char) ('a' + i - 1)), rs.getString("c1"));
+        assertEquals(Character.toString((char) ('a' + i - 1)), rs.getString("c2"));
+        assertEquals(i, rs.getInt("c3"));
+      }
+    }
+  }
+
+  @Test
+  public void testAlterPartitionColumnTypeFailure() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE int4_table2(c1 int) PARTITION BY RANGE(c1)");
+      runInvalidQuery(statement, "ALTER TABLE int4_table2 ALTER c1 TYPE varchar",
+          "ERROR: cannot alter type of column named in partition key");
+    }
+  }
+
+  @Test
+  public void testRulesFailure() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE RULE r AS ON UPDATE TO int4_table DO ALSO NOTIFY int4_table;");
+      runInvalidQuery(statement, "ALTER TABLE int4_table ALTER c1 TYPE varchar",
+        "ERROR: changing column type of a table with rules is not yet implemented");
+    }
+  }
+
+  @Test
+  public void testPrimaryKey() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE pk_table(c1 int primary key)");
+      statement.execute("INSERT INTO pk_table VALUES (1), (2)");
+      statement.execute("ALTER TABLE pk_table ALTER c1 TYPE varchar");
+
+      ResultSet rs = statement.executeQuery("SELECT * from pk_table ORDER BY c1 ASC");
+      for (int i = 1; i <= 2; i++) {
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("c1"));
+      }
+
+      runInvalidQuery(statement, "INSERT INTO pk_table VALUES (1)",
+          "duplicate key value violates unique constraint \"pk_table_pkey\"");
+
+      runInvalidQuery(statement, "ALTER TABLE pk_table ALTER c1 TYPE int USING length(c1)",
+          "duplicate key value violates unique constraint \"pk_table\"");
+    }
+  }
+
+  @Test
+  public void testForeignKey() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE fk_table(c1 int, c2 int references int4_table(id))");
+      statement.execute("ALTER TABLE fk_table ALTER c1 TYPE varchar");
+
+      runInvalidQuery(statement, "ALTER TABLE fk_table ALTER c2 TYPE varchar",
+        "ERROR: Altering type of foreign key is not supported");
+
+      runInvalidQuery(statement, "ALTER TABLE int4_table ALTER id TYPE varchar",
+        "ERROR: Altering type of foreign key is not supported");
+
+      statement.execute("DROP TABLE fk_table");
+    }
+  }
+
+  @Test
+  public void testCheckConstraints() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE check_table(c1 int check(c1 > 0))");
+      statement.execute("INSERT INTO check_table VALUES (1), (2)");
+
+      runInvalidQuery(statement, "ALTER TABLE check_table ALTER c1 TYPE float USING -c1",
+        "ERROR: check constraint \"check_table_c1_check\" is violated by some row");
+
+      statement.execute("ALTER TABLE check_table ALTER c1 TYPE float");
+
+      ResultSet rs = statement.executeQuery("SELECT * from check_table ORDER BY c1 ASC");
+      for (int i = 1; i <= 2; i++) {
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("c1"));
+      }
+
+      statement.execute("INSERT INTO check_table VALUES(3.0)");
+
+      runInvalidQuery(statement, "INSERT INTO check_table VALUES (-3.0)",
+          "new row for relation \"check_table\" violates check constraint " +
+              "\"check_table_c1_check\"");
+    }
+  }
+
+  @Test
+  public void testDefaults() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE default_table(c1 int, c2 varchar default 'a')");
+
+      runInvalidQuery(statement, "ALTER TABLE default_table ALTER c2 TYPE int USING length(c2)",
+        "default for column \"c2\" cannot be cast automatically to type integer");
+
+      statement.execute("CREATE TABLE default_table2(c1 int, c2 int default 10)");
+      statement.execute("ALTER TABLE default_table2 ALTER c2 TYPE varchar");
+
+      statement.execute("INSERT INTO default_table2 VALUES (1)");
+
+      ResultSet rs = statement.executeQuery("SELECT * from default_table2");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getInt("c1"));
+      // The default is converted automatically, not with the cast expression
+      // length(c2).
+      assertEquals(Integer.toString(10), rs.getString("c2"));
+    }
+  }
+}

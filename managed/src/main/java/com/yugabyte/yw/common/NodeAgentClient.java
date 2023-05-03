@@ -10,7 +10,6 @@ import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
@@ -35,6 +34,7 @@ import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
 import io.grpc.ClientInterceptor;
+import io.grpc.ConnectivityState;
 import io.grpc.ForwardingClientCall;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
@@ -110,6 +110,7 @@ public class NodeAgentClient {
             .removalListener(
                 n -> {
                   ManagedChannel channel = (ManagedChannel) n.getValue();
+                  log.debug("Channel for {} expired", n.getKey());
                   if (!channel.isShutdown() && !channel.isTerminated()) {
                     channel.shutdown();
                   }
@@ -357,12 +358,9 @@ public class NodeAgentClient {
     return getNodeAgentJWT(nodeAgentOp.get());
   }
 
-  public static void addNodeAgentClientParams(NodeAgent nodeAgent, List<String> cmdParams) {
-    addNodeAgentClientParams(nodeAgent, cmdParams, null);
-  }
-
   public static void addNodeAgentClientParams(
-      NodeAgent nodeAgent, List<String> cmdParams, Map<String, String> sensitiveCmdParams) {
+      NodeAgent nodeAgent, List<String> cmdParams, Map<String, String> redactedVals) {
+    String token = getNodeAgentJWT(nodeAgent);
     cmdParams.add("--node_agent_ip");
     cmdParams.add(nodeAgent.getIp());
     cmdParams.add("--node_agent_port");
@@ -371,12 +369,9 @@ public class NodeAgentClient {
     cmdParams.add(nodeAgent.getCaCertFilePath().toString());
     cmdParams.add("--node_agent_home");
     cmdParams.add(nodeAgent.getHome());
-    if (sensitiveCmdParams == null) {
-      cmdParams.add("--node_agent_auth_token");
-      cmdParams.add(getNodeAgentJWT(nodeAgent));
-    } else {
-      sensitiveCmdParams.put("--node_agent_auth_token", getNodeAgentJWT(nodeAgent));
-    }
+    cmdParams.add("--node_agent_auth_token");
+    cmdParams.add(token);
+    redactedVals.put(token, "REDACTED");
   }
 
   public Optional<NodeAgent> maybeGetNodeAgent(String ip, Provider provider) {
@@ -393,12 +388,14 @@ public class NodeAgentClient {
     return confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
   }
 
-  public boolean isAnsibleOffloadingEnabled(Provider provider, String nodeAgentVersion) {
-    String supportedVersion =
-        confGetter.getGlobalConf(GlobalConfKeys.ansibleOffloadSupportedVersion);
-    return isClientEnabled(provider)
-        && confGetter.getConfForScope(provider, ProviderConfKeys.enableAnsibleOffloading)
-        && Util.compareYbVersions(nodeAgentVersion, supportedVersion) >= 0;
+  public boolean isAnsibleOffloadingEnabled(NodeAgent nodeAgent, Provider provider) {
+    if (!isClientEnabled(provider)) {
+      return false;
+    }
+    if (!confGetter.getConfForScope(provider, ProviderConfKeys.enableAnsibleOffloading)) {
+      return false;
+    }
+    return nodeAgent.getConfig().isOffloadable();
   }
 
   private ManagedChannel getManagedChannel(NodeAgent nodeAgent, boolean enableTls) {
@@ -422,7 +419,12 @@ public class NodeAgentClient {
       builder.certPath(certPath);
     }
     try {
-      return cachedChannels.get(builder.build());
+      ManagedChannel channel = cachedChannels.get(builder.build());
+      if (channel.getState(true) == ConnectivityState.TRANSIENT_FAILURE) {
+        // Short-circuit the backoff timer and make it reconnect immediately.
+        channel.resetConnectBackoff();
+      }
+      return channel;
     } catch (ExecutionException e) {
       throw new RuntimeException(e.getCause());
     }
@@ -442,7 +444,9 @@ public class NodeAgentClient {
     Stopwatch stopwatch = Stopwatch.createStarted();
     while (true) {
       try {
-        return ping(nodeAgent);
+        PingResponse response = ping(nodeAgent);
+        nodeAgent.updateOffloadable(response.getServerInfo().getOffloadable());
+        return response;
       } catch (RuntimeException e) {
         log.warn(
             "Error in validating connection to node agent {} - {}",
@@ -452,7 +456,7 @@ public class NodeAgentClient {
           throw e;
         }
         try {
-          Thread.sleep(2000);
+          Thread.sleep(1000);
         } catch (InterruptedException ex) {
           throw new RuntimeException(ex);
         }

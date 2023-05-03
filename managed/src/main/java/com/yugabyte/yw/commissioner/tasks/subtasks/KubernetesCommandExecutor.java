@@ -39,11 +39,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -53,8 +53,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
@@ -65,7 +65,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -95,6 +94,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     VOLUME_DELETE,
     NAMESPACE_DELETE,
     POD_DELETE,
+    DELETE_ALL_SERVER_TYPE_PODS,
     POD_INFO,
     STS_DELETE,
     PVC_EXPAND_SIZE,
@@ -123,6 +123,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           return UserTaskDetails.SubTaskGroupType.KubernetesNamespaceDelete.name();
         case POD_DELETE:
           return UserTaskDetails.SubTaskGroupType.RebootingNode.name();
+        case DELETE_ALL_SERVER_TYPE_PODS:
+          return UserTaskDetails.SubTaskGroupType.DeleteAllServerTypePods.name();
         case POD_INFO:
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
         case COPY_PACKAGE:
@@ -136,6 +138,21 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           return UserTaskDetails.SubTaskGroupType.ResizingDisk.name();
       }
       return null;
+    }
+  }
+
+  public enum UpdateStrategy {
+    RollingUpdate("RollingUpdate"),
+    OnDelete("OnDelete");
+
+    public final String value;
+
+    UpdateStrategy(String value) {
+      this.value = value;
+    }
+
+    public String toString() {
+      return this.value;
     }
   }
 
@@ -183,6 +200,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // PlacementInfo to correctly set the placement details on the servers at start
     // as well as to control the replicas for each deployment.
     public PlacementInfo placementInfo = null;
+
+    // RollingUpdate vs OnDelete upgrade strategy for K8s statefulset.
+    public UpdateStrategy updateStrategy = KubernetesCommandExecutor.UpdateStrategy.RollingUpdate;
 
     // The target cluster's config.
     public Map<String, String> config = null;
@@ -312,11 +332,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .getManager()
             .deletePod(config, taskParams().namespace, taskParams().podName);
         break;
+      case DELETE_ALL_SERVER_TYPE_PODS:
+        Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+        kubernetesManagerFactory
+            .getManager()
+            .deleteAllServerTypePods(
+                config,
+                taskParams().namespace,
+                taskParams().serverType,
+                taskParams().helmReleaseName,
+                u.getUniverseDetails().useNewHelmNamingStyle);
+        break;
       case POD_INFO:
         processNodeInfo();
         break;
       case STS_DELETE:
-        Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+        u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
         // Ideally we should have called KubernetesUtil.getHelmFullNameWithSuffix()
         String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + "yb-tserver";
@@ -357,9 +388,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           Files.write(
               confFilePath,
               () ->
-                  ybcGflags
-                      .entrySet()
-                      .stream()
+                  ybcGflags.entrySet().stream()
                       .<CharSequence>map(e -> "--" + e.getKey() + "=" + e.getValue())
                       .iterator());
           kubernetesManagerFactory
@@ -925,10 +954,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("ip_version_support", "v6_only");
     }
 
-    Map<String, Object> partition = new HashMap<>();
-    partition.put("tserver", taskParams().tserverPartition);
-    partition.put("master", taskParams().masterPartition);
-    overrides.put("partition", partition);
+    UpdateStrategy updateStrategyParam = taskParams().updateStrategy;
+    if (updateStrategyParam.equals(UpdateStrategy.RollingUpdate)) {
+      Map<String, Object> partition = new HashMap<>();
+      partition.put("tserver", taskParams().tserverPartition);
+      partition.put("master", taskParams().masterPartition);
+      overrides.put("partition", partition);
+    } else if (updateStrategyParam.equals(UpdateStrategy.OnDelete)) {
+      Map<String, Object> updateStrategy = new HashMap<>();
+      updateStrategy.put("type", KubernetesCommandExecutor.UpdateStrategy.OnDelete.toString());
+      overrides.put("updateStrategy", updateStrategy);
+    }
 
     UUID placementUuid = cluster.uuid;
     Map<String, Object> gflagOverrides = new HashMap<>();

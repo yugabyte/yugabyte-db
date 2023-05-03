@@ -19,13 +19,13 @@
 #include <string>
 #include <vector>
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_path.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_rowwise_iterator_base.h"
 #include "yb/docdb/docdb_statistics.h"
-#include "yb/docdb/expiration.h"
+#include "yb/dockv/expiration.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/scan_choices.h"
 
@@ -44,55 +44,40 @@ using std::string;
 DEFINE_RUNTIME_bool(ysql_use_flat_doc_reader, true,
     "Use DocDBTableReader optimization that relies on having at most 1 subkey for YSQL.");
 
+DEFINE_test_flag(int32, fetch_next_delay_ms, 0,
+                 "Amount of time to delay inside FetchNext");
+
+using namespace std::chrono_literals;
+
 namespace yb {
 namespace docdb {
 
 DocRowwiseIterator::DocRowwiseIterator(
-    const Schema& projection,
-    std::reference_wrapper<const DocReadContext>
-        doc_read_context,
+    const dockv::ReaderProjection& projection,
+    std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     RWOperationCounter* pending_op_counter,
-    boost::optional<size_t> end_referenced_key_column_index,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter, end_referenced_key_column_index),
+          pending_op_counter),
       statistics_(statistics) {}
 
 DocRowwiseIterator::DocRowwiseIterator(
-    std::unique_ptr<Schema> projection,
-    std::reference_wrapper<const DocReadContext>
-        doc_read_context,
+    const dockv::ReaderProjection& projection,
+    std::shared_ptr<DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     RWOperationCounter* pending_op_counter,
-    boost::optional<size_t> end_referenced_key_column_index,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
-          std::move(projection), doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter, end_referenced_key_column_index),
-      statistics_(statistics) {}
-
-DocRowwiseIterator::DocRowwiseIterator(
-    std::unique_ptr<Schema> projection,
-    std::shared_ptr<DocReadContext>
-        doc_read_context,
-    const TransactionOperationContext& txn_op_context,
-    const DocDB& doc_db,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter,
-    boost::optional<size_t> end_referenced_key_column_index,
-    const DocDBStatistics* statistics)
-    : DocRowwiseIteratorBase(
-          std::move(projection), doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter, end_referenced_key_column_index),
+          projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
+          pending_op_counter),
       statistics_(statistics) {}
 
 DocRowwiseIterator::~DocRowwiseIterator() = default;
@@ -143,7 +128,7 @@ void DocRowwiseIterator::InitResult() {
 }
 
 inline void DocRowwiseIterator::Seek(const Slice& key) {
-  VLOG_WITH_FUNC(3) << " Seeking to " << key;
+  VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
   db_iter_->Seek(key);
 }
 
@@ -174,10 +159,10 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) co
 }
 
 Result<bool> DocRowwiseIterator::DoFetchNext(
-    QLTableRow* table_row,
-    const Schema* projection,
-    QLTableRow* static_row,
-    const Schema* static_projection) {
+    qlexpr::QLTableRow* table_row,
+    const dockv::ReaderProjection* projection,
+    qlexpr::QLTableRow* static_row,
+    const dockv::ReaderProjection* static_projection) {
   VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", done_: "
           << done_ << ", db_iter finished: " << db_iter_->IsOutOfRecords();
 
@@ -188,6 +173,13 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
   RETURN_NOT_OK(has_next_status_);
   if (done_) {
     return false;
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_fetch_next_delay_ms > 0)) {
+    YB_LOG_EVERY_N_SECS(INFO, 1)
+        << "Delaying read for " << FLAGS_TEST_fetch_next_delay_ms << " ms"
+        << ", schema column names: " << AsString(doc_read_context_.schema.column_names());
+    SleepFor(FLAGS_TEST_fetch_next_delay_ms * 1ms);
   }
 
   for (;;) {
@@ -204,10 +196,11 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     }
     const auto& key_data = *key_data_result;
 
-    VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(key_data.key);
+    VLOG(4) << "*fetched_key is " << dockv::SubDocKey::DebugSliceToString(key_data.key);
     if (debug_dump_) {
-      LOG(INFO) << __func__ << ", fetched key: " << SubDocKey::DebugSliceToString(key_data.key)
-                << ", " << key_data.key.ToDebugHexString();
+      LOG(INFO)
+          << __func__ << ", fetched key: " << dockv::SubDocKey::DebugSliceToString(key_data.key)
+          << ", " << key_data.key.ToDebugHexString();
     }
 
     // The iterator is positioned by the previous GetSubDocument call (which places the iterator
@@ -224,12 +217,12 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     }
 
     // e.g in cotable, row may point outside table bounds.
-    if (!DocKeyBelongsTo(key_data.key, doc_read_context_.schema)) {
+    if (!dockv::DocKeyBelongsTo(key_data.key, doc_read_context_.schema)) {
       Done();
       return false;
     }
 
-    RETURN_NOT_OK(InitIterKey(key_data.key));
+    RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(db_iter_->value())));
 
     if (has_bound_key_ && is_forward_scan_ == (row_key_.compare(bound_key_) >= 0)) {
       Done();
@@ -238,7 +231,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
 
     // Prepare the DocKey to get the SubDocument. Trim the DocKey to contain just the primary key.
     Slice doc_key = row_key_;
-    VLOG(4) << " sub_doc_key part of iter_key_ is " << DocKey::DebugSliceToString(doc_key);
+    VLOG(4) << " sub_doc_key part of iter_key_ is " << dockv::DocKey::DebugSliceToString(doc_key);
 
     bool is_static_column = IsFetchedRowStatic();
     if (scan_choices_ && !is_static_column) {
@@ -248,7 +241,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
         // Update the target key and iterator and call HasNext again to try the next target.
         if (!VERIFY_RESULT(scan_choices_->SkipTargetsUpTo(row_key_))) {
           // SkipTargetsUpTo returns false when it fails to decode the key.
-          if (!VERIFY_RESULT(IsColocatedTableTombstoneKey(row_key_))) {
+          if (!VERIFY_RESULT(dockv::IsColocatedTableTombstoneKey(row_key_))) {
             return STATUS_FORMAT(
                 Corruption, "Key $0 is not table tombstone key.", row_key_.ToDebugHexString());
           }
@@ -273,7 +266,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
 
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
-          db_iter_.get(), deadline_, &reader_projection_, table_type_,
+          db_iter_.get(), deadline_, &projection_, table_type_,
           doc_read_context_.schema_packing_storage);
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
           VERIFY_RESULT(GetTableTombstoneTime(doc_key))));
@@ -283,7 +276,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     }
 
     if (!is_flat_doc_) {
-      DCHECK(row_->type() == ValueEntryType::kObject);
+      DCHECK(row_->type() == dockv::ValueEntryType::kObject);
       row_->object_container().clear();
     }
 
@@ -338,30 +331,33 @@ HybridTime DocRowwiseIterator::TEST_MaxSeenHt() {
 }
 
 Status DocRowwiseIterator::FillRow(
-    QLTableRow* table_row, const Schema* projection_opt) {
+    qlexpr::QLTableRow* table_row, const dockv::ReaderProjection* projection_opt) {
   VLOG(4) << __PRETTY_FUNCTION__;
 
+  const auto& projection = projection_opt ? *projection_opt : projection_;
+
+  if (projection.columns.empty()) {
+    return Status::OK();
+  }
+
   // Copy required key columns to table_row.
-  RETURN_NOT_OK(CopyKeyColumnsToQLTableRow(table_row));
+  RETURN_NOT_OK(CopyKeyColumnsToQLTableRow(projection, table_row));
 
   if (is_flat_doc_) {
     return Status::OK();
   }
 
-  const auto& projection = projection_opt ? *projection_opt : schema();
-
   DVLOG_WITH_FUNC(4) << "subdocument: " << AsString(*row_);
-  for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
-    const auto& column_id = projection.column_id(i);
-    const auto ql_type = projection.column(i).type();
-    const SubDocument* column_value = row_->GetChild(KeyEntryValue::MakeColumnId(column_id));
-    if (column_value != nullptr) {
-      QLTableColumn& column = table_row->AllocColumn(column_id);
-      column_value->ToQLValuePB(ql_type, &column.value);
-      column.ttl_seconds = column_value->GetTtl();
-      if (column_value->IsWriteTimeSet()) {
-        column.write_time = column_value->GetWriteTime();
-      }
+  for (const auto& column : projection.value_columns()) {
+    const auto* source = row_->GetChild(column.subkey);
+    if (!source) {
+      continue;
+    }
+    auto& dest = table_row->AllocColumn(column.id);
+    source->ToQLValuePB(column.type, &dest.value);
+    dest.ttl_seconds = source->GetTtl();
+    if (source->IsWriteTimeSet()) {
+      dest.write_time = source->GetWriteTime();
     }
   }
 
@@ -372,8 +368,8 @@ Status DocRowwiseIterator::FillRow(
 
 bool DocRowwiseIterator::LivenessColumnExists() const {
   CHECK(!is_flat_doc_) << "Flat doc mode not supported yet";
-  const SubDocument* subdoc = row_->GetChild(KeyEntryValue::kLivenessColumn);
-  return subdoc != nullptr && subdoc->value_type() != ValueEntryType::kInvalid;
+  const auto* subdoc = row_->GetChild(dockv::KeyEntryValue::kLivenessColumn);
+  return subdoc != nullptr && subdoc->value_type() != dockv::ValueEntryType::kInvalid;
 }
 
 }  // namespace docdb

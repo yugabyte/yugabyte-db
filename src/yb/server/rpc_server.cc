@@ -53,13 +53,7 @@
 #include "yb/util/status.h"
 
 using yb::rpc::Messenger;
-using yb::rpc::ServiceIf;
-using std::shared_ptr;
 using std::string;
-using std::vector;
-using strings::Substitute;
-using std::unique_ptr;
-using std::make_unique;
 
 DEFINE_UNKNOWN_string(rpc_bind_addresses, "0.0.0.0",
               "Comma-separated list of addresses to bind to for RPC connections. "

@@ -29,6 +29,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_consumer_metrics.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -45,10 +46,11 @@ using namespace std::chrono_literals;
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
-DECLARE_bool(enable_replicate_transaction_status_table);
 DECLARE_string(ysql_yb_xcluster_consistency_level);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
+DECLARE_uint32(xcluster_safe_time_log_outliers_interval_secs);
+DECLARE_uint32(xcluster_safe_time_slow_tablet_delta_secs);
 
 namespace yb {
 using client::YBSchema;
@@ -76,8 +78,6 @@ class XClusterSafeTimeTest : public XClusterTestBase {
   void SetUp() override {
     // Disable LB as we dont want tablets moving during the test.
     FLAGS_enable_load_balancing = false;
-    FLAGS_enable_replicate_transaction_status_table = true;
-
     super::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = kMasterCount;
@@ -123,14 +123,14 @@ class XClusterSafeTimeTest : public XClusterTestBase {
     ASSERT_OK(producer_cluster_.client_->GetTablets(
         global_tran_table_name, 0 /* max_tablets */, &global_tran_tablet_ids_, NULL));
 
-    ASSERT_OK(SetupUniverseReplication({producer_table_}));
+    ASSERT_OK(SetupUniverseReplication(
+        {producer_table_, global_tran_table}, {LeaderOnly::kTrue, Transactional::kTrue}));
 
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
     ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
     ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
-    ASSERT_EQ(resp.entry().tables_size(), 1);
-    ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
+    ASSERT_EQ(resp.entry().tables_size(), 2);
 
     ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
 
@@ -177,21 +177,8 @@ class XClusterSafeTimeTest : public XClusterTestBase {
   Status WaitForSafeTime(HybridTime min_safe_time) {
     RETURN_NOT_OK(CorrectlyPollingAllTablets(
         consumer_cluster(), kTabletCount + static_cast<uint32_t>(global_tran_tablet_ids_.size())));
-    auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
 
-    return WaitFor(
-        [&]() -> Result<bool> {
-          auto safe_time_result = GetSafeTime(tserver, namespace_id_);
-          if (!safe_time_result) {
-            CHECK(safe_time_result.status().IsTryAgain());
-            return false;
-          }
-
-          auto safe_time = safe_time_result.get();
-          return *safe_time && safe_time->is_valid() && *safe_time > min_safe_time;
-        },
-        propagation_timeout_,
-        Format("Wait for safe_time to move above $0", min_safe_time.ToDebugString()));
+    return XClusterTestBase::WaitForSafeTime(namespace_id_, min_safe_time);
   }
 
   Status WaitForNotFoundSafeTime() {
@@ -206,6 +193,27 @@ class XClusterSafeTimeTest : public XClusterTestBase {
         },
         propagation_timeout_,
         Format("Wait for safe_time to get removed"));
+  }
+
+  void VerifyHistoryCutoffTime() {
+    tserver::TSTabletManager::TabletPtrs tablet_ptrs;
+    for (auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
+      auto* ts_manager = mini_tserver->server()->tablet_manager();
+      auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
+      /*auto tablet_peers =*/ts_manager->GetTabletPeers(&tablet_ptrs);
+      auto safe_time_result = GetSafeTime(tserver, namespace_id_);
+      if (!safe_time_result) {
+        FAIL() << "Expected safe time should be present.";
+        return;
+      }
+      ASSERT_TRUE(safe_time_result.get().has_value());
+      auto safe_time = *safe_time_result.get();
+      for (auto& tablet : tablet_ptrs) {
+        if (tablet->metadata()->namespace_id() == namespace_id_) {
+          ASSERT_EQ(safe_time, ts_manager->AllowedHistoryCutoff(tablet->metadata()));
+        }
+      }
+    }
   }
 
  protected:
@@ -285,6 +293,38 @@ TEST_F(XClusterSafeTimeTest, LagInSafeTime) {
   ASSERT_OK(WaitForSafeTime(ht_2));
 }
 
+TEST_F(XClusterSafeTimeTest, ConsumerHistoryCutoff) {
+  // Make sure safe time is initialized.
+  auto ht_1 = GetProducerSafeTime();
+  ASSERT_OK(WaitForSafeTime(ht_1));
+
+  // Insert some data to producer.
+  WriteWorkload(0, 10, producer_client(), producer_table_->name());
+  auto ht_2 = GetProducerSafeTime();
+
+  // Make sure safe time has progressed, this helps ensures that there is some safetime present on
+  // the tservers.
+  ASSERT_OK(WaitForSafeTime(ht_2));
+
+  // Simulate replication lag and make sure safe time does not move.
+  ASSERT_OK(SET_FLAG(TEST_xcluster_simulated_lag_ms, -1));
+  WriteWorkload(10, 20, producer_client(), producer_table_->name());
+  auto ht_3 = GetProducerSafeTime();
+
+  // 5. Make sure safe time has not progressed beyond the write.
+  ASSERT_NOK(WaitForSafeTime(ht_3));
+
+  // Verify the history cutoff is adjusted based on the lag time.
+  VerifyHistoryCutoffTime();
+
+  // Make sure safe time has progressed.
+  ASSERT_OK(SET_FLAG(TEST_xcluster_simulated_lag_ms, 0));
+  ASSERT_OK(WaitForSafeTime(ht_3));
+
+  // Ensure history cutoff time has progressed.
+  VerifyHistoryCutoffTime();
+}
+
 class XClusterConsistencyTest : public XClusterYsqlTestBase {
  public:
   typedef XClusterYsqlTestBase super;
@@ -296,7 +336,6 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     FLAGS_enable_load_balancing = false;
     FLAGS_ysql_yb_xcluster_consistency_level = "database";
     FLAGS_transaction_table_num_tablets = 1;
-    FLAGS_enable_replicate_transaction_status_table = true;
 
     super::SetUp();
     MiniClusterOptions opts;
@@ -367,13 +406,8 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
     ASSERT_OK(PreReplicationSetup());
 
-    ASSERT_OK(SetupUniverseReplication({producer_table1_, producer_table2_}));
-
-    // Verify that universe was setup on consumer.
-    master::GetUniverseReplicationResponsePB resp;
-    ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
-    ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
-    ASSERT_EQ(resp.entry().tables_size(), 2);
+    ASSERT_OK(SetupUniverseReplication({producer_table1_, producer_table2_, producer_tran_table_},
+                                       {LeaderOnly::kTrue, Transactional::kTrue}));
 
     ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
 
@@ -468,9 +502,10 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     return count;
   }
 
-  Result<uint64_t> GetXClusterEstimatedDataLoss(const NamespaceId& namespace_id) {
-    master::GetXClusterEstimatedDataLossRequestPB req;
-    master::GetXClusterEstimatedDataLossResponsePB resp;
+  // Returns the safe time lag (not skew).
+  Result<uint64_t> GetXClusterSafeTimeLag(const NamespaceId& namespace_id) {
+    master::GetXClusterSafeTimeRequestPB req;
+    master::GetXClusterSafeTimeResponsePB resp;
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
@@ -478,11 +513,11 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
         &consumer_client()->proxy_cache(),
         VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
-    RETURN_NOT_OK(master_proxy->GetXClusterEstimatedDataLoss(req, &resp, &rpc));
+    RETURN_NOT_OK(master_proxy->GetXClusterSafeTime(req, &resp, &rpc));
 
-    for (const auto& namespace_data_loss : resp.namespace_data_loss()) {
+    for (const auto& namespace_data_loss : resp.namespace_safe_times()) {
       if (namespace_id == namespace_data_loss.namespace_id()) {
-        return namespace_data_loss.data_loss_us();
+        return namespace_data_loss.safe_time_lag();
       }
     }
 
@@ -490,7 +525,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
         NotFound, "Did not find estimated data loss for namespace $0", namespace_id);
   }
 
-  Result<uint64_t> GetXClusterEstimatedDataLossFromMetrics(const NamespaceId& namespace_id) {
+  Result<uint64_t> GetXClusterSafeTimeLagFromMetrics(const NamespaceId& namespace_id) {
     auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
     const auto metrics =
         cm.TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(namespace_id);
@@ -525,7 +560,7 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount);
 
   // Get the initial regular rpo.
-  const auto initial_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  const auto initial_rpo = ASSERT_RESULT(GetXClusterSafeTimeLag(namespace_id_));
   LOG(INFO) << "Initial RPO is " << initial_rpo;
 
   // Pause replication on only 1 tablet.
@@ -557,15 +592,15 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
   ASSERT_LT(latest_row_count, num_records_written + kNumRecordsPerBatch);
 
   // Check that safe time rpo has gone up.
-  const auto high_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  const auto high_rpo = ASSERT_RESULT(GetXClusterSafeTimeLag(namespace_id_));
   LOG(INFO) << "High RPO is " << high_rpo;
   // RPO only gets updated every second, so only checking for at least one timeout.
   ASSERT_GT(high_rpo, MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToMicroseconds());
   // The estimated data loss from the metrics is from a snapshot, as opposed to the result from
-  // GetXClusterEstimatedDataLoss which is a current, newly calculated value. Thus we can't expect
+  // GetXClusterSafeTimeLag which is a current, newly calculated value. Thus we can't expect
   // these values to be equal, but should still expect the same assertions to hold.
   ASSERT_GT(
-      ASSERT_RESULT(GetXClusterEstimatedDataLossFromMetrics(namespace_id_)),
+      ASSERT_RESULT(GetXClusterSafeTimeLagFromMetrics(namespace_id_)),
       MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToMilliseconds());
 
   // Resume replication and verify all data is written on the consumer.
@@ -578,13 +613,15 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount + 1);
 
   // Check that safe time rpo has dropped again.
-  const auto final_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  const auto final_rpo = ASSERT_RESULT(GetXClusterSafeTimeLag(namespace_id_));
   LOG(INFO) << "Final RPO is " << final_rpo;
   ASSERT_LT(final_rpo, high_rpo);
-  ASSERT_LT(ASSERT_RESULT(GetXClusterEstimatedDataLossFromMetrics(namespace_id_)), high_rpo / 1000);
+  ASSERT_LT(ASSERT_RESULT(GetXClusterSafeTimeLagFromMetrics(namespace_id_)), high_rpo / 1000);
 }
 
 TEST_F(XClusterConsistencyTest, LagInTransactionsTable) {
+  ASSERT_OK(SET_FLAG(xcluster_safe_time_log_outliers_interval_secs, (uint32)0));
+  ASSERT_OK(SET_FLAG(xcluster_safe_time_slow_tablet_delta_secs, (uint32)1));
 
   // Pause replication on global transactions table
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
@@ -682,10 +719,10 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
 
   // Override the Setup the replication and perform it with Bootstrap.
   Status SetupUniverseReplication(
-      const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only) override {
+      const std::vector<std::shared_ptr<client::YBTable>>& tables,
+      SetupReplicationOptions opts) override {
     // 1. Bootstrap the producer
     std::vector<std::shared_ptr<client::YBTable>> new_tables = tables;
-    new_tables.emplace_back(producer_tran_table_);
     bootstrap_ids_ = VERIFY_RESULT(BootstrapCluster(new_tables, &producer_cluster_));
 
     // 2. Write some rows transactonally.
@@ -703,7 +740,7 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
     // 4. Setup replication.
     return XClusterConsistencyTest::SetupUniverseReplication(
         producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, new_tables,
-        leader_only, bootstrap_ids_);
+        bootstrap_ids_, opts);
   }
 
   std::vector<string> bootstrap_ids_;
@@ -734,8 +771,6 @@ class XClusterSingleClusterTest : public XClusterYsqlTestBase {
   void SetUp() override {
     // Skip in TSAN as InitDB times out.
     YB_SKIP_TEST_IN_TSAN();
-
-    FLAGS_enable_replicate_transaction_status_table = true;
 
     XClusterYsqlTestBase::SetUp();
     MiniClusterOptions opts;

@@ -208,6 +208,9 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   typedef std::vector<tablet::TabletPeerPtr> TabletPeers;
 
   explicit TabletServiceAdminImpl(TabletServer* server);
+
+  std::string LogPrefix() const;
+
   void CreateTablet(const CreateTabletRequestPB* req,
                     CreateTabletResponsePB* resp,
                     rpc::RpcContext context) override;
@@ -268,6 +271,12 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       UpgradeYsqlResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Wait for all YSQL backends to reach a certain catalog version.
+  void WaitForYsqlBackendsCatalogVersion(
+      const WaitForYsqlBackendsCatalogVersionRequestPB* req,
+      WaitForYsqlBackendsCatalogVersionResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void UpdateTransactionTablesVersion(
       const UpdateTransactionTablesVersionRequestPB* req,
       UpdateTransactionTablesVersionResponsePB* resp,
@@ -277,7 +286,7 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
 
  private:
-  TabletServer* server_;
+  TabletServer* const server_;
 
   Status DoCreateTablet(const CreateTabletRequestPB* req, CreateTabletResponsePB* resp);
 

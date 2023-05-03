@@ -177,9 +177,7 @@ public class Universe extends Model {
     if (null == universeDetails || null == universeDetails.clusters) {
       return new ArrayList<>();
     }
-    return universeDetails
-        .clusters
-        .stream()
+    return universeDetails.clusters.stream()
         .filter(c -> c != null && c.userIntent != null)
         .map(c -> c.userIntent.ybSoftwareVersion)
         .collect(Collectors.toList());
@@ -189,8 +187,7 @@ public class Universe extends Model {
   @Override
   public boolean delete() {
     // Delete xCluster configs without universes.
-    XClusterConfig.getByUniverseUuid(getUniverseUUID())
-        .stream()
+    XClusterConfig.getByUniverseUuid(getUniverseUUID()).stream()
         .filter(
             xClusterConfig -> {
               if (xClusterConfig.getSourceUniverseUUID() == null) {
@@ -285,10 +282,7 @@ public class Universe extends Model {
    * @return map of customer ID to a set of its universe UUIDs.
    */
   public static Map<Long, Set<UUID>> getAllCustomerUniverseUUIDs() {
-    return find.query()
-        .select("customerId, universeUUID")
-        .findList()
-        .stream()
+    return find.query().select("customerId, universeUUID").findList().stream()
         .collect(
             Collectors.groupingBy(
                 u -> u.getCustomerId(),
@@ -344,8 +338,7 @@ public class Universe extends Model {
   }
 
   public static Set<Universe> getAllPresent(Set<UUID> universeUUIDs) {
-    return universeUUIDs
-        .stream()
+    return universeUUIDs.stream()
         .map(Universe::maybeGet)
         .filter(Optional::isPresent)
         .map(Optional::get)
@@ -368,7 +361,7 @@ public class Universe extends Model {
   /**
    * Find a single attribute from universe_details_json column of Universe.
    *
-   * @param <T> the attribute type.
+   * @param clazz the attribute type.
    * @param universeUUID the universe UUID to be searched for.
    * @param fieldName the name of the field.
    * @return the attribute value.
@@ -383,6 +376,29 @@ public class Universe extends Model {
     SqlQuery sqlQuery = Ebean.createSqlQuery(query);
     sqlQuery.setParameter("universeUUID", universeUUID);
     return sqlQuery.findOneOrEmpty().map(row -> clazz.cast(row.get("field")));
+  }
+
+  /**
+   * Find a single attribute from universe_details_json column of all Universe records.
+   *
+   * @param clazz the attribute type.
+   * @param customerId the customer ID primary key.
+   * @param fieldName the name of the field.
+   * @return the attribute values for all universes.
+   */
+  public static <T> Map<UUID, T> getUniverseDetailsFields(
+      Class<T> clazz, Long customerId, String fieldName) {
+    String query =
+        String.format(
+            "select universe_uuid, universe_details_json::jsonb->>'%s' as field from universe"
+                + " where customer_id = :customerId",
+            fieldName);
+    SqlQuery sqlQuery = Ebean.createSqlQuery(query);
+    sqlQuery.setParameter("customerId", customerId);
+    return sqlQuery.findList().stream()
+        .filter(r -> r.get("field") != null && clazz.isAssignableFrom(r.get("field").getClass()))
+        .collect(
+            Collectors.toMap(r -> (UUID) r.get("universe_uuid"), r -> clazz.cast(r.get("field"))));
   }
 
   /**
@@ -454,8 +470,7 @@ public class Universe extends Model {
    * @return true if all nodes are in LIVE state
    */
   public boolean allNodesLive() {
-    return getNodes()
-        .stream()
+    return getNodes().stream()
         .allMatch(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live));
   }
 
@@ -543,8 +558,7 @@ public class Universe extends Model {
     List<NodeDetails> servers = getServers(ServerType.TSERVER);
     Collection<NodeDetails> primaryNodes =
         getNodesInCluster(getUniverseDetails().getPrimaryCluster().uuid);
-    return servers
-        .stream()
+    return servers.stream()
         .filter(server -> primaryNodes.contains(server))
         .collect(Collectors.toList());
   }
@@ -558,8 +572,7 @@ public class Universe extends Model {
   public List<NodeDetails> getLiveTServersInPrimaryCluster() {
     List<NodeDetails> servers = getTServersInPrimaryCluster();
     List<NodeDetails> filteredServers =
-        servers
-            .stream()
+        servers.stream()
             .filter(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live))
             .collect(Collectors.toList());
 
@@ -608,9 +621,7 @@ public class Universe extends Model {
     List<NodeDetails> servers = new ArrayList<>();
     UniverseDefinitionTaskParams details = getUniverseDetails();
     Set<NodeDetails> filteredNodeDetails =
-        details
-            .nodeDetailsSet
-            .stream()
+        details.nodeDetailsSet.stream()
             .filter(n -> n.cloudInfo.private_ip != null)
             .collect(Collectors.toSet());
     for (NodeDetails nodeDetails : filteredNodeDetails) {
@@ -986,9 +997,7 @@ public class Universe extends Model {
   }
 
   public static Set<Universe> universeDetailsIfCertsExists(UUID certUUID, UUID customerUUID) {
-    return Customer.get(customerUUID)
-        .getUniverses()
-        .stream()
+    return Customer.get(customerUUID).getUniverses().stream()
         .filter(
             s ->
                 (s.getUniverseDetails().rootCA != null
@@ -1025,22 +1034,14 @@ public class Universe extends Model {
   }
 
   static Set<UUID> getUniverseUUIDsForCustomer(Long customerId) {
-    return find.query()
-        .select("universeUUID")
-        .where()
-        .eq("customer_id", customerId)
-        .findList()
+    return find.query().select("universeUUID").where().eq("customer_id", customerId).findList()
         .stream()
         .map(Universe::getUniverseUUID)
         .collect(Collectors.toSet());
   }
 
   static Set<Universe> getUniversesForCustomer(Long customerId) {
-    return find.query()
-        .where()
-        .eq("customer_id", customerId)
-        .findSet()
-        .stream()
+    return find.query().where().eq("customer_id", customerId).findSet().stream()
         .peek(Universe::fillUniverseDetails)
         .collect(Collectors.toSet());
   }

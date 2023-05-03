@@ -10,17 +10,11 @@
  */
 package com.yugabyte.yw.common.certmgmt.providers;
 
+import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import java.security.KeyPair;
 import java.security.cert.X509Certificate;
 import java.util.Date;
-import java.util.UUID;
-import java.util.HashMap;
 import java.util.Map;
-
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
-import com.yugabyte.yw.common.certmgmt.CertificateDetails;
-
-import org.apache.commons.lang3.tuple.Pair;
 
 /** Provides interface to manage certificates */
 public interface CertificateProviderInterface {

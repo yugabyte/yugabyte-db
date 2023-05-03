@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/docdb/doc_read_context.h"
 

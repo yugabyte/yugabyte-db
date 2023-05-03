@@ -39,8 +39,8 @@
 #include <boost/bimap.hpp>
 
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/qlexpr/index.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
 
@@ -90,6 +90,13 @@ struct TabletReplicaDriveInfo {
   bool may_have_orphaned_post_split_data = true;
 };
 
+struct FullCompactionStatus {
+  tablet::FullCompactionState full_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
+
+  // Not valid if full_compaction_state == UNKNOWN.
+  HybridTime last_full_compaction_time;
+};
+
 // Information on a current replica of a tablet.
 // This is copyable so that no locking is needed.
 struct TabletReplica {
@@ -109,6 +116,8 @@ struct TabletReplica {
   TabletReplicaDriveInfo drive_info;
 
   TabletLeaderLeaseInfo leader_lease_info;
+
+  FullCompactionStatus full_compaction_status;
 
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
@@ -307,6 +316,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
     return initiated_election_.compare_exchange_strong(expected, true);
   }
 
+  void UpdateReplicaFullCompactionStatus(
+      const TabletServerId& ts_uuid, const FullCompactionStatus& full_compaction_status);
+
   // The next five methods are getters and setters for the transient, in memory list of table ids
   // hosted by this tablet. They are only used if the underlying tablet proto's
   // hosted_tables_mapped_by_parent_id field is set.
@@ -468,8 +480,8 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
 // A tablet, and two partitions that together cover the tablet's partition.
 struct TabletWithSplitPartitions {
   TabletInfoPtr tablet;
-  Partition left;
-  Partition right;
+  dockv::Partition left;
+  dockv::Partition right;
 };
 
 // The information about a table, including its state and tablets.
@@ -576,7 +588,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // This should only be used for transaction status tables, where the partition ranges
   // are not actually used.
   void AddStatusTabletViaSplitPartition(TabletInfoPtr old_tablet,
-                                        const Partition& partition,
+                                        const dockv::Partition& partition,
                                         const TabletInfoPtr& new_tablet);
 
   // Replace existing tablet with a new one.
@@ -628,7 +640,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   TabletInfoPtr GetColocatedUserTablet() const;
 
   // Get info of the specified index.
-  IndexInfo GetIndexInfo(const TableId& index_id) const;
+  qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
 
   // Returns true if all tablets of the table are deleted.
   bool AreAllTabletsDeleted() const;
@@ -716,6 +728,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool AttachedYCQLIndexDeletionInProgress(const TableId& index_table_id) const;
 
+  bool SetBootstrappingXClusterReplication(bool val) {
+    return bootstrapping_xcluster_replication_.exchange(val, std::memory_order_acq_rel);
+  }
+
+  bool GetBootstrappingXClusterReplication() const {
+    return bootstrapping_xcluster_replication_.load(std::memory_order_acquire);
+  }
+
  private:
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
@@ -772,6 +792,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // from PG catalog tables because the user may have used Alter Table to change
   // the table's tablespace.
   TablespaceId tablespace_id_for_table_creation_;
+
+  // This field denotes the table is under xcluster bootstrapping. This is used to prevent create
+  // table from completing. Not needed once D23712 lands.
+  std::atomic_bool bootstrapping_xcluster_replication_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };
@@ -1166,11 +1190,6 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   const NamespaceId namespace_id() const;
 
   std::string ToString() const override;
-
-  //  Set of table_ids which have been created after the CDCSDK stream has been created. This will
-  //  not be persisted in sys_catalog. Typically you should use the 'LockForRead'/'LockForRead' on
-  //  this object before accessing this member.
-  std::unordered_set<TableId> cdcsdk_unprocessed_tables;
 
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;

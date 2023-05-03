@@ -144,6 +144,7 @@ set(MASTER_SRCS
   yql_views_vtable.cc
   yql_virtual_table.cc
   yql_vtable_iterator.cc
+  ysql_backends_manager.cc
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
   ysql_transaction_ddl.cc)
@@ -164,6 +165,7 @@ set(MASTER_DEPS
   version_info_proto
   yb_pggate_flags
   yb_pggate
+  cdc_util
 )
 
 ADD_YB_LIBRARY(master
@@ -175,7 +177,6 @@ set(MASTER_RPC_SRCS
   master_rpc.cc)
 set(MASTER_RPC_LIBS
   yb_common
-  yb_ql_common
   yrpc
   gutil
   yb_util
@@ -195,7 +196,7 @@ set(MASTER_UTIL_SRCS
   master_util.cc)
 ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
-  DEPS yb_ql_common master_error ${MASTER_RPC_LIBS})
+  DEPS master_error ${MASTER_RPC_LIBS})
 
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS

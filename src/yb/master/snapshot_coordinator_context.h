@@ -91,7 +91,7 @@ class SnapshotCoordinatorContext {
   virtual ~SnapshotCoordinatorContext() = default;
 };
 
-Result<docdb::KeyBytes> EncodedKey(
+Result<dockv::KeyBytes> EncodedKey(
     SysRowEntryType type, const Slice& id, SnapshotCoordinatorContext* context);
 
 } // namespace master

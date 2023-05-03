@@ -50,13 +50,9 @@
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
-using yb::client::YBSchema;
 using yb::client::YBTableCreator;
 using yb::client::YBTableName;
-using yb::itest::CreateTabletServerMap;
 using yb::itest::TabletServerMap;
-using yb::rpc::Messenger;
-using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 
 DECLARE_int32(heartbeat_interval_ms);
@@ -70,13 +66,11 @@ DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
 DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
 
-DEFINE_UNKNOWN_int32(num_test_tablets, 60, "Number of tablets for stress test");
+DEFINE_NON_RUNTIME_int32(num_test_tablets, 60, "Number of tablets for stress test");
 
 using std::string;
 using std::vector;
-using std::thread;
 using std::unique_ptr;
-using strings::Substitute;
 
 namespace yb {
 

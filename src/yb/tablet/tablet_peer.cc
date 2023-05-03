@@ -112,8 +112,10 @@ DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 900,
 DEFINE_UNKNOWN_bool(propagate_safe_time, true,
     "Propagate safe time to read from leader to followers");
 
-DEFINE_RUNTIME_bool(abort_active_txns_during_xcluster_bootstrap, true,
-    "Abort active transactions during bootstrapping.");
+DEFINE_RUNTIME_bool(abort_active_txns_during_xrepl_bootstrap, true,
+    "Abort active transactions during xcluster and cdc bootstrapping. Inconsistent replicated data "
+    "may be produced if this is disabled.");
+TAG_FLAG(abort_active_txns_during_xrepl_bootstrap, advanced);
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
@@ -146,12 +148,10 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::ConsensusOptions;
 using consensus::ConsensusRound;
-using consensus::OpIdType;
 using consensus::PeerMemberType;
 using consensus::RaftConfigPB;
 using consensus::RaftConsensus;
 using consensus::RaftPeerPB;
-using consensus::ReplicateMsg;
 using consensus::StateChangeContext;
 using consensus::StateChangeReason;
 using log::Log;
@@ -585,7 +585,7 @@ Status TabletPeer::Shutdown(
   return Status::OK();
 }
 
-Status TabletPeer::AbortSQLTransactions() {
+Status TabletPeer::AbortSQLTransactions() const {
   // Once raft group state enters QUIESCING state,
   // new queries cannot be processed from then onwards.
   // Aborting any remaining active transactions in the tablet.
@@ -697,6 +697,13 @@ Status TabletPeer::SubmitUpdateTransaction(
   if (!operation->tablet_is_set()) {
     auto tablet = VERIFY_RESULT(shared_tablet_safe());
     operation->SetTablet(tablet);
+  }
+  auto scoped_read_operation =
+      VERIFY_RESULT(operation->tablet_safe())->CreateNonAbortableScopedRWOperation();
+  if (!scoped_read_operation.ok()) {
+    auto status = MoveStatus(scoped_read_operation);
+    operation->CompleteWithStatus(status);
+    return status;
   }
   Submit(std::move(operation), term);
   return Status::OK();
@@ -1004,6 +1011,21 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     }
   }
 
+  if (meta_->IsLazySuperblockFlushEnabled()) {
+    // Unapplied change metadata operations, if any, are taken into account above. The below
+    // takes into accounts any applied but unflushed change metadata operations.
+
+    // TODO(lazy_sb_flush): MinUnflushedChangeMetadataOpId() requires flush_lock_ which can be
+    // expensive to get during a superblock flush. Get rid of the below logic, if possible, post
+    // https://github.com/yugabyte/yugabyte-db/issues/16684.
+    auto min_unflushed_change_metadata_index = meta_->MinUnflushedChangeMetadataOpId().index;
+    min_index = std::min(min_index, min_unflushed_change_metadata_index);
+    if (details) {
+      *details += Format(
+          "Min unflushed CHANGE_METADATA_OP index: $0\n", min_unflushed_change_metadata_index);
+    }
+  }
+
   if (details) {
     *details += Format("Earliest needed log index: $0\n", min_index);
   }
@@ -1011,9 +1033,10 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   return min_index;
 }
 
-Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() {
-  if (VERIFY_RESULT(shared_tablet_safe())->table_type() ==
-      TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootstrap() const {
+  auto tablet = VERIFY_RESULT(shared_tablet_safe());
+
+  if (tablet->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
     // earliest required log record. This will be the CREATED\PENDING log record of the oldest
     // active transaction.
@@ -1022,14 +1045,27 @@ Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() {
       index--;
     }
     // Term does not matter, so can be set to 0.
-    return OpId(0, index);
+
+    auto op_id = OpId(0, index);
+    auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
+    return std::make_pair(std::move(op_id), std::move(bootstrap_time));
   }
 
-  auto index = GetLatestLogEntryOpId();
-  if (GetAtomicFlag(&FLAGS_abort_active_txns_during_xcluster_bootstrap)) {
+  auto op_id = GetLatestLogEntryOpId();
+
+  // The bootstrap_time is the minium time from which the provided OpId will be transactionally
+  // consistent. It is important to call AbortSQLTransactions, which resolves the pending
+  // transactions and aborts the active ones. This step will synchronizes our clock with the
+  // transaction status tablet clock, ensuring that the bootstrap_time we compute later is correct.
+  // Ex: Our safe time is 100, and we have a pending intent for which the log got GCed. So this
+  // transaction cannot be replicated. If the transaction is still active it needs to be aborted.
+  // If, the coordinator is at 110 and the transaction was committed at 105. We need to move our
+  // clock to 110 and pick a higher bootstrap_time so that the commit is not part of the bootstrap.
+  if (GetAtomicFlag(&FLAGS_abort_active_txns_during_xrepl_bootstrap)) {
     RETURN_NOT_OK(AbortSQLTransactions());
   }
-  return index;
+  auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
+  return std::make_pair(std::move(op_id), std::move(bootstrap_time));
 }
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {

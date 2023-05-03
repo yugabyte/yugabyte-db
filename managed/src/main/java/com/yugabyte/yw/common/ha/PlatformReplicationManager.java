@@ -43,6 +43,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -237,14 +238,12 @@ public class PlatformReplicationManager {
 
     // Delete any instances that exist locally but aren't included in the sync request.
     Set<String> instanceAddrsToDelete = Sets.difference(existingAddrs, newAddrs);
-    existingInstances
-        .stream()
+    existingInstances.stream()
         .filter(i -> instanceAddrsToDelete.contains(i.getAddress()))
         .forEach(PlatformInstance::delete);
 
     // Import the new instances, or update existing ones.
-    return newInstances
-        .stream()
+    return newInstances.stream()
         .map(replicationHelper::processImportedInstance)
         .filter(Optional::isPresent)
         .map(Optional::get)
@@ -312,8 +311,7 @@ public class PlatformReplicationManager {
 
                             // Send the platform backup to all followers.
                             Set<PlatformInstance> instancesToSync =
-                                remoteInstances
-                                    .stream()
+                                remoteInstances.stream()
                                     .filter(this::sendBackup)
                                     .collect(Collectors.toSet());
 
@@ -428,6 +426,15 @@ public class PlatformReplicationManager {
 
       return extraVars;
     }
+
+    List<String> getYbaInstallerArgs() {
+      List<String> commandArgs = new ArrayList<>();
+      commandArgs.add("--yba_installer");
+      commandArgs.add("--data_dir");
+      commandArgs.add(replicationHelper.getBaseInstall());
+
+      return commandArgs;
+    }
   }
 
   private class CreatePlatformBackupParams extends PlatformBackupParams {
@@ -458,6 +465,13 @@ public class PlatformReplicationManager {
         commandArgs.add("--exclude_releases");
       }
 
+      String installation = replicationHelper.getInstallationType();
+      if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {
+        commandArgs.add("--pg_dump_path");
+        commandArgs.add(replicationHelper.getPGDumpPath());
+        commandArgs.addAll(getYbaInstallerArgs());
+      }
+
       commandArgs.add("--output");
       commandArgs.add(outputDirectory);
 
@@ -481,6 +495,14 @@ public class PlatformReplicationManager {
       commandArgs.add("--input");
       commandArgs.add(input.getAbsolutePath());
       commandArgs.add("--disable_version_check");
+      String installation = replicationHelper.getInstallationType();
+      if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {
+        commandArgs.add("--pg_restore_path");
+        commandArgs.add(replicationHelper.getPGRestorePath());
+        commandArgs.addAll(getYbaInstallerArgs());
+        commandArgs.add("--destination");
+        commandArgs.add(replicationHelper.getBaseInstall());
+      }
 
       return commandArgs;
     }

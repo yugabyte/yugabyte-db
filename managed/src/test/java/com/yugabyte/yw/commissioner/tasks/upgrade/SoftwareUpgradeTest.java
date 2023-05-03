@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -33,6 +34,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -345,6 +347,33 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
     assertEquals(123, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testSoftwareUpgradeAndPromoteAutoFlagsOnOthers() {
+    updateDefaultUniverseTo5Nodes(true);
+
+    Universe xClusterUniv = ModelFactory.createUniverse("univ-2");
+    XClusterConfig.create(
+        "test-2", defaultUniverse.getUniverseUUID(), xClusterUniv.getUniverseUUID());
+    Universe xClusterUniv2 = ModelFactory.createUniverse("univ-3");
+    XClusterConfig.create(
+        "test-3", xClusterUniv.getUniverseUUID(), xClusterUniv2.getUniverseUUID());
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+    verify(mockNodeManager, times(71)).nodeCommand(any(), any());
+    verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), anyList(), any());
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertEquals(
+        3,
+        subTasks.stream()
+            .filter(task -> task.getTaskType().equals(TaskType.PromoteAutoFlags))
+            .count());
     assertEquals(Success, taskInfo.getTaskState());
   }
 

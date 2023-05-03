@@ -56,10 +56,8 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
@@ -410,8 +408,7 @@ public class Schedule extends Model {
             .findList();
     // This should be safe to do since storageConfigUUID is a required constraint.
     scheduleList =
-        scheduleList
-            .stream()
+        scheduleList.stream()
             .filter(
                 s ->
                     s.getTaskParams()
@@ -458,7 +455,7 @@ public class Schedule extends Model {
   private static SchedulePagedApiResponse createResponse(SchedulePagedResponse response) {
     List<Schedule> schedules = response.getEntities();
     List<ScheduleResp> schedulesList =
-        schedules.parallelStream().map(s -> toScheduleResp(s)).collect(Collectors.toList());
+        schedules.stream().map(Schedule::toScheduleResp).collect(Collectors.toList());
     SchedulePagedApiResponse responseMin = new SchedulePagedApiResponse();
     responseMin.setEntities(schedulesList);
     responseMin.setHasPrev(response.isHasPrev());
@@ -572,12 +569,10 @@ public class Schedule extends Model {
         KeyspaceTablesListBuilder keySpaceTableListBuilder =
             KeyspaceTablesList.builder().keyspace(keyspaceTable.keyspace);
         if (keyspaceTable.tableUUIDList != null) {
-          keySpaceTableListBuilder.tableUUIDList(
-              keyspaceTable.tableUUIDList.stream().collect(Collectors.toSet()));
+          keySpaceTableListBuilder.tableUUIDList(keyspaceTable.tableUUIDList);
         }
         if (keyspaceTable.tableNameList != null) {
-          keySpaceTableListBuilder.tablesList(
-              keyspaceTable.tableNameList.stream().collect(Collectors.toSet()));
+          keySpaceTableListBuilder.tablesList(keyspaceTable.tableNameList);
         }
         keySpaceResponseList.add(keySpaceTableListBuilder.build());
       }
@@ -597,19 +592,13 @@ public class Schedule extends Model {
   }
 
   private static BackupInfo getV1ScheduleBackupInfo(MultiTableBackup.Params params) {
-    Set<UUID> tableUUIDList = null;
     List<KeyspaceTablesList> keySpaceResponseList = null;
-    if (params.tableUUID != null) {
-      tableUUIDList = Stream.of(params.tableUUID).collect(Collectors.toSet());
-    } else if (params.tableUUIDList != null) {
-      tableUUIDList = params.tableUUIDList.stream().collect(Collectors.toSet());
-    }
     if (!StringUtils.isEmpty(params.getKeyspace())) {
       KeyspaceTablesList kTList =
           KeyspaceTablesList.builder()
               .keyspace(params.getKeyspace())
-              .tablesList(params.getTableNames())
-              .tableUUIDList(tableUUIDList)
+              .tablesList(params.getTableNameList())
+              .tableUUIDList(params.getTableUUIDList())
               .build();
       keySpaceResponseList = Arrays.asList(kTList);
     }

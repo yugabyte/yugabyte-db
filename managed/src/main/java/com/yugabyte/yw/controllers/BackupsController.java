@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.filters.RestoreApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
@@ -270,18 +271,7 @@ public class BackupsController extends AuthenticatedController {
               universe.getUniverseUUID()));
     }
 
-    if (taskParams.keyspaceTableList != null) {
-      backupUtil.validateKeyspaces(taskParams.keyspaceTableList);
-      for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
-        if (keyspaceTable.tableUUIDList == null) {
-          keyspaceTable.tableUUIDList = new ArrayList<UUID>();
-        }
-        backupUtil.validateTables(
-            keyspaceTable.tableUUIDList, universe, keyspaceTable.keyspace, taskParams.backupType);
-      }
-    } else {
-      backupUtil.validateTables(null, universe, null, taskParams.backupType);
-    }
+    backupUtil.validateBackupRequest(taskParams.keyspaceTableList, universe, taskParams.backupType);
 
     if (taskParams.timeBeforeDelete != 0L && taskParams.expiryTimeUnit == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Please provide time unit for backup expiry");
@@ -339,7 +329,7 @@ public class BackupsController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.BackupRequestParams",
           required = true))
   public Result createBackupSchedule(UUID customerUUID, Http.Request request) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
     if (taskParams.storageConfigUUID == null) {
@@ -415,21 +405,19 @@ public class BackupsController extends AuthenticatedController {
       backupUtil.validateIncrementalScheduleFrequency(
           taskParams.incrementalBackupFrequency, schedulingFrequency, universe);
     }
-    Schedule schedule =
-        Schedule.create(
-            customerUUID,
-            taskParams.getUniverseUUID(),
-            taskParams,
-            TaskType.CreateBackup,
-            taskParams.schedulingFrequency,
-            taskParams.cronExpression,
-            taskParams.frequencyTimeUnit,
-            taskParams.scheduleName);
-    UUID scheduleUUID = schedule.getScheduleUUID();
-    LOG.info(
-        "Created backup schedule for customer {}, schedule uuid = {}.", customerUUID, scheduleUUID);
-    auditService().createAuditEntryWithReqBody(request);
-    return PlatformResults.withData(schedule);
+
+    UUID taskUUID = commissioner.submit(TaskType.CreateBackupSchedule, taskParams);
+    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
+    CustomerTask.create(
+        customer,
+        taskParams.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Schedule,
+        CustomerTask.TaskType.Create,
+        universe.getName());
+    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
+    auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
+    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(
@@ -965,7 +953,7 @@ public class BackupsController extends AuthenticatedController {
   @ApiOperation(
       value = "Get throttle params from YB-Controller",
       nickname = "getThrottleParams",
-      response = Map.class)
+      response = YbcThrottleParametersResponse.class)
   public Result getThrottleParams(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
     Customer.getOrBadRequest(customerUUID);
@@ -980,7 +968,7 @@ public class BackupsController extends AuthenticatedController {
           BAD_REQUEST, "Cannot get throttle params, universe is paused.");
     }
     try {
-      Map<String, String> throttleParams = ybcManager.getThrottleParams(universeUUID);
+      YbcThrottleParametersResponse throttleParams = ybcManager.getThrottleParams(universeUUID);
       return PlatformResults.withData(throttleParams);
     } catch (RuntimeException e) {
       throw new PlatformServiceException(

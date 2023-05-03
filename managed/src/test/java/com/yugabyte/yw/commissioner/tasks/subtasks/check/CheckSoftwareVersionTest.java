@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -70,7 +71,7 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
     "2.18.0.0-b1, 2.17.0.0, 1"
   })
   public void testDifferentVersionFail(String version1, String nodeVersion, String nodeBuild) {
-    updateUniverseVersion(defaultUniverse, version1);
+    TestHelper.updateUniverseVersion(defaultUniverse, version1);
     try {
       when(mockClient.getStatus(any(), anyInt()))
           .thenReturn(TestUtils.prepareGetStatusResponse(nodeVersion, nodeBuild));
@@ -104,7 +105,7 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
   })
   public void testCheckSoftwareVersionSuccess(
       String version, String nodeVersion, String nodeBuild) {
-    updateUniverseVersion(defaultUniverse, version);
+    TestHelper.updateUniverseVersion(defaultUniverse, version);
     try {
       when(mockClient.getStatus(any(), anyInt()))
           .thenReturn(TestUtils.prepareGetStatusResponse(nodeVersion, nodeBuild));
@@ -137,14 +138,5 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
     } catch (Exception ignored) {
       fail();
     }
-  }
-
-  private void updateUniverseVersion(Universe universe, String version) {
-    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
-    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
-    userIntent.ybSoftwareVersion = version;
-    details.upsertPrimaryCluster(userIntent, null);
-    universe.setUniverseDetails(details);
-    universe.save();
   }
 }

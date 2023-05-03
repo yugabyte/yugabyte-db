@@ -23,8 +23,8 @@
 #include "yb/client/table.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/index.h"
-#include "yb/common/index_column.h"
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -185,7 +185,7 @@ void PTDmlStmt::LoadSchema(SemContext *sem_context,
     string colname = col.name();
     if (is_index && !schema.table_properties().use_mangled_column_name()) {
       // This is an OLD INDEX. We need to mangled its column name to work with new implementation.
-      colname = YcqlName::MangleColumnName(colname);
+      colname = qlexpr::YcqlName::MangleColumnName(colname);
     }
     column_map->emplace(MCString(colname.c_str(), sem_context->PSemMem()),
                         ColumnDesc(idx,
@@ -389,7 +389,7 @@ Status PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
   const Schema& indexed_schema = table_->InternalSchema();
   for (const auto& itr : table_->index_map()) {
     const TableId& index_id = itr.first;
-    const IndexInfo& index = itr.second;
+    const auto& index = itr.second;
 
     bool primary_key_cols_only = index.PrimaryKeyColumnsOnly(indexed_schema);
 
@@ -647,11 +647,10 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
     if (select_stmt->child_select()) {
       // Parent SELECT (of a nested select).
       std::shared_ptr<client::YBTable> table = select_stmt->table();
-      std::unordered_map<TableId, IndexInfo>::const_iterator it =
-        table->index_map().find(select_stmt->child_select()->index_id());
+      auto it = table->index_map().find(select_stmt->child_select()->index_id());
 
       RSTATUS_DCHECK(it != table->index_map().end(), InternalError, "Index should be present");
-      const IndexInfo& idx_info = it->second;
+      const auto& idx_info = it->second;
 
       if (idx_info.where_predicate_spec()) {
         // It is a partial index.
@@ -663,7 +662,7 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
     } else if (!select_stmt->index_id().empty()) {
       // Child SELECT.
       std::shared_ptr<client::YBTable> table = select_stmt->table();
-      const IndexInfo& idx_info = table->index_info();
+      const auto& idx_info = table->index_info();
 
       if (idx_info.where_predicate_spec()) {
         // First attempt to preserve the sub-clause if it might be useful.

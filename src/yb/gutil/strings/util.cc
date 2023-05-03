@@ -37,11 +37,6 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/utf/utf.h"
 
-using std::copy;
-using std::max;
-using std::min;
-using std::reverse;
-using std::sort;
 using std::swap;
 using std::string;
 using std::vector;

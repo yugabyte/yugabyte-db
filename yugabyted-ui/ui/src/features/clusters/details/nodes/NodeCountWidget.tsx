@@ -88,13 +88,13 @@ export const NodeCountWidget: FC<NodeCountWidgetProps> = ({
                 {numHealthyNodes}
             </div>
             <div className={classes.valueIcon}>
-                <YBStatus type={STATUS_TYPES.SUCCESS}/>
+                <YBStatus value={numHealthyNodes} type={STATUS_TYPES.SUCCESS} tooltip />
             </div>
             <div className={classes.valueText}>
-                {deadNodes.length}
+                {deadNodes.length !== 0 ? deadNodes.length : ''}
             </div>
             <div className={classes.valueIcon}>
-                <YBStatus type={STATUS_TYPES.ERROR}/>
+                <YBStatus value={deadNodes.length} type={STATUS_TYPES.ERROR} tooltip />
             </div>
           </Typography>
         </div>
@@ -107,7 +107,7 @@ export const NodeCountWidget: FC<NodeCountWidgetProps> = ({
                 {bootstrappingNodes.length}
             </div>
             <div className={classes.valueIcon}>
-                <YBStatus type={STATUS_TYPES.IN_PROGRESS}/>
+                <YBStatus value={bootstrappingNodes.length} type={STATUS_TYPES.IN_PROGRESS} tooltip />
             </div>
           </Typography>
         </div>

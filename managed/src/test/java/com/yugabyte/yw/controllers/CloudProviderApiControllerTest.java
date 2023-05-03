@@ -25,9 +25,15 @@ import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -48,6 +54,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -62,6 +69,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -89,7 +98,6 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -117,11 +125,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     user = ModelFactory.testUser(customer);
     try {
       String kubeFile = createTempFile("test2.conf", "test5678");
-      //      when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
-      //          .thenReturn(kubeFile);
+      when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
+          .thenReturn(kubeFile);
     } catch (Exception e) {
       // Do nothing
     }
+    String gcpCredentialFile = createTempFile("gcpCreds.json", "test5678");
+    when(mockAccessManager.createGCPCredentialsFile(any(), any())).thenReturn(gcpCredentialFile);
   }
 
   private Result listProviders() {
@@ -130,9 +140,16 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   private Result createProvider(JsonNode bodyJson) {
+    return createProvider(bodyJson, false);
+  }
+
+  private Result createProvider(JsonNode bodyJson, boolean ignoreValidation) {
     return doRequestWithAuthTokenAndBody(
         "POST",
-        "/api/customers/" + customer.getUuid() + "/providers?validate=true",
+        "/api/customers/"
+            + customer.getUuid()
+            + "/providers?validate=true&ignoreValidationErrors="
+            + ignoreValidation,
         user.createAuthToken(),
         bodyJson);
   }
@@ -166,14 +183,24 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         user.createAuthToken());
   }
 
+  private Result editProvider(JsonNode bodyJson, UUID providerUUID, boolean validate) {
+    return editProvider(bodyJson, providerUUID, validate, false);
+  }
+
   private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
+    return editProvider(bodyJson, providerUUID, true, false);
+  }
+
+  private Result editProvider(
+      JsonNode bodyJson, UUID providerUUID, boolean validate, boolean ignoreValidation) {
     return doRequestWithAuthTokenAndBody(
         "PUT",
         "/api/customers/"
             + customer.getUuid()
             + "/providers/"
             + providerUUID
-            + "/edit?validate=true",
+            + String.format(
+                "/edit?validate=%s&ignoreValidationErrors=%s", validate, ignoreValidation),
         user.createAuthToken(),
         bodyJson);
   }
@@ -352,6 +379,62 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     provider.setName(actualProviderName);
     provider.setDetails(new ProviderDetails());
     return provider;
+  }
+
+  @Test
+  public void testFilteringRegion() {
+    Provider provider =
+        Provider.create(customer.getUuid(), Common.CloudType.aws, "test", new ProviderDetails());
+    Region region = Region.create(provider, "us-west-1", "us-west-1", "foo");
+    Region region2 = Region.create(provider, "us-west-2", "us-west-2", "foo");
+    region2.setActive(false);
+    region2.save();
+    AvailabilityZone az1 =
+        AvailabilityZone.createOrThrow(
+            region, "us-west-1a", "us-west-1a", "subnet-foo", "subnet-foo");
+    AvailabilityZone az2 =
+        AvailabilityZone.createOrThrow(
+            region, "us-west-1b", "us-west-1b", "subnet-foo", "subnet-foo");
+    az2.setActive(false);
+    az2.save();
+    Result result = getProvider(provider.getUuid());
+    Provider resultProvider = Json.fromJson(Json.parse(contentAsString(result)), Provider.class);
+    assertEquals(1, resultProvider.getRegions().size());
+    assertEquals(1, resultProvider.getRegions().get(0).getZones().size());
+  }
+
+  @Test
+  public void testAddingAlreadyDeletedRegion() {
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenReturn(UUID.randomUUID());
+    ProviderDetails providerDetails = new ProviderDetails();
+    Provider provider =
+        Provider.create(customer.getUuid(), Common.CloudType.aws, "test", providerDetails);
+    Region region = Region.create(provider, "us-west-1", "us-west-1", "foo");
+    region.setActive(false);
+    region.save();
+    AvailabilityZone.createOrThrow(region, "us-west-1a", "us-west-1a", "subnet-foo", "subnet-foo");
+    AccessKey.create(provider.getUuid(), "access-key-code", new AccessKey.KeyInfo());
+    String jsonString =
+        String.format(
+            "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
+                + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
+                + "\"vnetName\":\"vpc-foo\", \"ybImage\":\"foo\", "
+                + "\"securityGroupId\":\"sg-foo\" }}}, "
+                + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
+                + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
+                + "\"version\": %d}",
+            provider.getVersion());
+    Image image = new Image();
+    image.setArchitecture("x86_64");
+    image.setRootDeviceType("ebs");
+    image.setPlatformDetails("linux/UNIX");
+    when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), any())).thenReturn(image);
+    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
+        .thenReturn(getTestSecurityGroup(21, 24, "vpc-foo"));
+    Result result = editProvider(Json.parse(jsonString), provider.getUuid());
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
   }
 
   @Test
@@ -725,6 +808,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ProviderDetails providerDetails = new ProviderDetails();
     Provider provider =
         Provider.create(customer.getUuid(), Common.CloudType.aws, "test", providerDetails);
+    AccessKey accessKey =
+        AccessKey.create(
+            provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
     Region region = Region.create(provider, "us-west-1", "us-west-1", "foo");
     region.setVnetName("vpc-foo");
     region.setSecurityGroupId("sg-foo");
@@ -740,6 +826,11 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
                 + "\"version\": %d}",
             provider.getVersion());
+    JsonNode providerJson = Json.parse(jsonString);
+    ArrayNode allAccessKeys = Json.newArray();
+    allAccessKeys.add(Json.toJson(accessKey));
+    ((ObjectNode) providerJson).set("allAccessKeys", allAccessKeys);
+
     Image image = new Image();
     image.setArchitecture("x86_64");
     image.setRootDeviceType("ebs");
@@ -748,7 +839,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
         .thenReturn(getTestSecurityGroup(21, 24, "vpc-foo"));
     Result result =
-        assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.getUuid()));
+        assertPlatformException(() -> editProvider(providerJson, provider.getUuid(), false));
     assertBadRequest(result, "No changes to be made for provider type: aws");
   }
 
@@ -767,7 +858,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}]}";
 
     Result result =
-        assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.getUuid()));
+        assertPlatformException(
+            () -> editProvider(Json.parse(jsonString), provider.getUuid(), false));
     assertBadRequest(result, "Required field vnet name (VPC ID) for region: us-west-1");
   }
 
@@ -1057,6 +1149,48 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testModifyGCPProviderCredentials() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "gcp");
+    bodyJson.put("name", "gcp-Provider");
+    ObjectNode detailsJson = Json.newObject();
+    ObjectNode cloudInfoJson = Json.newObject();
+    ObjectNode gcpCloudInfo = Json.newObject();
+    ObjectNode gcpCredentials = Json.newObject();
+    gcpCredentials.put("GCE_EMAIL", "test@yugabyte.com");
+    gcpCredentials.put("private_key", "Private key");
+
+    gcpCloudInfo.put("useHostCredentials", true);
+    gcpCloudInfo.put("destVpcId", "test");
+    gcpCloudInfo.put("gceProject", "yugabyte");
+    gcpCloudInfo.put("gceApplicationCredentials", gcpCredentials);
+    cloudInfoJson.put("gcp", gcpCloudInfo);
+    detailsJson.set("cloudInfo", cloudInfoJson);
+    bodyJson.set("details", detailsJson);
+
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenReturn(UUID.randomUUID());
+
+    Result result = createProvider(bodyJson);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    Provider gcpProvider = Provider.getOrBadRequest(ybpTask.resourceUUID);
+
+    gcpCredentials.put("client_id", "Client ID");
+    gcpProvider.getDetails().getCloudInfo().getGcp().setGceApplicationCredentials(gcpCredentials);
+    result = editProvider(Json.toJson(gcpProvider), gcpProvider.getUuid());
+    assertOk(result);
+
+    gcpProvider = Provider.getOrBadRequest(gcpProvider.getUuid());
+    assertEquals(
+        "Client ID",
+        ((ObjectNode)
+                gcpProvider.getDetails().getCloudInfo().getGcp().getGceApplicationCredentials())
+            .get("client_id")
+            .textValue());
+  }
+
+  @Test
   public void testK8sProviderEditDetails() {
     JsonNode k8sRequestBody = getK8sRequestBody();
 
@@ -1066,12 +1200,12 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertNotNull(ybpTask.resourceUUID);
 
     Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    p.getDetails().getCloudInfo().getKubernetes().setKubernetesProvider("GKE");
+    p.getDetails().getCloudInfo().getKubernetes().setKubernetesProvider("GKE-2");
 
     result = editProvider(Json.toJson(p), p.getUuid());
     assertOk(result);
-    p.refresh();
-    assertEquals(p.getDetails().getCloudInfo().getKubernetes().getKubernetesProvider(), "GKE");
+    p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    assertEquals(p.getDetails().getCloudInfo().getKubernetes().getKubernetesProvider(), "GKE-2");
   }
 
   @Test
@@ -1195,7 +1329,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
-  @Ignore("PLAT-8193")
   public void testK8sProviderEditModifyRegion() {
     JsonNode k8sRequestBody = getK8sRequestBody();
 
@@ -1218,7 +1351,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
     assertOk(result);
 
-    p.refresh();
+    Result providerRes = getProvider(p.getUuid());
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
     assertEquals(1, p.getRegions().size());
     assertEquals(
         "Updating storage class",
@@ -1255,7 +1390,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
-  @Ignore("PLAT-8193")
   public void testK8sProviderConfigEditAtZoneLevel() {
     JsonNode k8sRequestBody = getK8sRequestBody();
 
@@ -1276,9 +1410,11 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
     result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
     assertOk(result);
-    p.refresh();
-    assertEquals(
-        "Test-2",
+    Result providerRes = getProvider(p.getUuid());
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    assertNull(
         p.getRegions()
             .get(0)
             .getZones()
@@ -1287,27 +1423,16 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             .getCloudInfo()
             .getKubernetes()
             .getKubeConfigName());
-  }
 
-  @Test
-  @Ignore("PLAT-8193")
-  public void testK8sProviderConfigEditAtRegionLevel() {
-    JsonNode k8sRequestBody = getK8sRequestBody();
-
-    Result result = createProvider(k8sRequestBody);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertNotNull(ybpTask.resourceUUID);
-
-    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    p.getRegions().get(0).getDetails().getCloudInfo().getKubernetes().setKubeConfigName("Test-2");
-
-    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
-    assertOk(result);
-    p.refresh();
-    assertEquals(
-        "Test-2",
-        p.getRegions().get(0).getDetails().getCloudInfo().getKubernetes().getKubeConfigName());
+    assertNotNull(
+        p.getRegions()
+            .get(0)
+            .getZones()
+            .get(0)
+            .getDetails()
+            .getCloudInfo()
+            .getKubernetes()
+            .getKubeConfig());
   }
 
   @Test
@@ -1320,18 +1445,282 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertNotNull(ybpTask.resourceUUID);
 
     Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    p.getDetails().getCloudInfo().getKubernetes().setKubeConfigName("Test-2");
+    KubernetesRegionInfo azConfig = CloudInfoInterface.get(p.getRegions().get(0).getZones().get(0));
+    assertEquals("", azConfig.getKubeConfig());
+    p.getDetails().getCloudInfo().getKubernetes().setKubernetesStorageClass("Test-2");
 
     result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
     assertOk(result);
     p.refresh();
-    assertEquals("Test-2", p.getDetails().getCloudInfo().getKubernetes().getKubeConfigName());
+    assertNotNull(p.getDetails().getCloudInfo().getKubernetes().getKubernetesStorageClass());
+  }
+
+  @Test
+  public void testOnPremProviderNameValidation() {
+    // create provider body
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "onprem");
+    bodyJson.put("name", "onprem-Provider");
+    ObjectNode region = Json.newObject();
+    ObjectNode az1 = Json.newObject().put("name", "us-west-2a").put("code", "us-west-2a");
+    ObjectNode az2 = Json.newObject().put("name", "us-west-2b").put("code", "us-west-2b");
+    ArrayNode zonesList = Json.newArray();
+    zonesList.add(az1).add(az2);
+    region.put("zones", zonesList);
+    region.put("code", "us-west-2");
+    ArrayNode regionsList = Json.newArray();
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenReturn(UUID.randomUUID());
+    // Test validation pass
+    Result result = createProvider(bodyJson);
+    assertOk(result);
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testOnPremProviderNameValidationFail() {
+    // create provider body
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "onprem");
+    bodyJson.put("name", "onprem-Provider");
+    ObjectNode region = Json.newObject();
+    ObjectNode az1 = Json.newObject().put("name", "us-west&s2a").put("code", "us-west-2a");
+    ObjectNode az2 = Json.newObject().put("name", "us-westS*D2b").put("code", "us-west-2b");
+    ArrayNode zonesList = Json.newArray();
+    zonesList.add(az1).add(az2);
+    region.put("zones", zonesList);
+    region.put("code", "us-west-2");
+    ArrayNode regionsList = Json.newArray();
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+
+    Result result = assertPlatformException(() -> createProvider(bodyJson));
+    assertEquals(BAD_REQUEST, result.status());
+    assertBadRequestValidationResult(
+        result,
+        "data.ZONE.0",
+        "Zone name cannot contain any special characters except '-' and '_'.");
+  }
+
+  @Test
+  public void testGCPProviderCreateWithImageBundle() {
+    when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
+        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
+    Provider provider = buildProviderReq("gcp", "Google");
+    Region region = new Region();
+    region.setName("region1");
+    region.setProvider(provider);
+    region.setCode("region1");
+    provider.setRegions(ImmutableList.of(region));
+    provider = createProviderTest(provider, ImmutableList.of(), UUID.randomUUID());
+
+    ImageBundleDetails details = new ImageBundleDetails();
+    details.setGlobalYbImage("Global-AMI-Image");
+    details.setArch(Architecture.x86_64);
+    ImageBundle ib1 = new ImageBundle();
+    ib1.setName("ImageBundle-1");
+    ib1.setProvider(provider);
+    ib1.setUseAsDefault(true);
+    ib1.save();
+
+    ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
+    assertEquals(ib1.getUuid(), bundle.getUuid());
   }
 
   private void assertBadRequestValidationResult(Result result, String errorCause, String errrMsg) {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals("providerValidation", json.get("error").get("errorSource").get(0).asText());
     assertEquals(errrMsg, json.get("error").get(errorCause).get(0).asText());
+  }
+
+  @Test
+  public void testCreateInvalidAWSProviderIgnoreValidation() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    bodyJson.put("name", "aws-Provider");
+    ObjectNode detailsJson = Json.newObject();
+    ObjectNode cloudInfoJson = Json.newObject();
+    ObjectNode awsCloudInfoJson = Json.newObject();
+    awsCloudInfoJson.put("HOSTED_ZONE_ID", "hosted_zone_id");
+    cloudInfoJson.set("aws", awsCloudInfoJson);
+    detailsJson.set("cloudInfo", cloudInfoJson);
+    bodyJson.set("details", detailsJson);
+    ArrayNode regionsList = Json.newArray();
+    ObjectNode region = Json.newObject();
+    region.put("code", "us-west-2");
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
+        .thenReturn(new GetCallerIdentityResult());
+    when(mockAWSCloudImpl.getHostedZoneOrBadRequest(any(), any(), anyString()))
+        .thenThrow(
+            new PlatformServiceException(BAD_REQUEST, "Hosted Zone validation failed: Invalid ID"));
+    mockDnsManagerListSuccess();
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenReturn(UUID.randomUUID());
+    Result result = createProvider(bodyJson, true);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    Provider createdProvider = Provider.get(customer.getUuid(), ybpTask.resourceUUID);
+    assertEquals(Provider.UsabilityState.UPDATING, createdProvider.getUsabilityState());
+    JsonNode errorNode =
+        Json.parse(
+            "{\"errorSource\":[\"providerValidation\"],"
+                + "\"data.HOSTED_ZONE\":[\"Hosted Zone validation failed: Invalid ID\"]}");
+    assertEquals(errorNode, createdProvider.getLastValidationErrors().get("error"));
+  }
+
+  @Test
+  public void testAddRegionIgnoreValidationErrorToOK() {
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenReturn(UUID.randomUUID());
+    Provider provider = Provider.create(customer.getUuid(), Common.CloudType.aws, "test");
+    provider.setLastValidationErrors(Json.newObject().put("error", "something wrong"));
+    provider.setUsabilityState(Provider.UsabilityState.ERROR);
+    provider.save();
+    AccessKey.create(
+        provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
+    String jsonString =
+        String.format(
+            "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
+                + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
+                + "\"vnetName\":\"vpc-foo\","
+                + "\"securityGroupId\":\"sg-foo\" }}}, "
+                + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
+                + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
+                + "\"version\": %d}",
+            provider.getVersion());
+    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
+        .thenReturn(getTestSecurityGroup(21, 24, "vpc-foo"));
+    Result result = editProvider(Json.parse(jsonString), provider.getUuid(), true);
+    assertOk(result);
+    provider = Provider.getOrBadRequest(provider.getUuid());
+    assertNull(provider.getLastValidationErrors());
+    assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
+  }
+
+  @Test
+  public void testAddRegionIgnoreValidationOKToError() {
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenReturn(UUID.randomUUID());
+    Provider provider = Provider.create(customer.getUuid(), Common.CloudType.aws, "test");
+    assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
+    assertNull(provider.getLastValidationErrors());
+    provider.save();
+    AccessKey.create(
+        provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
+    String jsonString =
+        String.format(
+            "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
+                + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
+                + "\"vnetName\":\"vpc-foo\","
+                + "\"securityGroupId\":\"sg-foo\" }}}, "
+                + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
+                + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
+                + "\"version\": %d}",
+            provider.getVersion());
+    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
+        .thenThrow(new PlatformServiceException(BAD_REQUEST, "Something wrong"));
+    Result result = editProvider(Json.parse(jsonString), provider.getUuid(), true, true);
+    assertOk(result);
+    provider = Provider.getOrBadRequest(provider.getUuid());
+    assertNotNull(provider.getLastValidationErrors());
+    assertEquals(
+        Json.parse("[\"Something wrong\"]"),
+        provider
+            .getLastValidationErrors()
+            .get("error")
+            .get("data.REGION.us-west-1.SECURITY_GROUP"));
+    assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
+  }
+
+  @Test
+  public void testAddYBAManagedAccessKeysProviderEdit() {
+    Provider p = Provider.create(customer.getUuid(), Common.CloudType.aws, "test");
+    Region r = Region.create(p, "us-west-2", "us-west-2", "yb-image");
+    when(mockAccessManager.addKey(
+            any(),
+            anyString(),
+            nullable(File.class),
+            anyString(),
+            anyInt(),
+            anyBoolean(),
+            anyBoolean(),
+            anyBoolean(),
+            anyList(),
+            anyBoolean()))
+        .thenReturn(AccessKey.create(p.getUuid(), "key-code-1", new AccessKey.KeyInfo()));
+    AccessKey ak = AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
+
+    Result providerRes = getProvider(p.getUuid());
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    Provider provider = Json.fromJson(bodyJson, Provider.class);
+
+    provider.setAllAccessKeys(null);
+    Result result = editProvider(Json.toJson(provider), provider.getUuid(), false, true);
+    assertOk(result);
+
+    provider = Provider.getOrBadRequest(p.getUuid());
+    assertEquals(2, provider.getAllAccessKeys().size());
+    provider
+        .getAllAccessKeys()
+        .forEach(
+            key -> {
+              if (!(key.getKeyCode().equals("key-code-1")
+                  || key.getKeyCode().equals("access-key-code"))) {
+                fail();
+              }
+            });
+  }
+
+  @Test
+  public void testAddSelfManagedAccessKeysProviderEdit() {
+    Provider p = Provider.create(customer.getUuid(), Common.CloudType.aws, "test");
+    Region r = Region.create(p, "us-west-2", "us-west-2", "yb-image");
+    when(mockAccessManager.saveAndAddKey(
+            any(),
+            anyString(),
+            anyString(),
+            any(),
+            anyString(),
+            anyInt(),
+            anyBoolean(),
+            anyBoolean(),
+            anyBoolean(),
+            anyList(),
+            anyBoolean(),
+            anyBoolean()))
+        .thenReturn(AccessKey.create(p.getUuid(), "my-key", new AccessKey.KeyInfo()));
+
+    Result providerRes = getProvider(p.getUuid());
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    Provider provider = Json.fromJson(bodyJson, Provider.class);
+
+    ArrayNode accessKeyList = Json.newArray();
+    ObjectNode key = Json.newObject();
+    ObjectNode keyInfo = Json.newObject();
+    keyInfo.put("keyPairName", "my-key");
+    keyInfo.put("sshPrivateKeyContent", "Test key content");
+    key.set("keyInfo", keyInfo);
+    accessKeyList.add(key);
+
+    ((ObjectNode) bodyJson).set("allAccessKeys", accessKeyList);
+    Result result = editProvider(bodyJson, provider.getUuid(), false, true);
+    assertOk(result);
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    assertEquals(1, p.getAllAccessKeys().size());
+    provider
+        .getAllAccessKeys()
+        .forEach(
+            aKey -> {
+              if (!(aKey.getKeyCode().equals("my-key"))) {
+                fail();
+              }
+            });
   }
 
   private SecurityGroup getTestSecurityGroup(int fromPort, int toPort, String vpcId) {

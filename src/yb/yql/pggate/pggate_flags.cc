@@ -42,8 +42,7 @@ DEFINE_test_flag(bool, pggate_ignore_tserver_shm, false,
 DEFINE_UNKNOWN_int32(ysql_request_limit, 1024,
              "Maximum number of requests to be sent at once");
 
-DEFINE_UNKNOWN_uint64(ysql_prefetch_limit, 1024,
-              "Maximum number of rows to prefetch");
+DEPRECATE_FLAG(uint64, ysql_prefetch_limit, "04_2023");
 
 DEPRECATE_FLAG(double, ysql_backward_prefetch_scale_factor, "11_2022");
 
@@ -141,7 +140,7 @@ DEFINE_test_flag(bool, yb_lwlock_crash_after_acquire_pg_stat_statements_reset, f
 DEFINE_test_flag(bool, yb_test_fail_matview_refresh_after_creation, false,
                  "Fail a refresh on a matview after the creation of a new relation.");
 
-DEFINE_int32(ysql_num_databases_reserved_in_db_catalog_version_mode, 10,
+DEFINE_UNKNOWN_int32(ysql_num_databases_reserved_in_db_catalog_version_mode, 10,
              "In per database catalog version mode, if the number of existing databases "
              "are within this number to the maximum number of databases allowed, then "
              "fail the create database statement.");

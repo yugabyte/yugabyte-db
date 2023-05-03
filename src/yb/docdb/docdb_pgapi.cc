@@ -16,7 +16,7 @@
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pg_types.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/singleton.h"
@@ -37,7 +37,6 @@
 using std::string;
 
 using yb::pggate::PgValueFromPB;
-using yb::pggate::PgValueToPB;
 
 namespace yb {
 namespace docdb {
@@ -230,7 +229,7 @@ YbgStatus YbgValueFromPB(const YBCPgTypeEntity *type_entity,
   PG_STATUS_OK();
 }
 
-Status DocPgPrepareExprCtx(const QLTableRow& table_row,
+Status DocPgPrepareExprCtx(const qlexpr::QLTableRow& table_row,
                            const std::map<int, const DocPgVarRef>& var_map,
                            YbgExprContext expr_ctx) {
   PG_RETURN_NOT_OK(YbgExprContextReset(expr_ctx));

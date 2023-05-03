@@ -272,6 +272,30 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Stable version for Yb-Controller",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ybcAdminOperationTimeoutMs =
+      new ConfKeyInfo<>(
+          "ybc.timeout.admin_operation_timeout_ms",
+          ScopeType.GLOBAL,
+          "YBC admin operation timeout",
+          "YBC client timeout in milliseconds for admin operations",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
+      new ConfKeyInfo<>(
+          "ybc.timeout.socket_read_timeout_ms",
+          ScopeType.GLOBAL,
+          "YBC socket read timeout",
+          "YBC client socket read timeout in milliseconds",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ybcOperationTimeoutMs =
+      new ConfKeyInfo<>(
+          "ybc.timeout.operation_timeout_ms",
+          ScopeType.GLOBAL,
+          "YBC operation timeout",
+          "YBC client timeout in milliseconds for operations",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableCertReload =
       new ConfKeyInfo<>(
           "yb.features.cert_reload.enabled",
@@ -510,14 +534,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable scope strictness while setting runtime keys",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<String> ansibleOffloadSupportedVersion =
-      new ConfKeyInfo<>(
-          "yb.node_agent.ansible_offloading.min_supported_version",
-          ScopeType.GLOBAL,
-          "Ansible Offloading Supported Version",
-          "Minimum supported version for ansible offloading",
-          ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> nodeAgentPollerInterval =
       new ConfKeyInfo<>(
           "yb.node_agent.poller_interval",
@@ -567,7 +583,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Whether YBA supports transactional xCluster configs",
           "It indicates whether YBA should support transactional xCluster configs",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowDbVersionMoreThanYbaVersion =
       new ConfKeyInfo<>(
           "yb.allow_db_version_more_than_yba_version",
@@ -577,4 +593,63 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "YBA version is allowed on universe nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> pgDumpPath =
+      new ConfKeyInfo<>(
+          "db.default.pg_dump_path",
+          ScopeType.GLOBAL,
+          "Path to pg_dump on the YBA node",
+          "Set during yba-installer for both custom postgres and version specific postgres "
+              + "installation",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> pgRestorePath =
+      new ConfKeyInfo<>(
+          "db.default.pg_restore_path",
+          ScopeType.GLOBAL,
+          "Path to pg_restore on the YBA node",
+          "Set during yba-installer for both custom postgres and version specific postgres "
+              + "installation",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowUsedProviderEdit =
+      new ConfKeyInfo<>(
+          "yb.provider.allow_used_provider_edit",
+          ScopeType.GLOBAL,
+          "Allow editing of used providers",
+          "Provider associated with universes can be edited",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<String> ybdbReleasePathRegex =
+      new ConfKeyInfo<>(
+          "yb.regex.release_pattern.ybdb",
+          ScopeType.GLOBAL,
+          "Regex for match Yugabyte DB release .tar.gz files",
+          "Regex pattern used to find Yugabyte DB release .tar.gz files",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> ybdbHelmReleasePathRegex =
+      new ConfKeyInfo<>(
+          "yb.regex.release_pattern.helm",
+          ScopeType.GLOBAL,
+          "Regex for match Yugabyte DB release helm .tar.gz files",
+          "Regex pattern used to find Yugabyte DB helm .tar.gz files",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableTaskAndFailedRequestDetailedLogging =
+      new ConfKeyInfo<>(
+          "yb.logging.enable_task_failed_request_logs",
+          ScopeType.GLOBAL,
+          "Enables extra logging",
+          "Enables extra logging for task params and request body",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> fixDatabaseFullPaths =
+      new ConfKeyInfo<>(
+          "yb.fixPaths",
+          ScopeType.GLOBAL,
+          "Whether YBA should fix paths on startup",
+          "When enabled YBA will try to replace all filepaths in the database with updated values "
+              + "for the configurable part of the path (like storage or releases path)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

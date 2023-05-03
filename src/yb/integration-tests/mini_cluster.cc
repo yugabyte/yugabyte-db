@@ -91,8 +91,8 @@
 using namespace std::literals;
 using strings::Substitute;
 
-DEFINE_UNKNOWN_string(mini_cluster_base_dir, "", "Directory for master/ts data");
-DEFINE_UNKNOWN_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
+DEFINE_NON_RUNTIME_string(mini_cluster_base_dir, "", "Directory for master/ts data");
+DEFINE_NON_RUNTIME_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
 DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeMultiplier,
                  "Time to wait for tservers to register to master.");
 DECLARE_int32(master_svc_num_threads);
@@ -112,9 +112,7 @@ DECLARE_int32(transaction_table_num_tablets);
 
 namespace yb {
 
-using client::YBClient;
 using client::YBClientBuilder;
-using master::CatalogManager;
 using master::MiniMaster;
 using master::TabletLocationsPB;
 using master::TSDescriptor;
@@ -122,7 +120,6 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 using tserver::MiniTabletServer;
-using tserver::TabletServer;
 using master::GetMasterClusterConfigResponsePB;
 using master::ChangeMasterClusterConfigRequestPB;
 using master::ChangeMasterClusterConfigResponsePB;
@@ -243,19 +240,23 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
         "tservers: $1", extra_tserver_options.size(), options_.num_tablet_servers);
   }
 
-  for (size_t i = 0; i < options_.num_tablet_servers; i++) {
-    if (!extra_tserver_options.empty()) {
-      RETURN_NOT_OK_PREPEND(AddTabletServer(extra_tserver_options[i]),
-                            Substitute("Error adding TS $0", i));
-    } else {
-      RETURN_NOT_OK_PREPEND(AddTabletServer(),
-                            Substitute("Error adding TS $0", i));
+  if (mini_tablet_servers_.empty()) {
+    for (size_t i = 0; i < options_.num_tablet_servers; i++) {
+      if (!extra_tserver_options.empty()) {
+        RETURN_NOT_OK_PREPEND(
+            AddTabletServer(extra_tserver_options[i]), Substitute("Error adding TS $0", i));
+      } else {
+        RETURN_NOT_OK_PREPEND(AddTabletServer(), Substitute("Error adding TS $0", i));
+      }
     }
-
+    RETURN_NOT_OK_PREPEND(
+        WaitForTabletServerCount(options_.num_tablet_servers),
+        "Waiting for tablet servers to start");
+  } else {
+    for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
+      RETURN_NOT_OK(tablet_server->Start());
+    }
   }
-
-  RETURN_NOT_OK_PREPEND(WaitForTabletServerCount(options_.num_tablet_servers),
-                        "Waiting for tablet servers to start");
 
   running_ = true;
   return Status::OK();
@@ -495,6 +496,25 @@ Result<MiniMaster*> MiniCluster::GetLeaderMiniMaster() {
   return mini_master(idx);
 }
 
+void MiniCluster::StopSync() {
+  if (!running_) {
+    LOG(INFO) << "MiniCluster is not running.";
+    return;
+  }
+
+  for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
+    CHECK(tablet_server);
+    tablet_server->Shutdown();
+  }
+
+  for (shared_ptr<MiniMaster>& master_server : mini_masters_) {
+    CHECK(master_server);
+    master_server->Shutdown();
+  }
+
+  running_ = false;
+}
+
 void MiniCluster::Shutdown() {
   if (!running_) {
     // It's possible for the cluster to not be running on shutdown when there's a bad status during
@@ -605,7 +625,7 @@ std::vector<std::shared_ptr<tablet::TabletPeer>> MiniCluster::GetTabletPeers(siz
   return GetTabletManager(idx)->GetTabletPeers();
 }
 
-Status MiniCluster::WaitForReplicaCount(const string& tablet_id,
+Status MiniCluster::WaitForReplicaCount(const TableId& tablet_id,
                                         int expected_count,
                                         TabletLocationsPB* locations) {
   Stopwatch sw;
@@ -1140,23 +1160,6 @@ Status WaitForInitDb(MiniCluster* cluster) {
   return STATUS_FORMAT(TimedOut, "Unable to init db in $0", kTimeout);
 }
 
-size_t CountExternalTransactions(MiniCluster* cluster) {
-  auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
-  auto total_transactions = 0;
-  for (const auto &peer : peers) {
-    if (peer->LeaderStatus() == consensus::LeaderStatus::NOT_LEADER) {
-      continue;
-    }
-    auto tablet = peer->shared_tablet();
-    auto coordinator = tablet ? tablet->transaction_coordinator() : nullptr;
-    if (!coordinator) {
-      continue;
-    }
-    total_transactions += coordinator->TEST_CountExternalTransactions();
-  }
-  return total_transactions;
-}
-
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
   size_t result = 0;
   auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
@@ -1169,6 +1172,7 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
     if (filter && !filter(peer)) {
       continue;
     }
+    // TEST_CountIntent return non ok status also means shutdown has started.
     auto intents_count_result = participant->TEST_CountIntents();
     if (intents_count_result.ok() && intents_count_result->first) {
       result += intents_count_result->first;
@@ -1367,6 +1371,15 @@ Status WaitForPeersAreFullyCompacted(
       "Failed to wait for peers [" << CollectionToString(ids) << "] are fully compacted.";
   }
   return s;
+}
+
+Status WaitForTableIntentsApplied(
+    MiniCluster* cluster, const TableId& table_id, MonoDelta timeout) {
+  return WaitFor([cluster, &table_id]() {
+    return 0 == CountIntents(cluster, [&table_id](const tablet::TabletPeerPtr &peer) {
+      return IsActive(*peer) && IsForTable(*peer, table_id);
+    });
+  }, timeout, "Did not apply write transactions from intents db in time.");
 }
 
 void ActivateCompactionTimeLogging(MiniCluster* cluster) {

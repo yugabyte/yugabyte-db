@@ -44,7 +44,7 @@ Use the `SET` statement to update a run-time control parameter.
 
 ## Semantics
 
-The parameter values that you set with this statement apply just within the scope of a single session and for no longer than the session's duration. It's also possible to set the default values for such parameters at the level of the entire cluster or at the level of a particular database. For example:
+The parameter values that you set with this statement apply just in the scope of a single session and for no longer than the session's duration. It's also possible to set the default values for such parameters at the level of the entire cluster or at the level of a particular database. For example:
 
 ```plpgsql
 alter database demo set timezone = 'America/Los_Angeles';
@@ -58,7 +58,7 @@ Specify that the command affects only the current session.
 
 ### LOCAL
 
-Specify that the command affects only the current transaction. After `COMMIT` or `ROLLBACK`, the session-level setting takes effect again.
+Specify that the command affects only the current transaction. After `COMMIT` or `ROLLBACK`, the run-time parameter takes effect again.
 
 ### *configuration_parameter*
 

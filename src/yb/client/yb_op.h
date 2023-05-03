@@ -40,7 +40,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
-#include "yb/common/partial_row.h"
+#include "yb/dockv/partial_row.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/transaction.pb.h"
@@ -52,16 +52,6 @@
 #include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {
-
-class RedisWriteRequestPB;
-class RedisReadRequestPB;
-class RedisResponsePB;
-
-class QLWriteRequestPB;
-class QLReadRequestPB;
-class QLResponsePB;
-class QLRowBlock;
-
 namespace client {
 
 namespace internal {
@@ -419,7 +409,7 @@ class YBqlReadOp : public YBqlOp {
   }
 
   std::vector<ColumnSchema> MakeColumnSchemasFromRequest() const;
-  Result<QLRowBlock> MakeRowBlock() const;
+  Result<qlexpr::QLRowBlock> MakeRowBlock() const;
 
   const ReadHybridTime& read_time() const { return read_time_; }
   void SetReadTime(const ReadHybridTime& value) { read_time_ = value; }
@@ -596,7 +586,7 @@ class YBNoOp {
 
   // Executes a no-op request against the tablet server on which the row specified
   // by "key" lives.
-  Status Execute(YBClient* client, const YBPartialRow& key);
+  Status Execute(YBClient* client, const dockv::YBPartialRow& key);
  private:
   const std::shared_ptr<YBTable> table_;
 
@@ -604,23 +594,24 @@ class YBNoOp {
 };
 
 Status InitPartitionKey(
-    const Schema& schema, const PartitionSchema& partition_schema,
+    const Schema& schema, const dockv::PartitionSchema& partition_schema,
     const TablePartitionList& partitions, LWPgsqlReadRequestPB* request);
 
 Status InitPartitionKey(
-    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request);
+    const Schema& schema, const dockv::PartitionSchema& partition_schema,
+    LWPgsqlWriteRequestPB* request);
 
 Status GetRangePartitionBounds(
     const Schema& schema,
     const PgsqlReadRequestPB& request,
-    std::vector<docdb::KeyEntryValue>* lower_bound,
-    std::vector<docdb::KeyEntryValue>* upper_bound);
+    dockv::KeyEntryValues* lower_bound,
+    dockv::KeyEntryValues* upper_bound);
 
 Status GetRangePartitionBounds(
     const Schema& schema,
     const LWPgsqlReadRequestPB& request,
-    std::vector<docdb::KeyEntryValue>* lower_bound,
-    std::vector<docdb::KeyEntryValue>* upper_bound);
+    dockv::KeyEntryValues* lower_bound,
+    dockv::KeyEntryValues* upper_bound);
 
 bool IsTolerantToPartitionsChange(const YBOperation& op);
 

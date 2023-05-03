@@ -18,7 +18,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
@@ -29,6 +28,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
@@ -449,7 +449,7 @@ public class UniverseSpec {
         // Update abs. path for kubernetesPullSecret to use new yb.storage.path.
         KubernetesInfo kubernetesInfo = this.provider.getDetails().getCloudInfo().getKubernetes();
         kubernetesInfo.setKubernetesPullSecret(
-            UniverseSpec.replaceBeginningPath(
+            CommonUtils.replaceBeginningPath(
                 kubernetesInfo.getKubernetesPullSecret(),
                 this.oldPlatformPaths.storagePath,
                 storagePath));
@@ -460,7 +460,7 @@ public class UniverseSpec {
             KubernetesRegionInfo kubernetesRegionInfo =
                 az.getAvailabilityZoneDetails().getCloudInfo().getKubernetes();
             kubernetesRegionInfo.setKubeConfig(
-                UniverseSpec.replaceBeginningPath(
+                CommonUtils.replaceBeginningPath(
                     kubernetesRegionInfo.getKubeConfig(),
                     this.oldPlatformPaths.storagePath,
                     storagePath));
@@ -471,14 +471,14 @@ public class UniverseSpec {
         // Update abs. path for credentials.json to use new yb.storage.path.
         GCPCloudInfo gcpCloudInfo = this.provider.getDetails().getCloudInfo().getGcp();
         gcpCloudInfo.setGceApplicationCredentialsPath(
-            UniverseSpec.replaceBeginningPath(
+            CommonUtils.replaceBeginningPath(
                 gcpCloudInfo.getGceApplicationCredentialsPath(),
                 this.oldPlatformPaths.storagePath,
                 storagePath));
         break;
       case onprem:
         this.provider.getDetails().provisionInstanceScript =
-            UniverseSpec.replaceBeginningPath(
+            CommonUtils.replaceBeginningPath(
                 this.provider.getDetails().provisionInstanceScript,
                 this.oldPlatformPaths.storagePath,
                 storagePath);
@@ -497,7 +497,7 @@ public class UniverseSpec {
       // HashicorpVault does not have privateKey.
       if (!StringUtils.isEmpty(certificateInfo.getPrivateKey())) {
         certificateInfo.setPrivateKey(
-            UniverseSpec.replaceBeginningPath(
+            CommonUtils.replaceBeginningPath(
                 certificateInfo.getPrivateKey(), this.oldPlatformPaths.storagePath, storagePath));
         certificateInfo.setPrivateKey(
             certificateInfo
@@ -506,7 +506,7 @@ public class UniverseSpec {
       }
 
       certificateInfo.setCertificate(
-          UniverseSpec.replaceBeginningPath(
+          CommonUtils.replaceBeginningPath(
               certificateInfo.getCertificate(), this.oldPlatformPaths.storagePath, storagePath));
       certificateInfo.setCertificate(
           certificateInfo
@@ -520,19 +520,19 @@ public class UniverseSpec {
     for (AccessKey key : this.provider.getAllAccessKeys()) {
       if (key.getKeyInfo().publicKey != null) {
         key.getKeyInfo().publicKey =
-            UniverseSpec.replaceBeginningPath(
+            CommonUtils.replaceBeginningPath(
                 key.getKeyInfo().publicKey, this.oldPlatformPaths.storagePath, storagePath);
       }
       if (key.getKeyInfo().privateKey != null) {
         key.getKeyInfo().privateKey =
-            UniverseSpec.replaceBeginningPath(
+            CommonUtils.replaceBeginningPath(
                 key.getKeyInfo().privateKey, this.oldPlatformPaths.storagePath, storagePath);
       }
       key.getKeyInfo().vaultPasswordFile =
-          UniverseSpec.replaceBeginningPath(
+          CommonUtils.replaceBeginningPath(
               key.getKeyInfo().vaultPasswordFile, this.oldPlatformPaths.storagePath, storagePath);
       key.getKeyInfo().vaultFile =
-          UniverseSpec.replaceBeginningPath(
+          CommonUtils.replaceBeginningPath(
               key.getKeyInfo().vaultFile, this.oldPlatformPaths.storagePath, storagePath);
     }
   }
@@ -726,14 +726,6 @@ public class UniverseSpec {
     String type = isExport ? "export" : "import";
     String specName = "yb-universe-spec-" + type + "-" + datePrefix;
     return specName;
-  }
-
-  // Only replace path at the beginning.
-  @VisibleForTesting
-  public static String replaceBeginningPath(
-      String pathToModify, String initialRoot, String finalRoot) {
-    String regex = "^" + Pattern.quote(initialRoot);
-    return pathToModify.replaceAll(regex, finalRoot);
   }
 
   @Builder

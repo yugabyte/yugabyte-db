@@ -394,13 +394,23 @@ if(IS_GCC)
   # TODO: Subtitute it with '-as-needed' instead to avoid linking with unused library (issue #1495)
   # for reducing pocess start time
   ADD_LINKER_FLAGS("-Wl,-no-as-needed")
-  if ("${COMPILER_VERSION}" MATCHES "^11[.].*$")
+  if ("${COMPILER_VERSION}" MATCHES "^1[12][.].*$")
     # To silence these spurious warnings:
     # https://gist.githubusercontent.com/mbautin/60c7fb897a92b998a111ff38429a1158/raw
     # https://gist.githubusercontent.com/mbautin/56b95b7a6816ccdf77eaa60f53a7d3ef/raw
     ADD_CXX_FLAGS("-Wno-array-bounds")
     ADD_CXX_FLAGS("-Wno-stringop-overflow")
     ADD_CXX_FLAGS("-Wno-stringop-overread")
+  endif()
+  if ("${COMPILER_VERSION}" MATCHES "^12[.].*$")
+    if("${YB_BUILD_TYPE}" STREQUAL "release")
+      # To avoid https://github.com/yugabyte/yugabyte-db/issues/16076
+      ADD_CXX_FLAGS("-Wno-restrict")
+    endif()
+    if("${YB_BUILD_TYPE}" MATCHES "^(fastdebug|release)$")
+      # To avoid https://github.com/yugabyte/yugabyte-db/issues/16767"
+      ADD_CXX_FLAGS("-Wno-maybe-uninitialized")
+    endif()
   endif()
 endif()
 
@@ -728,10 +738,22 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR
     set(TCMALLOC_STATIC_LIB_LD_FLAGS
         "-Wl,--whole-archive ${TCMALLOC_STATIC_LIB} -Wl,--no-whole-archive")
   endif()
-else()
+elseif(NOT APPLE)
   message("Not allowing any undefined symbols "
           "(tcmalloc is disabled and build type is ${YB_BUILD_TYPE})")
   ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
+endif()
+
+if (NOT "$ENV{YB_VALGRIND_PATH}" STREQUAL "")
+  if(APPLE)
+    message(FATAL_ERROR "Valgrind cannot be used in macOS.")
+  endif()
+
+  if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+    message(FATAL_ERROR "Valgrind cannot be used while TCMalloc is enabled. "
+            "Build with --no-tcmalloc to use Valgrind.")
+  endif()
+  ADD_CXX_FLAGS("-DYB_VALGRIND_PATH=$ENV{YB_VALGRIND_PATH}")
 endif()
 
 ############################################################
@@ -816,12 +838,14 @@ set(YB_SUBDIR_NAMES
     common
     consensus
     docdb
+    dockv
     encryption
     fs
     gen_yrpc
     gutil
     integration-tests
     master
+    qlexpr
     rocksdb
     rocksutil
     rpc

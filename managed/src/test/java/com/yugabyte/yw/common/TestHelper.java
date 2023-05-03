@@ -5,14 +5,14 @@ package com.yugabyte.yw.common;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
-
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe;
 import io.ebean.Ebean;
 import io.ebean.EbeanServer;
 import java.io.BufferedOutputStream;
@@ -166,5 +166,14 @@ public class TestHelper {
     }
 
     return fakeAuthConfig;
+  }
+
+  public static void updateUniverseVersion(Universe universe, String version) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.ybSoftwareVersion = version;
+    details.upsertPrimaryCluster(userIntent, null);
+    universe.setUniverseDetails(details);
+    universe.save();
   }
 }

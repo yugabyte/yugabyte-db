@@ -24,13 +24,13 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/port.h"
@@ -46,20 +46,20 @@ namespace pggate {
 
 namespace {
 
-docdb::KeyEntryValue NullValue(SortingType sorting) {
+dockv::KeyEntryValue NullValue(SortingType sorting) {
   using SortingType = SortingType;
 
-  return docdb::KeyEntryValue(
+  return dockv::KeyEntryValue(
       sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
-          ? docdb::KeyEntryType::kNullHigh
-          : docdb::KeyEntryType::kNullLow);
+          ? dockv::KeyEntryType::kNullHigh
+          : dockv::KeyEntryType::kNullLow);
 }
 
-std::vector<docdb::KeyEntryValue> InitKeyColumnPrimitiveValues(
+dockv::KeyEntryValues InitKeyColumnPrimitiveValues(
     const ArenaList<LWPgsqlExpressionPB> &column_values,
     const Schema &schema,
     size_t start_idx) {
-  std::vector<docdb::KeyEntryValue> result;
+  dockv::KeyEntryValues result;
   size_t column_idx = start_idx;
   for (const auto& column_value : column_values) {
     const auto sorting_type = schema.column(column_idx).sorting_type();
@@ -68,7 +68,7 @@ std::vector<docdb::KeyEntryValue> InitKeyColumnPrimitiveValues(
       result.push_back(
           IsNull(value)
           ? NullValue(sorting_type)
-          : docdb::KeyEntryValue::FromQLValuePB(value, sorting_type));
+          : dockv::KeyEntryValue::FromQLValuePB(value, sorting_type));
     } else {
       // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
       // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
@@ -76,11 +76,11 @@ std::vector<docdb::KeyEntryValue> InitKeyColumnPrimitiveValues(
       //
       // Use regular executor for now.
       LOG(FATAL) << "Expression instead of value";
-      QLExprExecutor executor;
-      QLExprResult expr_result;
+      qlexpr::QLExprExecutor executor;
+      qlexpr::QLExprResult expr_result;
       auto s = executor.EvalExpr(column_value.ToGoogleProtobuf(), nullptr, expr_result.Writer());
 
-      result.push_back(docdb::KeyEntryValue::FromQLValuePB(expr_result.Value(), sorting_type));
+      result.push_back(dockv::KeyEntryValue::FromQLValuePB(expr_result.Value(), sorting_type));
     }
     ++column_idx;
   }
@@ -101,9 +101,9 @@ class RowIdentifier {
       auto range_components = InitKeyColumnPrimitiveValues(
           request.range_column_values(), schema, schema.num_hash_key_columns());
       if (hashed_components.empty()) {
-        ybctid_holder_ = docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
+        ybctid_holder_ = dockv::DocKey(std::move(range_components)).Encode().ToStringBuffer();
       } else {
-        ybctid_holder_ = docdb::DocKey(request.hash_code(),
+        ybctid_holder_ = dockv::DocKey(request.hash_code(),
                                        std::move(hashed_components),
                                        std::move(range_components)).Encode().ToStringBuffer();
       }

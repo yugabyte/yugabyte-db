@@ -66,24 +66,20 @@ using namespace std::literals;
 
 DECLARE_int32(log_segment_size_mb);
 DECLARE_int32(maintenance_manager_polling_interval_ms);
-DEFINE_UNKNOWN_int32(mbs_for_flushes_and_rolls, 1, "How many MBs are needed to flush and roll");
-DEFINE_UNKNOWN_int32(row_count, 2000, "How many rows will be used in this test for the base data");
-DEFINE_UNKNOWN_int32(seconds_to_run, 4,
+DEFINE_NON_RUNTIME_int32(mbs_for_flushes_and_rolls, 1,
+             "How many MBs are needed to flush and roll");
+DEFINE_NON_RUNTIME_int32(row_count, 2000,
+             "How many rows will be used in this test for the base data");
+DEFINE_NON_RUNTIME_int32(seconds_to_run, 4,
              "How long this test runs for, after inserting the base data, in seconds");
 
 namespace yb {
 namespace tablet {
 
 using client::YBClient;
-using client::YBClientBuilder;
-using client::YBColumnSchema;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
-using client::YBStatusCallback;
-using client::YBStatusMemberCallback;
-using client::YBTable;
-using client::YBTableCreator;
 using client::YBTableName;
 using std::shared_ptr;
 using std::vector;

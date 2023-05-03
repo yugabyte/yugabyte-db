@@ -41,11 +41,12 @@ const (
 	ybControllerRPCPort  = "yb_controller_rpc_port"
 	redisServerHTTPPort  = "redis_server_http_port"
 	redisServerRPCPort   = "redis_server_rpc_port"
-	yqlServerHTTPPort    = "yql_server_http_port"
-	yqlServerRPCPort     = "yql_server_rpc_port"
+	ycqlServerHTTPPort   = "ycql_server_http_port"
+	ycqlServerRPCPort    = "ycql_server_rpc_port"
 	ysqlServerHTTPPort   = "ysql_server_http_port"
 	ysqlServerRPCPort    = "ysql_server_rpc_port"
 	sshPort              = "ssh_port"
+	nodeExporterPort     = "node_exporter_port"
 )
 
 var (
@@ -351,7 +352,71 @@ func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []s
 	}
 	options = append(options, "--yb_home_dir", "'"+handler.param.YbHomeDir+"'")
 	if handler.param.SshPort != 0 {
-		options = append(options, "--ssh_port", fmt.Sprint(handler.param.SshPort))
+		options = append(
+			options,
+			"--ssh_port",
+			fmt.Sprint(handler.param.SshPort))
+	}
+	if handler.param.MasterHttpPort != 0 {
+		options = append(
+			options, "--master_http_port", fmt.Sprint(handler.param.MasterHttpPort))
+	}
+	if handler.param.MasterRpcPort != 0 {
+		options = append(
+			options, "--master_rpc_port", fmt.Sprint(handler.param.MasterRpcPort))
+	}
+	if handler.param.TserverHttpPort != 0 {
+		options = append(
+			options, "--tserver_http_port", fmt.Sprint(handler.param.TserverHttpPort))
+	}
+	if handler.param.TserverRpcPort != 0 {
+		options = append(
+			options, "--tserver_rpc_port", fmt.Sprint(handler.param.TserverRpcPort))
+	}
+	if handler.param.RedisServerHttpPort != 0 {
+		options = append(
+			options, "--redis_server_http_port", fmt.Sprint(handler.param.RedisServerHttpPort),
+		)
+	}
+	if handler.param.RedisServerRpcPort != 0 {
+		options = append(
+			options, "--redis_server_rpc_port", fmt.Sprint(handler.param.RedisServerRpcPort),
+		)
+	}
+	if handler.param.NodeExporterPort != 0 {
+		options = append(
+			options, "--node_exporter_port", fmt.Sprint(handler.param.NodeExporterPort),
+		)
+	}
+	if handler.param.YcqlServerHttpPort != 0 {
+		options = append(
+			options, "--ycql_server_http_port", fmt.Sprint(handler.param.YcqlServerHttpPort),
+		)
+	}
+	if handler.param.YcqlServerRpcPort != 0 {
+		options = append(
+			options, "--ycql_server_rpc_port", fmt.Sprint(handler.param.YcqlServerRpcPort),
+		)
+	}
+	if handler.param.YsqlServerHttpPort != 0 {
+		options = append(
+			options, "--ysql_server_http_port", fmt.Sprint(handler.param.YsqlServerHttpPort),
+		)
+	}
+	if handler.param.YsqlServerRpcPort != 0 {
+		options = append(
+			options, "--ysql_server_rpc_port", fmt.Sprint(handler.param.YsqlServerRpcPort),
+		)
+	}
+	if handler.param.YbControllerHttpPort != 0 {
+		options = append(
+			options, "--yb_controller_http_port", fmt.Sprint(handler.param.YbControllerHttpPort),
+		)
+	}
+	if handler.param.YbControllerRpcPort != 0 {
+		options = append(
+			options, "--yb_controller_rpc_port", fmt.Sprint(handler.param.YbControllerRpcPort),
+		)
 	}
 	if handler.param.MountPaths != nil && len(handler.param.MountPaths) > 0 {
 		options = append(options, "--mount_points")
@@ -449,8 +514,8 @@ func getNodeConfig(data map[string]model.PreflightCheckVal) *[]model.NodeConfig 
 			mountPointsVolumeMap[kSplit[1]] = v.Value
 		case masterHTTPPort, masterRPCPort, tserverHTTPPort, tserverRPCPort,
 			ybControllerHTTPPort, ybControllerRPCPort, redisServerHTTPPort,
-			redisServerRPCPort, yqlServerHTTPPort, yqlServerRPCPort,
-			ysqlServerHTTPPort, ysqlServerRPCPort, sshPort:
+			redisServerRPCPort, ycqlServerHTTPPort, ycqlServerRPCPort,
+			ysqlServerHTTPPort, ysqlServerRPCPort, sshPort, nodeExporterPort:
 			portMap := make(map[string]string)
 			portMap[kSplit[1]] = v.Value
 			result = appendMap(kSplit[0], portMap, result)

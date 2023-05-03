@@ -19,9 +19,9 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -147,13 +147,12 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
 
-      // Clear previous subtasks if any.
-      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be disabled,
       // so we enable it again in case of errors.
-      createLoadBalancerStateChangeTask(true /*enable*/).setSubTaskGroupType(getTaskSubGroupType());
-
-      getRunnableTask().runSubTasks();
+      setTaskQueueAndRun(
+          () ->
+              createLoadBalancerStateChangeTask(true /*enable*/)
+                  .setSubTaskGroupType(getTaskSubGroupType()));
 
       throw t;
     } finally {

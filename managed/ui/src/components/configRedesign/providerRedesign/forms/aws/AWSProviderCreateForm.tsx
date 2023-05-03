@@ -273,7 +273,7 @@ export const AWSProviderCreateForm = ({
 
   const regions = formMethods.watch('regions', defaultValues.regions);
   const setRegions = (regions: CloudVendorRegionField[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: CloudVendorRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -453,7 +453,7 @@ export const AWSProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -572,13 +572,14 @@ export const AWSProviderCreateForm = ({
       {/* Modals */}
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
+          configuredRegions={regions}
+          isEditProvider={false}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
           providerCode={ProviderCode.AWS}
           regionOperation={regionOperation}
           regionSelection={regionSelection}
-          configuredRegions={regions}
           vpcSetupType={vpcSetupType}
           ybImageType={ybImageType}
         />
@@ -611,10 +612,16 @@ const constructProviderPayload = async (
     code: ProviderCode.AWS,
     name: formValues.providerName,
     ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-      ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-      ...(formValues.sshPrivateKeyContent && {
-        sshPrivateKeyContent: sshPrivateKeyContent
-      })
+      allAccessKeys: [
+        {
+          keyInfo: {
+            ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
+            ...(formValues.sshPrivateKeyContent && {
+              sshPrivateKeyContent: sshPrivateKeyContent
+            })
+          }
+        }
+      ]
     }),
     details: {
       airGapInstall: !formValues.dbNodePublicInternetAccess,
@@ -629,8 +636,8 @@ const constructProviderPayload = async (
       },
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: formValues.regions.map<AWSRegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,
@@ -639,11 +646,15 @@ const constructProviderPayload = async (
           [ProviderCode.AWS]: {
             ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
               ? {
-                  ybImage: regionFormValues.ybImage
+                  ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
                 }
-              : { arch: formValues.ybImageType }),
-            securityGroupId: regionFormValues.securityGroupId,
-            vnet: regionFormValues.vnet
+              : { ...(formValues.ybImageType && { arch: formValues.ybImageType }) }),
+            ...(regionFormValues.securityGroupId && {
+              securityGroupId: regionFormValues.securityGroupId
+            }),
+            ...(regionFormValues.vnet && {
+              vnet: regionFormValues.vnet
+            })
           }
         }
       },

@@ -40,8 +40,6 @@ namespace yb {
 namespace tserver {
 
 using consensus::ConsensusServiceProxy;
-using rpc::Messenger;
-using std::shared_ptr;
 
 void CreateTsClientProxies(const HostPort& addr,
                            rpc::ProxyCache* proxy_cache,

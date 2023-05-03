@@ -35,16 +35,21 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
         key -> {
           switch (key) {
             case DEFINITION_NAME:
-              return configuration.getName();
+              return escapeDoubleQuotes(configuration.getName());
             case DEFINITION_EXPR:
               return definition.getQueryWithThreshold(configuration.getThresholds().get(severity));
             case DURATION:
               return configuration.getDurationSec() + "s";
             case LABELS:
-              return definition
-                  .getEffectiveLabels(configuration, templateSettings, severity)
+              return definition.getEffectiveLabels(configuration, templateSettings, severity)
                   .stream()
-                  .map(label -> LABEL_PREFIX + label.getName() + ": " + label.getValue())
+                  .map(
+                      label ->
+                          LABEL_PREFIX
+                              + label.getName()
+                              + ": \""
+                              + escapeDoubleQuotes(label.getValue())
+                              + "\"")
                   .collect(Collectors.joining("\n"));
             case SUMMARY_TEMPLATE:
               AlertConfigurationLabelProvider labelProvider =
@@ -60,6 +65,10 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
         });
   }
 
+  private static String escapeDoubleQuotes(String string) {
+    return string.replaceAll("\"", "\\\\\"");
+  }
+
   @RequiredArgsConstructor
   private static class AlertConfigurationLabelProvider implements AlertLabelsProvider {
 
@@ -70,8 +79,7 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
 
     @Override
     public String getLabelValue(String name) {
-      return alertDefinition
-          .getEffectiveLabels(alertConfiguration, alertTemplateSettings, severity)
+      return alertDefinition.getEffectiveLabels(alertConfiguration, alertTemplateSettings, severity)
           .stream()
           .filter(label -> name.equals(label.getName()))
           .map(AlertDefinitionLabel::getValue)

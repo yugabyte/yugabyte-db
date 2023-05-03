@@ -6,11 +6,13 @@
 # Generic cursor test.
 test: yb_cursor
 
+# Dependencies.
+test: yb_dep_onek
+test: yb_dep_tenk1
+test: yb_dep_tenk2
+test: yb_dep_onek2
+
 # Run portals tests.
-test: yb_pg_create_function_1
-test: yb_pg_create_type
-test: yb_pg_create_table
-test: yb_pg_copy
 test: yb_pg_portals
 test: yb_pg_portals_p2
 

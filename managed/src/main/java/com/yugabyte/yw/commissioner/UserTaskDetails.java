@@ -164,6 +164,9 @@ public class UserTaskDetails {
     // Fetch the Kubernetes pod information.
     KubernetesPodInfo,
 
+    // Delete all server type pods
+    DeleteAllServerTypePods,
+
     // Wait for Kubernetes pod deployment
     KubernetesWaitForPod,
 
@@ -219,7 +222,10 @@ public class UserTaskDetails {
     KubernetesVolumeInfo,
 
     // Install Third Party Packages
-    InstallingThirdPartySoftware
+    InstallingThirdPartySoftware,
+
+    // Promote Auto Flags
+    PromoteAutoFlags
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -423,6 +429,9 @@ public class UserTaskDetails {
         title = "Delete Kubernetes Namespace";
         description = "Delete Kubernetes Namespace";
         break;
+      case DeleteAllServerTypePods:
+        title = "Delete all pods of server type in AZ";
+        description = "Delete all pods of server type in AZ";
       case KubernetesWaitForPod:
         title = "Wait for Kubernetes pod to run";
         description = "Wait for Kubernetes pod to run";
@@ -510,6 +519,10 @@ public class UserTaskDetails {
       case InstallingThirdPartySoftware:
         title = "Install Third Party Software Packages";
         description = "Installing Third party Software packages";
+        break;
+      case PromoteAutoFlags:
+        title = "Promote Auto flags";
+        description = "Promote Auto flags for a universe";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

@@ -35,8 +35,6 @@ namespace tserver {
 using std::string;
 
 using yb::rpc::RpcController;
-using yb::tablet::TabletPeer;
-using yb::tablet::Tablet;
 
 class BackupServiceTest : public TabletServerTestBase {
  public:

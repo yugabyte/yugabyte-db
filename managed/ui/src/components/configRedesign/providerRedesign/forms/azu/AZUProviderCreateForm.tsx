@@ -163,7 +163,7 @@ export const AZUProviderCreateForm = ({
 
   const regions = formMethods.watch('regions', DEFAULT_FORM_VALUES.regions);
   const setRegions = (regions: CloudVendorRegionField[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: CloudVendorRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -296,7 +296,7 @@ export const AZUProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -354,12 +354,12 @@ export const AZUProviderCreateForm = ({
                 <NTPConfigField isDisabled={isFormDisabled} providerCode={ProviderCode.AZU} />
               </FormField>
             </FieldGroup>
+            {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
+              <Box display="flex" gridGap="5px" marginLeft="auto">
+                <CircularProgress size={16} color="primary" thickness={5} />
+              </Box>
+            )}
           </Box>
-          {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-            <Box display="flex" gridGap="5px" marginLeft="auto">
-              <CircularProgress size={16} color="primary" thickness={5} />
-            </Box>
-          )}
           <Box marginTop="16px">
             <YBButton
               btnText="Create Provider Configuration"
@@ -382,6 +382,7 @@ export const AZUProviderCreateForm = ({
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           configuredRegions={regions}
+          isEditProvider={false}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -401,47 +402,70 @@ export const AZUProviderCreateForm = ({
   );
 };
 
-const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldValues) => ({
-  code: ProviderCode.AZU,
-  name: formValues.providerName,
-  ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-    ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-    ...(formValues.sshPrivateKeyContent && {
-      sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-    })
-  }),
-  details: {
-    airGapInstall: !formValues.dbNodePublicInternetAccess,
-    cloudInfo: {
-      [ProviderCode.AZU]: {
-        azuClientId: formValues.azuClientId,
-        azuClientSecret: formValues.azuClientSecret,
-        azuHostedZoneId: formValues.azuHostedZoneId,
-        azuRG: formValues.azuRG,
-        azuSubscriptionId: formValues.azuSubscriptionId,
-        azuTenantId: formValues.azuTenantId
-      }
-    },
-    ntpServers: formValues.ntpServers,
-    setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-    sshPort: formValues.sshPort,
-    sshUser: formValues.sshUser
-  },
-  regions: formValues.regions.map<AZURegionMutation>((regionFormValues) => ({
-    code: regionFormValues.code,
+const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldValues) => {
+  let sshPrivateKeyContent = '';
+  try {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContent
+      ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+      : '';
+  } catch (error) {
+    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+  }
+
+  return {
+    code: ProviderCode.AZU,
+    name: formValues.providerName,
+    ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
+      allAccessKeys: [
+        {
+          keyInfo: {
+            ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
+            ...(formValues.sshPrivateKeyContent && {
+              sshPrivateKeyContent: sshPrivateKeyContent
+            })
+          }
+        }
+      ]
+    }),
     details: {
+      airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.AZU]: {
-          securityGroupId: regionFormValues.securityGroupId,
-          vnet: regionFormValues.vnet,
-          ybImage: regionFormValues.ybImage
+          azuClientId: formValues.azuClientId,
+          azuClientSecret: formValues.azuClientSecret,
+          ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
+          azuRG: formValues.azuRG,
+          azuSubscriptionId: formValues.azuSubscriptionId,
+          azuTenantId: formValues.azuTenantId
         }
-      }
+      },
+      ntpServers: formValues.ntpServers,
+      setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
-    zones: regionFormValues.zones?.map<AZUAvailabilityZoneMutation>((azFormValues) => ({
-      code: azFormValues.code,
-      name: azFormValues.code,
-      subnet: azFormValues.subnet
+    regions: formValues.regions.map<AZURegionMutation>((regionFormValues) => ({
+      code: regionFormValues.code,
+      details: {
+        cloudInfo: {
+          [ProviderCode.AZU]: {
+            ...(regionFormValues.securityGroupId && {
+              securityGroupId: regionFormValues.securityGroupId
+            }),
+            ...(regionFormValues.vnet && {
+              vnet: regionFormValues.vnet
+            }),
+            ...(regionFormValues.ybImage && {
+              ybImage: regionFormValues.ybImage
+            })
+          }
+        }
+      },
+      zones: regionFormValues.zones?.map<AZUAvailabilityZoneMutation>((azFormValues) => ({
+        code: azFormValues.code,
+        name: azFormValues.code,
+        subnet: azFormValues.subnet
+      }))
     }))
-  }))
-});
+  };
+};

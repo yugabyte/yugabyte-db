@@ -46,8 +46,6 @@ TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
 DEFINE_test_flag(bool, fail_initdb_after_snapshot_restore, false,
                  "Kill the master process after successfully restoring the sys catalog snapshot.");
 
-using yb::CountDownLatch;
-using yb::tserver::TabletSnapshotOpRequestPB;
 using yb::tserver::TabletSnapshotOpResponsePB;
 using yb::tablet::SnapshotOperation;
 using yb::pb_util::ReadPBContainerFromPath;

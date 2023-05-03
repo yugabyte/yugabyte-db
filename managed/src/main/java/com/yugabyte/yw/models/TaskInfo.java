@@ -181,6 +181,23 @@ public class TaskInfo extends Model {
     return node.asText();
   }
 
+  @JsonIgnore
+  public UUID getUniverseUuid() {
+    UUID universeUUID = null;
+    JsonNode jsonNode = getDetails();
+    if (jsonNode != null && !jsonNode.isNull()) {
+      JsonNode universeUUIDNode = jsonNode.get("universeUUID");
+      if (universeUUIDNode != null) {
+        universeUUID = UUID.fromString(universeUUIDNode.asText());
+      }
+    }
+    return universeUUID;
+  }
+
+  public State getTaskState() {
+    return taskState;
+  }
+
   public boolean hasCompleted() {
     return COMPLETED_STATES.contains(taskState);
   }

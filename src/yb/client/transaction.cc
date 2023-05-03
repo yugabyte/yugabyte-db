@@ -418,9 +418,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       SetReadTimeIfNeeded(ops_info->groups.size() > 1 || force_consistent_read);
     }
 
-    // Set the transaction's metadata alone. ops_info->metadata.subtransaction_pb has already been
-    // set upsteam in Batcher::FlushAsync.
-    ops_info->metadata.transaction = metadata_;
+    {
+      ops_info->metadata = {
+        .transaction = metadata_,
+        .subtransaction = subtransaction_.active()
+            ? boost::make_optional(subtransaction_.get())
+            : boost::none,
+      };
+    }
+
     return true;
   }
 
@@ -442,6 +448,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     boost::optional<Status> notify_commit_status;
     bool abort = false;
+    bool schedule_status_moved = false;
 
     CommitCallback commit_callback;
     {
@@ -468,13 +475,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
         const std::string* prev_tablet_id = nullptr;
         for (const auto& op : ops) {
+          const std::string& tablet_id = op.tablet->tablet_id();
           if (op.yb_op->applied() && op.yb_op->should_add_intents(metadata_.isolation)) {
-            const std::string& tablet_id = op.tablet->tablet_id();
             if (prev_tablet_id == nullptr || tablet_id != *prev_tablet_id) {
               prev_tablet_id = &tablet_id;
               tablets_[tablet_id].has_metadata = true;
             }
           }
+          if (transaction_status_move_tablets_.count(tablet_id)) {
+            schedule_status_moved = true;
+          }
+          ++tablets_[tablet_id].num_completed_batches;
         }
       } else {
         const TransactionError txn_err(status);
@@ -503,6 +514,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         notify_commit_status = status_;
         commit_callback = std::move(commit_callback_);
       }
+    }
+
+    if (schedule_status_moved) {
+      SendUpdateTransactionStatusLocationRpcs();
     }
 
     if (notify_commit_status) {
@@ -687,8 +702,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     ready_ = false;
     metadata_.locality = TransactionLocality::GLOBAL;
 
+    transaction_status_move_tablets_.reserve(tablets_.size());
+    transaction_status_move_handles_.reserve(tablets_.size());
     for (const auto& tablet_state : tablets_) {
       const auto& participant_tablet = tablet_state.first;
+      transaction_status_move_tablets_.emplace(participant_tablet);
       transaction_status_move_handles_.emplace(participant_tablet,
                                                manager_->rpcs().InvalidHandle());
     }
@@ -890,12 +908,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   bool HasSubTransaction(SubTransactionId id) EXCLUDES(mutex_) {
-    return subtransaction_.HasSubTransaction(id);
+    SharedLock<std::shared_mutex> lock(mutex_);
+    return subtransaction_.active() && subtransaction_.HasSubTransaction(id);
   }
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {
     SCHECK(
-        subtransaction_.HasSubTransaction(kMinSubTransactionId + 1), InternalError,
+        subtransaction_.active(), InternalError,
         "Attempted to rollback to savepoint before creating any savepoints.");
 
     // A heartbeat should be sent (& waited for) to the txn status tablet(s) as part of a rollback.
@@ -1024,15 +1043,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   void SetLogPrefixTag(const LogPrefixName& name, uint64_t id) {
     log_prefix_.tag.store(LogPrefixTag(&name.Get(), id), boost::memory_order_release);
     VLOG_WITH_PREFIX(2) << "Log prefix tag changed";
-  }
-
-  boost::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const {
-    if (subtransaction_.IsDefaultState()) {
-      return boost::none;
-    }
-    SubTransactionMetadataPB subtxn_metadata_pb;
-    subtransaction_.get().ToPB(&subtxn_metadata_pb);
-    return boost::make_optional(subtxn_metadata_pb);
   }
 
  private:
@@ -1187,7 +1197,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return;
     }
 
-    if (!subtransaction_.IsDefaultState()) {
+    if (subtransaction_.active()) {
       subtransaction_.get().aborted.ToPB(state.mutable_aborted()->mutable_set());
     }
 
@@ -1836,7 +1846,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     UniqueLock lock(mutex_);
 
-    if (transaction_status_move_handles_.empty()) {
+    if (transaction_status_move_tablets_.empty()) {
       auto old_status_tablet = old_status_tablet_;
       auto transaction = transaction_->shared_from_this();
       lock.unlock();
@@ -1846,8 +1856,25 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
 
     std::vector<TabletId> participant_tablets;
-    for (const auto& entry : transaction_status_move_handles_) {
-      participant_tablets.push_back(entry.first);
+    for (const auto& tablet_id : transaction_status_move_tablets_) {
+      const auto& tablet_state = tablets_.find(tablet_id);
+      CHECK(tablet_state != tablets_.end());
+      if (tablet_state->second.num_completed_batches == 0) {
+        VLOG_WITH_PREFIX(1) << "Tablet " << tablet_id
+                            << " has no completed batches, skipping UpdateTransactionStatusLocation"
+                            << " rpc for now";
+        continue;
+      }
+      participant_tablets.push_back(tablet_id);
+    }
+
+    if (participant_tablets.empty()) {
+      VLOG_WITH_PREFIX(1) << "No participants ready for transaction status location update yet";
+      return;
+    }
+
+    for (const auto& tablet_id : participant_tablets) {
+      transaction_status_move_tablets_.erase(tablet_id);
     }
 
     tserver::UpdateTransactionStatusLocationRequestPB req;
@@ -2099,16 +2126,22 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   rpc::Rpcs::Handle rollback_heartbeat_handle_;
   rpc::Rpcs::Handle old_rollback_heartbeat_handle_;
 
+  // Set of participant tablet ids that need to be informed about a move in transaction status
+  // location.
+  std::unordered_set<TabletId> transaction_status_move_tablets_ GUARDED_BY(mutex_);
+
   // RPC handles for informing participant tablets about a move in transaction status location.
   std::unordered_map<TabletId, rpc::Rpcs::Handle>
       transaction_status_move_handles_ GUARDED_BY(mutex_);
 
   struct TabletState {
     size_t num_batches = 0;
+    size_t num_completed_batches = 0;
     bool has_metadata = false;
 
     std::string ToString() const {
-      return Format("{ num_batches: $0 has_metadata: $1 }", num_batches, has_metadata);
+      return Format("{ num_batches: $0 num_completed_batches: $1 has_metadata: $2 }",
+                    num_batches, num_completed_batches, has_metadata);
     }
   };
 
@@ -2314,10 +2347,6 @@ std::unordered_map<TableId, uint64_t> YBTransaction::GetTableMutationCounts() co
 
 void YBTransaction::SetLogPrefixTag(const LogPrefixName& name, uint64_t value) {
   return impl_->SetLogPrefixTag(name, value);
-}
-
-boost::optional<SubTransactionMetadataPB> YBTransaction::GetSubTransactionMetadataPB() const {
-  return impl_->GetSubTransactionMetadataPB();
 }
 
 } // namespace client

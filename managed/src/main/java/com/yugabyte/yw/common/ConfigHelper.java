@@ -17,6 +17,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
 import play.Environment;
@@ -82,12 +83,15 @@ public class ConfigHelper {
   public static String getCurrentVersion(Environment environment) {
 
     String configFile = "version_metadata.json";
+    LoaderOptions loaderOptions = new LoaderOptions();
+
     InputStream inputStream = environment.resourceAsStream(configFile);
     if (inputStream == null) { // version_metadata.json not found
       LOG.info(
           "{} file not found. Reading version from version.txt file",
           FilenameUtils.getName(configFile));
-      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(environment.classLoader()));
+      Yaml yaml =
+          new Yaml(new CustomClassLoaderConstructor(environment.classLoader(), loaderOptions));
       return yaml.load(environment.resourceAsStream("version.txt"));
     }
     JsonNode jsonNode = Json.parse(inputStream);
@@ -114,11 +118,14 @@ public class ConfigHelper {
   }
 
   public void loadConfigsToDB(Environment environment) {
+
+    LoaderOptions loaderOptions = new LoaderOptions();
     for (ConfigType type : ConfigType.values()) {
       if (type.getConfigFile() == null) {
         continue;
       }
-      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(environment.classLoader()));
+      Yaml yaml =
+          new Yaml(new CustomClassLoaderConstructor(environment.classLoader(), loaderOptions));
       Map<String, Object> config = yaml.load(environment.resourceAsStream(type.getConfigFile()));
       loadConfigToDB(type, config);
     }

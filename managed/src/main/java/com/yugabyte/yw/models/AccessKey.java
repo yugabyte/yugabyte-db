@@ -10,7 +10,6 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -108,15 +107,6 @@ public class AccessKey extends Model {
     public KeyManagementState getManagementState() {
       return this.managementState;
     }
-
-    public String getSshPrivateKeyContent() {
-      return CommonUtils.getMaskedValue(sshPrivateKeyContent);
-    }
-
-    @JsonIgnore
-    public String getUnMaskedSshPrivateKeyContent() {
-      return sshPrivateKeyContent;
-    }
   }
 
   public static String getDefaultKeyCode(Provider provider) {
@@ -202,8 +192,7 @@ public class AccessKey extends Model {
 
   public KeyInfo getKeyInfo() {
     try {
-      Provider provider = Provider.getOrBadRequest(getProviderUUID());
-      if (provider.getDetails() != null) {
+      if (provider != null && provider.getDetails() != null) {
         keyInfo.mergeFrom(provider.getDetails());
       } else {
         keyInfo.mergeFrom(new ProviderDetails());

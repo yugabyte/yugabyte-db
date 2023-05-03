@@ -27,6 +27,12 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
+type UpstreamFlagType = {
+  name: string,
+  value: string,
+  type: string,
+}
+
 type FlagData = {
   flag: string,
   master?: string,
@@ -95,23 +101,10 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDr
 
     const populateFlagData = async () => {
       const getFlags = async (nodeHost: string) => {
-        const parseContent = (data: string, header: string) => {
-          const content = data.substring(data.indexOf(`<h2>${header}</h2>`));
-          const parseTableIndex = Array.from(content.matchAll(/<table /g))[0].index!;
-          const parseTable = content.substring(parseTableIndex, content.indexOf('</table>') + 8);
-          const flagsAndValues = parseTable.split('</td>').slice(0, -1).map(tdSplit => tdSplit.substring(tdSplit.lastIndexOf('>') + 1))
-          const flags = [];
-          for (let i = 0; i < flagsAndValues.length; i += 2) {
-            const [flag, value] = flagsAndValues.slice(i, i + 2);
-            flags.push({ flag, value })
-          }
-          return flags;
-        }
-
         try {
-          const { data } = await axios.get<string>(`http://${nodeHost}/varz`);
-          const nodeInfoFlags = parseContent(data, 'NodeInfo Flags');
-          const customFlags = parseContent(data, 'Custom Flags');
+          const { data } = await axios.get<{ flags: UpstreamFlagType[] }>(`http://${nodeHost}/api/v1/varz`);
+          const nodeInfoFlags = data.flags.filter(flag => flag.type === "NodeInfo")
+          const customFlags = data.flags.filter(flag => flag.type === "Custom")
           return { nodeInfoFlags, customFlags };
         } catch (err) {
           console.error(err);
@@ -123,27 +116,27 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDr
       const tserverFlags = await getFlags(`${currentNode}:9000`);
 
       const nodeInfoFlagList = new Set<string>()
-      masterFlags?.nodeInfoFlags.forEach(f => nodeInfoFlagList.add(f.flag));
-      tserverFlags?.nodeInfoFlags.forEach(f => nodeInfoFlagList.add(f.flag));
+      masterFlags?.nodeInfoFlags.forEach(f => nodeInfoFlagList.add(f.name));
+      tserverFlags?.nodeInfoFlags.forEach(f => nodeInfoFlagList.add(f.name));
 
       const customFlagList = new Set<string>()
-      masterFlags?.customFlags.forEach(f => customFlagList.add(f.flag));
-      tserverFlags?.customFlags.forEach(f => customFlagList.add(f.flag));
+      masterFlags?.customFlags.forEach(f => customFlagList.add(f.name));
+      tserverFlags?.customFlags.forEach(f => customFlagList.add(f.name));
 
       setGflagData({
         nodeInfoFlags: Array.from(nodeInfoFlagList).map(flag => ({
           flag,
           ...(masterNodes.includes(currentNode) &&
-            { master: masterFlags?.nodeInfoFlags.find(f => f.flag === flag)?.value ?? '-' }
+            { master: masterFlags?.nodeInfoFlags.find(f => f.name === flag)?.value ?? '-' }
           ),
-          tserver: tserverFlags?.nodeInfoFlags.find(f => f.flag === flag)?.value ?? '-',
+          tserver: tserverFlags?.nodeInfoFlags.find(f => f.name === flag)?.value ?? '-',
         })),
         customFlags: Array.from(customFlagList).map(flag => ({
           flag,
           ...(masterNodes.includes(currentNode) &&
-            { master: masterFlags?.customFlags.find(f => f.flag === flag)?.value ?? '-' }
+            { master: masterFlags?.customFlags.find(f => f.name === flag)?.value ?? '-' }
           ),
-          tserver: tserverFlags?.customFlags.find(f => f.flag === flag)?.value ?? '-',
+          tserver: tserverFlags?.customFlags.find(f => f.name === flag)?.value ?? '-',
         }))
       });
     }

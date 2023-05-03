@@ -53,11 +53,11 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/table_info.h"
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/schema.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -82,7 +82,6 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -105,6 +104,14 @@ DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "",
                  "Verify that SelectTServer selected a talet server in the AZ specified by this "
                  "flag.");
 
+DEFINE_RUNTIME_uint32(change_metadata_backoff_max_jitter_ms, 0,
+    "Max jitter (in ms) in the exponential backoff loop that checks if a change metadata operation "
+    "is finished. Only used for colocated table creation for now.");
+
+DEFINE_RUNTIME_uint32(change_metadata_backoff_init_exponent, 1,
+    "Initial exponent of 2 in the exponential backoff loop that checks if a change metadata "
+    "operation is finished. Only used for colocated table creation for now.");
+
 DECLARE_int64(reset_master_leader_timeout_ms);
 
 DECLARE_string(flagfile);
@@ -121,11 +128,8 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-using consensus::RaftPeerPB;
 using master::GetLeaderMasterRpc;
 using master::MasterErrorPB;
-using rpc::Rpc;
-using rpc::RpcController;
 
 namespace client {
 
@@ -256,8 +260,9 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
-YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, WaitForYsqlBackendsCatalogVersion);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetIndexBackfillProgress);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletLocations);
@@ -290,8 +295,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetTableSchemaFromSysCatalog);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
-YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterEstimatedDataLoss);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTime);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, BootstrapProducer);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
@@ -492,12 +497,11 @@ Status YBClient::Data::CreateTable(YBClient* client,
       // The partition schema in the request can be empty.
       // If there are user partition schema in the request - compare it with the received one.
       if (req.partition_schema().hash_bucket_schemas_size() > 0) {
-        PartitionSchema partition_schema;
+        dockv::PartitionSchema partition_schema;
         // We need to use the schema received from the server, because the user-constructed
         // schema might not have column ids.
-        RETURN_NOT_OK(PartitionSchema::FromPB(req.partition_schema(),
-                                              internal::GetSchema(info.schema),
-                                              &partition_schema));
+        RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+            req.partition_schema(), internal::GetSchema(info.schema), &partition_schema));
         if (!partition_schema.Equals(info.partition_schema)) {
           string msg = Substitute("Table $0 already exists with a different partition schema. "
               "Requested partition schema was: $1, actual partition schema is: $2",
@@ -549,11 +553,14 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
 Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
                                                   const YBTableName& table_name,
                                                   const string& table_id,
-                                                  CoarseTimePoint deadline) {
+                                                  CoarseTimePoint deadline,
+                                                  const uint32_t max_jitter_ms,
+                                                  const uint32_t init_exponent) {
   return RetryFunc(
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
-      std::bind(&YBClient::Data::IsCreateTableInProgress, this, client,
-                table_name, table_id, _1, _2));
+      std::bind(
+          &YBClient::Data::IsCreateTableInProgress, this, client, table_name, table_id, _1, _2),
+      2s, max_jitter_ms, init_exponent);
 }
 
 Status YBClient::Data::DeleteTable(YBClient* client,
@@ -899,7 +906,7 @@ Status YBClient::Data::IsBackfillIndexInProgress(YBClient* client,
                                table_id,
                                deadline,
                                &yb_table_info));
-  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+  const auto* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
 
   *backfill_in_progress = true;
   if (!index_info->backfill_error_message().empty()) {
@@ -1145,8 +1152,8 @@ Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
       std::bind(&YBClient::Data::IsFlushTableInProgress, this, client, flush_id, _1, _2));
 }
 
-Status YBClient::Data::GetCompactionStatus(
-    const YBTableName& table_name, const CoarseTimePoint deadline, MonoTime* last_request_time) {
+Result<TableCompactionStatus> YBClient::Data::GetCompactionStatus(
+    const YBTableName& table_name, bool show_tablets, const CoarseTimePoint deadline) {
   GetCompactionStatusRequestPB req;
   GetCompactionStatusResponsePB resp;
 
@@ -1157,13 +1164,33 @@ Status YBClient::Data::GetCompactionStatus(
   }
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
 
+  if (show_tablets) {
+    req.set_show_tablets(true);
+  }
+
   RETURN_NOT_OK(SyncLeaderMasterRpc(
       deadline, req, &resp, "GetCompactionStatus",
       &master::MasterAdminProxy::GetCompactionStatusAsync));
 
-  *last_request_time = MonoTime::FromUint64(resp.last_request_time());
+  if (!resp.has_full_compaction_state()) {
+    return STATUS(InternalError, "Missing full compaction state in table full compaction status");
+  }
 
-  return Status::OK();
+  std::vector<TabletReplicaFullCompactionStatus> replica_statuses;
+  for (const auto& replica_status : resp.replica_statuses()) {
+    if (!replica_status.has_ts_id() || !replica_status.has_tablet_id() ||
+        !replica_status.has_full_compaction_state()) {
+      return STATUS(InternalError, "Missing field(s) in tablet replica full compaction status");
+    }
+
+    replica_statuses.push_back(TabletReplicaFullCompactionStatus{
+        replica_status.ts_id(), replica_status.tablet_id(), replica_status.full_compaction_state(),
+        HybridTime(replica_status.last_full_compaction_time())});
+  }
+
+  return TableCompactionStatus{
+      resp.full_compaction_state(), HybridTime(resp.last_full_compaction_time()),
+      HybridTime(resp.last_request_time()), std::move(replica_statuses)};
 }
 
 bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {
@@ -1313,9 +1340,8 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   info->schema.set_version(resp.version());
   info->schema.set_is_compatible_with_previous_version(
       resp.is_compatible_with_previous_version());
-  RETURN_NOT_OK(PartitionSchema::FromPB(resp.partition_schema(),
-                                        internal::GetSchema(&info->schema),
-                                        &info->partition_schema));
+  RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+      resp.partition_schema(), internal::GetSchema(&info->schema), &info->partition_schema));
 
   info->table_name.GetFromTableIdentifierPB(resp.identifier());
   info->table_id = resp.identifier().table_id();
@@ -1964,7 +1990,7 @@ Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
                                deadline,
                                &yb_table_info));
 
-  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+  const auto* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
   return index_info->index_permissions();
 }
 
@@ -1980,7 +2006,7 @@ Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
                                deadline,
                                &yb_table_info));
 
-  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+  const auto* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
   return index_info->index_permissions();
 }
 

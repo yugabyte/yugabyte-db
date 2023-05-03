@@ -47,6 +47,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
     (state: any) => state.customer.runtimeConfigsKeyMetadata
   );
   // Helps in deciding if the logged in user can mutate the config values
+  const [searchText, setSearchText] = useState<string>('');
   const isScopeMutable = runtimeConfigs?.data?.mutableScope;
   const [editConfig, setEditConfig] = useState<boolean>(false);
   const [resetConfig, setResetConfig] = useState<boolean>(false);
@@ -182,6 +183,10 @@ export const ConfigData: FC<GlobalConfigProps> = ({
     return row.isConfigInherited ? 'config-inherited-row' : 'config-non-inherited-row';
   };
 
+  const onSearchChange = (searchText: string) => {
+    setSearchText(searchText);
+  };
+
   return (
     <div className="runtime-config-data-container">
       <span className="runtime-config-data-container__check">
@@ -205,6 +210,11 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         search
         multiColumnSearch
         trClassName={rowClassNameFormat}
+        options={{
+          clearSearch: false,
+          onSearchChange: onSearchChange,
+          defaultSearch: searchText
+        }}
       >
         <TableHeaderColumn dataField="configID" isKey={true} hidden={true} />
         <TableHeaderColumn

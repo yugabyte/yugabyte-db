@@ -39,7 +39,7 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional/optional.hpp>
+#include <boost/range/iterator_range_core.hpp>
 
 #include <glog/logging.h>
 
@@ -470,17 +470,6 @@ class TableProperties {
 
 typedef std::string PgSchemaName;
 
-// Used to store the offsets of components of a row key (DocKey).
-// hash_part_size - size of the hash part of the key.
-// doc_key_size - size of the hash part + range part of the key.
-// key_offsets[num_of_key_cols] - each element contains the start offset of corresponding key
-// column.
-struct DocKeyOffsets {
-  size_t hash_part_size;
-  size_t doc_key_size;
-  std::vector<size_t> key_offsets;
-};
-
 // The schema for a set of rows.
 //
 // A Schema is simply a set of columns, along with information about
@@ -507,6 +496,7 @@ class Schema {
       cotable_id_(Uuid::Nil()),
       colocation_id_(kColocationIdNotSet),
       pgschema_name_("") {
+    UpdateKeyPrefixEncodedLen();
   }
 
   Schema(const Schema& other);
@@ -563,11 +553,6 @@ class Schema {
                const ColocationId colocation_id = kColocationIdNotSet,
                const PgSchemaName pgschema_name = "");
 
-  // Recompute the dockey offsets if they were already set. This is used
-  // from set_colocation_id and set_cotable_id which are the only methods which
-  // can change the encoded dockey format after Schema is created.
-  void UpdateDocKeyOffsets();
-
   // Return the number of bytes needed to represent a single row of this schema.
   //
   // This size does not include any indirected (variable length) data (eg strings)
@@ -602,11 +587,6 @@ class Schema {
     return col_offsets_[col_idx];
   }
 
-  // Return optional dockey offset.
-  const std::optional<DocKeyOffsets>& doc_key_offsets() const {
-    return doc_key_offsets_;
-  }
-
   // Return the ColumnSchema corresponding to the given column index.
   inline const ColumnSchema &column(size_t idx) const {
     DCHECK_LT(idx, cols_.size());
@@ -635,6 +615,14 @@ class Schema {
 
   const std::vector<ColumnId>& column_ids() const {
     return col_ids_;
+  }
+
+  auto hash_key_column_ids() const {
+    return boost::make_iterator_range(col_ids_.begin(), col_ids_.begin() + num_hash_key_columns_);
+  }
+
+  auto key_column_ids() const {
+    return boost::make_iterator_range(col_ids_.begin(), col_ids_.begin() + num_key_columns_);
   }
 
   const std::vector<std::string> column_names() const {
@@ -771,7 +759,7 @@ class Schema {
       DCHECK_EQ(colocation_id_, kColocationIdNotSet);
     }
     cotable_id_ = cotable_id;
-    UpdateDocKeyOffsets();
+    UpdateKeyPrefixEncodedLen();
   }
 
   bool has_yb_hash_code() const {
@@ -801,7 +789,7 @@ class Schema {
       DCHECK(cotable_id_.IsNil());
     }
     colocation_id_ = colocation_id;
-    UpdateDocKeyOffsets();
+    UpdateKeyPrefixEncodedLen();
   }
 
   bool is_colocated() const {
@@ -851,12 +839,6 @@ class Schema {
   // Initialize column IDs by default values.
   // Requires that this schema has no column IDs.
   void InitColumnIdsByDefault();
-
-  // Return a new Schema which is the same as this one, but without any column
-  // IDs assigned.
-  //
-  // Requires that this schema has column IDs.
-  Schema CopyWithoutColumnIds() const;
 
   // Create a new schema containing only the selected columns.
   // The resulting schema will have no key columns defined.
@@ -1022,6 +1004,11 @@ class Schema {
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
 
+  // The number of bytes before actual key values for all encoded keys in this table.
+  size_t key_prefix_encoded_len() const {
+    return key_prefix_encoded_len_;
+  }
+
   static ColumnId first_column_id();
 
   // Should account for every field in Schema.
@@ -1029,6 +1016,7 @@ class Schema {
   static bool TEST_Equals(const Schema& lhs, const Schema& rhs);
 
  private:
+  void UpdateKeyPrefixEncodedLen();
 
   void ResetColumnIds(const std::vector<ColumnId>& ids);
 
@@ -1058,7 +1046,6 @@ class Schema {
   ColumnId max_col_id_;
   std::vector<ColumnId> col_ids_;
   std::vector<size_t> col_offsets_;
-  std::optional<DocKeyOffsets> doc_key_offsets_;
 
   // The keys of this map are GStringPiece references to the actual name members of the
   // ColumnSchema objects inside cols_. This avoids an extra copy of those strings,
@@ -1097,6 +1084,7 @@ class Schema {
 
   PgSchemaName pgschema_name_;
 
+  size_t key_prefix_encoded_len_ = 0;
   // NOTE: if you add more members, make sure to add the appropriate
   // code to swap() and CopyFrom() as well to prevent subtle bugs.
 };
@@ -1234,6 +1222,7 @@ class SchemaBuilder {
 
   DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);
 };
+
 } // namespace yb
 
 // Specialize std::hash for ColumnId

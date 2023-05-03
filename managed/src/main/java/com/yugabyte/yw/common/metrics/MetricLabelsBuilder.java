@@ -72,17 +72,13 @@ public class MetricLabelsBuilder {
   }
 
   public List<AlertDefinitionLabel> getDefinitionLabels() {
-    return labels
-        .entrySet()
-        .stream()
+    return labels.entrySet().stream()
         .map(label -> new AlertDefinitionLabel(label.getKey(), label.getValue()))
         .collect(Collectors.toList());
   }
 
   public List<AlertLabel> getAlertLabels() {
-    return labels
-        .entrySet()
-        .stream()
+    return labels.entrySet().stream()
         .map(label -> new AlertLabel(label.getKey(), label.getValue()))
         .collect(Collectors.toList());
   }

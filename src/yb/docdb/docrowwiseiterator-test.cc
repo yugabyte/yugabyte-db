@@ -15,20 +15,20 @@
 #include <string>
 
 #include "yb/common/common.pb.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction-test-util.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
-#include "yb/docdb/packed_row.h"
-#include "yb/docdb/schema_packing.h"
+#include "yb/dockv/packed_row.h"
+#include "yb/dockv/schema_packing.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -44,6 +44,13 @@ DECLARE_bool(TEST_docdb_sort_weak_intents);
 namespace yb {
 namespace docdb {
 
+using dockv::DocKey;
+using dockv::DocPath;
+using dockv::KeyBytes;
+using dockv::KeyEntryValue;
+using dockv::KeyEntryValues;
+using dockv::SubDocKey;
+
 class DocRowwiseIteratorTest : public DocDBTestBase {
  protected:
   DocRowwiseIteratorTest() {
@@ -58,8 +65,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
 
   const Schema& projection() {
     if (!projection_) {
-      projection_.emplace();
-      CHECK_OK(doc_read_context().schema.CreateProjectionByNames({"c", "d", "e"}, &*projection_));
+      projection_ = doc_read_context().schema;
     }
     return *projection_;
   }
@@ -71,9 +77,23 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void InsertTestRangeData();
 
   void InsertPackedRow(
-      SchemaVersion version, std::reference_wrapper<const SchemaPacking> schema_packing,
+      SchemaVersion version, std::reference_wrapper<const dockv::SchemaPacking> schema_packing,
       const KeyBytes &doc_key, HybridTime ht,
       std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns);
+
+  std::unique_ptr<DocRowwiseIterator> MakeIterator(
+      const Schema& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext &txn_op_context,
+      const DocDB &doc_db,
+      CoarseTimePoint deadline,
+      const ReadHybridTime &read_time,
+      RWOperationCounter *pending_op_counter) {
+    reader_projection_.Reset(projection, projection.column_ids());
+    return std::make_unique<DocRowwiseIterator>(
+        reader_projection_, doc_read_context, txn_op_context, doc_db, deadline, read_time,
+        pending_op_counter);
+  }
 
   virtual Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
       const Schema &projection,
@@ -83,9 +103,8 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       CoarseTimePoint deadline,
       const ReadHybridTime &read_time,
       const DocQLScanSpec &spec,
-      RWOperationCounter *pending_op_counter = nullptr,
-      bool liveness_column_expected = false) {
-    auto iter = std::make_unique<DocRowwiseIterator>(
+      RWOperationCounter *pending_op_counter = nullptr) {
+    auto iter = MakeIterator(
         projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
         pending_op_counter);
     RETURN_NOT_OK(iter->Init(spec));
@@ -102,7 +121,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       const DocPgsqlScanSpec &spec,
       RWOperationCounter *pending_op_counter = nullptr,
       bool liveness_column_expected = false) {
-    auto iter = std::make_unique<DocRowwiseIterator>(
+    auto iter = MakeIterator(
         projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
         pending_op_counter);
     RETURN_NOT_OK(iter->Init(spec));
@@ -117,11 +136,10 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       CoarseTimePoint deadline,
       const ReadHybridTime &read_time,
       RWOperationCounter *pending_op_counter = nullptr,
-      bool liveness_column_expected = false,
-      boost::optional<size_t> end_referenced_key_column_index = boost::none) {
-    auto iter = std::make_unique<DocRowwiseIterator>(
+      bool liveness_column_expected = false) {
+    auto iter = MakeIterator(
         projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-        pending_op_counter, end_referenced_key_column_index);
+        pending_op_counter);
     iter->Init(YQL_TABLE_TYPE);
     return iter;
   }
@@ -188,6 +206,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestPartialKeyColumnsProjection();
 
   std::optional<Schema> projection_;
+  dockv::ReaderProjection reader_projection_;
 };
 
 static const std::string kStrKey1 = "row1";
@@ -195,11 +214,8 @@ static constexpr int64_t kIntKey1 = 11111;
 static const std::string kStrKey2 = "row2";
 static constexpr int64_t kIntKey2 = 22222;
 
-static const KeyBytes kEncodedDocKey1(
-    DocKey(KeyEntryValues(kStrKey1, kIntKey1)).Encode());
-
-static const KeyBytes kEncodedDocKey2(
-    DocKey(KeyEntryValues(kStrKey2, kIntKey2)).Encode());
+const KeyBytes kEncodedDocKey1 = dockv::MakeDocKey(kStrKey1, kIntKey1).Encode();
+const KeyBytes kEncodedDocKey2 = dockv::MakeDocKey(kStrKey2, kIntKey2).Encode();
 
 Schema DocRowwiseIteratorTest::CreateSchema() {
   return Schema({
@@ -222,8 +238,8 @@ constexpr int32_t kFixedHashCode = 0;
 const KeyBytes GetKeyBytes(
     string hash_key, string range_key1, string range_key2, string range_key3) {
   return DocKey(
-             kFixedHashCode, KeyEntryValues(hash_key),
-             KeyEntryValues(range_key1, range_key2, range_key3))
+             kFixedHashCode, dockv::MakeKeyEntryValues(hash_key),
+             dockv::MakeKeyEntryValues(range_key1, range_key2, range_key3))
       .Encode();
 }
 
@@ -320,8 +336,8 @@ void DocRowwiseIteratorTest::InsertPopulationData() {
 }
 
 const KeyBytes GetKeyBytes(int32_t hash_key, int32_t range_key1, int32_t range_key2) {
-  return DocKey(kFixedHashCode, KeyEntryValues(hash_key), KeyEntryValues(range_key1, range_key2))
-      .Encode();
+  return DocKey(kFixedHashCode, dockv::MakeKeyEntryValues(hash_key),
+                dockv::MakeKeyEntryValues(range_key1, range_key2)).Encode();
 }
 
 const Schema test_range_schema(
@@ -350,10 +366,10 @@ void DocRowwiseIteratorTest::InsertTestRangeData() {
 }
 
 void DocRowwiseIteratorTest::InsertPackedRow(
-    SchemaVersion version, std::reference_wrapper<const SchemaPacking> schema_packing,
+    SchemaVersion version, std::reference_wrapper<const dockv::SchemaPacking> schema_packing,
     const KeyBytes &doc_key, HybridTime ht,
     std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns) {
-  RowPacker packer(
+  dockv::RowPacker packer(
       version, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
       /* value_control_fields= */ Slice());
 
@@ -363,11 +379,11 @@ void DocRowwiseIteratorTest::InsertPackedRow(
   auto packed_row = ASSERT_RESULT(packer.Complete());
 
   ASSERT_OK(SetPrimitive(
-      DocPath(doc_key), ValueControlFields(), ValueRef(packed_row), ht));
+      DocPath(doc_key), dockv::ValueControlFields(), ValueRef(packed_row), ht));
 }
 
 Result<std::string> QLTableRowToString(
-    const Schema &schema, const QLTableRow &row, const Schema *projection) {
+    const Schema &schema, const qlexpr::QLTableRow &row, const Schema *projection) {
   QLValue value;
   std::stringstream buffer;
   buffer << "{";
@@ -392,7 +408,7 @@ Result<std::string> ConvertIteratorRowsToString(
     const Schema &schema,
     const Schema *projection = nullptr) {
   std::stringstream buffer;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection));
     buffer << "\n";
@@ -467,7 +483,7 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
 void DocRowwiseIteratorTest::TestClusteredFilterRange() {
   InsertTestRangeData();
 
-  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue::Int32(5)};
+  const KeyEntryValues hashed_components{KeyEntryValue::Int32(5)};
 
   QLConditionPB cond;
   auto ids = cond.add_operands()->mutable_tuple();
@@ -507,7 +523,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
       {10_ColId, 11_ColId, 12_ColId}, 2);
   test_schema.set_colocation_id(colocation_id);
 
-  const std::vector<KeyEntryValue> range_components{
+  const KeyEntryValues range_components{
       KeyEntryValue::Int32(5), KeyEntryValue::Int32(6)};
 
   ASSERT_OK(SetPrimitive(
@@ -530,7 +546,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
 
   DocDBDebugDumpToConsole();
 
-  const std::vector<KeyEntryValue> empty_key_components;
+  const KeyEntryValues empty_key_components;
   boost::optional<int32_t> empty_hash_code;
   DocPgsqlScanSpec spec(
       test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
@@ -559,7 +575,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
       {10_ColId, 11_ColId, 12_ColId}, 2);
   test_schema.set_colocation_id(colocation_id);
 
-  const std::vector<KeyEntryValue> range_components{
+  const KeyEntryValues range_components{
       KeyEntryValue::Int32(5), KeyEntryValue::Int32(6)};
 
   ASSERT_OK(SetPrimitive(
@@ -580,7 +596,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
   auto option1 = options->add_elems()->mutable_tuple_value();
   option1->add_elems()->set_int32_value(5);
 
-  const std::vector<KeyEntryValue> empty_key_components;
+  const KeyEntryValues empty_key_components;
   boost::optional<int32_t> empty_hash_code;
   static const DocKey default_doc_key;
   DocPgsqlScanSpec spec(
@@ -598,7 +614,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
 void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
   InsertPopulationData();
 
-  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+  const KeyEntryValues hashed_components{KeyEntryValue(INDIA)};
 
   QLConditionPB cond;
   auto ids = cond.add_operands()->mutable_tuple();
@@ -634,7 +650,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
 void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
   InsertPopulationData();
 
-  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+  const KeyEntryValues hashed_components{KeyEntryValue(INDIA)};
 
   QLConditionPB cond;
   auto ids = cond.add_operands()->mutable_tuple();
@@ -669,7 +685,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
 void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
   InsertPopulationData();
 
-  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+  const KeyEntryValues hashed_components{KeyEntryValue(INDIA)};
 
   QLConditionPB cond;
   auto ids = cond.add_operands()->mutable_tuple();
@@ -702,7 +718,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
 void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
   InsertPopulationData();
 
-  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+  const KeyEntryValues hashed_components{KeyEntryValue(INDIA)};
 
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
@@ -743,7 +759,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
 void DocRowwiseIteratorTest::TestClusteredFilterEmptyIn() {
   InsertPopulationData();
 
-  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+  const KeyEntryValues hashed_components{KeyEntryValue(INDIA)};
 
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
@@ -1010,7 +1026,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 800 w: 2 } -> \
 
   const HybridTime kSafeTime = 50000_usec_ht;
   {
-    DocKey doc_key(KeyEntryValues(kStrKey1, kIntKey1));
+    auto doc_key = dockv::MakeDocKey(kStrKey1, kIntKey1);
     const KeyBytes doc_key_bytes = doc_key.Encode();
     boost::optional<const yb::Slice> doc_key_optional(doc_key_bytes.AsSlice());
     auto iter = CreateIntentAwareIterator(
@@ -1050,7 +1066,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 800 w: 2 } -> \
   }
 
   {
-    DocKey doc_key(KeyEntryValues(kStrKey2, kIntKey2));
+    auto doc_key = dockv::MakeDocKey(kStrKey2, kIntKey2);
     const KeyBytes doc_key_bytes = doc_key.Encode();
     boost::optional<const yb::Slice> doc_key_optional(doc_key_bytes.AsSlice());
     auto iter = CreateIntentAwareIterator(
@@ -1097,19 +1113,19 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
         projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800)));
 
-    QLTableRow row;
+    qlexpr::QLTableRow row;
     QLValue value;
 
     ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(&row)));
 
     // ColumnId 40 should be deleted whereas ColumnId 50 should be visible.
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_TRUE(value.IsNull());
-
     ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(3), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(4), &value));
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row1_e", value.string_value());
   }
@@ -1156,7 +1172,7 @@ void DocRowwiseIteratorTest::TestColocatedTableTombstone() {
 
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(encoded_1_with_colocation_id.Encode(), KeyEntryValue::kLivenessColumn),
-      ValueRef(ValueEntryType::kNullLow)));
+      ValueRef(dockv::ValueEntryType::kNullLow)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
   DocKey colocation_key(colocation_id);
@@ -1196,8 +1212,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorMultipleDeletes() {
 
   MonoDelta ttl = MonoDelta::FromMilliseconds(1);
   MonoDelta ttl_expiry = MonoDelta::FromMilliseconds(2);
-  auto read_time = ReadHybridTime::SingleTime(server::HybridClock::AddPhysicalTimeToHybridTime(
-      HybridTime::FromMicros(2800), ttl_expiry));
+  auto read_time = ReadHybridTime::SingleTime(HybridTime::FromMicros(2800).AddDelta(ttl_expiry));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)),
                              ValueRef(QLValue::Primitive("row1_c"))));
@@ -1213,15 +1228,15 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorMultipleDeletes() {
 
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(50_ColId)),
-      ValueControlFields {.ttl = ttl}, ValueRef(QLValue::Primitive("row1_e"))));
+      dockv::ValueControlFields {.ttl = ttl}, ValueRef(QLValue::Primitive("row1_e"))));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(30_ColId)),
-                             ValueRef(ValueEntryType::kTombstone)));
+                             ValueRef(dockv::ValueEntryType::kTombstone)));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
                              ValueRef(QLValue::PrimitiveInt64(20000))));
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(50_ColId)),
-      ValueControlFields {.ttl = MonoDelta::FromMilliseconds(3)},
+      dockv::ValueControlFields {.ttl = MonoDelta::FromMilliseconds(3)},
       ValueRef(QLValue::Primitive("row2_e"))));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2800)));
 
@@ -1306,7 +1321,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorKeyProjection() {
   // Row 1
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::kLivenessColumn),
-      ValueRef(ValueEntryType::kNullLow)));
+      ValueRef(dockv::ValueEntryType::kNullLow)));
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
       ValueRef(QLValue::PrimitiveInt64(10000))));
@@ -1563,7 +1578,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
   ASSERT_FALSE(iter.IsOutOfRecords());
   auto key_data = ASSERT_RESULT(iter.FetchKey());
   SubDocKey subdoc_key;
-  ASSERT_OK(subdoc_key.FullyDecodeFrom(key_data.key, HybridTimeRequired::kFalse));
+  ASSERT_OK(subdoc_key.FullyDecodeFrom(key_data.key, dockv::HybridTimeRequired::kFalse));
   ASSERT_EQ(subdoc_key.ToString(), R"#(SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]))#");
   ASSERT_EQ(key_data.write_time.ToString(), "HT{ physical: 1000 }");
 }
@@ -1631,8 +1646,7 @@ void DocRowwiseIteratorTest::TestScanWithinTheSameTxn() {
   LOG(INFO) << "Dump:\n" << DocDBDebugDumpToStr();
 
   const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
-  Schema projection;
-  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"c", "d", "e"}, &projection));
+  Schema projection = this->projection();
 
   auto iter = ASSERT_RESULT(CreateIterator(
       projection, doc_read_context(), txn_context, doc_db(), CoarseTimePoint::max() /* deadline */,
@@ -1654,8 +1668,7 @@ void DocRowwiseIteratorTest::TestScanWithinTheSameTxn() {
 void DocRowwiseIteratorTest::TestLargeKeys() {
   constexpr size_t str_key_size = 0x100;
   std::string str_key(str_key_size, 't');
-  KeyBytes kEncodedKey(
-    DocKey(KeyEntryValues(str_key, kIntKey1)).Encode());
+  auto kEncodedKey = dockv::MakeDocKey(str_key, kIntKey1).Encode();
 
   // Row 1
   // We don't need any seeks for writes, where column values are primitives.
@@ -1752,8 +1765,8 @@ void DocRowwiseIteratorTest::TestDeletedDocumentUsingLivenessColumnDelete() {
   // Row 1
   // We don't need any seeks for writes, where column values are primitives.
   ASSERT_OK(SetPrimitive(
-      DocPath(kEncodedDocKey1, KeyEntryValue::kLivenessColumn), ValueRef(ValueEntryType::kNullLow),
-      HybridTime::FromMicros(1000)));
+      DocPath(kEncodedDocKey1, KeyEntryValue::kLivenessColumn),
+      ValueRef(dockv::ValueEntryType::kNullLow), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)), QLValue::Primitive("row1_c"),
       HybridTime::FromMicros(1000)));
@@ -1860,17 +1873,15 @@ void DocRowwiseIteratorTest::TestPartialKeyColumnsProjection() {
   Schema projection;
   ASSERT_OK(population_schema.CreateProjectionByNames({"population"}, &projection));
 
-  for (size_t key_index = 0; key_index < population_schema.num_key_columns(); key_index++) {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext,
-        doc_db(), CoarseTimePoint::max(), ReadHybridTime::FromMicros(1000),
-        /*pending_op_counter = */ nullptr, /* liveness_column_expected = */ false, key_index));
+  auto iter = ASSERT_RESULT(CreateIterator(
+      projection, doc_read_context, kNonTransactionalOperationContext,
+      doc_db(), CoarseTimePoint::max(), ReadHybridTime::FromMicros(1000),
+      /*pending_op_counter = */ nullptr));
 
-    QLTableRow row;
-    ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(&row)));
-    // Expected count is non-key column (1) + num of key columns.
-    ASSERT_EQ(key_index + 1, row.ColumnCount());
-  }
+  qlexpr::QLTableRow row;
+  ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(&row)));
+  // Expected count is non-key column (1) + num of key columns.
+  ASSERT_EQ(1, row.ColumnCount());
 }
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterTestRange) {

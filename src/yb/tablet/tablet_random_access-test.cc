@@ -39,9 +39,9 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/partial_row.h"
+#include "yb/dockv/partial_row.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
@@ -63,11 +63,12 @@
 #include "yb/util/thread.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_int32(keyspace_size, 300, "number of unique row keys to insert/mutate");
-DEFINE_UNKNOWN_int32(runtime_seconds, 1, "number of seconds to run the test");
-DEFINE_UNKNOWN_int32(sleep_between_background_ops_ms, 100,
+DEFINE_NON_RUNTIME_int32(keyspace_size, 300, "number of unique row keys to insert/mutate");
+DEFINE_NON_RUNTIME_int32(runtime_seconds, 1, "number of seconds to run the test");
+DEFINE_NON_RUNTIME_int32(sleep_between_background_ops_ms, 100,
              "number of milliseconds to sleep between flushing or compacting");
-DEFINE_UNKNOWN_int32(update_delete_ratio, 4, "ratio of update:delete when mutating existing rows");
+DEFINE_NON_RUNTIME_int32(update_delete_ratio, 4,
+             "ratio of update:delete when mutating existing rows");
 
 using std::string;
 using std::vector;
@@ -228,7 +229,8 @@ class TestRandomAccess : public YBTabletTest {
 
     EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
 
-    auto row_block = CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer());
+    auto row_block = qlexpr::CreateRowBlock(
+        QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer());
     if (row_block->row_count() == 0) {
       return VALUE_NOT_FOUND;
     }

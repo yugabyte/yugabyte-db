@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	pb "node-agent/generated/service"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -23,6 +26,7 @@ const (
 	nodeAgentDir            = "/node-agent"
 	configDir               = "/config"
 	certsDir                = "/cert"
+	pexEnvDir               = "/pkg/devops/pex/pexEnv"
 	releaseDir              = "/release"
 	logsDir                 = "/logs"
 	DefaultShell            = "/bin/bash"
@@ -61,22 +65,23 @@ const (
 	PlatformCaCertPathKey     = "platform.ca_cert_path"
 
 	// Node config keys.
-	NodeIpKey                 = "node.ip"
-	NodePortKey               = "node.port"
-	RequestTimeoutKey         = "node.request_timeout_sec"
-	NodeNameKey               = "node.name"
-	NodeAgentIdKey            = "node.agent.uuid"
-	NodeIdKey                 = "node.uuid"
-	NodeInstanceTypeKey       = "node.instance_type"
-	NodeAzIdKey               = "node.azid"
-	NodeRegionKey             = "node.region"
-	NodeZoneKey               = "node.zone"
-	NodeLoggerKey             = "node.log"
-	NodeAgentRestartKey       = "node.restart"
-	NodeAgentLogLevelKey      = "node.log_level"
-	NodeAgentLogMaxMbKey      = "node.log_max_mb"
-	NodeAgentLogMaxBackupsKey = "node.log_max_backups"
-	NodeAgentLogMaxDaysKey    = "node.log_max_days"
+	NodeIpKey                  = "node.ip"
+	NodePortKey                = "node.port"
+	RequestTimeoutKey          = "node.request_timeout_sec"
+	NodeNameKey                = "node.name"
+	NodeAgentIdKey             = "node.agent.uuid"
+	NodeIdKey                  = "node.uuid"
+	NodeInstanceTypeKey        = "node.instance_type"
+	NodeAzIdKey                = "node.azid"
+	NodeRegionKey              = "node.region"
+	NodeZoneKey                = "node.zone"
+	NodeLoggerKey              = "node.log"
+	NodeAgentRestartKey        = "node.restart"
+	NodeAgentLogLevelKey       = "node.log_level"
+	NodeAgentLogMaxMbKey       = "node.log_max_mb"
+	NodeAgentLogMaxBackupsKey  = "node.log_max_backups"
+	NodeAgentLogMaxDaysKey     = "node.log_max_days"
+	NodeAgentDisableMetricsTLS = "node.disable_metrics_tls"
 )
 
 const (
@@ -228,6 +233,12 @@ func CertsDir() string {
 	return MustGetHomeDirectory() + certsDir
 }
 
+// PexEnvDir returns the pexEnv path
+func PexEnvDir() string {
+	return MustGetHomeDirectory() + pexEnvDir
+}
+
+// ReleaseDir returns the release dir path.
 func ReleaseDir() string {
 	return MustGetHomeDirectory() + releaseDir
 }
@@ -302,9 +313,42 @@ func ConvertType(from any, to any) error {
 	if kind != reflect.Pointer {
 		return fmt.Errorf("Target type (%v) is not a pointer", kind)
 	}
-	b, err := json.Marshal(from)
+	var b []byte
+	var err error
+	if msg, ok := from.(proto.Message); ok {
+		b, err = protojson.Marshal(msg)
+	} else {
+		b, err = json.Marshal(from)
+	}
 	if err != nil {
 		return err
 	}
 	return json.Unmarshal(b, to)
+}
+
+// ScanDir scans a directory and invokes the callback for every file/dir.
+func ScanDir(dir string, callback func(os.FileInfo) (bool, error)) error {
+	fInfos, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, fInfo := range fInfos {
+		isContinue, err := callback(fInfo)
+		if err != nil {
+			return err
+		}
+		if !isContinue {
+			break
+		}
+	}
+	return nil
+}
+
+// IsPexEnvAvailable returns true if pexEnv directory exists or there is no error.
+func IsPexEnvAvailable() bool {
+	fInfo, err := os.Stat(PexEnvDir())
+	if err != nil {
+		return false
+	}
+	return fInfo.IsDir()
 }

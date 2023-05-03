@@ -13,7 +13,7 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"

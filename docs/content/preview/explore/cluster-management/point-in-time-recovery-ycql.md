@@ -34,11 +34,13 @@ Point-in-time recovery (PITR) allows you to restore the state of your cluster's 
 
 For more information, see [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/#features). For details on the `yb-admin` commands, refer to [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands).
 
-You can try out PITR by creating a namespace and populating it, creating a snapshot schedule, and restoring from that schedule.
+The following examples show how you can use the PITR feature by creating a database and populating it, creating a snapshot schedule, and restoring from a snapshot on the schedule.
 
 Note that the examples are deliberately simplified. In many of the scenarios, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
 
-{{% explore-setup-single-local %}}
+## Set up universe
+
+The examples run on a local multi-node YugabyteDB universe. To create a universe, see [Set up YugabyteDB universe](../../#set-up-yugabytedb-universe).
 
 ## Undo data changes
 
@@ -92,7 +94,9 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Create a snapshot schedule for the new `pitr` keyspace from a shell prompt. In the following example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    ./bin/yb-admin create_snapshot_schedule 1 10 ycql.pitr
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        create_snapshot_schedule 1 10 ycql.pitr
     ```
 
     ```output.json
@@ -104,7 +108,9 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Verify that a snapshot has happened:
 
     ```sh
-    ./bin/yb-admin list_snapshot_schedules
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshot_schedules
     ```
 
     ```output.json
@@ -162,7 +168,9 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
     ```output.json
@@ -175,7 +183,9 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Next, verify the restoration is in `RESTORED` state (you'll observe more snapshots in the list, as well):
 
     ```sh
-    ./bin/yb-admin list_snapshots
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshots
     ```
 
     ```output

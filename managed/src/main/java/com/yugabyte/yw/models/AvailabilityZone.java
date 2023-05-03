@@ -67,15 +67,8 @@ public class AvailabilityZone extends Model {
       accessMode = READ_ONLY)
   private Boolean active = true;
 
-  public Boolean isActive() {
+  public boolean isActive() {
     return getActive();
-  }
-
-  public void setActiveFlag(Boolean active) {
-    if (active && !this.getActive()) {
-      throw new IllegalArgumentException("Cannot activate already inactive zone");
-    }
-    this.setActive(active);
   }
 
   @Column(length = 80)
@@ -145,7 +138,7 @@ public class AvailabilityZone extends Model {
   public boolean shouldBeUpdated(AvailabilityZone zone) {
     return !Objects.equals(this.getSubnet(), zone.getSubnet())
         || !Objects.equals(this.getSecondarySubnet(), zone.getSecondarySubnet())
-        || !Objects.equals(this.getAvailabilityZoneDetails(), zone.getAvailabilityZoneDetails());
+        || !Objects.equals(this.getDetails(), zone.getDetails());
   }
 
   /** Query Helper for Availability Zone with primary key */
@@ -157,8 +150,7 @@ public class AvailabilityZone extends Model {
   @JsonIgnore
   public long getNodeCount() {
     return Customer.get(getRegion().getProvider().getCustomerUUID())
-        .getUniversesForProvider(getRegion().getProvider().getUuid())
-        .stream()
+        .getUniversesForProvider(getRegion().getProvider().getUuid()).stream()
         .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
         .filter(nd -> nd.azUuid.equals(getUuid()))
         .count();
@@ -261,11 +253,7 @@ public class AvailabilityZone extends Model {
 
   public static Optional<AvailabilityZone> maybeGetByCode(
       Provider provider, String code, boolean onlyActive) {
-    return find.query()
-        .where()
-        .eq("code", code)
-        .findSet()
-        .stream()
+    return find.query().where().eq("code", code).findSet().stream()
         .filter(az -> az.getProvider().getUuid().equals(provider.getUuid()))
         .filter(az -> !onlyActive || az.getActive())
         .findFirst();

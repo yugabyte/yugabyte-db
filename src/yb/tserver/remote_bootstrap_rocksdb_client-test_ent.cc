@@ -24,7 +24,6 @@ namespace tserver {
 using std::string;
 using std::vector;
 
-using yb::tablet::Tablet;
 
 class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
  public:

@@ -173,7 +173,7 @@ class CatalogManagerUtil {
 
   static void FillTableInfoPB(
       const TableId& table_id, const std::string& table_name, const TableType& table_type,
-      const Schema& schema, uint32_t schema_version, const PartitionSchema& partition_schema,
+      const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
       tablet::TableInfoPB* pb);
 
  private:
@@ -229,6 +229,15 @@ struct Comparator {
 
   CMPerTableLoadState* state_;
 };
+
+template <class PB>
+bool IsIndex(const PB& pb) {
+  return pb.has_index_info() || !pb.indexed_table_id().empty();
+}
+
+inline bool IsTable(const SysTablesEntryPB& pb) {
+  return !IsIndex(pb);
+}
 
 } // namespace master
 } // namespace yb

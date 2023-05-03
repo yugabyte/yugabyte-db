@@ -10,19 +10,19 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
-
-import io.swagger.annotations.ApiModelProperty;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.ToString;
-
 import com.yugabyte.yw.models.AccessKey.MigratedKeyInfoFields;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.Objects;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @Data
@@ -44,4 +44,9 @@ public class ProviderDetails extends MigratedKeyInfoFields {
   }
 
   @ApiModelProperty public CloudInfo cloudInfo;
+
+  @JsonIgnore
+  public boolean isUpdateNeeded(ProviderDetails details) {
+    return !Objects.equals(this.getCloudInfo(), details.getCloudInfo());
+  }
 }

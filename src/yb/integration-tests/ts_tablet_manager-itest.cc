@@ -39,7 +39,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
@@ -78,7 +78,7 @@ using std::string;
 
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader);
-DEFINE_UNKNOWN_int32(num_election_test_loops, 3,
+DEFINE_NON_RUNTIME_int32(num_election_test_loops, 3,
              "Number of random EmulateElection() loops to execute in "
              "TestReportNewLeaderOnLeaderChange");
 DECLARE_bool(enable_ysql);
@@ -93,7 +93,6 @@ using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableName;
 using consensus::GetConsensusRole;
-using consensus::RaftPeerPB;
 using itest::SimpleIntKeyYBSchema;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
@@ -165,7 +164,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&schema_)
-            .hash_schema(YBHashSchema::kMultiColumnHash)
+            .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
             .num_tablets(1)
             .Create());
   ASSERT_OK(client_->OpenTable(kTableName, &table));

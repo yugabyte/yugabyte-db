@@ -18,7 +18,6 @@ set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
     yb_common
-    yb_ql_common
     yb_pggate_flags
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
@@ -30,6 +29,7 @@ add_dependencies(
   yb_pgwrapper
   gen_src_yb_tserver_backup_proto
   gen_src_yb_docdb_docdb_proto
+  gen_src_yb_dockv_dockv_proto
   gen_src_yb_util_opid_proto
   gen_src_yb_tablet_metadata_proto
   gen_src_yb_tablet_operations_proto
@@ -93,7 +93,9 @@ ADD_YB_LIBRARY(ysql_upgrade
 set(YB_TEST_LINK_LIBS yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_test_utils
     geo_transactions_test_base rocksdb_tools ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(pg_auto_analyze-test)
+ADD_YB_TEST(pg_backends-test)
 ADD_YB_TEST(pg_catalog_perf-test)
+ADD_YB_TEST(pg_catalog_version-test)
 ADD_YB_TEST(pg_clock_skew-test)
 ADD_YB_TEST(pg_conn-test)
 ADD_YB_TEST(pg_ddl_concurrency-test)
@@ -103,10 +105,13 @@ ADD_YB_TEST(pg_index_backfill-test)
 ADD_YB_TEST(pg_libpq-test)
 ADD_YB_TEST(pg_libpq_err-test)
 ADD_YB_TEST(pg_load_balancer-test)
+ADD_YB_TEST(pg_master_failover-test)
 ADD_YB_TEST(pg_mini-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_op_buffering-test)
 ADD_YB_TEST(pg_packed_row-test)
+ADD_YB_TEST(pg_single_tserver-test)
+ADD_YB_TEST(pg_row_lock-test)
 ADD_YB_TEST(pg_wait_on_conflict-test)
 ADD_YB_TEST(pg_table_size-test)
 ADD_YB_TEST(pg_tablet_split-test)
@@ -120,6 +125,7 @@ ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(pg_cache_refresh-test)
 ADD_YB_TEST(pg_ddl_atomicity-test)
 ADD_YB_TEST(colocation-test)
+ADD_YB_TEST(pg_namespace-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

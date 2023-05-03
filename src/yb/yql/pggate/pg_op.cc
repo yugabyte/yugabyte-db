@@ -16,14 +16,15 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/ybc_util.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_scanspec_util.h"
-#include "yb/docdb/primitive_value_util.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/qlexpr/doc_scanspec_util.h"
+#include "yb/dockv/primitive_value_util.h"
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
@@ -62,13 +63,13 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
     const auto& current_next_partition_key = paging_state.next_partition_key();
 
     // Need to check lower bound here because DocDB can check upper bound only.
-    std::vector<docdb::KeyEntryValue> lower_bound, _;
+    dockv::KeyEntryValues lower_bound, _;
     RETURN_NOT_OK(client::GetRangePartitionBounds(table.schema(), top_level_req, &lower_bound, &_));
     if (!lower_bound.empty()) {
-      docdb::DocKey current_key(table.schema());
+      dockv::DocKey current_key(table.schema());
       VERIFY_RESULT(current_key.DecodeFrom(
-          current_next_partition_key, docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
-      if (current_key.CompareTo(docdb::DocKey(std::move(lower_bound))) < 0) {
+          current_next_partition_key, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
+      if (current_key.CompareTo(dockv::DocKey(std::move(lower_bound))) < 0) {
         return false; // No need to continue, lower bound was reached.
       }
     }
@@ -102,8 +103,9 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
   // number of rows. Here the operation fetches next page, so the estimation is proven incorrect.
   // So resetting the limit to prevent excessive RPCs due to too small fetch size, if the estimation
   // is too far from reality.
-  if (req->limit() < FLAGS_ysql_prefetch_limit) {
-    req->set_limit(FLAGS_ysql_prefetch_limit);
+  uint64_t prefetch_limit = yb_fetch_row_limit;
+  if (req->limit() < prefetch_limit) {
+    req->set_limit(prefetch_limit);
   }
 
   return true;

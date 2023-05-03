@@ -16,7 +16,7 @@ import {
   ExposedAZProperties,
   ConfigureAvailabilityZoneField
 } from './ConfigureAvailabilityZoneField';
-import { ProviderCode, VPCSetupType, YBImageType } from '../../constants';
+import { ProviderCode, RegionOperationLabel, VPCSetupType, YBImageType } from '../../constants';
 import { RegionOperation } from './constants';
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import {
@@ -32,6 +32,7 @@ interface ConfigureRegionModalProps extends YBModalProps {
   onClose: () => void;
   providerCode: ProviderCode;
   regionOperation: RegionOperation;
+  isEditProvider: boolean;
 
   ybImageType?: YBImageType;
   regionSelection?: CloudVendorRegionField;
@@ -40,7 +41,7 @@ interface ConfigureRegionModalProps extends YBModalProps {
 
 type ZoneCode = { value: string; label: string; isDisabled: boolean };
 type Zones = {
-  code: ZoneCode;
+  code: ZoneCode | undefined;
   subnet: string;
 }[];
 export interface ConfigureRegionFormValues {
@@ -74,6 +75,7 @@ const useStyles = makeStyles((theme) => ({
 
 export const ConfigureRegionModal = ({
   configuredRegions,
+  isEditProvider,
   onClose,
   onRegionSubmit,
   providerCode,
@@ -90,7 +92,7 @@ export const ConfigureRegionModal = ({
       providerCode === ProviderCode.AZU ? 'Security Group Name (Optional)' : 'Security Group ID',
     ybImage:
       providerCode === ProviderCode.AWS
-        ? 'Custom AMI ID'
+        ? 'AMI ID'
         : providerCode === ProviderCode.AZU
         ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
         : 'Custom Machine Image ID (Optional)',
@@ -117,7 +119,8 @@ export const ConfigureRegionModal = ({
       then: string().required(`${fieldLabel.securityGroupId} is required.`)
     }),
     ybImage: string().when([], {
-      is: () => shouldExposeField.ybImage && ybImageType === YBImageType.CUSTOM_AMI,
+      is: () =>
+        shouldExposeField.ybImage && ybImageType === YBImageType.CUSTOM_AMI && !isEditProvider,
       then: string().required(`${fieldLabel.ybImage} is required.`)
     }),
     sharedSubnet: string().when([], {
@@ -128,7 +131,7 @@ export const ConfigureRegionModal = ({
       is: () => shouldExposeField.zones,
       then: array().of(
         object().shape({
-          code: object(),
+          code: object().required('Zone code is required.'),
           subnet: string().required('Zone subnet is required.')
         })
       )
@@ -170,7 +173,7 @@ export const ConfigureRegionModal = ({
         : { ...region, zones: [], code: regionData.value.code };
     if (shouldExposeField.zones) {
       newRegion.zones = zones.map((zone) => ({
-        code: zone.code.value,
+        code: zone.code?.value ?? '',
         subnet: zone.subnet
       }));
     } else if (providerCode === ProviderCode.GCP) {
@@ -193,9 +196,9 @@ export const ConfigureRegionModal = ({
   return (
     <FormProvider {...formMethods}>
       <YBModal
-        title="Add Region"
+        title={`${RegionOperationLabel[regionOperation]} Region`}
         titleIcon={<i className={clsx('fa fa-plus', classes.titleIcon)} />}
-        submitLabel="Add Region"
+        submitLabel={`${RegionOperationLabel[regionOperation]} Region`}
         cancelLabel="Cancel"
         onSubmit={formMethods.handleSubmit(onSubmit)}
         onClose={onClose}
@@ -243,6 +246,10 @@ export const ConfigureRegionModal = ({
               control={formMethods.control}
               name="ybImage"
               placeholder="Enter..."
+              disabled={
+                providerCode === ProviderCode.AWS &&
+                regionOperation === RegionOperation.EDIT_EXISTING
+              }
               fullWidth
             />
           </div>

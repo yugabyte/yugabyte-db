@@ -12,7 +12,7 @@ from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod, \
     CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
-    UpdateMountedDisksMethod, ConsoleLoggingErrorHandler, DeleteRootVolumesMethod
+    UpdateMountedDisksMethod, ConsoleLoggingErrorHandler, DeleteRootVolumesMethod, UpdateDiskMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set, get_root_label
@@ -245,22 +245,20 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        filters = [
-            {
-                "Name": "instance-state-name",
-                "Values": ["stopped"]
-            }
-        ]
         host_info = self.cloud.get_host_info_specific_args(
             args.region,
             args.search_pattern,
             get_all=False,
-            private_ip=args.node_ip,
-            filters=filters
+            private_ip=args.node_ip
         )
+
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
+
+        if host_info["instance_state"] != "stopped":
+            logging.warning(f"Expected instance {args.search_pattern} to be stopped, "
+                            f"got {host_info['instance_state']}")
         self.update_ansible_vars_with_args(args)
         server_ports = self.get_server_ports_to_check(args)
         self.cloud.start_instance(host_info, server_ports)
@@ -557,6 +555,18 @@ class AwsChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
     # We have to use this to uniform accessing host_info for AWS and GCP
     def _host_info(self, args, host_info):
         return host_info
+
+
+class AwsUpdateDiskMethod(UpdateDiskMethod):
+    def __init__(self, base_command):
+        super(AwsUpdateDiskMethod, self).__init__(base_command)
+
+    def add_extra_args(self):
+        super(AwsUpdateDiskMethod, self).add_extra_args()
+        self.parser.add_argument("--disk_iops", type=int, default=None,
+                                 help="Disk IOPS to provision on EBS-backed instances.")
+        self.parser.add_argument("--disk_throughput", type=int, default=None,
+                                 help="Disk throughput to provision on EBS-backed instances.")
 
 
 class AwsUpdateMountedDisksMethod(UpdateMountedDisksMethod):

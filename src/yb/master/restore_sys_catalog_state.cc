@@ -15,11 +15,11 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/pg_types.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -63,7 +63,7 @@ Status ApplyWriteRequest(
       kLogPrefix, TableType::YQL_TABLE_TYPE, schema, write_request.schema_version());
   docdb::DocOperationApplyData apply_data{
       .doc_write_batch = write_batch, .deadline = {}, .read_time = {}, .restart_read_ht = nullptr};
-  IndexMap index_map;
+  qlexpr::IndexMap index_map;
   docdb::QLWriteOperation operation(
       write_request, write_request.schema_version(), doc_read_context, index_map, nullptr,
       TransactionOperationContext());
@@ -172,7 +172,7 @@ struct PgCatalogTableData {
 
   Status SetTableId(const TableId& table_id) {
     Uuid cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
-    prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
+    prefix[0] = dockv::KeyEntryTypeAsChar::kTableId;
     cotable_id.EncodeToComparable(&prefix[1]);
     pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
     id = &table_id;
@@ -201,8 +201,8 @@ class PgCatalogRestorePatch : public RestorePatch {
         table_info_->schema().ColumnIdByName(kCurrentVersionColumnName));
     QLValuePB value_pb;
     value_pb.set_int64_value(catalog_version_);
-    auto doc_path = docdb::DocPath(
-        catalog_version_key_.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+    auto doc_path = dockv::DocPath(
+        catalog_version_key_.Encode(), dockv::KeyEntryValue::MakeColumnId(column_id));
     LOG(INFO) << "PITR: Incrementing pg_yb_catalog version of "
               << doc_path.ToString() << " to " << catalog_version_;
     RETURN_NOT_OK(DocBatch()->SetPrimitive(
@@ -213,8 +213,8 @@ class PgCatalogRestorePatch : public RestorePatch {
 
  private:
   Status UpdateCatalogVersion(const Slice& key, const Slice& value) {
-    docdb::SubDocKey decoded_key;
-    RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+    dockv::SubDocKey decoded_key;
+    RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
 
     auto version_opt = VERIFY_RESULT(GetInt64ColumnValue(
         decoded_key, value, table_info_, kCurrentVersionColumnName));
@@ -253,14 +253,14 @@ class PgCatalogRestorePatch : public RestorePatch {
     if (!table_.IsPgYbCatalogMeta() || !FLAGS_TEST_enable_db_catalog_version_mode) {
       return false;
     }
-    docdb::SubDocKey sub_doc_key;
-    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+    dockv::SubDocKey sub_doc_key;
+    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
     return sub_doc_key.doc_key().range_group()[0].GetUInt32() != db_oid_;
   }
 
   // Should be alive while this object is alive.
   const PgCatalogTableData& table_;
-  docdb::DocKey catalog_version_key_;
+  dockv::DocKey catalog_version_key_;
   int64_t catalog_version_ = 0;
   int64_t db_oid_;
 };
@@ -741,11 +741,12 @@ Status RestoreSysCatalogState::IterateSysCatalog(
     const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
     HybridTime read_time, std::unordered_map<std::string, PB>* map,
     std::unordered_map<std::string, PB>* sequences_data_map) {
-  auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-      doc_read_context.schema, doc_read_context, TransactionOperationContext(), doc_db,
+  dockv::ReaderProjection projection(doc_read_context.schema);
+  docdb::DocRowwiseIterator iter(
+      projection, doc_read_context, TransactionOperationContext(), doc_db,
       CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), nullptr);
   return EnumerateSysCatalog(
-      iter.get(), doc_read_context.schema, GetEntryType<PB>::value, [map, sequences_data_map](
+      &iter, doc_read_context.schema, GetEntryType<PB>::value, [map, sequences_data_map](
           const Slice& id, const Slice& data) -> Status {
     auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data));
     if (!ShouldLoadObject(pb)) {
@@ -897,12 +898,13 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
     docdb::DocWriteBatch* write_batch) {
   std::string config_type;
   SysConfigEntryPB catalog_meta;
-  auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-      doc_read_context.schema, doc_read_context, TransactionOperationContext(), doc_db,
+  dockv::ReaderProjection projection(doc_read_context.schema);
+  docdb::DocRowwiseIterator iter(
+      projection, doc_read_context, TransactionOperationContext(), doc_db,
       CoarseTimePoint::max(), ReadHybridTime::Max(), nullptr);
 
   RETURN_NOT_OK(EnumerateSysCatalog(
-      iter.get(), doc_read_context.schema, SysRowEntryType::SYS_CONFIG,
+      &iter, doc_read_context.schema, SysRowEntryType::SYS_CONFIG,
       [&](const Slice& id, const Slice& data) -> Status {
         if (id.ToBuffer() != kYsqlCatalogConfigType) {
           return Status::OK();

@@ -2,11 +2,10 @@ package cmd
 
 import (
 	"log"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 )
 
 func cleanCmd() *cobra.Command {
@@ -22,14 +21,10 @@ func cleanCmd() *cobra.Command {
 		// Confirm with the user before deleting ALL data.
 		PreRun: func(cmd *cobra.Command, args []string) {
 			// Version check before clean
-			if !skipVersionChecks {
-				yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
-				if err != nil {
-					log.Fatal("Cannot uninstall: " + err.Error())
-				}
-				if yugawareVersion != ybactl.Version {
-					log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
-				}
+			if !common.RunFromInstalled() {
+				path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
+				log.Fatal("clean must be run from " + path +
+					". It may be in the systems $PATH for easy of use.")
 			}
 
 			// Prompt for remmoving all data

@@ -2,9 +2,10 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
+
 import com.amazonaws.SDKGlobalConfiguration;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
@@ -12,6 +13,7 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
@@ -194,8 +196,7 @@ public class BackupGarbageCollector {
       minNumBackupsToRetain = schedule.getTaskParams().get("minNumBackupsToRetain").intValue();
     }
     backupsToDelete.addAll(
-        expiredBackups
-            .stream()
+        expiredBackups.stream()
             .filter(backup -> !backup.getState().equals(BackupState.Completed))
             .collect(Collectors.toList()));
     expiredBackups.removeIf(backup -> !backup.getState().equals(BackupState.Completed));
@@ -268,7 +269,7 @@ public class BackupGarbageCollector {
       UUID storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
       CustomerConfig customerConfig =
           customerConfigService.getOrBadRequest(backup.getCustomerUUID(), storageConfigUUID);
-      if (isCredentialUsable(customerConfig)) {
+      if (isCredentialUsable(customerConfig, backup.getUniverseUUID())) {
         List<String> backupLocations = null;
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);
@@ -287,11 +288,7 @@ public class BackupGarbageCollector {
               break;
             case NFS:
               if (isUniversePresent(backup)) {
-                BackupTableParams backupParams = backup.getBackupInfo();
-                List<BackupTableParams> backupList =
-                    backupParams.backupList == null
-                        ? ImmutableList.of(backupParams)
-                        : backupParams.backupList;
+                List<BackupTableParams> backupList = backup.getBackupParamsCollection();
                 boolean success;
                 if (backup.getCategory().equals(BackupCategory.YB_CONTROLLER)) {
                   success = ybcManager.deleteNfsDirectory(backup);
@@ -378,10 +375,20 @@ public class BackupGarbageCollector {
     }
   }
 
-  private Boolean isCredentialUsable(CustomerConfig config) {
+  private Boolean isCredentialUsable(CustomerConfig config, UUID universeUUID) {
     Boolean isValid = true;
     try {
-      backupUtil.validateStorageConfig(config);
+      if (config.getName().equals(NAME_NFS)) {
+        Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
+
+        if (universeOpt.isPresent()) {
+          StorageUtil.getStorageUtil(config.getName())
+              .validateStorageConfigOnUniverse(config, universeOpt.get());
+        }
+
+      } else {
+        backupUtil.validateStorageConfig(config);
+      }
     } catch (Exception e) {
       isValid = false;
     }

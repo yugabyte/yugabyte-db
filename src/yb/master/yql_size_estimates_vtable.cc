@@ -13,7 +13,7 @@
 
 #include "yb/master/yql_size_estimates_vtable.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -34,9 +34,8 @@ YQLSizeEstimatesVTable::YQLSizeEstimatesVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
-    const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema());
+Result<VTableDataPtr> YQLSizeEstimatesVTable::RetrieveData(const QLReadRequestPB& request) const {
+  auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
   auto* catalog_manager = &this->catalog_manager();
 
   auto tables = catalog_manager->GetTables(GetTablesMode::kVisibleToClient);
@@ -62,18 +61,18 @@ Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
         continue;
       }
 
-      QLRow &row = vtable->Extend();
+      auto &row = vtable->Extend();
       RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns_info->name(), &row));
       RETURN_NOT_OK(SetColumnValue(kTableName, table->name(), &row));
 
       const PartitionPB &partition = tablet_locations_pb.partition();
       uint16_t yb_start_hash = !partition.partition_key_start().empty() ?
-          PartitionSchema::DecodeMultiColumnHashValue(partition.partition_key_start()) : 0;
+          dockv::PartitionSchema::DecodeMultiColumnHashValue(partition.partition_key_start()) : 0;
       string cql_start_hash = std::to_string(YBPartition::YBToCqlHashCode(yb_start_hash));
       RETURN_NOT_OK(SetColumnValue(kRangeStart, cql_start_hash, &row));
 
       uint16_t yb_end_hash = !partition.partition_key_end().empty() ?
-          PartitionSchema::DecodeMultiColumnHashValue(partition.partition_key_end()) : 0;
+          dockv::PartitionSchema::DecodeMultiColumnHashValue(partition.partition_key_end()) : 0;
       string cql_end_hash = std::to_string(YBPartition::YBToCqlHashCode(yb_end_hash));
       RETURN_NOT_OK(SetColumnValue(kRangeEnd, cql_end_hash, &row));
 

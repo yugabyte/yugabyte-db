@@ -31,12 +31,15 @@ class LibPqTestBase : public PgWrapperTestBase {
       const std::string& db_name,
       const std::string& user,
       bool simple_query_protocol = false);
+  Result<PGConn> ConnectToTs(const ExternalTabletServer& pg_ts);
   Result<PGConn> ConnectUsingString(
       const std::string& conn_str,
       CoarseTimePoint deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(10),
       bool simple_query_protocol = false);
   static bool TransactionalFailure(const Status& status);
 };
+
+Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name);
 
 } // namespace pgwrapper
 } // namespace yb

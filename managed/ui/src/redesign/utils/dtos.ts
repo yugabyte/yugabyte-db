@@ -86,6 +86,7 @@ export enum RecommendationType {
   UNUSED_INDEX = 'UNUSED_INDEX',
   CPU_SKEW = 'CPU_SKEW',
   HOT_SHARD = 'HOT_SHARD',
+  REJECTED_CONNECTIONS = 'REJECTED_CONNECTIONS'
 }
 
 export enum SortDirection {
@@ -164,7 +165,7 @@ export interface PerfRecommendationData {
   recommendationPriority?: RecommendationPriority;
   recommendationTimestamp?: number;
   isStale?: boolean;
-  new?: boolean
+  new?: boolean;
 }
 
 export interface IndexAndShardingRecommendationData {
@@ -172,4 +173,15 @@ export interface IndexAndShardingRecommendationData {
   target: string;
   indicator: number;
   table: TableData;
+}
+
+export interface LastRunData {
+  customerUUID: string;
+  endTime: string;
+  manual: boolean;
+  scheduleTime: string;
+  startTime: string;
+  state: string;
+  universeUUID: string;
+  uuid: string;
 }

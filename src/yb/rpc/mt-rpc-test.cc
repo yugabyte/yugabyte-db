@@ -55,7 +55,6 @@ METRIC_DECLARE_counter(rpcs_queue_overflow);
 
 using std::string;
 using std::shared_ptr;
-using strings::Substitute;
 using namespace std::literals;
 
 namespace yb {

@@ -16,8 +16,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
@@ -122,6 +122,10 @@ public class UpgradeUniverseHandler {
           && requestParams.isEnableYbc()) {
         requestParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         requestParams.installYbc = true;
+      } else if (universe.isYbcEnabled()) {
+        requestParams.setEnableYbc(true);
+        requestParams.installYbc = true;
+        requestParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       } else {
         requestParams.setEnableYbc(false);
         requestParams.installYbc = false;

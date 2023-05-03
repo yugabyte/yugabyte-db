@@ -44,6 +44,7 @@
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
@@ -58,6 +59,7 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 using std::string;
+using namespace std::chrono_literals;
 
 DEFINE_RUNTIME_bool(report_ysql_ddl_txn_status_to_master, false,
                     "If set, at the end of DDL operation, the TServer will notify the YB-Master "
@@ -652,6 +654,17 @@ Status PgClientSession::TruncateTable(
   return client().TruncateTable(PgObjectId::GetYbTableIdFromPB(req.table_id()));
 }
 
+Status PgClientSession::WaitForBackendsCatalogVersion(
+    const PgWaitForBackendsCatalogVersionRequestPB& req,
+    PgWaitForBackendsCatalogVersionResponsePB* resp,
+    rpc::RpcContext* context) {
+  // TODO(jason): send deadline to client.
+  const int num_lagging_backends = VERIFY_RESULT(client().WaitForYsqlBackendsCatalogVersion(
+      req.database_oid(), req.catalog_version(), context->GetClientDeadline()));
+  resp->set_num_lagging_backends(num_lagging_backends);
+  return Status::OK();
+}
+
 Status PgClientSession::BackfillIndex(
     const PgBackfillIndexRequestPB& req, PgBackfillIndexResponsePB* resp,
     rpc::RpcContext* context) {
@@ -897,7 +910,8 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
   auto& options = *data->req.mutable_options();
   if (!options.ddl_mode() && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
     for (const auto& op : data->req.ops()) {
-      if (op.has_write()) {
+      if (op.has_write() && !op.write().is_backfill()) {
+        // Only DDLs and index backfill is allowed in xcluster read only mode.
         return STATUS(
             InvalidArgument, "Data modification by DML is forbidden with STANDBY xCluster role");
       }
@@ -984,34 +998,52 @@ void PgClientSession::ProcessReadTimeManipulation(ReadTimeManipulation manipulat
 }
 
 Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
-    const PgPerformOptionsPB& options, ConsistentReadPoint* read_point) {
+    const PgPerformOptionsPB& options, const CoarseTimePoint& deadline,
+    ConsistentReadPoint* read_point) {
+  const auto& namespace_id = options.namespace_id();
+  const auto& requested_read_time = read_point->GetReadTime().read;
+
   // Early exit if namespace not provided or atomic reads not enabled
-  if (options.namespace_id().empty() || !xcluster_context_ ||
-      !options.use_xcluster_database_consistency()) {
+  if (namespace_id.empty() || !xcluster_context_ || !options.use_xcluster_database_consistency()) {
     return Status::OK();
   }
 
-  auto safe_time =
-      VERIFY_RESULT(xcluster_context_->safe_time_map().GetSafeTime(options.namespace_id()));
-  if (!safe_time) {
+  auto xcluster_safe_time =
+      VERIFY_RESULT(xcluster_context_->safe_time_map().GetSafeTime(namespace_id));
+  if (!xcluster_safe_time) {
     // No xCluster safe time for this namespace.
-    return Status::OK();
+      return Status::OK();
   }
 
   RSTATUS_DCHECK(
-      !safe_time->is_special(), TryAgain,
-      Format("xCluster safe time for namespace $0 is invalid", options.namespace_id()));
+      !xcluster_safe_time->is_special(), TryAgain,
+      Format("xCluster safe time for namespace $0 is invalid", namespace_id));
 
   // read_point is set for Distributed txns.
   // Single shard implicit txn will not have read_point set and the serving tablet uses its latest
-  // time. If it read_point not set, or set to a time ahead of the xcluster safe time then we want
-  // to reset it back to the safe time.
-  if (read_point->GetReadTime().read.is_special() || read_point->GetReadTime().read > *safe_time) {
-    read_point->SetReadTime(ReadHybridTime::SingleTime(*safe_time), {} /* local_limits */);
+  // time. If read_point is not set then we set it to the xCluster safe time.
+  if (requested_read_time.is_special()) {
+    read_point->SetReadTime(ReadHybridTime::SingleTime(*xcluster_safe_time), {} /* local_limits */);
     VLOG_WITH_PREFIX(3) << "Reset read time to xCluster safe time: " << read_point->GetReadTime();
+    return Status::OK();
   }
 
-  return Status::OK();
+  // If read_point is set to a time ahead of the xcluster safe time then we wait.
+  return WaitFor(
+      [&requested_read_time, &namespace_id, this]() -> Result<bool> {
+        auto safe_time =
+            VERIFY_RESULT(xcluster_context_->safe_time_map().GetSafeTime(namespace_id));
+        if (!safe_time) {
+          // We dont have a safe time anymore so no need to wait.
+          return true;
+        }
+        return requested_read_time <= *safe_time;
+      },
+      deadline - CoarseMonoClock::now(),
+      Format(
+          "Wait for xCluster safe time of namespace $0 to move above the requested read time $1",
+          namespace_id, read_point->GetReadTime().read),
+      100ms /* initial_delay */, 1 /* delay_multiplier */);
 }
 
 Result<std::pair<PgClientSession::SessionData, PgClientSession::UsedReadTimePtr>>
@@ -1080,7 +1112,8 @@ PgClientSession::SetupSession(
     }
   }
 
-  RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, session->read_point()));
+  RETURN_NOT_OK(
+      UpdateReadPointForXClusterConsistentReads(options, deadline, session->read_point()));
 
   if (options.defer_read_point()) {
     // This call is idempotent, meaning it has no effect after the first call.
@@ -1098,13 +1131,10 @@ PgClientSession::SetupSession(
   }
 
   session->SetDeadline(deadline);
+
   if (transaction) {
-    const auto active_subtxn_id = options.active_sub_transaction_id();
-    RSTATUS_DCHECK_GE(
-        active_subtxn_id, kMinSubTransactionId, InvalidArgument,
-        Format("Expected active_sub_transaction_id ($0) to be greater than ($1)",
-               active_subtxn_id, kMinSubTransactionId));
-    transaction->SetActiveSubTransaction(active_subtxn_id);
+    DCHECK_GE(options.active_sub_transaction_id(), 0);
+    transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
   }
 
   return std::make_pair(sessions_[to_underlying(kind)], used_read_time);
@@ -1165,7 +1195,7 @@ Status PgClientSession::BeginTransactionIfNecessary(
     RETURN_NOT_OK(txn->Init(isolation));
   }
 
-  RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, &txn->read_point()));
+  RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, deadline, &txn->read_point()));
 
   if (saved_priority_) {
     priority = *saved_priority_;
@@ -1173,6 +1203,7 @@ Status PgClientSession::BeginTransactionIfNecessary(
   }
   txn->SetPriority(priority);
   session->SetTransaction(txn);
+
   return Status::OK();
 }
 

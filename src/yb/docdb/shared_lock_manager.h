@@ -18,7 +18,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 
 #include "yb/util/monotime.h"
 
@@ -58,11 +58,11 @@ class SharedLockManager {
 
 // Masks of intent type sets.
 // I.e. bits that related to any of intents from this set is filled with 1, others are 0.
-extern const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetMask;
+extern const std::array<LockState, dockv::kIntentTypeSetMapSize> kIntentTypeSetMask;
 // Conflicts of intent types. I.e. combination of masks of intent type sets that conflict with it.
-extern const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetConflicts;
+extern const std::array<LockState, dockv::kIntentTypeSetMapSize> kIntentTypeSetConflicts;
 
-bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs);
+bool IntentTypeSetsConflict(dockv::IntentTypeSet lhs, dockv::IntentTypeSet rhs);
 
 }  // namespace docdb
 }  // namespace yb

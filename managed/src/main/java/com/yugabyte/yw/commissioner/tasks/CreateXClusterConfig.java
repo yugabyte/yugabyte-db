@@ -4,7 +4,9 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -43,8 +45,9 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
   public static final long TIME_BEFORE_DELETE_BACKUP_MS = TimeUnit.DAYS.toMillis(1);
 
   @Inject
-  protected CreateXClusterConfig(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected CreateXClusterConfig(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   public List<Restore> restoreList = new ArrayList<>();
@@ -62,6 +65,9 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       try {
         // Lock the target universe.
         lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
+
+        createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
 
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating);
 
@@ -119,6 +125,13 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       Map<String, List<String>> mainTableIndexTablesMap,
       @Nullable MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo) {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
+
+    // Create namespaces for universe's clusters if both universes are k8s universes and MCS is
+    // enabled.
+    if (KubernetesUtil.isMCSEnabled(sourceUniverse)
+        && KubernetesUtil.isMCSEnabled(targetUniverse)) {
+      createReplicateNamespacesTask();
+    }
 
     // Support mismatched TLS root certificates.
     Optional<File> sourceCertificate =
@@ -230,8 +243,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         // If the table type is YCQL, delete the tables from the target universe, because if the
         // tables exist, the restore subtask will fail.
         List<String> tableNamesNeedBootstrap =
-            tablesInfoListNeedBootstrap
-                .stream()
+            tablesInfoListNeedBootstrap.stream()
                 .filter(
                     tableInfo ->
                         tableInfo.getRelationType()
@@ -239,8 +251,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
                 .collect(Collectors.toList());
         List<String> tableNamesToDeleteOnTargetUniverse =
-            getTableInfoList(targetUniverse)
-                .stream()
+            getTableInfoList(targetUniverse).stream()
                 .filter(
                     tableInfo ->
                         tableType.equals(tableInfo.getTableType())
@@ -350,8 +361,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
         dbToTablesInfoMapNeedBootstrap =
-            requestedTableInfoList
-                .stream()
+            requestedTableInfoList.stream()
                 .filter(
                     tableInfo ->
                         tableIdsNeedBootstrapAfterChanges.contains(
@@ -433,20 +443,17 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     keyspaceTable.keyspace = tablesInfoListNeedBootstrap.get(0).getNamespace().getName();
     if (backupRequestParams.backupType != CommonTypes.TableType.PGSQL_TABLE_TYPE) {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesNeedBootstrapInfoList =
-          tablesInfoListNeedBootstrap
-              .stream()
+          tablesInfoListNeedBootstrap.stream()
               .filter(
                   tableInfo ->
                       tableInfo.getRelationType() != MasterTypes.RelationType.INDEX_TABLE_RELATION)
               .collect(Collectors.toList());
       keyspaceTable.tableNameList =
-          tablesNeedBootstrapInfoList
-              .stream()
+          tablesNeedBootstrapInfoList.stream()
               .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
               .collect(Collectors.toList());
       keyspaceTable.tableUUIDList =
-          tablesNeedBootstrapInfoList
-              .stream()
+          tablesNeedBootstrapInfoList.stream()
               .map(tableInfo -> Util.getUUIDRepresentation(tableInfo.getId().toStringUtf8()))
               .collect(Collectors.toList());
     }
@@ -485,7 +492,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     RestoreBackupParams.BackupStorageInfo backupStorageInfo =
         new RestoreBackupParams.BackupStorageInfo();
     backupStorageInfo.backupType = backupRequestParams.backupType;
-    List<BackupTableParams> backupList = backup.getBackupInfo().backupList;
+    List<BackupTableParams> backupList = backup.getBackupParamsCollection();
     if (backupList == null) {
       throw new RuntimeException("backup.getBackupInfo().backupList must not be null");
     }

@@ -22,12 +22,8 @@ DEFINE_UNKNOWN_bool(cql_raise_index_where_clause_error, false,
 namespace yb {
 namespace ql {
 
-using std::shared_ptr;
-using std::to_string;
 using std::string;
-using client::YBColumnSchema;
 using client::YBSchema;
-using client::YBTableName;
 
 //--------------------------------------------------------------------------------------------------
 

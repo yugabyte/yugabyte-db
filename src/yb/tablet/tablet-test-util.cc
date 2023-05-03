@@ -13,10 +13,12 @@
 
 #include "yb/tablet/tablet-test-util.h"
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/strings/join.h"
 
@@ -80,12 +82,12 @@ void YBTabletTest::AlterSchema(const Schema& schema) {
 }
 
 Status IterateToStringList(
-    docdb::YQLRowwiseIteratorIf* iter, std::vector<std::string> *out, int limit) {
+    docdb::YQLRowwiseIteratorIf* iter, const Schema& schema, std::vector<std::string> *out,
+    int limit) {
   out->clear();
-  Schema schema = iter->schema();
   int fetched = 0;
   std::vector<std::pair<QLValue, std::string>> temp;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row)) && fetched < limit) {
     QLValue key;
     RETURN_NOT_OK(row.GetValue(schema.column_id(0), &key));
@@ -102,11 +104,13 @@ Status IterateToStringList(
 }
 
 // Dump all of the rows of the tablet into the given vector.
-Status DumpTablet(const Tablet& tablet, const Schema& projection, std::vector<std::string>* out) {
-  auto iter = tablet.NewRowIterator(projection);
+Status DumpTablet(const Tablet& tablet, std::vector<std::string>* out) {
+  const auto& schema = *tablet.schema();
+  dockv::ReaderProjection reader_projection(schema);
+  auto iter = tablet.NewRowIterator(reader_projection);
   RETURN_NOT_OK(iter);
   std::vector<string> rows;
-  RETURN_NOT_OK(IterateToStringList(iter->get(), &rows));
+  RETURN_NOT_OK(IterateToStringList(iter->get(), schema, &rows));
   std::sort(rows.begin(), rows.end());
   out->swap(rows);
   return Status::OK();

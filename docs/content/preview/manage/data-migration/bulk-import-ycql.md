@@ -75,7 +75,7 @@ fi
 > $2 # clearing file
 for i in `seq 1 $1`
 do
-  echo customer$((i%10)),$((i%3)),2017-11-11 12:30:$((i%60)).000000+0000,\"{temp:$i, humidity:$i}\" >> $2
+  echo customer$((i)),$((i)),2017-11-11 12:30:$((i%60)).000000+0000,\"{temp:$i, humidity:$i}\" >> $2
 done
 ```
 

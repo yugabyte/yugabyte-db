@@ -1,9 +1,9 @@
 import React, { useState, FC, ReactNode, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import { useSelector } from 'react-redux';
-import { FormControl, Button } from 'react-bootstrap';
-import { intlFormat } from 'date-fns';
+import { Button } from 'react-bootstrap';
+import { MenuItem } from '@material-ui/core';
 import { RecommendationBox } from './RecommendationBox';
 import { YBPanelItem } from '../panels';
 import { YBLoading } from '../../components/common/indicators';
@@ -11,25 +11,37 @@ import { YBButton } from '../common/forms/fields';
 import { performanceRecommendationApi, QUERY_KEY } from './helpers/api';
 import { formatPerfRecommendationsData } from './helpers/utils';
 import { EXTERNAL_LINKS } from './helpers/const';
-import { isNonEmptyString } from '../../utils/ObjectUtils';
+import { ybFormatDate } from '../../redesign/helpers/DateUtils';
+import { isEmptyString, isNonEmptyString } from '../../utils/ObjectUtils';
 import {
   IndexAndShardingRecommendationData,
   PerfRecommendationData,
   RecommendationType,
-  SortDirection
+  SortDirection,
+  LastRunData
 } from '../../redesign/utils/dtos';
+import { YBSelect } from '../../redesign/components';
 import dbSettingsIcon from './images/db-settings.svg';
 import documentationIcon from './images/documentation.svg';
 import EmptyTrayIcon from './images/empty-tray.svg';
+import WarningIcon from './images/warning.svg';
+
 import './PerfAdvisor.scss';
 
 interface RecommendationDetailProps {
   data: PerfRecommendationData | IndexAndShardingRecommendationData;
   key: string;
-  resolved?: boolean;
+  isResolved?: boolean;
 }
 
-const translationTypeMap = {
+const LastRunStatus = {
+  PENDING: 'PENDING',
+  RUNNING: 'RUNNING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED'
+};
+
+const TranslationTypeMap = {
   ALL: 'All',
   RANGE_SHARDING: 'SchemaSuggestion',
   QUERY_LOAD_SKEW: 'QueryLoadSkew',
@@ -37,8 +49,9 @@ const translationTypeMap = {
   CPU_SKEW: 'CpuSkew',
   CPU_USAGE: 'CpuUsage',
   UNUSED_INDEX: 'IndexSuggestion',
-  HOT_SHARD: 'HotShard'
-};
+  HOT_SHARD: 'HotShard',
+  REJECTED_CONNECTIONS: 'RejectedConnections'
+} as const;
 
 /** Generates unique string based on recommendation type for the purpose of setting unique key on React component */
 const generateUniqueId = (type: string, ...identifiers: string[]) => {
@@ -54,17 +67,59 @@ const DATABASE_TYPE_SUGGESTIONS = [
 ];
 
 export const PerfAdvisor: FC = () => {
-  const { t } = useTranslation();
-  const [isScanningLoading, setIsScanningLoading] = useState<Boolean>(false);
+  // Initialize state variables
+  const [isLoading, setIsLoading] = useState<Boolean>(true);
   const [lastScanTime, setLastScanTime] = useState('');
+  const [isLastRunCompleted, setIsLastRunCompleted] = useState<boolean>(false);
+  const [isLastRunNotFound, setIsLastRunNotFound] = useState<boolean>(false);
   const [recommendations, setRecommendations] = useState<RecommendationDetailProps[]>([]);
   const [databaseSelection, setDatabaseSelection] = useState('');
   const [databaseOptionList, setDatabaseOptionList] = useState<ReactNode[]>([]);
   const [suggestionType, setSuggestionType] = useState(RecommendationType.ALL);
   const [isPerfCallFail, setIsPerfCallFail] = useState<Boolean>(false);
+  const [scanStatus, setScanStatus] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string>('');
+
+  // Initialize the query client and translation
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+
+  // Get universe UUID and check status of Universe
   const currentUniverse = useSelector((state: any) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
   const isUniversePaused: boolean = currentUniverse?.data?.universeDetails?.universePaused;
+
+  const { isFetched: isLastRunFetched, data: lastRunData, refetch: lastRunRefetch } = useQuery(
+    QUERY_KEY.fetchPerfLastRun,
+    () => performanceRecommendationApi.fetchPerfLastRun(universeUUID),
+    {
+      onSuccess: (data: LastRunData) => {
+        setScanStatus(data?.state);
+        // If the universe is in PENDING or RUNNING state, ensure we call the API
+        // till it status moves to COMPLETED or FAILED
+        if (data.state === LastRunStatus.PENDING || data.state === LastRunStatus.RUNNING) {
+          setTimeout(() => {
+            queryClient.invalidateQueries([QUERY_KEY.fetchPerfLastRun]);
+          }, 5000);
+          setIsLastRunCompleted(false);
+        } else if (data.state === LastRunStatus.COMPLETED) {
+          setIsLastRunCompleted(true);
+        } else if (data.state === LastRunStatus.FAILED) {
+          setIsLoading(false);
+        }
+        setIsLastRunNotFound(false);
+        setLastScanTime(data?.endTime);
+      },
+      onError: (error: any) => {
+        // If lastRun API returns 404, ensure to update state for lastRunNotFound
+        // This will display the Scan Button page
+        if (error.request.status === 404) {
+          setIsLoading(false);
+          setIsLastRunNotFound(true);
+        }
+      }
+    }
+  );
 
   const queryParams = {
     filter: {
@@ -76,10 +131,56 @@ export const PerfAdvisor: FC = () => {
     offset: 0,
     limit: 50
   };
-  //fetch run time configs
-  const { refetch: perfRecommendationsRefetch } = useQuery(QUERY_KEY.fetchPerfRecommendations, () =>
-    performanceRecommendationApi.fetchPerfRecommendationsList(queryParams)
+
+  const { isError: isPerfRecommendationError, refetch: perfRecommendationsRefetch } = useQuery(
+    QUERY_KEY.fetchPerfRecommendations,
+    () => performanceRecommendationApi.fetchPerfRecommendationsList(queryParams),
+    {
+      enabled: isLastRunFetched && !isLastRunNotFound,
+      onSuccess: (perfRecommendationsData) => {
+        updatePerfRecommendations(perfRecommendationsData, lastRunData!, isPerfRecommendationError);
+      },
+      onError: () => {
+        setIsLoading(false);
+        setLastScanTime(lastRunData!.endTime);
+        setIsPerfCallFail(true);
+      }
+    }
   );
+
+  useEffect(() => {
+    if (isLastRunCompleted) {
+      const fetchData = async () => {
+        const { data, isError } = await perfRecommendationsRefetch();
+        updatePerfRecommendations(data, lastRunData!, isError);
+      };
+      fetchData();
+    }
+    // Whenever the lastRun status moves to COMPLETED state
+    // we need to make a call to page API
+  }, [isLastRunCompleted]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updatePerfRecommendations = (
+    perfData: any,
+    lastRunPerfData: LastRunData,
+    isPerfError: boolean
+  ) => {
+    setIsPerfCallFail(isPerfError);
+    scanStatus === LastRunStatus.RUNNING || scanStatus === LastRunStatus.PENDING
+      ? setIsLoading(true)
+      : setIsLoading(false);
+    const perfRecommendations = formatPerfRecommendationsData(perfData);
+    const newRecommendations = processRecommendationData(perfRecommendations);
+    setRecommendations(newRecommendations);
+    setLastScanTime(lastRunPerfData?.endTime);
+    localStorage.setItem(
+      universeUUID,
+      JSON.stringify({
+        data: newRecommendations,
+        lastUpdated: lastRunPerfData?.endTime
+      })
+    );
+  };
 
   const handleDbSelection = (event: any) => {
     setSuggestionType(RecommendationType.ALL);
@@ -109,13 +210,13 @@ export const PerfAdvisor: FC = () => {
         });
       });
       setDatabaseOptionList([
-        <option value={''} key={'all-databases'}>
+        <MenuItem value={''} key={'all-databases'}>
           {t('clusterDetail.performance.advisor.AllDatabases')}
-        </option>,
+        </MenuItem>,
         [...databasesInRecommendations].map((databaseName: string) => (
-          <option value={databaseName} key={`ysql-${databaseName}`}>
+          <MenuItem value={databaseName} key={`ysql-${databaseName}`}>
             {databaseName}
-          </option>
+          </MenuItem>
         ))
       ]);
       return recommendationArr;
@@ -135,44 +236,32 @@ export const PerfAdvisor: FC = () => {
         }
       });
       setDatabaseOptionList([
-        <option value={''} key={'all-databases'}>
+        <MenuItem value={''} key={'all-databases'}>
           {t('clusterDetail.performance.advisor.AllDatabases')}
-        </option>,
+        </MenuItem>,
         [...databasesInRecommendations].map((databaseName: string) => (
-          <option value={databaseName} key={`ysql-${databaseName}`}>
+          <MenuItem value={databaseName} key={`ysql-${databaseName}`}>
             {databaseName}
-          </option>
+          </MenuItem>
         ))
       ]);
     },
     [t]
   );
 
+  // handleScan is triggered when user clicks on Scan/ReScan
   const handleScan = async () => {
-    const currentDate = new Date();
-    const currentScanTime = intlFormat(currentDate, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: 'numeric',
-      minute: '2-digit'
-    });
-    setLastScanTime(currentScanTime);
-    setIsScanningLoading(true);
-
-    const { data, isError } = await perfRecommendationsRefetch();
-    setIsPerfCallFail(isError);
-    const perfRecommendations = formatPerfRecommendationsData(data);
-    const newRecommendations = processRecommendationData(perfRecommendations);
-    setRecommendations(newRecommendations);
-    localStorage.setItem(
-      universeUUID,
-      JSON.stringify({
-        data: newRecommendations,
-        lastUpdated: currentScanTime
-      })
-    );
-    setIsScanningLoading(false);
+    setIsLoading(true);
+    try {
+      await performanceRecommendationApi.startPefRunManually(universeUUID);
+      // If start_manually fails initially, we need to reset the error message between re-renders
+      // to ensure we have no error message when it passes successfully
+      setErrorMessage('');
+    } catch (e: any) {
+      setErrorMessage(e?.response?.data?.error);
+      setIsLastRunCompleted(false);
+    }
+    await lastRunRefetch();
   };
 
   useEffect(() => {
@@ -184,26 +273,21 @@ export const PerfAdvisor: FC = () => {
         setRecommendations(previousScanResult?.data);
         checkDatabasesInRecommendations(previousScanResult?.data);
         if (previousScanResult?.lastUpdated) {
-          setLastScanTime(
-            intlFormat(new Date(previousScanResult?.lastUpdated), {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: 'numeric',
-              minute: '2-digit'
-            })
-          );
+          setLastScanTime(previousScanResult?.lastUpdated);
         }
       }
     };
     void checkForPreviousScanData();
   }, [universeUUID]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    return () => {
-      localStorage.setItem(universeUUID, '');
-    };
-  }, [universeUUID]);
+  const handleResolve = (id: string, isResolved: boolean) => {
+    const copyRecommendations = [...recommendations];
+    const userSelectedRecommendation = copyRecommendations.find((rec) => rec.key === id);
+    if (userSelectedRecommendation) {
+      userSelectedRecommendation.isResolved = isResolved;
+    }
+    setRecommendations(copyRecommendations);
+  };
 
   const filteredByDatabaseRecommendations = recommendations.filter((rec) => {
     if (databaseSelection) {
@@ -230,7 +314,7 @@ export const PerfAdvisor: FC = () => {
   const recommendationLabel =
     displayedRecomendations?.length > 0 ? 'Recommendations' : 'Recommendation';
 
-  if (isScanningLoading) {
+  if (isLoading) {
     return (
       <YBPanelItem
         header={
@@ -243,10 +327,9 @@ export const PerfAdvisor: FC = () => {
   }
 
   return (
-    // This dialog is shown when the user visits performance advisor for first time
-    // (or) when a user visits performance advisor in a new session
+    // This dialog is shown is when the last run API fails with 404
     <div className="parentPerfAdvisor">
-      {!isNonEmptyString(lastScanTime) && (
+      {isLastRunNotFound && (!recommendations.length || isEmptyString(lastScanTime)) && (
         <YBPanelItem
           header={
             <div className="perfAdvisor">
@@ -264,14 +347,18 @@ export const PerfAdvisor: FC = () => {
                     bsClass="btn btn-orange rescanBtn"
                     disabled={!!isUniversePaused}
                     onClick={handleScan}
-                    data-toggle={isUniversePaused ? 'tooltip' : ''}
                     data-placement="left"
-                    title="Universe Paused"
+                    title={isUniversePaused ? 'Universe Paused' : ''}
                   >
                     <i className="fa fa-search-minus" aria-hidden="true"></i>
                     {t('clusterDetail.performance.advisor.ScanBtn')}
                   </Button>
-                  <a className="learnMoreLink" href={EXTERNAL_LINKS.PERF_ADVISOR_DOCS_LINK}>
+                  <a
+                    className="learnMoreLink"
+                    href={EXTERNAL_LINKS.PERF_ADVISOR_DOCS_LINK}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     <div className="learnMoreContent">
                       <img src={documentationIcon} alt="more" className="learnMoreImage" />
                       {t('clusterDetail.performance.advisor.LearnPerformanceAdvisor')}
@@ -284,8 +371,8 @@ export const PerfAdvisor: FC = () => {
         />
       )}
 
-      {/* // This dialog is shown when there are no performance scanning results  */}
-      {lastScanTime && !recommendations.length && (
+      {/* This dialog is shown when there are no performance issues or when the scan fails  */}
+      {isNonEmptyString(lastScanTime) && !recommendations.length && !isLastRunNotFound && (
         <YBPanelItem
           header={
             <div className="perfAdvisor">
@@ -293,31 +380,27 @@ export const PerfAdvisor: FC = () => {
                 <div className="contentContainer">
                   <img src={EmptyTrayIcon} alt="more" />
                   <h4 className="primaryDescription">
-                    {t('clusterDetail.performance.advisor.Hurray')}
+                    {isPerfCallFail || scanStatus === LastRunStatus.FAILED
+                      ? isNonEmptyString(errorMessage)
+                        ? errorMessage
+                        : t('common.wrong')
+                      : t('clusterDetail.performance.advisor.Hurray')}
                   </h4>
                   <p className="secondaryDescription">
-                    {isPerfCallFail
-                      ? t('clusterDetail.performance.advisor.FailedToLoad')
+                    {isPerfCallFail || scanStatus === LastRunStatus.FAILED
+                      ? t('clusterDetail.performance.advisor.DBScanFailed')
                       : t('clusterDetail.performance.advisor.NoPerformanceIssues')}
                   </p>
                   <Button
                     bsClass="btn btn-orange rescanBtn"
                     disabled={!!isUniversePaused}
                     onClick={handleScan}
-                    data-toggle={isUniversePaused ? 'tooltip' : ''}
                     data-placement="left"
-                    title="Universe Paused"
+                    title={isUniversePaused ? 'Universe Paused' : ''}
                   >
                     <i className="fa fa-search-minus" aria-hidden="true"></i>
                     {t('clusterDetail.performance.advisor.ReScanBtn')}
                   </Button>
-                  <div className="ticketContent">
-                    <b>Note:</b>&nbsp; {"If this doesn't look right to you,"}&nbsp;
-                    <a className="ticketLink" href={EXTERNAL_LINKS.SUPPORT_TICKET_LINK}>
-                      {t('clusterDetail.performance.advisor.OpenSupportTicket')}
-                    </a>
-                    &nbsp;and let us know
-                  </div>
                 </div>
               </div>
             </div>
@@ -325,9 +408,19 @@ export const PerfAdvisor: FC = () => {
         />
       )}
 
-      {/* // This dialog is shown when there are multiple recommendation options */}
-      {isNonEmptyString(lastScanTime) && displayedRecomendations.length > 0 && (
+      {/* // This dialog is shown when there are recommendation results */}
+      {isNonEmptyString(lastScanTime) && displayedRecomendations.length > 0 && !isLastRunNotFound && (
         <div>
+          {(scanStatus === LastRunStatus.FAILED || errorMessage) && (
+            <div className="scanFailureContainer">
+              <img src={WarningIcon} alt="warning" className="warningIcon" />
+              <span className="scanFailureMessage">
+                {isNonEmptyString(errorMessage)
+                  ? t('clusterDetail.performance.advisor.DBScanFailed') + ':' + errorMessage
+                  : t('clusterDetail.performance.advisor.DBScanFailed')}
+              </span>
+            </div>
+          )}
           <div className="perfAdvisor__containerTitleFlex">
             <h5 className="numRecommendations">
               {displayedRecomendations.length} {recommendationLabel}
@@ -335,39 +428,55 @@ export const PerfAdvisor: FC = () => {
             <p className="scanTime">
               {t('clusterDetail.performance.advisor.ScanTime')}
               {t('clusterDetail.performance.advisor.Separator')}
-              {lastScanTime}
+              {ybFormatDate(lastScanTime)}
             </p>
             <YBButton
               btnClass="btn btn-orange rescanBtnRecPage"
+              disabled={!!isUniversePaused}
               btnText="Re-Scan"
               btnIcon="fa fa-search-minus"
               onClick={handleScan}
+              data-placement="left"
+              title={isUniversePaused ? 'Universe Paused' : ''}
             />
           </div>
           <div className="perfAdvisor__containerRecommendationFlex">
-            <FormControl
-              componentClass="select"
+            <YBSelect
               onChange={handleDbSelection}
               value={databaseSelection}
               className="filterDropdowns"
+              inputProps={{
+                'data-testid': `PerfAdvisor-DBSelect`
+              }}
             >
               {databaseOptionList}
-            </FormControl>
-            <FormControl
-              componentClass="select"
+            </YBSelect>
+            <YBSelect
               onChange={handleSuggestionTypeSelection}
               value={suggestionType}
               className="filterDropdowns"
+              inputProps={{
+                'data-testid': `PerfAdvisor-SuggestionTypeSelect`
+              }}
             >
               {recommendationTypes.map((type) => (
-                <option key={`suggestion-${type}`} value={type}>
-                  {t(`clusterDetail.performance.suggestionTypes.${translationTypeMap[type]}`)}
-                </option>
+                <MenuItem key={`suggestion-${type}`} value={type}>
+                  {t(`clusterDetail.performance.suggestionTypes.${TranslationTypeMap[type]}`)}
+                </MenuItem>
               ))}
-            </FormControl>
+            </YBSelect>
           </div>
           {displayedRecomendations.map((rec) => (
-            <RecommendationBox key={rec.key} type={rec.data.type} data={rec.data} />
+            <>
+              <RecommendationBox
+                key={rec.key}
+                idKey={rec.key}
+                type={rec.data.type}
+                data={rec.data}
+                resolved={!!rec.isResolved}
+                onResolve={handleResolve}
+              />
+            </>
           ))}
         </div>
       )}

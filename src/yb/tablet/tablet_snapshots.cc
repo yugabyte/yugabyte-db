@@ -15,8 +15,8 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
-#include "yb/common/index.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/qlexpr/index.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
 
@@ -67,7 +67,7 @@ std::string TabletMetadataFile(const std::string& dir) {
 
 struct TabletSnapshots::RestoreMetadata {
   boost::optional<Schema> schema;
-  boost::optional<IndexMap> index_map;
+  boost::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
   bool hide;
   google::protobuf::RepeatedPtrField<ColocatedTableMetadata> colocated_tables_metadata;
@@ -75,7 +75,7 @@ struct TabletSnapshots::RestoreMetadata {
 
 struct TabletSnapshots::ColocatedTableMetadata {
   boost::optional<Schema> schema;
-  boost::optional<IndexMap> index_map;
+  boost::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
   std::string table_id;
 };
@@ -344,11 +344,9 @@ Status TabletSnapshots::RestoreCheckpoint(
     const docdb::ConsensusFrontier& frontier, bool is_pitr_restore, const OpId& op_id) {
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
-  const auto destroy = !dir.empty();
-
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
-  auto op_pauses = VERIFY_RESULT(StartShutdownRocksDBs(DisableFlushOnShutdown(destroy)));
+  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(!dir.empty()));
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
 
@@ -358,11 +356,11 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (dir.empty()) {
     // Just change rocksdb hybrid time limit, because it should be in retention interval.
     // TODO(pitr) apply transactions and reset intents.
-    RETURN_NOT_OK(CompleteShutdownRocksDBs(Destroy(destroy), &op_pauses));
+    CompleteShutdownRocksDBs(op_pauses);
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
-    RETURN_NOT_OK(CompleteShutdownRocksDBs(Destroy(destroy), &op_pauses));
+    RETURN_NOT_OK(DeleteRocksDBs(CompleteShutdownRocksDBs(op_pauses)));
 
     auto s = CopyDirectory(
         &rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
@@ -393,7 +391,7 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (restore_metadata.schema) {
     // TODO(pitr) check deleted columns
     // OpId::Invalid() is used to indicate the callee to not
-    // set last_change_metadata_op_id field of tablet metadata.
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
         restore_metadata.schema_version, op_id);
@@ -405,7 +403,7 @@ Status TabletSnapshots::RestoreCheckpoint(
     LOG(INFO) << "Setting schema, index information and schema version for table "
               << colocated_table_metadata.table_id;
     // OpId::Invalid() is used to indicate the callee to not
-    // set last_change_metadata_op_id field of tablet metadata.
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *colocated_table_metadata.schema, *colocated_table_metadata.index_map,
         {} /* deleted_columns */,
@@ -422,8 +420,8 @@ Status TabletSnapshots::RestoreCheckpoint(
                             << " , force overwrite of schema packing " << !is_pitr_restore;
       RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(
           tablet_metadata_file,
-          is_pitr_restore ? docdb::OverwriteSchemaPacking::kFalse
-              : docdb::OverwriteSchemaPacking::kTrue));
+          is_pitr_restore ? dockv::OverwriteSchemaPacking::kFalse
+              : dockv::OverwriteSchemaPacking::kTrue));
       need_flush = true;
     }
   }
@@ -579,9 +577,9 @@ Status TabletSnapshots::RestoreFinished(SnapshotOperation* operation) {
 Result<bool> TabletRestorePatch::ShouldSkipEntry(const Slice& key, const Slice& value) {
   KeyBuffer key_copy;
   key_copy = key;
-  docdb::SubDocKey sub_doc_key;
+  dockv::SubDocKey sub_doc_key;
   RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
-      key_copy.AsSlice(), docdb::HybridTimeRequired::kFalse));
+      key_copy.AsSlice(), dockv::HybridTimeRequired::kFalse));
   // Get the db_oid.
   int64_t db_oid = sub_doc_key.doc_key().hashed_group()[0].GetInt64();
   if (db_oid != db_oid_) {
@@ -592,9 +590,9 @@ Result<bool> TabletRestorePatch::ShouldSkipEntry(const Slice& key, const Slice& 
 
 Status TabletRestorePatch::UpdateColumnValueInMap(
     const Slice& key, const Slice& value,
-    std::map<docdb::DocKey, SequencesDataInfo>* key_to_seq_info_map) {
-  docdb::SubDocKey decoded_key;
-  RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+    std::map<dockv::DocKey, SequencesDataInfo>* key_to_seq_info_map) {
+  dockv::SubDocKey decoded_key;
+  RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
 
   auto last_value_opt = VERIFY_RESULT(GetInt64ColumnValue(
       decoded_key, value, table_info_, "last_value"));
@@ -665,8 +663,8 @@ Status TabletRestorePatch::Finish() {
       value_pb.set_int64_value(*(value_to_insert.last_value));
       VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.last_value);
       auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("last_value"));
-      auto doc_path = docdb::DocPath(
-          doc_key_and_value.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      auto doc_path = dockv::DocPath(
+          doc_key_and_value.first.Encode(), dockv::KeyEntryValue::MakeColumnId(column_id));
       RETURN_NOT_OK(DocBatch()->SetPrimitive(
           doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
       IncrementTicker(RestoreTicker::kInserts);
@@ -676,8 +674,8 @@ Status TabletRestorePatch::Finish() {
       value_pb.set_bool_value(*(value_to_insert.is_called));
       VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.is_called);
       auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("is_called"));
-      auto doc_path = docdb::DocPath(
-          doc_key_and_value.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      auto doc_path = dockv::DocPath(
+          doc_key_and_value.first.Encode(), dockv::KeyEntryValue::MakeColumnId(column_id));
       RETURN_NOT_OK(DocBatch()->SetPrimitive(
           doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
       IncrementTicker(RestoreTicker::kInserts);

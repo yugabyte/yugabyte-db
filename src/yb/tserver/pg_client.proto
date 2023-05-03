@@ -68,6 +68,8 @@ service PgClientService {
       returns (PgValidatePlacementResponsePB);
   rpc GetTableDiskSize(PgGetTableDiskSizeRequestPB)
       returns (PgGetTableDiskSizeResponsePB);
+  rpc WaitForBackendsCatalogVersion(PgWaitForBackendsCatalogVersionRequestPB)
+      returns (PgWaitForBackendsCatalogVersionResponsePB);
 
   rpc InsertSequenceTuple(PgInsertSequenceTupleRequestPB) returns (PgInsertSequenceTupleResponsePB);
   rpc UpdateSequenceTuple(PgUpdateSequenceTupleRequestPB) returns (PgUpdateSequenceTupleResponsePB);
@@ -633,4 +635,17 @@ message PgGetTserverCatalogVersionInfoResponsePB {
   AppStatusPB status = 1;
   repeated TServerDBCatalogVersionInfo entries = 2;
   uint32 num_entries = 3;
+}
+
+message PgWaitForBackendsCatalogVersionRequestPB {
+  uint64 session_id = 1;
+  uint32 database_oid = 2;
+  uint64 catalog_version = 3;
+}
+
+message PgWaitForBackendsCatalogVersionResponsePB {
+  AppStatusPB status = 1;
+  // Number of YSQL backends (across all tservers) that have not reached the requested catalog
+  // version.  If the field is -1, the counting is in-progress.
+  int32 num_lagging_backends = 2;
 }

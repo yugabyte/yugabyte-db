@@ -250,7 +250,13 @@ DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
 DEFINE_UNKNOWN_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
+DEFINE_RUNTIME_int32(bg_superblock_flush_interval_secs, 60,
+    "The interval at which tablet superblocks are flushed to disk (if dirty) by a background "
+    "thread. Applicable only when lazily_flush_superblock is enabled. 0 indicates that the "
+    "background task is fully disabled.");
+
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(lazily_flush_superblock);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -585,6 +591,15 @@ Status TSTabletManager::Init() {
     RETURN_NOT_OK(scheduled_full_compaction_bg_task_->Init());
   }
 
+  const int32_t bg_superblock_flush_interval_secs = FLAGS_bg_superblock_flush_interval_secs;
+  if (FLAGS_lazily_flush_superblock && bg_superblock_flush_interval_secs > 0) {
+    superblock_flush_bg_task_.reset(new BackgroundTask(
+        std::function<void()>([this]() { FlushDirtySuperblocks(); }), "tablet manager",
+        "bg superblock flush",
+        MonoDelta::FromSeconds(bg_superblock_flush_interval_secs).ToChronoMilliseconds()));
+    RETURN_NOT_OK(superblock_flush_bg_task_->Init());
+  }
+
   {
     std::lock_guard<RWMutex> lock(mutex_);
     state_ = MANAGER_RUNNING;
@@ -740,7 +755,7 @@ TSTabletManager::StartTabletStateTransitionForCreation(const TabletId& tablet_id
 Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     const tablet::TableInfoPtr& table_info,
     const string& tablet_id,
-    const Partition& partition,
+    const dockv::Partition& partition,
     RaftConfigPB config,
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
@@ -777,7 +792,6 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     .colocated = colocated,
     .snapshot_schedules = snapshot_schedules,
     .hosted_services = hosted_services,
-    .last_change_metadata_op_id = OpId::Min(),
   }, data_root_dir, wal_root_dir);
   if (!create_result.ok()) {
     UnregisterDataWalDir(table_info->table_id, tablet_id, data_root_dir, wal_root_dir);
@@ -805,7 +819,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
 struct TabletCreationMetaData {
   TabletId tablet_id;
   scoped_refptr<TransitionInProgressDeleter> transition_deleter;
-  Partition partition;
+  dockv::Partition partition;
   docdb::KeyBounds key_bounds;
   RaftGroupMetadataPtr raft_group_metadata;
 };
@@ -820,7 +834,7 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
   const auto& split_partition_key = request.split_partition_key();
   const auto& split_encoded_key = request.split_encoded_key();
 
-  std::shared_ptr<Partition> source_partition = tablet.metadata()->partition();
+  auto source_partition = tablet.metadata()->partition();
   const auto source_key_bounds = *tablet.doc_db().key_bounds;
 
   {
@@ -1550,33 +1564,34 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
 
     tablet::TabletInitData tablet_init_data = {
-      .metadata = meta,
-      .client_future = server_->client_future(),
-      .clock = scoped_refptr<server::Clock>(server_->clock()),
-      .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
-      .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
-      .metric_registry = metric_registry_,
-      .log_anchor_registry = tablet_peer->log_anchor_registry(),
-      .tablet_options = tablet_options_,
-      .log_prefix_suffix = " P " + tablet_peer->permanent_uuid(),
-      .transaction_participant_context = tablet_peer.get(),
-      .local_tablet_filter = std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
-      .transaction_coordinator_context = tablet_peer.get(),
-      .txns_enabled = tablet::TransactionsEnabled::kTrue,
-      // We are assuming we're never dealing with the system catalog tablet in TSTabletManager.
-      .is_sys_catalog = tablet::IsSysCatalogTablet::kFalse,
-      .snapshot_coordinator = nullptr,
-      .tablet_splitter = this,
-      .allowed_history_cutoff_provider = std::bind(
-          &TSTabletManager::AllowedHistoryCutoff, this, _1),
-      .transaction_manager_provider = [server = server_]() -> client::TransactionManager& {
-        return server->TransactionManager();
-      },
-      .waiting_txn_registry = waiting_txn_registry_.get(),
-      .wait_queue_pool = waiting_txn_pool_.get(),
-      .full_compaction_pool = full_compaction_pool(),
-      .post_split_compaction_added = ts_post_split_compaction_added_
-    };
+        .metadata = meta,
+        .client_future = server_->client_future(),
+        .clock = scoped_refptr<server::Clock>(server_->clock()),
+        .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
+        .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
+        .metric_registry = metric_registry_,
+        .log_anchor_registry = tablet_peer->log_anchor_registry(),
+        .tablet_options = tablet_options_,
+        .log_prefix_suffix = " P " + tablet_peer->permanent_uuid(),
+        .transaction_participant_context = tablet_peer.get(),
+        .local_tablet_filter = std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
+        .transaction_coordinator_context = tablet_peer.get(),
+        .txns_enabled = tablet::TransactionsEnabled::kTrue,
+        // We are assuming we're never dealing with the system catalog tablet in TSTabletManager.
+        .is_sys_catalog = tablet::IsSysCatalogTablet::kFalse,
+        .snapshot_coordinator = nullptr,
+        .tablet_splitter = this,
+        .allowed_history_cutoff_provider = std::bind(
+            &TSTabletManager::AllowedHistoryCutoff, this, _1),
+        .transaction_manager_provider = [server = server_]() -> client::TransactionManager& {
+          return server->TransactionManager();
+        },
+        .waiting_txn_registry = waiting_txn_registry_.get(),
+        .wait_queue_pool = waiting_txn_pool_.get(),
+        .full_compaction_pool = full_compaction_pool(),
+        .admin_triggered_compaction_pool = admin_triggered_compaction_pool(),
+        .post_split_compaction_added = ts_post_split_compaction_added_
+      };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = tablet_peer->status_listener(),
@@ -1650,26 +1665,31 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   }
 }
 
-Status TSTabletManager::TriggerAdminCompactionAndWait(const TabletPtrs& tablets) {
+Status TSTabletManager::TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait) {
   CountDownLatch latch(tablets.size());
-  auto token = admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
   std::vector<TabletId> tablet_ids;
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
   for (auto tablet : tablets) {
-    RETURN_NOT_OK(token->SubmitFunc([&latch, tablet]() {
-      WARN_NOT_OK(tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kAdminCompaction),
-          "Failed to submit compaction for tablet.");
-      latch.CountDown();
-    }));
+    Status status;
+    if (should_wait) {
+      status = tablet->TriggerAdminFullCompactionWithCallbackIfNeeded(latch.CountDownCallback());
+    } else {
+      status = tablet->TriggerAdminFullCompactionIfNeeded();
+    }
+    RETURN_NOT_OK(status);
     tablet_ids.push_back(tablet->tablet_id());
     total_size += tablet->GetCurrentVersionSstFilesSize();
   }
-  VLOG(1) << yb::Format("Beginning batch admin compaction for tablets $0, $1 bytes",
-      tablet_ids, total_size);
-  latch.Wait();
-  LOG(INFO) << yb::Format("Admin compaction finished for tablets $0, $1 bytes took $2 seconds",
-      tablet_ids, total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
+  VLOG(1) << yb::Format(
+      "Beginning batch admin compaction for tablets $0, $1 bytes", tablet_ids, total_size);
+
+  if (should_wait) {
+    latch.Wait();
+    LOG(INFO) << yb::Format(
+        "Admin compaction finished for tablets $0, $1 bytes took $2 seconds", tablet_ids,
+        total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
+  }
   return Status::OK();
 }
 
@@ -1789,6 +1809,9 @@ void TSTabletManager::CompleteShutdown() {
   }
   if (scheduled_full_compaction_bg_task_) {
     scheduled_full_compaction_bg_task_->Shutdown();
+  }
+  if (superblock_flush_bg_task_) {
+    superblock_flush_bg_task_->Shutdown();
   }
   if (full_compaction_pool_) {
     full_compaction_pool_->Shutdown();
@@ -1941,6 +1964,18 @@ TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers(TabletPtrs* tablet_
     }
   }
   return peers;
+}
+
+TSTabletManager::TabletPeers TSTabletManager::GetTabletPeersWithTableId(
+    const TableId& table_id) const {
+  const auto peers = GetTabletPeers();
+  TabletPeers filtered_peers;
+  for (const auto& peer : peers) {
+    if (peer && peer->tablet_metadata()->table_id() == table_id) {
+      filtered_peers.push_back(peer);
+    }
+  }
+  return filtered_peers;
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
@@ -2670,62 +2705,87 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
 }
 
 HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
-  auto schedules = metadata->SnapshotSchedules();
-  if (schedules.empty()) {
-    if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
-      VLOG(1) << "Setting the allowed historycutoff: " << metadata->cdc_sdk_safe_time()
-              << " for tablet: " << metadata->raft_group_id();
-      return metadata->cdc_sdk_safe_time();
-    }
-    VLOG(1) << "Setting the allowed historycutoff: " << HybridTime::kMax
-            << " for tablet: " << metadata->raft_group_id();
-    return HybridTime::kMax;
-  }
-  std::vector<SnapshotScheduleId> schedules_to_remove;
-  auto se = ScopeExit([&schedules_to_remove, metadata]() {
-    if (schedules_to_remove.empty()) {
-      return;
-    }
-    bool any_removed = false;
-    for (const auto& schedule_id : schedules_to_remove) {
-      any_removed = metadata->RemoveSnapshotSchedule(schedule_id) || any_removed;
-    }
-    if (any_removed) {
-      WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
-    }
-  });
-  std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
   HybridTime result = HybridTime::kMax;
-  for (const auto& schedule_id : schedules) {
-    auto it = snapshot_schedule_allowed_history_cutoff_.find(schedule_id);
-    if (it == snapshot_schedule_allowed_history_cutoff_.end()) {
-      // We don't know this schedule.
-      auto emplace_result = missing_snapshot_schedules_.emplace(
-          schedule_id, snapshot_schedules_version_);
-      if (!emplace_result.second &&
-          emplace_result.first->second + 2 <= snapshot_schedules_version_) {
-        // We don't know this schedule, and there are already 2 rounds of heartbeat passed
-        // after we first time found that we don't know this schedule.
-        // So it means that schedule was deleted.
-        // One round is not enough, because schedule could be added after heartbeat processed on
-        // master, but response not yet received on TServer.
-        schedules_to_remove.push_back(schedule_id);
-        continue;
-      }
-      return HybridTime::kMin;
-    }
-    if (!it->second) {
-      // Schedules does not have snapshots yet.
-      return HybridTime::kMin;
-    }
-    result = std::min(result, it->second);
-  }
+  // CDC SDK safe time
   if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
-    result = std::min(result, metadata->cdc_sdk_safe_time());
+    VLOG(1) << "CDC SDK historycutoff: " << metadata->cdc_sdk_safe_time()
+            << " for tablet: " << metadata->raft_group_id();
+    result = metadata->cdc_sdk_safe_time();
+  }
+
+  auto xcluster_safe_time_result =
+      server_->GetXClusterSafeTimeMap().GetSafeTime(metadata->namespace_id());
+  if (!xcluster_safe_time_result) {
+    VLOG(1) << "XCluster GetSafeTime call failed with " << xcluster_safe_time_result.status()
+            << " for namespace: " << metadata->namespace_id();
+    // GetSafeTime call fails when special safetime value is set for a namespace -- this can happen
+    // when we have new replication setup and safe time is not yet computed. In this case, we return
+    // HybridTime::kMin to stop compaction from deleting any of the existing versions of documents.
+    return HybridTime::kMin;
+  }
+  auto opt_xcluster_safe_time = *xcluster_safe_time_result;
+  if (opt_xcluster_safe_time) {
+    VLOG(1) << "XCluster historycutoff: " << *opt_xcluster_safe_time
+            << " for tablet: " << metadata->raft_group_id();
+    result.MakeAtMost(*opt_xcluster_safe_time);
+  }
+
+  auto schedules = metadata->SnapshotSchedules();
+  if (!schedules.empty()) {
+    std::vector<SnapshotScheduleId> schedules_to_remove;
+    auto se = ScopeExit([&schedules_to_remove, metadata]() {
+      if (schedules_to_remove.empty()) {
+        return;
+      }
+      bool any_removed = false;
+      for (const auto& schedule_id : schedules_to_remove) {
+        any_removed = metadata->RemoveSnapshotSchedule(schedule_id) || any_removed;
+      }
+      if (any_removed) {
+        WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
+      }
+    });
+    std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+    for (const auto& schedule_id : schedules) {
+      auto it = snapshot_schedule_allowed_history_cutoff_.find(schedule_id);
+      if (it == snapshot_schedule_allowed_history_cutoff_.end()) {
+        // We don't know this schedule.
+        auto emplace_result =
+            missing_snapshot_schedules_.emplace(schedule_id, snapshot_schedules_version_);
+        if (!emplace_result.second &&
+            emplace_result.first->second + 2 <= snapshot_schedules_version_) {
+          // We don't know this schedule, and there are already 2 rounds of heartbeat passed
+          // after we first time found that we don't know this schedule.
+          // So it means that schedule was deleted.
+          // One round is not enough, because schedule could be added after heartbeat processed on
+          // master, but response not yet received on TServer.
+          schedules_to_remove.push_back(schedule_id);
+          continue;
+        }
+        return HybridTime::kMin;
+      }
+      if (!it->second) {
+        // Schedules does not have snapshots yet.
+        return HybridTime::kMin;
+      }
+      result.MakeAtMost(it->second);
+    }
   }
   VLOG(1) << "Setting the allowed historycutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
   return result;
+}
+
+void TSTabletManager::FlushDirtySuperblocks() {
+  for (const auto& peer : GetTabletPeers()) {
+    if (peer->state() == RUNNING && peer->tablet_metadata()->IsLazySuperblockFlushEnabled()) {
+      auto s = peer->tablet_metadata()->Flush(tablet::OnlyIfDirty::kTrue);
+      if (!s.ok()) {
+        LOG(WARNING) << "Failed flushing superblock for tablet " << peer->tablet_id()
+                     << " from background thread: " << s;
+      }
+    }
+  }
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

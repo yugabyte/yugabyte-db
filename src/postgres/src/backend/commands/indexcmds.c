@@ -94,6 +94,9 @@ static void RangeVarCallbackForReindexIndex(const RangeVar *relation,
 								Oid relId, Oid oldRelId, void *arg);
 static void ReindexPartitionedIndex(Relation parentIdx);
 
+/* YB function declarations. */
+static void YbWaitForBackendsCatalogVersion();
+
 /*
  * CheckIndexCompatible
  *		Determine whether an existing index definition is compatible with a
@@ -390,7 +393,8 @@ DefineIndex(Oid relationId,
 		pgstat_progress_start_command(PROGRESS_COMMAND_CREATE_INDEX,
 									  relationId);
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_COMMAND,
-									 stmt->concurrent ?
+									 stmt->concurrent &&
+									 IsYBRelationById(relationId) ?
 									 PROGRESS_CREATEIDX_COMMAND_CREATE_CONCURRENTLY :
 									 PROGRESS_CREATEIDX_COMMAND_CREATE);
 	}
@@ -441,11 +445,22 @@ DefineIndex(Oid relationId,
 			PROGRESS_CREATEIDX_TUPLES_TOTAL,
 			PROGRESS_CREATEIDX_TUPLES_DONE,
 		};
-		const int64	values[] = {
-			YB_PROGRESS_CREATEIDX_INITIALIZING,
-			rel->rd_rel->reltuples,
-			0
-		};
+		int64	values[3];
+		values[0] = YB_PROGRESS_CREATEIDX_INITIALIZING;
+		if (IsYBRelation(rel))
+		{
+			values[1] = rel->rd_rel->reltuples;
+			values[2] = 0;
+		}
+		else
+		{
+			/*
+			 * For temp tables, we set tuples_total and tuples_done to an
+			 * invalid value (-1) because we do not compute them.
+			 */
+			values[1] = -1;
+			values[2] = -1;
+		}
 		pgstat_progress_update_multi_param(3, cols, values);
 	}
 
@@ -1257,10 +1272,10 @@ DefineIndex(Oid relationId,
 				child_save_nestlevel = NewGUCNestLevel();
 
 				childidxs = RelationGetIndexList(childrel);
-				attmap =
-					convert_tuples_by_name_map(RelationGetDescr(childrel),
-											   parentDesc,
-											   gettext_noop("could not convert row type"));
+				attmap = convert_tuples_by_name_map(
+					RelationGetDescr(childrel), parentDesc,
+					gettext_noop("could not convert row type"),
+					false /* yb_ignore_type_mismatch */);
 				maplen = parentDesc->natts;
 
 
@@ -1486,6 +1501,12 @@ DefineIndex(Oid relationId,
 	YBDecrementDdlNestingLevel();
 	CommitTransactionCommand();
 
+	/*
+	 * The index is now visible, so we can report the OID.
+	 */
+	pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
+								 indexRelationId);
+
 	/* Delay after committing pg_index update. */
 	pg_usleep(yb_index_state_flags_update_delay * 1000);
 	if (IsYugaByteEnabled() && yb_test_block_index_phase[0] != '\0')
@@ -1495,14 +1516,11 @@ DefineIndex(Oid relationId,
 
 	StartTransactionCommand();
 
-	/*
-	 * The index is now visible, so we can report the OID.
-	 */
-	pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
-								 indexRelationId);
-
 	YBIncrementDdlNestingLevel(true /* is_catalog_version_increment */,
 							   false /* is_breaking_catalog_change */);
+
+	/* Wait for all backends to have up-to-date version. */
+	YbWaitForBackendsCatalogVersion();
 
 	/*
 	 * Update the pg_index row to mark the index as ready for inserts.
@@ -1529,6 +1547,9 @@ DefineIndex(Oid relationId,
 	StartTransactionCommand();
 	YBIncrementDdlNestingLevel(true /* is_catalog_version_increment */,
 							   false /* is_breaking_catalog_change */);
+
+	/* Wait for all backends to have up-to-date version. */
+	YbWaitForBackendsCatalogVersion();
 
 	if (IsYugaByteEnabled())
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
@@ -3031,5 +3052,47 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 
 		/* make our updates visible */
 		CommandCounterIncrement();
+	}
+}
+
+static void
+YbWaitForBackendsCatalogVersion()
+{
+	if (yb_disable_wait_for_backends_catalog_version)
+		return;
+
+	int num_lagging_backends = -1;
+	int retries_left = 10;
+	while (num_lagging_backends != 0)
+	{
+		YBCStatus s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
+														 YbGetCatalogCacheVersion(),
+														 &num_lagging_backends);
+
+		if (!s)		/* ok */
+			continue;
+		if (YBCStatusIsTryAgain(s))
+		{
+			YBCFreeStatus(s);
+			continue;
+		}
+		/*
+		 * TODO(#5030): there is a bug where master commits a catalog
+		 * version bump and the following read doesn't pick it up.  This is
+		 * short-lived, so there only needs to be a few retries.
+		 */
+		const char *msg = YBCStatusMessageBegin(s);
+		if (strstr(msg, "Requested catalog version is too high"))
+		{
+			elog((retries_left > 3 ? DEBUG1 : NOTICE),
+				 "Retrying wait for backends catalog version: %s",
+				 msg);
+			if (retries_left-- > 0)
+			{
+				YBCFreeStatus(s);
+				continue;
+			}
+		}
+		HandleYBStatus(s);
 	}
 }

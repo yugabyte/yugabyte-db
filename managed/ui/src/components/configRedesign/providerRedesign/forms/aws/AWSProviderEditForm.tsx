@@ -47,11 +47,13 @@ import {
   findExistingZone,
   getDeletedRegions,
   getDeletedZones,
+  getLatestAccessKey,
   getNtpSetupType,
   getYBAHost
 } from '../../utils';
 import {
   addItem,
+  constructAccessKeysPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -104,7 +106,7 @@ export interface AWSProviderEditFormFieldValues {
   secretAccessKey: string;
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
-  sshPort: number;
+  sshPort: number | null;
   sshPrivateKeyContent: File;
   sshUser: string;
   vpcSetupType: VPCSetupType;
@@ -262,8 +264,10 @@ export const AWSProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT_NEW);
+  const showEditRegionFormModal = (options?: { isExistingRegion: boolean }) => {
+    setRegionOperation(
+      options?.isExistingRegion ? RegionOperation.EDIT_EXISTING : RegionOperation.EDIT_NEW
+    );
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -281,7 +285,7 @@ export const AWSProviderEditForm = ({
 
   const regions = formMethods.watch('regions');
   const setRegions = (regions: CloudVendorRegionField[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: CloudVendorRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -309,6 +313,8 @@ export const AWSProviderEditForm = ({
   const providerCredentialType = formMethods.watch('providerCredentialType');
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
   const ybImageType = formMethods.watch('ybImageType');
+  const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
+  const existingRegions = providerConfig.regions.map((region) => region.code);
   const isFormDisabled =
     isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
   return (
@@ -350,6 +356,7 @@ export const AWSProviderEditForm = ({
                   control={formMethods.control}
                   options={credentialOptions}
                   orientation={RadioGroupOrientation.HORIZONTAL}
+                  isDisabled={isFormDisabled}
                 />
               </FormField>
               {providerCredentialType === AWSProviderCredentialType.ACCESS_KEY && (
@@ -371,7 +378,7 @@ export const AWSProviderEditForm = ({
                     />
                   </FormField>
                   <FormField>
-                    <FieldLabel>Change Access Key</FieldLabel>
+                    <FieldLabel>Change AWS Credentials</FieldLabel>
                     <YBToggleField
                       name="editAccessKey"
                       control={formMethods.control}
@@ -447,11 +454,13 @@ export const AWSProviderEditForm = ({
                   control={formMethods.control}
                   options={VPC_SETUP_OPTIONS}
                   orientation={RadioGroupOrientation.HORIZONTAL}
+                  isDisabled={isFormDisabled}
                 />
               </FormField>
               <RegionList
                 providerCode={ProviderCode.AWS}
                 regions={regions}
+                existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
@@ -485,26 +494,18 @@ export const AWSProviderEditForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Keypair Name</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.keyPairName}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.keyPairName} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Private Key</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.privateKey}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.privateKey} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Change SSH Keypair</FieldLabel>
@@ -523,6 +524,7 @@ export const AWSProviderEditForm = ({
                       control={formMethods.control}
                       options={KEY_PAIR_MANAGEMENT_OPTIONS}
                       orientation={RadioGroupOrientation.HORIZONTAL}
+                      isDisabled={isFormDisabled}
                     />
                   </FormField>
                   {keyPairManagement === KeyPairManagement.SELF_MANAGED && (
@@ -634,6 +636,7 @@ export const AWSProviderEditForm = ({
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           configuredRegions={regions}
+          isEditProvider={true}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -676,11 +679,12 @@ const constructDefaultFormValues = (
     ybImage: region.details.cloudInfo.aws.ybImage ?? '',
     zones: region.zones
   })),
-  sshKeypairManagement: providerConfig.allAccessKeys?.[0]?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort,
-  sshUser: providerConfig.details.sshUser,
+  sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
+  sshPort: providerConfig.details.sshPort ?? null,
+  sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
-  vpcSetupType: providerConfig.details.cloudInfo.aws.vpcType
+  vpcSetupType: providerConfig.details.cloudInfo.aws.vpcType,
+  ybImageType: YBImageType.CUSTOM_AMI
 });
 
 const constructProviderPayload = async (
@@ -698,16 +702,17 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
+  const allAccessKeysPayload = constructAccessKeysPayload(
+    formValues.editSSHKeypair,
+    formValues.sshKeypairManagement,
+    { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
+    providerConfig.allAccessKeys
+  );
+
   return {
     code: ProviderCode.AWS,
     name: formValues.providerName,
-    ...(formValues.editSSHKeypair &&
-      formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-        ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-        ...(formValues.sshPrivateKeyContent && {
-          sshPrivateKeyContent: sshPrivateKeyContent
-        })
-      }),
+    ...allAccessKeysPayload,
     details: {
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
@@ -725,8 +730,8 @@ const constructProviderPayload = async (
       },
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: [
       ...formValues.regions.map<AWSRegionMutation>((regionFormValues) => {
@@ -743,13 +748,29 @@ const constructProviderPayload = async (
           details: {
             cloudInfo: {
               [ProviderCode.AWS]: {
-                ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
+                ...(existingRegion
+                  ? {
+                      ...(existingRegion.details.cloudInfo.aws.ybImage && {
+                        ybImage: existingRegion.details.cloudInfo.aws.ybImage
+                      }),
+                      ...(existingRegion.details.cloudInfo.aws.arch && {
+                        arch: existingRegion.details.cloudInfo.aws.arch
+                      })
+                    }
+                  : regionFormValues.ybImage
                   ? {
                       ybImage: regionFormValues.ybImage
                     }
-                  : { arch: formValues.ybImageType }),
-                securityGroupId: regionFormValues.securityGroupId,
-                vnet: regionFormValues.vnet
+                  : {
+                      arch:
+                        providerConfig.regions[0]?.details.cloudInfo.aws.arch ?? YBImageType.X86_64
+                    }),
+                ...(regionFormValues.securityGroupId && {
+                  securityGroupId: regionFormValues.securityGroupId
+                }),
+                ...(regionFormValues.vnet && {
+                  vnet: regionFormValues.vnet
+                })
               }
             }
           },

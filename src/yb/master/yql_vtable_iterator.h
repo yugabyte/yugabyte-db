@@ -25,27 +25,25 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
   // hashed_column_values - is used to filter rows, i.e. if hashed_column_values is not empty
   // only rows starting with specified hashed columns will be iterated.
   YQLVTableIterator(
-      std::shared_ptr<QLRowBlock> vtable,
+      std::shared_ptr<qlexpr::QLRowBlock> vtable,
       const google::protobuf::RepeatedPtrField<QLExpressionPB>& hashed_column_values);
 
   virtual ~YQLVTableIterator();
 
   Result<bool> DoFetchNext(
-      QLTableRow* table_row,
-      const Schema* projection,
-      QLTableRow* static_row,
-      const Schema* static_projection) override;
+      qlexpr::QLTableRow* table_row,
+      const dockv::ReaderProjection* projection,
+      qlexpr::QLTableRow* static_row,
+      const dockv::ReaderProjection* static_projection) override;
 
   std::string ToString() const override;
-
-  const Schema &schema() const override;
 
   Result<HybridTime> RestartReadHt() override;
 
  private:
   void Advance(bool increment);
 
-  std::shared_ptr<QLRowBlock> vtable_;
+  std::shared_ptr<qlexpr::QLRowBlock> vtable_;
   size_t vtable_index_ = 0;
   const google::protobuf::RepeatedPtrField<QLExpressionPB>& hashed_column_values_;
 };

@@ -17,8 +17,12 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.CustomerTask;
@@ -46,6 +50,7 @@ import play.inject.ApplicationLifecycle;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class Commissioner {
 
   public static final String SUBTASK_ABORT_POSITION_PROPERTY = "subtask-abort-position";
@@ -67,17 +72,21 @@ public class Commissioner {
 
   private final ProviderEditRestrictionManager providerEditRestrictionManager;
 
+  private final RuntimeConfGetter runtimeConfGetter;
+
   @Inject
   public Commissioner(
       ProgressMonitor progressMonitor,
       ApplicationLifecycle lifecycle,
       PlatformExecutorFactory platformExecutorFactory,
       TaskExecutor taskExecutor,
-      ProviderEditRestrictionManager providerEditRestrictionManager) {
+      ProviderEditRestrictionManager providerEditRestrictionManager,
+      RuntimeConfGetter runtimeConfGetter) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
     this.taskExecutor = taskExecutor;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
+    this.runtimeConfGetter = runtimeConfGetter;
     executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
     progressMonitor.start(runningTasks);
@@ -113,6 +122,13 @@ public class Commissioner {
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
     RunnableTask taskRunnable = null;
     try {
+      if (runtimeConfGetter.getGlobalConf(
+          GlobalConfKeys.enableTaskAndFailedRequestDetailedLogging)) {
+        JsonNode taskParamsJson = Json.toJson(taskParams);
+        JsonNode redactedJson = RedactingService.filterSecretFields(taskParamsJson);
+        log.debug(
+            "Executing TaskType {} with params {}", taskType.toString(), redactedJson.toString());
+      }
       // Create the task runnable object based on the various parameters passed in.
       taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
       // Add the consumer to handle before task if available.
@@ -206,7 +222,10 @@ public class Commissioner {
   }
 
   public Optional<ObjectNode> buildTaskStatus(
-      CustomerTask task, TaskInfo taskInfo, Map<UUID, CustomerTask> lastTaskByTarget) {
+      CustomerTask task,
+      TaskInfo taskInfo,
+      Map<UUID, String> updatingTasks,
+      Map<UUID, CustomerTask> lastTaskByTarget) {
     if (task == null || taskInfo == null) {
       return Optional.empty();
     }
@@ -244,26 +263,19 @@ public class Commissioner {
       responseJson.put("abortable", isTaskAbortable(taskInfo.getTaskType()));
     }
 
+    boolean retryable = false;
     // Set retryable if eligible.
-    responseJson.put("retryable", false);
     if (isTaskRetryable(taskInfo.getTaskType())
         && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
       if (task.getTargetType() == CustomerTask.TargetType.Provider) {
-        CustomerTask lastTask =
-            lastTaskByTarget.computeIfAbsent(
-                task.getTargetUUID(), tId -> CustomerTask.getLastTaskByTargetUuid(tId));
-        responseJson.put(
-            "retryable", lastTask != null && lastTask.getTaskUUID().equals(task.getTaskUUID()));
+        CustomerTask lastTask = lastTaskByTarget.get(task.getTargetUUID());
+        retryable = lastTask != null && lastTask.getTaskUUID().equals(task.getTaskUUID());
       } else {
-        // Retryable depends on the updating Task UUID in the Universe.
-        Universe.getUniverseDetailsField(String.class, task.getTargetUUID(), "updatingTaskUUID")
-            .ifPresent(
-                updatingTask -> {
-                  responseJson.put(
-                      "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTask)));
-                });
+        retryable =
+            taskInfo.getTaskUUID().toString().equals(updatingTasks.get(task.getTargetUUID()));
       }
     }
+    responseJson.put("retryable", retryable);
     if (pauseLatches.containsKey(taskInfo.getTaskUUID())) {
       // Set this only if it is true. The thread is just parking. From the task state
       // perspective, it is still running.
@@ -281,7 +293,22 @@ public class Commissioner {
       LOG.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
       return Optional.empty();
     }
-    return buildTaskStatus(task, taskInfo, new HashMap<>());
+    Map<UUID, String> updatingTaskByTargetMap = new HashMap<>();
+    Map<UUID, CustomerTask> lastTaskByTargetMap = new HashMap<>();
+    Universe.getUniverseDetailsField(
+            String.class,
+            task.getTargetUUID(),
+            UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD)
+        .ifPresent(id -> updatingTaskByTargetMap.put(task.getTargetUUID(), id));
+    lastTaskByTargetMap.put(
+        task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
+    return buildTaskStatus(task, taskInfo, updatingTaskByTargetMap, lastTaskByTargetMap);
+  }
+
+  // Returns a map of target to updating task UUID.
+  public Map<UUID, String> getUpdatingTaskUUIDsForTargets(Long customerId) {
+    return Universe.getUniverseDetailsFields(
+        String.class, customerId, UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD);
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {
@@ -312,22 +339,7 @@ public class Commissioner {
   // Returns the TaskExecutionListener instance.
   private TaskExecutionListener getTaskExecutionListener() {
     final Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
-    TaskExecutionListener listener =
-        new TaskExecutionListener() {
-          @Override
-          public void beforeTask(TaskInfo taskInfo) {
-            LOG.info("About to execute task {}", taskInfo);
-            if (beforeTaskConsumer != null) {
-              beforeTaskConsumer.accept(taskInfo);
-            }
-          }
-
-          @Override
-          public void afterTask(TaskInfo taskInfo, Throwable t) {
-            LOG.info("Task {} is completed", taskInfo);
-            providerEditRestrictionManager.onTaskFinished(taskInfo.getTaskUUID());
-          }
-        };
+    Listener listener = new Listener(providerEditRestrictionManager, beforeTaskConsumer);
     return listener;
   }
 
@@ -367,7 +379,6 @@ public class Commissioner {
     }
     return consumer;
   }
-
   /**
    * A progress monitor to constantly write a last updated timestamp in the DB so that this process
    * and all its subtasks are considered to be alive.

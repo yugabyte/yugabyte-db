@@ -84,12 +84,11 @@
 namespace yb {
 
 class GarbageCollector;
-class PartitionSchema;
 class FsManager;
 class HostPort;
-class Partition;
 class Schema;
 class BackgroundTask;
+class XClusterSafeTimeTest;
 
 namespace consensus {
 class RaftConfigPB;
@@ -169,6 +168,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   ThreadPool* append_pool() const { return append_pool_.get(); }
   ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
   ThreadPool* full_compaction_pool() const { return full_compaction_pool_.get(); }
+  ThreadPool* admin_triggered_compaction_pool() const {
+    return admin_triggered_compaction_pool_.get();
+  }
   ThreadPool* waiting_txn_pool() const { return waiting_txn_pool_.get(); }
 
   // Create a new tablet and register it with the tablet manager. The new tablet
@@ -181,7 +183,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Result<tablet::TabletPeerPtr> CreateNewTablet(
       const tablet::TableInfoPtr& table_info,
       const std::string& tablet_id,
-      const Partition& partition,
+      const dockv::Partition& partition,
       consensus::RaftConfigPB config,
       const bool colocated = false,
       const std::vector<SnapshotScheduleId>& snapshot_schedules = {},
@@ -281,6 +283,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Get all of the tablets currently hosted on this server.
   TabletPeers GetTabletPeers(TabletPtrs* tablet_ptrs = nullptr) const;
+  // Get all of the tablets currently hosted on this server that belong to a given table.
+  TabletPeers GetTabletPeersWithTableId(const TableId& table_id) const;
   void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const REQUIRES_SHARED(mutex_);
   void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;
 
@@ -362,12 +366,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
 
-  // Trigger asynchronous compactions concurrently on the provided tablets.
-  Status TriggerAdminCompactionAndWait(const TabletPtrs& tablets);
+  // Trigger admin full compactions concurrently on the provided tablets.
+  // should_wait determines whether this function is asynchronous or not.
+  Status TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait);
 
  private:
-  FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
+  friend class ::yb::XClusterSafeTimeTest;
 
   // Flag specified when registering a TabletPeer.
   enum RegisterTabletPeerMode {
@@ -535,6 +540,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void PollWaitingTxnRegistry();
 
+  void FlushDirtySuperblocks();
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -666,6 +673,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Background task for periodically scheduling major compactions.
   std::unique_ptr<BackgroundTask> scheduled_full_compaction_bg_task_;
+
+  // Background task for periodically flushing the superblocks.
+  std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
 
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
 

@@ -1,9 +1,10 @@
 import axios from 'axios';
 import { ROOT_URL } from '../../../config';
-import { RecommendationPriority, SortDirection } from '../../../redesign/utils/dtos';
+import { RecommendationPriority, SortDirection, LastRunData } from '../../../redesign/utils/dtos';
 
 export enum QUERY_KEY {
-  fetchPerfRecommendations = 'fetchPerfRecommendations'
+  fetchPerfRecommendations = 'fetchPerfRecommendations',
+  fetchPerfLastRun = 'fetchPerfLastRun'
 }
 
 interface PerfRecommendationQueryFilter {
@@ -30,8 +31,18 @@ class ApiService {
 
   fetchPerfRecommendationsList = (data: PerfRecommendationQueryParams): Promise<any[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/performance_recommendations/page`;
-    return axios.post(requestUrl, data).then((resp) => resp.data);
+    return axios.post(requestUrl, data).then((resp: any) => resp.data);
   };
+
+  fetchPerfLastRun = (universeUUID: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUUID}/last_run`;
+    return axios.get<LastRunData>(requestUrl).then((resp: any) => resp.data);
+  }
+
+  startPefRunManually = (universeUUID: string, data?: any) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUUID}/start_manually`;
+    return axios.post(requestUrl, data).then((resp: any) => resp.data);
+  }
 }
 
 export const performanceRecommendationApi = new ApiService();

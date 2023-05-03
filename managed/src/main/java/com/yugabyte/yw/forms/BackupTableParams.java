@@ -10,13 +10,12 @@ import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-
 import lombok.NoArgsConstructor;
-
 import org.apache.commons.collections.CollectionUtils;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
@@ -72,6 +71,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Backups")
   public List<BackupTableParams> backupList;
 
+  @ApiModelProperty(hidden = true)
+  public UUID backupParamsIdentifier = null;
+
   @ApiModelProperty(value = "Per region locations")
   public List<BackupUtil.RegionLocations> regionLocations;
 
@@ -101,7 +103,11 @@ public class BackupTableParams extends TableManagerParams {
 
   // Should the backup be transactional across tables
   @ApiModelProperty(value = "Is backup transactional across tables")
+  @Deprecated
   public boolean transactionalBackup = false;
+
+  @ApiModelProperty(value = "Table by table backup")
+  public boolean tableByTableBackup = false;
 
   // The number of concurrent commands to run on nodes over SSH
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
@@ -221,6 +227,15 @@ public class BackupTableParams extends TableManagerParams {
     this.tableUUIDList = new ArrayList<>(tableParams.tableUUIDList);
     this.setTableName(tableParams.getTableName());
     this.tableUUID = tableParams.tableUUID;
+    this.backupParamsIdentifier = tableParams.backupParamsIdentifier;
+  }
+
+  @JsonIgnore
+  public BackupTableParams(BackupTableParams tableParams, UUID tableUUID, String tableName) {
+    this(tableParams);
+    this.tableUUIDList = Arrays.asList(tableUUID);
+    this.tableNameList = Arrays.asList(tableName);
+    this.setTableName(tableName);
   }
 
   @JsonIgnore
@@ -235,6 +250,24 @@ public class BackupTableParams extends TableManagerParams {
     }
 
     return tableNames;
+  }
+
+  public List<UUID> getTableUUIDList() {
+    if (tableUUIDList != null) {
+      return tableUUIDList;
+    } else if (tableUUID != null) {
+      return Arrays.asList(tableUUID);
+    }
+    return new ArrayList<UUID>();
+  }
+
+  public List<String> getTableNameList() {
+    if (tableNameList != null) {
+      return tableNameList;
+    } else if (getTableName() != null) {
+      return Arrays.asList(getTableName());
+    }
+    return new ArrayList<String>();
   }
 
   public boolean isFullBackup() {

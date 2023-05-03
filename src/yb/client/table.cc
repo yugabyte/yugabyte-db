@@ -100,7 +100,7 @@ const Schema& YBTable::InternalSchema() const {
   return internal::GetSchema(info_->schema);
 }
 
-const IndexMap& YBTable::index_map() const {
+const qlexpr::IndexMap& YBTable::index_map() const {
   return info_->index_map;
 }
 
@@ -112,8 +112,8 @@ bool YBTable::IsUniqueIndex() const {
   return info_->index_info.is_initialized() && info_->index_info->is_unique();
 }
 
-const IndexInfo& YBTable::index_info() const {
-  static IndexInfo kEmptyIndexInfo;
+const qlexpr::IndexInfo& YBTable::index_info() const {
+  static qlexpr::IndexInfo kEmptyIndexInfo;
   if (info_->index_info) {
     return *info_->index_info;
   }
@@ -134,7 +134,7 @@ std::string YBTable::ToString() const {
       yb::ToString(index_info()), yb::ToString(index_map()));
 }
 
-const PartitionSchema& YBTable::partition_schema() const {
+const dockv::PartitionSchema& YBTable::partition_schema() const {
   return info_->partition_schema;
 }
 

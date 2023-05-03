@@ -18,7 +18,7 @@
 #include <glog/logging.h>
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 
 #include "yb/gutil/macros.h"
 
@@ -40,7 +40,7 @@ struct LockedBatchEntry;
 
 struct LockBatchEntry {
   RefCntPrefix key;
-  IntentTypeSet intent_types;
+  dockv::IntentTypeSet intent_types;
 
   // Memory is owned by SharedLockManager.
   LockedBatchEntry* locked = nullptr;
