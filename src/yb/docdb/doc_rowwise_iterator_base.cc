@@ -140,7 +140,9 @@ void DocRowwiseIteratorBase::SetupProjectionSubkeys() {
       [](const auto& lhs, const auto& rhs) { return lhs.subkey < rhs.subkey; });
 }
 
-DocRowwiseIteratorBase::~DocRowwiseIteratorBase() = default;
+DocRowwiseIteratorBase::~DocRowwiseIteratorBase() {
+  FinalizeKeyFoundStats();
+}
 
 void DocRowwiseIteratorBase::CheckInitOnce() {
   if (is_initialized_) {
@@ -241,8 +243,7 @@ void DocRowwiseIteratorBase::IncrementKeyFoundStats(
   }
 }
 
-void DocRowwiseIteratorBase::Done() {
-  done_ = true;
+void DocRowwiseIteratorBase::FinalizeKeyFoundStats() {
   if (!doc_db_.metrics || !keys_found_) {
     return;
   }
