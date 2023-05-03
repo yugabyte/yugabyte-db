@@ -1662,6 +1662,8 @@ class AbstractAccessMethod(AbstractMethod):
         self.parser.add_argument("--public_key_file", required=False, help="Public key filename.")
         self.parser.add_argument("--private_key_file", required=False, help="Private key filename.")
         self.parser.add_argument("--delete_remote", action="store_true", help="Delete from cloud.")
+        self.parser.add_argument("--skip_add_keypair_aws", action="store_true", default=False,
+                                 help="Skip Access Key Upload for AWS Region")
         self.parser.add_argument("--ignore_auth_failure", action="store_true",
                                  help="Ignore cloud auth failure.")
 

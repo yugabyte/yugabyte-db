@@ -410,7 +410,9 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             eq(false),
             eq(false),
             eq(Collections.emptyList()),
-            eq(true)))
+            eq(true),
+            eq(true),
+            eq(false)))
         .thenAnswer(i -> AccessKey.create(defaultProvider.getUuid(), "key-code-1", keyInfo));
     Result result = createAccessKey(defaultProvider.getUuid(), "key-code-1", true, false);
     verify(mockAccessManager, times(1))
@@ -425,7 +427,9 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             eq(false),
             eq(false),
             eq(Collections.emptyList()),
-            eq(true));
+            eq(true),
+            eq(true),
+            eq(false));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.getUuid());
@@ -456,7 +460,9 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             eq(false),
             eq(false),
             eq(Collections.emptyList()),
-            eq(true)))
+            eq(true),
+            eq(true),
+            eq(false)))
         .thenAnswer(i -> AccessKey.create(defaultProvider.getUuid(), "key-code-1", keyInfo));
     Result result = createAccessKey(defaultProvider.getUuid(), "key-code-1", false, true);
     verify(mockAccessManager, times(1))
@@ -471,7 +477,9 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             eq(false),
             eq(false),
             eq(Collections.emptyList()),
-            eq(true));
+            eq(true),
+            eq(true),
+            eq(false));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.getUuid());
