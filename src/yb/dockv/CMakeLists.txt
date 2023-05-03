@@ -63,6 +63,7 @@ set(YB_TEST_LINK_LIBS yb_common yb_dockv_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(doc_key-test)
 ADD_YB_TEST(doc_kv_util-test)
+ADD_YB_TEST(intent-test)
 ADD_YB_TEST(packed_row-test)
 ADD_YB_TEST(partial_row-test)
 ADD_YB_TEST(partition-test)
