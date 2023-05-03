@@ -132,6 +132,19 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 /*+Leading((p i2))*/ SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
 DROP TABLE int2type;
 
+CREATE TABLE q1(a int);
+CREATE TABLE q2(a int);
+CREATE TABLE q3(a int primary key);
+
+-- We shouldn't be batching on join clauses that involve more than one rel
+-- on a side of the join clause.
+-- See issue #17150
+/*+Set(enable_mergejoin false) Set(enable_hashjoin false) Set(enable_material false) Leading((q1 (q2 q3)))*/explain (costs off) select * from q1, q2, q3 where q3.a = q2.a + q1.a;
+
+DROP TABLE q1;
+DROP TABLE q2;
+DROP TABLE q3;
+
 set yb_bnl_batch_size to 10;
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
 select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
