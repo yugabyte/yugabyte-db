@@ -916,6 +916,30 @@ create index q3_range on q3(a asc);
 DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
+create table q1(a int, b int);
+create table q2(a int, b int);
+create index on q2(b, a);
+insert into q1 values (1,2), (1,4), (6,7), (2,0), (10,24), (4,2);
+insert into q2 values (2,1), (6,6), (2,4), (0,2), (1,2), (2,2), (4,2);
+explain (costs off) select * from q1,q2 where q1.a = q2.a and q1.b = q2.b;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((q1.a = q2.a) AND (q1.b = q2.b))
+   ->  Seq Scan on q1
+   ->  Index Only Scan using q2_b_a_idx on q2
+         Index Cond: (ROW(b, a) = ANY (ARRAY[ROW(q1.b, q1.a), ROW($1, $4), ROW($2, $5)]))
+(5 rows)
+
+select * from q1,q2 where q1.a = q2.a and q1.b = q2.b;
+ a | b | a | b 
+---+---+---+---
+ 1 | 2 | 1 | 2
+ 4 | 2 | 4 | 2
+(2 rows)
+
+drop table q1;
+drop table q2;
 create table g1(h int, r int, primary key(h hash, r asc));
 create table g2(h int, r int, primary key(h hash, r asc));
 create table main(h1 int, h2 int, r1 int, r2 int, primary key((h1,h2) hash, r1 asc, r2 asc));
