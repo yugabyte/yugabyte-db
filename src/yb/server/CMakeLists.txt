@@ -88,7 +88,6 @@ set(SERVER_PROCESS_SRCS
   generic_service.cc
   glog_metrics.cc
   monitored_task.cc
-  pgsql_webserver_wrapper.cc
   pprof-path-handlers_util.cc
   pprof-path-handlers.cc
   rpc_server.cc

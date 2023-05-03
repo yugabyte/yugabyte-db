@@ -7,7 +7,7 @@ EXTENSION = pg_stat_monitor
 DATA = pg_stat_monitor--1.0.sql
 
 PGFILEDESC = "pg_stat_monitor - execution statistics of SQL statements"
-SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lserver_process
+SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lserver_process -lyb_pggate_webserver
 
 LDFLAGS_SL += $(filter -lm, $(LIBS))
 

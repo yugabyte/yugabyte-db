@@ -100,8 +100,6 @@ set(COMMON_SRCS
   transaction.cc
   transaction_error.cc
   wire_protocol.cc
-  ybc_util.cc
-  ybc-internal.cc
   llvm_profile_dumper.cc
   )
 
