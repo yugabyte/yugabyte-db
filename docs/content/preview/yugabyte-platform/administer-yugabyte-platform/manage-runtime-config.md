@@ -6,8 +6,8 @@ description: Manage your universes by setting runtime configuration keys based o
 menu:
   preview_yugabyte-platform:
     identifier: manage-runtime-config
-    parent: manage-deployments
-    weight: 100
+    parent: administer-yugabyte-platform
+    weight: 50
 type: docs
 ---
 
