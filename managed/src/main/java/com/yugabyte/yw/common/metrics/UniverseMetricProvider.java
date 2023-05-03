@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
@@ -64,7 +65,9 @@ public class UniverseMetricProvider implements MetricsProvider {
           PlatformMetrics.UNIVERSE_NODE_PROCESS_STATUS,
           PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
           PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
-          PlatformMetrics.UNIVERSE_REPLICATION_FACTOR);
+          PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
+          PlatformMetrics.UNIVERSE_NODE_PROVISIONED_IOPS,
+          PlatformMetrics.UNIVERSE_NODE_PROVISIONED_THROUGHPUT);
 
   @Override
   public List<MetricSaveGroup> getMetricGroups() throws Exception {
@@ -223,6 +226,38 @@ public class UniverseMetricProvider implements MetricsProvider {
                       nodeDetails.nodeExporterPort,
                       "node_export",
                       statusValue(hasNodeExporter && nodeDetails.isActive())));
+
+              // Add provisioned disk iops and throughput metrics.
+              if (nodeDetails.placementUuid != null) {
+                UniverseDefinitionTaskParams.Cluster cluster =
+                    universe.getCluster(nodeDetails.placementUuid);
+                if (cluster != null && cluster.userIntent.deviceInfo != null) {
+                  Integer iops = cluster.userIntent.deviceInfo.diskIops;
+                  Integer throughput = cluster.userIntent.deviceInfo.throughput;
+                  if (iops != null) {
+                    universeGroup.metric(
+                        createNodeMetric(
+                            customer,
+                            universe,
+                            PlatformMetrics.UNIVERSE_NODE_PROVISIONED_IOPS,
+                            nodeDetails.cloudInfo.private_ip,
+                            nodeDetails.nodeExporterPort,
+                            "node_export",
+                            iops));
+                  }
+                  if (throughput != null) {
+                    universeGroup.metric(
+                        createNodeMetric(
+                            customer,
+                            universe,
+                            PlatformMetrics.UNIVERSE_NODE_PROVISIONED_THROUGHPUT,
+                            nodeDetails.cloudInfo.private_ip,
+                            nodeDetails.nodeExporterPort,
+                            "node_export",
+                            throughput));
+                  }
+                }
+              }
             }
           }
           universeGroup.cleanMetricFilter(
