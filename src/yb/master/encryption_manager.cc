@@ -59,6 +59,22 @@ Status EncryptionManager::GetUniverseKeyRegistry(const GetUniverseKeyRegistryReq
   }
   LOG(INFO) << "Responding to GetUniverseKeyRegistry request with key ids: "
             << UniverseKeyIdsString();
+
+  return Status::OK();
+}
+
+Status EncryptionManager::GetFullUniverseKeyRegistry(const EncryptionInfoPB& encryption_info,
+                                                     GetFullUniverseKeyRegistryResponsePB* resp) {
+  // Decrypt the universe key registry.
+  auto universe_key = VERIFY_RESULT(GetLatestUniverseKey(&encryption_info));
+  auto decrypted_registry =
+      VERIFY_RESULT(enterprise::DecryptUniverseKeyRegistry(
+          encryption_info.universe_key_registry_encoded(), Slice(universe_key)));
+  auto universe_key_registry =
+      VERIFY_RESULT(pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(decrypted_registry));
+
+  *resp->mutable_universe_key_registry() = universe_key_registry;
+
   return Status::OK();
 }
 

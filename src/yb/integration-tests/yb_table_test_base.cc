@@ -143,9 +143,10 @@ void YBTableTestBase::SetUp() {
         .num_tablet_servers = num_tablet_servers(),
         .num_drives = num_drives(),
         .master_env = env_.get(),
-        .ts_env = ts_env_.get(),
-        .ts_rocksdb_env = ts_rocksdb_env_.get()
+        .ts_env = ts_env_ ? ts_env_.get() : nullptr,
+        .ts_rocksdb_env = ts_rocksdb_env_ ? ts_rocksdb_env_.get() : nullptr
     };
+    LOG(INFO) << "opts: " << opts.ts_env;
     SetAtomicFlag(enable_ysql(), &FLAGS_enable_ysql);
 
     mini_cluster_.reset(new MiniCluster(opts));

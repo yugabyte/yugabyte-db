@@ -52,7 +52,6 @@ Result<TabletServerOptions> TabletServerOptions::CreateTabletServerOptions() {
 
   TabletServerOptions opts(std::make_shared<server::MasterAddresses>(std::move(master_addresses)));
   opts.master_addresses_flag = master_addresses_resolved_str;
-  opts.rocksdb_env = rocksdb::Env::Default();
   opts.env = Env::Default();
   return opts;
 }

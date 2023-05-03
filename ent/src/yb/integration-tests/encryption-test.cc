@@ -17,6 +17,11 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/encryption/encrypted_file_factory.h"
+#include "yb/encryption/header_manager.h"
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -117,6 +122,7 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
     auto bytes = RandomBytes(32);
     ASSERT_OK(yb_admin_client_->AddUniverseKeyToAllMasters(
         current_key_id_, std::string(bytes.begin(), bytes.end())));
+    current_key_ = bytes;
   }
 
   Status WaitForAllMastersHaveLatestKeyInMemory() {
@@ -141,8 +147,9 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
   void DisableEncryption() {
     ASSERT_OK(yb_admin_client_->DisableEncryptionInMemory());
   }
- private:
+ protected:
   std::string current_key_id_ = "";
+  std::vector<uint8_t> current_key_;
 };
 
 INSTANTIATE_TEST_CASE_P(TestWithCounterOverflow, EncryptionTest, ::testing::Bool());
@@ -320,6 +327,38 @@ TEST_F_EX(EncryptionTest, WALRolloverAndRestart, WALRolloverTest) {
   ASSERT_OK(external_mini_cluster()->WaitForTabletsRunning(
       tablet_server, MonoDelta::FromSeconds(30)));
   ClusterVerifier cv(external_mini_cluster());
+  ASSERT_NO_FATALS(cv.CheckCluster());
+}
+
+TEST_F(EncryptionTest, MasterSendKeys) {
+  // Test the following set of steps:
+  // 1. Write some data with key1.
+  // 2. Rotate to key2 and write some more data.
+  // 3. Restart the masters all at once and just add key2 to the masters memory (similar to the YBA
+  // task of just seeding with the latest key, so key1 is not in master memory).
+  // 4. Restart a tserver, and make sure master sends it both key1 and key2.
+  WriteWorkload(0, kNumKeys);
+  ASSERT_NO_FATALS(AddUniverseKeys());
+  ASSERT_NO_FATALS(RotateKey());
+  WriteWorkload(kNumKeys, 2 * kNumKeys);
+  for (size_t i = 0; i < external_mini_cluster()->num_masters(); i++) {
+    external_mini_cluster()->master(i)->Shutdown();
+  }
+  for (size_t i = 0; i < external_mini_cluster()->num_masters(); i++) {
+    ASSERT_OK(external_mini_cluster()->master(i)->Restart());
+  }
+  ASSERT_NOK(yb_admin_client_->AllMastersHaveUniverseKeyInMemory(current_key_id_));
+  ASSERT_OK(yb_admin_client_->AddUniverseKeyToAllMasters(
+        current_key_id_, std::string(current_key_.begin(), current_key_.end())));
+  ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
+
+  for (size_t i = 0; i < external_mini_cluster()->num_tablet_servers(); i++) {
+    external_mini_cluster()->tablet_server(i)->Shutdown();
+    ASSERT_OK(external_mini_cluster()->tablet_server(i)->Restart());
+  }
+
+  ClusterVerifier cv(external_mini_cluster());
+  cv.SetVerificationTimeout(MonoDelta::FromSeconds(30));
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 

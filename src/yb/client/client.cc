@@ -84,6 +84,7 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_dcl.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
@@ -2339,6 +2340,17 @@ Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name) {
 
 const std::string& YBClient::LogPrefix() const {
   return data_->log_prefix_;
+}
+
+Result<encryption::UniverseKeyRegistryPB> YBClient::GetFullUniverseKeyRegistry() {
+  master::GetFullUniverseKeyRegistryRequestPB req;
+  master::GetFullUniverseKeyRegistryResponsePB resp;
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Encryption, req, resp, GetFullUniverseKeyRegistry);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.universe_key_registry();
 }
 
 Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {

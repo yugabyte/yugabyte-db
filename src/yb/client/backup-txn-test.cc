@@ -48,6 +48,7 @@ DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
+DECLARE_bool(allow_encryption_at_rest);
 
 namespace yb {
 namespace client {
@@ -59,6 +60,7 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     FLAGS_enable_history_cutoff_propagation = true;
+    FLAGS_allow_encryption_at_rest = false;
     SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
     mini_cluster_opt_.num_masters = 3;
     TransactionTestBase::SetUp();

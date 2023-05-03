@@ -218,6 +218,14 @@ class FsManager {
 
   Env *env() { return env_; }
 
+  void SetEncryptedEnv(std::unique_ptr<Env> encrypted_env) {
+    encrypted_env_ = std::move(encrypted_env);
+  }
+
+  Env *encrypted_env() {
+    return encrypted_env_ ? encrypted_env_.get() : env();
+  }
+
   bool read_only() const {
     return read_only_;
   }
@@ -283,6 +291,9 @@ class FsManager {
                           const std::vector<std::string>& objects);
 
   Env *env_;
+
+  // Set on the TabletServer::Init path.
+  std::unique_ptr<Env> encrypted_env_;
 
   // If false, operations that mutate on-disk state are prohibited.
   const bool read_only_;

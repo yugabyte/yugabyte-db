@@ -48,7 +48,7 @@ class HeaderManager {
   // from 0 and has length GetEncryptionMetadataStartIndex().
   virtual Result<FileEncryptionStatus> GetFileEncryptionStatusFromPrefix(const Slice& s) = 0;
   // Is encryption enabled for new files.
-  virtual bool IsEncryptionEnabled() = 0;
+  virtual Result<bool> IsEncryptionEnabled() = 0;
 };
 
 } // namespace encryption

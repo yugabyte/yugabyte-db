@@ -887,7 +887,7 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(
   }
 
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
-                            fs_manager_->env(), path, pb,
+                            fs_manager_->encrypted_env(), path, pb,
                             pb_util::OVERWRITE, pb_util::SYNC),
                         Substitute("Failed to write Raft group metadata $0", raft_group_id_));
 
@@ -908,7 +908,7 @@ Status RaftGroupMetadata::ReadSuperBlockFromDisk(
     return ReadSuperBlockFromDisk(superblock, VERIFY_RESULT(FilePath()));
   }
 
-  return ReadSuperBlockFromDisk(fs_manager_->env(), path, superblock);
+  return ReadSuperBlockFromDisk(fs_manager_->encrypted_env(), path, superblock);
 }
 
 Status RaftGroupMetadata::ReadSuperBlockFromDisk(

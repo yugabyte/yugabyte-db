@@ -170,7 +170,7 @@ Status CreateWritableFile(WritablePtr* result,
                           HeaderManager* header_manager,
                           WritablePtr underlying) {
   result->reset();
-  if (!header_manager->IsEncryptionEnabled()) {
+  if (!VERIFY_RESULT(header_manager->IsEncryptionEnabled())) {
     *result = std::move(underlying);
     return Status::OK();
   }

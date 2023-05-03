@@ -71,6 +71,7 @@
 #include "yb/master/master_dcl.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_rpc.h"
@@ -254,6 +255,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Encryption, GetFullUniverseKeyRegistry);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetIndexBackfillProgress);
@@ -2105,6 +2107,8 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
           proxy_cache_.get(), host_port);
       master_replication_proxy_ = std::make_shared<master::MasterReplicationProxy>(
           proxy_cache_.get(), host_port);
+       master_encryption_proxy_ = std::make_shared<master::MasterEncryptionProxy>(
+          proxy_cache_.get(), host_port);
     }
 
     rpcs_.Unregister(&leader_master_rpc_);
@@ -2118,7 +2122,6 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
 Status YBClient::Data::SetMasterServerProxy(CoarseTimePoint deadline,
                                             bool skip_resolution,
                                             bool wait_for_leader_election) {
-
   Synchronizer sync;
   SetMasterServerProxyAsync(deadline, skip_resolution,
       wait_for_leader_election, sync.AsStdStatusCallback());
@@ -2449,6 +2452,12 @@ shared_ptr<master::MasterReplicationProxy> YBClient::Data::master_replication_pr
   std::lock_guard<simple_spinlock> l(leader_master_lock_);
   return master_replication_proxy_;
 }
+
+shared_ptr<master::MasterEncryptionProxy> YBClient::Data::master_encryption_proxy() const {
+  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  return master_encryption_proxy_;
+}
+
 
 uint64_t YBClient::Data::GetLatestObservedHybridTime() const {
   return latest_observed_hybrid_time_.Load();

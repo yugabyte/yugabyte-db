@@ -205,21 +205,8 @@ int TabletServerMain(int argc, char** argv) {
 
   SetProxyAddresses();
 
-  // Object that manages the universe key registry used for encrypting and decrypting data keys.
-  // Copies are given to each Env.
-  auto universe_key_manager = std::make_unique<encryption::UniverseKeyManager>();
-  // Encrypted env for all non-rocksdb file i/o operations.
-  std::unique_ptr<yb::Env> env =
-      NewEncryptedEnv(DefaultHeaderManager(universe_key_manager.get()));
-  // Encrypted env for all rocksdb file i/o operations.
-  std::unique_ptr<rocksdb::Env> rocksdb_env =
-      NewRocksDBEncryptedEnv(DefaultHeaderManager(universe_key_manager.get()));
-
   auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
-  tablet_server_options->env = env.get();
-  tablet_server_options->rocksdb_env = rocksdb_env.get();
-  tablet_server_options->universe_key_manager = universe_key_manager.get();
   enterprise::Factory factory;
 
   auto server = factory.CreateTabletServer(*tablet_server_options);

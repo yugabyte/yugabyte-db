@@ -33,6 +33,11 @@ class MasterEncryptionServiceImpl : public MasterServiceBase, public MasterEncry
     (IsEncryptionEnabled)
   )
 
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+    CatalogManager,
+    (GetFullUniverseKeyRegistry)
+  )
+
   MASTER_SERVICE_IMPL_ON_ALL_MASTERS(
     EncryptionManager,
     (GetUniverseKeyRegistry)

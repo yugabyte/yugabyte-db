@@ -149,12 +149,13 @@ CDCConsumer* TabletServer::GetCDCConsumer() {
 }
 
 encryption::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
-  return opts_.universe_key_manager;
+  return universe_key_manager_.get();
 }
 
 Status TabletServer::SetUniverseKeyRegistry(
     const encryption::UniverseKeyRegistryPB& universe_key_registry) {
-  opts_.universe_key_manager->SetUniverseKeyRegistry(universe_key_registry);
+  SCHECK_NOTNULL(universe_key_manager_);
+  universe_key_manager_->SetUniverseKeyRegistry(universe_key_registry);
   return Status::OK();
 }
 

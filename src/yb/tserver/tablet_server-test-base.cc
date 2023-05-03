@@ -58,6 +58,7 @@ DECLARE_bool(enable_maintenance_manager);
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_bool(disable_auto_flags_management);
+DECLARE_bool(allow_encryption_at_rest);
 
 METRIC_DEFINE_entity(test);
 
@@ -120,6 +121,9 @@ void TabletServerTestBase::StartTabletServer() {
   // Disable AutoFlags management as we dont have a master. AutoFlags will be enabled based on
   // FLAGS_TEST_promote_all_auto_flags in test_main.cc.
   FLAGS_disable_auto_flags_management = true;
+
+  // Disallow encryption at rest as there is no master.
+  FLAGS_allow_encryption_at_rest = false;
 
   auto mini_ts =
       MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);

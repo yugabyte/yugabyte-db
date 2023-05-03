@@ -228,12 +228,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   virtual rocksdb::Env* GetRocksDBEnv();
 
-  void SetUniverseKeys(const encryption::UniverseKeysPB& universe_keys);
-
   virtual Status SetUniverseKeyRegistry(
       const encryption::UniverseKeyRegistryPB& universe_key_registry);
-
-  void GetUniverseKeyRegistrySync();
 
   uint64_t GetSharedMemoryPostgresAuthKey();
 
@@ -291,8 +287,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Used to forward redis pub/sub messages to the redis pub/sub handler
   yb::AtomicUniquePtr<rpc::Publisher> publish_service_ptr_;
 
-  std::thread fetch_universe_key_thread_;
-
   // Thread responsible for heartbeating to the master.
   std::unique_ptr<Heartbeater> heartbeater_;
 
@@ -343,6 +337,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // An instance to pg client service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
   std::weak_ptr<PgClientServiceImpl> pg_client_service_;
+
+  std::unique_ptr<rocksdb::Env> rocksdb_env_;
+  std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
 
  private:
   // Auto initialize some of the service flags that are defaulted to -1.

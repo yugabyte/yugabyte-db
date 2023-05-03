@@ -1357,6 +1357,7 @@ class DeleteTableTombstonedParamTest : public DeleteTableTest,
 TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   vector<string> flags;
   flags.push_back("--log_segment_size_mb=1");  // Faster log rolls.
+  flags.push_back("--allow_encryption_at_rest=false");
   ASSERT_NO_FATALS(StartCluster(flags));
   const string fault_flag = GetParam();
   LOG(INFO) << "Running with fault flag: " << fault_flag;

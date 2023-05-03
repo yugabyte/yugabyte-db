@@ -36,7 +36,7 @@ class HeaderManagerMockImpl : public HeaderManager {
 
   uint32_t GetEncryptionMetadataStartIndex() override;
   Result<FileEncryptionStatus> GetFileEncryptionStatusFromPrefix(const Slice& s) override;
-  bool IsEncryptionEnabled() override;
+  Result<bool> IsEncryptionEnabled() override;
 
  private:
   EncryptionParamsPtr encryption_params_;
