@@ -56,6 +56,14 @@ message GetUniverseKeyRegistryResponsePB {
   optional encryption.UniverseKeysPB universe_keys = 2;
 }
 
+message GetFullUniverseKeyRegistryRequestPB {
+}
+
+message GetFullUniverseKeyRegistryResponsePB {
+  optional MasterErrorPB error = 1;
+  optional encryption.UniverseKeyRegistryPB universe_key_registry = 2;
+}
+
 message HasUniverseKeyInMemoryRequestPB {
   optional string version_id = 1;
 }
@@ -75,6 +83,8 @@ service MasterEncryption {
   rpc AddUniverseKeys(AddUniverseKeysRequestPB)  returns (AddUniverseKeysResponsePB);
   rpc GetUniverseKeyRegistry(GetUniverseKeyRegistryRequestPB)
       returns (GetUniverseKeyRegistryResponsePB);
+  rpc GetFullUniverseKeyRegistry(GetFullUniverseKeyRegistryRequestPB)
+      returns (GetFullUniverseKeyRegistryResponsePB);
   rpc HasUniverseKeyInMemory(HasUniverseKeyInMemoryRequestPB)
       returns (HasUniverseKeyInMemoryResponsePB);
 }

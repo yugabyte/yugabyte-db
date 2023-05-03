@@ -127,7 +127,7 @@ class HeaderManagerImpl : public HeaderManager {
     return status;
   }
 
-  bool IsEncryptionEnabled() override {
+  Result<bool> IsEncryptionEnabled() override {
     return universe_key_manager_->IsEncryptionEnabled();
   }
 
