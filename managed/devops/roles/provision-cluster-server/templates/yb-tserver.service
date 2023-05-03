@@ -32,6 +32,8 @@ StandardError=syslog
 LimitCORE=infinity
 LimitNOFILE=1048576
 LimitNPROC=12000
+# Allow tserver to move postgres into its own cgroup
+Delegate=true
 
 [Install]
 WantedBy=default.target
