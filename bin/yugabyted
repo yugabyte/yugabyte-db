@@ -1077,10 +1077,15 @@ class ControlScript(object):
 
         transparent_hugepages_check = run_process(shlex
                 .split(LINUX_PREREQS_CMDS.get('transparent_hugepages')))
-        transparent_hugepages = re.search("\[(.*)\]", transparent_hugepages_check[0]).group(1)
-        if transparent_hugepages != REQUIRED_TRANSPARENT_HUGEPAGES_LINUX:
+        transparent_hugepages_match = re.search("\[(.*)\]", transparent_hugepages_check[0])
+        if not transparent_hugepages_match:
             prereqs_warn.add('transparent_hugepages')
             prereqs_warn_flag = True
+        else:
+            transparent_hugepages = transparent_hugepages_match.group(1)
+            if transparent_hugepages != REQUIRED_TRANSPARENT_HUGEPAGES_LINUX:
+                prereqs_warn.add('transparent_hugepages')
+                prereqs_warn_flag = True
 
         ntp_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('ntp')))
         chrony_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('chrony')))
