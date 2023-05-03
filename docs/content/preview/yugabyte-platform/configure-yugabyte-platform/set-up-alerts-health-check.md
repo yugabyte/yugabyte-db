@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere can check universes for issues that may affect deployment. Should problems arise, YugabyteDB Anywhere can automatically issue alert notifications.
+YugabyteDB Anywhere has default, preconfigured alerts, both at the YugabyteDB Anywhere and universe level. Universe alerts can be configured globally for all universes, or per specific universe. In addition to the default alerts, you can configure your own alerts based on a specific condition on any available metric.
 
 For additional information, see the following:
 
@@ -19,11 +19,7 @@ For additional information, see the following:
 - [Metrics](../../troubleshoot/universe-issues/#use-metrics/)
 - [Alerts and Notifications in YugabyteDB Anywhere](https://www.yugabyte.com/blog/yugabytedb-2-8-alerts-and-notifications/)
 
-You can use preconfigured alerts provided by YugabyteDB Anywhere, or create and configure your own alerts based on the metrics' conditions.
-
-You can access YugabyteDB Anywhere health monitor and configure alerts by navigating to **Admin > Alert Configurations**, as per the following illustration:
-
-![Configure alerts](/images/yp/config-alerts1.png)
+You can access YugabyteDB Anywhere health monitor and configure alerts by navigating to **Admin > Alert Configurations**.
 
 The **Alert Configurations** view allows you to perform the following for specific universes or for your instance of YugabyteDB Anywhere:
 
@@ -32,15 +28,23 @@ The **Alert Configurations** view allows you to perform the following for specif
 - Find alerts by applying filters.
 - Define maintenance windows during which alerts are not issued.
 
-## Create alerts
+## Manage alert policies
+
+Alerts are defined by an alert policy, which consists of the following:
+
+- A [policy template](../alert-policy-templates/). The template defines the metric and preset values for the conditions that trigger the alert. Depending on the metric, you can configure duration, severity levels, operators, and the threshold.
+- An [alert destination](#manage-alert-destinations). Whenever an alert triggers, it sends an alert data to its designated alert destinations.
+- Alert destinations consist in turn of one or more [notification channels](#manage-notification-channels). A notification channel defines the means by which an alert is sent (for example, Email or Slack) as well as who should receive the notification.
+
+### Create alerts
 
 Regardless of the alert level, you create an alert as follows:
 
-1. Navigate to **Alert Configurations > Alert Policies**.
+1. Navigate to **Admin > Alert Configurations > Alert Policies**.
 
 1. Click either **Create Alert Policy > Universe Alert** or **Create Alert Policy > Platform Alert**, depending on the scope of the alert. Note that the scope of **Platform Alert** is YugabyteDB Anywhere.
 
-1. Select a policy template to use, and then configure settings by completing the fields whose default values depend on the template:
+1. Select a policy template to use, and then configure settings by completing the fields whose default values depend on the template.
 
     Templates are available for alerts related to YugabyteDB Anywhere operations, YugabyteDB operations, as well as YSQL and YCQL performance. For more information on available templates, refer to [Alert policy templates](../alert-policy-templates/).
 
@@ -52,27 +56,33 @@ Regardless of the alert level, you create an alert as follows:
 
     - The **Alert Destination** field allows you to select one of the previously defined recipients of the alert. For more information, see [Define alert destinations](#define-alert-destinations).
 
-1. Click **Save**.
-
-## Define alert destinations
-
-When an alert is triggered, alert data is sent to a specific alert destination that consists of one or more [notification channels](#define-notification-channels). You can define a new destination for your alerts, view details of an existing destination, edit, or delete an existing destination as follows:
-
-1. Navigate to **Alert Configurations > Alert Destinations**.
-
-1. To add a new alert destination, click **Add Destination** and then complete the form shown in the following illustration:
-
-    ![Add destination](/images/yp/config-alerts4.png)
-
-    The preceding form allows you to either select an existing notification channel or create a new one by clicking **Add Channel** and completing the **Create new alert channel** dialog, as described in [Define notification channels](#define-notification-channels).
+    - If you selected an alert destination that uses a notification channel with one or more [custom variables](#customize-notification-templates) defined, click **Custom variables used by the notification channels** and choose the value to use in the alert for each custom variable.
 
 1. Click **Save**.
 
-To view details, modify, or delete an existing destination, click **Actions** corresponding to the destination and then select either **Channel Details**, **Edit Destination**, or **Delete Destination**.
+## Manage alert destinations
 
-## Define notification channels
+When an alert is triggered, alert data is sent to a specific alert destination that consists of one or more [notification channels](#define-notification-channels). You can define a new destination for your alerts, and view details of, edit, or delete an existing destination.
 
-In YugabyteDB Anywhere, a notification channel defines how an alert is issued (via an email, a Slack message, a webhook message, or a PagerDuty message) and who should receive it. You can create a new channel, as well as modify or delete an existing ones.
+To manage notification channels, navigate to **Admin > Alert Configurations > Alert Destinations**.
+
+To view details, modify, or delete an existing destination, click **Actions** corresponding to the destination and then choose either **Channel Details**, **Edit Destination**, or **Delete Destination**.
+
+To create a new destination, do the following:
+
+1. Click **Add Destination**.
+
+1. Enter a name for the destination.
+
+1. In the Choose Channels field, click to select notification channels for the alert destination.
+
+    To create a new notification channel, click **Add Channel** and complete the **Create new alert channel** dialog, as described in [Define notification channels](#define-notification-channels).
+
+1. Click **Save** to create the alert destination.
+
+## Manage notification channels
+
+In YugabyteDB Anywhere, a notification channel defines how an alert is issued (via an email, a Slack message, a webhook message, or a PagerDuty message) and who should receive it. You can create a new channel, as well as modify or delete existing ones.
 
 You can also customize the templates used to create email and webhook notifications.
 
@@ -142,7 +152,7 @@ To customize the notification templates, do the following:
 
 You can define parameters and fine-tune the health check that YugabyteDB Anywhere performs on its universes, as follows:
 
-1. Navigate to **Alert Configurations > Health** to open the **Alerting controls** view.
+1. Navigate to **Admin > Alert Configurations > Health** to open the **Alerting controls** view.
 
 1. Set the **Callhome Level**.
 
@@ -158,21 +168,21 @@ You can define parameters and fine-tune the health check that YugabyteDB Anywher
 
     - Enter the details of the SMTP server to use to send the email notifications, including the server address, port number, the user credentials, and desired security settings.
 
-1. Use the **Health Check email report interval** field to set how often to send health check email (in minutes).
+    - Use the **Health Check email report interval** field to set how often to send health check email (in minutes).
 
-1. To only include errors in health check emails, select the **Only include errors in alert emails** option.
+    - To only include errors in health check emails, select the **Only include errors in alert emails** option.
 
 1. Click **Save**.
 
 ## Configure maintenance windows
 
-You can configure maintenance windows during which alerts are snoozed by navigating to **Alert Configurations > Maintenance Windows**.
+You can configure maintenance windows during which alerts are snoozed by navigating to **Admin > Alert Configurations > Maintenance Windows**.
 
 To show previous completed maintenance windows, select the **Show Completed Maintenance** option.
 
 To extend an active maintenance window, click **Extend** and select the amount of time.
 
-To mark the maintenance as completed, modify its parameters, or delete it, by click **Actions** and select one of the options.
+To mark the maintenance as completed, modify its parameters, or delete it, click **Actions** and select one of the options.
 
 To create a maintenance window, do the following:
 
