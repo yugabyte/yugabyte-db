@@ -53,6 +53,7 @@
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-base.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 
 #include "yb/util/enums.h"
@@ -223,6 +224,35 @@ TYPED_TEST(TestTablet, TestFlushedOpId) {
   ASSERT_OK(tablet->Flush(FlushMode::kSync));
   id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
   ASSERT_EQ(id.index, start_index + 2*kCount);
+}
+
+TYPED_TEST(TestTablet, TestDocKeyMetrics) {
+  auto metrics = this->harness()->tablet()->metrics();
+  auto total_keys = metrics->docdb_keys_found;
+  auto obsolete_keys = metrics->docdb_obsolete_keys_found;
+
+  ASSERT_EQ(total_keys->value(), 0);
+  ASSERT_EQ(obsolete_keys->value(), 0);
+
+  LocalTabletWriter writer(this->tablet());
+  ASSERT_OK(this->InsertTestRow(&writer, 0, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 1, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 2, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 3, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 4, 0));
+
+  this->VerifyTestRows(0, 5);
+
+  ASSERT_EQ(total_keys->value(), 5);
+  ASSERT_EQ(obsolete_keys->value(), 0);
+  auto prev_total_keys = total_keys->value();
+
+  ASSERT_OK(this->DeleteTestRow(&writer, 0));
+  std::vector<std::string> str;
+  ASSERT_OK(this->IterateToStringList(&str));
+
+  ASSERT_EQ(total_keys->value() - prev_total_keys, 5);
+  ASSERT_EQ(obsolete_keys->value(), 1);
 }
 
 } // namespace tablet
