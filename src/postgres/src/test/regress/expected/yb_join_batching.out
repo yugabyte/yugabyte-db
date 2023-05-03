@@ -613,6 +613,26 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 (1 row)
 
 DROP TABLE int2type;
+CREATE TABLE q1(a int);
+CREATE TABLE q2(a int);
+CREATE TABLE q3(a int primary key);
+-- We shouldn't be batching on join clauses that involve more than one rel
+-- on a side of the join clause.
+-- See issue #17150
+/*+Set(enable_mergejoin false) Set(enable_hashjoin false) Set(enable_material false) Leading((q1 (q2 q3)))*/explain (costs off) select * from q1, q2, q3 where q3.a = q2.a + q1.a;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Nested Loop
+   ->  Seq Scan on q1
+   ->  Nested Loop
+         ->  Seq Scan on q2
+         ->  Index Scan using q3_pkey on q3
+               Index Cond: (a = (q2.a + q1.a))
+(6 rows)
+
+DROP TABLE q1;
+DROP TABLE q2;
+DROP TABLE q3;
 set yb_bnl_batch_size to 10;
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
                                   QUERY PLAN
@@ -984,14 +1004,13 @@ drop table main;
 	    )
 	  )
 	where table_catalog = 'yugabyte' AND table_schema = 'clusters' AND table_name = 'clusters';
-                                                                                                                                                            QUERY PLAN                                                                                                                                                             
+                                                                                                                                                            QUERY PLAN                                                                                                                                                            
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Result
    One-Time Filter: (((current_database())::information_schema.sql_identifier)::text = 'yugabyte'::text)
-   ->  YB Batched Nested Loop Join
-         Join Filter: (((COALESCE(bt.typname, t.typname))::information_schema.sql_identifier)::name = pgt.typname)
-         ->  YB Batched Nested Loop Left Join
-               Join Filter: ((pd.objsubid = ((a.attnum)::information_schema.cardinal_number)::integer) AND (pd.objoid = (SubPlan 2)))
+   ->  Nested Loop
+         ->  Nested Loop Left Join
+               Join Filter: (pd.objsubid = ((a.attnum)::information_schema.cardinal_number)::integer)
                ->  YB Batched Nested Loop Left Join
                      Join Filter: (a.attcollation = co.oid)
                      ->  YB Batched Nested Loop Left Join
@@ -1040,7 +1059,7 @@ drop table main;
                            ->  Index Scan using pg_namespace_oid_index on pg_namespace nco
                                  Filter: ((nspname <> 'pg_catalog'::name) OR (co.collname <> 'default'::name))
                ->  Index Scan using pg_description_o_c_o_index on pg_description pd
-                     Index Cond: (objoid = ANY (ARRAY[(SubPlan 2), (SubPlan 2), (SubPlan 2)]))
+                     Index Cond: (objoid = (SubPlan 2))
                      SubPlan 2
                        ->  Index Scan using pg_class_relname_nsp_index on pg_class
                              Index Cond: ((relname = ((c.relname)::information_schema.sql_identifier)::name) AND (relnamespace = $1))
@@ -1048,8 +1067,8 @@ drop table main;
                                ->  Index Scan using pg_namespace_nspname_index on pg_namespace
                                      Index Cond: (nspname = ((nc.nspname)::information_schema.sql_identifier)::name)
          ->  Index Scan using pg_type_typname_nsp_index on pg_type pgt
-               Index Cond: (typname = ANY (ARRAY[((COALESCE(bt.typname, t.typname))::information_schema.sql_identifier)::name, ((COALESCE($43, $46))::information_schema.sql_identifier)::name, ((COALESCE($44, $47))::information_schema.sql_identifier)::name]))
-(63 rows)
+               Index Cond: (((COALESCE(bt.typname, t.typname))::information_schema.sql_identifier)::name = typname)
+(62 rows)
 
 create table oidtable(a oid, primary key(a asc));
 create table int4table(a int4, primary key(a asc));
