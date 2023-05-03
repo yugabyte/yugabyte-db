@@ -30,7 +30,7 @@ SELECT create_graph('cypher_merge');
  * test 1: Single MERGE Clause, path doesn't exist
  */
 --test query
-SELECT * FROM cypher('cypher_merge', $$MERGE (n {i: "Hello Merge"})$$) AS (a agtype);
+SELECT * FROM cypher('cypher_merge', $$MERGE (n {i: "Hello Merge", j: (null IS NULL), k: (null IS NOT NULL)})$$) AS (a agtype);
 
 --validate
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) RETURN n$$) AS (n agtype);
@@ -42,10 +42,11 @@ SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtyp
  * test 2: Single MERGE Clause, path exists
  */
 --data setup
-SELECT * FROM cypher('cypher_merge', $$CREATE ({i: "Hello Merge"}) $$) AS (a agtype);
+SELECT * FROM cypher('cypher_merge', $$CREATE ({i: "Hello Merge", j: (null IS NULL)}) $$) AS (a agtype);
 
 --test_query
 SELECT * FROM cypher('cypher_merge', $$MERGE ({i: "Hello Merge"})$$) AS (a agtype);
+SELECT * FROM cypher('cypher_merge', $$MERGE ({j: (null IS NULL)})$$) AS (a agtype);
 
 --validate
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) RETURN n$$) AS (n agtype);
