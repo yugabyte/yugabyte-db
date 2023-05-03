@@ -576,6 +576,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status ChangeEncryptionInfo(
       const ChangeEncryptionInfoRequestPB* req, ChangeEncryptionInfoResponsePB* resp);
 
+  Status GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
+                                    GetFullUniverseKeyRegistryResponsePB* resp);
+
   Status UpdateXClusterConsumerOnTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) override;
 

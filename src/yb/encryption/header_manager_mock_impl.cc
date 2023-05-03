@@ -59,7 +59,7 @@ std::unique_ptr<HeaderManager> GetMockHeaderManager() {
   return std::make_unique<HeaderManagerMockImpl>();
 }
 
-bool HeaderManagerMockImpl::IsEncryptionEnabled() {
+Result<bool> HeaderManagerMockImpl::IsEncryptionEnabled() {
   return file_encrypted_;
 }
 

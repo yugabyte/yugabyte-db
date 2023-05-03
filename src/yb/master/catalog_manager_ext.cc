@@ -1191,6 +1191,18 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   return Status::OK();
 }
 
+Status CatalogManager::GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
+                                                  GetFullUniverseKeyRegistryResponsePB* resp) {
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForRead();
+  if (!l.data().pb.has_encryption_info()) {
+    return Status::OK();
+  }
+  auto encryption_info = l.data().pb.encryption_info();
+
+  return encryption_manager_->GetFullUniverseKeyRegistry(encryption_info, resp);
+}
+
 Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                             ChangeEncryptionInfoResponsePB* resp) {
   auto cluster_config = ClusterConfig();

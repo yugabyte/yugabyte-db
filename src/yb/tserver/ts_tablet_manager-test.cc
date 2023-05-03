@@ -85,6 +85,7 @@ DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_bool(disable_auto_flags_management);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
+DECLARE_bool(allow_encryption_at_rest);
 
 namespace yb {
 namespace tserver {
@@ -130,6 +131,9 @@ class TsTabletManagerTest : public YBTest {
     // Disable AutoFlags management as we dont have a master. AutoFlags will be enabled based on
     // FLAGS_TEST_promote_all_auto_flags in test_main.cc.
     FLAGS_disable_auto_flags_management = true;
+
+    // Disallow encryption at rest as there is no master.
+    FLAGS_allow_encryption_at_rest = false;
 
     mini_server_ = std::make_unique<MiniTabletServer>(paths, paths, 0, *options_result, 0);
   }
