@@ -19,26 +19,27 @@
 
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 
-DECLARE_int32(TEST_transaction_inject_flushed_delay_ms);
-DECLARE_int32(TEST_txn_status_moved_rpc_send_delay_ms);
-DECLARE_int32(TEST_txn_status_moved_rpc_handle_delay_ms);
-DECLARE_int32(TEST_old_txn_status_abort_delay_ms);
-DECLARE_int64(transaction_rpc_timeout_ms);
-DECLARE_uint64(transaction_heartbeat_usec);
-DECLARE_uint64(TEST_override_transaction_priority);
-DECLARE_double(transaction_max_missed_heartbeat_periods);
+DECLARE_bool(TEST_consider_all_local_transaction_tables_local);
+DECLARE_bool(TEST_select_all_status_tablets);
+DECLARE_bool(TEST_txn_status_moved_rpc_force_fail);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
-DECLARE_bool(force_global_transactions);
-DECLARE_bool(TEST_consider_all_local_transaction_tables_local);
-DECLARE_bool(TEST_txn_status_moved_rpc_force_fail);
-DECLARE_bool(enable_wait_queues);
 DECLARE_bool(enable_deadlock_detection);
-DECLARE_bool(TEST_select_all_status_tablets);
-DECLARE_uint64(force_single_shard_waiter_retry_ms);
+DECLARE_bool(enable_wait_queues);
+DECLARE_bool(force_global_transactions);
+DECLARE_double(transaction_max_missed_heartbeat_periods);
+DECLARE_int32(TEST_old_txn_status_abort_delay_ms);
+DECLARE_int32(TEST_transaction_inject_flushed_delay_ms);
+DECLARE_int32(TEST_txn_status_moved_rpc_handle_delay_ms);
+DECLARE_int32(TEST_txn_status_moved_rpc_send_delay_ms);
+DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_uint64(TEST_inject_sleep_before_applying_write_batch_ms);
+DECLARE_uint64(TEST_override_transaction_priority);
 DECLARE_uint64(TEST_sleep_before_entering_wait_queue_ms);
+DECLARE_uint64(force_single_shard_waiter_retry_ms);
 DECLARE_uint64(refresh_waiter_timeout_ms);
+DECLARE_uint64(transaction_heartbeat_usec);
 
 namespace yb {
 
@@ -79,7 +80,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
 
-    SetupTables(tables_per_region);
+    SetupTablesAndTablespaces(tables_per_region);
     CreateLocalTransactionTable();
   }
 
@@ -120,7 +121,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     return options;
   }
 
-  master::ReplicationInfoPB GetClusterDefaultReplicationInfo() {
+  virtual master::ReplicationInfoPB GetClusterDefaultReplicationInfo() {
     master::ReplicationInfoPB replication_info;
     replication_info.mutable_live_replicas()->set_num_replicas(3);
     for (size_t i = 1; i <= 3; ++i) {
@@ -304,6 +305,42 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     ASSERT_OK((*conn2)->ExecuteFormat(
           "UPDATE $0$1_1 SET other_value=other_value+100 WHERE value=$2", kTablePrefix,
           conn2_region, *conn2_key));
+  }
+};
+
+class GeoTransactionsPromotionRF1Test : public GeoTransactionsPromotionTest {
+ protected:
+  static constexpr auto kGlobalTable = "global_table";
+
+  void SetupTables(size_t num_tables) override {
+    GeoTransactionsPromotionTest::SetupTables(num_tables);
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0(value int primary key) SPLIT INTO 3 TABLETS", kGlobalTable));
+  }
+
+  void DropTables() override {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kGlobalTable));
+
+    GeoTransactionsPromotionTest::DropTables();
+  }
+
+  master::ReplicationInfoPB GetClusterDefaultReplicationInfo() override {
+    master::ReplicationInfoPB replication_info;
+    replication_info.mutable_live_replicas()->set_num_replicas(1);
+    for (size_t i = 1; i <= 3; ++i) {
+      auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
+      auto* cloud_info = placement_block->mutable_cloud_info();
+      cloud_info->set_placement_cloud("cloud0");
+      cloud_info->set_placement_region(strings::Substitute("rack$0", i));
+      cloud_info->set_placement_zone("zone");
+      placement_block->set_min_num_replicas(0);
+    }
+    return replication_info;
   }
 };
 
@@ -509,6 +546,34 @@ TEST_F(GeoTransactionsPromotionTest,
        YB_DISABLE_TEST_IN_TSAN(TestPromotionReturningToAbortedState)) {
   // Wait for heartbeat for conn1 to be informed about abort due to conflict before promotion.
   PerformConflictTest(0 /* delay_before_promotion_us */);
+}
+
+TEST_F(GeoTransactionsPromotionRF1Test,
+       YB_DISABLE_TEST_IN_TSAN(TestPromoteBeforeEarlierWriteRPCReceived)) {
+  constexpr auto kNumIterations = 100;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_sleep_before_applying_write_batch_ms) = 200;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+  ASSERT_OK(conn.Execute("SET ysql_session_max_batch_size = 1"));
+  ASSERT_OK(conn.Execute("SET ysql_max_in_flight_ops = 2"));
+
+  for (int i = 0; i < kNumIterations; ++i) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    // Start transaction as local.
+    ASSERT_OK(conn.ExecuteFormat(
+       "INSERT INTO $0$1_1(value, other_value) VALUES ($2, $2)", kTablePrefix, kLocalRegion, i));
+
+    // Query that may have two batches. The race condition is reproduced when the first batch
+    // is on a tablet with all replicas in local region and the second batch is not.
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+      INSERT INTO $0(value)
+      VALUES ($1), ($2)
+    )#", kGlobalTable, i, 10000 + i));
+    ASSERT_OK(conn.CommitTransaction());
+  }
 }
 
 TEST_F(DeadlockDetectionWithTxnPromotionTest,

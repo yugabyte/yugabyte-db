@@ -291,7 +291,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelecti
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
-  SetupTables(tables_per_region);
+  SetupTablesAndTablespaces(tables_per_region);
 
   // No local transaction tablets yet.
   CheckSuccess(
@@ -415,7 +415,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestNonlocalAbort)) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
 
-  SetupTables(tables_per_region);
+  SetupTablesAndTablespaces(tables_per_region);
 
   CheckSuccess(
       kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
@@ -433,7 +433,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestMultiRegionTransactionTa
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
 
-  SetupTables(tables_per_region);
+  SetupTablesAndTablespaces(tables_per_region);
 
   CreateMultiRegionTransactionTable();
 
@@ -469,7 +469,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactio
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
-  SetupTables(tables_per_region);
+  SetupTablesAndTablespaces(tables_per_region);
 
   CheckSuccess(
       kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
@@ -499,9 +499,9 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactio
       kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
       InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 
-  DropTables();
+  DropTablesAndTablespaces();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
-  SetupTables(tables_per_region);
+  SetupTablesAndTablespaces(tables_per_region);
 
   // Transaction tables created earlier should no longer have a placement and should be deleted.
   CheckSuccess(
@@ -567,7 +567,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTableDeletion
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 5000;
-  SetupTables(tables_per_region);
+  SetupTablesAndTablespaces(tables_per_region);
 
   CreateTransactionTable(kLocalRegion);
 
