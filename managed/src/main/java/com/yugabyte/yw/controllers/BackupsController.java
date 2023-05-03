@@ -271,18 +271,7 @@ public class BackupsController extends AuthenticatedController {
               universe.getUniverseUUID()));
     }
 
-    if (taskParams.keyspaceTableList != null) {
-      backupUtil.validateKeyspaces(taskParams.keyspaceTableList);
-      for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
-        if (keyspaceTable.tableUUIDList == null) {
-          keyspaceTable.tableUUIDList = new ArrayList<UUID>();
-        }
-        backupUtil.validateTables(
-            keyspaceTable.tableUUIDList, universe, keyspaceTable.keyspace, taskParams.backupType);
-      }
-    } else {
-      backupUtil.validateTables(null, universe, null, taskParams.backupType);
-    }
+    backupUtil.validateBackupRequest(taskParams.keyspaceTableList, universe, taskParams.backupType);
 
     if (taskParams.timeBeforeDelete != 0L && taskParams.expiryTimeUnit == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Please provide time unit for backup expiry");

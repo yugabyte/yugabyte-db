@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.BackupResp;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
 import com.yugabyte.yw.models.CommonBackupInfo;
@@ -57,6 +59,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -66,7 +69,6 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.inject.Inject;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -319,34 +321,26 @@ public class BackupUtil {
         .kmsConfigUUID(backup.getBackupInfo().kmsConfigUUID)
         .storageConfigUUID(backup.getStorageConfigUUID())
         .taskUUID(backup.getTaskUUID())
-        .sse(backup.getBackupInfo().sse);
-    if (backup.getBackupInfo().backupList == null) {
-      KeyspaceTablesList kTList =
-          KeyspaceTablesList.builder()
-              .keyspace(backup.getBackupInfo().getKeyspace())
-              .tablesList(backup.getBackupInfo().getTableNames())
-              .backupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
-              .defaultLocation(backup.getBackupInfo().storageLocation)
-              .perRegionLocations(backup.getBackupInfo().regionLocations)
-              .build();
-      builder.responseList(Stream.of(kTList).collect(Collectors.toSet()));
-    } else {
-      Set<KeyspaceTablesList> kTLists =
-          backup.getBackupInfo().backupList.stream()
-              .map(
-                  b -> {
-                    return KeyspaceTablesList.builder()
-                        .keyspace(b.getKeyspace())
-                        .allTables(b.allTables)
-                        .tablesList(b.getTableNames())
-                        .backupSizeInBytes(b.backupSizeInBytes)
-                        .defaultLocation(b.storageLocation)
-                        .perRegionLocations(b.regionLocations)
-                        .build();
-                  })
-              .collect(Collectors.toSet());
-      builder.responseList(kTLists);
-    }
+        .sse(backup.getBackupInfo().sse)
+        .tableByTableBackup(backup.getBackupInfo().tableByTableBackup);
+    List<BackupTableParams> backupParams = backup.getBackupParamsCollection();
+    Set<KeyspaceTablesList> kTLists =
+        backupParams
+            .parallelStream()
+            .map(
+                b -> {
+                  return KeyspaceTablesList.builder()
+                      .keyspace(b.getKeyspace())
+                      .allTables(b.allTables)
+                      .tablesList(b.getTableNameList())
+                      .tableUUIDList(b.getTableUUIDList())
+                      .backupSizeInBytes(b.backupSizeInBytes)
+                      .defaultLocation(b.storageLocation)
+                      .perRegionLocations(b.regionLocations)
+                      .build();
+                })
+            .collect(Collectors.toSet());
+    builder.responseList(kTLists);
     return builder.build();
   }
 
@@ -362,7 +356,8 @@ public class BackupUtil {
   // universe UUID and backup UUID.
   // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>/table-keyspace
   // .table_name.table_uuid
-  public static String formatStorageLocation(BackupTableParams params, boolean isYbc) {
+  public static String formatStorageLocation(
+      BackupTableParams params, boolean isYbc, BackupVersion version) {
     SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
     String updatedLocation;
     String backupLabel = isYbc ? YBC_BACKUP_IDENTIFIER : "backup";
@@ -399,6 +394,9 @@ public class BackupUtil {
             String.format("%s-%s", updatedLocation, params.tableUUID.toString().replace("-", ""));
       }
     }
+    if (version.equals(BackupVersion.V2)) {
+      updatedLocation = String.format("%s_%s", updatedLocation, params.backupParamsIdentifier);
+    }
     return updatedLocation;
   }
 
@@ -424,10 +422,10 @@ public class BackupUtil {
   }
 
   public static void updateDefaultStorageLocation(
-      BackupTableParams params, UUID customerUUID, BackupCategory category) {
+      BackupTableParams params, UUID customerUUID, BackupCategory category, BackupVersion version) {
     CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     boolean isYbc = category.equals(BackupCategory.YB_CONTROLLER);
-    params.storageLocation = formatStorageLocation(params, isYbc);
+    params.storageLocation = formatStorageLocation(params, isYbc, version);
     if (customerConfig != null) {
       String backupLocation = null;
       if (customerConfig.getName().equals(Util.NFS)) {
@@ -458,15 +456,13 @@ public class BackupUtil {
 
   public void validateStorageConfigOnBackup(CustomerConfig config, Backup backup) {
     StorageUtil storageUtil = StorageUtil.getStorageUtil(config.getName());
-    BackupTableParams params = backup.getBackupInfo();
-    if (CollectionUtils.isNotEmpty(params.backupList)) {
-      for (BackupTableParams tableParams : params.backupList) {
-        Map<String, String> keyspaceLocationMap = getKeyspaceLocationMap(tableParams);
-        storageUtil.validateStorageConfigOnLocations(config.getDataObject(), keyspaceLocationMap);
+    // BackupTableParams params = backup.getBackupInfo();
+    List<BackupTableParams> backupParams = backup.getBackupParamsCollection();
+    if (CollectionUtils.isNotEmpty(backupParams)) {
+      for (BackupTableParams tableParams : backupParams) {
+        Map<String, String> locationMap = getLocationMap(tableParams);
+        storageUtil.validateStorageConfigOnLocations(config.getDataObject(), locationMap);
       }
-    } else {
-      Map<String, String> keyspaceLocationMap = getKeyspaceLocationMap(params);
-      storageUtil.validateStorageConfigOnLocations(config.getDataObject(), keyspaceLocationMap);
     }
   }
 
@@ -584,12 +580,42 @@ public class BackupUtil {
     }
   }
 
-  // Throws BAD_REQUEST for cases where same keyspace present twice in backup request.
-  // If needed to support this, we'll make a fix and remove this check.
-  public void validateKeyspaces(List<KeyspaceTable> keyspaceTableList) {
-    if (keyspaceTableList.stream().map(kT -> kT.keyspace).collect(Collectors.toSet()).size()
-        < keyspaceTableList.size()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Repeated keyspace backup requested");
+  public void validateBackupRequest(
+      List<KeyspaceTable> keyspaceTableList, Universe universe, TableType tableType) {
+    if (CollectionUtils.isEmpty(keyspaceTableList)) {
+      validateTables(null, universe, null, tableType);
+    } else {
+      // Verify tables to be backed up are not repeated across parts of request.
+      Map<String, Set<UUID>> perKeyspaceTables = new HashMap<>();
+      keyspaceTableList.stream()
+          .forEach(
+              kT -> {
+                if (perKeyspaceTables.containsKey(kT.keyspace)) {
+                  if (CollectionUtils.isEmpty(perKeyspaceTables.get(kT.keyspace))
+                      || CollectionUtils.containsAny(
+                          perKeyspaceTables.get(kT.keyspace), kT.tableUUIDList)
+                      || CollectionUtils.isEmpty(kT.tableUUIDList)) {
+                    throw new PlatformServiceException(
+                        BAD_REQUEST,
+                        String.format(
+                            "Repeated tables in backup request for keyspace %s", kT.keyspace));
+                  } else {
+                    perKeyspaceTables.computeIfPresent(
+                        kT.keyspace,
+                        (keyspace, tableSet) -> {
+                          tableSet.addAll(kT.tableUUIDList);
+                          return tableSet;
+                        });
+                  }
+                } else {
+                  perKeyspaceTables.put(kT.keyspace, new HashSet<>(kT.tableUUIDList));
+                }
+              });
+      perKeyspaceTables.entrySet().stream()
+          .forEach(
+              entry ->
+                  validateTables(
+                      Lists.newArrayList(entry.getValue()), universe, entry.getKey(), tableType));
     }
   }
 
@@ -598,14 +624,14 @@ public class BackupUtil {
       throws PlatformServiceException {
 
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
-    if (keyspace != null && tableUuids.isEmpty()) {
+    if (keyspace != null && CollectionUtils.isEmpty(tableUuids)) {
       tableInfoList =
           tableInfoList
               .parallelStream()
               .filter(tableInfo -> keyspace.equals(tableInfo.getNamespace().getName()))
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
-      if (tableInfoList.isEmpty()) {
+      if (CollectionUtils.isEmpty(tableInfoList)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot initiate backup with empty Keyspace " + keyspace);
       }
@@ -618,7 +644,7 @@ public class BackupUtil {
               .parallelStream()
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
-      if (tableInfoList.isEmpty()) {
+      if (CollectionUtils.isEmpty(tableInfoList)) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "No tables to backup inside specified Universe "
@@ -672,17 +698,12 @@ public class BackupUtil {
    * @return List of locations( defaul and regional) for the backup.
    */
   public List<String> getBackupLocations(Backup backup) {
-    BackupTableParams backupParams = backup.getBackupInfo();
     List<String> backupLocations = new ArrayList<>();
-    Map<String, String> keyspaceLocations = new HashMap<>();
-    if (backupParams.backupList != null) {
-      for (BackupTableParams params : backupParams.backupList) {
-        keyspaceLocations = getKeyspaceLocationMap(params);
-        keyspaceLocations.values().forEach(l -> backupLocations.add(l));
-      }
-    } else {
-      keyspaceLocations = getKeyspaceLocationMap(backupParams);
-      keyspaceLocations.values().forEach(l -> backupLocations.add(l));
+    Map<String, String> locationsMap = new HashMap<>();
+    List<BackupTableParams> bParams = backup.getBackupParamsCollection();
+    for (BackupTableParams params : bParams) {
+      locationsMap = getLocationMap(params);
+      locationsMap.values().forEach(l -> backupLocations.add(l));
     }
     return backupLocations;
   }
@@ -713,18 +734,18 @@ public class BackupUtil {
    * @param tableParams
    * @return The mapping
    */
-  public Map<String, String> getKeyspaceLocationMap(BackupTableParams tableParams) {
-    Map<String, String> keyspaceRegionLocations = new HashMap<>();
+  public Map<String, String> getLocationMap(BackupTableParams tableParams) {
+    Map<String, String> regionLocations = new HashMap<>();
     if (tableParams != null) {
-      keyspaceRegionLocations.put(YbcBackupUtil.DEFAULT_REGION_STRING, tableParams.storageLocation);
+      regionLocations.put(YbcBackupUtil.DEFAULT_REGION_STRING, tableParams.storageLocation);
       if (CollectionUtils.isNotEmpty(tableParams.regionLocations)) {
         tableParams.regionLocations.forEach(
             rL -> {
-              keyspaceRegionLocations.put(rL.REGION, rL.LOCATION);
+              regionLocations.put(rL.REGION, rL.LOCATION);
             });
       }
     }
-    return keyspaceRegionLocations;
+    return regionLocations;
   }
 
   public static String getKeyspaceFromStorageLocation(String storageLocation) {

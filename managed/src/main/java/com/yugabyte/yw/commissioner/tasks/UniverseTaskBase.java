@@ -120,7 +120,6 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.forms.BackupRequestParams;
-import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
@@ -169,6 +168,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -2233,8 +2233,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (backupTableParamsList.isEmpty()) {
       throw new RuntimeException("Invalid Keyspaces or no tables to backup");
     }
-    backupTableParams.backupList = backupTableParamsList;
+    if (backupRequestParams.backupType.equals(TableType.YQL_TABLE_TYPE)
+        && backupRequestParams.tableByTableBackup) {
+      backupTableParams.tableByTableBackup = true;
+      backupTableParams.backupList = convertToPerTableParams(backupTableParamsList);
+    } else {
+      backupTableParams.backupList = backupTableParamsList;
+    }
     return backupTableParams;
+  }
+
+  private List<BackupTableParams> convertToPerTableParams(
+      List<BackupTableParams> backupTableParamsList) {
+    List<BackupTableParams> flatParamsList = new ArrayList<>();
+    backupTableParamsList.stream()
+        .forEach(
+            bP -> {
+              Iterator<UUID> tableUUIDIter = bP.tableUUIDList.iterator();
+              Iterator<String> tableNameIter = bP.tableNameList.iterator();
+              while (tableUUIDIter.hasNext()) {
+                BackupTableParams perTableParam =
+                    new BackupTableParams(bP, tableUUIDIter.next(), tableNameIter.next());
+                flatParamsList.add(perTableParam);
+              }
+            });
+    return flatParamsList;
   }
 
   protected Backup createAllBackupSubtasks(
@@ -2284,7 +2307,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               Backup.BackupVersion.V2);
       backupRequestParams.backupUUID = backup.getBackupUUID();
       if (ybcBackup) {
-        backupRequestParams.initializeBackupDBStates(backup.getBackupInfo().backupList);
+        backup.getBackupInfo().initializeBackupDBStates();
       }
 
       // Save backupUUID to taskInfo of the CreateBackup task.
@@ -2302,14 +2325,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     backupTableParams = backup.getBackupInfo();
     backupTableParams.backupUuid = backup.getBackupUUID();
     backupTableParams.baseBackupUUID = backup.getBaseBackupUUID();
-    for (BackupTableParams backupParams : backupTableParams.backupList) {
-      createEncryptedUniverseKeyBackupTask(backupParams).setSubTaskGroupType(subTaskGroupType);
-    }
+    backupTableParams.backupList.stream()
+        .forEach(
+            paramEntry ->
+                createEncryptedUniverseKeyBackupTask(paramEntry)
+                    .setSubTaskGroupType(subTaskGroupType));
     if (ybcBackup) {
-      createTableBackupTasksYbc(
-              backupTableParams,
-              backupRequestParams.backupDBStates,
-              backupRequestParams.parallelDBBackups)
+      createTableBackupTasksYbc(backupTableParams, backupRequestParams.parallelDBBackups)
           .setSubTaskGroupType(subTaskGroupType);
     } else {
       createTableBackupTaskYb(backupTableParams).setSubTaskGroupType(subTaskGroupType);
@@ -2461,27 +2483,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createTableBackupTasksYbc(
-      BackupTableParams backupParams,
-      Map<String, ParallelBackupState> backupStates,
-      int parallelDBBackups) {
+      BackupTableParams backupParams, int parallelDBBackups) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc");
     YbcBackupNodeRetriever nodeRetriever =
         new YbcBackupNodeRetriever(backupParams.getUniverseUUID(), parallelDBBackups);
-    nodeRetriever.initializeNodePoolForBackups(backupStates);
+    nodeRetriever.initializeNodePoolForBackups(backupParams.backupDBStates);
     Backup previousBackup =
         (!backupParams.baseBackupUUID.equals(backupParams.backupUuid))
             ? Backup.getLastSuccessfulBackupInChain(
                 backupParams.customerUuid, backupParams.baseBackupUUID)
             : null;
     backupParams.backupList.stream()
-        .filter(bTP -> !backupStates.get(bTP.getKeyspace()).alreadyScheduled)
+        .filter(
+            paramsEntry ->
+                !backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
+                    .alreadyScheduled)
         .forEach(
-            bTP -> {
+            paramsEntry -> {
               BackupTableYbc task = createTask(BackupTableYbc.class);
-              BackupTableYbc.Params backupYbcParams = new BackupTableYbc.Params(bTP, nodeRetriever);
+              BackupTableYbc.Params backupYbcParams =
+                  new BackupTableYbc.Params(paramsEntry, nodeRetriever);
               backupYbcParams.previousBackup = previousBackup;
-              backupYbcParams.nodeIp = backupStates.get(bTP.getKeyspace()).nodeIp;
-              backupYbcParams.taskID = backupStates.get(bTP.getKeyspace()).currentYbcTaskId;
+              backupYbcParams.nodeIp =
+                  backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier).nodeIp;
+              backupYbcParams.taskID =
+                  backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
+                      .currentYbcTaskId;
               task.initialize(backupYbcParams);
               task.setUserTaskUUID(userTaskUUID);
               subTaskGroup.addSubTask(task);
