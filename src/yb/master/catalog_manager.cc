@@ -442,6 +442,11 @@ DEFINE_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating tables currently in xCluster replication");
 TAG_FLAG(enable_delete_truncate_xcluster_replicated_table, runtime);
 
+DEFINE_string(ycql_udtype_prefer_uuid, "",
+              "Specify YCQL UDT UUID to be used. This flag is only "
+              "used for hotfix purpose. Remember to unset it after creating one udt.");
+TAG_FLAG(ycql_udtype_prefer_uuid, hidden);
+
 namespace yb {
 namespace master {
 
@@ -7468,7 +7473,13 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
     }
 
     // Construct the new type (generate fresh name and set fields).
-    UDTypeId new_id = GenerateIdUnlocked(SysRowEntry::UDTYPE);
+    UDTypeId new_id;
+    if (!FLAGS_ycql_udtype_prefer_uuid.empty()
+        && FindPtrOrNull(udtype_ids_map_, FLAGS_ycql_udtype_prefer_uuid) == nullptr) {
+      new_id = FLAGS_ycql_udtype_prefer_uuid;
+    } else {
+      new_id = GenerateIdUnlocked(SysRowEntry::UDTYPE);
+    }
     tp = new UDTypeInfo(new_id);
     tp->mutable_metadata()->StartMutation();
     SysUDTypeEntryPB *metadata = &tp->mutable_metadata()->mutable_dirty()->pb;
