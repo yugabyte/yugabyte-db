@@ -21,6 +21,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_server.h"
@@ -50,28 +51,102 @@ DEFINE_RUNTIME_int32(scheduled_full_compaction_jitter_factor_percentage,
               "computed when scheduling a compaction, between 0 and (frequency * jitter factor) "
               "hours.");
 
+DEFINE_RUNTIME_uint32(auto_compact_stat_window_seconds, 300,
+              "Window of time (seconds) over which DocDB read statistics are analyzed for the "
+              "purposes of triggering full compactions automatically to improve read performance. "
+              "Will always be rounded up to be a multiple of auto_compact_check_interval_sec.");
+
+DEFINE_RUNTIME_double(auto_compact_percent_obsolete, 99,
+              "Percentage of obsolete keys (over total keys) read over a window of time that "
+              "trigger an automatic full compaction on a tablet. Only keys that are past "
+              "their history retention (and thus can be garbage collected) are considered.");
+
+DEFINE_RUNTIME_uint32(auto_compact_min_obsolete_keys_found, 10000,
+              "Minimum number of keys read in the window for an automatic full compaction to "
+              "be triggered.");
+
+DEFINE_RUNTIME_uint32(auto_compact_min_wait_between_seconds, 0,
+              "Minimum wait time between automatic full compactions. Also applies to "
+              "scheduled full compactions.");
+
 namespace yb {
 namespace tserver {
 
 using tablet::TabletPeerPtr;
 
-FullCompactionManager::FullCompactionManager(TSTabletManager* ts_tablet_manager)
-    : ts_tablet_manager_(ts_tablet_manager) {
+FullCompactionManager::FullCompactionManager(
+    TSTabletManager* ts_tablet_manager, int32_t check_interval_sec)
+    : ts_tablet_manager_(ts_tablet_manager),
+      check_interval_sec_(check_interval_sec) {
   SetFrequencyAndJitterFromFlags();
+  LOG(INFO) << "Initialized full compaction manager"
+      << " check_interval_sec: " << check_interval_sec_
+      << " window_size_sec: " << ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_stat_window_seconds)
+      << " scheduled_compaction_frequency: " << compaction_frequency_.ToString()
+      << " scheduled_jitter_factor: " << jitter_factor_;
 }
 
 void FullCompactionManager::ScheduleFullCompactions() {
   SetFrequencyAndJitterFromFlags();
+  CollectDocDBStats();
   DoScheduleFullCompactions();
 }
 
-void FullCompactionManager::DoScheduleFullCompactions() {
-  // If compaction_frequency_ is 0, feature is disabled.
-  if (compaction_frequency_ == MonoDelta::kZero) {
-    num_scheduled_last_execution_.store(0);
-    return;
+void FullCompactionManager::CollectDocDBStats() {
+  for (auto& peer : ts_tablet_manager_->GetTabletPeers()) {
+    const auto tablet_id = peer->tablet_id();
+    const auto shared_tablet = peer->shared_tablet();
+    if (shared_tablet && shared_tablet->metrics() != nullptr) {
+      auto window_iter = tablet_stats_window_.emplace(
+          tablet_id, KeyStatsSlidingWindow(peer, check_interval_sec_)).first;
+      window_iter->second.RecordCurrentStats();
+    } else {
+      tablet_stats_window_.erase(tablet_id);
+    }
+  }
+}
+
+bool FullCompactionManager::ShouldCompactBasedOnStats(const TabletId& tablet_id) {
+  auto window_iter = tablet_stats_window_.find(tablet_id);
+  // If we don't have any stats collected, then don't compact.
+  if (window_iter == tablet_stats_window_.end()) {
+    return false;
   }
 
+  const auto current_stats = window_iter->second.current_stats();
+  // Check that we have seen enough keys in the window to consider compaction.
+  if (current_stats.total <
+      ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_min_obsolete_keys_found)) {
+    return false;
+  }
+  // Check that we meet the obsolete key percentage needed.
+  const auto obsolete_percentage = current_stats.obsolete_key_percentage();
+  if (obsolete_percentage <
+      ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_percent_obsolete)) {
+    return false;
+  }
+
+  LOG(INFO) << Format("Tablet $0 is eligible for compaction based on recent document"
+      " key access statistics. Percent obsolete: $1, total keys seen in window: $2",
+      tablet_id, round(obsolete_percentage), current_stats.total);
+  return true;
+}
+
+bool FullCompactionManager::CompactedTooRecently(const TabletPeerPtr peer, const HybridTime& now) {
+  // Check that we haven't compacted too recently.
+  const auto min_compaction_wait =
+      ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_min_wait_between_seconds);
+  if (min_compaction_wait > 0) {
+    const auto last_compact_time =
+        HybridTime(peer->tablet_metadata()->last_full_compaction_time());
+    if (last_compact_time.AddDelta(MonoDelta::FromSeconds(min_compaction_wait)) > now) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void FullCompactionManager::DoScheduleFullCompactions() {
   int num_scheduled = 0;
   PeerNextCompactList peers_to_compact = GetPeersEligibleForCompaction();
 
@@ -109,13 +184,23 @@ PeerNextCompactList FullCompactionManager::GetPeersEligibleForCompaction() {
       next_compact_time_per_tablet_.erase(tablet_id);
       continue;
     }
+    // Check that we have not fully compacted this tablet too recently.
+    if (CompactedTooRecently(peer, now)) {
+      continue;
+    }
 
-    // If the next compaction time is pre-calculated, use that. Otherwise, calculate
-    // a new one.
-    const HybridTime next_compact_time = DetermineNextCompactTime(peer, now);
+    HybridTime next_compact_time;
+    // Check if we should schedule a compaction based on stats collected.
+    if (ShouldCompactBasedOnStats(tablet_id)) {
+      next_compact_time = now;
+    } else if (compaction_frequency_ != MonoDelta::kZero) {
+      // If the next compaction time is pre-calculated, use that. Otherwise, calculate
+      // a new one.
+      next_compact_time = DetermineNextCompactTime(peer, now);
+    }
 
     // If the tablet is ready to compact, then add it to the list.
-    if (next_compact_time <= now) {
+    if (next_compact_time.is_valid() && next_compact_time <= now) {
       compact_list.insert(std::make_pair(next_compact_time, peer));
     }
   }
@@ -201,6 +286,64 @@ MonoDelta FullCompactionManager::CalculateJitter(
   const auto small_hash =
       hash_value_for_jitter(tablet_id, last_compact_time) % kMaxSmallHash;
   return max_jitter_ / kMaxSmallHash * small_hash;
+}
+
+KeyStatsSlidingWindow::KeyStatsSlidingWindow(
+    tablet::TabletPeerPtr peer, int32_t check_interval_sec)
+    : tablet_peer_(peer),
+      metrics_(tablet_peer_->shared_tablet()->metrics()),
+      check_interval_sec_(check_interval_sec) {
+  ResetWindow();
+}
+
+void KeyStatsSlidingWindow::RecordCurrentStats() {
+  // Reset the window anytime a full compaction is detected.
+  if (tablet_peer_->tablet_metadata()->last_full_compaction_time() > last_compaction_time_) {
+    ResetWindow();
+  }
+
+  ComputeWindowSizeAndIntervals();
+
+  // If we aren't storing any intervals, we can clear any lingering statistics and return.
+  if (expected_intervals_ == 0) {
+    key_stats_window_.clear();
+    return;
+  }
+
+  // Reduce the size of the window to the number of expected intervals.
+  // Unless the window size has changed, this will just be erasing a single stat from the front
+  // (i.e. sliding the window).
+  if (key_stats_window_.size() > expected_intervals_) {
+    const auto begin = key_stats_window_.begin();
+    key_stats_window_.erase(begin, begin + (key_stats_window_.size() - expected_intervals_));
+  }
+
+  // Finally, push the latest metrics into the back of the window.
+  key_stats_window_.push_back({ metrics_->docdb_keys_found->value(),
+      metrics_->docdb_obsolete_keys_found_past_cutoff->value() });
+}
+
+KeyStatistics KeyStatsSlidingWindow::current_stats() const {
+  // To calculate statistics, expected_intervals_ needs to be greater than 0
+  // and the key_stats_window_ deque needs (expected_intervals_ + 1) values.
+  if (expected_intervals_ == 0 || key_stats_window_.size() <= expected_intervals_) {
+    return KeyStatistics{0, 0};
+  }
+  return { key_stats_window_.back().total - key_stats_window_.front().total,
+      key_stats_window_.back().obsolete_cutoff - key_stats_window_.front().obsolete_cutoff };
+}
+
+void KeyStatsSlidingWindow::ComputeWindowSizeAndIntervals() {
+  const auto window_size_sec =
+      ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_stat_window_seconds);
+  // Keep (window duration / interval duration), rounded up, intervals.
+  expected_intervals_ = (window_size_sec == 0 || check_interval_sec_ == 0)
+      ? 0 : (window_size_sec - 1) / check_interval_sec_ + 1;
+}
+
+void KeyStatsSlidingWindow::ResetWindow() {
+  key_stats_window_.clear();
+  last_compaction_time_ = tablet_peer_->tablet_metadata()->last_full_compaction_time();
 }
 
 } // namespace tserver

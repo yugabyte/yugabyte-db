@@ -81,6 +81,7 @@ DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
+DECLARE_int32(auto_compact_check_interval_sec);
 
 namespace yb {
 
@@ -380,8 +381,10 @@ void TabletSplitITest::SetUp() {
   FLAGS_db_write_buffer_size = 100_KB;
   // Set scheduled full compaction frequency to 0 (disabled) and jitter factor
   // to 0 (for relevant full compaction tests).
+  // Auto full compactions disabled.
   FLAGS_scheduled_full_compaction_frequency_hours = 0;
   FLAGS_scheduled_full_compaction_jitter_factor_percentage = 0;
+  FLAGS_auto_compact_check_interval_sec = 0;
 
   TabletSplitITestBase<MiniCluster>::SetUp();
   snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
