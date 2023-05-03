@@ -29,30 +29,18 @@ class UniverseKeyManager {
   static Result<std::unique_ptr<UniverseKeyManager>> FromKey(
       const std::string& key_id, const Slice& key_data);
   void SetUniverseKeyRegistry(const UniverseKeyRegistryPB& universe_key_registry);
-  void SetUniverseKeys(const UniverseKeysPB& universe_keys);
   // From an existing version id, generate encryption params. Used when creating readable files.
   Result<EncryptionParamsPtr> GetUniverseParamsWithVersion(
       const UniverseKeyId& version_id);
   // Get the latest universe key in the registry. Used when creating writable files.
   Result<UniverseKeyParams> GetLatestUniverseParams();
-  bool IsEncryptionEnabled();
-  bool ReceivedUniverseKeys();
-
-  void SetGetUniverseKeysCallback(std::function<void()> get_universe_keys_callback) {
-    get_universe_keys_callback_ = get_universe_keys_callback;
-  }
-
+  Result<bool> IsEncryptionEnabled();
  private:
   // Registry from master.
-  encryption::UniverseKeyRegistryPB universe_key_registry_;
-
+  encryption::UniverseKeyRegistryPB universe_key_registry_ GUARDED_BY(mutex_);
+  bool received_universe_key_registry_ GUARDED_BY(mutex_) = false;
   mutable std::mutex mutex_;
-  std::condition_variable cond_;
 
-  // Set to true once the registry has been received from master.
-  bool received_universe_keys_ = false;
-
-  std::function<void()> get_universe_keys_callback_;
 };
 
 } // namespace encryption

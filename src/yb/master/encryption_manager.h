@@ -50,6 +50,10 @@ class EncryptionManager {
   Status GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
                                 GetUniverseKeyRegistryResponsePB* resp);
 
+  Status GetFullUniverseKeyRegistry(const EncryptionInfoPB& encryption_info,
+                                    GetFullUniverseKeyRegistryResponsePB* resp);
+
+
   Status HasUniverseKeyInMemory(const HasUniverseKeyInMemoryRequestPB* req,
                                 HasUniverseKeyInMemoryResponsePB* resp);
 
