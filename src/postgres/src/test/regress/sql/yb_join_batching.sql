@@ -239,6 +239,18 @@ DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
 
+create table q1(a int, b int);
+create table q2(a int, b int);
+create index on q2(b, a);
+insert into q1 values (1,2), (1,4), (6,7), (2,0), (10,24);
+insert into q2 values (2,1), (6,6), (2,4), (0,2);
+
+explain (costs off) select * from q1,q2 where q1.a = q2.a and q1.b = q2.b;
+select * from q1,q2 where q1.a = q2.a and q1.b = q2.b;
+
+drop table q1;
+drop table q2;
+
 create table g1(h int, r int, primary key(h hash, r asc));
 create table g2(h int, r int, primary key(h hash, r asc));
 create table main(h1 int, h2 int, r1 int, r2 int, primary key((h1,h2) hash, r1 asc, r2 asc));
