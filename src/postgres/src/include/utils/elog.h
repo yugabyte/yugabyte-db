@@ -16,7 +16,7 @@
 
 #include <setjmp.h>
 
-#include "yb/common/ybc_util.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 /* Error level codes */
 #define DEBUG5		10			/* Debugging messages, in categories of

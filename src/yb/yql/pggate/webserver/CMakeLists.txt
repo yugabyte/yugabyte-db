@@ -13,18 +13,17 @@
 
 set(YB_PCH_PATH ../)
 
-set(PGGATE_UTIL_SRCS
-    pg_wire.cc
-    pg_doc_data.cc
-    pg_tuple.cc
-    ybc_util.cc
-    ybc-internal.cc
+set(PGGATE_WEBSERVER_SRCS
+    pgsql_webserver_wrapper.cc
     )
 
-set(PGGATE_UTIL_LIBS
+set(PGGATE_WEBSERVER_LIBS
+    server_process
+    yb_common
+    yb_pggate_util
     yb_util
-    yb_common)
+    )
 
-ADD_YB_LIBRARY(yb_pggate_util
-               SRCS ${PGGATE_UTIL_SRCS}
-               DEPS ${PGGATE_UTIL_LIBS})
+ADD_YB_LIBRARY(yb_pggate_webserver
+               SRCS ${PGGATE_WEBSERVER_SRCS}
+               DEPS ${PGGATE_WEBSERVER_LIBS})

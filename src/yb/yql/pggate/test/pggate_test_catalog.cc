@@ -16,13 +16,13 @@
 #include <chrono>
 
 #include "yb/common/constants.h"
-#include "yb/common/ybc-internal.h"
 
 #include "yb/gutil/casts.h"
 
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using std::string;
