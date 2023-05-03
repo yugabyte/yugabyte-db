@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-`yb_server_zone()` returns the region that a user's server is connected to.
+`yb_server_zone()` returns the zone that a user's server is connected to.
 
 ## Examples
 
