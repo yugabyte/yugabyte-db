@@ -13,7 +13,7 @@ include $(PGXS)
 STARBALL11 = pg_hint_plan11-$(HINTPLANVER).tar.gz
 STARBALLS = $(STARBALL11)
 
-LDFLAGS += -lyb_common
+LDFLAGS += -lyb_pggate_util
 LDFLAGS += -L${BUILD_ROOT}/lib
 
 # pg_hint_plan.c includes core.c and make_join_rel.c

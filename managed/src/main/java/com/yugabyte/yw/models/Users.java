@@ -222,8 +222,8 @@ public class Users extends Model {
     users.setPassword(password);
     users.setCustomerUUID(customerUUID);
     users.setCreationDate(new Date());
-    users.role = role;
-    users.isPrimary = isPrimary;
+    users.setRole(role);
+    users.setPrimary(isPrimary);
     users.setUserType(UserType.local);
     users.setLdapSpecifiedRole(false);
     users.save();

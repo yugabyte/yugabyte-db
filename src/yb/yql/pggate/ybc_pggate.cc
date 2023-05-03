@@ -18,16 +18,21 @@
 #include <string_view>
 #include <utility>
 
-#include "yb/client/tablet_server.h"
 #include "yb/client/table_info.h"
+#include "yb/client/tablet_server.h"
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/ybc-internal.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
+
+#include "yb/server/skewed_clock.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
@@ -36,12 +41,6 @@
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/util/yb_partition.h"
-
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/primitive_value.h"
-#include "yb/dockv/value_type.h"
-
-#include "yb/server/skewed_clock.h"
 
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -52,6 +51,7 @@
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
+#include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,

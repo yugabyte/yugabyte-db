@@ -537,7 +537,7 @@ func GetPostgresConnection(dbname string) (*sql.DB, string, error) {
 	log.Debug(fmt.Sprintf("Attempting to connect to db with conn str %s", nonPwdConnStr))
 	// add pwd later so we don't log it above
 	if pwd != "" {
-		connStr = nonPwdConnStr + fmt.Sprintf(" password='%s'")
+		connStr = nonPwdConnStr + fmt.Sprintf(" password='%s'", pwd)
 	} else {
 		connStr = nonPwdConnStr
 	}

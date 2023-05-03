@@ -53,6 +53,7 @@ public class AccessKeyHandler {
 
   private AccessKey doCreate(
       Provider provider, AccessKeyFormData formData, RequestBody requestBody) {
+    // ToDo: Shubham why we are still using formData here?
     try {
       List<Region> regionList = provider.getRegions();
       if (regionList.isEmpty()) {
@@ -96,7 +97,9 @@ public class AccessKeyHandler {
                 formData.skipProvisioning,
                 formData.setUpChrony,
                 formData.ntpServers,
-                formData.showSetUpChrony);
+                formData.showSetUpChrony,
+                true,
+                formData.skipKeyValidateAndUpload);
       } else if (formData.keyContent != null && !formData.keyContent.isEmpty()) {
         if (formData.keyType == null) {
           throw new PlatformServiceException(BAD_REQUEST, "keyType params required.");
@@ -118,7 +121,9 @@ public class AccessKeyHandler {
                 formData.skipProvisioning,
                 formData.setUpChrony,
                 formData.ntpServers,
-                formData.showSetUpChrony);
+                formData.showSetUpChrony,
+                true,
+                formData.skipKeyValidateAndUpload);
       } else {
         accessKey =
             accessManager.addKey(
@@ -193,10 +198,12 @@ public class AccessKeyHandler {
     ProviderDetails details = provider.getDetails();
     String keyPairName = null;
     String sshPrivateKeyContent = null;
+    boolean skipKeyValidateAndUpload = false;
     if (accessKey != null) {
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
       keyPairName = keyInfo.keyPairName;
       sshPrivateKeyContent = keyInfo.sshPrivateKeyContent;
+      skipKeyValidateAndUpload = keyInfo.skipKeyValidateAndUpload;
       try {
         AccessKey.getOrBadRequest(provider.getUuid(), keyPairName);
         keyPairName = AccessKey.getNewKeyCode(keyPairName);
@@ -230,7 +237,7 @@ public class AccessKeyHandler {
                 details.setUpChrony,
                 details.ntpServers,
                 details.showSetUpChrony,
-                false);
+                skipKeyValidateAndUpload);
       } else {
         newAccessKey =
             accessManager.addKey(

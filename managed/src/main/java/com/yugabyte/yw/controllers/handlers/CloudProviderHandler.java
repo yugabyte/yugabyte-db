@@ -99,7 +99,6 @@ import play.libs.Json;
 @Singleton
 public class CloudProviderHandler {
   public static final String YB_FIREWALL_TAGS = "YB_FIREWALL_TAGS";
-  public static final String SKIP_KEYPAIR_VALIDATION_KEY = "yb.provider.skip_keypair_validation";
   private static final Logger LOG = LoggerFactory.getLogger(CloudProviderHandler.class);
   private static final JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE =
       Json.parse("{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.5, \"memSizeGB\": 1.5}");
@@ -767,8 +766,6 @@ public class CloudProviderHandler {
   public UUID bootstrap(Customer customer, Provider provider, CloudBootstrap.Params taskParams) {
     // Set the top-level provider info.
     taskParams.providerUUID = provider.getUuid();
-    taskParams.skipKeyPairValidate =
-        runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
 
     // If the regionList is still empty by here, then we need to list the regions available.
     if (taskParams.perRegionMetadata == null) {
@@ -840,7 +837,7 @@ public class CloudProviderHandler {
           regions.add(region);
           bootstrapKubernetesProvider(provider, editProviderReq, regions, true);
         } else {
-          regionHandler.editRegion(
+          regionHandler.doEditRegion(
               provider.getCustomerUUID(),
               provider.getUuid(),
               oldRegion.getUuid(),
@@ -849,7 +846,7 @@ public class CloudProviderHandler {
         result = true;
       } else if (oldRegion != null && !region.isActive() && oldRegion.isActive()) {
         LOG.debug("Deleting region {}", region.getCode());
-        regionHandler.deleteRegion(
+        regionHandler.doDeleteRegion(
             provider.getCustomerUUID(), provider.getUuid(), region.getUuid());
         result = true;
       }
@@ -970,6 +967,10 @@ public class CloudProviderHandler {
     JsonNode newErrors = null;
     Provider.UsabilityState state = Provider.UsabilityState.READY;
 
+    if (provider.getCloudCode().equals(CloudType.kubernetes)) {
+      validateKubernetesProviderConfig(editProviderReq);
+    }
+
     if (validate) {
       try {
         providerValidator.validate(editProviderReq);
@@ -1058,8 +1059,6 @@ public class CloudProviderHandler {
     // for the provider yet.
     if (provider.getAllAccessKeys() != null && provider.getAllAccessKeys().size() > 0) {
       taskParams.keyPairName = AccessKey.getLatestKey(provider.getUuid()).getKeyCode();
-      taskParams.skipKeyPairValidate =
-          runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
     }
     taskParams.providerUUID = provider.getUuid();
     String destVpcId = null;
@@ -1111,7 +1110,6 @@ public class CloudProviderHandler {
 
   public boolean editKubernetesProvider(
       Provider provider, Provider editProviderReq, Set<Region> regionsToAdd) {
-    validateKubernetesProviderConfig(editProviderReq);
     if (regionsToAdd == null || regionsToAdd.size() == 0) {
       return false;
     }
@@ -1242,7 +1240,7 @@ public class CloudProviderHandler {
           } else if (!zone.isActive() && currentAZ.isActive()) {
             LOG.debug(
                 "Deleting zone {} from region {}", currentAZ.getCode(), currentRegion.getCode());
-            availabilityZoneHandler.deleteZone(currentAZ.getUuid(), currentRegion.getUuid());
+            availabilityZoneHandler.doDeleteZone(currentAZ.getUuid(), currentRegion.getUuid());
             result = true;
           } else if (currentAZ.shouldBeUpdated(zone) && currentAZ.isActive()) {
             LOG.debug("updating zone {}", zone.getCode());
@@ -1251,7 +1249,7 @@ public class CloudProviderHandler {
               azList.add(zone);
               bootstrapKubernetesProvider(provider, editProviderReq, currentRegion, azList, true);
             } else {
-              availabilityZoneHandler.editZone(
+              availabilityZoneHandler.doEditZone(
                   currentAZ.getUuid(),
                   currentRegion.getUuid(),
                   az -> {

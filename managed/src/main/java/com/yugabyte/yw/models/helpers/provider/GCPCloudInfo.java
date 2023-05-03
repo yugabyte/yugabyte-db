@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -18,10 +19,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
+@Slf4j
 public class GCPCloudInfo implements CloudInfoInterface {
 
   private static final Map<String, String> configKeyMap =
@@ -154,18 +157,28 @@ public class GCPCloudInfo implements CloudInfoInterface {
 
     if (gceApplicationCredentials != null) {
       // If any of the fields in the cred is masked, copy those from the cred saved in bean.
-      ObjectNode editCredNodeValue = (ObjectNode) this.gceApplicationCredentials;
-      ObjectNode providerCredNodeValue = (ObjectNode) gcpCloudInfo.gceApplicationCredentials;
+      try {
+        ObjectNode editCredNodeValue = (ObjectNode) this.gceApplicationCredentials;
+        ObjectNode providerCredNodeValue = (ObjectNode) gcpCloudInfo.gceApplicationCredentials;
 
-      for (String key : toMaskFieldsInCreds) {
-        if (editCredNodeValue.has(key) && providerCredNodeValue != null) {
-          String keyValue = editCredNodeValue.get(key).toString();
-          if (keyValue.contains("*") && providerCredNodeValue.has(key)) {
-            editCredNodeValue.put(key, providerCredNodeValue.get(key));
+        for (String key : toMaskFieldsInCreds) {
+          if (editCredNodeValue.has(key) && providerCredNodeValue != null) {
+            String keyValue = editCredNodeValue.get(key).toString();
+            if (keyValue.contains("*") && providerCredNodeValue.has(key)) {
+              editCredNodeValue.put(key, providerCredNodeValue.get(key));
+            }
           }
         }
+        this.gceApplicationCredentials = editCredNodeValue;
+      } catch (Exception e) {
+        // In case error occured parsing the credentials fall back to saved creds in provider.
+        if (this.gceApplicationCredentials.asText().equals(AuditService.SECRET_REPLACEMENT)) {
+          // For handling the case of read-modify-write.
+          this.gceApplicationCredentials = gcpCloudInfo.gceApplicationCredentials;
+        } else {
+          throw e;
+        }
       }
-      this.gceApplicationCredentials = editCredNodeValue;
     }
   }
 }

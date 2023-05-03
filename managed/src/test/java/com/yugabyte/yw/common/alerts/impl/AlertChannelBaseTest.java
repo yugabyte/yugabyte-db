@@ -102,7 +102,8 @@ public class AlertChannelBaseTest extends FakeDBApplication {
 
     Context context = getContext(channel, customTemplates);
     assertEquals(
-        channelTemplates.getTitleTemplate(), AlertChannelBase.getNotificationTitle(alert, context));
+        channelTemplates.getTitleTemplate(),
+        AlertChannelBase.getNotificationTitle(alert, context, false));
   }
 
   @Test
@@ -110,7 +111,7 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     Universe universe = ModelFactory.createUniverse();
     AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
-    alert.setLabel("custom_value", "bar");
+    alert.setLabel("custom_value", "\"bar\"");
     alert.setDefinitionUuid(definition.getUuid());
 
     AlertChannel channel = createEmailChannelWithEmptyTemplates();
@@ -133,7 +134,8 @@ public class AlertChannelBaseTest extends FakeDBApplication {
 
     Context context = getContext(channel, customTemplates);
     assertEquals(
-        "Some bar and foo variables", AlertChannelBase.getNotificationText(alert, context));
+        "Some &quot;bar&quot; and foo variables",
+        AlertChannelBase.getNotificationText(alert, context, true));
   }
 
   @Test
@@ -148,7 +150,7 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     Context context = getContext(channel, defaultTemplates);
     assertEquals(
         channel.getParams().getTitleTemplate(),
-        AlertChannelBase.getNotificationTitle(alert, context));
+        AlertChannelBase.getNotificationTitle(alert, context, false));
   }
 
   @Test
@@ -159,10 +161,10 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     Context context = getContext(channel, defaultTemplates);
     AlertNotificationTemplateSubstitutor substitutor =
         new AlertNotificationTemplateSubstitutor(
-            alert, channel, context.getLabelDefaultValues(), false);
+            alert, channel, context.getLabelDefaultValues(), false, false);
     assertEquals(
         substitutor.replace(DEFAULT_ALERT_NOTIFICATION_TITLE_TEMPLATE),
-        AlertChannelBase.getNotificationTitle(alert, context));
+        AlertChannelBase.getNotificationTitle(alert, context, false));
   }
 
   @Test
@@ -184,7 +186,7 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     Context context = getContext(channel, customTemplates);
     assertEquals(
         customTemplates.getChannelTemplates().getTextTemplate(),
-        AlertChannelBase.getNotificationText(alert, context));
+        AlertChannelBase.getNotificationText(alert, context, false));
   }
 
   @Test
@@ -197,7 +199,7 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     Context context = getContext(channel, defaultTemplates);
     assertEquals(
         channel.getParams().getTextTemplate(),
-        AlertChannelBase.getNotificationText(alert, context));
+        AlertChannelBase.getNotificationText(alert, context, false));
   }
 
   @Test
@@ -222,10 +224,10 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     Context context = getContext(channel, defaultTemplates);
     AlertNotificationTemplateSubstitutor substitutor =
         new AlertNotificationTemplateSubstitutor(
-            alert, channel, context.getLabelDefaultValues(), false);
+            alert, channel, context.getLabelDefaultValues(), false, false);
     assertEquals(
         substitutor.replace(DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE),
-        AlertChannelBase.getNotificationText(alert, context));
+        AlertChannelBase.getNotificationText(alert, context, false));
   }
 
   private AlertChannel createEmailChannel() {

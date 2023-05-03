@@ -66,6 +66,10 @@ public class KubernetesInfo implements CloudInfoInterface {
   @ApiModelProperty
   private String kubernetesPullSecretName;
 
+  // Flag for identifying the legacy k8s providers created before release 2.18.
+  @ApiModelProperty(hidden = true)
+  private boolean legacyK8sProvider = true;
+
   @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();
@@ -133,5 +137,6 @@ public class KubernetesInfo implements CloudInfoInterface {
     if (this.kubernetesPullSecretName != null && this.kubernetesPullSecretName.contains("*")) {
       this.kubernetesPullSecretName = kubernetesInfo.kubernetesPullSecretName;
     }
+    this.legacyK8sProvider = kubernetesInfo.legacyK8sProvider;
   }
 }

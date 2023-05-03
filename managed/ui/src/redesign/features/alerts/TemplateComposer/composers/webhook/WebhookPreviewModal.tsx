@@ -27,6 +27,7 @@ import { useCommonStyles } from '../../CommonStyles';
 import { createErrorMessage } from '../../../../universe/universe-form/utils/helpers';
 import { fillAlertVariablesWithValue } from '../ComposerUtils';
 import { HTMLSerializer } from '../../../../../components/YBEditor/serializers';
+import { convertNodesToText } from '../../../../../components/YBEditor/serializers/Text/TextSerializer';
 
 type WebhookPreviewModalProps = {
   visible: boolean;
@@ -71,17 +72,18 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
   );
 
   const fillTemplateWithValue = useMutation(
-    ({ textTemplate, alertConfigUUID }: { textTemplate: string; alertConfigUUID: string }) =>
+    ({ textTemplate, htmlTemplate, alertConfigUUID }: { textTemplate: string; htmlTemplate: string; alertConfigUUID: string }) =>
       previewAlertNotification(
         {
           type: 'WebHook',
-          textTemplate
+          textTemplate,
+          highlightedTextTemplate: htmlTemplate
         },
         alertConfigUUID
       ),
     {
       onSuccess(data) {
-        fillAlertVariablesWithValue(bodyEditorRef.current!, data.data.text);
+        fillAlertVariablesWithValue(bodyEditorRef.current!, data.data.highlightedText);
       },
       onError(err) {
         toast.error(createErrorMessage(err));
@@ -90,8 +92,9 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
   );
 
   const previewTemplate = (alertConfigUUID: string) => {
-    const textTemplate = new HTMLSerializer(bodyEditorRef.current!).serializeElement(bodyValue);
-    fillTemplateWithValue.mutate({ textTemplate, alertConfigUUID });
+    const bodyAsHTML = new HTMLSerializer(bodyEditorRef.current!).serializeElement(bodyValue);
+    const bodyAsText = convertNodesToText(bodyValue);
+    fillTemplateWithValue.mutate({ textTemplate: bodyAsText, htmlTemplate: bodyAsHTML, alertConfigUUID });
   };
 
   if (!visible) return null;

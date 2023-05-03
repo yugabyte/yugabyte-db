@@ -41,34 +41,39 @@ public class AvailabilityZoneHandler {
   public AvailabilityZone editZone(
       UUID zoneUUID, UUID regionUUID, Consumer<AvailabilityZone> mutator) {
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(zoneUUID, regionUUID);
+    return providerEditRestrictionManager.tryEditProvider(
+        az.getProvider().getUuid(), () -> doEditZone(zoneUUID, regionUUID, mutator));
+  }
+
+  public AvailabilityZone doEditZone(
+      UUID zoneUUID, UUID regionUUID, Consumer<AvailabilityZone> mutator) {
+    AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(zoneUUID, regionUUID);
     Region region = Region.getOrBadRequest(regionUUID);
     providerValidator.validate(az, region.getProvider().getCode());
-    return providerEditRestrictionManager.tryEditProvider(
-        az.getProvider().getUuid(),
-        () -> {
-          long nodeCount = az.getNodeCount();
-          if (nodeCount > 0) {
-            failDueToAZInUse(nodeCount, "modify");
-          }
-          mutator.accept(az);
-          az.update();
-          return az;
-        });
+    long nodeCount = az.getNodeCount();
+    if (nodeCount > 0) {
+      failDueToAZInUse(nodeCount, "modify");
+    }
+    mutator.accept(az);
+    az.update();
+    return az;
   }
 
   public AvailabilityZone deleteZone(UUID zoneUUID, UUID regionUUID) {
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(zoneUUID, regionUUID);
     return providerEditRestrictionManager.tryEditProvider(
-        az.getProvider().getUuid(),
-        () -> {
-          long nodeCount = az.getNodeCount();
-          if (nodeCount > 0) {
-            failDueToAZInUse(nodeCount, "delete");
-          }
-          az.setActive(false);
-          az.update();
-          return az;
-        });
+        az.getProvider().getUuid(), () -> doDeleteZone(zoneUUID, regionUUID));
+  }
+
+  public AvailabilityZone doDeleteZone(UUID zoneUUID, UUID regionUUID) {
+    AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(zoneUUID, regionUUID);
+    long nodeCount = az.getNodeCount();
+    if (nodeCount > 0) {
+      failDueToAZInUse(nodeCount, "delete");
+    }
+    az.setActive(false);
+    az.update();
+    return az;
   }
 
   private void failDueToAZInUse(long nodeCount, String action) {

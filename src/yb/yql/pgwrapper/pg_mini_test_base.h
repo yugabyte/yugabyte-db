@@ -65,13 +65,7 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
     return ConnectToDB(std::string() /* db_name */);
   }
 
-  Result<PGConn> ConnectToDB(const std::string& dbname) const {
-    return PGConnBuilder({
-      .host = pg_host_port_.host(),
-      .port = pg_host_port_.port(),
-      .dbname = dbname
-    }).Connect();
-  }
+  Result<PGConn> ConnectToDB(const std::string& dbname) const;
 
   Status RestartCluster();
 
@@ -84,6 +78,8 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
   Result<master::CatalogManagerIf*> catalog_manager() const;
 
   void FlushAndCompactTablets();
+
+  virtual Status SetupConnection(PGConn* conn) const;
 
  private:
   Result<PgProcessConf> CreatePgProcessConf(uint16_t port);

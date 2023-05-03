@@ -48,35 +48,38 @@ public class RegionHandler {
   public Region editRegion(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, RegionEditFormData form) {
     return providerEditRestrictionManager.tryEditProvider(
-        providerUUID,
-        () -> {
-          Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+        providerUUID, () -> doEditRegion(customerUUID, providerUUID, regionUUID, form));
+  }
 
-          region.setSecurityGroupId(form.securityGroupId);
-          region.setVnetName(form.vnetName);
-          region.setYbImage(form.ybImage);
+  public Region doEditRegion(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, RegionEditFormData form) {
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
 
-          region.update();
-          return region;
-        });
+    region.setSecurityGroupId(form.securityGroupId);
+    region.setVnetName(form.vnetName);
+    region.setYbImage(form.ybImage);
+
+    region.update();
+    return region;
   }
 
   public Region deleteRegion(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     return providerEditRestrictionManager.tryEditProvider(
-        providerUUID,
-        () -> {
-          Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
-          long nodeCount = region.getNodeCount();
-          if (nodeCount > 0) {
-            throw new PlatformServiceException(
-                FORBIDDEN,
-                String.format(
-                    "There %s %d node%s in this region",
-                    nodeCount > 1 ? "are" : "is", nodeCount, nodeCount > 1 ? "s" : ""));
-          }
-          region.disableRegionAndZones();
-          return region;
-        });
+        providerUUID, () -> doDeleteRegion(customerUUID, providerUUID, regionUUID));
+  }
+
+  public Region doDeleteRegion(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+    long nodeCount = region.getNodeCount();
+    if (nodeCount > 0) {
+      throw new PlatformServiceException(
+          FORBIDDEN,
+          String.format(
+              "There %s %d node%s in this region",
+              nodeCount > 1 ? "are" : "is", nodeCount, nodeCount > 1 ? "s" : ""));
+    }
+    region.disableRegionAndZones();
+    return region;
   }
 
   private Region doCreateRegion(UUID customerUUID, UUID providerUUID, RegionFormData form) {
