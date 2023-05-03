@@ -24,6 +24,7 @@
       "$BUILD_ROOT/bin/odyssey",
       "$BUILD_ROOT/gobin/yugabyted-ui",
       "$BUILD_ROOT/postgres/bin/*",
+      "$BUILD_ROOT/postgres/lib/pg_stat_statements.so*",
       "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof",
       "bin/bulk_load_cleanup.sh",
       "bin/bulk_load_helper.sh",

@@ -29,7 +29,6 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
-#include "yb/common/ybc_util.h"
 
 #include "yb/gutil/casts.h"
 
@@ -48,6 +47,7 @@
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 DEFINE_RUNTIME_bool(ysql_enable_read_request_caching, false, "Enable read request caching");
 DEFINE_NON_RUNTIME_uint32(
