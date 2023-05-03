@@ -67,6 +67,7 @@ public class CloudBootstrap extends CloudTaskBase {
         AccessKey accessKey = reqProvider.getAllAccessKeys().get(0);
         taskParams.keyPairName = accessKey.getKeyInfo().keyPairName;
         taskParams.sshPrivateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
+        taskParams.skipKeyValidateAndUpload = accessKey.getKeyInfo().skipKeyValidateAndUpload;
       }
       String destVpcId = null;
       String hostVpcId = null;
@@ -232,10 +233,6 @@ public class CloudBootstrap extends CloudTaskBase {
     // Port to open for connections on the instance.
     public Integer sshPort = 22;
 
-    // Whether provider should validate a custom KeyPair
-    // Default: false.
-    public boolean skipKeyPairValidate = false;
-
     public String hostVpcId = null;
     public String hostVpcRegion = null;
     public String destVpcId = null;
@@ -262,6 +259,10 @@ public class CloudBootstrap extends CloudTaskBase {
 
     // used for onprem nodes for the cases when manual provision is set.
     public boolean skipProvisioning = false;
+
+    // used for skipping the key validation & upload for AWS provider.
+    // See, AccessKey.KeyInfo for detailed summary on usage.
+    public boolean skipKeyValidateAndUpload = false;
   }
 
   @Override
@@ -364,7 +365,6 @@ public class CloudBootstrap extends CloudTaskBase {
     params.regionCode = regionCode;
     params.keyPairName = taskParams().keyPairName;
     params.sshPrivateKeyContent = taskParams().sshPrivateKeyContent;
-    params.skipKeyPairValidate = taskParams().skipKeyPairValidate;
     params.sshUser = taskParams().sshUser;
     params.sshPort = taskParams().sshPort;
     params.airGapInstall = taskParams().airGapInstall;
@@ -372,6 +372,7 @@ public class CloudBootstrap extends CloudTaskBase {
     params.ntpServers = taskParams().ntpServers;
     params.showSetUpChrony = taskParams().showSetUpChrony;
     params.skipProvisioning = taskParams().skipProvisioning;
+    params.skipKeyValidateAndUpload = taskParams().skipKeyValidateAndUpload;
     CloudAccessKeySetup task = createTask(CloudAccessKeySetup.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

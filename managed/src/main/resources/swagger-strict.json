@@ -4933,6 +4933,9 @@
         "showSetUpChrony" : {
           "type" : "boolean"
         },
+        "skipKeyValidateAndUpload" : {
+          "type" : "boolean"
+        },
         "skipProvisioning" : {
           "type" : "boolean"
         },

@@ -137,5 +137,6 @@ public class KubernetesInfo implements CloudInfoInterface {
     if (this.kubernetesPullSecretName != null && this.kubernetesPullSecretName.contains("*")) {
       this.kubernetesPullSecretName = kubernetesInfo.kubernetesPullSecretName;
     }
+    this.legacyK8sProvider = kubernetesInfo.legacyK8sProvider;
   }
 }

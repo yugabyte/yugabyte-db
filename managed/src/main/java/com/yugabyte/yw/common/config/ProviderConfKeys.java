@@ -88,15 +88,6 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Custom script to run on VM boot during universe provisioning",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO Yury
-  public static final ConfKeyInfo<Boolean> skipKeyPairValidation =
-      new ConfKeyInfo<>(
-          "yb.provider.skip_keypair_validation",
-          ScopeType.PROVIDER,
-          "Skip Key Pair Validation",
-          "TODO",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Integer> minPyVer =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.min_python_version",
