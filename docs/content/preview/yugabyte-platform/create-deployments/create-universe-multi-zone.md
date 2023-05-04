@@ -28,7 +28,7 @@ Generic</a>
 
 </ul>
 
-<br>You can create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
+You can create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
 
 ## Prerequisites
 
@@ -48,13 +48,15 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 
 - Enter the region (**Oregon**).
 
-- Change the instance type (**n1-standard-8**).
+- Accept default values for all of the remaining fields (Master Placement,replication factor = 3, Total nodes = 3), as per the following illustration:
 
-- Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3), as per the following illustration:<br>
+  ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)
 
-  ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)<br>
+- For **Instance Configuration**, change the instance type (**n1-standard-8**).
 
 - Click **Create**.
+
+For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
 
 ## Examine the universe
 
@@ -72,7 +74,7 @@ The **Universes** view allows you to examine various aspects of the universe:
 
 ## Connect to a database node
 
-Once the universe is ready, its **Overview** tab should appear similar to the following illustration:
+After the universe is ready, its **Overview** tab should appear similar to the following illustration:
 
 ![Multi-zone universe ready](/images/yp/multi-zone-universe-ready-1.png)
 
