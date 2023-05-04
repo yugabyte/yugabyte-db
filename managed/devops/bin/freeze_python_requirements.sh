@@ -57,13 +57,13 @@ log "Generating $FROZEN_REQUIREMENTS_FILE"
 
 # Patch grpcio and protobuf versions
 # The current version is only for python <= 3.9.*
-sed -ie 's/\(grpcio.*==.*\)/\1; python_version < 3.10/' $FROZEN_REQUIREMENTS_FILE
-sed -ie 's/\(protobuf.*==.*\)/\1; python_version < 3.10/' $FROZEN_REQUIREMENTS_FILE
+sed -ie "s/\(grpcio.*==.*\)/\1; python_version < '3.10'/" $FROZEN_REQUIREMENTS_FILE
+sed -ie "s/\(protobuf.*==.*\)/\1; python_version < '3.10'/" $FROZEN_REQUIREMENTS_FILE
 
 # Now, add our 3.10+ version of grpcio (and grpcio-tools)
-echo "grpcio==${GRPCIO_PY310_VERSION};python_version >= 3.10" >> $FROZEN_REQUIREMENTS_FILE
-echo "grpcio-tools==${GRPCIO_PY310_VERSION};python_version >= 3.10" >> $FROZEN_REQUIREMENTS_FILE
-echo "protobuf==${PROTOBUF_PY310_VERSION};python_version >= 3.10" >> $FROZEN_REQUIREMENTS_FILE
+echo "grpcio==${GRPCIO_PY310_VERSION};python_version >= '3.10'" >> $FROZEN_REQUIREMENTS_FILE
+echo "grpcio-tools==${GRPCIO_PY310_VERSION};python_version >= '3.10'" >> $FROZEN_REQUIREMENTS_FILE
+echo "protobuf==${PROTOBUF_PY310_VERSION};python_version >= '3.10'" >> $FROZEN_REQUIREMENTS_FILE
 
 
 log_empty_line
