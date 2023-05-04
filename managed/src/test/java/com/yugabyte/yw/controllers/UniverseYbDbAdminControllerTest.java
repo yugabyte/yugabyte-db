@@ -74,8 +74,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     assertBadRequest(
         result,
         String.format(
-            "Universe UUID: %s doesn't belong to Customer UUID: %s",
-            u.getUniverseUUID(), customer.getUuid()));
+            "Universe %s doesn't belong to Customer %s", u.getUniverseUUID(), customer.getUuid()));
     assertAuditEntry(0, customer.getUuid());
   }
 
