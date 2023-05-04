@@ -794,9 +794,18 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 	WRITE_NODE_TYPE("YbBatchedNestLoop");
 
 	_outNestLoop(str, &node->nl);
-	WRITE_NODE_FIELD(hashOps);
-	WRITE_NODE_FIELD(innerHashAttNos);
-	WRITE_NODE_FIELD(outerParamExprs);
+	appendStringInfoString(str, " :" "num_hashClauseInfos" " ");
+	WRITE_OID_FIELD(num_hashClauseInfos);
+	for (int i = 0; i < node->num_hashClauseInfos; i++)
+	{
+		YbBNLHashClauseInfo *current_hinfo = node->hashClauseInfos;
+		appendStringInfoString(str, " :" "hashOp" " ");
+		appendStringInfo(str, "%u", current_hinfo->hashOp);
+		appendStringInfoString(str, " :" "innerHashAttNo" " ");
+		appendStringInfo(str, "%d", current_hinfo->innerHashAttNo);
+		appendStringInfoString(str, " :" "outerParamExpr" " "),
+		outNode(str, current_hinfo->outerParamExpr);
+	}
 }
 
 static void

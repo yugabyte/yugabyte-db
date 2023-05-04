@@ -45,14 +45,14 @@ typedef struct CronTask
 {
   int64 jobId;
   int64 runId;
-  
+
   // Current state of this job run.
   // Leaders will move REMOTE jobs runs between CRON_TASK_WAITING,
   // CRON_TASK_REMOTE_START, CRON_TASK_REMOTE_RUNNING, CRON_TASK_DONE
   // Workers always moves job runs between CRON_TASK_WAITING,
   // CRON_TASK_BGW_START, CRON_TASK_BGW_RUNNING, CRON_TASK_DONE
   CronTaskState state;
-  
+
   // Number of runs queued for this job. For any non-leader worker,
   // pendingRunCount should be 0. Only the leader would increment this field
   uint pendingRunCount;
@@ -65,7 +65,7 @@ typedef struct CronTask
   // This is also the launch deadline for when a leader expects a worker to
   // have started a job run.
   TimestampTz startDeadline;
-  
+
   // Used for pqlib job execution
   bool isSocketReady;
 
@@ -74,10 +74,10 @@ typedef struct CronTask
   bool isActive;
 
   char *errorMessage;
-  
+
   // Used when an error occurs in pqlib
   bool freeErrorMessage;
-  
+
   // Shared memory segment with bgw
   dsm_segment *seg;
   BackgroundWorkerHandle handle;

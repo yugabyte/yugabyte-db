@@ -142,6 +142,9 @@ main(int argc, char **argv)
 	spec_yyparse();
 	testspec = &parseresult;
 
+	/* Release the scanner memory */
+	spec_scanner_finish();
+
 	/* Perform post-parse checking, and fill in linking fields */
 	check_testspec(testspec);
 
@@ -947,8 +950,8 @@ try_complete_step(TestSpec *testspec, PermutationStep *pstep, int flags)
 			 *
 			 *   This is not a perfect check but good enough for now.
 			 *
-			 *   TODO(Piyush): Replace this by a deterministic check when pessimistic locking is
-			 *   implemented and wait queue information is exposed via Pg.
+			 *   TODO(Piyush): Replace this by a deterministic check when blocking information is exposed
+			 *   via Pg locks (#12168).
 			 */
 			if (td > YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED * USECS_PER_SEC && !canceled) {
 					if (!(flags & STEP_RETRY))

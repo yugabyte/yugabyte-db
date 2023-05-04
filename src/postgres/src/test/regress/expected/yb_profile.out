@@ -1,0 +1,166 @@
+--
+-- YB_PROFILE Testsuite: Testing statements for profiles.
+--
+--
+-- pg_catalog alterations. Validate columns of pg_yb_profile and oids.
+--
+\d pg_yb_profile
+                   Table "pg_catalog.pg_yb_profile"
+          Column           |  Type   | Collation | Nullable | Default
+---------------------------+---------+-----------+----------+---------
+ prfname                   | name    |           | not null |
+ prfmaxfailedloginattempts | integer |           | not null |
+ prfpasswordlocktime       | integer |           | not null |
+Indexes:
+    "pg_yb_profile_oid_index" PRIMARY KEY, lsm (oid ASC), tablespace "pg_global"
+    "pg_yb_profile_prfname_index" UNIQUE, lsm (prfname ASC), tablespace "pg_global"
+Tablespace: "pg_global"
+
+SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_profile', 'pg_yb_profile_oid_index');
+ oid  |         relname         | reltype | relnatts
+------+-------------------------+---------+----------
+ 8051 | pg_yb_profile           |    8053 |        3
+ 8052 | pg_yb_profile_oid_index |       0 |        1
+(2 rows)
+
+SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_yb_profile';
+ oid  |    typname    | typrelid
+------+---------------+----------
+ 8053 | pg_yb_profile |     8051
+(1 row)
+
+SELECT pg_describe_object('pg_yb_profile'::regclass::oid, oid, 0) FROM pg_yb_profile;
+ pg_describe_object
+--------------------
+(0 rows)
+
+--
+-- CREATE PROFILE
+--
+SELECT oid, prfname, prfmaxfailedloginattempts FROM pg_catalog.pg_yb_profile ORDER BY oid;
+ oid | prfname | prfmaxfailedloginattempts
+-----+---------+---------------------------
+(0 rows)
+
+CREATE PROFILE test_profile LIMIT FAILED_LOGIN_ATTEMPTS 3;
+SELECT prfname, prfmaxfailedloginattempts FROM pg_catalog.pg_yb_profile ORDER BY OID;
+   prfname    | prfmaxfailedloginattempts
+--------------+---------------------------
+ test_profile |                         3
+(1 row)
+
+-- Fail because it is a duplicate name
+CREATE PROFILE test_profile LIMIT FAILED_LOGIN_ATTEMPTS 4;
+ERROR:  profile "test_profile" already exists
+-- Fail because -ve numbers are not allowed
+CREATE PROFILE test_profile LIMIT FAILED_LOGIN_ATTEMPTS -1;
+ERROR:  syntax error at or near "-"
+LINE 1: CREATE PROFILE test_profile LIMIT FAILED_LOGIN_ATTEMPTS -1;
+                                                                ^
+--
+-- DROP PROFILE
+--
+DROP PROFILE test_profile;
+-- fail: does not exist
+DROP PROFILE test_profile;
+ERROR:  profile "test_profile" does not exist
+--
+-- Test IF EXISTS clause
+--
+DROP PROFILE IF EXISTS non_existing;
+NOTICE:  profile "non_existing" does not exist, skipping
+CREATE PROFILE exists_profile LIMIT FAILED_LOGIN_ATTEMPTS 3;
+DROP PROFILE IF EXISTS exists_profile;
+--
+-- Test \h CREATE PROFILE
+--
+\h CREATE PROFILE
+Command:     CREATE PROFILE
+Description: define a new login profile
+Syntax:
+CREATE PROFILE profile_name LIMIT
+  FAILED_LOGIN_ATTEMPTS number;
+  [PASSWORD_LOCK_TIME days];
+
+--
+-- Test \h DROP PROFILE
+--
+\h DROP PROFILE
+Command:     DROP PROFILE
+Description: remove a login profile
+Syntax:
+DROP PROFILE profile_name;
+
+--
+-- Test \h ALTER USER
+--
+\h ALTER USER
+Command:     ALTER USER
+Description: change a database role
+Syntax:
+ALTER USER role_specification [ WITH ] option [ ... ]
+
+where option can be:
+
+      SUPERUSER | NOSUPERUSER
+    | CREATEDB | NOCREATEDB
+    | CREATEROLE | NOCREATEROLE
+    | INHERIT | NOINHERIT
+    | LOGIN | NOLOGIN
+    | REPLICATION | NOREPLICATION
+    | BYPASSRLS | NOBYPASSRLS
+    | CONNECTION LIMIT connlimit
+    | [ ENCRYPTED ] PASSWORD 'password' | PASSWORD NULL
+    | VALID UNTIL 'timestamp'
+    | PROFILE profile_name | NOPROFILE
+    | ACCOUNT LOCK | ACCOUNT UNLOCK
+
+ALTER USER name RENAME TO new_name
+
+ALTER USER { role_specification | ALL } [ IN DATABASE database_name ] SET configuration_parameter { TO | = } { value | DEFAULT }
+ALTER USER { role_specification | ALL } [ IN DATABASE database_name ] SET configuration_parameter FROM CURRENT
+ALTER USER { role_specification | ALL } [ IN DATABASE database_name ] RESET configuration_parameter
+ALTER USER { role_specification | ALL } [ IN DATABASE database_name ] RESET ALL
+
+where role_specification can be:
+
+    role_name
+  | CURRENT_USER
+  | SESSION_USER
+
+--
+-- Test \h ALTER ROLE
+--
+\h ALTER ROLE
+Command:     ALTER ROLE
+Description: change a database role
+Syntax:
+ALTER ROLE role_specification [ WITH ] option [ ... ]
+
+where option can be:
+
+      SUPERUSER | NOSUPERUSER
+    | CREATEDB | NOCREATEDB
+    | CREATEROLE | NOCREATEROLE
+    | INHERIT | NOINHERIT
+    | LOGIN | NOLOGIN
+    | REPLICATION | NOREPLICATION
+    | BYPASSRLS | NOBYPASSRLS
+    | CONNECTION LIMIT connlimit
+    | [ ENCRYPTED ] PASSWORD 'password' | PASSWORD NULL
+    | VALID UNTIL 'timestamp'
+    | PROFILE profile_name | NOPROFILE
+    | ACCOUNT LOCK | ACCOUNT UNLOCK
+
+ALTER ROLE name RENAME TO new_name
+
+ALTER ROLE { role_specification | ALL } [ IN DATABASE database_name ] SET configuration_parameter { TO | = } { value | DEFAULT }
+ALTER ROLE { role_specification | ALL } [ IN DATABASE database_name ] SET configuration_parameter FROM CURRENT
+ALTER ROLE { role_specification | ALL } [ IN DATABASE database_name ] RESET configuration_parameter
+ALTER ROLE { role_specification | ALL } [ IN DATABASE database_name ] RESET ALL
+
+where role_specification can be:
+
+    role_name
+  | CURRENT_USER
+  | SESSION_USER

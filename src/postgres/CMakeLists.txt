@@ -12,41 +12,79 @@
 
 
 set(POSTGRES_EXTRA_C_CXX_FLAGS "")
+set(POSTGRES_EXTRA_LD_FLAGS "")
+
 get_property(yb_cmake_include_dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         PROPERTY INCLUDE_DIRECTORIES)
+
+macro(add_pg_c_cxx_flags)
+  foreach(_tmp_pg_flag IN ITEMS ${ARGN})
+    if(NOT POSTGRES_EXTRA_C_CXX_FLAGS MATCHES "[ ]$")
+      string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " ")
+    endif()
+    string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS "${_tmp_pg_flag}")
+  endforeach()
+endmacro()
+
+macro(add_pg_ld_flags)
+  foreach(_tmp_pg_flag IN ITEMS ${ARGN})
+    if(NOT POSTGRES_EXTRA_LD_FLAGS MATCHES "[ ]$")
+      string(APPEND POSTGRES_EXTRA_LD_FLAGS " ")
+    endif()
+    string(APPEND POSTGRES_EXTRA_LD_FLAGS "${_tmp_pg_flag}")
+  endforeach()
+endmacro()
+
+set(added_pg_include_directories "")
+
+macro(add_pg_include_directory include_dir)
+  set(_tmp_duplicate_include_dir OFF)
+  foreach(_tmp_existing_include_dir IN LISTS added_pg_include_directories)
+    if("${_tmp_existing_include_dir}" STREQUAL "${include_dir}")
+      set(_tmp_duplicate_include_dir ON)
+    endif()
+  endforeach()
+  list(APPEND added_pg_include_directories "${include_dir}")
+  if(NOT _tmp_duplicate_include_dir)
+    add_pg_c_cxx_flags("-I${include_dir}")
+  endif()
+endmacro()
+
 foreach(include_dir ${yb_cmake_include_dirs})
-  string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -I${include_dir}")
+  add_pg_include_directory("${include_dir}")
 endforeach(include_dir)
-if(IS_GCC AND "${COMPILER_VERSION}" VERSION_GREATER "8.0")
-  string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS
-         " -Wno-format-truncation"
-         " -Wno-maybe-uninitialized"
-         " -Wno-stringop-truncation")
+
+if(IS_GCC)
+  add_pg_c_cxx_flags(
+    -Wno-format-truncation
+    -Wno-maybe-uninitialized
+    -Wno-stringop-truncation
+  )
 endif()
 
 if(IS_CLANG)
-  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND NOT APPLE)
-    string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -Wno-error=unused-but-set-variable")
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND NOT IS_APPLE_CLANG)
+    add_pg_c_cxx_flags(-Wno-error=unused-but-set-variable)
   endif()
 
   if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "15.0.0")
-    string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -Wno-error=deprecated-non-prototype")
+    add_pg_c_cxx_flags(-Wno-error=deprecated-non-prototype)
   endif()
 endif()
 
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
-  string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -DUSE_SSE42_CRC32C=1")
+  add_pg_c_cxx_flags(-DUSE_SSE42_CRC32C=1)
 endif()
 
-set(POSTGRES_EXTRA_LD_FLAGS "")
 if(NOT APPLE AND
    "${YB_BUILD_TYPE}" STREQUAL "asan" AND
    IS_CLANG AND
    "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0")
-  set(POSTGRES_EXTRA_LD_FLAGS "${POSTGRES_EXTRA_LD_FLAGS} -ldl")
+  add_pg_ld_flags(-ldl)
 endif()
 
 get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_CRYPTO_LIBRARY}" DIRECTORY)
+message("OPENSSL_LIB_DIR=${OPENSSL_LIB_DIR}")
 
 set(POSTGRES_PKG_CONFIG_PATH "${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib/pkgconfig")
 
@@ -66,6 +104,14 @@ if(APPLE AND NOT "${MACOS_SDK_INCLUDE_DIR}" STREQUAL "")
          " -isystem ${MACOS_SDK_INCLUDE_DIR}")
 endif()
 
+set(PG_INCLUDE_DIRS "${YB_PREFIX_COMMON}/include")
+set(PG_LIB_DIRS "${YB_PREFIX_COMMON}/lib")
+if(APPLE AND NOT IS_APPLE_CLANG)
+  add_pg_ld_flags("-L${CMAKE_OSX_SYSROOT}/usr/lib")
+  add_pg_c_cxx_flags("-isysroot ${CMAKE_OSX_SYSROOT}")
+  # This is needed for PostgreSQL's configure to find headers such as uuid.h.
+  string(APPEND PG_INCLUDE_DIRS " ${CMAKE_OSX_SYSROOT}/usr/include")
+endif()
 set(POSTGRES_FINAL_C_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}")
 yb_deduplicate_arguments(POSTGRES_FINAL_C_FLAGS)
 
@@ -80,6 +126,12 @@ yb_deduplicate_arguments(POSTGRES_FINAL_EXE_LD_FLAGS)
 
 set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "")
 if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+  # We link with tcmalloc statically, but tcmalloc depends on some other shared libraries being
+  # present on the linker command line.
+  #
+  # The libraries we add here should be kept consistent with the libraries added in
+  # the add_executable wrapper in YugabyteFunctions.cmake.
+  #
   # We don't add libtcmalloc and libprofiler to POSTGRES_FINAL_EXE_LD_FLAGS because when building
   # with GCC we use the standard ld linker, which cares about the order of libraries when using
   # static libraries. Symbols from libtcmalloc and libprofiler are needed by e.g. libyb_util, so
@@ -88,7 +140,11 @@ if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
   # The special variable PG_EXE_LD_FLAGS_AFTER_YB_LIBS eventually gets propagated to a
   # YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS environment variable used in Postgres makefiles that build
   # an executable. It gets included after all C++ YB libs that the relevant executable depends on.
-  set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "${TCMALLOC_STATIC_LIB_LD_FLAGS} -lprofiler")
+  if ("${YB_GOOGLE_TCMALLOC}" STREQUAL "1")
+    set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "${TCMALLOC_STATIC_LIB_LD_FLAGS} -labsl")
+  else()
+    set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "${TCMALLOC_STATIC_LIB_LD_FLAGS} -lprofiler")
+  endif()
 
   if(IS_CLANG)
     string(APPEND PG_EXE_LD_FLAGS_AFTER_YB_LIBS " -lc++")
@@ -101,24 +157,19 @@ if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
   endif()
 endif()
 
+yb_put_string_vars_into_cache(
+  POSTGRES_FINAL_C_FLAGS
+  POSTGRES_FINAL_CXX_FLAGS
+  POSTGRES_FINAL_LD_FLAGS
+  POSTGRES_FINAL_EXE_LD_FLAGS
+  POSTGRES_EXTRA_PREPROCESSOR_FLAGS
+  PG_EXE_LD_FLAGS_AFTER_YB_LIBS
+  PG_INCLUDE_DIRS
+  PG_LIB_DIRS
+)
+
 list(APPEND build_postgres_args
-     "${BUILD_SUPPORT_DIR}/build_postgres"
-     --build_root            "${YB_BUILD_ROOT}"
-     --compiler_type         "${YB_COMPILER_TYPE}"
-     --cflags                "${POSTGRES_FINAL_C_FLAGS}"
-     --cxxflags              "${POSTGRES_FINAL_CXX_FLAGS}"
-     # We specify a leading space where we could otherwise get an empty argument.
-     --cppflags              " ${POSTGRES_EXTRA_PREPROCESSOR_FLAGS}"
-     --ldflags               " ${POSTGRES_FINAL_LD_FLAGS}"
-     --ldflags_ex            " ${POSTGRES_FINAL_EXE_LD_FLAGS}"
-     --exe_ld_flags_after_yb_libs " ${PG_EXE_LD_FLAGS_AFTER_YB_LIBS}"
-     --openssl_include_dir   "${OPENSSL_INCLUDE_DIR}"
-     --openssl_lib_dir       "${OPENSSL_LIB_DIR}"
-     --thirdparty_dir        "${YB_THIRDPARTY_DIR}"
-     --shared_library_suffix "${YB_SHARED_LIBRARY_SUFFIX}"
-     --compiler_family       "${COMPILER_FAMILY}"
-     --compiler_version      "${COMPILER_VERSION}"
-    )
+     "${BUILD_SUPPORT_DIR}/build_postgres" --build_root "${YB_BUILD_ROOT}")
 
 if (NOT DEFINED LIBPQ_SHARED_LIB)
   message(FATAL_ERROR "LIBPQ_SHARED_LIB must be defined")
@@ -136,7 +187,11 @@ add_custom_target(configure_postgres ALL COMMAND ${build_postgres_args} --step c
 add_custom_target(
     postgres ALL
     COMMAND ${build_postgres_args} --step make
-    BYPRODUCTS "${LIBPQ_SHARED_LIB}" "${YB_PGBACKEND_SHARED_LIB}")
+    BYPRODUCTS
+      "${LIBPQ_SHARED_LIB}"
+      "${YB_PGBACKEND_SHARED_LIB}"
+      "${PG_COMMON_STATIC_LIB}"
+      "${PG_PORT_STATIC_LIB}")
 
 add_dependencies(postgres configure_postgres)
 

@@ -2977,6 +2977,15 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 				&inner_rescan_total_cost);
 
 	/* cost of source data */
+	int yb_batch_size = 1;
+	if (IsYugaByteEnabled())
+	{
+		bool is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
+		if (is_batched)
+			yb_batch_size =
+				yb_bnl_batch_size > outer_path_rows ?
+					outer_path_rows : yb_bnl_batch_size;
+	}
 
 	/*
 	 * NOTE: clearly, we must pay both outer and inner paths' startup_cost
@@ -2987,10 +2996,11 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 	startup_cost += outer_path->startup_cost + inner_path->startup_cost;
 	run_cost += outer_path->total_cost - outer_path->startup_cost;
 	if (outer_path_rows > 1)
-		run_cost += (outer_path_rows - 1) * inner_rescan_start_cost;
+		run_cost += (outer_path_rows - 1) * inner_rescan_start_cost
+			/ yb_batch_size;
 
 	inner_run_cost = inner_path->total_cost - inner_path->startup_cost;
-	inner_rescan_run_cost = inner_rescan_total_cost - inner_rescan_start_cost;
+	inner_rescan_run_cost = (inner_rescan_total_cost - inner_rescan_start_cost) / yb_batch_size;
 
 	if (jointype == JOIN_SEMI || jointype == JOIN_ANTI ||
 		extra->inner_unique)

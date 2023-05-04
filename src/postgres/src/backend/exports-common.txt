@@ -1,0 +1,57 @@
+# src/backend/exports-common.txt
+# Functions to be exported by postgres DLLs
+YbgInit
+
+# YbgStatus API
+YbgStatusErrorReportingError
+YbgStatusCreate
+YbgStatusCreateError
+YbgStatusDestroy
+YbgStatusIsError
+YbgStatusGetContext
+YbgStatusGetMessage
+YbgStatusGetMessageArgs
+YbgStatusGetSqlError
+YbgStatusGetFilename
+YbgStatusGetLineNumber
+YbgStatusGetFuncname
+
+# Memory Context API
+YbgCreateMemoryContext
+YbgGetCurrentMemoryContext
+YbgSetCurrentMemoryContext
+YbgPrepareMemoryContext
+YbgResetMemoryContext
+YbgDeleteMemoryContext
+
+# Types API
+YbgGetTypeTable
+YbgGetPrimitiveTypeOid
+
+# Expression Evaluation API
+YbgExprContextCreate
+YbgExprContextReset
+YbgExprContextAddColValue
+YbgPrepareExpr
+YbgExprType
+YbgExprTypmod
+YbgExprCollation
+YbgEvalExpr
+YbgSplitArrayDatum
+
+# Relation sampling
+YbgSamplerCreate
+YbgSamplerGetState
+YbgSamplerRandomFract
+YbgReservoirGetNextS
+
+DecodeDatum
+DecodeTZDatum
+DecodeArrayDatum
+DecodeRangeDatum
+DecodeRangeArrayDatum
+DecodeRecordDatum
+GetOutFuncName
+GetRecordTypeId
+HeapFormTuple
+HeapDeformTuple

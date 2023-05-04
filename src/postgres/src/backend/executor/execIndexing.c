@@ -642,13 +642,14 @@ ExecDeleteIndexTuplesOptimized(ResultRelInfo *resultRelInfo,
 					   values,
 					   isnull);
 
+		MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 		yb_index_delete(indexRelation, /* index relation */
 						values,	/* array of index Datums */
 						isnull,	/* null flags */
 						ybctid,	/* ybctid */
 						heapRelation,	/* heap relation */
 						indexInfo);	/* index AM may need this */
-
+		MemoryContextSwitchTo(oldContext);
 	}
 
 	/* Drop the temporary slot */

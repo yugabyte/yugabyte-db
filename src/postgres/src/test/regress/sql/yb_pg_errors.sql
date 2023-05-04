@@ -374,12 +374,20 @@ UNIQUE
 NOT
 NULL);
 
+-- YB: With default max_stack_depth, ASAN build detects stack-overflow first.
+-- Prevent that by lowering max_stack_depth temporarily.
+set max_stack_depth = '900kB';
+
 -- Check that stack depth detection mechanism works and
 -- max_stack_depth is not set too high
 create function infinite_recurse() returns int as
 'select infinite_recurse()' language sql;
 \set VERBOSITY terse
 select infinite_recurse();
+
+-- YB: undo above change.  Some experimentation showed issues with some later
+-- statements otherwise.
+reset max_stack_depth;
 
 -- YB note: check for unsupported system columns.
 CREATE TABLE test_tab1(id INT);

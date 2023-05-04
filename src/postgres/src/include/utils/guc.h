@@ -266,6 +266,7 @@ extern PGDLLIMPORT int log_parameter_max_length_on_error;
 extern PGDLLIMPORT int log_min_error_statement;
 extern PGDLLIMPORT int log_min_messages;
 extern PGDLLIMPORT int client_min_messages;
+
 extern PGDLLIMPORT int log_min_duration_sample;
 extern PGDLLIMPORT int log_min_duration_statement;
 extern PGDLLIMPORT int log_temp_files;
@@ -295,8 +296,9 @@ extern PGDLLIMPORT int tcp_user_timeout;
 extern PGDLLIMPORT bool trace_sort;
 #endif
 
-extern int	yb_bnl_batch_size;
-extern bool  yb_bnl_enable_hashing;
+extern PGDLLIMPORT bool yb_enable_memory_tracking;
+extern PGDLLIMPORT int	yb_bnl_batch_size;
+extern PGDLLIMPORT bool  yb_bnl_enable_hashing;
 
 /*
  * Functions exported by guc.c

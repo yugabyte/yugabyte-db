@@ -261,7 +261,6 @@ static bool check_transaction_priority_upper_bound(double *newval, void **extra,
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
 extern double YBCGetTransactionPriority();
 extern TxnPriorityRequirement YBCGetTransactionPriorityType();
-static const char *show_transaction_priority(void);
 
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
 
@@ -658,6 +657,7 @@ bool		check_function_bodies = true;
  */
 bool		default_with_oids = false;
 bool		session_auth_is_superuser;
+bool		yb_enable_memory_tracking = true;
 
 int			log_min_error_statement = ERROR;
 int			log_min_messages = WARNING;
@@ -2250,6 +2250,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_docdb_tracing", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Enables tracing for the commands in this session."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_docdb_tracing,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"data_sync_retry", PGC_POSTMASTER, ERROR_HANDLING_OPTIONS,
 			gettext_noop("Whether to continue running after a failure to sync data files."),
 		},
@@ -2310,6 +2321,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_pushdown_strict_inequality", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, strict inequality filters are pushed down."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_pushdown_strict_inequality,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -2336,8 +2358,8 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_test_system_catalogs_creation", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Relaxes some internal sanity checks for system catalogs to "
-						 "allow creating them."),
+			gettext_noop("Relaxes some internal sanity checks for system "
+						 "catalogs to allow creating them."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -2348,8 +2370,8 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_test_fail_next_ddl", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("When set, the next DDL (only CREATE TABLE for now) "
-						 "will fail right after DocDB processes the actual database structure change."),
+			gettext_noop("When set, the next DDL will fail right before "
+					     "commit."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -2402,10 +2424,28 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_enable_expression_pushdown,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
-
+	{
+		{"yb_enable_hash_batch_in", PGC_USERSET, QUERY_TUNING_METHOD,
+		gettext_noop("GUC variable that enables batching RPCs of generated for IN queries on hash "
+					 "keys issued to the same tablets."),
+		NULL
+		},
+		&yb_enable_hash_batch_in,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_bypass_cond_recheck", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("If true then condition rechecking is bypassed at YSQL if the condition is bound to DocDB."),
+			NULL
+		},
+		&yb_bypass_cond_recheck,
+		true,
+		NULL, NULL, NULL
+	},
 
     {
 		{"yb_enable_upsert_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
@@ -2452,6 +2492,41 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_plpgsql_disable_prefetch_in_for_query,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_sequence_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Allow nextval() to fetch the value range and advance "
+						 "the sequence value in a single operation."),
+			NULL
+		},
+		&yb_enable_sequence_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_memory_tracking", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enables tracking of memory consumption of the PostgreSQL "
+						  "process. This enhances garbage collection behaviour and memory usage "
+						  "observability."),
+			NULL
+		},
+		&yb_enable_memory_tracking,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_disable_wait_for_backends_catalog_version", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Disable waiting for backends to have up-to-date "
+						 "pg_catalog. This could cause correctness issues."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_wait_for_backends_catalog_version,
 		false,
 		NULL, NULL, NULL
 	},
@@ -4014,18 +4089,6 @@ static struct config_int ConfigureNamesInt[] =
 		check_follower_read_staleness_ms, NULL, NULL
 	},
 
-	/*
-	 * Default to a 1s delay because commits currently aren't guaranteed to be
-	 * visible across tservers.  Commits cause master to update catalog
-	 * version, but that version is _pulled_ from tservers using heartbeats.
-	 * In the common case, tservers will be behind by at most one heartbeat.
-	 * However, it is possible that some network delays may cause it to not
-	 * successfully heartbeat for times, so use 1s as a decently safe wait time
-	 * without causing user frustration waiting on CREATE INDEX.
-	 *
-	 * TODO(jason): change to 0 once commits are reliably propagated to
-	 * tservers.
-	 */
 	{
 		{"yb_index_state_flags_update_delay", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Delay in milliseconds between stages of online index"
@@ -4035,7 +4098,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MS
 		},
 		&yb_index_state_flags_update_delay,
-		1000, 0, INT_MAX,
+		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -4364,13 +4427,15 @@ static struct config_real ConfigureNamesReal[] =
 	},
 	{
 		{"yb_transaction_priority", PGC_INTERNAL, CLIENT_CONN_STATEMENT,
-			gettext_noop("Gets the transaction priority used by the current active "
-						 "transaction in the session. If no transaction is active, return 0"),
+			gettext_noop(
+					"[DEPRECATED - instead use the yb_get_current_transaction_priority() function]. Gets the "
+					"transaction priority used by the current active distributed transaction in the session. "
+					"If no distributed transaction is active, return 0"),
 			NULL
 		},
 		&yb_transaction_priority,
 		0.0, 0.0, 1.0,
-		NULL, NULL, show_transaction_priority
+		NULL, NULL, yb_fetch_current_transaction_priority
 	},
 
 	{
@@ -4382,6 +4447,28 @@ static struct config_real ConfigureNamesReal[] =
 		&RetryBackoffMultiplier,
 		2.0, 1.0, 1e10,
 		check_backoff_multiplier, NULL, NULL
+	},
+
+	{
+		{"log_statement_sample_rate", PGC_SUSET, LOGGING_WHEN,
+			gettext_noop("Fraction of statements exceeding log_min_duration_sample to be logged."),
+			gettext_noop("Use a value between 0.0 (never log) and 1.0 (always log).")
+		},
+		&log_statement_sample_rate,
+		1.0, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"log_transaction_sample_rate", PGC_SUSET, LOGGING_WHEN,
+			gettext_noop("Set the fraction of transactions to log for new transactions."),
+			gettext_noop("Logs all statements from a fraction of transactions. "
+						 "Use a value between 0.0 (never log) and 1.0 (log all "
+						 "statements for all transactions).")
+		},
+		&log_xact_sample_rate,
+		0.0, 0.0, 1.0,
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -4875,14 +4962,16 @@ static struct config_string ConfigureNamesString[] =
 
 	{
 		{"yb_effective_transaction_isolation_level", PGC_INTERNAL, CLIENT_CONN_STATEMENT,
-			gettext_noop("Shows the effective YugabyteDB transaction isolation level used by the current "
-									 "active transaction in the session."),
+			gettext_noop(
+					"[DEPRECATED - instead use the yb_get_effective_transaction_isolation_level() function]. "
+					"Shows the effective YugabyteDB transaction isolation level used by the current active "
+					"transaction in the session."),
 			NULL,
 			GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&yb_effective_transaction_isolation_level_string,
 		"default",
-		NULL, NULL, show_yb_effective_transaction_isolation_level
+		NULL, NULL, yb_fetch_effective_transaction_isolation_level
 	},
 
 	{
@@ -5182,6 +5271,19 @@ static struct config_string ConfigureNamesString[] =
 		&backtrace_functions,
 		"",
 		check_backtrace_functions, assign_backtrace_functions, NULL
+	},
+
+	{
+		{"yb_test_block_index_phase", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Block the given index creation phase."),
+			gettext_noop("Valid values are \"indisready\", \"backfill\", "
+						 " and \"postbackfill\". Any other value is ignored."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_block_index_phase,
+		"",
+		/* Could add a check function, but it's not worth the bother. */
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -14021,28 +14123,6 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 	}
 
 	return true;
-}
-
-static const char *
-show_transaction_priority(void)
-{
-	TxnPriorityRequirement txn_priority_type;
-	double				   txn_priority;
-	static char			   buf[50];
-
-	txn_priority_type = YBCGetTransactionPriorityType();
-	txn_priority	  = YBCGetTransactionPriority();
-
-	if (txn_priority_type == kHighestPriority)
-		snprintf(buf, sizeof(buf), "Highest priority transaction");
-	else if (txn_priority_type == kHigherPriorityRange)
-		snprintf(buf, sizeof(buf),
-				 "%.9lf (High priority transaction)", txn_priority);
-	else
-		snprintf(buf, sizeof(buf),
-				 "%.9lf (Normal priority transaction)", txn_priority);
-
-	return buf;
 }
 
 static void

@@ -1,0 +1,1 @@
+-- Empty upgrade file to upgrade extension from 2.11 to 2.12

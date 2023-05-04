@@ -329,30 +329,30 @@ CREATE INDEX ON jsonbs USING ybgin (j jsonb_path_ops); -- test ambuild
 INSERT INTO jsonbs (j) VALUES
     ('{"aaa":{"bbb":[2], "ccc":{"ddd":6}}, "eee":[]}'); -- test aminsert
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i;
-            QUERY PLAN
------------------------------------
+                QUERY PLAN
+------------------------------------------
  Sort
    Sort Key: i
    ->  Seq Scan on jsonbs
-         Filter: (j ? 'aaa'::text)
+         Remote Filter: (j ? 'aaa'::text)
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i;
-                 QUERY PLAN
---------------------------------------------
+                    QUERY PLAN
+---------------------------------------------------
  Sort
    Sort Key: i
    ->  Seq Scan on jsonbs
-         Filter: (j ?| '{ggg,eee}'::text[])
+         Remote Filter: (j ?| '{ggg,eee}'::text[])
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
-                 QUERY PLAN
---------------------------------------------
+                    QUERY PLAN
+---------------------------------------------------
  Sort
    Sort Key: i
    ->  Seq Scan on jsonbs
-         Filter: (j ?& '{aaa,eee}'::text[])
+         Remote Filter: (j ?& '{aaa,eee}'::text[])
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
@@ -476,12 +476,13 @@ CREATE INDEX ON partial USING ybgin (j) WHERE a && ARRAY['f']; -- test ambuild
 INSERT INTO partial VALUES
     (to_tsvector('simple', 'a b c'), ARRAY['d', 'd'], '{"g":"g"}'); -- test aminsert
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'b';
-               QUERY PLAN
------------------------------------------
- Aggregate
+                   QUERY PLAN
+------------------------------------------------
+ Finalize Aggregate
    ->  Seq Scan on partial
-         Filter: (v @@ '''b'''::tsquery)
-(3 rows)
+         Remote Filter: (v @@ '''b'''::tsquery)
+         Partial Aggregate: true
+(4 rows)
 
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'c';
                       QUERY PLAN

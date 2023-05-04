@@ -1973,6 +1973,9 @@ findTypeInputFunction(List *procname, Oid typeOid)
 	argList[1] = OIDOID;
 	argList[2] = INT4OID;
 
+	/* YB_TODO(neil) Yugabyte has some changes here.
+	 * Check if it's still valid in Pg15.
+	 */
 	procOid = LookupFuncName(procname, 1, argList, true);
 	procOid2 = LookupFuncName(procname, 3, argList, true);
 	if (OidIsValid(procOid))

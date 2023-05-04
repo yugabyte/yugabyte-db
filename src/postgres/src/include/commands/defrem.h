@@ -90,6 +90,10 @@ extern void RemoveStatisticsById(Oid statsOid);
 extern void RemoveStatisticsDataById(Oid statsOid, bool inh);
 extern Oid	StatisticsGetRelation(Oid statId, bool missing_ok);
 
+extern char *YbChooseExtendedStatisticName(const char *name1,
+							  const char *name2,
+							  const char *label, Oid namespaceid);
+
 /* commands/aggregatecmds.c */
 extern ObjectAddress DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle,
 									 List *parameters, bool replace);

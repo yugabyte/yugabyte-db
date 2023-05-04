@@ -13,7 +13,6 @@ CREATE TABLE t3 (id int PRIMARY KEY, val int);
 CREATE TABLE t4 (id int PRIMARY KEY, val int);
 CREATE TABLE t5 (id int PRIMARY KEY, val int);
 CREATE TABLE p1 (id int PRIMARY KEY, val int);
--- TODOs LIKE INCLUDING ALL is unsupported
 -- TODOs INHERITANCE is unsupported
 CREATE TABLE p1_c1 (LIKE p1 INCLUDING ALL, CHECK (id <= 100)) INHERITS(p1);
 -- CREATE TABLE p1_c2 (LIKE p1 INCLUDING ALL, CHECK (id > 100 AND id <= 200)) INHERITS(p1);
@@ -37,7 +36,6 @@ CREATE INDEX p2_expr ON p2 ((val < '120'));
 CREATE INDEX p2_expr2 ON p2 ((id * 2 < 120));
 CREATE INDEX p2_val_idx6 ON p2 (val) WHERE val >= '50' AND val < '51';
 CREATE INDEX p2_val_idx7 ON p2 (val) WHERE id < 120;
--- TODOs LIKE INCLUDING ALL is unsupported
 -- TODOs INHERITANCE is unsupported
 -- CREATE TABLE p2_c1 (LIKE p2 INCLUDING ALL, CHECK (id <= 100)) INHERITS(p2);
 -- CREATE TABLE p2_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 100 AND id <= 200)) INHERITS(p2);

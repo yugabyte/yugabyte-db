@@ -248,6 +248,9 @@ SET default_tablespace = tsp1;
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test; Tablespace: tsp1
 --
 
+
+-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16398'::pg_catalog.oid);
 CREATE TABLEGROUP grp_with_spc;
 
 
@@ -259,6 +262,9 @@ SET default_tablespace = '';
 -- Name: grp_without_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test
 --
 
+
+-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16397'::pg_catalog.oid);
 CREATE TABLEGROUP grp_without_spc;
 
 

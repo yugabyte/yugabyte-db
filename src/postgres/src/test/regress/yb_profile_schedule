@@ -1,0 +1,12 @@
+# src/test/regress/yb_profile_schedule
+#
+####################################################################################################
+# PROFILE Testsuite
+# - Test DDL Statements for profile
+# - Test DDL Statements for role_profile
+# - Test that DDL Statements can be run by admins only.
+# - Test that increment and disable code works correctly using a test backdoor
+####################################################################################################
+test: yb_profile
+test: yb_role_profile
+test: yb_profile_permissions

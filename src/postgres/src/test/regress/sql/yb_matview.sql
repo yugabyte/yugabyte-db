@@ -203,7 +203,7 @@ END$$;
 SELECT * FROM view_as_1;
 
 -- Colocated materialized view
-CREATE DATABASE mydb WITH colocated = true;
+CREATE DATABASE mydb WITH colocation = true;
 \c mydb;
 CREATE TABLE base (col int);
 CREATE MATERIALIZED VIEW mv AS SELECT * FROM base;

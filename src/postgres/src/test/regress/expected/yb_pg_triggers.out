@@ -1914,21 +1914,11 @@ create table trigpart1 partition of trigpart for values from (0) to (1000);
 create trigger trg1 after insert on trigpart for each row execute procedure trigger_nothing();
 create table trigpart2 partition of trigpart for values from (1000) to (2000);
 create table trigpart3 (like trigpart);
-ERROR:  LIKE clause not supported yet
-LINE 1: create table trigpart3 (like trigpart);
-                                ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 alter table trigpart attach partition trigpart3 for values from (2000) to (3000);
-ERROR:  relation "trigpart3" does not exist
 create table trigpart4 partition of trigpart for values from (3000) to (4000) partition by range (a);
 create table trigpart41 partition of trigpart4 for values from (3000) to (3500);
 create table trigpart42 (like trigpart);
-ERROR:  LIKE clause not supported yet
-LINE 1: create table trigpart42 (like trigpart);
-                                 ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 alter table trigpart4 attach partition trigpart42 for values from (3500) to (4000);
-ERROR:  relation "trigpart42" does not exist
 select tgrelid::regclass, tgname, tgfoid::regproc from pg_trigger
   where tgrelid::regclass::text like 'trigpart%' order by tgrelid::regclass::text;
   tgrelid   | tgname |     tgfoid
@@ -1936,9 +1926,11 @@ select tgrelid::regclass, tgname, tgfoid::regproc from pg_trigger
  trigpart   | trg1   | trigger_nothing
  trigpart1  | trg1   | trigger_nothing
  trigpart2  | trg1   | trigger_nothing
+ trigpart3  | trg1   | trigger_nothing
  trigpart4  | trg1   | trigger_nothing
  trigpart41 | trg1   | trigger_nothing
-(5 rows)
+ trigpart42 | trg1   | trigger_nothing
+(7 rows)
 
 -- Disabling the below tests temporarily because each run of the test can
 -- throw one of two errors. The error message displayed contains the first dependency
@@ -1956,9 +1948,11 @@ select tgrelid::regclass, tgname, tgfoid::regproc from pg_trigger
 ------------+--------+-----------------
  trigpart   | trg1   | trigger_nothing
  trigpart1  | trg1   | trigger_nothing
+ trigpart3  | trg1   | trigger_nothing
  trigpart4  | trg1   | trigger_nothing
  trigpart41 | trg1   | trigger_nothing
-(4 rows)
+ trigpart42 | trg1   | trigger_nothing
+(6 rows)
 
 drop trigger trg1 on trigpart;		-- ok, all gone
 select tgrelid::regclass, tgname, tgfoid::regproc from pg_trigger
@@ -1970,22 +1964,26 @@ select tgrelid::regclass, tgname, tgfoid::regproc from pg_trigger
 -- check detach behavior
 create trigger trg1 after insert on trigpart for each row execute procedure trigger_nothing();
 \d trigpart3
+             Table "public.trigpart3"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | integer |           |          |
+Partition of: trigpart FOR VALUES FROM (2000) TO (3000)
+Triggers:
+    trg1 AFTER INSERT ON trigpart3 FOR EACH ROW EXECUTE PROCEDURE trigger_nothing()
+
 alter table trigpart detach partition trigpart3;
-ERROR:  relation "trigpart3" does not exist
 drop trigger trg1 on trigpart3; -- fail due to "does not exist"
-ERROR:  relation "trigpart3" does not exist
+ERROR:  trigger "trg1" for table "trigpart3" does not exist
 alter table trigpart detach partition trigpart4;
 drop trigger trg1 on trigpart41; -- fail due to "does not exist"
 ERROR:  trigger "trg1" for table "trigpart41" does not exist
 drop table trigpart4;
 alter table trigpart attach partition trigpart3 for values from (2000) to (3000);
-ERROR:  relation "trigpart3" does not exist
 alter table trigpart detach partition trigpart3;
-ERROR:  relation "trigpart3" does not exist
 alter table trigpart attach partition trigpart3 for values from (2000) to (3000);
-ERROR:  relation "trigpart3" does not exist
 drop table trigpart3;
-ERROR:  table "trigpart3" does not exist
 select tgrelid::regclass::text, tgname, tgfoid::regproc, tgenabled, tgisinternal from pg_trigger
   where tgname ~ '^trg1' order by 1;
   tgrelid  | tgname |     tgfoid      | tgenabled | tgisinternal
@@ -1995,17 +1993,19 @@ select tgrelid::regclass::text, tgname, tgfoid::regproc, tgenabled, tgisinternal
 (2 rows)
 
 create table trigpart3 (like trigpart);
-ERROR:  LIKE clause not supported yet
-LINE 1: create table trigpart3 (like trigpart);
-                                ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 create trigger trg1 after insert on trigpart3 for each row execute procedure trigger_nothing();
-ERROR:  relation "trigpart3" does not exist
 \d trigpart3
+             Table "public.trigpart3"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | integer |           |          |
+Triggers:
+    trg1 AFTER INSERT ON trigpart3 FOR EACH ROW EXECUTE PROCEDURE trigger_nothing()
+
 alter table trigpart attach partition trigpart3 FOR VALUES FROM (2000) to (3000); -- fail
-ERROR:  relation "trigpart3" does not exist
+ERROR:  trigger "trg1" for relation "trigpart3" already exists
 drop table trigpart3;
-ERROR:  table "trigpart3" does not exist
 drop table trigpart;
 drop function trigger_nothing();
 --
@@ -2350,30 +2350,15 @@ INSERT INTO trgfire VALUES (1);
 CREATE TABLE trgfire2 PARTITION OF trgfire FOR VALUES FROM (10) TO (20);
 INSERT INTO trgfire VALUES (11);
 CREATE TABLE trgfire3 (LIKE trgfire);
-ERROR:  LIKE clause not supported yet
-LINE 1: CREATE TABLE trgfire3 (LIKE trgfire);
-                               ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 ALTER TABLE trgfire ATTACH PARTITION trgfire3 FOR VALUES FROM (20) TO (30);
-ERROR:  relation "trgfire3" does not exist
 INSERT INTO trgfire VALUES (21);
-ERROR:  no partition of relation "trgfire" found for row
-DETAIL:  Partition key of the failing row contains (i) = (21).
 CREATE TABLE trgfire4 PARTITION OF trgfire FOR VALUES FROM (30) TO (40) PARTITION BY LIST (i);
 CREATE TABLE trgfire4_30 PARTITION OF trgfire4 FOR VALUES IN (30);
 INSERT INTO trgfire VALUES (30);
 CREATE TABLE trgfire5 (LIKE trgfire) PARTITION BY LIST (i);
-ERROR:  LIKE clause not supported yet
-LINE 1: CREATE TABLE trgfire5 (LIKE trgfire) PARTITION BY LIST (i);
-                               ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 CREATE TABLE trgfire5_40 PARTITION OF trgfire5 FOR VALUES IN (40);
-ERROR:  relation "trgfire5" does not exist
 ALTER TABLE trgfire ATTACH PARTITION trgfire5 FOR VALUES FROM (40) TO (50);
-ERROR:  relation "trgfire5" does not exist
 INSERT INTO trgfire VALUES (40);
-ERROR:  no partition of relation "trgfire" found for row
-DETAIL:  Partition key of the failing row contains (i) = (40).
 SELECT tgrelid::regclass, tgenabled FROM pg_trigger
   WHERE tgrelid::regclass IN (SELECT oid from pg_class where relname LIKE 'trgfire%')
   ORDER BY tgrelid::regclass::text;
@@ -2382,9 +2367,12 @@ SELECT tgrelid::regclass, tgenabled FROM pg_trigger
  trgfire     | D
  trgfire1    | D
  trgfire2    | D
+ trgfire3    | D
  trgfire4    | D
  trgfire4_30 | D
-(5 rows)
+ trgfire5    | D
+ trgfire5_40 | D
+(8 rows)
 
 ALTER TABLE trgfire ENABLE TRIGGER tg;
 INSERT INTO trgfire VALUES (1);
@@ -2394,14 +2382,14 @@ INSERT INTO trgfire VALUES (11);
 ERROR:  except
 CONTEXT:  PL/pgSQL function tgf() line 1 at RAISE
 INSERT INTO trgfire VALUES (21);
-ERROR:  no partition of relation "trgfire" found for row
-DETAIL:  Partition key of the failing row contains (i) = (21).
+ERROR:  except
+CONTEXT:  PL/pgSQL function tgf() line 1 at RAISE
 INSERT INTO trgfire VALUES (30);
 ERROR:  except
 CONTEXT:  PL/pgSQL function tgf() line 1 at RAISE
 INSERT INTO trgfire VALUES (40);
-ERROR:  no partition of relation "trgfire" found for row
-DETAIL:  Partition key of the failing row contains (i) = (40).
+ERROR:  except
+CONTEXT:  PL/pgSQL function tgf() line 1 at RAISE
 DROP TABLE trgfire;
 DROP FUNCTION tgf();
 --

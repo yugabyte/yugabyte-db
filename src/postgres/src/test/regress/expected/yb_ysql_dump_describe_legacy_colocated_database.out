@@ -1,0 +1,21 @@
+            List of relations
+ Schema |  Name   | Type  |     Owner
+--------+---------+-------+---------------
+ public | htest   | table | yugabyte_test
+ public | htest_1 | table | yugabyte_test
+ public | tbl     | table | yugabyte_test
+ public | tbl2    | table | yugabyte_test
+ public | tbl3    | table | yugabyte_test
+ public | tbl4    | table | yugabyte_test
+(6 rows)
+
+                          List of tablegroups
+ Name | Owner | Access privileges | Description | Tablespace | Options
+------+-------+-------------------+-------------+------------+---------
+(0 rows)
+
+                                                             List of tablegroup tables
+ Group Name | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options | Name | Type | Owner | Rel Description | Size
+------------+-------------+-------------------+-------------------+------------------+---------------+------+------+-------+-----------------+------
+(0 rows)
+

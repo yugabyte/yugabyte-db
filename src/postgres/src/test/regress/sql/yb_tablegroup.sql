@@ -44,9 +44,9 @@ SELECT cl.relname, tg.grpname
 -- These should fail.
 CREATE TABLEGROUP tgroup1;
 CREATE TABLE tgroup_test (col1 int, col2 int) TABLEGROUP bad_tgroupname;
-CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROUP tgroup1;
-CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=true) TABLEGROUP tgroup1;
-CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROUP bad_tgroupname;
+CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocation=false) TABLEGROUP tgroup1;
+CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocation=true) TABLEGROUP tgroup1;
+CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocation=false) TABLEGROUP bad_tgroupname;
 CREATE TEMP TABLE tgroup_temp (col1 int, col2 int) TABLEGROUP tgroup1;
 CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1; -- fail
 CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP; -- fail
@@ -199,7 +199,7 @@ CREATE TABLE tgroup_test6 (col1 int, col2 int) TABLEGROUP grp3;
 -- Interactions with colocated database.
 --
 
-CREATE DATABASE db_colocated colocated=true;
+CREATE DATABASE db_colocated colocation=true;
 \c db_colocated
 -- This should fail.
 CREATE TABLEGROUP tgroup1;

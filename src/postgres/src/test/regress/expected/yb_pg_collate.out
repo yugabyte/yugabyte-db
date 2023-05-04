@@ -32,11 +32,13 @@ LINE 2:     a int COLLATE "C",
 CREATE TABLE collate_test_like (
     LIKE collate_test1
 );
-ERROR:  LIKE clause not supported yet
-LINE 2:     LIKE collate_test1
-            ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 \d collate_test_like
+      Table "collate_tests.collate_test_like"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | text    | C         | not null |
+
 CREATE TABLE collate_test2 (
     a int,
     b text COLLATE "POSIX"

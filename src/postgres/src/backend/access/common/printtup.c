@@ -112,15 +112,16 @@ printtup_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 {
 	DR_printtup *myState = (DR_printtup *) self;
 	Portal		portal = myState->portal;
-	MemoryContext oldcontext;
+	MemoryContext oldcontext = NULL;
 
-	/* Use the runContext of the portal to send out tuple because after each run, the memory space
-	 * for formating data before sending out can be reset.
-	 */
+
 	if (!YBCIsEnvVarTrueWithDefault("FLAGS_ysql_disable_portal_run_context", false)) {
+		/* Use the runContext of the portal to send out tuple because
+		 * after each run, the memory space for formating data before
+		 * sending out can be reset.
+		 */
+		Assert(MemoryContextIsValid(portal->ybRunContext));
 		oldcontext = MemoryContextSwitchTo(portal->ybRunContext);
-	} else {
-		oldcontext = GetCurrentMemoryContext();
 	}
 
 	/*
@@ -160,7 +161,8 @@ printtup_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	 * ----------------
 	 */
 
-	MemoryContextSwitchTo(oldcontext);
+	if(oldcontext)
+		MemoryContextSwitchTo(oldcontext);
 }
 
 /*

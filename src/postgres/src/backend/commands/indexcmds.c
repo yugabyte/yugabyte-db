@@ -70,8 +70,10 @@
 
 /* YB includes. */
 #include "catalog/pg_database.h"
+#include "commands/progress.h"
 #include "commands/tablegroup.h"
 #include "pg_yb_utils.h"
+#include "pgstat.h"
 
 /* non-export function prototypes */
 static bool CompareOpclassOptions(Datum *opts1, Datum *opts2, int natts);
@@ -112,6 +114,9 @@ static bool ReindexRelationConcurrently(Oid relationOid,
 										ReindexParams *params);
 static void update_relispartition(Oid relationId, bool newval);
 static inline void set_indexsafe_procflags(void);
+
+/* YB function declarations. */
+static void YbWaitForBackendsCatalogVersion();
 
 /*
  * callback argument type for RangeVarCallbackForReindexIndex()
@@ -581,6 +586,7 @@ DefineIndex(Oid relationId,
 	bool		relIsShared;
 	Oid tablegroupId = InvalidOid;
 	Oid colocation_id = InvalidOid;
+	bool is_colocated = false;
 
 	root_save_nestlevel = NewGUCNestLevel();
 
@@ -652,6 +658,26 @@ DefineIndex(Oid relationId,
 				(errcode(ERRCODE_TOO_MANY_COLUMNS),
 				 errmsg("cannot use more than %d columns in an index",
 						INDEX_MAX_KEYS)));
+
+#ifdef YB_TODO
+	/* YB_TODO(neil) Need to redo the work on index to reintro Postgres code.
+	 * Code is not mergeable at the current state.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		const int	cols[] = {
+			PROGRESS_CREATEIDX_PHASE,
+			PROGRESS_CREATEIDX_TUPLES_TOTAL,
+			PROGRESS_CREATEIDX_TUPLES_DONE,
+		};
+		const int64	values[] = {
+			YB_PROGRESS_CREATEIDX_INITIALIZING,
+			rel->rd_rel->reltuples,
+			0
+		};
+		pgstat_progress_update_multi_param(3, cols, values);
+	}
+#endif
 
 	/*
 	 * Only SELECT ... FOR UPDATE/SHARE are allowed while doing a standard
@@ -910,6 +936,15 @@ DefineIndex(Oid relationId,
 						   get_tablespace_name(tablespaceId));
 	}
 
+	/*
+	 * Get whether the indexed table is colocated
+	 * (either via database or a tablegroup).
+	 */
+	is_colocated = (IsYBRelation(rel) &&
+					!IsBootstrapProcessingMode() &&
+					!YbIsConnectedToTemplateDb() &&
+					YbGetTableProperties(rel)->is_colocated);
+
 	if (IsYBRelation(rel))
 	{
 		/* Use tablegroup of the indexed table, if any. */
@@ -923,17 +958,6 @@ DefineIndex(Oid relationId,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("Cannot use TABLEGROUP with SPLIT.")));
 		}
-
-
-		/*
-		 * Get whether the indexed table is colocated
-		 * (either via database or a tablegroup).
-		 */
-		bool is_colocated =
-			IsYBRelation(rel) &&
-			!IsBootstrapProcessingMode() &&
-			!YbIsConnectedToTemplateDb() &&
-			YbGetTableProperties(rel)->is_colocated;
 
 		colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
 
@@ -1413,7 +1437,7 @@ DefineIndex(Oid relationId,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
-					 !concurrent, tablegroupId, colocation_id);
+					 !concurrent, is_colocated, tablegroupId, colocation_id);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
@@ -1935,15 +1959,15 @@ DefineIndex(Oid relationId,
 		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 		 * level 1).
 		 */
-		YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
-								   false /* is_breaking_catalog_change */);
+		YBDecrementDdlNestingLevel();
 		CommitTransactionCommand();
 
 		/* Delay after committing pg_index update. */
 		pg_usleep(yb_index_state_flags_update_delay * 1000);
 
 		StartTransactionCommand();
-		YBIncrementDdlNestingLevel();
+		YBIncrementDdlNestingLevel(true /* is_catalog_version_increment */,
+								   false /* is_breaking_catalog_change */);
 
 		/*
 		 * Update the pg_index row to mark the index as ready for inserts.
@@ -1957,15 +1981,15 @@ DefineIndex(Oid relationId,
 		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 		 * level 1).
 		 */
-		YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
-								   false /* is_breaking_catalog_change */);
+		YBDecrementDdlNestingLevel();
 		CommitTransactionCommand();
 
 		/* Delay after committing pg_index update. */
 		pg_usleep(yb_index_state_flags_update_delay * 1000);
 
 		StartTransactionCommand();
-		YBIncrementDdlNestingLevel();
+		YBIncrementDdlNestingLevel(true /* is_catalog_version_increment */,
+								   false /* is_breaking_catalog_change */);
 
 		/* TODO(jason): handle exclusion constraints, possibly not here. */
 
@@ -2211,7 +2235,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 									errmsg("hash column not allowed after an ASC/DESC column")));
-						else if (tablegroupId != InvalidOid)
+						else if (tablegroupId != InvalidOid && !MyDatabaseColocated)
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 									 errmsg("cannot create a hash partitioned"

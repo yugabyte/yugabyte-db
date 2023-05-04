@@ -81,10 +81,15 @@
 
 /*  YB includes. */
 #include "access/sysattr.h"
+#include "catalog/dependency.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_depend.h"
+#include "catalog/pg_shdepend.h"
+#include "catalog/yb_catalog_version.h"
 #include "executor/ybcModifyTable.h"
 #include "optimizer/ybcplan.h"
 #include "parser/parsetree.h"
+#include "utils/syscache.h"
 #include "utils/typcache.h"
 
 #include "pg_yb_utils.h"
@@ -209,6 +214,14 @@ static TupleTableSlot *mergeGetUpdateNewTuple(ResultRelInfo *relinfo,
 											  TupleTableSlot *oldSlot,
 											  MergeActionState *relaction);
 
+
+static void YbPostProcessDml(CmdType cmd_type,
+							 Relation rel,
+							 TupleDesc desc,
+							 HeapTuple newtup);
+static void YbHandlePossibleObjectPinning(TupleDesc desc,
+										  HeapTuple tuple,
+										  bool is_shared_dep);
 
 /*
  * Verify that the tuples to be produced by INSERT match the
@@ -1260,6 +1273,7 @@ ExecInsert(ModifyTableContext *context,
 				 * - Create tuple as a workaround to compile.
 				 * - Pass slot to Yugabyte call once the API is fixed.
 				 */
+				MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 				bool shouldFree = true;
 				HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
 
@@ -1270,6 +1284,7 @@ ExecInsert(ModifyTableContext *context,
 					recheckIndexes = ExecInsertIndexTuples(resultRelInfo, slot, estate, false, true,
 														   NULL, NIL,
 														   NIL /* no_update_index_list */);
+				MemoryContextSwitchTo(oldContext);
 			}
 			else
 			{
@@ -1286,6 +1301,16 @@ ExecInsert(ModifyTableContext *context,
 			}
 		}
 	}
+
+#ifdef YB_TODO
+	/* YB_TODO(neil) Postgres no longer uses tuple. Pg15 uses slot.
+	 * Either convert slot to tuple or change yb API to support slot.
+	 */
+	YbPostProcessDml(CMD_INSERT,
+					 resultRelationDesc,
+					 slot->tts_tupleDescriptor,
+					 tuple);
+#endif
 
 	if (canSetTag)
 		(estate->es_processed)++;
@@ -1623,8 +1648,23 @@ ExecDelete(ModifyTableContext *context,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
+#if YB_TODO
+		/* YB_TODO(neil) Check this code. It's from
+		   commit efccad40c368e0148bd08bf8a6b77608fdfebcda
+		   Author: Alex Abdugafarov <frozenspider@users.noreply.github.com>
+		   Date:   Thu Apr 28 23:06:03 2022 +0500
+		 */
 		bool row_found = YBCExecuteDelete(resultRelationDesc, context->planSlot, estate,
 										  context->mtstate, changingPart);
+#endif
+		bool row_found = YBCExecuteDelete(resultRelationDesc,
+										  context->planSlot,
+										  ((ModifyTable *)context->mtstate->ps.plan)->ybReturningColumns,
+										  context->mtstate->yb_fetch_target_tuple,
+										  estate->yb_es_is_single_row_modify_txn,
+										  changingPart,
+										  estate);
+
 		if (!row_found)
 		{
 			/*
@@ -1814,6 +1854,11 @@ ldelete:;
 		 */
 	}
 
+	YbPostProcessDml(CMD_DELETE,
+					 resultRelationDesc,
+					 NULL /* desc */,
+					 NULL /* newtup */);
+
 	if (canSetTag)
 		(estate->es_processed)++;
 
@@ -1839,10 +1884,18 @@ ldelete:;
 		}
 		else if (IsYBRelation(resultRelationDesc))
 		{
+#ifdef YB_TODO
+			/* YB_TODO(neil) Need to trace Alex's commit efccad40c368e0148bd08bf8a6b77608fdfebcda */
+			if (mtstate->yb_fetch_target_tuple)
+			{
+				slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+			}
+			/* Previous code */
 			if (context->mtstate->yb_mt_is_single_row_update_or_delete)
 			{
 				slot = context->planSlot;
 			}
+#endif
 
 #ifdef YB_TODO
 			/* TODO(neil@yugabyte)
@@ -1897,6 +1950,7 @@ ldelete:;
 static bool
 YBEqualDatums(Datum lhs, Datum rhs, Oid atttypid, Oid collation)
 {
+	LOCAL_FCINFO(locfcinfo, 2);
 	TypeCacheEntry *typentry = lookup_type_cache(atttypid, TYPECACHE_CMP_PROC_FINFO);
 	if (!OidIsValid(typentry->cmp_proc_finfo.fn_oid))
 		ereport(ERROR,
@@ -1904,13 +1958,14 @@ YBEqualDatums(Datum lhs, Datum rhs, Oid atttypid, Oid collation)
 		         errmsg("could not identify a comparison function for type %s",
 		                format_type_be(typentry->type_id))));
 
-	FunctionCallInfoData locfcinfo;
-	InitFunctionCallInfoData(locfcinfo, &typentry->cmp_proc_finfo, 2, collation, NULL, NULL);
-	locfcinfo.arg[0] = lhs;
-	locfcinfo.arg[1] = rhs;
-	locfcinfo.argnull[0] = false;
-	locfcinfo.argnull[1] = false;
-	return DatumGetInt32(FunctionCallInvoke(&locfcinfo)) == 0;
+	/* YB_TODOneil) Need to verify if this code works. FuncCallInfo now uses Pg15 structure */
+	InitFunctionCallInfoData(*locfcinfo, &typentry->cmp_proc_finfo, 2, collation, NULL, NULL);
+	locfcinfo->args[0].value = lhs;
+	locfcinfo->args[0].isnull = false;
+	locfcinfo->args[1].value = rhs;
+	locfcinfo->args[1].isnull = false;
+	locfcinfo->isnull = false;
+	return DatumGetInt32(FunctionCallInvoke(locfcinfo)) == 0;
 }
 
 /* ----------------------------------------------------------------
@@ -2692,12 +2747,21 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 			}
 		}
 #endif
-		bool is_pk_updated =
-			bms_overlap(YBGetTablePrimaryKeyBms(resultRelationDesc), actualUpdatedCols);
 
+		Bitmapset *primary_key_bms = YBGetTablePrimaryKeyBms(resultRelationDesc);
+		bool is_pk_updated = bms_overlap(primary_key_bms, actualUpdatedCols);
+		bms_free(primary_key_bms);
+
+		/*
+		 * TODO(alex): It probably makes more sense to pass a
+		 *             transformed slot instead of a plan slot? Note though
+		 *             that it can have tuple materialized already.
+		 */
+
+		ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
 		if (is_pk_updated)
 		{
-			YBCExecuteUpdateReplace(resultRelationDesc, context->planSlot, tuple, estate, mtstate);
+			YBCExecuteUpdateReplace(resultRelationDesc, context->planSlot, tuple, estate);
 			row_found = true;
 		}
 		else
@@ -2705,9 +2769,12 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 			row_found = YBCExecuteUpdate(resultRelationDesc,
 										 resultRelInfo,
 										 context->planSlot,
+										 oldtuple,
 										 tuple,
 										 estate,
-										 mtstate,
+										 plan,
+										 mtstate->yb_fetch_target_tuple,
+										 estate->yb_es_is_single_row_modify_txn,
 										 actualUpdatedCols,
 										 canSetTag);
 		}
@@ -2722,9 +2789,12 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 			return NULL;
 		}
 
-		/* Update indices selectively if necessary, Single row updates do not affect indices */
+		/*
+		 * Update indices selectively if necessary, updates w/o fetched target tuple
+		 * do not affect indices.
+		 */
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
-		    !mtstate->yb_mt_is_single_row_update_or_delete)
+			mtstate->yb_fetch_target_tuple)
 		{
 			Datum	ybctid = YBCGetYBTupleIdFromSlot(context->planSlot);
 			List *no_update_index_list = ((ModifyTable *)mtstate->ps.plan)->no_update_index_list;
@@ -2897,6 +2967,11 @@ redo_act:
 				return NULL;
 		}
 	}
+
+	YbPostProcessDml(CMD_UPDATE,
+					 resultRelationDesc,
+					 slot->tts_tupleDescriptor,
+					 tuple);
 
 	if (canSetTag)
 		(estate->es_processed)++;
@@ -4567,7 +4642,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	mtstate->mt_merge_updated = 0;
 	mtstate->mt_merge_deleted = 0;
 
-	mtstate->yb_mt_is_single_row_update_or_delete = YBCIsSingleRowUpdateOrDelete(node);
+	mtstate->yb_fetch_target_tuple = !YbCanSkipFetchingTargetTupleForModifyTable(node);
 
 	/*----------
 	 * Resolve the target relation. This is the same as:
@@ -4685,7 +4760,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 			relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
 			if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 			{
-				if (!mtstate->yb_mt_is_single_row_update_or_delete) {
+				if (!mtstate->yb_fetch_target_tuple) {
 					resultRelInfo->ri_RowIdAttNo =
 						ExecFindJunkAttributeInTlist(subplan->targetlist, "ybctid");
 					if (!AttributeNumberIsValid(resultRelInfo->ri_RowIdAttNo))
@@ -5018,7 +5093,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 */
 		if (IsYBRelation(mtstate->resultRelInfo->ri_RelationDesc))
 		{
-			junk_filter_needed = !mtstate->yb_mt_is_single_row_update_or_delete;
+			junk_filter_needed = mtstate->yb_fetch_target_tuple;
 		}
 		else
 		{
@@ -5124,4 +5199,104 @@ ExecReScanModifyTable(ModifyTableState *node)
 	 * semantics of that would be a bit debatable anyway.
 	 */
 	elog(ERROR, "ExecReScanModifyTable is not implemented");
+}
+
+/*
+ * Should be called after INSERT/UPDATE/DELETE has been processed.
+ * For DELETE, both desc and newtup will be NULL.
+ */
+static void YbPostProcessDml(CmdType cmd_type,
+							 Relation rel,
+							 TupleDesc desc,
+							 HeapTuple newtup)
+{
+	if (!IsYBRelation(rel) || IsBootstrapProcessingMode())
+		return; /* Nothing to do*/
+
+	if (!YbIsSystemCatalogChange(rel))
+		return; /* We only care about system table changes here. */
+
+	/* This routine is for a very specific set of DMLs. */
+	Assert(cmd_type != CMD_INSERT ||
+		   cmd_type != CMD_UPDATE ||
+		   cmd_type != CMD_DELETE);
+
+	/*
+	 * TODO(alex, myang):
+	 *   Mark system catalogs as directly modified so that we know to increment
+	 *   catalog version. Handle shared table modification as well!
+	 */
+
+	/*
+	 * Update pinned objects cache if pg_depend/pg_shdepend was modified.
+	 */
+	bool is_shared_dep;
+
+	if (RelationGetRelid(rel) == DependRelationId)
+		is_shared_dep = false;
+	else if (RelationGetRelid(rel) == SharedDependRelationId)
+		is_shared_dep = true;
+	else
+		return; /* Nothing more to do */
+
+	if (cmd_type == CMD_INSERT)
+	{
+		YbHandlePossibleObjectPinning(desc, newtup, is_shared_dep);
+	}
+	else
+	{
+		/*
+		 * In YB, we do not fetch the deleted tuple content and thus we don't
+		 * know what exactly was deleted.
+		 * As a workaround, we invalidate the cache as a whole.
+		 * For simplicity, we do the same for UPDATE.
+		 */
+		 YbResetPinnedCache();
+	}
+}
+
+/*
+ * When inserting a new value into pg_depend or pg_shdepend, it should be reflected in the
+ * YB pinned object cache.
+ * This function takes care of that.
+ */
+static void
+YbHandlePossibleObjectPinning(TupleDesc desc,
+							  HeapTuple tuple,
+							  bool is_shared_dep)
+{
+	Assert(tuple != NULL);
+
+	int attnum_deptype = is_shared_dep ? Anum_pg_shdepend_deptype
+									   : Anum_pg_depend_deptype;
+	int attnum_refclassid = is_shared_dep ? Anum_pg_shdepend_refclassid
+										  : Anum_pg_depend_refclassid;
+	int attnum_refobjid = is_shared_dep ? Anum_pg_shdepend_refobjid
+										: Anum_pg_depend_refobjid;
+#ifdef YB_TODO
+	/* Pg15  No longer use pin */
+	char pin_deptype = is_shared_dep ? SHARED_DEPENDENCY_PIN
+									 : DEPENDENCY_PIN;
+#else
+	char pin_deptype = DEPENDENCY_PARTITION_PRI;
+#endif
+
+	bool is_null; /* Can never really be null. */
+
+	char deptype = DatumGetChar(
+		heap_getattr(tuple, attnum_deptype, desc, &is_null));
+	Assert(!is_null);
+
+	if (deptype != pin_deptype)
+		return; /* Nothing to do here. */
+
+	Oid refclassid = DatumGetObjectId(
+		heap_getattr(tuple, attnum_refclassid, desc, &is_null));
+	Assert(!is_null);
+
+	Oid refobjid = DatumGetObjectId(
+		heap_getattr(tuple, attnum_refobjid, desc, &is_null));
+	Assert(!is_null);
+
+	YbPinObjectIfNeeded(refclassid, refobjid, is_shared_dep);
 }
