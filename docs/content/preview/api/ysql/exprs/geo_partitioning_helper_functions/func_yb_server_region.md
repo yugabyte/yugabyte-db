@@ -158,7 +158,7 @@ SELECT * FROM users WHERE geo_partition=yb_server_region();
 
 {{< note title="Note" >}}
 
-If you didn't set the placement_region flag at node startup, yb_server_region() returns NULL.
+If you didn't set the placement_zone flag at node startup, yb_server_zone() returns NULL.
 
 {{< /note >}}
 

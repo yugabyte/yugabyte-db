@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-`yb_server_zone()` returns the region that user's server is connected to.
+`yb_server_zone()` returns the zone that a user's server is connected to.
 
 ## Examples
 
@@ -39,6 +39,7 @@ If you didn't set the placement_region flag at node startup, yb_server_region() 
 {{< /note >}}
 
 ## See also
+
 - [`yb_server_cloud()`](../func_yb_server_cloud)
 - [`yb_server_region()`](../func_yb_server_region)
 - [`yb_is_local_table(oid)`](../func_yb_is_local_table)
