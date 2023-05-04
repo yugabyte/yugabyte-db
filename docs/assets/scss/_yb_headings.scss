@@ -1,32 +1,4 @@
 .td-content {
-  h1 {
-    .tag-beta {
-      text-decoration: none;
-      text-transform: uppercase;
-      margin: 0 10px;
-      background: #7879f1;
-      border: 1px solid #7879f1;
-      border-radius: 6px;
-      font-weight: 500;
-      font-size: 13px;
-      line-height: 16px;
-      color: #fff;
-      display: inline-flex;
-      justify-content: center;
-      align-items: center;
-      position: relative;
-      top: -2px;
-      vertical-align: middle;
-      padding: 3px 7px;
-
-      &:hover,
-      &:focus,
-      &:active {
-        background: rgba(120, 121, 241, 0.8);
-      }
-    }
-  }
-
   p {
     margin: 0 0 24px 0;
 
