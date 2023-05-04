@@ -31,7 +31,7 @@ ALTER TABLE IF EXISTS xcluster_table_config
 
 -- Add unique constraint to xcluster_table_config.stream_id.
 ALTER TABLE IF EXISTS xcluster_table_config
-   DROP CONSTRAINT IF EXISTS uq_xcluster_table_config_stream_id;
+    DROP CONSTRAINT IF EXISTS uq_xcluster_table_config_stream_id;
 
 ALTER TABLE IF EXISTS xcluster_table_config
     ADD CONSTRAINT uq_xcluster_table_config_stream_id
@@ -39,7 +39,7 @@ ALTER TABLE IF EXISTS xcluster_table_config
 
 -- Add foreign key constraint from xcluster_table_config.backup_uuid to backup.backup_uuid.
 ALTER TABLE IF EXISTS xcluster_table_config
-   DROP CONSTRAINT IF EXISTS fk_xcluster_table_config_backup_uuid;
+    DROP CONSTRAINT IF EXISTS fk_xcluster_table_config_backup_uuid;
 
 ALTER TABLE IF EXISTS xcluster_table_config
     ADD CONSTRAINT fk_xcluster_table_config_backup_uuid

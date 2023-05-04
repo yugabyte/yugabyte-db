@@ -6,7 +6,7 @@ ALTER TABLE IF EXISTS xcluster_config
 
 -- Add check constraint for possible values of xcluster_config.table_type.
 ALTER TABLE IF EXISTS xcluster_config
-   DROP CONSTRAINT IF EXISTS ck_xcluster_config_table_type;
+    DROP CONSTRAINT IF EXISTS ck_xcluster_config_table_type;
 
 ALTER TABLE IF EXISTS xcluster_config
     ADD CONSTRAINT ck_xcluster_config_table_type
