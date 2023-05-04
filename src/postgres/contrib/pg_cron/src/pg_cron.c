@@ -89,6 +89,9 @@
 #include "libpq/pqformat.h"
 #include "utils/builtins.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 #if (PG_VERSION_NUM < 120000)
 #define table_open(r, l) heap_open(r, l)
 #define table_close(r, l) heap_close(r, l)

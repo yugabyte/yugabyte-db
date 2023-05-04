@@ -141,6 +141,9 @@
 #include "utils/timestamp.h"
 #include "utils/tqual.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 
 /*
  * Maximum size of a NOTIFY payload, including terminating NULL.  This

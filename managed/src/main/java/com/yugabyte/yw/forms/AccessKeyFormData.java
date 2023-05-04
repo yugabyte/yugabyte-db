@@ -64,6 +64,9 @@ public class AccessKeyFormData {
   @ApiModelProperty(hidden = true)
   public List<String> ntpServers;
 
+  @ApiModelProperty(hidden = true)
+  public Boolean skipKeyValidateAndUpload;
+
   // Indicates whether the provider was created before or after PLAT-3009.
   // True if it was created after, else it was created before.
   // This should be true so that all new providers are marked as true by default.
@@ -114,6 +117,8 @@ public class AccessKeyFormData {
     if (ntpServers == null) ntpServers = Collections.emptyList();
 
     if (showSetUpChrony == null) showSetUpChrony = true;
+
+    if (skipKeyValidateAndUpload == null) skipKeyValidateAndUpload = false;
 
     return this;
   }

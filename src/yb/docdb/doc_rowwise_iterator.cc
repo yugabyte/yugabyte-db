@@ -184,7 +184,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
 
   for (;;) {
     if (db_iter_->IsOutOfRecords() || (scan_choices_ && scan_choices_->FinishedWithScanChoices())) {
-      Done();
+      done_ = true;
       return false;
     }
 
@@ -218,14 +218,14 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
 
     // e.g in cotable, row may point outside table bounds.
     if (!dockv::DocKeyBelongsTo(key_data.key, doc_read_context_.schema)) {
-      Done();
+      done_ = true;
       return false;
     }
 
     RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(db_iter_->value())));
 
     if (has_bound_key_ && is_forward_scan_ == (row_key_.compare(bound_key_) >= 0)) {
-      Done();
+      done_ = true;
       return false;
     }
 

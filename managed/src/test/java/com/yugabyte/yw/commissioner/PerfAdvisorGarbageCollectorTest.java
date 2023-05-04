@@ -81,7 +81,12 @@ public class PerfAdvisorGarbageCollectorTest extends FakePerfAdvisorDBTest {
     Mockito.doReturn(Duration.ofMillis(30)).when(recommendationGarbageCollector).gcCheckInterval();
     recommendationGarbageCollector.start();
     for (int i = 0; i < 100; i++) {
-      if (defaultRegistry.getSampleValue(getTotalCounterName(NUM_REC_GC_RUNS)) > 0) {
+      Double recommendationsGCed =
+          defaultRegistry.getSampleValue(
+              getTotalCounterName(RECOMMENDATION_METRIC_NAME),
+              new String[] {CUSTOMER_UUID_LABEL},
+              new String[] {customer.getUuid().toString()});
+      if (recommendationsGCed != null && recommendationsGCed > 0) {
         // Wait while PA GC run happens for up to 10 seconds.
         break;
       }

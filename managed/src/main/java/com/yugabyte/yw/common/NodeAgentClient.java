@@ -39,6 +39,8 @@ import io.grpc.ForwardingClientCall;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
+import io.grpc.Status.Code;
+import io.grpc.StatusRuntimeException;
 import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
 import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
 import io.grpc.netty.shaded.io.netty.channel.ChannelOption;
@@ -80,7 +82,6 @@ import org.apache.commons.lang3.builder.HashCodeBuilder;
 @Singleton
 public class NodeAgentClient {
   public static final String NODE_AGENT_CONNECT_TIMEOUT_PROPERTY = "yb.node_agent.connect_timeout";
-  public static final String NODE_AGENT_CLIENT_ENABLED_PROPERTY = "yb.node_agent.client.enabled";
   public static final Duration IDLE_CONNECT_TIMEOUT = Duration.ofMinutes(20);
   public static final int FILE_UPLOAD_CHUNK_SIZE_BYTES = 4096;
 
@@ -385,7 +386,8 @@ public class NodeAgentClient {
   }
 
   public boolean isClientEnabled(Provider provider) {
-    return confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
+    return provider.getDetails().isEnableNodeAgent()
+        && confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
   }
 
   public boolean isAnsibleOffloadingEnabled(NodeAgent nodeAgent, Provider provider) {
@@ -447,11 +449,12 @@ public class NodeAgentClient {
         PingResponse response = ping(nodeAgent);
         nodeAgent.updateOffloadable(response.getServerInfo().getOffloadable());
         return response;
-      } catch (RuntimeException e) {
-        log.warn(
-            "Error in validating connection to node agent {} - {}",
-            nodeAgent.getIp(),
-            e.getMessage());
+      } catch (StatusRuntimeException e) {
+        if (e.getStatus().getCode() != Code.UNAVAILABLE) {
+          log.error("Error in connecting to Node agent {} - {}", nodeAgent.getIp(), e.getStatus());
+          throw e;
+        }
+        log.warn("Node agent {} is not reachable", nodeAgent.getIp());
         if (stopwatch.elapsed().compareTo(timeout) > 0) {
           throw e;
         }
@@ -461,6 +464,9 @@ public class NodeAgentClient {
           throw new RuntimeException(ex);
         }
         log.info("Retrying connection validation to node agent {}", nodeAgent.getIp());
+      } catch (RuntimeException e) {
+        log.error("Error in connecting to Node agent {} - {}", nodeAgent.getIp(), e.getMessage());
+        throw e;
       }
     }
   }

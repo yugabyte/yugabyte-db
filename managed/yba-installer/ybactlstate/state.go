@@ -2,6 +2,7 @@ package ybactlstate
 
 import (
 	"github.com/spf13/viper"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
 )
 
@@ -15,11 +16,13 @@ type State struct {
 	RootInstall     string        `json:"root_install"`
 	Username        string        `json:"username"`
 	Postgres        PostgresState `json:"postgres"`
+	Ybdb            YbdbState     `json:"ybdb"`
 	_internalFields internalFields
 }
 
 type PostgresState struct {
 	UseExisting bool `json:"UseExisting"`
+	IsEnabled   bool `json:"enabled"`
 }
 
 func New() *State {
@@ -29,12 +32,20 @@ func New() *State {
 		Username:    viper.GetString("service_username"),
 		Postgres: PostgresState{
 			UseExisting: viper.GetBool("postgres.useExisting.enabled"),
+			IsEnabled:   common.IsPostgresEnabled(),
+		},
+		Ybdb: YbdbState{
+			IsEnabled: viper.GetBool("ybdb.install.enabled"),
 		},
 		_internalFields: internalFields{
 			ChangeID:      0,
 			SchemaVersion: schemaVersion,
 		},
 	}
+}
+
+type YbdbState struct {
+	IsEnabled bool `json:"enabled"`
 }
 
 type internalFields struct {

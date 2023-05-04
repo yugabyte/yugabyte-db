@@ -18,7 +18,6 @@
 #include <utility>
 
 #include "yb/common/row_mark.h"
-#include "yb/common/ybc_util.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
@@ -34,6 +33,7 @@
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 using std::string;
 

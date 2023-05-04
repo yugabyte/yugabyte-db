@@ -39,7 +39,7 @@ import { RegionList } from '../../components/RegionList';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { NTPConfigField } from '../../components/NTPConfigField';
-import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, getIsFormDisabled, readFileAsText } from '../utils';
 import { FormContainer } from '../components/FormContainer';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
@@ -154,6 +154,7 @@ export const AWSProviderCreateForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isForceSubmitting, setIsForceSubmitting] = useState<boolean>(false);
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const [
     quickValidationErrors,
@@ -218,7 +219,8 @@ export const AWSProviderCreateForm = ({
   };
   const onFormSubmit = async (
     formValues: AWSProviderCreateFormFieldValues,
-    shouldValidate = true
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
   ) => {
     clearErrors();
 
@@ -232,9 +234,16 @@ export const AWSProviderCreateForm = ({
     try {
       const providerPayload = await constructProviderPayload(formValues);
       try {
+        setIsForceSubmitting(ignoreValidationErrors);
         await createInfraProvider(providerPayload, {
           shouldValidate: shouldValidate,
-          mutateOptions: { onError: handleFormSubmitServerError }
+          ignoreValidationErrors: ignoreValidationErrors,
+          mutateOptions: {
+            onError: handleFormSubmitServerError,
+            onSettled: () => {
+              setIsForceSubmitting(false);
+            }
+          }
         });
       } catch (_) {
         // Request errors are handled by the onError callback
@@ -247,7 +256,7 @@ export const AWSProviderCreateForm = ({
     formValues
   ) => await onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation);
   const onFormForceSubmit: SubmitHandler<AWSProviderCreateFormFieldValues> = async (formValues) =>
-    await onFormSubmit(formValues, false);
+    await onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation, true);
 
   const showAddRegionFormModal = () => {
     setRegionSelection(undefined);
@@ -268,7 +277,7 @@ export const AWSProviderCreateForm = ({
     setIsRegionFormModalOpen(false);
   };
   const skipValidationAndSubmit = () => {
-    formMethods.handleSubmit(onFormForceSubmit);
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const regions = formMethods.watch('regions', defaultValues.regions);
@@ -305,7 +314,7 @@ export const AWSProviderCreateForm = ({
   const enableHostedZone = formMethods.watch('enableHostedZone', defaultValues.enableHostedZone);
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
   const ybImageType = formMethods.watch('ybImageType', defaultValues.ybImageType);
-  const isFormDisabled = formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const isFormDisabled = getIsFormDisabled(formMethods.formState) || isForceSubmitting;
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -556,7 +565,7 @@ export const AWSProviderCreateForm = ({
               }
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton

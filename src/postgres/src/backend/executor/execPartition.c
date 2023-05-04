@@ -31,6 +31,9 @@
 #include "utils/rls.h"
 #include "utils/ruleutils.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 
 /*-----------------------
  * PartitionDispatch - information about one partitioned table in a partition

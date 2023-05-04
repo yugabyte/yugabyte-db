@@ -45,10 +45,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -61,6 +63,8 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -1402,6 +1406,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Customer k8sCustomer =
         ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    k8sProvider.getDetails().setCloudInfo(new ProviderDetails.CloudInfo());
+    k8sProvider.getDetails().getCloudInfo().setKubernetes(new KubernetesInfo());
+    k8sProvider.getDetails().getCloudInfo().getKubernetes().setLegacyK8sProvider(false);
+    k8sProvider.getDetails().getCloudInfo().getKubernetes().setKubeConfig("k8s-1");
+    k8sProvider.save();
+
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
     AvailabilityZone az1 =
@@ -1423,16 +1433,61 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     az2.save();
     envVars = CloudInfoInterface.fetchEnvVars(az2);
     expectedConfigs.put(az2.getUuid(), envVars);
-    config.put("KUBECONFIG", "az3");
-    az3.updateConfig(config);
-    az3.save();
-    envVars = CloudInfoInterface.fetchEnvVars(az3);
+    envVars = CloudInfoInterface.fetchEnvVars(k8sProvider);
     expectedConfigs.put(az3.getUuid(), envVars);
 
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi);
     PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi);
     PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi);
+
+    assertEquals(expectedConfigs, KubernetesUtil.getConfigPerAZ(pi));
+  }
+
+  @Test
+  public void testK8sConfigPerAZLegacyProviders() {
+    // Legacy k8s providers are providers created before YBA version 2.18
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer =
+        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    k8sProvider.getDetails().setCloudInfo(new ProviderDetails.CloudInfo());
+    k8sProvider.getDetails().getCloudInfo().setKubernetes(new KubernetesInfo());
+    k8sProvider.getDetails().getCloudInfo().getKubernetes().setLegacyK8sProvider(true);
+    k8sProvider.getDetails().getCloudInfo().getKubernetes().setKubeConfig("k8s-1");
+    k8sProvider.save();
+
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone az1 =
+        AvailabilityZone.createOrThrow(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 =
+        AvailabilityZone.createOrThrow(r1, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    AvailabilityZone az3 =
+        AvailabilityZone.createOrThrow(r2, "PlacementAZ " + 3, "az-" + 3, "subnet-" + 3);
+
+    az1.getDetails().setCloudInfo(new AvailabilityZoneDetails.AZCloudInfo());
+    az1.getDetails().getCloudInfo().setKubernetes(new KubernetesRegionInfo());
+    az1.getDetails().getCloudInfo().getKubernetes().setKubeNamespace("ns-1");
+
+    az2.getDetails().setCloudInfo(new AvailabilityZoneDetails.AZCloudInfo());
+    az2.getDetails().getCloudInfo().setKubernetes(new KubernetesRegionInfo());
+    az2.getDetails().getCloudInfo().getKubernetes().setKubeNamespace("ns-2");
+
+    az3.getDetails().setCloudInfo(new AvailabilityZoneDetails.AZCloudInfo());
+    az3.getDetails().getCloudInfo().setKubernetes(new KubernetesRegionInfo());
+    az3.getDetails().getCloudInfo().getKubernetes().setKubeNamespace("ns-3");
+
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi);
+
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(k8sProvider);
+    Map<UUID, Map<String, String>> expectedConfigs = new HashMap<>();
+    expectedConfigs.put(az1.getUuid(), envVars);
+    expectedConfigs.put(az2.getUuid(), envVars);
+    expectedConfigs.put(az3.getUuid(), envVars);
 
     assertEquals(expectedConfigs, KubernetesUtil.getConfigPerAZ(pi));
   }

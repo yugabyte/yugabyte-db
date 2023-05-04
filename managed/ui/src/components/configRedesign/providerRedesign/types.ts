@@ -9,6 +9,7 @@ import {
   KeyPairManagement,
   KubernetesProvider,
   ProviderCode,
+  ProviderStatus,
   VPCSetupType
 } from './constants';
 
@@ -104,6 +105,7 @@ interface Provider extends ProviderBase {
   hostVpcRegion: string;
   keyPairName: string;
   sshPrivateKeyContent: string;
+  usabilityState: ProviderStatus;
   uuid: string;
   version: number;
 }
@@ -270,6 +272,7 @@ interface K8sCloudInfoMutation extends K8sCloudInfoBase {
   kubernetesPullSecretContent?: string;
 
   kubeConfigContent?: string; // Kube Config can be specified at the Provider, Region and Zone level
+  kubeConfig?: string; // filepath - EDIT ONLY.
 }
 interface K8sCloudInfo extends K8sCloudInfoBase {
   kubernetesProvider: KubernetesProvider;

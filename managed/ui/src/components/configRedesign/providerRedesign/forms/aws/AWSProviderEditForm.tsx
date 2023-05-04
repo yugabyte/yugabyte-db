@@ -57,6 +57,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { YBButton as YBRedesignedButton } from '../../../../../redesign/components';
@@ -172,6 +173,7 @@ export const AWSProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isForceSubmitting, setIsForceSubmitting] = useState<boolean>(false);
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const [
     quickValidationErrors,
@@ -227,10 +229,10 @@ export const AWSProviderEditForm = ({
   };
   const onFormSubmit = async (
     formValues: AWSProviderEditFormFieldValues,
-    shouldValidate = true
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
   ) => {
     clearErrors();
-
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -242,9 +244,16 @@ export const AWSProviderEditForm = ({
     try {
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
+        setIsForceSubmitting(ignoreValidationErrors);
         await editProvider(providerPayload, {
           shouldValidate: shouldValidate,
-          mutateOptions: { onError: handleFormSubmitServerError }
+          ignoreValidationErrors: ignoreValidationErrors,
+          mutateOptions: {
+            onError: handleFormSubmitServerError,
+            onSettled: () => {
+              setIsForceSubmitting(false);
+            }
+          }
         });
       } catch (_) {
         // Handled by onError callback
@@ -257,7 +266,7 @@ export const AWSProviderEditForm = ({
     formValues
   ) => onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation);
   const onFormForceSubmit: SubmitHandler<AWSProviderEditFormFieldValues> = async (formValues) =>
-    onFormSubmit(formValues, false);
+    onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation, true);
 
   const showAddRegionFormModal = () => {
     setRegionSelection(undefined);
@@ -316,7 +325,7 @@ export const AWSProviderEditForm = ({
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
   const isFormDisabled =
-    isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+    getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig) || isForceSubmitting;
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -619,7 +628,7 @@ export const AWSProviderEditForm = ({
               }
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton

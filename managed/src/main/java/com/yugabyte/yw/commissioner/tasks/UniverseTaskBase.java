@@ -121,7 +121,6 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.forms.BackupRequestParams;
-import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
@@ -1153,7 +1152,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
-    NodeAgentManager nodeAgentManager = application.injector().instanceOf(NodeAgentManager.class);
+    NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
     Universe universe = getUniverse();
     for (NodeDetails node : nodes) {
       if (node.cloudInfo == null) {
@@ -1161,7 +1160,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
       Cluster cluster = getUniverse().getCluster(node.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      if (nodeAgentManager.isServerToBeInstalled(provider)) {
+      if (nodeAgentClient.isClientEnabled(provider)) {
         if (provider.getCloudCode() == CloudType.onprem) {
           AccessKey accessKey =
               AccessKey.getOrBadRequest(provider.getUuid(), cluster.userIntent.accessKeyCode);
@@ -2365,7 +2364,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               Backup.BackupVersion.V2);
       backupRequestParams.backupUUID = backup.getBackupUUID();
       if (ybcBackup) {
-        backupRequestParams.initializeBackupDBStates(backup.getBackupParamsCollection());
+        backup.getBackupInfo().initializeBackupDBStates();
       }
 
       // Save backupUUID to taskInfo of the CreateBackup task.
@@ -2389,10 +2388,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 createEncryptedUniverseKeyBackupTask(paramEntry)
                     .setSubTaskGroupType(subTaskGroupType));
     if (ybcBackup) {
-      createTableBackupTasksYbc(
-              backupTableParams,
-              backupRequestParams.backupDBStates,
-              backupRequestParams.parallelDBBackups)
+      createTableBackupTasksYbc(backupTableParams, backupRequestParams.parallelDBBackups)
           .setSubTaskGroupType(subTaskGroupType);
     } else {
       createTableBackupTaskYb(backupTableParams).setSubTaskGroupType(subTaskGroupType);
@@ -2544,13 +2540,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createTableBackupTasksYbc(
-      BackupTableParams backupParams,
-      Map<UUID, ParallelBackupState> backupStates,
-      int parallelDBBackups) {
+      BackupTableParams backupParams, int parallelDBBackups) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc");
     YbcBackupNodeRetriever nodeRetriever =
         new YbcBackupNodeRetriever(backupParams.getUniverseUUID(), parallelDBBackups);
-    nodeRetriever.initializeNodePoolForBackups(backupStates);
+    nodeRetriever.initializeNodePoolForBackups(backupParams.backupDBStates);
     Backup previousBackup =
         (!backupParams.baseBackupUUID.equals(backupParams.backupUuid))
             ? Backup.getLastSuccessfulBackupInChain(
@@ -2558,16 +2552,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             : null;
     backupParams.backupList.stream()
         .filter(
-            paramsEntry -> !backupStates.get(paramsEntry.backupParamsIdentifier).alreadyScheduled)
+            paramsEntry ->
+                !backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
+                    .alreadyScheduled)
         .forEach(
             paramsEntry -> {
               BackupTableYbc task = createTask(BackupTableYbc.class);
               BackupTableYbc.Params backupYbcParams =
                   new BackupTableYbc.Params(paramsEntry, nodeRetriever);
               backupYbcParams.previousBackup = previousBackup;
-              backupYbcParams.nodeIp = backupStates.get(paramsEntry.backupParamsIdentifier).nodeIp;
+              backupYbcParams.nodeIp =
+                  backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier).nodeIp;
               backupYbcParams.taskID =
-                  backupStates.get(paramsEntry.backupParamsIdentifier).currentYbcTaskId;
+                  backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
+                      .currentYbcTaskId;
               task.initialize(backupYbcParams);
               task.setUserTaskUUID(userTaskUUID);
               subTaskGroup.addSubTask(task);
@@ -3453,6 +3451,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public boolean isTserverAliveOnNode(NodeDetails node, String masterAddrs) {
     return isServerAlive(node, ServerType.TSERVER, masterAddrs);
+  }
+
+  public UniverseUpdater nodeStateUpdater(final String nodeName, final NodeStatus nodeStatus) {
+    UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          NodeDetails node = universe.getNode(nodeName);
+          if (node == null) {
+            return;
+          }
+          NodeStatus currentStatus = NodeStatus.fromNode(node);
+          log.info(
+              "Changing node {} state from {} to {} in universe {}.",
+              nodeName,
+              currentStatus,
+              nodeStatus,
+              universe.getUniverseUUID());
+          nodeStatus.fillNodeStates(node);
+          if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
+            node.cloudInfo.private_ip = null;
+            node.cloudInfo.public_ip = null;
+          }
+
+          // Update the node details.
+          universeDetails.nodeDetailsSet.add(node);
+          universe.setUniverseDetails(universeDetails);
+        };
+    return updater;
   }
 
   // Helper API to update the db for the node with the given state.

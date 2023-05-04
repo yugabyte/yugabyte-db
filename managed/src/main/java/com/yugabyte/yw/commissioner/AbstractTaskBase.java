@@ -27,10 +27,6 @@ import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.NodeStatus;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -171,34 +167,6 @@ public abstract class AbstractTaskBase implements ITask {
    */
   public JsonNode parseShellResponseAsJson(ShellResponse response) {
     return Util.convertStringToJson(response.message);
-  }
-
-  public UniverseUpdater nodeStateUpdater(final String nodeName, final NodeStatus nodeStatus) {
-    UniverseUpdater updater =
-        universe -> {
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          NodeDetails node = universe.getNode(nodeName);
-          if (node == null) {
-            return;
-          }
-          NodeStatus currentStatus = NodeStatus.fromNode(node);
-          log.info(
-              "Changing node {} state from {} to {} in universe {}.",
-              nodeName,
-              currentStatus,
-              nodeStatus,
-              universe.getUniverseUUID());
-          nodeStatus.fillNodeStates(node);
-          if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
-            node.cloudInfo.private_ip = null;
-            node.cloudInfo.public_ip = null;
-          }
-
-          // Update the node details.
-          universeDetails.nodeDetailsSet.add(node);
-          universe.setUniverseDetails(universeDetails);
-        };
-    return updater;
   }
 
   /**

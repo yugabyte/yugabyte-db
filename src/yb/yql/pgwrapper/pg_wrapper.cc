@@ -93,6 +93,7 @@ DEFINE_UNKNOWN_string(ysql_hba_conf, "",
               "Deprecated, use `ysql_hba_conf_csv` flag instead. " \
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
+DECLARE_string(tmp_dir);
 
 // gFlag wrappers over Postgres GUC parameter.
 // The value type should match the GUC parameter, or it should be a string, in which case Postgres
@@ -160,6 +161,12 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false,
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
     "Delay in milliseconds between stages of online index build. For testing purposes.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 60 * 1000, // 5 min
+    "Timeout in milliseconds to wait for backends to reach desired catalog versions. The actual"
+    " time spent may be longer than that by as much as master flag"
+    " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms. Setting to zero or less"
+    " results in no timeout. Currently used by concurrent CREATE INDEX.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1,
     "Batch size of nested loop joins.");
@@ -590,6 +597,12 @@ Status PgWrapper::Start() {
                     FLAGS_yb_pg_terminate_child_backend ? "true" : "false");
   pg_proc_->SetEnv("FLAGS_yb_backend_oom_score_adj", FLAGS_yb_backend_oom_score_adj);
 
+  // Pass down custom temp path through environment variable.
+  if (!VERIFY_RESULT(Env::Default()->DoesDirectoryExist(FLAGS_tmp_dir))) {
+    return STATUS_FORMAT(IOError, "Directory $0 does not exist", FLAGS_tmp_dir);
+  }
+  pg_proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
+
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
   pg_proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   pg_proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
@@ -748,6 +761,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
+  CHECK_NE(conf_.tserver_shm_fd, -1);
   proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
 #ifdef OS_MACOSX
   // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
@@ -778,7 +792,6 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
 
     // Pass non-default flags to the child process using FLAGS_... environment variables.
     static const std::vector<string> explicit_flags{"pggate_master_addresses",
-                                                    "pggate_tserver_shm_fd",
                                                     "certs_dir",
                                                     "certs_for_client_dir",
                                                     "mem_tracker_tcmalloc_gc_release_bytes",

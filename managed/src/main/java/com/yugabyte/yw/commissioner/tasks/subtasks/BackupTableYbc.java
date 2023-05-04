@@ -13,11 +13,8 @@ import com.yugabyte.yw.common.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.ybc.YbcManager;
-import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Date;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
@@ -31,7 +28,6 @@ import org.yb.ybc.BackupServiceTaskCreateResponse;
 import org.yb.ybc.BackupServiceTaskResultRequest;
 import org.yb.ybc.BackupServiceTaskResultResponse;
 import org.yb.ybc.ControllerStatus;
-import play.libs.Json;
 
 @Slf4j
 public class BackupTableYbc extends YbcTaskBase {
@@ -95,14 +91,6 @@ public class BackupTableYbc extends YbcTaskBase {
         taskParams().nodeIp = taskParams().nodeRetriever.getNodeIpForBackup();
       }
 
-      TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
-      boolean isResumable = false;
-      if (taskInfo.getTaskType().equals(TaskType.CreateBackup)) {
-        isResumable = true;
-      }
-      BackupRequestParams backupRequestParams =
-          Json.fromJson(taskInfo.getDetails(), BackupRequestParams.class);
-
       // Ping operation is attempted again, but it's OK, since a small check only.
       ybcClient = ybcManager.getYbcClient(taskParams().getUniverseUUID(), taskParams().nodeIp);
 
@@ -161,15 +149,14 @@ public class BackupTableYbc extends YbcTaskBase {
                     BackupTableParams tableParams = tableParamsOptional.get();
                     tableParams.thisBackupSubTaskStartTime = (new Date()).getTime();
                   }
+                  // Update current subtask nodeIp and taskID.
+                  BackupTableParams parentParams = b.getBackupInfo();
+                  parentParams
+                      .backupDBStates
+                      .get(taskParams().backupParamsIdentifier)
+                      .setIntermediate(taskParams().nodeIp, taskParams().taskID);
                 };
             Backup.saveDetails(taskParams().customerUuid, taskParams().backupUuid, bUpdater);
-            if (isResumable) {
-              backupRequestParams
-                  .backupDBStates
-                  .get(taskParams().backupParamsIdentifier)
-                  .setIntermediate(taskParams().nodeIp, taskParams().taskID);
-              getRunnableTask().setTaskDetails(Json.toJson(backupRequestParams));
-            }
             log.info(
                 String.format(
                     "%s Successfully submitted backup task to YB-controller server: %s "
@@ -200,13 +187,6 @@ public class BackupTableYbc extends YbcTaskBase {
       try {
         pollTaskProgress(ybcClient, taskParams().taskID);
         handleBackupResult();
-        if (isResumable) {
-          backupRequestParams
-              .backupDBStates
-              .get(taskParams().backupParamsIdentifier)
-              .resetOnComplete();
-          getRunnableTask().setTaskDetails(Json.toJson(backupRequestParams));
-        }
         ybcManager.deleteYbcBackupTask(
             taskParams().getUniverseUUID(), taskParams().taskID, ybcClient);
         taskParams().nodeRetriever.putNodeIPBackToPool(taskParams().nodeIp);
@@ -276,6 +256,11 @@ public class BackupTableYbc extends YbcTaskBase {
                     ybcBackupUtil.extractRegionLocationFromMetadata(
                         response.responseCloudStoreSpec.regionLocations, taskParams());
               }
+              BackupTableParams parentParams = b.getBackupInfo();
+              parentParams
+                  .backupDBStates
+                  .get(taskParams().backupParamsIdentifier)
+                  .resetOnComplete();
             }
           };
       Backup.saveDetails(taskParams().customerUuid, taskParams().backupUuid, bUpdater);
