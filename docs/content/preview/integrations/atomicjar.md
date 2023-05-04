@@ -14,7 +14,7 @@ type: docs
 
 YugabyteDB supports for the [YugabyteDB module](https://www.testcontainers.org/modules/databases/yugabytedb/) in Testcontainers.
 
-This document describes how to use Testcontainers to write integration tests for a Spring Boot application with YugabyteDB.
+This document describes how to use Testcontainers to write integration tests for a Spring Boot application with YugabyteDB .
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ To use Testcontainers, ensure that you have the following:
 
 ## Build the Testcontainer project
 
-Refer to the [Spring Boot source](https://github.com/srinivasa-vasu/yb-ms-data) from GitHub for your local setup. The source consists of a basic JPA-based web application with CRUD functionality.
+Refer to the [Spring Boot source](https://github.com/yugabyte/yb-ms-data/tree/main/springboot) from GitHub for your local setup. The source consists of a basic JPA-based web application with CRUD functionality.
 
 You need to build the Testcontainer project using the following steps:
 
