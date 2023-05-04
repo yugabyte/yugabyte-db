@@ -90,6 +90,10 @@ DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
             "If true, YB catalog preloads additional tables upon "
             "connection creation and cache refresh.");
 
+DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
+            "If true, disable global impact ddl statements in per database catalog "
+            "version mode.");
+
 namespace yb {
 namespace pggate {
 
@@ -1406,7 +1410,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_colocate_database_by_default        = &FLAGS_ysql_colocate_database_by_default,
       .ysql_ddl_rollback_enabled                = &FLAGS_ysql_ddl_rollback_enabled,
       .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
-      .ysql_enable_profile                      = &FLAGS_ysql_enable_profile
+      .ysql_enable_profile                      = &FLAGS_ysql_enable_profile,
+      .ysql_disable_global_impact_ddl_statements =
+          &FLAGS_ysql_disable_global_impact_ddl_statements
   };
   return &accessor;
 }
