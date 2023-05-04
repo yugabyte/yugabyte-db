@@ -638,18 +638,24 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
 RESET enable_indexscan;
 -- check multi-index cases too
 -- TODO(#4634): bitmap scan should be used when implemented.
--- YB edit: add "order by unique2" for consistent ordering.
+-- YB edit: add "ORDER BY unique2" for consistent ordering.
 explain (costs off)
+SELECT * FROM (
 select unique1, unique2 from onek2
-  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B' order by unique2;
-                     QUERY PLAN
-----------------------------------------------------
- Index Scan using onek2_u2_prtl on onek2
-   Remote Filter: ((unique2 = 11) OR (unique1 = 0))
-(2 rows)
+  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B'
+LIMIT ALL) ybview ORDER BY unique2;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Sort
+   Sort Key: onek2.unique2
+   ->  Seq Scan on onek2
+         Remote Filter: ((stringu1 < 'B'::name) AND ((unique2 = 11) OR (unique1 = 0)))
+(4 rows)
 
+SELECT * FROM (
 select unique1, unique2 from onek2
-  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B' order by unique2;
+  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B'
+LIMIT ALL) ybview ORDER BY unique2;
  unique1 | unique2
 ---------+---------
      494 |      11
@@ -657,20 +663,24 @@ select unique1, unique2 from onek2
 (2 rows)
 
 -- TODO(#4634): bitmap scan should be used when implemented.
--- YB edit: add "order by unique2" for consistent ordering.
+-- YB edit: add "ORDER BY unique2" for consistent ordering.
 explain (costs off)
+SELECT * FROM (
 select unique1, unique2 from onek2
-  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0 order by unique2;
+  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0
+LIMIT ALL) ybview ORDER BY unique2;
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
  Sort
-   Sort Key: unique2
+   Sort Key: onek2.unique2
    ->  Seq Scan on onek2
          Remote Filter: (((unique2 = 11) AND (stringu1 < 'B'::name)) OR (unique1 = 0))
 (4 rows)
 
+SELECT * FROM (
 select unique1, unique2 from onek2
-  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0 order by unique2;
+  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0
+LIMIT ALL) ybview ORDER BY unique2;
  unique1 | unique2
 ---------+---------
      494 |      11
