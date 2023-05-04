@@ -380,14 +380,28 @@ struct PlannerInfo
 	bool		partColsUpdated;
 
 	/*
+	 * These are used to transfer information about batching in createplan.c
+	 * and indxpath.c
+	 */
+	Relids		yb_cur_batched_relids; /* valid if we are processing a batched
+								  	    * NL join */
+	Relids		yb_cur_unbatched_relids;
+
+	/*
+	 * List of Relids. Each element is a Bitmapset that encodes the batched rels
+	 * available from the outer path of a particular Batched Nested Loop join
+	 * node.
+	 */
+	List		*yb_availBatchedRelids; 
+
+	int yb_cur_batch_no;		/* Used in replace_nestloop_params to keep
+								 * track of current batch */
+
+	/*
 	 * Number of relations that are still referenced by the plan after
 	 * constraint exclusion and partition pruning.
 	 */
-	int yb_num_referenced_relations;
-	Relids yb_curbatchedrelids; /* true if we are processing a batched
-								 * NL join */
-	int yb_cur_batch_no;		/* Used in replace_nestloop_params to keep
-								 * track of current batch */
+	int     yb_num_referenced_relations;
 };
 
 

@@ -1,0 +1,6 @@
+# src/test/regress/yb_cursor_low_prefetching_schedule
+#
+####################################################################################################
+# This suite includes tests on CURSOR with low prefetching.
+####################################################################################################
+test: yb_cursor_preserve_in_txn_limit

@@ -38,6 +38,8 @@ static void add_tablespace_footer(printTableContent *const cont, char relkind,
 								  Oid tablespace, const bool newline);
 static void add_tablegroup_footer(printTableContent *const cont, char relkind,
 					  const char* grpname, const bool newline);
+static void add_colocation_footer(printTableContent *const cont, char relkind,
+					  bool colocation, const bool newline);
 static void add_role_attribute(PQExpBuffer buf, const char *const str);
 static bool listTSParsersVerbose(const char *pattern);
 static bool describeOneTSParser(const char *oid, const char *nspname,
@@ -1576,8 +1578,10 @@ describeOneTableDetails(const char *schemaname,
 		char	   *relam;
 
 		char	   *yb_grpname;
+		bool		colocation;
 	}			tableinfo;
 	bool		show_column_details = false;
+	bool		database_colocated = false;
 
 	myopt.default_footer = false;
 	/* This output looks confusing in expanded mode. */
@@ -1713,9 +1717,12 @@ describeOneTableDetails(const char *schemaname,
 	res = NULL;
 
 
-	/* Get information about tablegroup (if any) */
+	/*
+	 * Get information about tablegroup (if any)
+	 * and whether a table/index is colocated or not.
+	 */
 	printfPQExpBuffer(&tablegroupbuf,
-					  "SELECT grpname\n"
+					  "SELECT grpname, is_colocated\n"
 					  "FROM pg_catalog.yb_table_properties(%s) p\n"
 					  "LEFT JOIN pg_catalog.pg_yb_tablegroup gr\n"
 					  "  ON gr.oid = p.tablegroup_oid;",
@@ -1723,15 +1730,33 @@ describeOneTableDetails(const char *schemaname,
 
 	tgres = PSQLexec(tablegroupbuf.data);
 
-	if (tgres && PQntuples(tgres) > 0 && strcmp(PQgetvalue(tgres, 0, 0), "") != 0)
+	if (tgres && PQntuples(tgres) > 0)
 	{
-		tableinfo.yb_grpname = pg_strdup(PQgetvalue(tgres, 0, 0));
+		if (strcmp(PQgetvalue(tgres, 0, 0), "") != 0)
+			tableinfo.yb_grpname = pg_strdup(PQgetvalue(tgres, 0, 0));
+		else
+			tableinfo.yb_grpname = NULL;
+
+		tableinfo.colocation = (strcmp(PQgetvalue(tgres, 0, 1), "t") == 0);
 	}
 	else
+	{
 		tableinfo.yb_grpname = NULL;
+		tableinfo.colocation = false;
+	}
 
 	PQclear(tgres);
 	tgres = NULL;
+
+	/* Current database is colocated or not. */
+	printfPQExpBuffer(&buf, "SELECT yb_is_database_colocated();");
+	res = PSQLexec(buf.data);
+	if (res && PQntuples(res) > 0)
+	{
+		database_colocated = (strcmp(PQgetvalue(res, 0, 0), "t") == 0);
+	}
+	PQclear(res);
+	res = NULL;
 
 	/*
 	 * If it's a sequence, deal with it here separately.
@@ -2371,15 +2396,23 @@ describeOneTableDetails(const char *schemaname,
 				appendPQExpBufferStr(&tmpbuf, _(", replica identity"));
 
 			printTableAddFooter(&cont, tmpbuf.data);
-
 			/*
 			 * If it's a partitioned index, we'll print the tablespace below
 			 */
 			if (tableinfo.relkind == RELKIND_INDEX)
 				add_tablespace_footer(&cont, tableinfo.relkind,
 									  tableinfo.tablespace, true);
-			add_tablegroup_footer(&cont, tableinfo.relkind,
-								  tableinfo.yb_grpname, true);
+
+			if (database_colocated)
+			{
+				add_colocation_footer(&cont, tableinfo.relkind,
+									  tableinfo.colocation, true);
+			}
+			else
+			{
+				add_tablegroup_footer(&cont, tableinfo.relkind,
+									  tableinfo.yb_grpname, true);
+			}
 		}
 
 		PQclear(result);
@@ -2506,8 +2539,16 @@ describeOneTableDetails(const char *schemaname,
 					PQclear(tgres);
 					tgres = NULL;
 
-					/* Print tablegroup of the index on the same line */
-					add_tablegroup_footer(&cont, RELKIND_INDEX, idx_grpname, false);
+					if (database_colocated)
+					{
+						/* Table and its indexes are always part of the same colocation */
+						add_colocation_footer(&cont, RELKIND_INDEX, tableinfo.colocation, false);
+					}
+					else
+					{
+						/* Print tablegroup of the index on the same line */
+						add_tablegroup_footer(&cont, RELKIND_INDEX, idx_grpname, false);
+					}
 				}
 			}
 			PQclear(result);
@@ -3556,10 +3597,18 @@ describeOneTableDetails(const char *schemaname,
 		/* Tablespace info */
 		add_tablespace_footer(&cont, tableinfo.relkind, tableinfo.tablespace,
 							  true);
-
-		/* Tablegroup info */
-		add_tablegroup_footer(&cont, tableinfo.relkind, tableinfo.yb_grpname,
-							  true);
+		if (database_colocated)
+		{
+			/* Colocation info */
+			add_colocation_footer(&cont, tableinfo.relkind,
+								  tableinfo.colocation, true);
+		}
+		else
+		{
+			/* Tablegroup info */
+			add_tablegroup_footer(&cont, tableinfo.relkind,
+								  tableinfo.yb_grpname, true);
+		}
 	}
 
 	/* reloptions, if verbose */
@@ -3696,6 +3745,46 @@ add_tablegroup_footer(printTableContent *const cont, char relkind,
 			 */
 			appendPQExpBuffer(&buf, _(", tablegroup \"%s\""),
 							  grpname);
+			printTableSetFooter(cont, buf.data);
+		}
+		termPQExpBuffer(&buf);
+	}
+}
+
+/*
+ * Add a colocation description to a footer.  If 'newline' is true, it is added
+ * in a new line; otherwise it's appended to the current value of the last
+ * footer.
+ */
+static void
+add_colocation_footer(printTableContent *const cont, char relkind,
+					  bool colocation, const bool newline)
+{
+	/* relkinds for which we support colocation */
+	if ((relkind == RELKIND_RELATION ||
+		 relkind == RELKIND_INDEX ||
+		 relkind == RELKIND_PARTITIONED_TABLE ||
+		 relkind == RELKIND_PARTITIONED_INDEX) &&
+		colocation)
+	{
+		PQExpBufferData buf;
+		initPQExpBuffer(&buf);
+		if (newline)
+		{
+			/* Add the colocation as a new footer */
+			printfPQExpBuffer(&buf, _("Colocation: true"));
+			printTableAddFooter(cont, buf.data);
+		}
+		else
+		{
+			/* Append the colocation to the latest footer */
+			printfPQExpBuffer(&buf, "%s", cont->footer->data);
+
+			/*
+			 translator: before this string there's an index description like
+			 '"foo_pkey" PRIMARY KEY, btree (a)'
+			 */
+			appendPQExpBuffer(&buf, _(", colocation: true"));
 			printTableSetFooter(cont, buf.data);
 		}
 		termPQExpBuffer(&buf);

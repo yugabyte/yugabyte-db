@@ -20,8 +20,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBCMODIFYTABLE_H
-#define YBCMODIFYTABLE_H
+#pragma once
 
 #include "nodes/execnodes.h"
 #include "executor/tuptable.h"
@@ -138,9 +137,11 @@ extern void YBCExecuteInsertIndexForDb(Oid dboid,
  */
 extern bool YBCExecuteDelete(Relation rel,
 							 TupleTableSlot *slot,
-							 EState *estate,
-							 ModifyTableState *mtstate,
-							 bool changingPart);
+							 List *returning_columns,
+							 bool target_tuple_fetched,
+							 bool is_single_row_txn,
+							 bool changingPart,
+							 EState *estate);
 /*
  * Delete a tuple (identified by index columns and base table ybctid) from an
  * index's backing YugaByte index table.
@@ -161,11 +162,26 @@ extern void YBCExecuteDeleteIndex(Relation index,
 extern bool YBCExecuteUpdate(Relation rel,
 							 ResultRelInfo *resultRelInfo,
 							 TupleTableSlot *slot,
+							 HeapTuple oldtuple,
 							 HeapTuple tuple,
 							 EState *estate,
-							 ModifyTableState *mtstate,
+							 ModifyTable *mt_plan,
+							 bool target_tuple_fetched,
+							 bool is_single_row_txn,
 							 Bitmapset *updatedCols,
 							 bool canSetTag);
+
+/*
+ * Update a row (identified by the roleid) in a pg_yb_role_profile. This is a
+ * stripped down and specific version of YBCExecuteUpdate. It is used by
+ * auth.c, since the typical method of writing does not work at that stage of
+ * the DB initialization.
+ *
+ * Returns true if a row was updated.
+ */
+extern bool YBCExecuteUpdateLoginAttempts(Oid roleid,
+										  int failed_attempts,
+										  char rolprfstatus);
 
 /*
  * Replace a row in a YugaByte table by first deleting an existing row
@@ -177,8 +193,7 @@ extern bool YBCExecuteUpdate(Relation rel,
 extern Oid YBCExecuteUpdateReplace(Relation rel,
 								   TupleTableSlot *slot,
 								   HeapTuple tuple,
-								   EState *estate,
-								   ModifyTableState *mtstate);
+								   EState *estate);
 
 //------------------------------------------------------------------------------
 // System tables modify-table API.
@@ -211,5 +226,3 @@ extern Datum YBCGetYBTupleIdFromTuple(Relation rel,
  * Returns if a table has secondary indices.
  */
 extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
-
-#endif							/* YBCMODIFYTABLE_H */

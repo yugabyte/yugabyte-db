@@ -648,6 +648,9 @@ GRANT SELECT ON pg_backend_memory_contexts TO pg_read_all_stats;
 REVOKE EXECUTE ON FUNCTION pg_get_backend_memory_contexts() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION pg_get_backend_memory_contexts() TO pg_read_all_stats;
 
+CREATE VIEW pg_backend_memory_contexts AS
+    SELECT * FROM pg_get_backend_memory_contexts();
+
 -- Statistics views
 
 CREATE VIEW pg_stat_all_tables AS

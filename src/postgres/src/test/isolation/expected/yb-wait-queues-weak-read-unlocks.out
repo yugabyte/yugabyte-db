@@ -1,0 +1,40 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1u1 s2u1 s1u2 s2u2 s1c s2c
+step s1u1: select * from foo order by k asc;
+k              v
+
+1              0
+2              0
+3              0
+4              0
+5              0
+6              0
+7              0
+8              0
+9              0
+10             0
+step s2u1: select * from foo order by k asc;
+k              v
+
+1              0
+2              0
+3              0
+4              0
+5              0
+6              0
+7              0
+8              0
+9              0
+10             0
+step s1u2: select * from foo where k=1 for key share;
+k              v
+
+1              0
+step s2u2: select * from foo where k=1 for update; <waiting ...>
+step s1c: COMMIT;
+step s2u2: <... completed>
+k              v
+
+1              0
+step s2c: COMMIT;

@@ -169,6 +169,7 @@ YbBuildTupleHashTableExt(PlanState *parent,
 						 MemoryContext metacxt,
 						 MemoryContext tablecxt,
 						 MemoryContext tempcxt,
+						 ExprContext *expr_cxt,
 						 bool use_variable_hash_iv)
 {
 	TupleHashTable hashtable;
@@ -229,7 +230,8 @@ YbBuildTupleHashTableExt(PlanState *parent,
 	 * ExecBuildGroupingEqual() only builds a very simple expression calling
 	 * functions (i.e. nothing that'd employ RegisterExprContextCallback()).
 	 */
-	hashtable->exprcontext = CreateStandaloneExprContext();
+	hashtable->exprcontext =
+	expr_cxt ? expr_cxt : CreateStandaloneExprContext();
 
 	MemoryContextSwitchTo(oldcontext);
 

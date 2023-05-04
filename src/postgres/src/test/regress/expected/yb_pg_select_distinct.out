@@ -1,0 +1,131 @@
+--
+-- awk '{print $2;}' person.data |
+-- awk '{if(NF!=1){print $2;}else{print;}}' - emp.data |
+-- awk '{if(NF!=1){print $2;}else{print;}}' - student.data |
+-- awk 'BEGIN{FS="      ";}{if(NF!=1){print $5;}else{print;}}' - stud_emp.data |
+-- sort -n -r | uniq
+--
+SELECT DISTINCT p.age FROM person* p ORDER BY age using >;
+ age
+-----
+(0 rows)
+
+--
+-- Check mentioning same column more than once
+--
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*) FROM
+  (SELECT DISTINCT two, four, two FROM tenk1) ss;
+                       QUERY PLAN
+--------------------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  HashAggregate
+         Output: tenk1.two, tenk1.four, tenk1.two
+         Group Key: tenk1.two, tenk1.four, tenk1.two
+         ->  Seq Scan on public.tenk1
+               Output: tenk1.two, tenk1.four, tenk1.two
+(7 rows)
+
+SELECT count(*) FROM
+  (SELECT DISTINCT two, four, two FROM tenk1) ss;
+ count
+-------
+     4
+(1 row)
+
+--
+-- Also, some tests of IS DISTINCT FROM, which doesn't quite deserve its
+-- very own regression file.
+--
+CREATE TEMP TABLE disttable (f1 integer);
+INSERT INTO DISTTABLE VALUES(1);
+INSERT INTO DISTTABLE VALUES(2);
+INSERT INTO DISTTABLE VALUES(3);
+INSERT INTO DISTTABLE VALUES(NULL);
+-- basic cases
+SELECT f1, f1 IS DISTINCT FROM 2 as "not 2" FROM disttable;
+ f1 | not 2
+----+-------
+  1 | t
+  2 | f
+  3 | t
+    | t
+(4 rows)
+
+SELECT f1, f1 IS DISTINCT FROM NULL as "not null" FROM disttable;
+ f1 | not null
+----+----------
+  1 | t
+  2 | t
+  3 | t
+    | f
+(4 rows)
+
+SELECT f1, f1 IS DISTINCT FROM f1 as "false" FROM disttable;
+ f1 | false
+----+-------
+  1 | f
+  2 | f
+  3 | f
+    | f
+(4 rows)
+
+SELECT f1, f1 IS DISTINCT FROM f1+1 as "not null" FROM disttable;
+ f1 | not null
+----+----------
+  1 | t
+  2 | t
+  3 | t
+    | f
+(4 rows)
+
+-- check that optimizer constant-folds it properly
+SELECT 1 IS DISTINCT FROM 2 as "yes";
+ yes
+-----
+ t
+(1 row)
+
+SELECT 2 IS DISTINCT FROM 2 as "no";
+ no
+----
+ f
+(1 row)
+
+SELECT 2 IS DISTINCT FROM null as "yes";
+ yes
+-----
+ t
+(1 row)
+
+SELECT null IS DISTINCT FROM null as "no";
+ no
+----
+ f
+(1 row)
+
+-- negated form
+SELECT 1 IS NOT DISTINCT FROM 2 as "no";
+ no
+----
+ f
+(1 row)
+
+SELECT 2 IS NOT DISTINCT FROM 2 as "yes";
+ yes
+-----
+ t
+(1 row)
+
+SELECT 2 IS NOT DISTINCT FROM null as "no";
+ no
+----
+ f
+(1 row)
+
+SELECT null IS NOT DISTINCT FROM null as "yes";
+ yes
+-----
+ t
+(1 row)

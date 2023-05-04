@@ -1,9 +1,6 @@
 --
 -- Cursor regression tests
--- yb_pg_copy must be scheduled to run before this suite.
 --
-
-INSERT INTO tenk2 SELECT * FROM tenk1;
 
 BEGIN;
 

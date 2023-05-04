@@ -244,6 +244,10 @@ typedef struct YbPgMemTracker
 	 */
 	Size pg_cur_mem_bytes;
 	/*
+	 * The current allocated memory including PG, pggate and cached memory.
+	 */
+	int64_t backend_cur_allocated_mem_bytes;
+	/*
 	 * The maximum memory ever allocated by current statement including PG and
 	 * pggate
 	 */
@@ -284,5 +288,11 @@ extern void YbPgMemSubConsumption(const Size sz);
  * track peak memory usage for a new statement.
  */
 extern void YbPgMemResetStmtConsumption();
+
+/*
+ * Returns the resident set size (physical memory use) of a process
+ * measured in bytes, or -1 if the value cannot be determined on this OS.
+ */
+extern int64_t YbPgGetCurRSSMemUsage(int pid);
 
 #endif							/* MEMUTILS_H */

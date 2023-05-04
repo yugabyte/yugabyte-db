@@ -20,8 +20,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBCCMDS_H
-#define YBCCMDS_H
+#pragma once
 
 #include "access/htup.h"
 #include "catalog/dependency.h"
@@ -74,6 +73,7 @@ extern void YBCCreateIndex(const char *indexName,
 						   Relation rel,
 						   OptSplit *split_options,
 						   const bool skip_index_backfill,
+						   bool is_colocated,
 						   Oid tablegroupId,
 						   Oid colocationId,
 						   Oid tablespaceId);
@@ -99,5 +99,3 @@ extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel,
 
 /*  System Validation -------------------------------------------------------------------------- */
 extern void YBCValidatePlacement(const char *placement_info);
-
-#endif

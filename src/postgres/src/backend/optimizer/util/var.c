@@ -40,6 +40,13 @@ typedef struct
 {
 	Bitmapset  *varattnos;
 	Index		varno;
+
+	/* Because of special hidden columns, the actual column attribute number has some offset
+	 * from the logical number. Column "1" would have attribute number as "1 - offset". In
+	 * postgres original code, this offset is always FirstLowInvalidHeapAttributeNumber. For
+	 * Yugabyte, this offset can be flexible.
+	 */
+	AttrNumber  yb_attr_offset;
 } pull_varattnos_context;
 
 typedef struct
@@ -72,8 +79,6 @@ static bool pull_varnos_walker(Node *node,
 							   pull_varnos_context *context);
 static bool pull_varattnos_walker(Node *node, pull_varattnos_context *context);
 static bool pull_vars_walker(Node *node, pull_vars_context *context);
-static bool pull_varattnos_walker_min_attr(Node *node, pull_varattnos_context *context,
-										   AttrNumber min_attr);
 
 static bool contain_var_clause_walker(Node *node, void *context);
 static bool contain_vars_of_level_walker(Node *node, int *sublevels_up);
@@ -295,6 +300,9 @@ pull_varattnos(Node *node, Index varno, Bitmapset **varattnos)
 	context.varattnos = *varattnos;
 	context.varno = varno;
 
+	/* For Postgres processing, min attribute is always FirstLowInvalidHeapAttributeNumber. */
+	context.yb_attr_offset = FirstLowInvalidHeapAttributeNumber;
+
 	(void) pull_varattnos_walker(node, &context);
 
 	*varattnos = context.varattnos;
@@ -311,8 +319,7 @@ pull_varattnos_walker(Node *node, pull_varattnos_context *context)
 
 		if (var->varno == context->varno && var->varlevelsup == 0)
 			context->varattnos =
-				bms_add_member(context->varattnos,
-							   var->varattno - FirstLowInvalidHeapAttributeNumber);
+				bms_add_member(context->varattnos, var->varattno - context->yb_attr_offset);
 		return false;
 	}
 
@@ -324,8 +331,10 @@ pull_varattnos_walker(Node *node, pull_varattnos_context *context)
 }
 
 /*
- * The same as pull_varattnos() but attribute numbers are offset by
- * (rel->min_attr - 1) instead of FirstLowInvalidHeapAttributeNumber.
+ * This is the same as pull_varattnos(), but Yugabyte will offset the attr by (rel->min_attr - 1)
+ * instead of hardcoding to FirstLowInvalidHeapAttributeNumber.
+ *
+ * TODO(neil) Combine "pull_varattnos_min_attr" with postgres function. No need to have two.
  */
 void
 pull_varattnos_min_attr(Node *node, Index varno, Bitmapset **varattnos, AttrNumber min_attr)
@@ -334,38 +343,12 @@ pull_varattnos_min_attr(Node *node, Index varno, Bitmapset **varattnos, AttrNumb
 
 	context.varattnos = *varattnos;
 	context.varno = varno;
+	context.yb_attr_offset = min_attr - 1;
 
-	(void) pull_varattnos_walker_min_attr(node, &context, min_attr);
+	(void) pull_varattnos_walker(node, &context);
 
 	*varattnos = context.varattnos;
 }
-
-/*
- * The same as pull_varattnos_walker() but attribute numbers are offset by
- * (rel->min_attr - 1) instead of FirstLowInvalidHeapAttributeNumber.
- */
-static bool
-pull_varattnos_walker_min_attr(Node *node, pull_varattnos_context *context, AttrNumber min_attr)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, Var))
-	{
-		Var		   *var = (Var *) node;
-
-		if (var->varno == context->varno && var->varlevelsup == 0)
-			context->varattnos = bms_add_member(context->varattnos, var->varattno - min_attr + 1);
-		return false;
-	}
-
-	/* Should not find an unplanned subquery */
-	Assert(!IsA(node, Query));
-
-	return expression_tree_walker_min_attr(node,
-																				 (pull_varattnos_walker_ptr)pull_varattnos_walker_min_attr,
-																				 (void *) context, min_attr);
-}
-
 
 /*
  * pull_vars_of_level

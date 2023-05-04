@@ -95,6 +95,70 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 								  YBCIsRegionLocal(scan->heapRelation),
 								  &ybso->handle));
 
+	/*
+	 * Add any pushdown expression to the main table scan
+	 * TODO dedup with YbSetupScanQual
+	 */
+	if (scan->yb_rel_pushdown != NULL)
+	{
+		ListCell   *lc;
+		foreach(lc, scan->yb_rel_pushdown->qual)
+		{
+			Expr *expr = (Expr *) lfirst(lc);
+			YBCPgExpr yb_expr = YBCNewEvalExprCall(ybso->handle, expr);
+			HandleYBStatus(YbPgDmlAppendQual(ybso->handle,
+											 yb_expr,
+											 true /* is_primary */));
+		}
+		foreach(lc, scan->yb_rel_pushdown->colrefs)
+		{
+			YbExprParamDesc *param = lfirst_node(YbExprParamDesc, lc);
+			YBCPgTypeAttrs type_attrs = { param->typmod };
+			/* Create new PgExpr wrapper for the column reference */
+			YBCPgExpr yb_expr = YBCNewColumnRef(ybso->handle,
+												param->attno,
+												param->typid,
+												param->collid,
+												&type_attrs);
+			/* Add the PgExpr to the statement */
+			HandleYBStatus(YbPgDmlAppendColumnRef(ybso->handle,
+												  yb_expr,
+												  true /* is_primary */));
+		}
+	}
+
+	/*
+	 * Add any pushdown expression to the index relation scan
+	 * TODO dedup with YbSetupScanColumnRefs
+	 */
+	if (scan->yb_idx_pushdown != NULL)
+	{
+		ListCell   *lc;
+		foreach(lc, scan->yb_idx_pushdown->qual)
+		{
+			Expr *expr = (Expr *) lfirst(lc);
+			YBCPgExpr yb_expr = YBCNewEvalExprCall(ybso->handle, expr);
+			HandleYBStatus(YbPgDmlAppendQual(ybso->handle,
+											 yb_expr,
+											 false /* is_primary */));
+		}
+		foreach(lc, scan->yb_idx_pushdown->colrefs)
+		{
+			YbExprParamDesc *param = lfirst_node(YbExprParamDesc, lc);
+			YBCPgTypeAttrs type_attrs = { param->typmod };
+			/* Create new PgExpr wrapper for the column reference */
+			YBCPgExpr yb_expr = YBCNewColumnRef(ybso->handle,
+												param->attno,
+												param->typid,
+												param->collid,
+												&type_attrs);
+			/* Add the PgExpr to the statement */
+			HandleYBStatus(YbPgDmlAppendColumnRef(ybso->handle,
+												  yb_expr,
+												  false /* is_primary */));
+		}
+	}
+
 	/* Initialize ybgin scan opaque is_exec_done. */
 	ybso->is_exec_done = false;
 }

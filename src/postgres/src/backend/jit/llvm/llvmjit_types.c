@@ -59,11 +59,7 @@ AggStatePerTransData StructAggStatePerTransData;
 ExprContext StructExprContext;
 ExprEvalStep StructExprEvalStep;
 ExprState	StructExprState;
-#ifdef YB_TODO
-/* YB_TODO(ted@yugabyte) Need to look at all related code every time we merge. */
 FunctionCallInfoBaseData StructFunctionCallInfoData;
-#endif
-FunctionCallInfoData StructFunctionCallInfoData;
 HeapTupleData StructHeapTupleData;
 MemoryContextData StructMemoryContextData;
 TupleTableSlot StructTupleTableSlot;

@@ -19,10 +19,18 @@ SELECT * FROM pk_desc ORDER BY k DESC;
 EXPLAIN (COSTS OFF) SELECT * FROM pk_desc ORDER BY k NULLS FIRST;
 SELECT * FROM pk_desc ORDER BY k NULLS FIRST;
 
+-- Testing yb_pushdown_strict_inequality
+SELECT k FROM pk_desc WHERE k < 30 AND k > 10;
+/*+Set(yb_pushdown_strict_inequality false)*/ SELECT k FROM pk_desc WHERE k < 30 AND k > 10;
+
 CREATE TABLE  pk_multi(h int, r int, v text, PRIMARY KEY(h, r DESC));
 INSERT INTO pk_multi(h, r, v) VALUES (1, 0, '1-0'),(1, 1, '1-1'),(1, 2, '1-2'),(1, 3, '1-3');
 EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE h = 1;
 SELECT * FROM pk_multi WHERE h = 1;
+
+-- We should still get correct results even if hash key is unset
+/*+IndexScan(pk_multi pk_multi_pkey)*/ EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE r IN (5,3,9,2);
+/*+IndexScan(pk_multi pk_multi_pkey)*/ SELECT * FROM pk_multi WHERE r IN (5,3,9,2);
 
 EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);
 SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);
@@ -100,73 +108,6 @@ SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r IS null;
 EXPLAIN (COSTS OFF) SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r IS null;
 
 DROP TABLE sc_desc_nl;
-
---
--- Test complex systable scans.
---
-
--- Existing db oid (template1).
-SELECT * FROM pg_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 1);
-SELECT * FROM pg_database WHERE datname IN (SELECT datname FROM pg_database WHERE oid = 1);
-
--- Invalid (non-existing) db.
-SELECT * FROM pg_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 0);
-SELECT * FROM pg_database WHERE datname IN (SELECT datname FROM pg_database WHERE oid = 0);
-
--- This is a query done by the pg_admin dashboard, testing compatiblity here.
-
--- Existing db oid (template1).
-SELECT 'session_stats' AS chart_name, row_to_json(t) AS chart_data
-FROM (SELECT
-   (SELECT count(*) FROM pg_stat_activity WHERE datname = (SELECT datname FROM pg_database WHERE oid = 1)) AS "Total",
-   (SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND datname = (SELECT datname FROM pg_database WHERE oid = 1))  AS "Active",
-   (SELECT count(*) FROM pg_stat_activity WHERE state = 'idle' AND datname = (SELECT datname FROM pg_database WHERE oid = 1))  AS "Idle"
-) t
-UNION ALL
-SELECT 'tps_stats' AS chart_name, row_to_json(t) AS chart_data
-FROM (SELECT
-   (SELECT sum(xact_commit) + sum(xact_rollback) FROM pg_stat_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 1)) AS "Transactions",
-   (SELECT sum(xact_commit) FROM pg_stat_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 1)) AS "Commits",
-   (SELECT sum(xact_rollback) FROM pg_stat_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 1)) AS "Rollbacks"
-) t;
-
--- Invalid (non-existing) db.
-SELECT 'session_stats' AS chart_name, row_to_json(t) AS chart_data
-FROM (SELECT
-   (SELECT count(*) FROM pg_stat_activity WHERE datname = (SELECT datname FROM pg_database WHERE oid = 0)) AS "Total",
-   (SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND datname = (SELECT datname FROM pg_database WHERE oid = 0))  AS "Active",
-   (SELECT count(*) FROM pg_stat_activity WHERE state = 'idle' AND datname = (SELECT datname FROM pg_database WHERE oid = 0))  AS "Idle"
-) t
-UNION ALL
-SELECT 'tps_stats' AS chart_name, row_to_json(t) AS chart_data
-FROM (SELECT
-   (SELECT sum(xact_commit) + sum(xact_rollback) FROM pg_stat_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 0)) AS "Transactions",
-   (SELECT sum(xact_commit) FROM pg_stat_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 0)) AS "Commits",
-   (SELECT sum(xact_rollback) FROM pg_stat_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 0)) AS "Rollbacks"
-) t;
-
--- Test NULL returned by function.
-
--- Mark the function as stable to ensure pushdown.
-CREATE OR REPLACE FUNCTION test_null_pushdown()
-RETURNS Name AS $$
-BEGIN
-return null;
-END;
-$$ LANGUAGE plpgsql STABLE;
-
--- Expect pushdown in all cases.
-EXPLAIN SELECT * FROM pg_database WHERE datname = test_null_pushdown();
-EXPLAIN SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
-EXPLAIN SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
-
--- Test execution.
-SELECT * FROM pg_database WHERE datname = test_null_pushdown();
-SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
--- Test null mixed with valid (existing) options.
-SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
--- Test null(s) mixed with invalid (existing) options.
-SELECT * FROM pg_database WHERE datname IN ('non_existing_db1', test_null_pushdown(), 'non_existing_db2', test_null_pushdown());
 
 --------------------------------------
 -- Testing Selective Updation of Indices
@@ -440,3 +381,47 @@ INSERT INTO pk_hash_range_int SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
 /*+ IndexScan(pk_hash_range_int) */ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_hash_range_int WHERE (r1, r2) <= (3, 2);
 /*+ IndexScan(pk_hash_range_int) */ SELECT * FROM pk_hash_range_int WHERE (r1, r2) <= (3, 2);
 DROP TABLE pk_hash_range_int;
+
+-- Test IndexOnlyScan on the primary key index and the secondary index without targets
+CREATE TABLE t_kv(k int, v int, PRIMARY KEY(k ASC));
+INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
+
+-- IndexOnlyScan on the primary index
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT count(1) FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT count(*) FROM t_kv;
+/*+ IndexOnlyScan(t_kv) */ SELECT count(*) FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT 1 FROM t_kv;
+
+-- IndexOnlyScan on the secondary index
+CREATE INDEX t_vi ON t_kv (v asc);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(1) FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
+/*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT 1 FROM t_kv;
+
+-- Verify duplicated keys in secondary index
+INSERT INTO t_kv VALUES (11, 1);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(1) FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
+/*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT 1 FROM t_kv;
+
+-- Verify null values in secondary index
+INSERT INTO t_kv VALUES (12, NULL);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(1) FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
+/*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT 1 FROM t_kv;
+
+-- Verify counts in IndexOnlyScan on the primary index after the updates
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT count(1) FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT count(*) FROM t_kv;
+/*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT count(*) FROM t_kv;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT 1 FROM t_kv;
+
+DROP TABLE t_kv;

@@ -1286,9 +1286,18 @@ create_append_path(PlannerInfo *root,
 	 * we don't have "root", too.)
 	 */
 	if (root && rel->reloptkind == RELOPT_BASEREL && IS_PARTITIONED_REL(rel))
+	{
+		/* YB: Accumulate batching info from subpaths for this "baserel". */
+		Assert(root->yb_cur_batched_relids == NULL);
+		yb_accumulate_batching_info(subpaths,
+			&root->yb_cur_batched_relids, &root->yb_cur_unbatched_relids);
+
 		pathnode->path.param_info = get_baserel_parampathinfo(root,
 															  rel,
 															  required_outer);
+		root->yb_cur_batched_relids = NULL;
+		root->yb_cur_unbatched_relids = NULL;
+	}
 	else
 		pathnode->path.param_info = get_appendrel_parampathinfo(rel,
 																required_outer);

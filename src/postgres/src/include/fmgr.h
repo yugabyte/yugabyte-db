@@ -35,7 +35,7 @@ typedef struct StringInfoData *fmStringInfo;
  * signature.)
  */
 
-typedef struct FunctionCallInfoData *FunctionCallInfo;
+typedef struct FunctionCallInfoBaseData *FunctionCallInfo;
 
 typedef Datum (*PGFunction) (FunctionCallInfo fcinfo);
 
@@ -82,7 +82,6 @@ typedef struct FmgrInfo
  * that allocated FunctionCallInfoData itself, as it'd often silently break
  * old code due to no space for arguments being provided.
  */
-#ifdef YB_TODO
 typedef struct FunctionCallInfoBaseData
 {
 	FmgrInfo   *flinfo;			/* ptr to lookup info used for this call */
@@ -95,39 +94,18 @@ typedef struct FunctionCallInfoBaseData
 #define FIELDNO_FUNCTIONCALLINFODATA_ARGS 6
 	NullableDatum args[FLEXIBLE_ARRAY_MEMBER];
 } FunctionCallInfoBaseData;
-#endif
-typedef struct FunctionCallInfoData FunctionCallInfoBaseData;
 
-typedef struct FunctionCallInfoData
-{
-	FmgrInfo   *flinfo;			/* ptr to lookup info used for this call */
-	fmNodePtr	context;		/* pass info about context of call */
-	fmNodePtr	resultinfo;		/* pass or return extra info about result */
-	Oid			fncollation;	/* collation for function to use */
-#define FIELDNO_FUNCTIONCALLINFODATA_ISNULL 4
-	bool		isnull;			/* function must set true if result is NULL */
-	short		nargs;			/* # arguments actually passed */
-#define FIELDNO_FUNCTIONCALLINFODATA_ARG 6
-	Datum		arg[FUNC_MAX_ARGS]; /* Arguments passed to function */
-#define FIELDNO_FUNCTIONCALLINFODATA_ARGNULL 7
-	bool		argnull[FUNC_MAX_ARGS]; /* T if arg[i] is actually NULL */
-	/* YB_TODO(ted@yugabyte)
-	 * - HACK: add a original field here so I can compile PG13 code.
-	 * - Postgres's original structures are modified
-	 * - New code that uses the original structures cannot compile.
-	 *   This makes merging process difficult every time we upgrade.
-	 * - Why modify Postgres's definition?
-	 */
-#define FIELDNO_FUNCTIONCALLINFODATA_ARGS 8
-	NullableDatum args[1];
-} FunctionCallInfoData;
+#ifdef YB_TODO
+/* YB_TODO(neil) Remove the changes involving FunctionCallInfoData */
+typedef struct FunctionCallInfoData FunctionCallInfoBaseData;
+#endif
 
 /*
  * Space needed for a FunctionCallInfoBaseData struct with sufficient space
  * for `nargs` arguments.
  */
 #define SizeForFunctionCallInfo(nargs) \
-	(offsetof(FunctionCallInfoData, args) + \
+	(offsetof(FunctionCallInfoBaseData, args) + \
 	 sizeof(NullableDatum) * (nargs))
 
 /*
@@ -138,8 +116,7 @@ typedef struct FunctionCallInfoData
 	/* use union with FunctionCallInfoBaseData to guarantee alignment */ \
 	union \
 	{ \
-		/* YB_TODO(ted@yugabyte) Need to look at all related code every time we merge. */ \
-		FunctionCallInfoData fcinfo; \
+		FunctionCallInfoBaseData fcinfo; \
 		/* ensure enough space for nargs args is available */ \
 		char fcinfo_data[SizeForFunctionCallInfo(nargs)]; \
 	} name##data; \
@@ -732,7 +709,6 @@ extern bytea *OidSendFunctionCall(Oid functionId, Datum val);
 /*
  * Routines in fmgr.c
  */
-extern bool is_builtin_func(Oid id);
 extern const Pg_finfo_record *fetch_finfo_record(void *filehandle, const char *funcname);
 extern Oid	fmgr_internal_function(const char *proname);
 extern Oid	get_fn_expr_rettype(FmgrInfo *flinfo);
@@ -806,5 +782,8 @@ extern PGDLLIMPORT fmgr_hook_type fmgr_hook;
 
 #define FmgrHookIsNeeded(fn_oid)							\
 	(!needs_fmgr_hook ? false : (*needs_fmgr_hook)(fn_oid))
+
+/* Yugabyte support */
+extern bool is_builtin_func(Oid id);
 
 #endif							/* FMGR_H */

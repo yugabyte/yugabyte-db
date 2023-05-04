@@ -247,7 +247,33 @@ ConditionVariableCancelSleep(void)
 	 */
 	if (signaled)
 		ConditionVariableSignal(cv);
+	cv_sleep_target = NULL;
+}
 
+/*
+ * Cancel any pending sleep operation for a specific process.
+ *
+ * We just need to remove ourselves from the wait queue of any condition
+ * variable for which we have previously prepared a sleep.
+ *
+ * Do nothing if nothing is pending; this allows this function to be called
+ * during transaction abort to clean up any unfinished CV sleep.
+ */
+/* YB_TODO(neil) Need to rewrite function ConditionVariableCancelSleepForProc) to call
+ * ConditionVariableCancelSleep()
+ */
+void
+ConditionVariableCancelSleepForProc(volatile PGPROC *proc)
+{
+	ConditionVariable *cv = cv_sleep_target;
+
+	if (cv == NULL)
+		return;
+
+	SpinLockAcquire(&cv->mutex);
+	if (proclist_contains(&cv->wakeup, proc->pgprocno, cvWaitLink))
+		proclist_delete(&cv->wakeup, proc->pgprocno, cvWaitLink);
+	SpinLockRelease(&cv->mutex);
 	cv_sleep_target = NULL;
 }
 

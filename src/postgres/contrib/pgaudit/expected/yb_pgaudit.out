@@ -1,0 +1,9 @@
+SET pgaudit.log_client = ON;
+SET pgaudit.log_level = 'notice';
+SET pgaudit.log_parameter = ON;
+-- Testing if setting pgaudit.log is audited. We perform an early bail out when logging is disabled.
+-- When we are trying to set pgaudit.log this set statement should be logged although the state
+-- of the current system is such that logging is disable. We test that corner case here.
+SET pgaudit.log = 'NONE';
+SET pgaudit.log = 'ALL';
+NOTICE:  AUDIT: SESSION,1,1,MISC,SET,,,SET pgaudit.log = 'ALL';,<none>

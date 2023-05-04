@@ -20,8 +20,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YB_LSM_H
-#define YB_LSM_H
+#pragma once
 
 #include "access/amapi.h"
 #include "nodes/execnodes.h"
@@ -68,5 +67,3 @@ extern void ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 						ScanKey orderbys, int norderbys);
 extern bool ybcingettuple(IndexScanDesc scan, ScanDirection dir);
 extern void ybcinendscan(IndexScanDesc scan);
-
-#endif							/* YB_LSM_H */

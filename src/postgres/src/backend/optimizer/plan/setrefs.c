@@ -2181,6 +2181,23 @@ fix_scan_expr_walker(Node *node, fix_scan_expr_context *context)
 								  (void *) context);
 }
 
+static int
+YbBNL_hinfo_cmp_inner_att(const void *arg_1,
+						  const void *arg_2)
+{
+	const YbBNLHashClauseInfo *hinfo_1 = (const YbBNLHashClauseInfo *) arg_1;
+	const YbBNLHashClauseInfo *hinfo_2 = (const YbBNLHashClauseInfo *) arg_2;
+
+	if (!OidIsValid(hinfo_1->hashOp))
+		return -1;
+	
+	if (!OidIsValid(hinfo_2->hashOp))
+		return 1;
+	
+	return (hinfo_1->innerHashAttNo > hinfo_2->innerHashAttNo) -
+		   (hinfo_1->innerHashAttNo < hinfo_2->innerHashAttNo);
+}
+
 /*
  * set_join_references
  *	  Modify the target list and quals of a join node to reference its
@@ -2238,19 +2255,19 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 				  nlp->paramval->varno == OUTER_VAR))
 				elog(ERROR, "NestLoopParam was not reduced to a simple Var");
 		}
-		List *innerAttNos = NIL;
-		List *outerParamExprs = NIL;
 
 		ListCell *l;
 		if (IsA(join, YbBatchedNestLoop))
 		{
 			YbBatchedNestLoop *batchednl = (YbBatchedNestLoop *) join;
-			ListCell *ll;
-			/* Fill in batchednl->innerHashAttNos if applicable */
-			forboth(l, join->joinqual, ll, batchednl->hashOps)
+
+			YbBNLHashClauseInfo *current_hinfo = batchednl->hashClauseInfos;
+
+			foreach(l, join->joinqual)
 			{
 				Expr *clause = (Expr *) lfirst(l);
-				Oid hashOp = lfirst_oid(ll);
+				Oid hashOp = current_hinfo->hashOp;
+				
 				if (OidIsValid(hashOp))
 				{
 					Assert(IsA(clause, OpExpr));
@@ -2259,6 +2276,11 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 					Expr *leftArg = linitial(opexpr->args);
 					Expr *rightArg = lsecond(opexpr->args);
 
+					if (IsA(leftArg, RelabelType))
+						leftArg = ((RelabelType *) leftArg)->arg;
+					
+					if (IsA(rightArg, RelabelType))
+						rightArg = ((RelabelType *) rightArg)->arg;
 
 					Var *innerArg;
 					Expr *outerArg;
@@ -2277,20 +2299,29 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 					
 					Assert(innerArg->varno = INNER_VAR);
 
-					innerAttNos =
-						lappend_int(innerAttNos,
-									((Var *) innerArg)->varattno);
-					outerParamExprs =
-						lappend(outerParamExprs, outerArg);
-				} else {
-					innerAttNos =
-						lappend_int(innerAttNos, InvalidOid);
-					outerParamExprs =
-						lappend(outerParamExprs, NULL);
+					current_hinfo->innerHashAttNo =
+						((Var *) innerArg)->varattno;
+					current_hinfo->outerParamExpr = outerArg;
 				}
+				current_hinfo++;
 			}
-			batchednl->innerHashAttNos = innerAttNos;
-			batchednl->outerParamExprs =  outerParamExprs;
+
+			qsort(batchednl->hashClauseInfos, join->joinqual->length,
+				  sizeof(YbBNLHashClauseInfo), YbBNL_hinfo_cmp_inner_att);
+
+			YbBNLHashClauseInfo *valid_bnl_hinfos = batchednl->hashClauseInfos;
+			int num_invalid = 0;
+			while(num_invalid < batchednl->num_hashClauseInfos &&
+				  !OidIsValid(valid_bnl_hinfos->hashOp))
+			{
+				valid_bnl_hinfos++;
+				num_invalid++;
+			}
+			if (num_invalid == batchednl->num_hashClauseInfos)
+				valid_bnl_hinfos = NULL;
+
+			batchednl->hashClauseInfos = valid_bnl_hinfos;
+			batchednl->num_hashClauseInfos -= num_invalid;
 		}
 
 	}

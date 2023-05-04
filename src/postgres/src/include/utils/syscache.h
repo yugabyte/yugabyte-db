@@ -125,12 +125,12 @@ enum SysCacheIdentifier
 extern Bitmapset *YBSysTablePrimaryKey(Oid relid);
 
 /* Used in IsYugaByteEnabled() mode only */
-extern void YBSetSysCacheTuple(Relation rel, HeapTuple tup);
-extern void YBPreloadCatalogCaches(void);
-extern void YBPreloadCatalogCache(int cache_id, int idx_cache_id);
-extern bool YBIsPinnedObjectsCacheAvailable();
-extern bool YBIsObjectPinned(Oid classId, Oid objectId);
-extern bool YBIsSharedObjectPinned(Oid classId, Oid objectId);
+extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
+extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
+extern void YbInitPinnedCacheIfNeeded();
+extern void YbResetPinnedCache();
+extern bool YbIsObjectPinned(Oid classId, Oid objectId, bool shared_dependency);
+extern void YbPinObjectIfNeeded(Oid classId, Oid objectId, bool shared_dependency);
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);

@@ -91,6 +91,7 @@ extern Oid	index_create(Relation heapRelation,
 						 Oid *constraintId,
 						 OptSplit *split_options,
 						 const bool skip_index_backfill,
+						 bool is_colocated,
 						 Oid tablegroupId,
 						 Oid colocationId);
 

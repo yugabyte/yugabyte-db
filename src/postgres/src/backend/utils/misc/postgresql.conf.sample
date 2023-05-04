@@ -390,6 +390,7 @@
 #enable_tidscan = on
 #yb_enable_geolocation_costing = on
 #yb_enable_expression_pushdown = off
+#yb_enable_sequence_pushdown = on
 
 # - Planner Cost Constants -
 
@@ -582,11 +583,11 @@
 					#        processes
 					#   %% = '%'
 					#	The following are yugabyte options
-					#   %C = cloud name 
+					#   %C = cloud name
 					#   %R = region / data center name
 					#   %Z = availability zone / rack name
 					#   %U = cluster UUID
-					#   %N = node and cluster name 
+					#   %N = node and cluster name
 					#   %H = current hostname
 					# e.g. '<%u%%%d> '
 #log_lock_waits = off			# log lock waits >= deadlock_timeout

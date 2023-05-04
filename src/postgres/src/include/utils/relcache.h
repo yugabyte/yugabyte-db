@@ -100,7 +100,6 @@ extern void RelationCacheInitializePhase3(void);
 
 /*
  * Preload relations cache
- * Requires sys table prefetching to be started by the caller side
  */
 extern void YBPreloadRelCache();
 

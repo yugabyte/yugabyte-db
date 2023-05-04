@@ -79,6 +79,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY createOperatorFamily SYSTEM "create_opfamily.sgml">
 <!ENTITY createPolicy       SYSTEM "create_policy.sgml">
 <!ENTITY createProcedure    SYSTEM "create_procedure.sgml">
+<!ENTITY createProfile      SYSTEM "create_profile.sgml">
 <!ENTITY createPublication  SYSTEM "create_publication.sgml">
 <!ENTITY createRole         SYSTEM "create_role.sgml">
 <!ENTITY createRule         SYSTEM "create_rule.sgml">
@@ -127,6 +128,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY dropOwned          SYSTEM "drop_owned.sgml">
 <!ENTITY dropPolicy         SYSTEM "drop_policy.sgml">
 <!ENTITY dropProcedure      SYSTEM "drop_procedure.sgml">
+<!ENTITY dropProfile        SYSTEM "drop_profile.sgml">
 <!ENTITY dropPublication    SYSTEM "drop_publication.sgml">
 <!ENTITY dropRole           SYSTEM "drop_role.sgml">
 <!ENTITY dropRoutine        SYSTEM "drop_routine.sgml">

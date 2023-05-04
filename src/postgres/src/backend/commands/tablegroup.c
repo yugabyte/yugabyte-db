@@ -81,6 +81,8 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
+Oid binary_upgrade_next_tablegroup_oid = InvalidOid;
+
 /*
  * Create a table group.
  */
@@ -103,8 +105,11 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 				 errmsg("Tablegroup system catalog does not exist.")));
 	}
 
-	/* If not superuser check privileges */
-	if (!superuser())
+	/*
+	 * If not superuser check privileges.
+	 * Skip the check for implicitly created tablegroup in a colocated database.
+	 */
+	if (!stmt->implicit && !superuser())
 	{
 		AclResult aclresult;
 		// Check that user has create privs on the database to allow creation
@@ -115,7 +120,10 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 						   get_database_name(MyDatabaseId));
 	}
 
-	if (MyDatabaseColocated)
+	/*
+	 * Disallow users from creating tablegroups in a colocated database.
+	 */
+	if (MyDatabaseColocated && !stmt->implicit)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot use tablegroups in a colocated database")));
@@ -155,8 +163,9 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	 * 
 	 * - Postgres no longer has hidden OID. A column for OID must be included if oid is needed.
 	 * - The following is a suggestion of what to do.
-	tablegroupoid = GetNewOidWithIndex(rel, TablegroupOidIndexId, Anum_pg_yb_tablegroup_oid);
-	values[Anum_pg_yb_tablegroup_oid - 1] = ObjectIdGetDatum(tablegroupoid);
+	 *	 tablegroupoid = GetNewOidWithIndex(rel, TablegroupOidIndexId, Anum_pg_yb_tablegroup_oid);
+	 *   values[Anum_pg_yb_tablegroup_oid - 1] = ObjectIdGetDatum(tablegroupoid);
+	 * - Need to verify if following assignments to "values[]" are correct.
 	 */
 	tablegroupoid = YB_HACK_INVALID_OID;
 
@@ -175,9 +184,60 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	values[Anum_pg_yb_tablegroup_grptablespace - 1] = tablespaceoid;
 
 	/* Generate new proposed grpoptions (text array) */
-	/* For now no grpoptions. Will be part of Interleaved/Copartitioned */
-
+	/* For now no grpoptions. Will be part of Interleaved */
 	nulls[Anum_pg_yb_tablegroup_grpoptions - 1] = true;
+
+	/*
+	 * If YB binary restore mode is set, we want to use the specified tablegroup
+	 * oid stored in binary_upgrade_next_tablegroup_oid instead of generating
+	 * an oid when inserting the tuple into pg_yb_tablegroup catalog.
+	 * YB binary restore mode is similar to PG binary upgrade mode. However, in
+	 * YB binary restore mode, we only expecte oids of few types of DB objects
+	 * (tablegroup, type, etc) to be set.
+	 */
+	if (yb_binary_restore)
+	{
+		/*
+		 * The reason to comment out the check below is mainly for supporting
+		 * restoring backup of a legacy colocated database to a colocation
+		 * database.
+		 * We set the YB binary restore mode in ysql_dump for all YB backups.
+		 * Since no legacy colocated database contains tablegroup objects,
+		 * the backup dumpfile of a legacy colocated database doesn't contain
+		 * SQL function calls (binary_upgrade_set_next_tablegroup_oid) to
+		 * preserver tablegroup oids.
+		 * However, when restoring the dumpfile of a legacy colocated database
+		 * to a colocation database, the first CREATE TABLE statement creates
+		 * an implicit tablegroup (Colocation GA behaviors).
+		 * Since the YB binary restore mode is set, a preserved next tablegroup
+		 * oid is expected when creating the tablegroup. Then, the check below
+		 * would fail.
+		 * As long as we remember to preserve all tablegroup oids,
+		 * it is ok to comment out the check as it is purely used as a sanity
+		 * check to make sure we preserve tablegroup oids in backup dumpfiles
+		 * when we have tablegroup objects.
+		 *
+		 * TODO: uncomment the check when all customers use colocation, and no
+		 * backup from any legacy colocated database is needed to be restored
+		 * to a colocation database.
+		 */
+
+		/*
+		 *	if (!OidIsValid(binary_upgrade_next_tablegroup_oid))
+		 *		ereport(ERROR,
+		 *				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+		 *				errmsg("pg_yb_tablegroup OID value not set when in binary upgrade mode")));
+		 */
+		if (OidIsValid(binary_upgrade_next_tablegroup_oid))
+		{
+			/* YB_TODO(alex) Needs to decide which column should be OID.
+			 * Following code assign oid as 1st column - values[0]
+			 */
+			int Anum_pg_yb_tablegroup_oid = 0;
+			values[Anum_pg_yb_tablegroup_oid] = binary_upgrade_next_tablegroup_oid;
+			binary_upgrade_next_tablegroup_oid = InvalidOid;
+		}
+	}
 
 	tuple = heap_form_tuple(rel->rd_att, values, nulls);
 
@@ -330,6 +390,14 @@ RemoveTablegroupById(Oid grp_oid)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup with oid %u does not exist",
 				 		grp_oid)));
+	}
+
+	if (MyDatabaseColocated)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot drop an implicit tablegroup "
+						"in a colocated database.")));
 	}
 
 	/* DROP hook for the tablegroup being removed */

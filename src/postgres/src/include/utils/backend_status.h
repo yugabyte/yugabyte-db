@@ -80,6 +80,24 @@ typedef struct PgBackendGSSStatus
 } PgBackendGSSStatus;
 
 
+/*
+ * YbPgBackendCatalogVersionStatus
+ *
+ * Each live backend maintains a YbPgBackendCatalogVersionStatus struct in
+ * shared memory indicating what catalog version it is at.  A backend in the
+ * middle of a query or transaction uses a consistent snapshot of the system
+ * catalog (technically, only the cache does, not direct reads/writes to/from
+ * system catalog).  The catalog version indicates that snapshot.  has_version
+ * is false for backends that are idle (and not in txn) or non-client backends.
+ */
+typedef struct YbPgBackendCatalogVersionStatus
+{
+	bool		has_version;	/* whether the backend is using the following
+								   version */
+	uint64_t	version;		/* if has_version, catalog version that the
+								   backend is on */
+} YbPgBackendCatalogVersionStatus;
+
 /* ----------
  * PgBackendStatus
  *
@@ -172,6 +190,15 @@ typedef struct PgBackendStatus
 	/* Yugabyte attributes */
 	char 		*st_databasename; /* Used in YB Mode */
 	int			 yb_new_conn; /* new connection count */
+
+	/*
+	 * Memory usage of backend from TCMalloc, including PostgreSQL memory usage
+	 * + pggate memory usage + cached memory - memory that was freed but not recycled
+	 */
+	int64_t yb_st_allocated_mem_bytes;
+
+	/* YB catalog version */
+	YbPgBackendCatalogVersionStatus yb_st_catalog_version;
 } PgBackendStatus;
 
 
@@ -262,6 +289,9 @@ typedef struct LocalPgBackendStatus
 	 * not.
 	 */
 	TransactionId backend_xmin;
+
+	/* Backend's RSS memory usage */
+	int64_t yb_backend_rss_mem_bytes;
 } LocalPgBackendStatus;
 
 
