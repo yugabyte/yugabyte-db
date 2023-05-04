@@ -512,6 +512,8 @@ DEFINE_test_flag(uint64, delay_sys_catalog_reload_secs, 0,
 
 DECLARE_bool(transaction_tables_use_preferred_zones);
 
+DECLARE_string(tmp_dir);
+
 DEFINE_RUNTIME_bool(batch_ysql_system_tables_metadata, true,
     "Whether change metadata operation and SysCatalogTable upserts for ysql system tables during a "
     "create database is performed one by one or batched together");
@@ -1617,8 +1619,8 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
       initial_snapshot_writer_.emplace();
     }
 
-    Status status = PgWrapper::InitDbForYSQL(
-        master_addresses_str, "/tmp", master_->GetSharedMemoryFd());
+    Status status =
+        PgWrapper::InitDbForYSQL(master_addresses_str, FLAGS_tmp_dir, master_->GetSharedMemoryFd());
 
     if (FLAGS_create_initial_sys_catalog_snapshot && status.ok()) {
       auto sys_catalog_tablet_result = sys_catalog_->tablet_peer()->shared_tablet_safe();
