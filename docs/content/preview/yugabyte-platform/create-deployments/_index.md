@@ -90,4 +90,15 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
     </a>
   </div>
 
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="dedicated-master">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
+        <div class="title">Place YB-Masters on dedicated nodes</div>
+      </div>
+      <div class="body">
+        Create a universe with YB-Master and YB-TServer processes on dedicated nodes.
+      </div>
+    </a>
+  </div>
 </div>
