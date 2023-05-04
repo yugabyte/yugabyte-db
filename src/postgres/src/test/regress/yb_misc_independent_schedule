@@ -6,3 +6,6 @@
 ####################################################################################################
 
 test: yb_catalog_version
+test: yb_disabled
+test: yb_errors
+test: yb_truncate
