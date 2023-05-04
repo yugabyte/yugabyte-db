@@ -524,6 +524,8 @@ Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& 
 Status CatalogManager::AddNewTableToCDCDKStreamsMetadata(
     const TableId& table_id, const NamespaceId& ns_id) {
   LockGuard lock(cdcsdk_unprocessed_table_mutex_);
+  VLOG(1) << "Added table: " << table_id << ", under namesapce: " << ns_id
+          << ", to namespace_to_cdcsdk_unprocessed_table_map_ to be processed by CDC streams";
   namespace_to_cdcsdk_unprocessed_table_map_[ns_id].insert(table_id);
 
   return Status::OK();
@@ -936,6 +938,9 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
           break;
         }
       }
+      if (found_unprocessed_tables == FLAGS_cdcsdk_table_processing_limit_per_run) {
+        break;
+      }
     }
   }
 
@@ -979,7 +984,19 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
         if (std::find(ltm->table_id().begin(), ltm->table_id().end(), unprocessed_table_id) ==
             ltm->table_id().end()) {
           (*table_to_unprocessed_streams_map)[unprocessed_table_id].push_back(stream_info);
+          VLOG(1) << "Will try and add table: " << unprocessed_table_id
+                  << ", to stream: " << stream_info->id();
         }
+      }
+    }
+  }
+
+  for (const auto& [ns_id, unprocessed_table_ids] : namespace_to_unprocessed_table_map) {
+    for (const auto& unprocessed_table_id : unprocessed_table_ids) {
+      if (!table_to_unprocessed_streams_map->contains(unprocessed_table_id)) {
+        // This means we found no active CDCSDK stream where this table was missing, hence we can
+        // remove this table from 'RemoveTableFromCDCSDKUnprocessedMap'.
+        RemoveTableFromCDCSDKUnprocessedMap(unprocessed_table_id, ns_id);
       }
     }
   }
@@ -1073,6 +1090,8 @@ Status CatalogManager::AddTabletEntriesToCDCSDKStreamsForNewTables(
       if (s.IsNotFound()) {
         // The table has been deleted. We will remove the table's entry from the stream's metadata.
         RemoveTableFromCDCSDKUnprocessedMap(table_id, streams.begin()->get()->namespace_id());
+        VLOG(1) << "Removed table: " << table_id
+                << ", from namespace_to_cdcsdk_unprocessed_table_map_ , beacuse table not found";
       } else {
         LOG(WARNING) << "Encountered error calling: 'GetTableLocations' for table: " << table_id
                      << "while trying to add tablet details to cdc_state table. Error: " << s;
