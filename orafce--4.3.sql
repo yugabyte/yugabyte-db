@@ -2043,7 +2043,7 @@ COMMENT ON FUNCTION dbms_random.seed(text) IS 'Reset the seed value';
 CREATE FUNCTION dbms_random.string(opt text, len int)
 RETURNS text
 AS 'MODULE_PATHNAME','dbms_random_string'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_random.string(text,int) IS 'Create Random Strings';
 
 CREATE FUNCTION dbms_random.terminate()
