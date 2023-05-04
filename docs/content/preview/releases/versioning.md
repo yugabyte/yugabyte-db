@@ -80,9 +80,9 @@ TP features aren't supported by Customer Support and may change at any time duri
 
 If you are interested in a TP feature, contact {{% support-general %}}.
 
-Participating customers agree to provide feedback that is required for maturing the feature. However, the timeline for addressing specific areas of feedback (including bugs) is at the discretion of Yugabyte.
+Participating customers agree to provide feedback to the Product Team. However, the timeline for addressing specific areas of feedback (including bugs) is at the discretion of Yugabyte.
 
-Documentation (if provided) for TP features are marked with the TP icon: [TP]
+Documentation (if provided) for TP features is marked as such.
 
 ### Early Access (EA)
 
@@ -98,15 +98,15 @@ Any bug fixes or improvements are managed and fixed with the same timeline and p
 
 Give feedback on EA features on our [Slack community]({{<slack-invite>}}) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
 
-Documentation for EA features are marked with the EA icon: [EA]
+Documentation for EA features is marked as such.
 
 ### General Availability (GA)
 
-A feature in General Availability (GA) is new or enhanced functionality that is enabled by default for all customers.
+A feature in General Availability (GA) is enabled by default for all customers.
 
 GA features are supported by Yugabyte Support, and issues are addressed according to your Customer Agreement.
 
-Documentation for GA features are not marked with any icons.
+Documentation for GA features is not marked.
 
 ### Deprecation
 
