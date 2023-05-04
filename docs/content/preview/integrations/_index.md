@@ -48,6 +48,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     </a>
   </li>
 
+   <li>
+    <a href="atomicjar/">
+      <img src="/images/section_icons/develop/ecosystem/apache-spark.png">
+      AtomicJar
+    </a>
+  </li>
+
   <li>
     <a href="camunda/">
       <img src="/images/section_icons/develop/ecosystem/camunda.png">
