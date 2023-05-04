@@ -1440,7 +1440,7 @@
         },
         "backupType" : {
           "description" : "Backup type",
-          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "enum" : [ "PGSQL_TABLE_TYPE", "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE" ],
           "type" : "string"
         },
         "backupUUID" : {
@@ -1465,13 +1465,6 @@
         },
         "cronExpression" : {
           "description" : "Cron expression for a recurring backup",
-          "type" : "string"
-        },
-        "currentIdx" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "currentYbcTaskId" : {
           "type" : "string"
         },
         "customerUUID" : {
@@ -1579,6 +1572,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "parallelDBBackups" : {
+          "description" : "Parallel DB backups",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "parallelism" : {
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
@@ -1632,6 +1630,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "tableByTableBackup" : {
+          "description" : "Take table by table backups",
+          "type" : "boolean"
+        },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
           "items" : {
@@ -1666,7 +1668,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
+      "required" : [ "backupUUID", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
       "type" : "object"
     },
     "BackupResp" : {
@@ -2004,6 +2006,10 @@
         "storageLocation" : {
           "description" : "Storage location",
           "type" : "string"
+        },
+        "tableByTableBackup" : {
+          "description" : "Table by table backup",
+          "type" : "boolean"
         },
         "tableName" : {
           "description" : "Table name",
@@ -2811,6 +2817,9 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "tableByTableBackup" : {
+          "type" : "boolean"
+        },
         "taskUUID" : {
           "format" : "uuid",
           "type" : "string"
@@ -2824,7 +2833,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupUUID", "baseBackupUUID", "completionTime", "createTime", "kmsConfigUUID", "responseList", "sse", "state", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "updateTime" ],
+      "required" : [ "backupUUID", "baseBackupUUID", "completionTime", "createTime", "kmsConfigUUID", "responseList", "sse", "state", "storageConfigUUID", "tableByTableBackup", "taskUUID", "totalBackupSizeInBytes", "updateTime" ],
       "type" : "object"
     },
     "CommunicationPorts" : {
@@ -4209,15 +4218,13 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "type" : "array",
-          "uniqueItems" : true
+          "type" : "array"
         },
         "tablesList" : {
           "items" : {
             "type" : "string"
           },
-          "type" : "array",
-          "uniqueItems" : true
+          "type" : "array"
         }
       },
       "required" : [ "allTables", "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
@@ -4985,6 +4992,10 @@
         "storageLocation" : {
           "description" : "Storage location",
           "type" : "string"
+        },
+        "tableByTableBackup" : {
+          "description" : "Table by table backup",
+          "type" : "boolean"
         },
         "tableName" : {
           "description" : "Table name",
@@ -6669,6 +6680,9 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "nodeIp" : {
+          "type" : "string"
+        },
         "parallelism" : {
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
@@ -6741,7 +6755,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
+      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "nodeIp", "platformUrl", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
       "type" : "object"
     },
     "RestoreSnapshotScheduleParams" : {

@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -41,16 +42,15 @@ public class BackupTableYb extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Backup backup;
-    backup = Backup.get(taskParams().customerUuid, taskParams().backupUuid);
+    Backup backup = Backup.get(taskParams().customerUuid, taskParams().backupUuid);
 
     try {
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       Map<String, String> config = universe.getConfig();
       if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
         long totalBackupSize = 0L;
-        int backupIdx = 0;
         for (BackupTableParams backupParams : taskParams().backupList) {
+          UUID paramsIdentifier = backupParams.backupParamsIdentifier;
           backupParams.backupUuid = taskParams().backupUuid;
           ShellResponse response = tableManagerYb.createBackup(backupParams).processErrors();
           JsonNode jsonNode = null;
@@ -69,16 +69,25 @@ public class BackupTableYb extends AbstractTaskBase {
           long backupSize = BackupUtil.extractBackupSize(jsonNode);
           List<BackupUtil.RegionLocations> locations =
               BackupUtil.extractPerRegionLocationsFromBackupScriptResponse(jsonNode);
-          if (CollectionUtils.isNotEmpty(locations)) {
-            backup.setPerRegionLocations(backupIdx, locations);
-          }
-          backup.setBackupSizeInBackupList(backupIdx, backupSize);
+          Backup.BackupUpdater bUpdater =
+              b -> {
+                BackupTableParams params = b.getParamsWithIdentifier(paramsIdentifier).get();
+                if (CollectionUtils.isNotEmpty(locations)) {
+                  params.regionLocations = locations;
+                }
+                params.backupSizeInBytes = backupSize;
+              };
+          Backup.saveDetails(taskParams().customerUuid, taskParams().backupUuid, bUpdater);
           totalBackupSize += backupSize;
-          backupIdx++;
         }
-        backup.setCompletionTime(backup.getUpdateTime());
-        backup.setTotalBackupSize(totalBackupSize);
-        backup.transitionState(Backup.BackupState.Completed);
+        long fullSize = totalBackupSize;
+        Backup.BackupUpdater bUpdater =
+            b -> {
+              b.setCompletionTime(b.getUpdateTime());
+              b.setTotalBackupSize(fullSize);
+              b.state = Backup.BackupState.Completed;
+            };
+        Backup.saveDetails(taskParams().customerUuid, taskParams().backupUuid, bUpdater);
       } else {
         backup.transitionState(Backup.BackupState.Skipped);
       }

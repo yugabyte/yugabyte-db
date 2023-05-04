@@ -9,17 +9,24 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.helpers.TransactionUtil;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
 import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import com.yugabyte.yw.models.paging.BackupPagedResponse;
@@ -35,11 +42,13 @@ import io.ebean.Query;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.Transactional;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -52,9 +61,13 @@ import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import org.apache.commons.collections.CollectionUtils;
+import lombok.Getter;
+import lombok.Setter;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.CommonTypes.TableType;
 import play.api.Play;
 
 @ApiModel(
@@ -64,6 +77,9 @@ import play.api.Play;
 public class Backup extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Backup.class);
   SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+
+  // This is a key lock for Backup by UUID.
+  public static final KeyLock<UUID> BACKUP_KEY_LOCK = new KeyLock<UUID>();
 
   public enum BackupState {
     @EnumValue("In Progress")
@@ -322,8 +338,13 @@ public class Backup extends Model {
       UUID customerUUID, BackupTableParams params, BackupCategory category, BackupVersion version) {
     Backup backup = new Backup();
     backup.backupUUID = UUID.randomUUID();
-    backup.baseBackupUUID =
-        params.baseBackupUUID == null ? backup.backupUUID : params.baseBackupUUID;
+    Backup previousBackup = null;
+    if (params.baseBackupUUID != null) {
+      backup.baseBackupUUID = params.baseBackupUUID;
+      previousBackup = getLastSuccessfulBackupInChain(customerUUID, params.baseBackupUUID);
+    } else {
+      backup.baseBackupUUID = backup.backupUUID;
+    }
     backup.customerUUID = customerUUID;
     backup.universeUUID = params.universeUUID;
     backup.storageConfigUUID = params.storageConfigUUID;
@@ -347,18 +368,27 @@ public class Backup extends Model {
     if (params.backupList != null) {
       params.backupUuid = backup.backupUUID;
       params.baseBackupUUID = backup.baseBackupUUID;
-      // In event of universe backup
-      for (BackupTableParams childBackup : params.backupList) {
-        childBackup.backupUuid = backup.backupUUID;
-        childBackup.baseBackupUUID = backup.baseBackupUUID;
-        if (childBackup.storageLocation == null) {
-          BackupUtil.updateDefaultStorageLocation(childBackup, customerUUID, backup.category);
+      if (version.equals(BackupVersion.V1)
+          || backup.category.equals(BackupCategory.YB_BACKUP_SCRIPT)
+          || previousBackup == null) {
+        for (BackupTableParams childBackup : params.backupList) {
+          childBackup.backupUuid = backup.backupUUID;
+          childBackup.baseBackupUUID = backup.baseBackupUUID;
+          childBackup.backupParamsIdentifier = UUID.randomUUID();
+          if (childBackup.storageLocation == null) {
+            BackupUtil.updateDefaultStorageLocation(
+                childBackup, customerUUID, backup.category, backup.version);
+          }
         }
+      } else {
+        // Only for incremental backup object creation
+        populateChildParams(params, previousBackup);
       }
     } else if (params.storageLocation == null) {
       params.backupUuid = backup.backupUUID;
       // We would derive the storage location based on the parameters
-      BackupUtil.updateDefaultStorageLocation(params, customerUUID, backup.category);
+      BackupUtil.updateDefaultStorageLocation(
+          params, customerUUID, backup.category, backup.version);
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     if (storageConfig != null) {
@@ -367,6 +397,42 @@ public class Backup extends Model {
     backup.setBackupInfo(params);
     backup.save();
     return backup;
+  }
+
+  // For incremental backup requests, populate child params based on previous backup's params
+  // If a previous sub-param consist of a keyspace-tables match with this request, assign the
+  // same params identifier to this child param.
+  private static void populateChildParams(BackupTableParams params, Backup previousBackup) {
+    BackupTableParams previousBackupInfo = previousBackup.getBackupInfo();
+    List<BackupTableParams> paramsCollection = previousBackup.getBackupParamsCollection();
+    for (BackupTableParams childParams : params.backupList) {
+      childParams.backupUuid = params.backupUuid;
+      childParams.baseBackupUUID = params.baseBackupUUID;
+      if (!previousBackupInfo.backupType.equals(params.backupType)) {
+        childParams.backupParamsIdentifier = UUID.randomUUID();
+      } else {
+        Optional<BackupTableParams> oParams =
+            getMatchingParamsIncrementalBackup(paramsCollection, childParams, params.backupType);
+        if (oParams.isPresent()) {
+          BackupTableParams previousChildParams = oParams.get();
+          if (previousChildParams.backupParamsIdentifier == null) {
+            childParams.backupParamsIdentifier =
+                previousChildParams.backupParamsIdentifier = UUID.randomUUID();
+          } else {
+            childParams.backupParamsIdentifier = previousChildParams.backupParamsIdentifier;
+          }
+        } else {
+          childParams.backupParamsIdentifier = UUID.randomUUID();
+        }
+      }
+      if (childParams.storageLocation == null) {
+        BackupUtil.updateDefaultStorageLocation(
+            childParams, params.customerUuid, BackupCategory.YB_CONTROLLER, BackupVersion.V2);
+      }
+    }
+    if (previousBackup != null) {
+      previousBackup.updateBackupInfo(previousBackupInfo);
+    }
   }
 
   public static Backup create(UUID customerUUID, BackupTableParams params) {
@@ -395,20 +461,74 @@ public class Backup extends Model {
     save();
   }
 
+  // Find if Incremental backup's child param matches any of Previous backup's params.
+  // If yes, we set params identifier same as previous backup.
+  // For YSQL: keyspace name match.
+  // For YCQL: keyspace name + any table UUID from previous backup param matches this
+  // child param.
+  private static Optional<BackupTableParams> getMatchingParamsIncrementalBackup(
+      List<BackupTableParams> paramsCollection,
+      BackupTableParams incrementalParam,
+      TableType backupType) {
+    return paramsCollection
+        .parallelStream()
+        .filter(
+            backupParams ->
+                incrementalParam.getKeyspace().equals(backupParams.getKeyspace())
+                    && (backupType.equals(TableType.PGSQL_TABLE_TYPE)
+                        ? true
+                        : (CollectionUtils.containsAny(
+                            backupParams.getTableUUIDList(), incrementalParam.getTableUUIDList()))))
+        .findAny();
+  }
+
+  @JsonIgnore
+  public List<BackupTableParams> getBackupParamsCollection() {
+    BackupTableParams backupParams = getBackupInfo();
+    if (CollectionUtils.isNotEmpty(backupParams.backupList)) {
+      return backupParams.backupList;
+    } else {
+      return ImmutableList.of(backupParams);
+    }
+  }
+
+  /**
+   * Return the BackupTableParam object from the list of params which matches the give
+   * param-identifier UUID.
+   *
+   * @param params
+   * @return Optional of BackupTableParams
+   */
+  @JsonIgnore
+  public Optional<BackupTableParams> getParamsWithIdentifier(UUID paramsIdentifier) {
+    Optional<BackupTableParams> oParams = Optional.empty();
+    List<BackupTableParams> params = getBackupParamsCollection();
+    if (CollectionUtils.isNotEmpty(params)) {
+      oParams =
+          params
+              .parallelStream()
+              .filter(bP -> bP.backupParamsIdentifier.equals(paramsIdentifier))
+              .findAny();
+    }
+    return oParams;
+  }
+
   public BackupCategory getBackupCategory() {
     return this.category;
   }
 
   public void onCompletion() {
-    this.backupInfo.backupSizeInBytes =
-        this.backupInfo.backupList.stream().mapToLong(bI -> bI.backupSizeInBytes).sum();
+    List<BackupTableParams> params = this.getBackupParamsCollection();
+    this.backupInfo.backupSizeInBytes = params.stream().mapToLong(bI -> bI.backupSizeInBytes).sum();
     // Full chain size is same as total size for single backup.
     this.backupInfo.fullChainSizeInBytes = this.backupInfo.backupSizeInBytes;
 
-    // Total time is the sum of each keyspace time taken currently.
-    // Will be max when we do parallel backups.
-    long totalTimeTaken =
-        this.backupInfo.backupList.stream().mapToLong(bI -> bI.timeTakenPartial).sum();
+    long totalTimeTaken = 0L;
+    if (this.category.equals(BackupCategory.YB_BACKUP_SCRIPT)) {
+      totalTimeTaken = params.stream().mapToLong(bI -> bI.timeTakenPartial).sum();
+    } else {
+      totalTimeTaken = BackupUtil.getTimeTakenForParallelBackups(params);
+    }
     this.completionTime = new Date(totalTimeTaken + this.createTime.getTime());
     this.state = BackupState.Completed;
     this.save();
@@ -418,6 +538,25 @@ public class Backup extends Model {
     this.backupInfo.backupList.get(idx).backupSizeInBytes = totalSizeInBytes;
     this.backupInfo.backupList.get(idx).timeTakenPartial = totalTimeTaken;
     this.save();
+  }
+
+  public interface BackupUpdater {
+    void run(Backup backup);
+  }
+
+  public static void saveDetails(UUID customerUUID, UUID backupUUID, BackupUpdater updater) {
+    BACKUP_KEY_LOCK.acquireLock(backupUUID);
+    try {
+      TransactionUtil.doInTxn(
+          () -> {
+            Backup backup = get(customerUUID, backupUUID);
+            updater.run(backup);
+            backup.save();
+          },
+          TransactionUtil.DEFAULT_RETRY_CONFIG);
+    } finally {
+      BACKUP_KEY_LOCK.releaseLock(backupUUID);
+    }
   }
 
   public void unsetExpiry() {

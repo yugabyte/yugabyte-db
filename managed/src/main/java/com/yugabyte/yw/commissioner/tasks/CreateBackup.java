@@ -24,9 +24,9 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
+import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -55,18 +55,27 @@ import play.libs.Json;
 @Abortable
 public class CreateBackup extends UniverseTaskBase {
 
+  private final CustomerConfigService customerConfigService;
+  private final YbcManager ybcManager;
+
   @Inject
-  protected CreateBackup(BaseTaskDependencies baseTaskDependencies) {
+  protected CreateBackup(
+      BaseTaskDependencies baseTaskDependencies,
+      CustomerConfigService customerConfigService,
+      YbcManager ybcManager) {
     super(baseTaskDependencies);
+    this.customerConfigService = customerConfigService;
+    this.ybcManager = ybcManager;
   }
 
   protected BackupRequestParams params() {
     return (BackupRequestParams) taskParams;
   }
 
-  @Inject CustomerConfigService customerConfigService;
-
-  @Inject YbcManager ybcManager;
+  @Override
+  protected String getExecutorPoolName() {
+    return "backup_task";
+  }
 
   @Override
   public void run() {
@@ -121,7 +130,7 @@ public class CreateBackup extends UniverseTaskBase {
 
         taskInfo = String.join(",", tablesToBackup);
 
-        getRunnableTask().runSubTasks();
+        getRunnableTask().runSubTasks(true);
         unlockUniverseForUpdate();
         isUniverseLocked = false;
 

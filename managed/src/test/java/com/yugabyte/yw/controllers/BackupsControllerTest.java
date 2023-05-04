@@ -92,6 +92,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = ModelFactory.addNodesToUniverse(defaultUniverse.universeUUID, 1);
     taskUUID = UUID.randomUUID();
     backupTableParams = new BackupTableParams();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
@@ -430,7 +431,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
         .when(mockBackupUtil)
-        .validateTables(any(), any(), any(), any());
+        .validateBackupRequest(any(), any(), any());
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());

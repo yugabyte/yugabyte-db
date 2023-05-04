@@ -12,15 +12,15 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.YbcBackupUtil;
-import com.yugabyte.yw.common.YbcManager;
-import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.ybc.YbcManager;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.services.YbcClientService;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YbcClient;
@@ -52,9 +52,6 @@ public class RestoreBackupYbc extends YbcTaskBase {
   }
 
   public static class Params extends RestoreBackupParams {
-    // Node-ip to use as co-ordinator for the restore.
-    public String nodeIp = null;
-
     public int index;
 
     public Params(RestoreBackupParams params) {
@@ -69,13 +66,6 @@ public class RestoreBackupYbc extends YbcTaskBase {
 
   @Override
   public void run() {
-    try {
-      ybcClient = ybcBackupUtil.getYbcClient(taskParams().universeUUID, taskParams().nodeIp);
-    } catch (PlatformServiceException e) {
-      log.error("Could not generate YB-Controller client, error: %s", e.getMessage());
-      Throwables.propagate(e);
-    }
-
     BackupStorageInfo backupStorageInfo = taskParams().backupStorageInfoList.get(0);
 
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
@@ -84,12 +74,29 @@ public class RestoreBackupYbc extends YbcTaskBase {
       isResumable = true;
     }
     ObjectMapper mapper = new ObjectMapper();
-    RestoreBackupParams restoreBackupParams = null;
+    RestoreBackupParams restoreBackupParams =
+        Json.fromJson(taskInfo.getTaskDetails(), RestoreBackupParams.class);
+    ;
     JsonNode restoreParams = null;
     String taskId = null;
+    String nodeIp = null;
     if (isResumable) {
-      restoreBackupParams = Json.fromJson(taskInfo.getTaskDetails(), RestoreBackupParams.class);
       taskId = restoreBackupParams.currentYbcTaskId;
+      nodeIp = restoreBackupParams.nodeIp;
+    }
+
+    try {
+      if (StringUtils.isBlank(nodeIp)) {
+        Pair<YbcClient, String> clientIPPair =
+            ybcManager.getAvailableYbcClientIpPair(taskParams().universeUUID, null);
+        ybcClient = clientIPPair.getFirst();
+        nodeIp = clientIPPair.getSecond();
+      } else {
+        ybcClient = ybcManager.getYbcClient(taskParams().universeUUID, nodeIp);
+      }
+    } catch (PlatformServiceException e) {
+      log.error("Could not generate YB-Controller client, error: %s", e.getMessage());
+      Throwables.propagate(e);
     }
 
     // Send create restore to yb-controller
@@ -97,9 +104,10 @@ public class RestoreBackupYbc extends YbcTaskBase {
       if (taskId == null) {
         taskId =
             ybcBackupUtil.getYbcTaskID(
-                taskParams().prefixUUID,
-                backupStorageInfo.backupType.toString(),
-                backupStorageInfo.keyspace);
+                    taskParams().prefixUUID,
+                    backupStorageInfo.backupType.toString(),
+                    backupStorageInfo.keyspace)
+                + Integer.toString(taskParams().index);
         try {
           String dsmTaskId = taskId.concat(YbcBackupUtil.YBC_SUCCESS_MARKER_TASK_SUFFIX);
           BackupServiceTaskCreateRequest downloadSuccessMarkerRequest =
@@ -153,6 +161,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
       if (isResumable) {
         restoreBackupParams.currentYbcTaskId = taskId;
         restoreBackupParams.currentIdx = taskParams().index;
+        restoreBackupParams.nodeIp = nodeIp;
         restoreParams = Json.toJson(restoreBackupParams);
         getRunnableTask().setTaskDetails(restoreParams);
       }
@@ -163,6 +172,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
         if (isResumable) {
           restoreBackupParams.currentYbcTaskId = null;
           restoreBackupParams.currentIdx++;
+          restoreBackupParams.nodeIp = null;
           restoreParams = Json.toJson(restoreBackupParams);
           getRunnableTask().setTaskDetails(restoreParams);
         }

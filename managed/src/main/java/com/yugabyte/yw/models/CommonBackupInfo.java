@@ -20,6 +20,7 @@ public class CommonBackupInfo {
   UUID kmsConfigUUID;
   UUID taskUUID;
   Boolean sse;
+  Boolean tableByTableBackup;
   Date createTime;
   Date updateTime;
   Date completionTime;

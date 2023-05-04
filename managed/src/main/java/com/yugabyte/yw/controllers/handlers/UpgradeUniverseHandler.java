@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
+import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
@@ -48,8 +49,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YbcManager;
 
 @Slf4j
 public class UpgradeUniverseHandler {

@@ -13,9 +13,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YbcBackupUtil;
-import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.DeleteBackupParams;
@@ -226,17 +226,15 @@ public class BackupsController extends AuthenticatedController {
               taskParams.universeUUID.toString()));
     }
 
-    if (taskParams.keyspaceTableList != null) {
-      for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
-        if (keyspaceTable.tableUUIDList == null) {
-          keyspaceTable.tableUUIDList = new ArrayList<UUID>();
-        }
-        backupUtil.validateTables(
-            keyspaceTable.tableUUIDList, universe, keyspaceTable.keyspace, taskParams.backupType);
-      }
-    } else {
-      backupUtil.validateTables(null, universe, null, taskParams.backupType);
+    if ((universe.getLiveTServersInPrimaryCluster().size() < taskParams.parallelDBBackups)
+        || taskParams.parallelDBBackups <= 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "invalid parallel backups value provided for universe %s", universe.universeUUID));
     }
+
+    backupUtil.validateBackupRequest(taskParams.keyspaceTableList, universe, taskParams.backupType);
 
     if (taskParams.timeBeforeDelete != 0L && taskParams.expiryTimeUnit == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Please provide time unit for backup expiry");

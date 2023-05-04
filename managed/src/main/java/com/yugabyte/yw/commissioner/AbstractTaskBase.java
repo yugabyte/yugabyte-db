@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
@@ -125,12 +126,17 @@ public abstract class AbstractTaskBase implements ITask {
     }
   }
 
+  protected String getExecutorPoolName() {
+    return "task";
+  }
+
   // Create an task pool which can handle an unbounded number of tasks, while using an initial set
   // of threads which get spawned upto TASK_THREADS limit.
   public void createThreadpool() {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
-    executor = platformExecutorFactory.createExecutor("task", namedThreadFactory);
+    executor = platformExecutorFactory.createExecutor(getExecutorPoolName(), namedThreadFactory);
+    log.info("Executor name: {}", getExecutorPoolName());
   }
 
   @Override
