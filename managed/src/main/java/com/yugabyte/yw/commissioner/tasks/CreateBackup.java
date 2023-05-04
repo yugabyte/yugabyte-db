@@ -158,13 +158,13 @@ public class CreateBackup extends UniverseTaskBase {
         Backup currentBackup =
             Backup.getOrBadRequest(params().customerUUID, backup.getBackupUUID());
         if (ybcBackup) {
+          currentBackup.onCompletion();
           if (!currentBackup.getBaseBackupUUID().equals(currentBackup.getBackupUUID())) {
             Backup baseBackup =
                 Backup.getOrBadRequest(params().customerUUID, currentBackup.getBaseBackupUUID());
-            currentBackup.onCompletion();
-            baseBackup.onIncrementCompletion(currentBackup.getCreateTime());
-          } else {
-            currentBackup.onCompletion();
+            // Refresh backup object to get the updated completed time.
+            currentBackup.refresh();
+            baseBackup.onIncrementCompletion(currentBackup.getCompletionTime());
           }
         }
         BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
