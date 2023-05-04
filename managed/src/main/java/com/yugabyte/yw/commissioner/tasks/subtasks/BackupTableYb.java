@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -84,6 +85,12 @@ public class BackupTableYb extends AbstractTaskBase {
         Backup.BackupUpdater bUpdater =
             b -> {
               b.setCompletionTime(b.getUpdateTime());
+              if (backup.getBackupInfo().timeBeforeDelete != 0L) {
+                backup.setExpiry(
+                    new Date(
+                        backup.getUpdateTime().getTime()
+                            + backup.getBackupInfo().timeBeforeDelete));
+              }
               b.setTotalBackupSize(fullSize);
               b.setState(Backup.BackupState.Completed);
             };

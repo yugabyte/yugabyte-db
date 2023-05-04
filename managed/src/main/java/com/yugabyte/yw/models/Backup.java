@@ -268,6 +268,11 @@ public class Backup extends Model {
     this.expiry = new Date(System.currentTimeMillis() + timeBeforeDeleteFromPresent);
   }
 
+  @JsonIgnore
+  public void setExpiry(Date expiryTime) {
+    this.expiry = expiryTime;
+  }
+
   public void updateExpiryTime(long timeBeforeDeleteFromPresent) {
     setExpiry(timeBeforeDeleteFromPresent);
     save();
@@ -492,6 +497,9 @@ public class Backup extends Model {
       totalTimeTaken = BackupUtil.getTimeTakenForParallelBackups(params);
     }
     this.completionTime = new Date(totalTimeTaken + this.createTime.getTime());
+    if (this.backupInfo.timeBeforeDelete != 0L) {
+      this.expiry = new Date(this.completionTime.getTime() + this.backupInfo.timeBeforeDelete);
+    }
     this.setState(BackupState.Completed);
     this.save();
   }
