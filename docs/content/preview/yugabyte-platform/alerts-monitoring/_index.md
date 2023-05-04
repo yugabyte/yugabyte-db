@@ -13,7 +13,7 @@ weight: 647
 type: indexpage
 ---
 
-YugabyteDB Anywhere has default, preconfigured alerts, both at the YugabyteDB Anywhere and universe level, to notify you of potential problems with universes and your YugabyteDB Anywhere installation.
+YugabyteDB Anywhere provides preconfigured alerts to notify you of potential problems with universes and your YugabyteDB Anywhere installation.
 
 Use the Live Queries and Slow Queries dashboards to monitor and display current running queries and analyze statistics of past queries on your YugabyteDB universes.
 
