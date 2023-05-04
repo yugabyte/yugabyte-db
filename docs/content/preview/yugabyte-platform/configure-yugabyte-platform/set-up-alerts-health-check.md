@@ -15,13 +15,14 @@ YugabyteDB Anywhere has default, preconfigured alerts, both at the YugabyteDB An
 
 To review alerts that have triggered, refer to [Alerts](../../alerts-monitoring/alert/). To view performance metrics, refer to [Use metrics](../../troubleshoot/universe-issues/#use-metrics/).
 
-You can access YugabyteDB Anywhere health monitor and configure alerts by navigating to **Admin > Alert Configurations**.
+You can configure alerts by navigating to **Admin > Alert Configurations**.
 
 The **Alert Configurations** view allows you to perform the following for specific universes or for your instance of YugabyteDB Anywhere:
 
 - Create new alert policies.
 - Modify, delete, activate, or deactivate existing alerts, as well as send test alerts via **Actions**.
 - Find alerts by applying filters.
+- Configure the health check interval.
 - Define maintenance windows during which alerts are not issued.
 
 ## Manage alert policies

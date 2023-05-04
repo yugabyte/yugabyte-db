@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Alert policies use templates to define how the alert is triggered. The alert templates have been created using Prometheus expressions.
+[Alert policies](../set-up-alerts-health-check/#manage-alert-policies) use the following templates to define how the alert is triggered. The alert templates have been created using Prometheus expressions.
 
 ### DB CQLSH connection
 
@@ -55,7 +55,7 @@ min by (node_name) (ybp_health_check_c2n_cert_validity_days{universe_uuid="$uuid
 
 ### Health check notification error
 
-Failed to issue health check notification for universe `'$universe_name'`. You need to check Health notification settings and YugabyteDB Anywhere logs for details or contact the Yugabyte support team.
+Failed to issue health check notification for universe `'$universe_name'`. You need to check Health notification settings and YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
 ```expression
 last_over_time(ybp_health_check_notification_status{universe_uuid = "$uuid"}[1d]) < 1
@@ -63,7 +63,7 @@ last_over_time(ybp_health_check_notification_status{universe_uuid = "$uuid"}[1d]
 
 ### Health check error
 
-Failed to perform health check for universe `'$universe_name'`. You need to check YugabyteDB Anywhere logs for details or contact the Yugabyte support team.
+Failed to perform health check for universe `'$universe_name'`. You need to check YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
 ```expression
 last_over_time(ybp_health_check_status{universe_uuid = "$uuid"}[1d]) < 1
@@ -111,7 +111,7 @@ ybp_health_check_tserver_core_files{universe_uuid="$uuid"} > 0
 
 ### Alert notification failed
 
-Last attempt to send alert notifications for customer `'yugabyte support'` failed. You need to check YugabyteDB Anywhere logs for details or contact the Yugabyte support team.
+Last attempt to send alert notifications for customer `'yugabyte support'` failed. You need to check YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
 ```expression
 last_over_time(ybp_alert_manager_status{customer_uuid = "$uuid"}[1d]) < 1
@@ -159,7 +159,7 @@ sum by (node_prefix) (increase(rpcs_queue_overflow{node_prefix="$node_prefix"}[1
 
 ### Alert rules sync failed
 
-Last alert rules synchronization for customer `'yugabyte support'` has failed. YugabyteDB Anywhere logs for details or contact the Yugabyte support team.
+Last alert rules synchronization for customer `'yugabyte support'` has failed. YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
 ```expression
 last_over_time(ybp_alert_config_writer_status[1d]) < 1
@@ -167,7 +167,7 @@ last_over_time(ybp_alert_config_writer_status[1d]) < 1
 
 ### Alert query failed
 
-Last alert query for customer `'yugabyte support'` failed. YugabyteDB Anywhere logs for details or contact the Yugabyte support team.
+Last alert query for customer `'yugabyte support'` failed. YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
 ```expression
 last_over_time(ybp_alert_query_status[1d]) < 1
