@@ -1,3 +1,10 @@
+// The following region arrays are used in the old provider form.
+// Please also add any new regions and zones to:
+// src/components/configRedesign/providerRedesign/providerRegionsData.ts
+// so that the new kubernetes provider UI stays in sync.
+// The old provider UI and its related components/constants/types will be removed once
+// it is no longer used as a fallback option.
+
 // These should match the metadata in devops under opscli/ybops/data/aws-metadata.yml
 export const AWS_REGIONS = [
   {
