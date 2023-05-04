@@ -5,7 +5,7 @@ ALTER TABLE IF EXISTS xcluster_config
     ADD COLUMN IF NOT EXISTS type VARCHAR(256) DEFAULT 'Basic' NOT NULL;
 
 ALTER TABLE IF EXISTS xcluster_config
-   DROP CONSTRAINT IF EXISTS ck_xcluster_config_type;
+  DROP CONSTRAINT IF EXISTS ck_xcluster_config_type;
 
 ALTER TABLE IF EXISTS xcluster_config
     ADD CONSTRAINT ck_xcluster_config_type
@@ -28,7 +28,7 @@ ALTER TABLE IF EXISTS xcluster_config
     ADD COLUMN IF NOT EXISTS txn_table_replication_group_name VARCHAR(256);
 
 ALTER TABLE IF EXISTS xcluster_config
-   DROP CONSTRAINT IF EXISTS fk_xcluster_config_txn_table_id;
+    DROP CONSTRAINT IF EXISTS fk_xcluster_config_txn_table_id;
 
 ALTER TABLE IF EXISTS xcluster_config
     ADD CONSTRAINT fk_xcluster_config_txn_table_id
