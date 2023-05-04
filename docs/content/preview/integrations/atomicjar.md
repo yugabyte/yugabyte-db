@@ -108,4 +108,4 @@ test the repository layer.
 ## Learn more
 
 - [YugabyteDB module for Testcontainers](https://www.testcontainers.org/modules/databases/yugabytedb/)
-- Blog on [Testing Spring Boot Applications with YugabyteDB Using Testcontainers](https://www.yugabyte.com/blog/use-testcontainers-test-spring-boot-applications/) for additional information on trying it using Gitpod.
+- [Testing Spring Boot Applications with YugabyteDB Using Testcontainers](https://www.yugabyte.com/blog/use-testcontainers-test-spring-boot-applications/) for additional information on trying Testcontainers using Gitpod.
