@@ -48,10 +48,10 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     </a>
   </li>
 
-   <li>
+  <li>
     <a href="atomicjar/">
-      <img src="/images/section_icons/develop/ecosystem/apache-spark.png">
-      AtomicJar
+      <img src="/images/section_icons/develop/ecosystem/atomicjar-icon.png">
+      AtomicJar Testcontainers
     </a>
   </li>
 
