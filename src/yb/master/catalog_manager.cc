@@ -445,7 +445,7 @@ TAG_FLAG(enable_delete_truncate_xcluster_replicated_table, runtime);
 DEFINE_string(ycql_udtype_prefer_uuid, "",
               "Specify YCQL UDT UUID to be used. This flag is only "
               "used for hotfix purpose. Remember to unset it after creating one udt.");
-TAG_FLAG(ycql_udtype_prefer_uuid, hidden);
+TAG_FLAG(ycql_udtype_prefer_uuid, advanced);
 
 namespace yb {
 namespace master {
