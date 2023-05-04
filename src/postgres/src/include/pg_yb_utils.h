@@ -552,6 +552,7 @@ extern const char* YbBitmapsetToString(Bitmapset *bms);
 bool YBIsInitDbAlreadyDone();
 
 int YBGetDdlNestingLevel();
+void YbSetIsGlobalDDL();
 void YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
 								bool is_breaking_catalog_change);
 void YBDecrementDdlNestingLevel();
