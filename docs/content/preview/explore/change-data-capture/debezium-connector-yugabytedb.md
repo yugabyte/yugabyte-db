@@ -655,75 +655,6 @@ By default, a connector's `tombstones.on.delete` property is set to `true` so th
 
 If you set the property to `false` to prevent the connector from saving tombstone records to Kafka topics, the **absence of tombstone records might lead to unintended consequences if your sink is not designed to handle it properly**. For example, Kafka relies on tombstones during log compaction to remove records related to deleted keys.
 
-## Before image
-
-[Before image](../#before-image) refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when it will be configured using a stream ID enabled with before image. For more information about how to create the stream ID for a before image, see [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
-
-{{< tip title="Use transformers" >}}
-
-Add a transformer in the source connector while using with before image; you can add the following property directly to your configuration:
-
-```properties
-...
-"transforms":"unwrap,extract",
-"transforms.unwrap.type":"io.debezium.connector.yugabytedb.transforms.PGCompatible",
-"transforms.unwrap.drop.tombstones":"false",
-"transforms.extract.type":"io.debezium.transforms.ExtractNewRecordState",
-"transforms.extract.drop.tombstones":"false",
-...
-```
-
-{{< /tip >}}
-
-After you've enabled before image and are using the suggested transformers, the effect of an update statement with the record structure is as follows:
-
-```sql
-UPDATE customers SET email = 'service@example.com' WHERE id = 1;
-```
-
-```output.json {hl_lines=[4,9,14,28]}
-{
-  "schema": {...},
-  "payload": {
-    "before": { --> 1
-      "id": 1,
-      "name": "Vaibhav Kushwaha",
-      "email": "vaibhav@example.com"
-    }
-    "after": { --> 2
-      "id": 1,
-      "name": "Vaibhav Kushwaha",
-      "email": "service@example.com"
-    },
-    "source": { --> 3
-      "version": "1.9.5.y.11",
-      "connector": "yugabytedb",
-      "name": "dbserver1",
-      "ts_ms": -8881476960074,
-      "snapshot": "false",
-      "db": "yugabyte",
-      "sequence": "[null,\"1:5::0:0\"]",
-      "schema": "public",
-      "table": "customers",
-      "txId": "",
-      "lsn": "1:5::0:0",
-      "xmin": null
-    },
-    "op": "u", --> 4
-    "ts_ms": 1646149134341,
-    "transaction": null
-  }
-}
-```
-
-The highlighted fields in the update event are:
-
-| Item | Field name | Description |
-| :--- | :--------- | :---------- |
-| 1 | before | The value of the row before the update operation. |
-| 2 | after | Specifies the state of the row after the change event occurred. In this example, the value of `email` has changed to `service@example.com`. |
-| 3 | source | Mandatory field that describes the source metadata for the event. This has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
-| 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 
 ## Datatype mappings
 
@@ -1036,20 +967,6 @@ However, some sink connectors may not understand the preceding format. `PGCompat
 
 PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all the fields in a payload.
 
-### AVRO serialization
-
-The YugabyteDB source connector also supports AVRO serialization with schema registry. To use AVRO serialization, simply add the following configuration to your connector:
-
-```json
-{
-  ...
-  "key.converter":"io.confluent.connect.avro.AvroConverter",
-  "key.converter.schema.registry.url":"http://host-url-for-schema-registry:8081",
-  "value.converter":"io.confluent.connect.avro.AvroConverter",
-  "value.converter.schema.registry.url":"http://host-url-for-schema-registry:8081"
-  ...
-}
-```
 
 ### Connector configuration properties
 
