@@ -10,11 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
+#include "yb/server/pgsql_webserver_wrapper.h"
 
 #include <math.h>
 
 #include <map>
+
+#include "yb/common/ybc-internal.h"
 
 #include "yb/gutil/map-util.h"
 
@@ -25,11 +27,9 @@
 #include "yb/util/signal_util.h"
 #include "yb/util/status_log.h"
 
-#include "yb/yql/pggate/util/ybc-internal.h"
-
 using std::string;
 
-namespace yb::pggate {
+namespace yb {
 DECLARE_string(metric_node_name);
 
 static ybpgmEntry *ybpgm_table;
@@ -394,4 +394,4 @@ YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
 }
 }  // extern "C"
 
-}  // namespace yb::pggate
+}  // namespace yb
