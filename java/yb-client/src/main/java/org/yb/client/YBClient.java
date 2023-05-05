@@ -35,37 +35,35 @@ import com.google.common.net.HostAndPort;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 import java.util.ArrayList;
-import java.util.function.Function;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
-import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.*;
+import org.yb.ColumnSchema;
+import org.yb.CommonNet;
+import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
+import org.yb.Schema;
+import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.MasterBackupOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
-import org.yb.util.ServerInfo;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -975,6 +973,17 @@ public class YBClient implements AutoCloseable {
   public IsServerReadyResponse isServerReady(HostAndPort hp, boolean isTserver)
      throws Exception {
     Deferred<IsServerReadyResponse> d = asyncClient.isServerReady(hp, isTserver);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Gets the list of tablets for a TServer.
+   * @param hp host and port of the TServer.
+   * @return response containing the list of tablet ids that exist on a TServer.
+   */
+  public ListTabletsForTabletServerResponse listTabletsForTabletServer(HostAndPort hp)
+      throws Exception {
+    Deferred<ListTabletsForTabletServerResponse> d = asyncClient.listTabletsForTabletServer(hp);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -1921,6 +1930,19 @@ public class YBClient implements AutoCloseable {
                                                  boolean forceDelete) throws Exception {
     Deferred<DeleteCDCStreamResponse> d =
       asyncClient.deleteCDCStream(streamIds, ignoreErrors, forceDelete);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#getTabletLocations(List<String>, String, boolean, boolean)
+   */
+  public GetTabletLocationsResponse getTabletLocations(List<String> tabletIds,
+                                                               String tableId,
+                                                               boolean includeInactive,
+                                                               boolean includeDeleted)
+                                                               throws Exception {
+    Deferred<GetTabletLocationsResponse> d =
+      asyncClient.getTabletLocations(tabletIds, tableId, includeInactive, includeDeleted);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
