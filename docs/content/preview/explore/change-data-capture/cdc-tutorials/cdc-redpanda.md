@@ -125,7 +125,7 @@ curl -i -X  POST -H  "Accept:application/json" -H  "Content-Type:application/jso
 
 Below diagram shows the Redpanda broker details that we installed locally using docker and the topic that we subscribed (e.g. dbeserver5.public.balaredpandatest) and the schema registry with key and value details of the topic.
 
-![Diagram](/redpanda_images/Monitor1.jpg)
+![Diagram](yugabyte-db/docs/content/preview/explore/change-data-capture/cdc-tutorials/redpanda_images/Monitor1.jpg)
 
 ![Diagram](/redpanda_images/Monitor2.jpg)
 
