@@ -66,7 +66,7 @@ type: docs
 
 </ul>
 
-You can configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured, the main Dashboard page prompts you to configure at least one cloud provider.
+You can configure Kubernetes providers for YugabyteDB universes. If no cloud providers are configured, the main Dashboard page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
@@ -75,9 +75,11 @@ To run YugabyteDB universes on Kubernetes, all you need to provide in YugabyteDB
 Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 - Create a `yugabyte-platform-universe-management` service account.
-- Create a `kubeconfig` file of the earlier-created service account to configure access to the Kubernetes cluster.
+- Create a `kubeconfig` file of the service account you created to configure access to the Kubernetes cluster.
 
 This needs to be done for each Kubernetes cluster if you are doing a multi-cluster setup.
+
+If YugabyteDB Anywhere is deployed on Kubernetes, you can use the existing service account to discover details about the Kubernetes cluster and auto-fill the provider configuration. You can then modify these settings to further customize the provider. See [Configure Kubernetes](#configure-kubernetes).
 
 ### Service account
 
@@ -181,7 +183,7 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
     Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
     ```
 
-3. Use this generated `kubeconfig` file as the `kubeconfig` in the YugabyteDB Anywhere Kubernetes provider configuration.
+3. Use this generated `kubeconfig` file for your Kubernetes provider configuration.
 
 ## Configure Kubernetes
 
@@ -198,6 +200,8 @@ To view a provider, select it in the list to display the **Overview**. You can p
 To create an Kubernetes provider, click **Create Config** to open the **Create Kubernetes Provider Configuration** page.
 
 To fill the provider configuration values using the configuration of the same Kubernetes cluster that your instance of YugabyteDB Anywhere is installed on, click **Autofill local cluster config**.
+
+![Auto-fill Kubernetes provider](/images/yb-platform/kubernetes-config-autofill.png)
 
 ### Kubernetes Provider settings
 
@@ -241,7 +245,7 @@ If required, add a new zone by clicking **Add Zone**, as your configuration may 
 
 Click **Add Region** when you are done.
 
-## Create the configuration
+### Create the configuration
 
 Click **Create Provider Configuration** to save the configuration. If successful, you will be redirected to the table view of all configurations.
 

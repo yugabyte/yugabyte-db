@@ -12,6 +12,8 @@ menu:
 type: indexpage
 ---
 
+After YugabytDB Anywhere has been installed, the next step is to create provider configurations. A provider configuration comprises all the parameters needed to deploy a universe on corresponding provider. This includes cloud credentials, regions and zones, networking details, and more.
+
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -57,7 +59,7 @@ type: indexpage
         <div class="title">Configure cloud providers</div>
       </div>
       <div class="body">
-        On-premises, AWS, GCP, Azure, Kubernetes, OpenShift, Tanzu providers.
+        Create AWS, GCP, Azure, Kubernetes, OpenShift, Tanzu, and On-premises providers.
       </div>
     </a>
   </div>

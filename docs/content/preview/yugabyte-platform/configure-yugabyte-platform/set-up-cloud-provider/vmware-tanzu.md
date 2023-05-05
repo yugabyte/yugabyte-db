@@ -130,7 +130,7 @@ networkAnnotation:
   annotation2: 'bar'
 ```
 
-## Create the configuration
+### Create the configuration
 
 Click **Create Provider Configuration** to save the configuration. If your configuration is successful, you are redirected to **VMware Tanzu Configs**.
 
@@ -249,7 +249,7 @@ To override the volume settings, include `num_volumes` with the desired value, a
 }
 ```
 
-#### Override  the YugabyteDB software version
+#### Override the YugabyteDB software version
 
 To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in YugabyteDB Anywhere, as follows:
 

@@ -162,7 +162,7 @@ Set the **Kubernetes Provider Type** to Red Hat OpenShift.
 
 For information on the Kubernetes Provider settings, refer to [Kubernetes Provider settings](../kubernetes/#kubernetes-provider-settings).
 
-## Create the configuration
+### Create the configuration
 
 Click **Create Provider Configuration** to save the configuration. If your configuration is successful, you should see the newly-added provider under **Red Hat OpenShift Configs**.
 

@@ -146,7 +146,7 @@ You can specify a region as follows:
 - Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
 - Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
-## Create the configuration
+### Create the configuration
 
 After you have entered the settings, click **Create Provider Configuration** and wait for the configuration to complete.
 
