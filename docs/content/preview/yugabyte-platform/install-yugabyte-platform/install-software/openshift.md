@@ -33,6 +33,11 @@ type: docs
       <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
+  <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>Installer</a>
+  </li>
+
 </ul>
 
 To install YugabyteDB Anywhere on an OpenShift cluster, you can use YugabyteDB Anywhere Operator or the Helm tool.

@@ -32,6 +32,11 @@ type: docs
       <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
+  <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>Installer</a>
+  </li>
+
 </ul>
 
 ## Install YugabyteDB Anywhere on a Kubernetes cluster

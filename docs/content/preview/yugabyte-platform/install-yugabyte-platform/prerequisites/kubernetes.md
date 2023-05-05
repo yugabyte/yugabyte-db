@@ -23,6 +23,11 @@ type: docs
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
+  <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building" aria-hidden="true"></i>Installer</a>
+  </li>
+
 </ul>
 
 YugabyteDB Anywhere first needs to be installed on a Kubernetes cluster, and then you configure YugabyteDB Anywhere to work in your Kubernetes cluster, on-premises private cloud, or in a public cloud environment.

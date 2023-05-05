@@ -35,6 +35,11 @@ type: docs
       <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
+  <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>Installer</a>
+  </li>
+
 </ul>
 
 YugabyteDB universes and clusters are created and managed using YugabyteDB Anywhere. The default option is to install YugabyteDB Anywhere on a host machine that is connected to the Internet.
