@@ -189,16 +189,16 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
     ```
 
     ```output
-    Snapshot UUID                         State
-    8d588cb7-13f2-4bda-b584-e9be47a144c5  COMPLETE
-    1f4db0e2-0706-45db-b157-e577702a648a  COMPLETE
-    b91c734b-5c57-4276-851e-f982bee73322  COMPLETE
-    04fc6f05-8775-4b43-afbd-7a11266da110  COMPLETE
-    e7bc7b48-351b-4713-b46b-dd3c9c028a79  COMPLETE
-    2287921b-1cf9-4bbc-ad38-e309f86f72e9  COMPLETE
-    97aa2968-6b56-40ce-b2c5-87d2e54e9786  COMPLETE
-    Restoration UUID                      State
-    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb  RESTORED
+    Snapshot UUID                           State       Creation Time
+    8d588cb7-13f2-4bda-b584-e9be47a144c5    COMPLETE    2023-04-20 00:24:58.246932
+    1f4db0e2-0706-45db-b157-e577702a648a    COMPLETE    2023-04-20 00:26:03.257519
+    b91c734b-5c57-4276-851e-f982bee73322    COMPLETE    2023-04-20 00:27:08.272905
+    04fc6f05-8775-4b43-afbd-7a11266da110    COMPLETE    2023-04-20 00:28:13.287202
+    e7bc7b48-351b-4713-b46b-dd3c9c028a79    COMPLETE    2023-04-20 00:29:18.294031
+    2287921b-1cf9-4bbc-ad38-e309f86f72e9    COMPLETE    2023-04-20 00:30:23.306355
+    97aa2968-6b56-40ce-b2c5-87d2e54e9786    COMPLETE    2023-04-20 00:31:28.319685
+    Restoration UUID                        State
+    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb    RESTORED
     ```
 
 1. In the YCQL shell, verify the data is restored, and there is no row for employee 9999:
