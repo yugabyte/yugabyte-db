@@ -1,4 +1,3 @@
-
 ---
 title: Azure Synapse Analytics Integration using Azure Event Hub tutorial for YugabyteDB CDC
 headerTitle: Azure Synapse Analytics Integration using Azure Event Hub
