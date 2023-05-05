@@ -21,7 +21,7 @@ YugabyteDB can seamlessly connect to Amazon Redshift using the [YugabyteDB CDC c
 
 This tutorial shows how to integrate YugabyteDB with Amazon Redshift database using Amazon MSK and YugabyteDB CDC connector.
 
-## YugabyteDB to Amazon Redshift Architecture
+## YugabyteDB to Amazon Redshift architecture
 
 The following illustration shows the end-to-end integration architecture of YugabyteDB to Amazon Redshift.
 
@@ -36,7 +36,7 @@ The change data from the YugabyteDB Debezium/Kafka connector is streamed directl
 | 3 | [Set up the AWS MSK Cluster](https://medium.com/@sharmaranupama/stream-data-from-yugabyte-cdc-to-aws-msk-using-debezium-a09490c54851) (refer to the IAM policies and roles) | AWS MSK, AWS IAM Roles & Policies |
 | 4 | Set up Amazon Redshift and keep the credentials ready for testing. | Amazon Redshift |
 
-## Set Up Amazon Redshift Sink
+## Set up Amazon Redshift sink
 
 ### Install YugabyteDB
 
@@ -44,11 +44,11 @@ You have multiple options to [install or deploy YugabyteDB](https://docs.yugabyt
 
 Note: If you're running Windows, you can [leverage Docker on Windows with YugabyteDB](https://docs.yugabyte.com/preview/quick-start/docker/).
 
-### Install and Set up AWS MSK
+### Install and set up Amazon MSK
 
-Install and setup AWS MSK, using the article, [Stream Data From YugabyteDB CDC to AWS MSK Using Debezium](https://medium.com/@sharmaranupama/stream-data-from-yugabyte-cdc-to-aws-msk-using-debezium-a09490c54851). It helps configure IAM Policies and roles required for AWS MSK in AWS. Post creation of IAM Role and setup the MSK cluster using the same article.
+To install and set up Amazon MSK, refer to [Stream Data From YugabyteDB CDC to AWS MSK Using Debezium](https://medium.com/@sharmaranupama/stream-data-from-yugabyte-cdc-to-aws-msk-using-debezium-a09490c54851). It helps configure IAM Policies and roles required for AWS MSK in AWS. Post creation of IAM Role and setup the MSK cluster using the same article.
 
-### Create Cluster Configuration and Worker configuration in MSK
+### Create cluster configuration and worker configuration in MSK
 
 **Cluster Configuration:**
 
@@ -147,10 +147,6 @@ pk.fields=sno*
 
 Launch the Amazon Redshift query editor and query the tables that are synced from YugabyteDB.
 
-![Diagram](/images/explore/cdc/aws_redshift_images/Redshift_QueryPanel.jpg)
+![Redshift query editor](/images/explore/cdc/aws_redshift_images/Redshift_QueryPanel.jpg)
 
-![Diagram](/images/explore/cdc/aws_redshift_images/redshift_view_query.jpg)
-
-## Conclusion and Summary
-
-In this tutorial, we walked through step-by-step how to integrate YugabyteDB with Amazon Redshift using YugabyteDB’s CDC connector.
+![Redshift query editor tables](/images/explore/cdc/aws_redshift_images/redshift_view_query.jpg)
