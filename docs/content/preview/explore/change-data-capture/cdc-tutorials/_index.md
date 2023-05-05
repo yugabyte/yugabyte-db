@@ -35,7 +35,19 @@ type: indexpage
         <div class="title">Amazon MSK</div>
       </div>
       <div class="body">
-        AWS MSK
+        Amazon MSK
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cdc-aws-msk-redshift/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/ecosystem/amazon-redshift.png" aria-hidden="true" />
+        <div class="title">Amazon Redshift</div>
+      </div>
+      <div class="body">
+        Amazon Redshift
       </div>
     </a>
   </div>
