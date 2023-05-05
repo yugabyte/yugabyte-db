@@ -49,45 +49,6 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 {{< /tip >}}
 
-## Release series 1.9.5.y
-
-### Tested versions
-
-| Software | Versions |
-| :--- | :--- |
-| **Java** | 11+ |
-| **Kafka Connect** | 2.x, 3.x |
-| **YugabyteDB** | 2.14, 2.16, 2.17 |
-
-### Release resources
-
-* [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
-* [Maven artifacts](https://s3.console.aws.amazon.com/s3/buckets/repository.yugabyte.com?region=us-east-1&prefix=maven/release/io/debezium/debezium-connector-yugabytedb/&showversions=false)
-
-### Reporting issues
-
-To report issues and file tickets, visit our [GitHub](https://github.com/yugabyte/yugabyte-db/issues/new/choose) and add the label `area/cdcsdk`.
-
-## Setup
-
-To use the YugabyteDB Debezium connector, do the following. For complete steps, follow the guide to [running the Debezium connector for YugabyteDB](../../../integrations/cdc/debezium/).
-
-1. Create a DB stream ID.
-
-   Before you use the YugabyteDB connector to monitor the changes committed on a YugabyteDB server, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool.
-
-1. Make sure the master ports are open.
-
-   The YugabyteDB connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
-
-1. Monitor available disk space.
-
-   The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
-
-   In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
-
-Read on to learn how the connector works. Or, skip to [how to deploy the connector](#deployment).
-
 ## How the connector works
 
 To optimally configure and run a Debezium YugabyteDB connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
@@ -223,24 +184,6 @@ For example:
   }
 }
 ```
-
-### Tablet splitting
-
-YugabyteDB also supports [tablet splitting](../../../architecture/docdb-sharding/tablet-splitting). While streaming changes, if the YugabyteDB source connector detects that a tablet has been split, it gracefully handles the splitting and starts polling for the children tablets.
-
-### Dynamic addition of new tables
-
-If a new table is added to a namespace on which there is an active stream ID, then it will be added to the stream. The YugabyteDB source connector launches a poller thread at startup which continuously checks if there is a new table added to the stream ID it is configured to poll for, after the connector detects that there is a new table, it signals the Kafka Connect runtime to restart the connector so that the newly added table can be polled. The behaviour of this poller thread can be governed by the configuration properties `auto.add.new.tables` and `new.table.poll.interval.ms`, refer to [configuration properties](#connector-configuration-properties) for more details.
-
-### Schema evolution
-
-The YugabyteDB source connector caches schema at the tablet level, this means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, CDC service emits a record with the new schema for all the tablets. The YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
-
-{{< warning title="No backfill support" >}}
-
-If you alter the schema of the source table to add a default value for an existing column, the connector will NOT emit any event for the schema change. The default value will only be published in the records created after schema change is made. In such cases, it is recommended to alter the schema in your sinks to add the default value there as well.
-
-{{< /warning >}}
 
 ## Data change events
 
@@ -1218,7 +1161,7 @@ You can use the rest APIs to monitor your deployed connectors. The following ope
    curl -X GET localhost:8083/connectors/<connector-name>/status
    ```
 
-## Source connector metrics
+## Monitoring
 
 In addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide, the YugabyteDB source connector provides two other types of metrics:
 
@@ -1278,32 +1221,13 @@ The following streaming metrics are available:
 | MaxQueueSizeInBytes | `long` | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
 | CurrentQueueSizeInBytes | `long` | The current volume, in bytes, of records in the queue. |
 
-## Usage examples
-
-For examples on how to configure CDC in different setup configurations, refer to the list of [CDC examples] on GitHub(https://github.com/yugabyte/cdc-examples) for usage with various sinks and configuration information.
-
-## Troubleshooting
+## Behavior when things go wrong
 
 Debezium is a distributed system that captures all changes in multiple upstream databases; it never misses or loses an event. When the system is operating normally or being managed carefully then Debezium provides exactly once delivery of every change event record.
 
 If a fault does happen then the system does not lose any events. However, while it is recovering from the fault, it might repeat some change events. In these abnormal situations, Debezium, like Kafka, provides at least once delivery of change events.
 
 The rest of this section describes how Debezium handles various kinds of faults and problems.
-
-### TServer becomes unavailable
-
-In case one of the tablet servers crashes, the replicas on other TServer nodes will become the leader for the tablets that were hosted on the crashed server. The YugabyteDB connector will figure out the new tablet leaders and start streaming from the checkpoint the Debezium maintains.
-
-### YugabyteDB server failures
-
-In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable (using a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags)) amount of time for the availability of the TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
-
-### Connector throws exception saying table is not a part of the stream ID
-
-This can happen in the following 2 scenarios:
-
-* The stream ID you have created might belong to any other database than the one being polled.
-* The table you are asking to poll for has no primary keys on it. In this case, the table will not be a part of the stream ID. To continue, add a primary key on the table and create a new stream ID on the database.
 
 ### Configuration and startup errors
 
@@ -1315,7 +1239,24 @@ In the following situations, the connector fails when trying to start, reports a
 
 In these cases, the error message has details about the problem and possibly a suggested workaround. After you correct the configuration or address the YugabyteDB problem, restart the connector.
 
-### YugabyteDB server becomes unavailable
+### TServer becomes unavailable
+
+In case one of the tablet servers crashes, the replicas on other TServer nodes will become the leader for the tablets that were hosted on the crashed server. The YugabyteDB connector will figure out the new tablet leaders and start streaming from the checkpoint the Debezium maintains.
+
+### YugabyteDB server failures
+
+In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable (using a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags)) amount of time for the availability of the TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
+
+### Connector unable to find table association with stream ID
+
+In this case, Connector throws exception with error message that table is not a part of the stream ID
+
+This can happen in the following 2 scenarios:
+
+* The stream ID you have created might belong to any other database than the one being polled.
+* The table you are asking to poll for has no primary keys on it. In this case, the table will not be a part of the stream ID. To continue, add a primary key on the table and create a new stream ID on the database.
+
+### YugabyteDB TServer becomes unavailable
 
 When the connector is running, the YugabyteDB server that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and stops. When the server is available again, restart the connector.
 
