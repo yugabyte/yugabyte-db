@@ -166,19 +166,17 @@ public class ConfigHelper {
   }
 
   public void syncFileData(String storagePath, Boolean ywFileDataSynced) {
-    Boolean suppressExceptionsDuringSync =
+    boolean suppressExceptionsDuringSync =
         runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.fs_stateless.suppress_error");
     int fileCountThreshold =
         runtimeConfigFactory.globalRuntimeConf().getInt("yb.fs_stateless.max_files_count_persist");
-    Boolean disableSyncDBStateToFS =
+    boolean disableSyncDBStateToFS =
         runtimeConfigFactory
             .globalRuntimeConf()
             .getBoolean("yb.fs_stateless.disable_sync_db_to_fs_startup");
     try {
       long fileSyncStartTime = System.currentTimeMillis();
       Collection<File> diskFiles = Collections.emptyList();
-      List<FileData> dbFiles = FileData.getAll();
-      int currentFileCountDB = dbFiles.size();
 
       for (String fileDirectoryName : FILE_DIRECTORY_TO_SYNC) {
         File ywDir = new File(storagePath + "/" + fileDirectoryName);
@@ -203,7 +201,7 @@ public class ConfigHelper {
 
       if (!ywFileDataSynced) {
         Set<String> fileOnlyOnDisk = Sets.difference(filesOnDisk, filesInDB);
-        if (currentFileCountDB + fileOnlyOnDisk.size() > fileCountThreshold) {
+        if (FileData.getCount() + fileOnlyOnDisk.size() > fileCountThreshold) {
           // We fail in case the count exceeds the threshold.
           throw new RuntimeException(
               "The Maximum files count to be persisted in the DB exceeded the "

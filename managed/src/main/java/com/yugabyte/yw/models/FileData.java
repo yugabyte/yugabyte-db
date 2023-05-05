@@ -102,8 +102,8 @@ public class FileData extends Model {
     return find.query().where().eq("file_path", file).findOne();
   }
 
-  public static List<FileData> getAll() {
-    return find.query().findList();
+  public static int getCount() {
+    return find.query().findCount();
   }
 
   public static Set<FileData> getAllNames() {
@@ -145,9 +145,7 @@ public class FileData extends Model {
         }
       }
 
-      List<FileData> dbFiles = getAll();
-      int currentFileCountDB = dbFiles.size();
-      if (currentFileCountDB == fileCountThreshold) {
+      if (getCount() == fileCountThreshold) {
         throw new RuntimeException(
             "The Maximum files count to be persisted in the DB exceeded the "
                 + "configuration. Update the flag `yb.fs_stateless.max_files_count_persist` "
@@ -203,7 +201,6 @@ public class FileData extends Model {
     } catch (IOException e) {
       throw new RuntimeException("Could not write to file: " + fileData.getRelativePath(), e);
     }
-    return;
   }
 
   public static void deleteFiles(String dirPath, Boolean deleteDiskDirectory) {

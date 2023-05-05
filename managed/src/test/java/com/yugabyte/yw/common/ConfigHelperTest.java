@@ -228,10 +228,9 @@ public class ConfigHelperTest extends FakeDBApplication {
     }
 
     configHelper.syncFileData(TMP_STORAGE_PATH, true);
-    List<FileData> fd = FileData.getAll();
-    assertEquals(fd.size(), 12);
+    assertEquals(12, FileData.getCount());
     Collection<File> diskFiles = FileUtils.listFiles(new File(TMP_STORAGE_PATH), null, true);
-    assertEquals(diskFiles.size(), 12);
+    assertEquals(12, diskFiles.size());
     FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
   }
 
@@ -247,17 +246,15 @@ public class ConfigHelperTest extends FakeDBApplication {
     configHelper.syncFileData(TMP_STORAGE_PATH, false);
 
     // No Exception should be thrown.
-    List<FileData> fd = FileData.getAll();
-    assertEquals(fd.size(), 0);
+    assertEquals(0, FileData.getCount());
 
     when(mockAppConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
     configHelper.syncFileData(TMP_STORAGE_PATH, false);
-    fd = FileData.getAll();
-    assertEquals(fd.size(), 3);
+    assertEquals(3, FileData.getCount());
   }
 
   @Test(expected = Exception.class)
-  public void testSyncFileDataThrowException() throws IOException {
+  public void testSyncFileDataThrowException() {
     when(mockAppConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(false);
     when(mockAppConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 0);
     Provider p = ModelFactory.awsProvider(customer);
