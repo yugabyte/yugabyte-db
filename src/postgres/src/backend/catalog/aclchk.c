@@ -3323,9 +3323,10 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 		 * We need to redesign "TableGroup" feature and not using table with oids.
 		 */
 		/* Update the shared dependency ACL info */
-		updateAclDependencies(YbTablegroupRelationId, YbHeapTupleGetOid(tuple), 0,
-							  ownerId, noldmembers, oldmembers,
-							  nnewmembers, newmembers);
+		updateAclDependencies(YbTablegroupRelationId,
+							  ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->oid,
+							  0, ownerId, noldmembers, oldmembers, nnewmembers,
+							  newmembers);
 
 		ReleaseSysCache(tuple);
 

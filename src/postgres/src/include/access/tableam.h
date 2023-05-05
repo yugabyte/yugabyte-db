@@ -677,7 +677,9 @@ typedef struct TableAmRoutine
 										   BlockNumber numblocks,
 										   IndexBuildCallback callback,
 										   void *callback_state,
-										   TableScanDesc scan);
+										   TableScanDesc scan,
+										   YbBackfillInfo *bfinfo,
+										   YbPgExecOutParam *bfresult);
 
 	/* see table_index_validate_scan for reference about parameters */
 	void		(*index_validate_scan) (Relation table_rel,
@@ -1763,7 +1765,9 @@ table_index_build_scan(Relation table_rel,
 														 InvalidBlockNumber,
 														 callback,
 														 callback_state,
-														 scan);
+														 scan,
+														 NULL, /* bfinfo */
+														 NULL /* bfresult */);
 }
 
 /*
@@ -1787,7 +1791,9 @@ table_index_build_range_scan(Relation table_rel,
 							 BlockNumber numblocks,
 							 IndexBuildCallback callback,
 							 void *callback_state,
-							 TableScanDesc scan)
+							 TableScanDesc scan,
+							 YbBackfillInfo *bfinfo,
+							 YbPgExecOutParam *bfresult)
 {
 	return table_rel->rd_tableam->index_build_range_scan(table_rel,
 														 index_rel,
@@ -1799,7 +1805,9 @@ table_index_build_range_scan(Relation table_rel,
 														 numblocks,
 														 callback,
 														 callback_state,
-														 scan);
+														 scan,
+														 bfinfo,
+														 bfresult);
 }
 
 /*

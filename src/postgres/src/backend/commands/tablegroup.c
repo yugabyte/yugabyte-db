@@ -294,7 +294,7 @@ get_tablegroup_oid(const char *tablegroupname, bool missing_ok)
 
 	/* We assume that there can be at most one matching tuple */
 	if (HeapTupleIsValid(tuple))
-		result = YbHeapTupleGetOid(tuple);
+		result = ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->oid;
 	else
 		result = InvalidOid;
 
@@ -372,7 +372,7 @@ RemoveTablegroupById(Oid grp_oid)
 	 * Find the tablegroup to delete.
 	 */
 	ScanKeyInit(&skey[0],
-				ObjectIdAttributeNumber,
+				Anum_pg_yb_tablegroup_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(grp_oid));
 	scandesc = table_beginscan_catalog(pg_tblgrp_rel, 1, skey);
@@ -455,7 +455,7 @@ RenameTablegroup(const char *oldname, const char *newname)
 				 oldname)));
 	}
 
-	tablegroupoid = YbHeapTupleGetOid(tuple);
+	tablegroupoid = ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->oid;
 
 	/* must be owner or superuser */
 	if (!superuser() && !pg_tablegroup_ownercheck(tablegroupoid, GetUserId()))
@@ -523,7 +523,7 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup \"%s\" does not exist", grpname)));
 
-	tablegroupoid = YbHeapTupleGetOid(tuple);
+	tablegroupoid = ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->oid;
 	datForm = (Form_pg_yb_tablegroup) GETSTRUCT(tuple);
 
 	/*

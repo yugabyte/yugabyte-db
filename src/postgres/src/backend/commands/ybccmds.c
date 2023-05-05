@@ -1064,11 +1064,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				}
 			}
 
-			/* YB_TODO(neil@yugabyte)
-			 * Read typeOid from "values" and "nulls" instead of tuple header.
-			 */
 			typeTuple = typenameType(NULL, colDef->typeName, &typmod);
-			typeOid = YbHeapTupleGetOid(typeTuple);
+			typeOid = ((Form_pg_type) GETSTRUCT(typeTuple))->oid;
 			ReleaseSysCache(typeTuple);
 
 			order = RelationGetNumberOfAttributes(rel) + *col;

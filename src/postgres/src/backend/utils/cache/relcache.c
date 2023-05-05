@@ -927,10 +927,7 @@ YBRelationBuildRuleLock(Relation relation)
 		rule = (RewriteRule *) MemoryContextAlloc(rulescxt,
 												  sizeof(RewriteRule));
 
-#ifdef NEIL_NEED_WORK
-		/* Read typeOid from "values" and "nulls" instead of tuple header */
-#endif
-		rule->ruleId = YbHeapTupleGetOid(rewrite_tuple);
+		rule->ruleId = rewrite_form->oid;
 
 		rule->event = rewrite_form->ev_type - '0';
 		rule->enabled = rewrite_form->ev_enabled;
@@ -1368,12 +1365,10 @@ YBLoadRelations()
 	HeapTuple pg_class_tuple;
 	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(scandesc)))
 	{
-		/* YB_TODO(neil@yugabyte)
-		 * Read Oid from "values" and "nulls" instead of tuple header.
-		 */
-		Oid relid = YbHeapTupleGetOid(pg_class_tuple);
+		/* get information from the pg_class_tuple */
+		Form_pg_class relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
+		Oid			  relid = relp->oid;
 
-		/* YB_TODO(neil@yugabyte) Read Oid from "values" and "nulls" instead of tuple header */
 		/*
 		 * Insert newly created relation into relcache hash table if needed:
 		 * a. If it's not already there (e.g. new table or initialization).
@@ -1391,9 +1386,6 @@ YBLoadRelations()
 		{
 			continue;
 		}
-
-		/* get information from the pg_class_tuple */
-		Form_pg_class relp  = (Form_pg_class) GETSTRUCT(pg_class_tuple);
 
 		/*
 		 * allocate storage for the relation descriptor, and copy pg_class_tuple
@@ -1454,8 +1446,8 @@ YBLoadRelations()
 		relation->rd_partdesc   = NULL;
 		relation->rd_pdcxt      = NULL;
 
-		/* if it's an index, initialize index-related information */
-		if (OidIsValid(relation->rd_rel->relam))
+		if (relation->rd_rel->relkind == RELKIND_INDEX ||
+			relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 			RelationInitIndexAccessInfo(relation);
 
 		/* extract reloptions if any */

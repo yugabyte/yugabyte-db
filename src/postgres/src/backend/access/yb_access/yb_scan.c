@@ -795,23 +795,23 @@ YbShouldPushdownScanPrimaryKey(Relation relation, YbScanPlan scan_plan,
 /* int comparator for qsort() */
 static int int_compar_cb(const void *v1, const void *v2)
 {
-  const int *k1 = v1;
-  const int *k2 = v2;
+	const int *k1 = v1;
+	const int *k2 = v2;
 
-  if (*k1 < *k2)
-    return -1;
+	if (*k1 < *k2)
+		return -1;
 
-  if (*k1 > *k2)
-    return 1;
+	if (*k1 > *k2)
+		return 1;
 
-  return 0;
+	return 0;
 }
 
 /* Use the scan-descriptor and scan-plan to setup scan key for filtering */
 static void
 ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 {
-	TableScanDesc tsdesc = (TableScanDesc)ybScan;
+	TableScanDesc tsdesc = (TableScanDesc) ybScan;
 
 	/*
 	 * Find the scan keys that are the primary key.
@@ -830,8 +830,8 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		bool is_primary_key = bms_is_member(idx, scan_plan->primary_key);
 
 		if (is_primary_key &&
-		    YbShouldPushdownScanPrimaryKey(
-				tsdesc->rs_rd, scan_plan, attnum, ybScan->keys[i]))
+			YbShouldPushdownScanPrimaryKey(tsdesc->rs_rd, scan_plan, attnum,
+										   ybScan->keys[i]))
 		{
 			scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
 		}
@@ -2535,7 +2535,7 @@ TableScanDesc ybc_heap_beginscan(Relation relation,
 HeapTuple ybc_heap_getnext(TableScanDesc tsdesc)
 {
 	bool recheck = false;
-	YbScanDesc ybdesc = (YbScanDesc)tsdesc;
+	YbScanDesc ybdesc = (YbScanDesc) tsdesc;
 	HeapTuple tuple;
 
 	Assert(PointerIsValid(tsdesc));
@@ -2547,7 +2547,7 @@ HeapTuple ybc_heap_getnext(TableScanDesc tsdesc)
 
 void ybc_heap_endscan(TableScanDesc tsdesc)
 {
-	YbScanDesc ybdesc = (YbScanDesc)tsdesc;	
+	YbScanDesc ybdesc = (YbScanDesc) tsdesc;
 
 	if (tsdesc->rs_flags & SO_TEMP_SNAPSHOT)
 		UnregisterSnapshot(tsdesc->rs_snapshot);
