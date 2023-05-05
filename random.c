@@ -202,7 +202,7 @@ dbms_random_string(PG_FUNCTION_ARGS)
 	const char *lower_only = "abcdefghijklmnopqrstuvwxyz";
 	const char *upper_only = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	const char *upper_alphanum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-	const char *printable = "`1234567890-=qwertyuiop[]asdfghjkl;'zxcvbnm,./!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVVBNM<>? ";
+	const char *printable = "`1234567890-=qwertyuiop[]asdfghjkl;'zxcvbnm,./!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVVBNM<>? \\~";
 
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		ereport(ERROR,
