@@ -10,11 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/common/pgsql_error.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_macros.h"
-#include "yb/yql/pgwrapper/libpq_test_base.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/util/thread.h"
+#include "yb/yql/pgwrapper/libpq_test_base.h"
 
 namespace yb {
 namespace pgwrapper {
@@ -68,6 +70,40 @@ TEST_F(ColocatedDBTest, MasterFailoverRetryAddTableToTablet) {
   insertion_thread.join();
   ASSERT_OK(s);
   ASSERT_OK(conn.Execute("INSERT INTO test_tbl1 values (1, 1)"));
+}
+
+TEST_F(ColocatedDBTest, ListColocatedTables) {
+  constexpr auto ns_name = "test_db";
+  auto conn = ASSERT_RESULT(CreateColocatedDB(ns_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE colo_tbl (key INT PRIMARY KEY, value INT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE reg_tbl (key INT PRIMARY KEY, value INT) WITH (COLOCATION = FALSE)"));
+
+  master::ListTablesRequestPB req;
+  master::ListTablesResponsePB resp;
+  req.mutable_namespace_()->set_name(ns_name);
+  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  rpc::RpcController controller;
+  ASSERT_OK(proxy.ListTables(req, &resp, &controller));
+  const master::ListTablesResponsePB_TableInfo *parent = nullptr, *colo = nullptr, *reg = nullptr;
+  for (const auto& table_info : resp.tables()) {
+    if (table_info.name() == "colo_tbl") {
+      colo = &table_info;
+    } else if (table_info.name() == "reg_tbl") {
+      reg = &table_info;
+    } else if (table_info.relation_type() == master::COLOCATED_PARENT_TABLE_RELATION) {
+      parent = &table_info;
+    }
+  }
+  ASSERT_TRUE(parent != nullptr);
+  ASSERT_TRUE(colo != nullptr);
+  ASSERT_TRUE(reg != nullptr);
+  EXPECT_FALSE(reg->has_colocated_info());
+  EXPECT_TRUE(colo->colocated_info().colocated());
+  EXPECT_EQ(colo->colocated_info().parent_table_id(), parent->id());
+  EXPECT_TRUE(parent->colocated_info().colocated());
+  EXPECT_FALSE(parent->colocated_info().has_parent_table_id());
 }
 
 class ColocationConcurrencyTest : public ColocatedDBTest {
