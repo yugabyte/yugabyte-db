@@ -1080,7 +1080,13 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       st = cdc_proxy_->SetCDCCheckpoint(
           set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
 
-      if (st.ok()) {
+      if (set_checkpoint_resp.has_error() &&
+          (set_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND ||
+           retry == max_retries)) {
+        return STATUS_FORMAT(
+            InternalError, "Response had error: $0", set_checkpoint_resp.DebugString());
+      }
+      if (st.ok() && !set_checkpoint_resp.has_error()) {
         return set_checkpoint_resp;
       }
     }
@@ -1091,20 +1097,37 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<std::vector<OpId>> GetCDCCheckpoint(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
-    RpcController get_checkpoint_rpc;
     GetCheckpointRequestPB get_checkpoint_req;
-    GetCheckpointResponsePB get_checkpoint_resp;
-    auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-    get_checkpoint_rpc.set_deadline(deadline);
+    const int max_retries = 3;
 
     std::vector<OpId> op_ids;
-    for (auto tablet : tablets) {
+    op_ids.reserve(tablets.size());
+    for (const auto& tablet : tablets) {
       get_checkpoint_req.set_stream_id(stream_id);
-      get_checkpoint_req.set_tablet_id(tablets.Get(0).tablet_id());
-      RETURN_NOT_OK(
-          cdc_proxy_->GetCheckpoint(get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
-      op_ids.push_back(OpId::FromPB(get_checkpoint_resp.checkpoint().op_id()));
+      get_checkpoint_req.set_tablet_id(tablet.tablet_id());
+
+      for (auto retry = 1; retry <= max_retries; ++retry) {
+        GetCheckpointResponsePB get_checkpoint_resp;
+        RpcController get_checkpoint_rpc;
+        auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
+        get_checkpoint_rpc.set_deadline(deadline);
+
+        RETURN_NOT_OK(cdc_proxy_->GetCheckpoint(
+            get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
+
+        if (get_checkpoint_resp.has_error() &&
+            (get_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND ||
+             retry == max_retries)) {
+          return STATUS_FORMAT(
+              InternalError, "Response had error: $0", get_checkpoint_resp.DebugString());
+        }
+        if (!get_checkpoint_resp.has_error()) {
+          op_ids.push_back(OpId::FromPB(get_checkpoint_resp.checkpoint().op_id()));
+          break;
+        }
+      }
     }
+
     return op_ids;
   }
 
