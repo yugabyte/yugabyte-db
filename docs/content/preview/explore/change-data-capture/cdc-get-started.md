@@ -51,12 +51,98 @@ delete from employee where employee_id=1001;
 ```
 
 CDC records for update and delete statements without enabling before image would be 
+```sh
+CDC record for UPDATE:
+{
+  "before": null,
+  "after": {
+    "public.employee.Value":{
+      "employee_id": {
+        "value": 1001
+      },
+      "employee_name": {
+        "employee_name": {
+          "value": {
+            "string": "Bob"
+          }
+        }
+      }
+    }
+  },
+  "op": "u"
+}
 
-![CDC records for update and delete statements without enabling before image](/images/explore/cdc-records-without-before-image.png)
+CDC record for DELETE:
+{
+  "before": {
+    "public.employee.Value":{
+      "employee_id": {
+        "value": 1001
+      },
+      "employee_name": null
+    }
+  },
+  "after": null,
+  "op": "d"
+}
+```
 
 With before image enabled, the update and delete records look like
 
-![CDC records for update and delete statements with before image](/images/explore/cdc-records-with-before-image.png)
+```sh
+CDC record for UPDATE:
+{
+  "before": {
+    "public.employee.Value":{
+      "employee_id": {
+        "value": 1001
+      },
+      "employee_name": {
+        "employee_name": {
+          "value": {
+            "string": "Alice"
+          }
+        }
+      }
+    }
+  },
+  "after": {
+    "public.employee.Value":{
+      "employee_id": {
+        "value": 1001
+      },
+      "employee_name": {
+        "employee_name": {
+          "value": {
+            "string": "Bob"
+          }
+        }
+      }
+    }
+  },
+  "op": "u"
+}
+
+CDC record for DELETE:
+{
+  "before": {
+    "public.employee.Value":{
+      "employee_id": {
+        "value": 1001
+      },
+      "employee_name": {
+        "employee_name": {
+          "value": {
+            "string": "Bob"
+          }
+        }
+      }
+    }
+  },
+  "after": null,
+  "op": "d"
+}
+```
 
 ## Schema evolution
 
@@ -77,8 +163,49 @@ alter table employee add dept_name varchar; // schema version 2
 ```
 
 Update CDC record would be 
+```sh
 
-![Update CDC record depicting schema evolution](/images/explore/update-cdc-record-schema-evolution.png)
+CDC record for UPDATE (using schema version 1):
+{
+  "before": {
+    "public.employee.Value":{
+      "employee_id": {
+        "value": 1001
+      },
+      "employee_name": {
+        "employee_name": {
+          "value": {
+            "string": "Alice"
+          }
+        }
+      },
+      "dept_id": null
+    }
+  },
+
+  "after": {   "public.employee.Value":{
+        "employee_id": {
+          "value": 1001
+        },
+        "employee_name": {
+          "employee_name": {
+            "value": {
+              "string": "Alice"
+            }
+          }
+        },
+        "dept_id": {
+          "dept_id": {
+            "value": {
+              "int": 9
+            }
+          }
+        }
+      }
+    },
+    "op": "u"
+}
+```
 
 ## Transformations
 
