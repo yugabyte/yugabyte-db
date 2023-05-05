@@ -156,16 +156,22 @@ public class TestPrepareExecute extends BaseCQLTest {
 
   @Test
   public void testAlterAdd() throws Exception {
-    // By default: cql_always_return_metadata_in_execute_response=false.
-    //             cql_use_metadata_cache_for_schema_version_check=false.
-    doTestAlterAdd(MetadataInExecResp.OFF, UseMetadataCache.OFF);
+    try {
+      // By default: cql_always_return_metadata_in_execute_response=false.
+      restartClusterWithFlag("cql_use_metadata_cache_for_schema_version_check", "false");
+      doTestAlterAdd(MetadataInExecResp.OFF, UseMetadataCache.OFF);
+    } finally {
+      destroyMiniCluster(); // Destroy the recreated cluster when done.
+    }
   }
 
   @Test
   public void testAlterAdd_MetadataInExecResp() throws Exception {
     try {
-      // By default: cql_use_metadata_cache_for_schema_version_check=false.
-      restartClusterWithFlag("cql_always_return_metadata_in_execute_response", "true");
+      Map<String, String> tserverFlags = new HashMap<>();
+      tserverFlags.put("cql_always_return_metadata_in_execute_response", "true");
+      tserverFlags.put("cql_use_metadata_cache_for_schema_version_check", "false");
+      restartClusterWithTSFlags(tserverFlags);
       doTestAlterAdd(MetadataInExecResp.ON, UseMetadataCache.OFF);
     } finally {
       destroyMiniCluster(); // Destroy the recreated cluster when done.
@@ -174,22 +180,16 @@ public class TestPrepareExecute extends BaseCQLTest {
 
   @Test
   public void testAlterAdd_UseMetadataCache() throws Exception {
-    try {
-      // By default: cql_always_return_metadata_in_execute_response=false.
-      restartClusterWithFlag("cql_use_metadata_cache_for_schema_version_check", "true");
-      doTestAlterAdd(MetadataInExecResp.OFF, UseMetadataCache.ON);
-    } finally {
-      destroyMiniCluster(); // Destroy the recreated cluster when done.
-    }
+    // By default: cql_always_return_metadata_in_execute_response=false.
+    //             cql_use_metadata_cache_for_schema_version_check=true.
+    doTestAlterAdd(MetadataInExecResp.OFF, UseMetadataCache.ON);
   }
 
   @Test
   public void testAlterAdd_MetadataInExecResp_UseMetadataCache() throws Exception {
     try {
-      Map<String, String> tserverFlags = new HashMap<>();
-      tserverFlags.put("cql_always_return_metadata_in_execute_response", "true");
-      tserverFlags.put("cql_use_metadata_cache_for_schema_version_check", "true");
-      restartClusterWithTSFlags(tserverFlags);
+      restartClusterWithFlag("cql_always_return_metadata_in_execute_response", "true");
+      // By default: cql_use_metadata_cache_for_schema_version_check=true.
       doTestAlterAdd(MetadataInExecResp.ON, UseMetadataCache.ON);
     } finally {
       destroyMiniCluster(); // Destroy the recreated cluster when done.
