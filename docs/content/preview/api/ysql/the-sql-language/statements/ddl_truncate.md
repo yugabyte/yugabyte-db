@@ -48,6 +48,21 @@ Applying `TRUNCATE` to a set of tables produces the same ultimate outcome as doe
 The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
 {{< /note >}}
 
+{{< note title="Truncate is not transactional" >}}
+
+`TRUNCATE` in our current implementation is not transactional.
+
+We recommend against using:
+* truncate inside of a multi-step transaction 
+* or running truncate concurrently with our read/write operations in the same table.
+
+If this is mostly for CI/CD on smaller datasets, you can use `DELETE FROM table;`.  
+This is heavier weight (and also not recommended for very large data sets) but will be transactional.
+
+Note that even in PostgreSQL truncate is not [MVCC-safe](https://www.postgresql.org/docs/15/sql-truncate.html).
+
+{{< /note >}}
+
 ## Semantics
 
 Specify the name of the table to be truncated.
