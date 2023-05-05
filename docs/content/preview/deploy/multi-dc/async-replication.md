@@ -50,8 +50,6 @@ After you created the required tables, you can set up unidirectional replication
       ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id | grep table_name
       ```
 
-      Note that if there are multiple schemas with the same table name, you might need to contact Yugabyte Support for assistance.
-
 - Run the following `yb-admin` [`setup_universe_replication`](../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
 
     ```sh
@@ -441,32 +439,148 @@ You can modify the bootstrap as follows:
 
 You can also perform the following modifications:
 
-- To add a table to the source and target universes, use the `alter_universe_replication add_table` command.
-- To remove an existing table from the source and target universes, use the `alter_universe_replication remove_table` command.
+- To add a table to the source and target universes, use the `alter_universe_replication add_table` command. See [Handling DDL changes](#handling-ddl-changes).
+- To remove an existing table from the source and target universes, use the `alter_universe_replication remove_table` command. See [Handling DDL changes](#handling-ddl-changes).
 - To change the master nodes on the source universe, execute the `alter_universe_replication set_master_addresses` command.
 - You can verify changes via the `get_universe_config` command.
 
-## Migrate schema
+## Handling DDL changes
 
-You can execute DDL operations after replication has been already configured for some tables.
+You can execute DDL operations after replication has been already been configured. Depending on the type of DDL operations, additional considerations are required.
 
-### Stop user writes
+### Adding new objects (Tables, Partitions, Indexes)
 
-In certain cases, it is possible to temporarily stop incoming user writes. You would typically approach this as follows:
+#### Adding Tables (or Partitions)
+When new tables(or partitions) are created, to ensure that all changes from the time of object creation are replicated, writes should start on the new objects only after they are added to replication. If tables (or partitions) already have existing data before they are added to replication, then follow the bootstrap process described in [Bootstrap a target universe](#bootstrap-a-target-universe).
+1. Create a table (with partitions) on both Source and Target
 
-- Stop any new incoming user writes.
-- Wait for all changes to get replicated to the target universe. This can be observed by replication lag dropping to 0.
-- Apply the DDL changes on both universes and [alter replication](../../../admin/yb-admin/#alter-universe-replication) for any newly-created tables. For example, after executing the `CREATE TABLE` or `CREATE INDEX` statements.
-- Resume user writes.
+```
+CREATE TABLE order_changes (
+  order_id int,
+  change_date date,
+  type text,
+  description text)
+  PARTITION BY RANGE (change_date);  
 
-### Use backup and restore
+CREATE TABLE order_changes_default PARTITION OF order_changes DEFAULT;
+  
+--Create a new partition
+CREATE TABLE order_changes_2023_01 PARTITION OF order_changes
+FOR VALUES FROM ('2023-01-01') TO ('2023-03-30');
+```
+Assume the parent table and default partition are included in the replication stream.
 
-If you cannot stop incoming user traffic, then the safest approach would be to apply DDLs on the source universe combined with bootstrapping. Specifically, you would need to do the following:
+2. Get table ids of the new partition from Source.
 
-- Stop replication before making any DDL changes.
-- Apply all your DDL changes to the source universe.
-- Backup the source universe and all the relevant tables for which you intend to replicate changes. Follow instructions provided in [Bootstrap a target universe](#bootstrap-a-target-universe).
-- Restore this backup on the target universe.
-- [Set up replication](../../../admin/yb-admin/#setup-universe-replication) again for all of the relevant tables. Ensure that you pass in all the `bootstrap_id` values.
+  ```
+  yb-admin -master_addresses <source_master_ips> \
+  -certs_dir_name <cert_dir> \
+  list_tables include_table_id|grep 'order_changes_2023_01'
+  
+  Output:
+  yugabyte.order_changes_2021_01 000033e8000030008000000000004106
+  ```
 
-Note that it is possible to add and remove columns of primitive data types without a bootstrap. The schema changes must match on both sides, including changes introduced by any faulty apply and revert operations. Because this process is error-prone, it is recommended to contact Yugabyte Support for assistance.
+3. Add the new table (or partition) to replication.
+
+  ```
+  yb-admin -master_addresses <target_master_ips> \
+  -certs_dir_name <cert_dir> \
+  alter_universe_replication <replication_group_name> \
+  add_table  000033e800003000800000000000410b
+
+  Output:
+    Replication altered successfully 
+  ```
+
+#### Adding Indexes
+When a new index is added to an empty table, the same steps as described in [Adding Tables (or Partitions)](#adding-tables) can be followed.
+However, when a new index is added to a table that already has data, additional steps are required to ensure that the index has all the updates.
+
+1. Create an index - my_new index on the Source. 
+2. Wait for index backfill to finish (monitor backfill progress: https://yugabytedb.tips/?p=2215 ).
+3. Determine the table id for my_new index.
+
+  ```
+  yb-admin 
+  -master_addresses <source_master_ips> \
+   -certs_dir_name <cert_dir> \
+  list_tables include_table_id|grep 'my_new_index'
+ 
+  Output:
+  000033e8000030008000000000004028
+  ```
+
+4. Bootstrap the replication stream on source using the bootstrap_cdc_producer API and provide table id of the new index.
+
+  ```
+  yb-admin 
+  -master_addresses <source_master_ips> \
+  -certs_dir_name <cert_dir> \
+  bootstrap_cdc_producer 000033e8000030008000000000004028
+
+  Output:
+  table id: 000033e8000030008000000000004028, CDC bootstrap id: c8cba563e39c43feb66689514488591c
+  ```
+
+5. Wait for replication to be 0 on the main table using the replication lag metrics described in [Replication lag](#replication-lag)
+6. Create the index on Target. 
+7. Wait for index backfill to finish (monitor backfill progress: https://yugabytedb.tips/?p=2215).
+8. Add the index to replication with the bootstrap ID from Step 4.
+
+  ```
+  yb-admin 
+  -master_addresses <target_master_ips> \ 
+  -certs_dir_name <cert_dir> \
+  alter_universe_replication 59e58153-eec6-4cb5-a858-bf685df52316_east-west \
+  add_table  000033e8000030008000000000004028 c8cba563e39c43feb66689514488591c
+ 
+  Output:
+	Replication altered successfully 
+  ```
+
+### Removing Objects
+1. Objects (tables, indexes, partitions) need to be removed from replication before they are dropped.
+2. Get the table id for the object to be removed from Source.
+
+  ```
+  yb-admin -master_addresses <source_master_ips> \
+  -certs_dir_name <cert_dir> \
+  list_tables include_table_id |grep '<partition_name>'
+  ```
+3. Remove the table from replication on the target.
+
+  ```
+  yb-admin -master_addresses <target_master_ips> \
+  -certs_dir_name <cert_dir> \
+  alter_universe_replication <replication_group_name> \
+  remove_table  000033e800003000800000000000410b
+  ```
+
+### ALTERS
+Alters involving adding/removing columns or modifying data types require replication to be paused before applying schema changes
+
+1. Pause replication on both sides.
+
+  ```
+  yb-admin 
+  -master_addresses <target_master_ips> 
+  -certs_dir_name <cert_dir> \
+  set_universe_replication_enabled <replication_group_name> 0
+ 
+  Output:
+  Replication disabled successfully
+  ```
+2. Perform the schema modification.
+3. Resume replication.
+
+  ```
+  yb-admin 
+  -master_addresses <target_master_ips> 
+  -certs_dir_name <cert_dir> \
+  set_universe_replication_enabled <replication_group_name> 0
+
+  Output:
+  Replication enabled successfully
+  ```
+
