@@ -91,6 +91,10 @@ class CQLServiceImpl : public CQLServerServiceIf,
     return processors_mem_tracker_;
   }
 
+  const MemTrackerPtr& requests_mem_tracker() const {
+    return requests_mem_tracker_;
+  }
+
   // Return the YBClient to communicate with either master or tserver.
   client::YBClient* client() const;
 
@@ -162,6 +166,9 @@ class CQLServiceImpl : public CQLServerServiceIf,
   MemTrackerPtr prepared_stmts_mem_tracker_;
 
   MemTrackerPtr processors_mem_tracker_;
+
+  // Tracker to measure the memory usage of CQL requests.
+  MemTrackerPtr requests_mem_tracker_;
 
   // Password and hash cache. Stores each password-hash pair as a compound key;
   // see implementation for rationale.
