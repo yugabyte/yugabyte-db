@@ -39,6 +39,13 @@
         static_configs:
           - targets: ['127.0.0.1:{{ yamlPath "platform.port" }}']
 
+      - job_name: 'node-agent'
+        scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}s
+        metrics_path: "/metrics"
+        file_sd_configs:
+          - files:
+            - '{{ .DataDir }}/swamper_targets/node-agent.*.json'
+
       - job_name: "node"
         file_sd_configs:
           - files:
