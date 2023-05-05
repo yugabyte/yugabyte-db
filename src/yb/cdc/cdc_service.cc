@@ -1159,25 +1159,35 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
 
   // Case-1 The connected tserver does not contain the requested tablet_id.
   // Case-2 The connected tserver does not contain the tablet LEADER.
-  if (!tablet_peer || IsNotLeader(tablet_peer)) {
+  if ((!tablet_peer || IsNotLeader(tablet_peer)) && req.serve_as_proxy()) {
     // Proxy to the leader
-    auto ts_leader = GetLeaderTServer(req.tablet_id());
+    auto ts_leader = GetLeaderTServer(req.tablet_id(), false /* use_cache */);
     RETURN_NOT_OK_SET_CODE(ts_leader, CDCError(CDCErrorPB::NOT_LEADER));
     auto cdc_proxy = GetCDCServiceProxy(*ts_leader);
+
+    SetCDCCheckpointRequestPB new_req;
+    new_req.CopyFrom(req);
+    new_req.set_serve_as_proxy(false);
 
     rpc::RpcController rpc;
     rpc.set_deadline(deadline);
     SetCDCCheckpointResponsePB resp;
-    VLOG(2) << "Current tablet_peer: " << tablet_peer->permanent_uuid()
-            << "is not a LEADER for tablet_id: " << req.tablet_id()
-            << " so handovering to the actual LEADER.";
+    if (tablet_peer) {
+      VLOG(2) << "Current tablet_peer: " << tablet_peer->permanent_uuid()
+              << "is not a LEADER for tablet_id: " << req.tablet_id()
+              << " so handovering to the actual LEADER.";
+    } else {
+      VLOG(2) << "Current TServer doesn not host tablet_id: " << req.tablet_id()
+              << " so handovering to the actual LEADER.";
+    }
+
     RETURN_NOT_OK_SET_CODE(
-        cdc_proxy->SetCDCCheckpoint(req, &resp, &rpc), CDCError(CDCErrorPB::INTERNAL_ERROR));
+        cdc_proxy->SetCDCCheckpoint(new_req, &resp, &rpc), CDCError(CDCErrorPB::INTERNAL_ERROR));
     return resp;
   }
 
   // Case-3 The connected tserver is the tablet LEADER but not yet ready.
-  if (!IsLeaderAndReady(tablet_peer)) {
+  if (!tablet_peer || !IsLeaderAndReady(tablet_peer)) {
     VLOG(2) << "Current LEADER is not ready to serve tablet_id: " << req.tablet_id();
     return STATUS(
         LeaderNotReadyToServe, "Not ready to serve", CDCError(CDCErrorPB::LEADER_NOT_READY));
@@ -2808,7 +2818,7 @@ Status CDCServiceImpl::DeleteCDCStateTableMetadata(
 }
 
 Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
-    const TabletId& tablet_id) {
+    const TabletId& tablet_id, const bool use_cache) {
   std::promise<Result<client::internal::RemoteTabletPtr>> tablet_lookup_promise;
   auto future = tablet_lookup_promise.get_future();
   auto callback =
@@ -2825,8 +2835,9 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
       master::IncludeDeleted::kFalse,
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       callback,
-      GetAtomicFlag(&FLAGS_enable_cdc_client_tablet_caching) ? client::UseCache::kTrue
-                                                             : client::UseCache::kFalse);
+      GetAtomicFlag(&FLAGS_enable_cdc_client_tablet_caching) && use_cache
+          ? client::UseCache::kTrue
+          : client::UseCache::kFalse);
   future.wait();
 
   auto duration = CoarseMonoClock::Now() - start;
@@ -2838,8 +2849,9 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
   return remote_tablet;
 }
 
-Result<RemoteTabletServer*> CDCServiceImpl::GetLeaderTServer(const TabletId& tablet_id) {
-  auto result = VERIFY_RESULT(GetRemoteTablet(tablet_id));
+Result<RemoteTabletServer*> CDCServiceImpl::GetLeaderTServer(
+    const TabletId& tablet_id, const bool use_cache) {
+  auto result = VERIFY_RESULT(GetRemoteTablet(tablet_id, use_cache));
 
   auto ts = result->LeaderTServer();
   if (ts == nullptr) {
@@ -2924,14 +2936,19 @@ void CDCServiceImpl::TabletLeaderGetChanges(
 
 void CDCServiceImpl::TabletLeaderGetCheckpoint(
     const GetCheckpointRequestPB* req, GetCheckpointResponsePB* resp, RpcContext* context) {
-  auto ts_leader = GetLeaderTServer(req->tablet_id());
+  auto ts_leader = GetLeaderTServer(req->tablet_id(), false /* use_cache */);
   RPC_RESULT_RETURN_ERROR(ts_leader, resp->mutable_error(), CDCErrorPB::TABLET_NOT_FOUND, *context);
 
   auto cdc_proxy = GetCDCServiceProxy(*ts_leader);
   rpc::RpcController rpc;
   rpc.set_deadline(GetDeadline(*context, client()));
+
+  GetCheckpointRequestPB new_req;
+  new_req.CopyFrom(*req);
+  new_req.set_serve_as_proxy(false);
+
   // TODO(NIC): Change to GetCheckpointAsync like XClusterPoller::DoPoll.
-  auto status = cdc_proxy->GetCheckpoint(*req, resp, &rpc);
+  auto status = cdc_proxy->GetCheckpoint(new_req, resp, &rpc);
   RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, *context);
   context->RespondSuccess();
 }
@@ -2957,14 +2974,15 @@ void CDCServiceImpl::GetCheckpoint(
 
   auto tablet_peer = context_->LookupTablet(req->tablet_id());
 
-  if (!tablet_peer || IsNotLeader(tablet_peer)) {
-    // Forward GetChanges() to tablet leader. This happens often in Kubernetes setups.
+  if ((!tablet_peer || IsNotLeader(tablet_peer)) && req->serve_as_proxy()) {
+    // Forward GetCheckpoint() to tablet leader. This happens often in Kubernetes setups.
     return TabletLeaderGetCheckpoint(req, resp, &context);
   }
 
   RPC_CHECK_AND_RETURN_ERROR(
-      IsLeaderAndReady(tablet_peer), STATUS(LeaderNotReadyToServe, "Not ready to serve"),
-      resp->mutable_error(), CDCErrorPB::LEADER_NOT_READY, context);
+      tablet_peer && IsLeaderAndReady(tablet_peer),
+      STATUS(LeaderNotReadyToServe, "Not ready to serve"), resp->mutable_error(),
+      CDCErrorPB::LEADER_NOT_READY, context);
 
   // Check that requested tablet_id is part of the CDC stream.
   ProducerTabletInfo producer_tablet = {"" /* UUID */, req->stream_id(), req->tablet_id()};
