@@ -31,7 +31,7 @@ The change data from the YugabyteDB Debezium/Kafka connector is streamed directl
 
 | Step | Operations/Tasks | Component |
 |---|---|---|
-| 1 | YugabyteDB CDC Enabled and [Create the Stream ID](https://docs.yugabyte.com/preview/integrations/cdc/debezium/) for specific YSQL database (that is, the database name). | YugabyteDB |
+| 1 | CDC Enabled and [Create the Stream ID](../../../../integrations/cdc/debezium/) for specific YSQL database (that is, the database name). | YugabyteDB |
 | 2 | [Download the YugabyteDB CDC Connector JAR](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar) | YugabyteDB Debezium Connector JAR |
 | 3 | [Set up the AWS MSK Cluster](https://medium.com/@sharmaranupama/stream-data-from-yugabyte-cdc-to-aws-msk-using-debezium-a09490c54851) (refer to the IAM policies and roles) | AWS MSK, AWS IAM Roles & Policies |
 | 4 | Set up Amazon Redshift and keep the credentials ready for testing. | Amazon Redshift |
@@ -40,9 +40,9 @@ The change data from the YugabyteDB Debezium/Kafka connector is streamed directl
 
 ### Install YugabyteDB
 
-You have multiple options to [install or deploy YugabyteDB](https://docs.yugabyte.com/latest/deploy/) if you don't have one already available.
+You have multiple options to [install or deploy YugabyteDB](../../../../deploy/) if you don't have one already available.
 
-Note: If you're running Windows, you can [leverage Docker on Windows with YugabyteDB](https://docs.yugabyte.com/preview/quick-start/docker/).
+If you're running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](../../../../quick-start/docker/).
 
 ### Install and set up Amazon MSK
 
@@ -50,7 +50,7 @@ To install and set up Amazon MSK, refer to [Stream Data From YugabyteDB CDC to A
 
 ### Create cluster configuration and worker configuration in MSK
 
-**Cluster Configuration:**
+#### Cluster Configuration
 
 In AWS MSK, under MSK Clusters menu (on the left side) will show cluster configuration. Click to create a new configuration and enter the values below on the configuration settings. Then save it.
 
@@ -72,9 +72,9 @@ socket.send.buffer.bytes=102400
 unclean.leader.election.enable=true
 zookeeper.session.timeout.ms=18000*
 
-Worker Configuration:
+#### Worker configuration
 
-In AWS MSK, under “MSK Connect”, create a worker configuration (like below) and enter the properties if you are going to receive the data in JSON format.
+In AWS MSK, under **MSK Connect**, create a worker configuration (like below) and enter the properties if you are going to receive the data in JSON format.
 
 *key.converter=org.apache.kafka.connect.json.JsonConverter
 key.converter.schemas.enable=true
@@ -83,13 +83,13 @@ value.converter.schemas.enable=true*
 
 NOTE: It is highly recommended to use schema registry with AVRO. In such a case, the above worker configuration is not required.
 
-![Diagram](/images/explore/cdc/aws_redshift_images/worker_configuration.jpg)
+![MSK worker configuration](/images/explore/cdc/aws_redshift_images/worker_configuration.jpg)
 
-### Create MSK Connector for YugabyteDB
+### Create MSK connector for YugabyteDB
 
 Create the Configuration of AWS MSK connector for YugabyteDB as referred in [point #6](https://medium.com/@sharmaranupama/stream-data-from-yugabyte-cdc-to-aws-msk-using-debezium-a09490c54851) and choose the worker configuration that you created in Step #3.
 
-Use the values below in the connector configuration and change the yellow highlights with new data according to your specific YugabyteDB configuration.
+Use the following values in the connector configuration and change the yellow highlights with new data according to your specific YugabyteDB configuration.
 
 *connector.class=io.debezium.connector.yugabytedb.YugabyteDBConnector
 database.streamid=684d878b37e94b279454b0b8d6a2a305
@@ -113,17 +113,19 @@ snapshot.mode=initial*
 
 ### Install Amazon Redshift
 
-**[Install Amazon Redshift from your AWS Console](https://aws.amazon.com/redshift/free-trial/) and [create cluster and configure](https://docs.aws.amazon.com/redshift/latest/gsg/new-user-serverless.html).**
+[Install Amazon Redshift from your AWS Console](https://aws.amazon.com/redshift/free-trial/) and [create cluster and configure](https://docs.aws.amazon.com/redshift/latest/gsg/new-user-serverless.html).
 
 ### Create Custom Plugin for Amazon Redshift
 
-[Download the Amazon Redshift Sink connector](https://www.confluent.io/connector/kafka-connect-aws-redshift/#download) and upload this zip file to your AWS MSK Custom Plugin. You can also rename it.
+[Download the Amazon Redshift Sink connector](https://www.confluent.io/connector/kafka-connect-aws-redshift/#download) and upload this zip file to your Amazon MSK Custom Plugin. You can also rename it.
 
-![Diagram](/images/explore/cdc/aws_redshift_images/custom_plugin_awsredshift.jpg)
+![Amazon MSK custom plugin](/images/explore/cdc/aws_redshift_images/custom_plugin_awsredshift.jpg)
 
 ### Create MSK Sink Connect for Amazon Redshift
 
-[Create the Configuration of AWS MSK connector](https://medium.com/@sharmaranupama/stream-data-from-yugabyte-cdc-to-aws-msk-using-debezium-a09490c54851) (see point #6). ou will need to keep it with the Amazon Redshift configuration instead of the YugabyteDB configuration like below. (NOTE:Replace the values in yellow per your specific Amazon Redshift details and AWS MSK Kafka Topic name)
+[Create the Configuration of AWS MSK connector](https://medium.com/@sharmaranupama/stream-data-from-yugabyte-cdc-to-aws-msk-using-debezium-a09490c54851) (see point #6). You need to keep it with the Amazon Redshift configuration instead of the YugabyteDB configuration like below.
+
+(Note: Replace the values in yellow per your specific Amazon Redshift details and AWS MSK Kafka Topic name)
 
 *connector.class=io.confluent.connect.aws.redshift.RedshiftSinkConnector
 aws.redshift.port=5439

@@ -1,9 +1,9 @@
 ---
 title: Azure Synapse Analytics Integration using Azure Event Hub tutorial for YugabyteDB CDC
-headerTitle: Azure Synapse Analytics integration using Azure Event Hub
+headerTitle: Azure Event Hub
 linkTitle: Azure Event Hub
 description: Azure Synapse Analytics Integration using Azure Event Hub for Change Data Capture in YugabyteDB.
-headcontent: 
+headcontent: Azure Synapse Analytics integration using Azure Event Hub
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
@@ -13,22 +13,24 @@ menu:
 type: docs
 ---
 
-In this tutorial, we walk through the steps to sync CDC data from [YugabyteDB Anywhere](https://www.yugabyte.com/anywhere/) to your Azure Synapse Analytics workspace using Azure offerings such as **Azure Event Hub** and Azure Data Lake Storage (ADLS) Gen2.
+The following tutorial describes the steps to sync CDC data from [YugabyteDB Anywhere](https://www.yugabyte.com/anywhere/) to your Azure Synapse Analytics workspace using Azure offerings such as Azure Event Hub and Azure Data Lake Storage (ADLS) Gen2.
 
-## Reference Architecture
+## Reference architecture
 
 The following diagram shows how to move YugabyteDB Anywhere CDC data to an Azure Synapse Analytics workspace.
 
 ![Solution architecture to move YugabyteDB CDC data to Azure Synapse](/images/explore/cdc/eventhub_images/azeh_adls_end_2_end_architecture.jpg)
 
-The components used are:
+The following table describes the components.
 
-- YugabyteDB Anywhere - Yugabyte self-managed DBaaS for deploying YugabyteDB at scale that includes YugabyteDB's self-managed, stateless CDC functionality with support for Confluent Kafka Connect. A pull-based model is used to report changes from the database Write-Ahead-Log (WAL). Learn more about the implementation of [CDC on the YugabyteDB’s documentation site](https://docs.yugabyte.com/preview/explore/change-data-capture/).
-- YugabyteDB Debezium Connector- [Pulls data from YugabyteDB](https://docs.yugabyte.com/preview/explore/change-data-capture/#debezium-connector-for-yugabytedb), publishes it to Kafka, and runs in a Microsoft Azure Virtual Machine.
-- [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about)- Azure's big data streaming platform and event ingestion service.
-- [Azure Synapse Pipelines](https://learn.microsoft.com/en-us/azure/data-factory/concepts-pipelines-activities?context=%2Fazure%2Fsynapse-analytics%2Fcontext%2Fcontext&tabs=synapse-analytics)
-- An [ADLS Gen2](https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-introduction) Storage account.
-- [Azure Synapse workspace](https://learn.microsoft.com/en-us/azure/synapse-analytics/overview-what-is)- Azure's integrated platform service that merges the capabilities of data lakes, data integrations for ETL/ELT pipelines, analytics tools, and services.
+| Component | Description |
+| :--- | :--- |
+| YugabyteDB Anywhere | Yugabyte self-managed DBaaS for deploying YugabyteDB at scale that includes YugabyteDB's self-managed, stateless CDC functionality with support for Confluent Kafka Connect. A pull-based model is used to report changes from the database Write-Ahead-Log (WAL). For more information on CDC, refer to [Change Data Capture](../../change-data-capture/). |
+| YugabyteDB Debezium connector | [Pulls data from YugabyteDB](https://docs.yugabyte.com/preview/explore/change-data-capture/#debezium-connector-for-yugabytedb), publishes it to Kafka, and runs in a Microsoft Azure Virtual Machine. |
+| [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about) | Azure big data streaming platform and event ingestion service.
+| [Azure Synapse Pipelines](https://learn.microsoft.com/en-us/azure/data-factory/concepts-pipelines-activities?) |context=%2Fazure%2Fsynapse-analytics%2Fcontext%2Fcontext&tabs=synapse-analytics |
+| [ADLS Gen2](https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-introduction) Storage account | |
+| [Azure Synapse workspace](https://learn.microsoft.com/en-us/azure/synapse-analytics/overview-what-is) | Azure integrated platform service that merges the capabilities of data lakes, data integrations for ETL/ELT pipelines, analytics tools, and services. |
 
 The following table describes how the data flows through each of these components.
 
@@ -40,18 +42,18 @@ The following table describes how the data flows through each of these component
 | 4 | ADLS (Azure Data Lake Services) Gen2 | CDC data from the Azure Event Hub is saved to ADLS Gen2 in Parquet format |
 | 5 | Azure Synapse workspace | Azure SQL Pools and Spark Pools can be used to analyze the CDC data from Yugabyte in near real time |
 
-## Getting Started
-
 ### Prerequisites
 
-To get started, you'll need to have
+To get started, you'll need the following:
 
 - YugabyteDB Anywhere database with CDC enabled
 - An Azure Event Hubs instance
 - An Azure Synapse Analytics workspace with SQL Pools and Spark Pools. Tables can be created in the SQL Pools to house the CDC data.
 - An Azure Data Lake Storage Gen2 account. The Yugabyte CDC data resides in this Storage account and can be queried using external tables in Synapse SQL Pools.
 
-Use the following steps to move YugabyteDB CDC data into Azure Synapse Analytics with the YugabyteDB Debezium Connector that streams data into Azure Event Hubs. This data can be stored as Avro/JSON/Parquet in Azure Data Lake Storage Gen2 and then accessed via SQL Pools or Spark Pools in the Synapse workspace.
+## Get Started
+
+Use the following steps to move YugabyteDB CDC data into Azure Synapse Analytics using the YugabyteDB Debezium Connector that streams data into Azure Event Hubs. This data can be stored as Avro/JSON/Parquet in Azure Data Lake Storage Gen2 and then accessed via SQL Pools or Spark Pools in the Synapse workspace.
 
 ### Step 1: Create an Event Hubs namespace and Event Hubs
 
@@ -69,7 +71,7 @@ Now that you have created Event Hubs in Azure, you need to create a YugabyteDB C
 
 4. Download the debezium-connector-yugabytedb-1.9.5.y.15.jar file from the Yugabyte GitHub repository, <https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar>. Save this jar file in your Kafka libs folder (for example, `/home/azureuser/kafka_2.12-3.2.0/libs`).
 
-5. Navigate to the Kafka bin directory(e.g. /home/azureuser/kafka_2.12-3.2.0/bin) on your machine and run the following command
+5. Navigate to the Kafka bin directory (for example, /home/azureuser/kafka_2.12-3.2.0/bin) on your machine and run the following command
 
     ```sh
     ./connect-distributed.sh <Event Hub configuration file>
@@ -77,7 +79,7 @@ Now that you have created Event Hubs in Azure, you need to create a YugabyteDB C
 
     This command starts YugabyteDB Debezium Kafka Connect.
 
-6. Create a Kafka Connector. Run the following commands to do so.
+6. Create a Kafka Connector by running the following commands:
 
 ```sh
 curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" \
@@ -106,7 +108,9 @@ Note: Replace the StreamID and database details as needed. Don't forget to also 
 
 ### Step 3: Configure the YugabyteDB CDC Connector
 
-After you have created the YugabyteDB CDC Connector, you must configure it to send CDC data to Azure Event Hubs. To connect the CDC Connector to Event Hubs do the following:
+After you have created the YugabyteDB CDC Connector, you must configure it to send CDC data to Azure Event Hubs.
+
+To connect the CDC Connector to Event Hubs, do the following:
 
 1. Edit the `config.yaml` file in the directory where you created the YugabyteDB CDC Connector, with the following parameters:
 
@@ -118,7 +122,7 @@ After you have created the YugabyteDB CDC Connector, you must configure it to se
 
 ### Step 4: Run the YugabyteDB CDC Connector
 
-Start the YugabyteDB CDC Connector, for this:
+Start the YugabyteDB CDC Connector as follows:
 
 1. Run the following command
 
@@ -126,7 +130,7 @@ Start the YugabyteDB CDC Connector, for this:
   sql $ yb-connect-cdc start --cdc_dir <directory>
   ```
 
-Replace <directory> with the directory you used when creating the YugabyteDB CDC Connector. The CDC Connector will start capturing changes from the Yugabyte database and sending them to Azure Event Hubs.
+Replace <directory> with the directory you used when creating the YugabyteDB CDC Connector. The CDC Connector will start capturing changes from the YugabyteDB database and sending them to Azure Event Hubs.
 
 ### Step 5: Pull Events From Azure EventHubs
 
@@ -168,10 +172,10 @@ startOffset = "-1"
 
 #endTime = dt.now().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 startingEventPosition = {
-"offset": startOffset,
-"seqNo": -1, #not in use
-"enqueuedTime": None, #not in use
-"isInclusive": True
+  "offset": startOffset,
+  "seqNo": -1, #not in use
+  "enqueuedTime": None, #not in use
+  "isInclusive": True
 }
 
 conf = {}
@@ -188,17 +192,21 @@ df1= df.select(get_json_object(df['body'],"$.payload.before.eventid.value").alia
 df2=df1.select(eventid','sensor_uuid','humidity','operation', when(df1.Operation =='d',df1.beforeeventid).otherwise(df1.eventid).alias('eventid'))
 #Save the data in Delta Format
 query = (df2.writeStream.format('delta') \
-.option('checkpointLocation',checkpointpath) \
-.option("path", write_path) \
-.outputMode("append") \
-.start()
+  .option('checkpointLocation',checkpointpath) \
+  .option("path", write_path) \
+  .outputMode("append") \
+  .start()
 )
 ```
 
-Save and execute this code snippet in the Azure Synapse Analytics Workspace using a Spark Pool with Pyspark as the language after making changes as appropriate. You can analyze the data in the ADLS Gen2 account using Spark pools as described in here, [Query captured data in Parquet format with Azure Synapse Analytics Spark Pools](https://learn.microsoft.com/en-us/azure/stream-analytics/event-hubs-parquet-capture-tutorial#query-using-azure-synapse-spark)
+Save and execute this code snippet in the Azure Synapse Analytics Workspace using a Spark Pool with Pyspark as the language after making changes as appropriate.
+
+You can analyze the data in the ADLS Gen2 account using Spark pools as described in [Query captured data in Parquet format with Azure Synapse Analytics Spark Pools](https://learn.microsoft.com/en-us/azure/stream-analytics/event-hubs-parquet-capture-tutorial#query-using-azure-synapse-spark).
 
 ### Step 6: View CDC Data in Azure Synapse Dedicated SQL Pools or Spark Pools
 
-You can choose to view the CDC data stored in the ADLS Gen 2 account using either Synapse SQL Dedicated or Serverless Pools. For this, follow the steps in the [Synapse SQL documentation for external tables](https://learn.microsoft.com/en-us/azure/synapse-analytics/sql/develop-tables-external-tables?tabs=hadoop#external-tables-in-dedicated-sql-pool-and-serverless-sql-pool) or [Query captured data in Parquet format with Azure Synapse Analytics Serverless SQL](https://learn.microsoft.com/en-us/azure/stream-analytics/event-hubs-parquet-capture-tutorial#query-using-azure-synapse-serverless-sql)
+You can choose to view the CDC data stored in the ADLS Gen 2 account using either Synapse SQL Dedicated or Serverless Pools.
+
+For this, follow the steps in [Synapse SQL documentation for external tables](https://learn.microsoft.com/en-us/azure/synapse-analytics/sql/develop-tables-external-tables?tabs=hadoop#external-tables-in-dedicated-sql-pool-and-serverless-sql-pool) or [Query captured data in Parquet format with Azure Synapse Analytics Serverless SQL](https://learn.microsoft.com/en-us/azure/stream-analytics/event-hubs-parquet-capture-tutorial#query-using-azure-synapse-serverless-sql)
 
 And that's it! With these six steps, you can connect the YugabyteDB CDC Connector to Azure Event Hubs and ingest data into Azure Synapse Analytics for analysis.

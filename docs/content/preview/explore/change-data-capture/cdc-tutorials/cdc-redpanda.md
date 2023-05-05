@@ -13,61 +13,65 @@ menu:
 type: docs
 ---
 
-[YugabyteDB](https://www.yugabyte.com/yugabytedb/) is an open-source [distributed SQL database](https://www.yugabyte.com/distributed-sql/distributed-sql-database/) for transactional (OLTP) applications. YugabyteDB is designed to be a powerful cloud-native database that can [run in any cloud – private, public, or hybrid](https://www.yugabyte.com/compare-products/).
+[Redpanda](https://redpanda.com/) is an open-source distributed streaming platform designed to be fast, scalable, and efficient. It is built using modern technologies like Rust, and is designed to handle large volumes of data in real time. Redpanda is similar to other messaging systems like Apache Kafka, but with some key differences. For example, Redpanda provides better performance, lower latency, and improved resource utilization compared to Kafka
 
-[Redpanda](https://redpanda.com/) is an open-source distributed streaming platform designed to be fast, scalable, and efficient. It is built using modern technologies like Rust, and is designed to handle large volumes of data in real-time. Redpanda is similar to other messaging systems like Apache Kafka, but with some key differences. For example, Redpanda provides better performance, lower latency, and improved resource utilization compared to Kafka
+The following are some of the key differences between Redpanda and Kafka:
 
-Here are some of the key differences between Redpanda and Kafka:
+1. Performance: Redpanda is designed for high-performance and low-latency, with a focus on optimizing performance for modern hardware. Redpanda uses a zero-copy design, which eliminates the need to copy data between kernel and user space. This provides faster and more efficient data transfer.
 
-1. Performance: Redpanda is designed for high-performance and low-latency, with a focus on optimizing performance for modern hardware. Redpanda uses a zero-copy design, which eliminates the need to copy data between kernel and user space, resulting in faster and more efficient data transfer.
+1. Scalability: Redpanda is designed to scale horizontally and vertically. It also supports multi-tenancy, which allows multiple applications to share the same cluster.
 
-2. Scalability: Redpanda is designed to scale horizontally and vertically with ease, making it easy to add or remove nodes from a cluster. It also supports multi-tenancy, which allows multiple applications to share the same cluster.
+1. Storage: Redpanda stores data in a columnar format, which allows for more efficient storage and faster query times. This also enables Redpanda to support SQL-like queries on streaming data.
 
-3. Storage: Redpanda stores data in a columnar format, which allows for more efficient storage and faster query times. This also enables Redpanda to support SQL-like queries on streaming data.
+1. Security: Redpanda includes built-in security features such as TLS encryption and authentication, while Kafka relies on third-party tools for security.
 
-4. Security: Redpanda includes built-in security features such as TLS encryption and authentication, while Kafka relies on third-party tools for security.
+1. API compatibility: Redpanda provides an API that is compatible with the Kafka API, so you can migrate from Kafka to Redpanda without having to change existing applications.
 
-5. API compatibility: Redpanda provides an API that is compatible with the Kafka API, making it easy to migrate from Kafka to Redpanda without having to change existing applications.
-
-In this tutorial, we’ll walk through how to integrate YugabyteDB CDC Connector with Redpanda.
+The following tutorial describes how to integrate YugabyteDB CDC Connector with Redpanda.
 
 ## YugabyteDB CDC using Redpanda Architecture
 
-The following diagram shows the end-to-end integration architecture of YugabyteDB CDC using Redpanda
+The following diagram shows the end-to-end integration architecture of YugabyteDB CDC using Redpanda.
 
 ![Architecture of YugabyteDB CDC using Redpanda](/images/explore/cdc/redpanda_images/Redpanda_Integration.jpg)
 
-Below table shows the data flow sequences with their operations and tasks performed.
+The following table describes how the data flows through each of these components.
 
 | Step | Operations/Tasks | Component |
 | --- | --- | --- |
-| 1 | CDC Enabled and [Create the Stream ID](https://docs.yugabyte.com/preview/integrations/cdc/debezium/) for specific YSQL database (e.g. your db name) | YugabyteDB |
-| 2 | Install and configure Redpanda as per this [document](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker) and download YugabyteDB Debezium Connector as referred in [point#3](https://docs.google.com/document/d/1b2dQfMydXWr1iQ7SY_-l0Gda9NdklrHW-a6kBAoUKhg/edit#heading=h.earrcamsknhe) | Redpanda Cloud or Redpanda Docker and YugabyteDB CDC Connector |
+| 1 | CDC Enabled and [Create the Stream ID](../../../../integrations/cdc/debezium/) for specific YSQL database (that is, the database name). | YugabyteDB |
+| 2 | [Install and configure Redpanda](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker) and download YugabyteDB Debezium Connector as referred in [point#3](https://docs.google.com/document/d/1b2dQfMydXWr1iQ7SY_-l0Gda9NdklrHW-a6kBAoUKhg/edit#heading=h.earrcamsknhe) | Redpanda Cloud or Redpanda Docker and YugabyteDB CDC Connector |
 | 3 | Create and Deploy connector configuration in Redpanda as mentioned in step #4 | Redpanda, Kafka Connect |
 
-## How to Set Up Redpanda with YugabyteDB CDC
+## Set up Redpanda with YugabyteDB CDC
 
 ### Install YugabyteDB
 
-You have multiple options to [install or deploy YugabyteDB](https://docs.yugabyte.com/latest/deploy/) if you don't have one already available. Note: If you’re running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](https://docs.yugabyte.com/preview/quick-start/docker/).
+You have multiple options to [install or deploy YugabyteDB](../../../../deploy/) if you don't have one already available.
 
-### Install and Setup Redpanda
+If you're running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](../../../../quick-start/docker/).
 
-Using this Redpanda document [link](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker), helps to spin up the Redpanda cluster using single broker configuration or multi-broker configuration using docker-compose or using a Redpanda cloud account.
+### Install and set up Redpanda
 
-Post installation and setup using the docker option, we can see below docker containers are up and running. It shows two docker containers (redpanda-console and redpanda broker) in the below screenshot (Figure 2)
+Follow the Redpanda [Quick Start](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker) to spin up the Redpanda cluster using single- or multi-broker configuration using docker-compose or using a Redpanda cloud account.
+
+Post installation and setup using the docker option, you can see docker containers are up and running. It shows two docker containers (redpanda-console and redpanda broker) in the below screenshot (Figure 2)
 
 ![Redpanda Docker Containers](/images/explore/cdc/redpanda_images/Fig2_Redpand_Docker_Container.jpg)
 
-### Deploy YugabyteDB Debezium connector (docker container):
+### Deploy YugabyteDB Debezium connector (docker container)
 
-#### Link the Redpanda Broker Address with YugabyteDB CDC Connector as highlighted in yellow below
+Link the Redpanda Broker Address with YugabyteDB CDC Connector as highlighted in yellow below.
 
+```sh
 sudo docker run -it --rm --name connect --net=host -p 8089:8089 -e GROUP_ID=1 -e BOOTSTRAP_SERVERS=127.0.0.1:19092 -e CONNECT_REST_PORT=8082 -e CONNECT_GROUP_ID="1" -e CONFIG_STORAGE_TOPIC=my_connect_configs -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses -e CONNECT_KEY_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_VALUE_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_INTERNAL_KEY_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_INTERNAL_VALUE_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_REST_ADVERTISED_HOST_NAME="connect" quay.io/yugabyte/debezium-connector:latest
+```
 
 ### Deploy the source connector using Redpanda
 
-Source Connector: Create and deploy the source connector as mentioned below, change the database hostname, database master addresses, database user, password, database name, logical server name and table include list and StreamID as per your configuration (in yellow)
+Create and deploy the source connector as follows.
+
+Change the database hostname, database master addresses, database user, password, database name, logical server name, and table include list and StreamID as per your configuration (in yellow).
 
 ```sh
 curl -i -X  POST -H  "Accept:application/json" -H  "Content-Type:application/json" localhost:8083/connectors/ -d '{
@@ -94,18 +98,14 @@ curl -i -X  POST -H  "Accept:application/json" -H  "Content-Type:application/jso
   "value.converter":"io.confluent.connect.avro.AvroConverter",
   "value.converter.schema.registry.url":"http://localhost:18081",
   "value.converter.enhanced.avro.schema.support":"true"
-	}
+  }
 }'
 ```
 
-### Monitor the Messages through Redpanda
+### Monitor the messages through Redpanda
 
-The following diagram shows the Redpanda broker details that we installed locally using docker and the topic that we subscribed (e.g. dbeserver5.public.balaredpandatest) and the schema registry with key and value details of the topic.
+The following diagram shows the Redpanda broker details installed locally using Docker and the topic that was subscribed (for example, dbeserver5.public.balaredpandatest) and the schema registry with key and value details of the topic.
 
 ![Redpanda broker details](/images/explore/cdc/redpanda_images/Monitor1.jpg)
 
 ![Redpanda schema registry](/images/explore/cdc/redpanda_images/Monitor2.jpg)
-
-## Conclusion
-
-In this tutorial, we walked through step-by-step how to integrate YugabyteDB Change Data Capture with Redpanda. It helps to connect different sinks that are compatible with Redpanda.
