@@ -153,12 +153,13 @@ Use this to find out who the LEADER of a tablet is.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    list_tablets <keyspace> <table_name> [max_tablets]
+    list_tablets <keyspace_type>.<keyspace_name> <table> [max_tablets]
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *keyspace*: The namespace, or name of the database or keyspace.
-* *table_name*: The name of the table.
+* *keyspace_type*: Type of the keyspace, ysql or ycql.
+* *keyspace_name*: The namespace, or name of the database or keyspace.
+* *table*: The name of the table.
 * *max_tablets*: The maximum number of tables to be returned. Default is `10`. Set to `0` to return all tablets.
 
 **Example**
@@ -166,7 +167,7 @@ yb-admin \
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    list_tablets ydb test_tb 0
+    list_tablets ysql.db_name table_name 0
 ```
 
 ```output
