@@ -50,6 +50,7 @@ Here are some of the key differences between Redpanda and Kafka:
 The diagram below (Figure 1) shows the end-to-end integration architecture of YugabyteDB CDC using Redpanda
 
   
+![Diagram](/redpanda_images/Redpanda_Integration.jpg)
 
 Figure 1 - End to End Architecture
 
@@ -76,6 +77,8 @@ Using this Redpanda document [link](https://docs.redpanda.com/docs/get-started/q
 
 Post installation and setup using the docker option, we can see below docker containers are up and running. It shows two docker containers (redpanda-console and redpanda broker) in the below screenshot (Figure 2)
 
+![Diagram](/redpanda_images/Fig2_Redpand_Docker_Container.jpg)
+
 Figure 2 - Redpanda Docker Containers
 
     
@@ -87,44 +90,44 @@ Figure 2 - Redpanda Docker Containers
 
 sudo docker run -it --rm --name connect --net=host -p 8089:8089 -e GROUP_ID=1 -e BOOTSTRAP_SERVERS=127.0.0.1:19092 -e CONNECT_REST_PORT=8082 -e CONNECT_GROUP_ID="1" -e CONFIG_STORAGE_TOPIC=my_connect_configs -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses -e CONNECT_KEY_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_VALUE_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_INTERNAL_KEY_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_INTERNAL_VALUE_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_REST_ADVERTISED_HOST_NAME="connect" quay.io/yugabyte/debezium-connector:latest
   
-The below diagram(Figure 3) show 3 docker containers including YugabyteDB Debezium connector and Redpanda connectors
-
-Figure 3 - Redpanda Docker Containers
-
 4.  #### Deploy the source connector using Redpanda
 
 Source Connector: Create and deploy the source connector as mentioned below, change the database hostname, database master addresses, database user, password, database name, logical server name and table include list and StreamID as per your configuration (in yellow)
 
 curl -i -X  POST -H  "Accept:application/json" -H  "Content-Type:application/json" localhost:8083/connectors/ -d '{
-"name": "srcdb",
-"config": {
-"connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
-"database.hostname":"10.9.205.161",
-"database.port":"5433",
-"database.master.addresses": "10.9.205.161:7100",
-"database.user": "yugabyte",
-"database.password": "xxxx",
-"database.dbname" : "testcdc",
-"database.server.name": "dbeserver5",
-"table.include.list":"public.balaredpandatest",
-"database.streamid":"d36ef18084ed4ad3989dfbb193dd2546",
-"snapshot.mode":"initial",
-"transforms": "unwrap",
-"transforms.unwrap.type": "io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState",
-"transforms.unwrap.drop.tombstones": "false",
-"time.precision.mode": "connect",
-"key.converter":"io.confluent.connect.avro.AvroConverter",
-"key.converter.schema.registry.url":"http://localhost:18081",
-"key.converter.enhanced.avro.schema.support":"true",
-"value.converter":"io.confluent.connect.avro.AvroConverter",
-"value.converter.schema.registry.url":"http://localhost:18081",
-"value.converter.enhanced.avro.schema.support":"true"
+  "name": "srcdb",
+  "config": {
+  "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+  "database.hostname":"10.9.205.161",
+  "database.port":"5433",
+  "database.master.addresses": "10.9.205.161:7100",
+  "database.user": "yugabyte",
+  "database.password": "xxxx",
+  "database.dbname" : "testcdc",
+  "database.server.name": "dbeserver5",
+  "table.include.list":"public.balaredpandatest",
+  "database.streamid":"d36ef18084ed4ad3989dfbb193dd2546",
+  "snapshot.mode":"initial",
+  "transforms": "unwrap",
+  "transforms.unwrap.type": "io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState",
+  "transforms.unwrap.drop.tombstones": "false",
+  "time.precision.mode": "connect",
+  "key.converter":"io.confluent.connect.avro.AvroConverter",
+  "key.converter.schema.registry.url":"http://localhost:18081",
+  "key.converter.enhanced.avro.schema.support":"true",
+  "value.converter":"io.confluent.connect.avro.AvroConverter",
+  "value.converter.schema.registry.url":"http://localhost:18081",
+  "value.converter.enhanced.avro.schema.support":"true"
 	}
 }'
 
   5.  #### Monitor the Messages through Redpanda
 
 Below diagram shows the Redpanda broker details that we installed locally using docker and the topic that we subscribed (e.g. dbeserver5.public.balaredpandatest) and the schema registry with key and value details of the topic.
+
+![Diagram](/redpanda_images/Monitor1.jpg)
+
+![Diagram](/redpanda_images/Monitor2.jpg)
 
 ## Conclusion and Summary
 
