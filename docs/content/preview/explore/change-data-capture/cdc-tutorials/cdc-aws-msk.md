@@ -17,145 +17,83 @@ type: docs
 # How to Integrate YugabyteDB with Amazon Redshift Database Using AWS Managed Kafka Stream and CDC Connector
 
   
+# Stream Data From Yugabyte CDC to AWS MSK using Debezium
 
-In this tutorial, we’ll walk through how to integrate YugabyteDB with Amazon Redshift database using the Amazon Web Services(AWS) Managed Kafka Stream (MSK) and YugabyteDB Change Data Capture (CDC) connector.
+Change Data Capture is a mechanism to track changes made in a database. Yugabyte Database has  added CDC feature to their core database engine. In this tutorial, we’ll learn to configure Yugabyte CDC and stream data into AWS MSK using Debezium connector.
 
-## Introducing  Amazon Redshift and AWS MSK
+![Diagram](aws_msk_images/architecture.jpg)
 
-Amazon Redshift is a fully managed cloud-based data warehouse service provided by [Amazon Web Services (AWS)](https://www.yugabyte.com/cloud/aws/). It is designed to handle petabyte-scale data warehousing and analytics workloads for businesses of all sizes.
+It’s assumed that the readers have an prior knowledge of AWS, Apache Kafka , and CDC.
 
-Amazon Managed Streaming for Apache Kafka (AWS MSK) is a fully managed, highly available, and secure Apache Kafka service offered by Amazon Web Services (AWS). AWS MSK makes it easy for customers to build and run applications using Apache Kafka without having to manage and operate their own Kafka clusters.
+Let’s start now with the setup
 
-## Integration of YugabyteDB (OLTP) with AWS Redshift (Data Warehouse)
+1.  Configuration of IAM Roles and Policies
 
-YugabyteDB can seamlessly connect to Amazon Redshift using the [YugabyteDB CDC connector](https://docs.yugabyte.com/preview/architecture/docdb-replication/change-data-capture/) and AWS MSK. The seamless connection is achieved through the YugabyteDB CDC connector that helps users consume data from a data warehouse and an OLTP (transactional database) without additional processing or batch loads.
- 
-## YugabyteDB to Amazon Redshift Architecture
+Create a new role with the required accesses to AWS services. For demo, we’ll name it as “yb_cdc_kafka_role”. The Trusted entities should be configured as below.
 
-The diagram below (Figure 1) shows the end-to-end integration architecture of YugabyteDB to Amazon Redshift.
+_The IAM roles and Policies defined below are generic and can be fine-tuned based on your organization’s IT policies_
 
-  
-Figure 1 - End-to-End Architecture
- 
-  
+{“Version”: “2012–10–17”,“Statement”: [{“Effect”: “Allow”,“Principal”: {“Service”: “kafkaconnect.amazonaws.com”},“Action”: “sts:AssumeRole”}]}
 
-The streamed change data from the YugabyteDB Debezium/Kafka connector is streamed directly to Amazon Redshift using AWS MSK.
-|Data flow seq#  |  Operations/Tasks | Component Involved |
-|--|--|--|
-| 1 |YugabyteDB CDC Enabled and [Create the Stream ID](https://docs.yugabyte.com/preview/integrations/cdc/debezium/) for specific YSQL database (e.g. your db name) | YugabyteDB |
-| 2 |[Download the YugabyteDB CDC Connector JAR](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar) | YugabyteDB Debezium Connector JAR |
-| 3 |[Setup the AWS MSK Cluster](https://medium.com/@sharmaranupama/stream-data-from-yugabyte-cdc-to-aws-msk-using-debezium-a09490c54851) (refer to the IAM policies and roles)| AWS MSK, AWS IAM Roles & Policies
-| 4 |Setup Amazon Redshift and keep the credentials ready for testing.|Amazon Redshift|
-  
+Create a policy with access to the following AWS services.
 
-## How to Set Up Amazon Redshift Sink
+1.  Apache Kafka APIs for MSK
+2.  EC2
+3.  MSK Connect
+4.  S3
+5.  CloudWatch
 
-1.  #### Install YugabyteDB
-    
+{“Version”: “2012–10–17”,“Statement”: [{“Sid”: “VisualEditor0”,“Effect”: “Allow”,“Action”: “ec2:CreateNetworkInterface”,“Resource”: “arn:aws:ec2:*:*:network-interface/*”,“Condition”: {“StringEquals”: {“aws:RequestTag/AmazonMSKConnectManaged”: “true”},“ForAllValues:StringEquals”: {“aws:TagKeys”: “AmazonMSKConnectManaged”}}},{“Sid”: “VisualEditor1”,“Effect”: “Allow”,“Action”: “ec2:CreateTags”,“Resource”: “arn:aws:ec2:*:*:network-interface/*”,“Condition”: {“StringEquals”: {“ec2:CreateAction”: “CreateNetworkInterface”}}},{“Sid”: “VisualEditor2”,“Effect”: “Allow”,“Action”: [“ec2:DetachNetworkInterface”,“ec2:CreateNetworkInterfacePermission”,“ec2:DeleteNetworkInterface”,“ec2:AttachNetworkInterface”],“Resource”: “arn:aws:ec2:*:*:network-interface/*”,“Condition”: {“StringEquals”: {“ec2:ResourceTag/AmazonMSKConnectManaged”: “true”}}},{“Sid”: “VisualEditor3”,“Effect”: “Allow”,“Action”: “ec2:CreateNetworkInterface”,“Resource”: [“arn:aws:ec2:*:*:subnet/*”,“arn:aws:ec2:*:*:security-group/*”]},{“Sid”: “VisualEditor4”,“Effect”: “Allow”,“Action”: [“cloudwatch:PutDashboard”,“cloudwatch:PutMetricData”,“cloudwatch:DeleteAlarms”,“kafkaconnect:ListConnectors”,“cloudwatch:DeleteInsightRules”,“cloudwatch:StartMetricStreams”,“cloudwatch:DescribeAlarmsForMetric”,“cloudwatch:ListDashboards”,“cloudwatch:ListTagsForResource”,“kafka-cluster:AlterCluster”,“kafkaconnect:CreateWorkerConfiguration”,“cloudwatch:PutAnomalyDetector”,“kafka-cluster:Connect”,“kafkaconnect:UpdateConnector”,“cloudwatch:DescribeInsightRules”,“cloudwatch:GetDashboard”,“cloudwatch:GetInsightRuleReport”,“kafka-cluster:ReadData”,“cloudwatch:DisableInsightRules”,“cloudwatch:GetMetricStatistics”,“cloudwatch:DescribeAlarms”,“cloudwatch:GetMetricStream”,“kafka-cluster:*Topic*”,“kafkaconnect:DescribeConnector”,“cloudwatch:GetMetricData”,“cloudwatch:ListMetrics”,“cloudwatch:DeleteAnomalyDetector”,“kafkaconnect:ListWorkerConfigurations”,“cloudwatch:DescribeAnomalyDetectors”,“cloudwatch:DeleteDashboards”,“kafka-cluster:AlterGroup”,“cloudwatch:DescribeAlarmHistory”,“cloudwatch:StopMetricStreams”,“cloudwatch:DisableAlarmActions”,“kafkaconnect:DescribeWorkerConfiguration”,“kafkaconnect:CreateConnector”,“kafkaconnect:ListCustomPlugins”,“cloudwatch:DeleteMetricStream”,“cloudwatch:SetAlarmState”,“kafka-cluster:DescribeGroup”,“cloudwatch:GetMetricWidgetImage”,“kafkaconnect:DescribeCustomPlugin”,“s3:*”,“kafka-cluster:DescribeCluster”,“cloudwatch:EnableInsightRules”,“cloudwatch:PutCompositeAlarm”,“cloudwatch:PutMetricStream”,“cloudwatch:PutInsightRule”,“cloudwatch:PutMetricAlarm”,“cloudwatch:EnableAlarmActions”,“cloudwatch:ListMetricStreams”,“kafkaconnect:CreateCustomPlugin”,“kafkaconnect:DeleteConnector”,“kafkaconnect:DeleteCustomPlugin”,“kafka-cluster:WriteData”],“Resource”: “*”},{“Sid”: “VisualEditor5”,“Effect”: “Allow”,“Action”: “ec2:DescribeNetworkInterfaces”,“Resource”: “arn:aws:ec2:*:*:network-interface/*”,“Condition”: {“StringEquals”: {“ec2:ResourceTag/AmazonMSKConnectManaged”: “true”}}}]}
 
-You have multiple options to [install or deploy YugabyteDB](https://docs.yugabyte.com/latest/deploy/) if you don't have one already available. Note: If you’re running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](https://docs.yugabyte.com/preview/quick-start/docker/).
+2. Enable CDC on Yugabyte Database
 
-2.  #### Install and Setup AWS MSK
-    
+Ensure that your Yugabyte Database is up and running . To install yugabyte on your cloud virtual machine, please refer to h[ttps://docs.yugabyte.com/preview/quick-start/install/macos/](https://docs.yugabyte.com/preview/quick-start/install/macos/).
 
-Install and setup AWS MSK, using the article, [Stream Data From YugabyteDB CDC to AWS MSK Using Debezium](https://medium.com/@sharmaranupama/stream-data-from-yugabyte-cdc-to-aws-msk-using-debezium-a09490c54851). It helps configure IAM Policies and roles required for AWS MSK in AWS. Post creation of IAM Role and setup the MSK cluster using the same article.
+Create a test table on Yugabyte database within Public schema.
 
-3.  #### Create Cluster Configuration and Worker configuration in MSK
+CREATE TABLE test (id INT PRIMARY KEY, name TEXT);
 
-**Cluster Configuration:**
-In AWS MSK, under MSK Clusters menu (on the left side) will show cluster configuration. Click to create a new configuration and enter the values below on the configuration settings. Then save it.
+Enable CDC through yb-admin .Below command will enable CDC on all the schemas and tables sitting under the Yugabyte database.
 
-E.g. myclusterV2
+./yb-admin — master_addresses <master_addresses>:7100 create_change_data_stream ysql.yugabyte
 
-*auto.create.topics.enable=true
-default.replication.factor=3
-min.insync.replicas=2
-num.io.threads=8
-num.network.threads=5
-num.partitions=3
-num.replica.fetchers=2
-replica.lag.time.max.ms=30000
-socket.receive.buffer.bytes=102400
-socket.request.max.bytes=104857600
-socket.send.buffer.bytes=102400
-unclean.leader.election.enable=true
-zookeeper.session.timeout.ms=18000*
+If you have a multi-node yugabyte setup, then you need to provide a Comma-separated list of  **host:port**  values of both the leader and the follower nodes as master_address argument.
 
-Worker Configuration:
+A successful operation of the above command returns a message with a DB stream ID:
 
-In AWS MSK, under “MSK Connect”, create a worker configuration (like below) and enter the properties if you are going to receive the data in JSON format.
+CDC Stream ID: 90fe97d59a504bb6acbfd6a940
 
-*key.converter=org.apache.kafka.connect.json.JsonConverter
-key.converter.schemas.enable=true
-value.converter=org.apache.kafka.connect.json.JsonConverter
-value.converter.schemas.enable=true*
+For more details on CDC commands, please refer to  [https://docs.yugabyte.com/preview/admin/yb-admin/#change-data-capture-cdc-commands](https://docs.yugabyte.com/preview/admin/yb-admin/#change-data-capture-cdc-commands)
 
- 
-NOTE: It is highly recommended to use schema registry with AVRO. In such a case, the above worker configuration is not required.
+3. Configuration of AWS Security Group
 
-4.  #### Create MSK Connector for YugabyteDB
-    
-Create the Configuration of AWS MSK connector for YugabyteDB as referred in [point #6](https://medium.com/@sharmaranupama/stream-data-from-yugabyte-cdc-to-aws-msk-using-debezium-a09490c54851) and choose the worker configuration that you created in Step #3.
+Create a Security Group with inbound and outbound rules configured to ensure access to MSK cluster and Yugabyte DB . For demo, we’ll enable incoming traffic from all the ports.
 
-Use the values below in the connector configuration and change the yellow highlights with new data according to your specific YugabyteDB configuration.
+![](https://miro.medium.com/v2/resize:fit:700/0*GCIXUAlFVQbvCNpX)
 
-*connector.class=io.debezium.connector.yugabytedb.YugabyteDBConnector
-database.streamid=684d878b37e94b279454b0b8d6a2a305
-database.user=yugabyte
-database.dbname=yugabyte
-tasks.max=1
-time.precision.mode=connect
-transforms=unwrap
-database.server.name=dbserver12
-database.port=5433
-include.schema.changes=true
-database.master.addresses=10.9.205.161:7100
-key.converter.schemas.enable=true
-database.hostname=10.9.205.161
-database.password=xxxxx
-transforms.unwrap.drop.tombstones=false
-value.converter.schemas.enable=true
-transforms.unwrap.type=io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState
-table.include.list=public.target_cdctest
-snapshot.mode=initial*
+4. Upload Debezium connector Jar file onto S3 bucket
 
-5.  #### Install Amazon Redshift
+Download Yugabyte Debezium connector jar from  [_https://github.com/yugabyte/debezium/releases/download/v1.7.0-beta/debezium-connector-yugabytedb2-1.7.0-SNAPSHOT-jar-with-dependencies.jar_](https://github.com/yugabyte/debezium/releases/download/v1.7.0-beta/debezium-connector-yugabytedb2-1.7.0-SNAPSHOT-jar-with-dependencies.jar)  and upload it onto an S3 bucket.
 
+![](https://miro.medium.com/v2/resize:fit:700/0*gk4kNo4roN6w1aSJ)
 
- 
- 6.  #### Create Custom Plugin for Amazon Redshift
-    
-[Download the Amazon Redshift Sink connector](https://www.confluent.io/connector/kafka-connect-aws-redshift/#download) and upload this zip file to your AWS MSK Custom Plugin. You can also rename it.
-  
-  7.  #### Create MSK Sink Connect for Amazon Redshift
-    
-[Create the Configuration of AWS MSK connector](https://medium.com/@sharmaranupama/stream-data-from-yugabyte-cdc-to-aws-msk-using-debezium-a09490c54851) (see point #6). ou will need to keep it with the Amazon Redshift configuration instead of the YugabyteDB configuration like below. (NOTE:Replace the values in yellow per your specific Amazon Redshift details and AWS MSK Kafka Topic name)
+5. Configuration AWS MSK cluster
 
-  
-*connector.class=io.confluent.connect.aws.redshift.RedshiftSinkConnector
-aws.redshift.port=5439
-table.name.format=public.target_cdctest
-confluent.topic.bootstrap.servers=b-4.bseetharamanmsk.acsf.c10.kafka.us-west-2.amazonaws.com:9092
-tasks.max=1
-topics=dbserver12.public.target_cdctest
-aws.redshift.password=xxxxx
-aws.redshift.domain=bseetharaman-redshift-demo-cluster.xxgs.us-west-2.redshift.amazonaws.com
-aws.redshift.database=dev
-delete.enabled=true
-auto.evolve=true
-confluent.topic.replication.factor=1
-aws.redshift.user=awsuser
-auto.create=false
-insert.mode=insert
-pk.mode=record_key
-pk.fields=sno*
+In this example, we’re creating AWS MSK cluster under same VPC as that of Yugabyte Cluster . Please note that this is a generic configuration , it might differ based your organizational IT policy.
 
-8.  #### Validate the Data in Amazon Redshift
-  
-Launch the Amazon Redshift query editor and query the tables that are synced from YugabyteDB.
+![](https://miro.medium.com/v2/resize:fit:700/0*zcTnuwYjgMLYZszE)
 
-## Conclusion and Summary
+For demo, we have created cluster with two zones only.
 
-In this tutorial, we walked through step-by-step how to integrate YugabyteDB with Amazon Redshift using YugabyteDB’s CDC connector.
+![](https://miro.medium.com/v2/resize:fit:700/0*vwLr8-tZqsxGuvuO)
 
-These steps help to integrate the YugabyteDB transactional database with your data warehouse (Amazon Redshift DB) so that it meets the requirements for your application. The metrics collected by YugabyteDB CDC provide an intuitive, visual way to monitor the health, performance, and progress of these CDC operations. For detailed information on CDC metrics, please refer to [Monitoring Change Data Capture (CDC) Using YugabyteDB’s Metrics Dashboard](https://www.yugabyte.com/blog/monitoring-cdc-using-metrics/).
+Under Networking Section, select VPC and Private subnets same as that of Yugabyte Cluster . Choose the security group created in step 3 from the drop down list.
+
+![](https://miro.medium.com/v2/resize:fit:700/0*PMGfUb7LB7CjtM1C)
+
+Enable logging on your cluster to ease debugging . In this demo, we are using S3 bucket to store the logs.
+
+![](https://miro.medium.com/v2/resize:fit:700/0*MOv37Ars6QWVPPiv)
+
+The cluster is now is now configured successfully.
+![](https://miro.medium.com/v2/resize:fit:700/0*1_esGoZGOpGwHnDD)
