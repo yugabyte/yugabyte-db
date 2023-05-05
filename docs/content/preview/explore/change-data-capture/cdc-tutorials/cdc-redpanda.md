@@ -50,7 +50,7 @@ Here are some of the key differences between Redpanda and Kafka:
 The diagram below (Figure 1) shows the end-to-end integration architecture of YugabyteDB CDC using Redpanda
 
   
-![Diagram](/redpanda_images/Redpanda_Integration.jpg)
+![Diagram](redpanda_images/Redpanda_Integration.jpg)
 
 Figure 1 - End to End Architecture
 
@@ -77,7 +77,7 @@ Using this Redpanda document [link](https://docs.redpanda.com/docs/get-started/q
 
 Post installation and setup using the docker option, we can see below docker containers are up and running. It shows two docker containers (redpanda-console and redpanda broker) in the below screenshot (Figure 2)
 
-![Diagram](/redpanda_images/Fig2_Redpand_Docker_Container.jpg)
+![Diagram](redpanda_images/Fig2_Redpand_Docker_Container.jpg)
 
 Figure 2 - Redpanda Docker Containers
 
@@ -127,7 +127,7 @@ Below diagram shows the Redpanda broker details that we installed locally using 
 
 ![Diagram](redpanda_images/Monitor1.jpg)
 
-![Diagram](/redpanda_images/Monitor2.jpg)
+![Diagram](redpanda_images/Monitor2.jpg)
 
 ## Conclusion and Summary
 
