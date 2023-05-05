@@ -1,7 +1,7 @@
 ---
 title: Azure Synapse Analytics Integration using Azure Event Hub tutorial for YugabyteDB CDC
 headerTitle: Azure Synapse Analytics Integration using Azure Event Hub
-linkTitle:Azure Synapse Analytics Integration using Azure Event Hub
+linkTitle: Azure Synapse Analytics Integration using Azure Event Hub
 description: Azure Synapse Analytics Integration using Azure Event Hub for Change Data Capture in YugabyteDB.
 headcontent: 
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
