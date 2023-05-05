@@ -142,15 +142,6 @@ tserver::TServerSharedObject BuildTServerSharedObject() {
   VLOG(1) << __func__
           << ": " << YBCIsInitDbModeEnvVarSet()
           << ", " << FLAGS_pggate_tserver_shm_fd;
-  if (FLAGS_pggate_tserver_shm_fd == -1) {
-    auto env_val = getenv("FLAGS_pggate_tserver_shm_fd");
-    if (env_val) {
-      LOG(INFO) << "FLAGS_pggate_tserver_shm_fd: " << env_val;
-      FLAGS_pggate_tserver_shm_fd = atoi(env_val);
-    } else {
-      LOG(INFO) << "FLAGS_pggate_tserver_shm_fd not set";
-    }
-  }
   LOG_IF(DFATAL, FLAGS_pggate_tserver_shm_fd == -1) << "pggate_tserver_shm_fd is not specified";
   return CHECK_RESULT(tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd));
 }

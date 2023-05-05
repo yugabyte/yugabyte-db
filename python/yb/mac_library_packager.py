@@ -100,6 +100,7 @@ class MacLibraryPackager:
                 shutil.copy(executable, dst_bin_dir)
 
         src_lib_dir = os.path.join(src, 'lib')
+        yb_lib_file_for_postgres = os.path.join(src_lib_dir, 'libyb_pggate.dylib')
 
         extra_postgres_libs_dir_glob = os.path.join(
             get_thirdparty_dir(), 'installed', '*', 'lib')
@@ -128,8 +129,7 @@ class MacLibraryPackager:
 
             # Treat this as a special case as implemented in
             # 8bcc38cdf30bb37f778825c9ba5975a0b354b12d.
-            pggate_libs = ['libyb_pggate.dylib', 'libyb_pggate_webserver.dylib']
-            libs.extend([os.path.join(src_lib_dir, lib) for lib in pggate_libs])
+            libs.append(yb_lib_file_for_postgres)
             libs.extend(extra_postgres_libs)
             for lib in libs:
                 if lib in processed_libs:
