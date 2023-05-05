@@ -281,8 +281,7 @@ public class AccessManagerTest extends FakeDBApplication {
         .getAllValues()
         .forEach((cloudCredential) -> assertTrue(cloudCredential.isEmpty()));
     assertValidAccessKey(json);
-    List<FileData> fd = FileData.getAll();
-    assertEquals(fd.size(), 4);
+    assertEquals(4, FileData.getCount());
   }
 
   @Test
@@ -325,8 +324,7 @@ public class AccessManagerTest extends FakeDBApplication {
         .forEach((cloudCredential) -> assertEquals(config, cloudCredential));
     assertValidAccessKey(json);
 
-    List<FileData> fd = FileData.getAll();
-    assertEquals(fd.size(), 4);
+    assertEquals(4, FileData.getCount());
   }
 
   @Test
@@ -449,8 +447,7 @@ public class AccessManagerTest extends FakeDBApplication {
     Path keyFile = Paths.get(expectedPath);
     String permissions = PosixFilePermissions.toString(Files.getPosixFilePermissions(keyFile));
     assertEquals(PEM_PERMISSIONS, permissions);
-    List<FileData> fd = FileData.getAll();
-    assertEquals(fd.size(), 3);
+    assertEquals(3, FileData.getCount());
   }
 
   @Test
@@ -663,8 +660,7 @@ public class AccessManagerTest extends FakeDBApplication {
       assertNull(config.get("KUBECONFIG_NAME"));
       assertNull(config.get("KUBECONFIG_CONTENT"));
       assertEquals(filePermissions, PosixFilePermissions.fromString("rw-------"));
-      List<FileData> fd = FileData.getAll();
-      assertEquals(fd.size(), 1);
+      assertEquals(1, FileData.getCount());
     } catch (IOException e) {
       e.printStackTrace();
       assertNotNull(e.getMessage());
@@ -702,21 +698,17 @@ public class AccessManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateCredentialsFile() {
-    try {
-      ObjectNode credentials = Json.newObject();
-      credentials.put("foo", "bar");
-      credentials.put("hello", "world");
-      String configFile = accessManager.createGCPCredentialsFile(defaultProvider.uuid, credentials);
-      assertEquals(
-          "/tmp/yugaware_tests/amt/keys/" + defaultProvider.uuid + "/credentials.json", configFile);
-      List<String> lines = Files.readAllLines(Paths.get(configFile));
-      assertEquals("{\"foo\":\"bar\",\"hello\":\"world\"}", lines.get(0));
-      List<FileData> fd = FileData.getAll();
-      assertEquals(fd.size(), 1);
-    } catch (IOException e) {
-      fail();
-    }
+  public void testCreateCredentialsFile() throws IOException {
+    ObjectNode credentials = Json.newObject();
+    credentials.put("foo", "bar");
+    credentials.put("hello", "world");
+    String configFile = accessManager.createGCPCredentialsFile(defaultProvider.uuid, credentials);
+    assertEquals(
+        "/tmp/yugaware_tests/amt/keys/" + defaultProvider.uuid + "/credentials.json", configFile);
+    List<String> lines = Files.readAllLines(Paths.get(configFile));
+    assertEquals("{\"foo\":\"bar\",\"hello\":\"world\"}", lines.get(0));
+
+    assertEquals(1, FileData.getCount());
   }
 
   @Test
