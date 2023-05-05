@@ -40,7 +40,7 @@ The change data from the YugabyteDB Debezium/Kafka connector is streamed directl
 
 ### Install YugabyteDB
 
-You have multiple options to [install or deploy YugabyteDB](../../../../deploy/) if you don't have one already available.
+You have multiple options to [install or deploy YugabyteDB](../../../../deploy/).
 
 If you're running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](../../../../quick-start/docker/).
 

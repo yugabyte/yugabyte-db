@@ -47,7 +47,7 @@ The following table describes how the data flows through each of these component
 
 ### Install YugabyteDB
 
-You have multiple options to [install or deploy YugabyteDB](../../../../deploy/) if you don't have one already available.
+You have multiple options to [install or deploy YugabyteDB](../../../../deploy/).
 
 If you're running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](../../../../quick-start/docker/).
 
@@ -104,7 +104,7 @@ curl -i -X  POST -H  "Accept:application/json" -H  "Content-Type:application/jso
 
 ### Monitor the messages through Redpanda
 
-The following diagram shows the Redpanda broker details installed locally using Docker and the topic that was subscribed (for example, dbeserver5.public.balaredpandatest) and the schema registry with key and value details of the topic.
+The following illustration shows the Redpanda broker details installed locally using Docker and the topic that was subscribed (for example, dbeserver5.public.balaredpandatest) and the schema registry with key and value details of the topic.
 
 ![Redpanda broker details](/images/explore/cdc/redpanda_images/Monitor1.jpg)
 
