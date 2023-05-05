@@ -1743,10 +1743,17 @@ void CDCServiceImpl::GetChanges(
     bool force_update = false;
     OpId snapshot_op_id = OpId::Invalid();
     // If snapshot operation or before image is enabled, don't allow compaction.
-    HybridTime cdc_sdk_safe_time =
-        record.record_type == CDCRecordType::ALL || cdc_sdk_op_id.write_id() == -1
-            ? HybridTime::FromPB(resp->safe_hybrid_time())
-            : HybridTime::kInvalid;
+    HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
+    if (record.record_type == CDCRecordType::ALL || cdc_sdk_op_id.write_id() == -1) {
+      if (req->safe_hybrid_time() != -1) {
+        cdc_sdk_safe_time = HybridTime::FromPB(req->safe_hybrid_time());
+      } else {
+        YB_LOG_EVERY_N(WARNING, 10000)
+            << "safe_hybrid_time is not present in request, using response to get safe_hybrid_time";
+        cdc_sdk_safe_time = HybridTime::FromPB(resp->safe_hybrid_time());
+      }
+    }
+
     if (UpdateCheckpointRequired(record, cdc_sdk_op_id, &force_update)) {
       // This is the snapshot bootstrap operation, so taking the checkpoint from the resp.
       if (force_update) {

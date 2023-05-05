@@ -206,6 +206,8 @@ message GetChangesRequestPB {
   optional CDCSDKCheckpointPB from_cdc_sdk_checkpoint = 8;
 
   optional bool need_schema_info = 9 [default = false];
+
+  optional int64 safe_hybrid_time = 10 [default = -1];
 }
 
 message KeyValuePairPB {
