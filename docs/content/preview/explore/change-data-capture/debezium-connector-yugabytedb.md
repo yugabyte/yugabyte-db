@@ -1222,8 +1222,14 @@ You can use the rest APIs to monitor your deployed connectors. The following ope
 
 In addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide, the YugabyteDB source connector provides two other types of metrics:
 
-* _Snapshot metrics_ provide information about connector operation while performing a snapshot.
-* _Streaming metrics_ provide information about connector operation when the connector is capturing changes and streaming change event records.
+* _CDC Service metrics_ provide information about CDC service in YugabyteDB.
+
+| Metric name | Type | Description |
+| :---- | :---- | :---- |
+| cdcsdk_change_event_count | `long` | The Change Event Count metric shows the number of records sent by the CDC Service. |
+| cdcsdk_traffic_sent | `long` | The number of milliseconds since the connector has read and processed the most recent event. |
+| cdcsdk_event_lag_micros | `long` | The LAG metric is calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the CDC connector. |
+| cdcsdk_expiry_time_ms | `long` | The time left to read records from WAL is tracked by the Stream Expiry Time (ms) |
 
 ### Snapshot metrics
 
