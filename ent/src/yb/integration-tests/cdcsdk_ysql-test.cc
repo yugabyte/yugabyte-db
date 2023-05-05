@@ -996,7 +996,13 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       st = cdc_proxy_->SetCDCCheckpoint(
           set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
 
-      if (st.ok()) {
+      if (set_checkpoint_resp.has_error() &&
+          (set_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND ||
+           retry == max_retries)) {
+        return STATUS_FORMAT(
+            InternalError, "Response had error: $0", set_checkpoint_resp.DebugString());
+      }
+      if (st.ok() && !set_checkpoint_resp.has_error()) {
         return set_checkpoint_resp;
       }
     }
@@ -1007,20 +1013,38 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<std::vector<OpId>> GetCDCCheckpoint(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
-    RpcController get_checkpoint_rpc;
+
     GetCheckpointRequestPB get_checkpoint_req;
-    GetCheckpointResponsePB get_checkpoint_resp;
-    auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-    get_checkpoint_rpc.set_deadline(deadline);
+    const int max_retries = 3;
 
     std::vector<OpId> op_ids;
-    for (auto tablet : tablets) {
+    op_ids.reserve(tablets.size());
+    for (const auto& tablet : tablets) {
       get_checkpoint_req.set_stream_id(stream_id);
-      get_checkpoint_req.set_tablet_id(tablets.Get(0).tablet_id());
-      RETURN_NOT_OK(
-          cdc_proxy_->GetCheckpoint(get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
-      op_ids.push_back(OpId::FromPB(get_checkpoint_resp.checkpoint().op_id()));
+      get_checkpoint_req.set_tablet_id(tablet.tablet_id());
+
+      for (auto retry = 1; retry <= max_retries; ++retry) {
+        GetCheckpointResponsePB get_checkpoint_resp;
+        RpcController get_checkpoint_rpc;
+        auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
+        get_checkpoint_rpc.set_deadline(deadline);
+
+        RETURN_NOT_OK(cdc_proxy_->GetCheckpoint(
+            get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
+
+        if (get_checkpoint_resp.has_error() &&
+            (get_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND ||
+             retry == max_retries)) {
+          return STATUS_FORMAT(
+              InternalError, "Response had error: $0", get_checkpoint_resp.DebugString());
+        }
+        if (!get_checkpoint_resp.has_error()) {
+          op_ids.push_back(OpId::FromPB(get_checkpoint_resp.checkpoint().op_id()));
+          break;
+        }
+      }
     }
+
     return op_ids;
   }
 
@@ -1548,11 +1572,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       ASSERT_EQ(OpId(1, 3), op_id);
     }
 
-    resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId(1, -3)));
-    ASSERT_TRUE(resp.has_error());
+    ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets, OpId(1, -3)));
 
-    resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId(-2, 1)));
-    ASSERT_TRUE(resp.has_error());
+    ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets, OpId(-2, 1)));
   }
 
   Result<GetChangesResponsePB> VerifyIfDDLRecordPresent(
@@ -10655,9 +10677,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamWithAllTablesHaveNonPri
 
   // Set checkpoint should throw an error, for the tablet that is not part of the stream, because
   // it's non-primary key table.
-  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  LOG(INFO) << "Response for setcheckpoint: " << resp.DebugString();
-  ASSERT_TRUE(resp.has_error());
+  ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets));
 
   ASSERT_OK(WriteRowsHelper(
       0 /* start */, 1 /* end */, &test_cluster_, true, 2, tables_wo_pk[0].c_str()));
@@ -10983,6 +11003,41 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotNoData)) {
 
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   ASSERT_GT(change_resp.cdc_sdk_proto_records_size(), 1000);
+}
+
+TEST_F(
+    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetAndSetCheckpointWithDefaultNumTabletsForTable)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  // Create a table with default number of tablets.
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+
+  auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  OpId op_id = {change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index()};
+  auto set_resp2 =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, op_id, change_resp.safe_hybrid_time()));
+  ASSERT_FALSE(set_resp2.has_error());
+
+  GetChangesResponsePB change_resp2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  OpId op_id2 = {
+      change_resp.cdc_sdk_checkpoint().term(), change_resp2.cdc_sdk_checkpoint().index()};
+  auto set_resp3 =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, op_id2, change_resp2.safe_hybrid_time()));
+  ASSERT_FALSE(set_resp2.has_error());
 }
 
 }  // namespace enterprise
