@@ -1446,7 +1446,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequest(&change_req, stream_id, tablets, *cp, tablet_idx, "", safe_hybrid_time);
     }
 
-    // Retry only on LeaderNotReadyToServe errors
+    // Retry only on LeaderNotReadyToServe or NotFound errors
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           RpcController get_changes_rpc;
@@ -1456,7 +1456,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
             status = StatusFromPB(change_resp.error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe()) {
+          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
             return false;
           }
 
@@ -1483,7 +1483,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequest(&change_req, stream_id, tablet_id, *cp, tablet_idx);
     }
 
-    // Retry only on LeaderNotReadyToServe errors
+    // Retry only on LeaderNotReadyToServe or NotFound errors
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           RpcController get_changes_rpc;
@@ -1493,7 +1493,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
             status = StatusFromPB(change_resp.error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe()) {
+          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
             return false;
           }
 
@@ -1520,7 +1520,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequestWithExplicitCheckpoint(&change_req, stream_id, tablets, *cp, tablet_idx);
     }
 
-    // Retry only on LeaderNotReadyToServe errors
+    // Retry only on LeaderNotReadyToServe or NotFound errors
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           RpcController get_changes_rpc;
@@ -1530,7 +1530,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
             status = StatusFromPB(change_resp.error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe()) {
+          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
             return false;
           }
 
@@ -1750,11 +1750,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       ASSERT_EQ(OpId(1, 3), op_id);
     }
 
-    resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId(1, -3)));
-    ASSERT_TRUE(resp.has_error());
+    ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets, OpId(1, -3)));
 
-    resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId(-2, 1)));
-    ASSERT_TRUE(resp.has_error());
+    ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets, OpId(-2, 1)));
   }
 
   Result<GetChangesResponsePB> VerifyIfDDLRecordPresent(

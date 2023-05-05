@@ -5944,9 +5944,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamWithAllTablesHaveNonPri
 
   // Set checkpoint should throw an error, for the tablet that is not part of the stream, because
   // it's non-primary key table.
-  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  LOG(INFO) << "Response for setcheckpoint: " << resp.DebugString();
-  ASSERT_TRUE(resp.has_error());
+  ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets));
 
   ASSERT_OK(WriteRowsHelper(
       0 /* start */, 1 /* end */, &test_cluster_, true, 2, tables_wo_pk[0].c_str()));
