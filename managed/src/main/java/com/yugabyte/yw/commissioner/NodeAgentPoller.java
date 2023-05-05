@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -21,8 +22,11 @@ import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.nodeagent.Server.PingResponse;
 import com.yugabyte.yw.nodeagent.Server.ServerInfo;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Gauge;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -60,12 +64,19 @@ public class NodeAgentPoller {
   private static final String DEAD_POLLER_POOL_NAME = "node_agent.dead_node_poller";
   private static final int MAX_FAILED_CONN_COUNT = 50;
 
+  private static final String NODE_AGENT_VERSION_MISMATCH_NAME = "yba_nodeagent_version_mismatch";
+  private static final Gauge NODE_AGENT_VERSION_MISMATCH_GAUGE =
+      Gauge.build(NODE_AGENT_VERSION_MISMATCH_NAME, "Has Node Agent version mismatched")
+          .labelNames(KnownAlertLabels.NODE_AGENT_UUID.labelName())
+          .register(CollectorRegistry.defaultRegistry);
+
   private final ConfigHelper configHelper;
   private final RuntimeConfGetter confGetter;
   private final PlatformExecutorFactory platformExecutorFactory;
   private final PlatformScheduler platformScheduler;
   private final NodeAgentClient nodeAgentClient;
   private final NodeAgentManager nodeAgentManager;
+  private final SwamperHelper swamperHelper;
 
   private final Map<UUID, PollerTask> pollerTasks = new ConcurrentHashMap<>();
 
@@ -83,13 +94,15 @@ public class NodeAgentPoller {
       PlatformExecutorFactory platformExecutorFactory,
       PlatformScheduler platformScheduler,
       NodeAgentManager nodeAgentManager,
-      NodeAgentClient nodeAgentClient) {
+      NodeAgentClient nodeAgentClient,
+      SwamperHelper swamperHelper) {
     this.configHelper = configHelper;
     this.confGetter = confGetter;
     this.platformExecutorFactory = platformExecutorFactory;
     this.platformScheduler = platformScheduler;
     this.nodeAgentManager = nodeAgentManager;
     this.nodeAgentClient = nodeAgentClient;
+    this.swamperHelper = swamperHelper;
   }
 
   @Builder
@@ -107,6 +120,9 @@ public class NodeAgentPoller {
     private final AtomicReference<Future<?>> future = new AtomicReference<>();
     private final AtomicInteger lastFailedCount = new AtomicInteger();
     private final AtomicBoolean isUpgradeTokenAcquired = new AtomicBoolean();
+
+    // Prometheus swamper target file status.
+    private boolean isTargetFileWritten = false;
 
     PollerTask(PollerTaskParam param) {
       this.param = param;
@@ -156,6 +172,16 @@ public class NodeAgentPoller {
       }
     }
 
+    private boolean checkVersion(NodeAgent nodeAgent) {
+      String ybaVersion = param.getSoftwareVersion();
+      boolean versionMatched =
+          Util.compareYbVersions(ybaVersion, nodeAgent.getVersion(), true) == 0;
+      NODE_AGENT_VERSION_MISMATCH_GAUGE
+          .labels(nodeAgent.getUuid().toString())
+          .set(versionMatched ? 0 : 1);
+      return versionMatched;
+    }
+
     @Override
     public void run() {
       try {
@@ -168,6 +194,12 @@ public class NodeAgentPoller {
     }
 
     private void poll(NodeAgent nodeAgent) {
+      boolean versionMatched = checkVersion(nodeAgent);
+      if (!isTargetFileWritten) {
+        // This method checks if the file already exists to ignore writing again.
+        swamperHelper.writeNodeAgentTargetJson(nodeAgent);
+        isTargetFileWritten = true;
+      }
       try {
         nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
       } catch (RuntimeException e) {
@@ -209,8 +241,7 @@ public class NodeAgentPoller {
       switch (nodeAgent.getState()) {
         case READY:
           {
-            String ybaVersion = param.getSoftwareVersion();
-            if (Util.compareYbVersions(ybaVersion, nodeAgent.getVersion(), true) == 0) {
+            if (versionMatched) {
               nodeAgent.heartbeat();
               return;
             }
@@ -373,6 +404,7 @@ public class NodeAgentPoller {
         Entry<UUID, PollerTask> entry = iter.next();
         if (!nodeUuids.contains(entry.getKey())) {
           entry.getValue().releaseUpgradeToken();
+          swamperHelper.removeNodeAgentTargetJson(entry.getKey());
           iter.remove();
         }
       }
