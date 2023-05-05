@@ -5,10 +5,10 @@ alter_database ::= ALTER DATABASE name
                      | OWNER TO { new_owner
                                   | CURRENT_USER
                                   | SESSION_USER }
-                     | SET configuration_parameter { TO | = } 
+                     | SET run_time_parameter { TO | = } 
                        { value | DEFAULT }
-                     | SET configuration_parameter FROM CURRENT
-                     | RESET configuration_parameter
+                     | SET run_time_parameter FROM CURRENT
+                     | RESET run_time_parameter
                      | RESET ALL ]
 
 alter_database_option ::= ALLOW_CONNECTIONS allowconn

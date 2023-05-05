@@ -1,0 +1,4 @@
+#### start_transaction
+
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="422" height="65" viewbox="0 0 422 65"><path class="connector" d="M0 37h15m58 0h10m106 0h50m-5 0q-5 0-5-5v-17q0-5 5-5h138q5 0 5 5v17q0 5-5 5m-5 0h40m-203 0q5 0 5 5v8q0 5 5 5h178q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,44 5,37 0,30" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="20" width="58" height="25" rx="7"/><text class="text" x="25" y="37">START</text><rect class="literal" x="83" y="20" width="106" height="25" rx="7"/><text class="text" x="93" y="37">TRANSACTION</text><a xlink:href="../../../syntax_resources/grammar_diagrams#transaction-mode"><rect class="rule" x="239" y="20" width="128" height="25"/><text class="text" x="249" y="37">transaction_mode</text></a><polygon points="418,44 422,44 422,30 418,30" style="fill:black;stroke-width:0"/></svg>
+

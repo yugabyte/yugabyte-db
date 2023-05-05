@@ -1,3 +1,3 @@
 ```output.ebnf
-reset_stmt ::= RESET { name | ALL }
+reset_stmt ::= RESET { run_time_parameter | ALL }
 ```

@@ -20,11 +20,11 @@ special_fn_and_proc_attribute ::= RENAME TO subprogram_name
                                   | [ NO ] DEPENDS ON EXTENSION 
                                     extension_name
 
-alterable_fn_and_proc_attribute ::= SET configuration_parameter 
+alterable_fn_and_proc_attribute ::= SET run_time_parameter 
                                     { TO value
                                       | = value
                                       | FROM CURRENT }
-                                    | RESET configuration_parameter
+                                    | RESET run_time_parameter
                                     | RESET ALL
                                     | [ EXTERNAL ] SECURITY 
                                       { INVOKER | DEFINER }

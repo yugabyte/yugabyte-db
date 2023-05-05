@@ -10,8 +10,8 @@ arg_decl ::= [ arg_name ] [ arg_mode ] arg_type
 
 subprogram_signature ::= arg_decl [ , ... ]
 
-unalterable_proc_attribute ::= [ LANGUAGE lang_name
-                                 | AS implementation_definition ]
+unalterable_proc_attribute ::= LANGUAGE lang_name
+                               | AS implementation_definition
 
 lang_name ::= SQL | PLPGSQL | C
 
@@ -21,11 +21,11 @@ implementation_definition ::= ' sql_stmt_list '
 
 sql_stmt_list ::= sql_stmt ; [ sql_stmt ... ]
 
-alterable_fn_and_proc_attribute ::= SET configuration_parameter 
+alterable_fn_and_proc_attribute ::= SET run_time_parameter 
                                     { TO value
                                       | = value
                                       | FROM CURRENT }
-                                    | RESET configuration_parameter
+                                    | RESET run_time_parameter
                                     | RESET ALL
                                     | [ EXTERNAL ] SECURITY 
                                       { INVOKER | DEFINER }

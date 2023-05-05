@@ -62,5 +62,6 @@ Add optional keyword — has no effect.
 
 - [`ABORT`](../txn_abort)
 - [`BEGIN`](../txn_begin/)
+- [`START TRANSACTION`](../txn_start/)
 - [`COMMIT`](../txn_commit)
 - [`ROLLBACK`](../txn_rollback)
