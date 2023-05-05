@@ -294,6 +294,13 @@ components:
                       '{{repl ConfigOption "docker_gateway" }}:{{repl if ConfigOptionEquals "https_enabled" "1"}}9543{{repl else}}9100{{repl end}}'
                     ]
 
+                - job_name: 'node-agent'
+                  scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
+                  metrics_path: "/metrics"
+                  file_sd_configs:
+                    - files:
+                      - '/opt/yugabyte/prometheus/targets/node-agent.*.json'
+
                 - job_name: "node"
                   file_sd_configs:
                     - files:
