@@ -888,23 +888,6 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		64
 	},
-#ifdef YB_TODO
-	/* YB_TODO(alex@yugabyte)
-	 * - Do we need an OID column?
-	 * - Shouldn't we need to define system table for the tablegroup here?
-	 */
-	{YbTablegroupRelationId,		/* TABLEGROUPOID */
-		YbTablegroupOidIndexId,
-		1,
-		{
-			Anum_pg_yb_tablegroup_oid,
-			0,
-			0,
-			0,
-		},
-		4
-	},
-#endif
 	{TableSpaceRelationId,		/* TABLESPACEOID */
 		TablespaceOidIndexId,
 		1,
@@ -1085,7 +1068,7 @@ static const struct cachedesc cacheinfo[] = {
 		YbTablegroupOidIndexId,
 		1,
 		{
-			ObjectIdAttributeNumber,
+			Anum_pg_yb_tablegroup_oid,
 			0,
 			0,
 			0,

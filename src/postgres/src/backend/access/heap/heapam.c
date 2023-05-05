@@ -1310,6 +1310,12 @@ heap_endscan(TableScanDesc sscan)
 HeapTuple
 heap_getnext(TableScanDesc sscan, ScanDirection direction)
 {
+
+	if (IsYBRelation(sscan->rs_rd))
+	{
+		return ybc_heap_getnext(sscan);
+	}
+
 	HeapScanDesc scan = (HeapScanDesc) sscan;
 
 	/*
@@ -6067,7 +6073,7 @@ heap_inplace_update(Relation relation, HeapTuple tuple, bool yb_shared_update)
 
 			YB_FOR_EACH_DB(pg_db_tuple)
 			{
-				Oid dboid = YbHeapTupleGetOid(pg_db_tuple); /* TODO(Alex) */
+				Oid dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
 				/* YB doesn't use PG locks so it's okay not to take them. */
 				YBCUpdateSysCatalogTupleForDb(dboid, relation, NULL /* oldtuple */, tuple);
 			}

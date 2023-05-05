@@ -182,7 +182,7 @@ yb_get_profile_oid(const char *prfname, bool missing_ok)
 
 	/* We assume that there can be at most one matching tuple */
 	if (HeapTupleIsValid(tuple))
-		result = YbHeapTupleGetOid(tuple);
+		result = ((Form_pg_yb_profile) GETSTRUCT(tuple))->oid;
 	else
 		result = InvalidOid;
 
@@ -212,7 +212,7 @@ yb_get_profile_tuple(Oid prfid)
 	 */
 	rel = table_open(YbProfileRelationId, AccessShareLock);
 
-	ScanKeyInit(&entry[0], ObjectIdAttributeNumber,
+	ScanKeyInit(&entry[0], Anum_pg_yb_profile_oid,
 				BTEqualStrategyNumber, F_OIDEQ, prfid);
 	scandesc = table_beginscan_catalog(rel, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
@@ -308,7 +308,7 @@ YbDropProfile(YbDropProfileStmt *stmt)
 		return;
 	}
 
-	prfid = YbHeapTupleGetOid(tuple);
+	prfid = ((Form_pg_yb_profile) GETSTRUCT(tuple))->oid;
 
 	/*
 	 * TODO(profile): disallow drop of the default profile once we introduce a
@@ -456,7 +456,7 @@ yb_get_role_profile_tuple_by_oid(Oid rolprfoid)
 	 */
 	rel = table_open(YbRoleProfileRelationId, AccessShareLock);
 
-	ScanKeyInit(&entry[0], ObjectIdAttributeNumber,
+	ScanKeyInit(&entry[0], Anum_pg_yb_role_profile_oid,
 				BTEqualStrategyNumber, F_OIDEQ, rolprfoid);
 	scandesc = table_beginscan_catalog(rel, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
@@ -501,7 +501,7 @@ yb_update_role_profile(Oid roleid, const char *rolename, Datum *new_record,
 	/* We assume that there can be at most one matching tuple */
 	if (HeapTupleIsValid(tuple))
 	{
-		roleprfid = YbHeapTupleGetOid(tuple);
+		roleprfid = ((Form_pg_yb_role_profile) GETSTRUCT(tuple))->oid;
 		new_tuple = heap_modify_tuple(tuple, pg_yb_role_profile_dsc, new_record,
 								  new_record_nulls, new_record_repl);
 		CatalogTupleUpdate(pg_yb_role_profile_rel, &tuple->t_self, new_tuple);

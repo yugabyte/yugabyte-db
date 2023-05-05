@@ -370,7 +370,7 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 
 		YB_FOR_EACH_DB(pg_db_tuple)
 		{
-			Oid dboid = YbHeapTupleGetOid(pg_db_tuple); /* TODO(Alex) */
+			Oid dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
 			/*
 			 * Since this is a catalog table, we assume it exists in all databases.
 			 * YB doesn't use PG locks so it's okay not to take them.
@@ -421,8 +421,6 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 {
 	CatalogTupleCheckConstraints(heapRel, tup);
 
-	CatalogTupleCheckConstraints(heapRel, tup);
-
 	if (IsYugaByteEnabled())
 	{
 		/* Keep ybctid consistent across all databases. */
@@ -435,7 +433,7 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 
 			YB_FOR_EACH_DB(pg_db_tuple)
 			{
-				Oid dboid = YbHeapTupleGetOid(pg_db_tuple); /* TODO(Alex) */
+				Oid dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
 				/*
 				 * Since this is a catalog table, we assume it exists in all databases.
 				 * YB doesn't use PG locks so it's okay not to take them.
@@ -483,6 +481,28 @@ CatalogTuplesMultiInsertWithInfo(Relation heapRel, TupleTableSlot **slot,
 	/* Nothing to do */
 	if (ntuples <= 0)
 		return;
+
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 *	YB_TODO(arpan): Is there a multi tuple equivalent of
+		 *	YBCExecuteInsertForDb?
+		 */
+		for (int i = 0; i < ntuples; i++)
+		{
+			bool	  should_free;
+			HeapTuple tuple;
+
+			tuple = ExecFetchSlotHeapTuple(slot[i], true, &should_free);
+			tuple->t_tableOid = slot[i]->tts_tableOid;
+			CatalogTupleInsertWithInfo(heapRel, tuple, indstate,
+									   yb_shared_insert);
+
+			if (should_free)
+				heap_freetuple(tuple);
+		}
+		return;
+	}
 
 	heap_multi_insert(heapRel, slot, ntuples,
 					  GetCurrentCommandId(true), 0, NULL);

@@ -290,7 +290,7 @@ ybcininsert(Relation index, Datum *values, bool *isnull, ItemPointer tid, Relati
 
 			YB_FOR_EACH_DB(pg_db_tuple)
 			{
-				Oid dboid = YbHeapTupleGetOid(pg_db_tuple); /* TODO(Alex) */
+				Oid dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
 				/*
 				 * Since this is a catalog index, we assume it exists in all databases.
 				 * YB doesn't use PG locks so it's okay not to take them.

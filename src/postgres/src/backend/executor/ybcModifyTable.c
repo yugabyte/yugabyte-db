@@ -323,9 +323,7 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 		YBCPgAddIntoForeignKeyReferenceCache(relid, HEAPTUPLE_YBCTID(tuple));
 
 	bms_free(pkey);
-#ifdef NEIL_NEED_WORK
-	/* Read typeOid from "values" and "nulls" instead of tuple header */
-#endif
+	/* YB_TODO(arpan): return value is unused, return void instead. */
 	return YbHeapTupleGetOid(tuple);
 }
 

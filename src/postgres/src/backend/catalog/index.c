@@ -3340,7 +3340,6 @@ IndexBackfillHeapRangeScan(Relation table_rel,
 						   YbPgExecOutParam *bfresult)
 {
 	/* YB_TODO(neil@yugabyte)
-	 * - Need to pass bfinfo and bfresult to table.h
 	 * - Check for the value of the new flag "progress".
 	 */
 	Assert(0);
@@ -3354,7 +3353,9 @@ IndexBackfillHeapRangeScan(Relation table_rel,
 														 InvalidBlockNumber /* num_blocks */,
 														 callback,
 														 callback_state,
-														 NULL /* scan */);
+														 NULL, /* scan */
+														 bfinfo,
+														 bfresult);
 }
 
 /*
