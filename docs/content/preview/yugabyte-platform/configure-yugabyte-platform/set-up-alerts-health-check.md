@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere has default, preconfigured alerts, both at the YugabyteDB Anywhere and universe level. Universe alerts can be configured globally for all universes, or per specific universe. In addition to the default alerts, you can configure your own alerts based on a specific condition on any available metric.
+YugabyteDB Anywhere has default, preconfigured alerts, both at the YugabyteDB Anywhere and universe level. Universe alerts can be configured globally for all universes, or per specific universe. In addition to the default alerts, you can configure your own alerts based on a specific condition on any available alert policy template.
 
 To review alerts that have triggered, refer to [Alerts](../../alerts-monitoring/alert/). To view performance metrics, refer to [Use metrics](../../troubleshoot/universe-issues/#use-metrics/).
 
@@ -91,11 +91,11 @@ To create a new channel, do the following:
 
 1. Click **Add Channel** and then complete the **Create new alert channel** dialog.
 
+1. Use the **Name** field to provide a descriptive name for your channel.
+
 1. Select the target for the channel.
 
     If you select **Email** as the target, perform the following:
-
-      - Provide a descriptive name for your channel.
 
       - To use the details provided on the **Health** tab for the recipients and the mail server, select the **Use recipients specified on Health tab** and **Use SMTP server specified on Health tab** options. See [Configure health check](#configure-health-check).
 
@@ -103,21 +103,19 @@ To create a new channel, do the following:
 
     If you select **Slack** as a notification delivery method, perform the following:
 
-      - Provide a descriptive name for your channel.
-
       - Use the **Slack Webhook URL** field to enter a valid URL.
 
     If you select **PagerDuty** as a notification delivery method, perform the following:
-
-      - Provide a descriptive name for your channel.
 
       - Enter a PagerDuty API key and service integration key.
 
     If you select **WebHook** as a notification delivery method, perform the following:
 
-      - Provide a descriptive name for your channel.
-
       - Use the **Webhook URL** field to enter a valid URL.
+
+      - Chose the authentication type - Basic or Token.
+
+      - For Basic, enter the username and password. For Token, enter the token header and value.
 
 1. Click **Create**.
 
@@ -147,7 +145,9 @@ To customize the notification templates, do the following:
 
 ## Configure health check
 
-You can define parameters and fine-tune the health check that YugabyteDB Anywhere performs on its universes, as follows:
+YugabyteDB Anywhere performs periodic checks on the universes under management.
+
+You can define parameters and fine-tune the health check that YugabyteDB Anywhere performs, as follows:
 
 1. Navigate to **Admin > Alert Configurations > Health** to open the **Alerting controls** view.
 
