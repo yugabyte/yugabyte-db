@@ -73,7 +73,7 @@ Create a Security Group with inbound and outbound rules configured to ensure acc
 
 4. Upload Debezium connector Jar file onto S3 bucket
 
-Download Yugabyte Debezium connector jar from  [_https://github.com/yugabyte/debezium/releases/download/v1.7.0-beta/debezium-connector-yugabytedb2-1.7.0-SNAPSHOT-jar-with-dependencies.jar_](https://github.com/yugabyte/debezium/releases/download/v1.7.0-beta/debezium-connector-yugabytedb2-1.7.0-SNAPSHOT-jar-with-dependencies.jar)  and upload it onto an S3 bucket.
+Download Yugabyte Debezium connector jar from  [_https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar._](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar)  and upload it onto an S3 bucket.
 
 ![](https://miro.medium.com/v2/resize:fit:700/0*gk4kNo4roN6w1aSJ)
 
