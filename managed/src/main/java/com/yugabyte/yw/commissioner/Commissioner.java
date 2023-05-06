@@ -17,10 +17,7 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -50,7 +47,6 @@ import play.inject.ApplicationLifecycle;
 import play.libs.Json;
 
 @Singleton
-@Slf4j
 public class Commissioner {
 
   public static final String SUBTASK_ABORT_POSITION_PROPERTY = "subtask-abort-position";
@@ -72,21 +68,17 @@ public class Commissioner {
 
   private final ProviderEditRestrictionManager providerEditRestrictionManager;
 
-  private final RuntimeConfGetter runtimeConfGetter;
-
   @Inject
   public Commissioner(
       ProgressMonitor progressMonitor,
       ApplicationLifecycle lifecycle,
       PlatformExecutorFactory platformExecutorFactory,
       TaskExecutor taskExecutor,
-      ProviderEditRestrictionManager providerEditRestrictionManager,
-      RuntimeConfGetter runtimeConfGetter) {
+      ProviderEditRestrictionManager providerEditRestrictionManager) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
     this.taskExecutor = taskExecutor;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
-    this.runtimeConfGetter = runtimeConfGetter;
     executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
     progressMonitor.start(runningTasks);
@@ -122,13 +114,6 @@ public class Commissioner {
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
     RunnableTask taskRunnable = null;
     try {
-      if (runtimeConfGetter.getGlobalConf(
-          GlobalConfKeys.enableTaskAndFailedRequestDetailedLogging)) {
-        JsonNode taskParamsJson = Json.toJson(taskParams);
-        JsonNode redactedJson = RedactingService.filterSecretFields(taskParamsJson);
-        log.debug(
-            "Executing TaskType {} with params {}", taskType.toString(), redactedJson.toString());
-      }
       // Create the task runnable object based on the various parameters passed in.
       taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
       // Add the consumer to handle before task if available.
