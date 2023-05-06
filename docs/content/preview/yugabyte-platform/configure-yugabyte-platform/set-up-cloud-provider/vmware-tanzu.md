@@ -67,11 +67,13 @@ type: docs
 
 </ul>
 
-You can configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using YugabyteDB Anywhere. If no cloud providers are configured, the main Dashboard prompts you to configure at least one cloud provider.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+
+A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
 ## Prerequisites
 
-Before you start, ensure that you have the `kubeconfig` file generated during [YugabyteDB Anywhere Installation](/preview/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#create-a-kubeconfig-file-for-a-kubernetes-cluster) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
+Before you start, ensure that you have created the [kubeconfig file](../kubernetes/#kubeconfig-file) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
 
 ## Configure TKG
 
@@ -79,13 +81,13 @@ To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TK
 
 This lists all currently configured providers.
 
-To create a TKG provider, click **Create Kubernetes Config** to open the [Create Kubernetes Provider Configuration](../kubernetes/#kubernetes-provider-settings) page.
+To create a TKG provider, click **Create Kubernetes Config**. For more information, refer to [Create a provider](../kubernetes/#create-a-provider).
 
 ### Provider settings
 
 Set the **Kubernetes Provider Type** to VMWare Tanzu.
 
-For information on the Kubernetes Provider settings, refer to [Kubernetes Provider settings](../kubernetes/#kubernetes-provider-settings).
+For information on the Kubernetes Provider settings, refer to [Provider settings](../kubernetes/#kubernetes-provider-settings).
 
 To add service-level annotations, use the following [overrides](../kubernetes/#overrides):
 
@@ -129,10 +131,6 @@ networkAnnotation:
   annotation1: 'foo'
   annotation2: 'bar'
 ```
-
-### Create the configuration
-
-Click **Create Provider Configuration** to save the configuration. If your configuration is successful, you are redirected to **VMware Tanzu Configs**.
 
 ## Appendix: VMware Tanzu application service
 

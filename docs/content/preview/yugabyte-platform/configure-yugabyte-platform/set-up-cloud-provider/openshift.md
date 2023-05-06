@@ -65,7 +65,9 @@ type: docs
 
 </ul>
 
-You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main Dashboard prompts you to configure at least one provider.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+
+A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
 ## Prerequisites
 
@@ -148,19 +150,17 @@ The `kubeconfig` file needs to be generated for each OpenShift cluster if you ar
 
 ## Configure OpenShift
 
-Because YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.
+Navigate to **Configs > Infrastructure > Red Hat OpenShift** to see a list of all currently configured Kubernetes providers.
 
-To configure OpenShift, navigate to **Configs > Infrastructure > Red Hat OpenShift**.
+This lists all currently configured OpenShift providers.
 
-This lists all currently configured providers.
-
-To create an OpenShift provider, click **Create Kubernetes Config** to open the [Create Kubernetes Provider Configuration](../kubernetes/#kubernetes-provider-settings) page.
+To create an OpenShift provider, click **Create Kubernetes Config**. For more information, refer to [Create a provider](../kubernetes/#create-a-provider).
 
 ### Provider settings
 
 Set the **Kubernetes Provider Type** to Red Hat OpenShift.
 
-For information on the Kubernetes Provider settings, refer to [Kubernetes Provider settings](../kubernetes/#kubernetes-provider-settings).
+For information on the Kubernetes Provider settings, refer to [Provider settings](../kubernetes/#provider-settings).
 
 ### Create the configuration
 

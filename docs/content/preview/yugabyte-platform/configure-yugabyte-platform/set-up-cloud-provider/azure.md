@@ -65,7 +65,21 @@ type: docs
 
 </ul>
 
-You can configure an Azure cloud provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page prompts to configure at least one provider.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+
+A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+
+When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
+
+- Create VMs on Azure using the following
+  - the service account
+  - specified regions and availability zones (this can be a subset of those specified in the provider configuration)
+  - a Linux image
+  - network connectivity to YugabyteDB Anywhere via the specified VPC
+
+- Provision those VMs with YugabyteDB, relying on connectivity from YugabyteDB Anywhere to each VM via SSH (using the specified security groups).
+
+Create a Microsoft Azure provider configuration if your target cloud is Azure.
 
 ## Prerequisites
 
@@ -79,29 +93,43 @@ You need to add the following Azure cloud provider credentials via YugabyteDB An
 
 YugabyteDB Anywhere uses the credentials to automatically provision and deprovision YugabyteDB instances.
 
-When the configuration is completed, you can see all the resources managed by YugabyteDB Anywhere in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
-
 ## Configure Azure
 
-To configure Azure providers, navigate to **Configs > Infrastructure > Microsoft Azure**.
+Navigate to **Configs > Infrastructure > Microsoft Azure** to see a list of all currently configured Azure providers.
 
-This lists all currently configured providers.
+### View and edit providers
 
-To view a provider, select it in the list to display the **Overview**. You can perform the following on a profile configuration:
+To view a provider, select it in the list to display the **Overview**.
 
-- To edit the configuration, select **Config Details**, make changes, and click **Apply Changes**. Note that, depending on whether the configuration has been used to create a universe, you can only edit a subset of options.
-- To view the universes created using the profile, select **Universes**.
-- To delete the configuration, click **Actions** and choose **Delete Configuration**. You can only delete configurations that are not in use by a universe.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. Refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
 
-To create an Azure provider, click **Create Config** to open the **Create Azure Provider Configuration** page.
+To view the universes created using the provider, select **Universes**.
 
-### Provider settings
+To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
+
+### Create a provider
+
+To create an Azure provider:
+
+1. Click **Create Config** to open the **Create Azure Provider Configuration** page.
+
+1. Enter the provider details. Refer to [Provider settings](#provider-settings).
+
+1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
+
+This process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
+
+When the configuration is completed, you can see all the resources managed by YugabyteDB Anywhere in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
+
+If you encounter problems, see [Troubleshoot Azure cloud provider configuration](../../../troubleshoot/cloud-provider-config-issues/#azure-cloud-provider-configuration-problems).
+
+## Provider settings
+
+### Provider Name
 
 Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
 
-Provider settings are organized in the following sections.
-
-#### Cloud Info
+### Cloud Info
 
 - **Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.
 - **Client Secret** represents the secret of an application registered in your Azure Active Directory. You need to enter the `Value` of the secret (not the `Secret ID`).
@@ -110,7 +138,7 @@ Provider settings are organized in the following sections.
 - **Tenant ID** represents the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [Microsoft Azure: Tenant and application ID values for signing in](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in).
 - **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [Define a private DNS zone](#define-a-private-dns-zone).
 
-#### Regions
+### Regions
 
 You can specify a region as follows:
 
@@ -126,7 +154,7 @@ You can specify a region as follows:
 
 1. Click **Add Region**.
 
-#### SSH Key Pairs
+### SSH Key Pairs
 
 - **SSH User** represents the user name for the **SSH Port**.
 - **SSH Port** allows you to specify the connection port number if you use custom images. The default port is 54422.
@@ -139,20 +167,19 @@ You can specify a region as follows:
     - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
 -->
 
-#### Advanced
+### Advanced
 
-- **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
-  - Select **Use AZU's NTP server** to enable cluster nodes to connect to the Azure internal time servers. For more information, consult the Microsoft Azure documentation such as [Time sync for Linux VMs in Azure](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/time-sync).
+You can customize the Network Time Protocol server, as follows:
+
+- Select **Use AZU's NTP server** to enable cluster nodes to connect to the Azure internal time servers. For more information, consult the Microsoft Azure documentation such as [Time sync for Linux VMs in Azure](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/time-sync).
 - Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, you will be responsible for manually configuring NTP.
 
-### Create the configuration
+    {{< warning title="Important" >}}
 
-After you have entered the settings, click **Create Provider Configuration** and wait for the configuration to complete.
+Use this option with caution. Time synchronization is critical to database data consistency; failure to run NTP may cause data loss.
 
-Typically, it takes a few minutes for the cloud provider to be configured. When the configuration completes, you will be ready to create a YugabyteDB universe on Azure.
-
-If you encounter problems, see [Troubleshoot Azure cloud provider configuration](../../../troubleshoot/cloud-provider-config-issues/#azure-cloud-provider-configuration-problems).
+    {{< /warning >}}
 
 ## Configuring Azure Portal
 

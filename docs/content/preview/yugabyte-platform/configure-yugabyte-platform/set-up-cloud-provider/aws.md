@@ -67,42 +67,72 @@ type: docs
 
 </ul>
 
-You can configure Amazon Web Services (AWS) for YugabyteDB using YugabyteDB Anywhere. If no cloud providers have been configured yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+
+A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+
+When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
+
+- Create VMs on AWS using the following
+  - the service account
+  - specified regions and availability zones (this can be a subset of those specified in the provider configuration)
+  - a Linux image
+  - network connectivity to YugabyteDB Anywhere via the specified VPC
+
+- Provision those VMs with YugabyteDB, relying on connectivity from YugabyteDB Anywhere to each VM via SSH (using the specified security groups).
+
+Create an Amazon Web Services (AWS) provider configuration if your target cloud is AWS.
 
 ## Prerequisites
 
-To run YugabyteDB nodes on AWS, you need to supply your cloud provider credentials on the YugabyteDB Anywhere UI. YugabyteDB Anywhere uses the credentials to automatically provision and deprovision YugabyteDB instances. A YugabyteDB instance includes a compute instance, as well as attached local or remote disk storage.
+- An AWS Service Account with sufficient privileges is highly recommended. This account must have permissions to create VMs, and access to the VPC and security groups described below. Required input: Access Key ID and Secret Access Key for the AWS Service Account.
+- An AWS VPC for each region. Required input: for each Region, a VPC ID.
+- AWS Security Groups must exist to allow network connectivity so that YugabyteDB Anywhere can create AWS VMs when deploying a universe. Required input: for each region, a Security Group ID.
+
+For more information on setting up an AWS service account and security groups, refer to [Prepare the AWS cloud environment](../../../install-yugabyte-platform/prepare-environment/aws/).
 
 ## Configure AWS
 
-To configure AWS providers, navigate to **Configs > Infrastructure > Amazon Web Services**.
+Navigate to **Configs > Infrastructure > Amazon Web Services** to see a list of all currently configured AWS providers.
 
-This lists all currently configured providers.
+### View and edit providers
 
-To view a provider, select it in the list to display the **Overview**. You can perform the following on a profile configuration:
+To view a provider, select it in the list to display the **Overview**.
 
-- To edit the configuration, select **Config Details**, make changes, and click **Apply Changes**. Note that, depending on whether the configuration has been used to create a universe, you can only edit a subset of options.
-- To view the universes created using the profile, select **Universes**.
-- To delete the configuration, click **Actions** and choose **Delete Configuration**. You can only delete configurations that are not in use by a universe.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. Refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
 
-To create an AWS provider, click **Create Config** to open the **Create AWS Provider Configuration** page.
+To view the universes created using the provider, select **Universes**.
 
-### Provider settings
+To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
 
-Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
+### Create a provider
 
-Provider settings are organized in the following sections.
+To create an AWS provider:
 
-#### Cloud Info
+1. Click **Create Config** to open the **Create AWS Provider Configuration** page.
 
-To deploy YugabyteDB nodes in your AWS account, YugabyteDB Anywhere requires access to a set of cloud credentials which can be provided in one of the following ways:
+1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
-- Directly provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html).
-- Attach an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YugabyteDB Anywhere VM in the **EC2** tab. For more information, see [Deploy the YugabyteDB universe using an IAM role](../../../install-yugabyte-platform/prepare-environment/aws/#deploy-the-yugabytedb-universe-using-an-iam-role).
+1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
 
-Integrating with hosted zones can make YugabyteDB universes easily discoverable. YugabyteDB Anywhere can integrate with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, which will be updated as you change the set of nodes to include all relevant ones for each of your universes.
+This process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
 
-#### Regions
+## Provider settings
+
+### Provider Name
+
+Enter a Provider name. The Provider name is an internal tag used for organizing provider configurations.
+
+### Cloud Info
+
+**Credential Type**. YugabyteDB Anywhere requires the ability to create VMs in AWS. To do this, you ca do one of the following:
+
+- Create an AWS Service Account with the required permissions (refer to [Prepare the AWS cloud environment](../../../install-yugabyte-platform/prepare-environment/aws/)), and provide your AWS Access Key ID and Secret Access Key.
+- Provision the YugabyteDB Anywhere VM instance with an IAM role that has sufficient permissions by attaching an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YugabyteDB Anywhere VM in the **EC2** tab. For more information, see [Deploy the YugabyteDB universe using an IAM role](../../../install-yugabyte-platform/prepare-environment/aws/#deploy-the-yugabytedb-universe-using-an-iam-role).
+
+**AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](../../../../drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YugabyteDB Anywhere integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
+
+### Regions
 
 You can customize your network, including the virtual network, as follows:
 
@@ -123,7 +153,7 @@ You can customize your network, including the virtual network, as follows:
 
   For information on configuring your regions, see [Add regions](#add-regions).
 
-#### SSH Key Pairs
+### SSH Key Pairs
 
 To be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YugabyteDB Anywhere requires SSH access. The following are two ways to provide SSH access:
 
@@ -132,13 +162,19 @@ To be able to provision Amazon Elastic Compute Cloud (EC2) instances with Yugaby
 
 If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the AWS provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given AWS account.
 
-#### Advanced
+### Advanced
 
 You can customize the Network Time Protocol server, as follows:
 
 - Select **Use AWS's NTP server** to enable cluster nodes to connect to the AWS internal time servers. For more information, consult the AWS documentation such as [Keeping time with Amazon time sync service](https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/).
 - Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, you will be responsible for manually configuring NTP.
+
+    {{< warning title="Important" >}}
+
+Use this option with caution. Time synchronization is critical to database data consistency; failure to run NTP may cause data loss.
+
+    {{< /warning >}}
 
 ### Add regions
 

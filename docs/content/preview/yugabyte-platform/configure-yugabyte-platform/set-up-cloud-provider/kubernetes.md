@@ -66,11 +66,13 @@ type: docs
 
 </ul>
 
-You can configure Kubernetes providers for YugabyteDB universes. If no cloud providers are configured, the main Dashboard page prompts you to configure at least one cloud provider.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+
+A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
 ## Prerequisites
 
-To run YugabyteDB universes on Kubernetes, all you need to provide in YugabyteDB Anywhere is your Kubernetes provider credentials. YugabyteDB Anywhere uses those credentials to automatically provision and de-provision the pods that run YugabyteDB.
+To deploy YugabyteDB universes on Kubernetes, you need to your Kubernetes provider credentials. YugabyteDB Anywhere uses those credentials to automatically provision and de-provision the pods that run YugabyteDB.
 
 Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
@@ -187,29 +189,39 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
 
 ## Configure Kubernetes
 
-To configure Kubernetes providers, navigate to **Configs > Infrastructure > Managed Kubernetes Service**.
+Navigate to **Configs > Infrastructure > Managed Kubernetes Service** to see a list of all currently configured Kubernetes providers.
 
-This lists all currently configured providers.
+### View and edit providers
 
-To view a provider, select it in the list to display the **Overview**. You can perform the following on a profile configuration:
+To view a provider, select it in the list to display the **Overview**.
 
-- To edit the configuration, select **Config Details**, make changes, and click **Apply Changes**. Note that, depending on whether the configuration has been used to create a universe, you can only edit a subset of options.
-- To view the universes created using the profile, select **Universes**.
-- To delete the configuration, click **Actions** and choose **Delete Configuration**. You can only delete configurations that are not in use by a universe.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. Refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
 
-To create an Kubernetes provider, click **Create Config** to open the **Create Kubernetes Provider Configuration** page.
+To view the universes created using the provider, select **Universes**.
 
-To fill the provider configuration values using the configuration of the same Kubernetes cluster that your instance of YugabyteDB Anywhere is installed on, click **Autofill local cluster config**.
+To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
 
-![Auto-fill Kubernetes provider](/images/yb-platform/kubernetes-config-autofill.png)
+### Create a provider
 
-### Kubernetes Provider settings
+To create an Kubernetes provider:
+
+1. Click **Create Config** to open the **Create Kubernetes Provider Configuration** page.
+
+1. Enter the provider details. Refer to [Provider settings](#provider-settings).
+
+    To fill the provider configuration values using the configuration of the same Kubernetes cluster that your instance of YugabyteDB Anywhere is installed on, click **Autofill local cluster config**.
+
+    ![Auto-fill Kubernetes provider](/images/yb-platform/kubernetes-config-autofill.png)
+
+1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
+
+## Provider settings
+
+### Provider Name
 
 Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
 
-Provider settings are organized in the following sections.
-
-#### Cloud Info
+### Cloud Info
 
 Choose the **Kubernetes Provider Type**.
 
@@ -221,7 +233,7 @@ Use **Kube Config** to upload the `kubeconfig` file. If specified, this configur
 
 Alternately, you can define separate `kubeconfig` files for each zone when defining the regions. See [Configure region and zones](#configure-region-and-zones).
 
-#### Configure region and zones
+### Configure region and zones
 
 Continue configuring your Kubernetes provider by clicking **Add region** and completing the **Add new region** dialog as follows:
 
@@ -244,10 +256,6 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
 
 Click **Add Region** when you are done.
-
-### Create the configuration
-
-Click **Create Provider Configuration** to save the configuration. If successful, you will be redirected to the table view of all configurations.
 
 ## Overrides
 
