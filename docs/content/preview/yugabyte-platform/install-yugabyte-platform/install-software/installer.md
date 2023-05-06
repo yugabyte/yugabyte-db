@@ -48,14 +48,13 @@ Unless otherwise specified, you can use a user account for executing the steps d
 
 ## Installer-based installation
 
-Installing YugabyteDB Anywhere using the Installer involves the following:
+To install YugabyteDB Anywhere using the Installer, do the following:
 
-- [Installing the Operator itself](#install-the-operator)
-- [Creating an instance of YugabyteDB Anywhere](#create-an-instance-of-yugabyte-platform-via-operator)
-- [Finding the availability zone labels](#find-the-availability-zone-labels)
-- [Configuring the CLI with the OCP cluster](#configure-the-cli-with-the-ocp-cluster)
-- [Accessing and configuring YugabyteDB Anywhere](#access-and-configure-yugabyte-platform)
-- Optionally, [upgrading the YugabyteDB Anywhere instance](#upgrade-the-yugabyte-platform-instance)
+- [Download YBA Installer](#download-yba-installer)
+- [Configure YBA Installer](#configure-yba-installer)
+- [Run preflight checks](#run-preflight-checks)
+- [Provide a license](#provide-a-license)
+- [Install the software](#install-the-software)
 
 ### Download YBA Installer
 
@@ -92,7 +91,7 @@ To see a full list of commands, run the following command:
 $ ./yba-ctl help
 ```
 
-### Configuration setup
+### Configure YBA Installer
 
 Many YBA Installer commands require a configuration file, including preflight and install. When using these commands with out a configuration file, you are prompted to continue using default values. For example:
 
@@ -117,83 +116,81 @@ You can set the following configuration options.
 
 | Option | Description |
 | :--- | :--- |
-| installRoot | Location where YugabyteDB Anywhere is installed. Default is `/opt/yugabyte`. |
-| host | Hostname or IP Address used for CORS and certificate creation. Optional |
-| server_cert_path<br />server_key_path | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional |
-| service_username | The linux user that will run the YugabyteDB Anywhere processes. Default is yugabyte. Note: The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. |
+| `installRoot` | Location where YugabyteDB Anywhere is installed. Default is `/opt/yugabyte`. |
+| `host` | Hostname or IP Address used for CORS and certificate creation. Optional. |
+| `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. |
+| `service_username` | The Linux user that will run the YugabyteDB Anywhere processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. |
 
-Platform: Platform config options are located here 
-Port: specify a custom port the platform webpage will run on
+#### YugabyteDB Anywhere configuration options
 
-OAuth related settings
- useOauth: The boolean that determine if OIDC SSO needs to be enabled on the Platform. Default to false, but override it to true if you intend on using OIDC SSO for your platform installation (must be a boolean).
+| Option | Description |
+| :--- | :--- |
+| Port | Specify a custom port for the YugabyteDB Anywhere UI to run on
+| keyStorePassword | Password for the Java keystore. Will be generated if left empty
+| appSecret | Play framework crypto secret. Will be generated if left empty
 
-ybSecurityType: The Security Type corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
+OAuth related settings are described in the following table.
 
-ybOidcClientId: The Client Id corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
+| Option | Description |
+| :--- | :--- |
+| `useOauth` | Boolean that determines if OIDC SSO needs to be enabled on YugabyteDB Anywhere. Default to false, but override it to true if you intend on using OIDC SSO for your YugabyteDB Anywhere installation (must be a boolean).
+| `ybSecurityType` | The Security Type corresponding to the OIDC SSO for your YugabyteDB Anywhere installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
+| `ybOidcClientId` | The Client Id corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
+| `ybOidcSecret` | The OIDC Secret Key corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
+| `ybOidcDiscoveryUri` | The OIDC Discovery URI corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty, must be a valid url).
+| `ywWrl` | The Platform IP corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty, must be a valid url).
+| `ybOidcScope` | The OIDC Scope corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
+| `ybOidcEmailAtr` | The OIDC Email Attr corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty, must be a valid email address).
 
-ybOidcSecret: The OIDC Secret Key corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
+Http and Https proxy settings are described in the following table.
 
-ybOidcDiscoveryUri: The OIDC Discovery URI corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty, must be a valid url).
+| Option | Description |
+| :--- | :--- |
+| `http_proxy` |            Specify the setting for HTTP_PROXY
+| `java_http_proxy_port` |  Specify -Dhttp.proxyPort
+| `java_http_proxy_host` |  Specify -Dhttp.proxyHost
+| `https_proxy` |           Specify the setting for HTTPS_PROXY
+| `java_https_proxy_port` | Specify -Dhttps.proxyPort
+| `java_https_proxy_host` | Specify -Dhttps.proxyHost
+| `no_proxy` |              Specify the setting for NO_PROXY
+| `java_non_proxy` |        Specify  -Dhttps.nonProxyHosts.
 
-ywWrl: The Platform IP corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty, must be a valid url).
+#### Prometheus configuration options
 
-ybOidcScope: The OIDC Scope corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
-
-ybOidcEmailAtr: The OIDC Email Attr corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty, must be a valid email address).
-
-keyStorePassword: password fo java keystore. Will be generated if left empty
-appSecret: play framework crypto secret. Will be generated if left empty
-Http and Https proxy settings
-http_proxy:            Specify the setting for HTTP_PROXY
-java_http_proxy_port:  Specify -Dhttp.proxyPort
-java_http_proxy_host:  Specify -Dhttp.proxyHost
-https_proxy:           Specify the setting for HTTPS_PROXY
-java_https_proxy_port: Specify -Dhttps.proxyPort
-java_https_proxy_host: Specify -Dhttps.proxyHost
-no_proxy:              Specify the setting for NO_PROXY
-java_non_proxy:        Specify  -Dhttps.nonProxyHosts.
-
-postgres: Postgres config options are here. If you do not wish to use the postgres version provided by YBA Installer, please ensure this is filled out correctly
-See Bring Your Own Postgres
-
-prometheus: Prometheus config values here
-Port: external prometheus port
-restartSeconds: Systemd will restart prometheus after this number of seconds after a crash
-
-scrapeInterval: how often prometheus scrapes for database metrics
-
-scrapeTimeout: timeout for inactivity during scraping
-
-maxConcurrency: Max concurrent queries to be executed by prometheus
-
-maxSamples: The maximum number of samples that a single query can load into memory
-
-Timeout: The time threshold for inactivity after which prometheus will be declared inactive
+| Option | Description |
+| :--- | :--- |
+| `Port` | external Prometheus port
+| `restartSeconds` | Systemd will restart Prometheus after this number of seconds after a crash
+| `scrapeInterval` | how often Prometheus scrapes for database metrics
+| `scrapeTimeout` | timeout for inactivity during scraping
+| `maxConcurrency` | Max concurrent queries to be executed by Prometheus
+| `maxSamples` | The maximum number of samples that a single query can load into memory
+| `Timeout` | The time threshold for inactivity after which Prometheus will be declared inactive
 
 #### Bring your own PostgreSQL
 
-PostgreSQL is divided into two different subsections - “install” and “useExisting”. Install contains information on how YBA Installer should install PostgreSQL, while useExisting is to provide YBA Installer with information on how to connect to a postgres instance that you provision and manage separately. These two sections are mutually exclusive, and can be turned on/off using the “enabled” option. Exactly one of these two sections must have enabled = true, while the other must have enabled = false.
+PostgreSQL is divided into two different subsections - `install` and `useExisting`. Install contains information on how YBA Installer should install PostgreSQL, while useExisting is to provide YBA Installer with information on how to connect to a postgres instance that you provision and manage separately. These options are mutually exclusive, and can be turned on/off using the enabled option. Exactly one of these two sections must have enabled = true, while the other must have enabled = false.
 
-Install Options:
+**Install options**
 
-Port: port PostgreSQL is listening to
+| Option | Description |
+| :--- | :--- |
+| Port | Port PostgreSQL is listening to
+| restartSecond | Wait time to restart PostgreSQL if the service crashes
+| locale | locale is used during initialization of the db.
 
-restartSecond:wait time to restart PostgreSQL if the service crashes
+**useExisting options**
 
-locale: locale is used during initialization of the db.
+| Option | Description |
+| :--- | :--- |
+| Host | IP address/domain name of the PostgreSQL server.
+| Port | Port PostgreSQL is running on.
+| Username and password | Used to authenticate with PostgreSQL.
+| Pg_dump_path<br/>pg_restore_path | Required paths to pgdump and pgrestore on the locale system that are compatible with the version of PostgreSQL you provide. Pgdump and pgrestore are used for backup and restore workflows, and are required for a functioning install.
 
-useExisting
+### Run preflight checks
 
-Host: ip address/domain name of the PostgreSQL server
-Port: port PostgreSQL is running on. 
-Username and password: used to authenticate with PostgreSQL
-Pg_dump_path pg_restore_path. 
-Required paths to pgdump and pgrestore on the locale system that are compatible with the version of PostgreSQL you provide. Pgdump and pgrestore are used for backup and restore workflows, and are required for a functioning install.
-
-### Preflight checks
-
-Once we have access to yba-ctl, we can start by running the preflight checks provided by YBA Installer. This will run checks to ensure that our expected ports are available, the hardware meets the YBA minimum requirements, as well as a few others. All preflight checks will be run and a report generated, even if some fail. This will allow you to fix all found issues before continuing with the installation.
+After yba-ctl is installed and configured, start by running the preflight checks to ensure that the expected ports are available, the hardware meets the YBA minimum requirements, and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
 
 ```sh
 $ sudo ./yba-ctl preflight
@@ -213,29 +210,29 @@ $ sudo ./yba-ctl preflight
 10 postgres               Pass
 ```
 
-Some of these checks can be skipped - such as cpu or memory. Others, such as python, are hard requirements and YBA will not work until these checks pass. It is recommended that all checks pass for a production installation.
+Some checks can be ignored, such as CPU or memory. Others, such as python, are hard requirements, and YugabyteDB Anywhere can't work until these checks pass. All checks should pass for a production installation.
 
-If a check is failing and you want to skip it, you can pass –skip_preflight <name>[,<name2>]. Please  note not all checks are skippable.
+If a check is failing and you want to skip it, you can pass `–skip_preflight <name>[,<name2>]`.
 
 ```sh
 $ sudo ./yba-ctl preflight --skip_preflight cpu
 ```
 
-At this point, the license check is failing as we have not yet provided our license to YBA Installer.
+At this point, the license check fails as no license has been provided to YBA Installer.
 
-### License
+### Provide a license
 
 YBA Installer requires a valid license before installing. To obtain a license, contact {{% support-platform %}}.
 
 The license can be provided to YBA Installer in one of two ways:
 
-- Stand alone command before running install. This can also be used to update to a new license if needed.
+- Run the `license` command before running `install`. This command can also be used to update to a new license if needed.
 
     ```sh
     $ sudo ./yba-ctl license add -l /path/to/license
     ```
 
-- Using the install command:
+- As part of the `install` command:
 
     ```sh
     $ sudo ./yba-ctl install -l /path/to/license
@@ -269,7 +266,7 @@ $ sudo ./yba-ctl preflight
 10 postgres               Pass
 ```
 
-### Install
+### Install the software
 
 To perform an install, run the `install` command. Once started, an install can take several minutes to complete.
 
@@ -405,22 +402,26 @@ $ sudo ./yba-ctl createBackup ~/backup.tgz
 FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 ```
 
-Local Only Commands
-Install
-Upgrade
+Local-only Commands:
 
-Global Only Commands
-createBackup
-restoreBackup
-Clean
-Start, stop, restart, and status
-Reconfigure 
-Both
-Preflight
-License
+- install
+- upgrade
 
-## Non-Root Install
+Global-only Commands:
 
-YBA Installer also supports a non-root install, where sudo access is not required for any step of the installation. Please note, this is not recommended for production use cases. To facilitate a non-root install, YBA Installer will not create any additional users or setup services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring yba-installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs will be used to start the services on bootup with basic management scripts used to restart the services after a crash.
+- createBackup
+- restoreBackup
+- clean
+- start, stop, restart, and status
+- reconfigure
+- Both
+- preflight
+- license
 
-To perform a non-root install, run any of the above commands without root access. It is not permitted to change between a root and non-root install, and yba-ctl will error if sudo is not used when operating in a root install.
+## Non-root installation
+
+YBA Installer also supports a non-root installation, where sudo access is not required for any step of the installation. Note that this is not recommended for production use cases.
+
+To facilitate a non-root install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
+
+To perform a non-root install, run any of the above commands without root access. You can't switch between a root and non-root install, and yba-ctl will return an error if sudo is not used when operating in a root install.
