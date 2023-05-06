@@ -24,6 +24,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
+#include "yb/util/subprocess.h"
 
 namespace yb {
 namespace pgwrapper {
@@ -238,6 +239,14 @@ bool HasTransactionError(const Status& status);
 bool IsRetryable(const Status& status);
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
+
+class PGConnPerf {
+ public:
+  explicit PGConnPerf(PGConn* conn);
+  ~PGConnPerf();
+ private:
+  Subprocess process_;
+};
 
 } // namespace pgwrapper
 } // namespace yb
