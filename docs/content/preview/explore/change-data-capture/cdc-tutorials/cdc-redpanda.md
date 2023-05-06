@@ -13,9 +13,7 @@ menu:
 type: docs
 ---
 
-[Redpanda](https://redpanda.com/) is an open-source distributed streaming platform designed to be fast, scalable, and efficient. It is built using modern technologies like Rust, and is designed to handle large volumes of data in real time. Redpanda is similar to other messaging systems like Apache Kafka, but with some key differences. For example, Redpanda provides better performance, lower latency, and improved resource utilization compared to Kafka
-
-The following are some of the key differences between Redpanda and Kafka:
+[Redpanda](https://redpanda.com/) is an open-source distributed streaming platform designed to be fast, scalable, and efficient. It is built using modern technologies like Rust, and is designed to handle large volumes of data in real time. Redpanda is similar to other messaging systems like Apache Kafka, but with some key differences, including the following:
 
 1. Performance: Redpanda is designed for high-performance and low-latency, with a focus on optimizing performance for modern hardware. Redpanda uses a zero-copy design, which eliminates the need to copy data between kernel and user space. This provides faster and more efficient data transfer.
 
@@ -77,27 +75,27 @@ Change the database hostname, database master addresses, database user, password
 curl -i -X  POST -H  "Accept:application/json" -H  "Content-Type:application/json" localhost:8083/connectors/ -d '{
   "name": "srcdb",
   "config": {
-  "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
-  "database.hostname":"10.9.205.161",
-  "database.port":"5433",
-  "database.master.addresses": "10.9.205.161:7100",
-  "database.user": "yugabyte",
-  "database.password": "xxxx",
-  "database.dbname" : "testcdc",
-  "database.server.name": "dbeserver5",
-  "table.include.list":"public.balaredpandatest",
-  "database.streamid":"d36ef18084ed4ad3989dfbb193dd2546",
-  "snapshot.mode":"initial",
-  "transforms": "unwrap",
-  "transforms.unwrap.type": "io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState",
-  "transforms.unwrap.drop.tombstones": "false",
-  "time.precision.mode": "connect",
-  "key.converter":"io.confluent.connect.avro.AvroConverter",
-  "key.converter.schema.registry.url":"http://localhost:18081",
-  "key.converter.enhanced.avro.schema.support":"true",
-  "value.converter":"io.confluent.connect.avro.AvroConverter",
-  "value.converter.schema.registry.url":"http://localhost:18081",
-  "value.converter.enhanced.avro.schema.support":"true"
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+    "database.hostname":"10.9.205.161",
+    "database.port":"5433",
+    "database.master.addresses": "10.9.205.161:7100",
+    "database.user": "yugabyte",
+    "database.password": "xxxx",
+    "database.dbname" : "testcdc",
+    "database.server.name": "dbeserver5",
+    "table.include.list":"public.balaredpandatest",
+    "database.streamid":"d36ef18084ed4ad3989dfbb193dd2546",
+    "snapshot.mode":"initial",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false",
+    "time.precision.mode": "connect",
+    "key.converter":"io.confluent.connect.avro.AvroConverter",
+    "key.converter.schema.registry.url":"http://localhost:18081",
+    "key.converter.enhanced.avro.schema.support":"true",
+    "value.converter":"io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url":"http://localhost:18081",
+    "value.converter.enhanced.avro.schema.support":"true"
   }
 }'
 ```
