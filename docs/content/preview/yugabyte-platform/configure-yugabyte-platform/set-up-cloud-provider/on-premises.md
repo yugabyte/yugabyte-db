@@ -71,25 +71,35 @@ A provider configuration describes your cloud environment (its service account, 
 
 ## Configure the on-premises provider
 
-To configure on-premises providers, navigate to **Configs > Infrastructure > On-Premises Datacenters**.
+Navigate to **Configs > Infrastructure > On-Premises Datacenters** to see a list of all currently configured on-premises providers.
 
-This lists all currently configured providers.
+### View and edit providers
 
-To view a provider, select it in the list to display the **Overview**. You can perform the following on a profile configuration:
+To view a provider, select it in the list to display the **Overview**.
 
-- To edit the configuration, select **Config Details**, make changes, and click **Apply Changes**. Note that, depending on whether the configuration has been used to create a universe, you can only edit a subset of options.
-- To view the universes created using the profile, select **Universes**.
-- To delete the configuration, click **Actions** and choose **Delete Configuration**. You can only delete configurations that are not in use by a universe.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. Refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
 
-To create an on-premises provider, click **Create Config** to open the **OnPrem Provider Configuration** page.
+To view the universes created using the provider, select **Universes**.
 
-### Provider settings
+To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
+
+### Create a provider
+
+To create an on-premises provider:
+
+1. Click **Create Config** to open the **OnPrem Provider Configuration** page.
+
+1. Enter the provider details. Refer to [Provider settings](#provider-settings).
+
+1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
+
+## Provider settings
+
+### Provider Name
 
 Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
 
-Provider settings are organized in the following sections.
-
-#### SSH Key Pairs
+### SSH Key Pairs
 
 In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
 
@@ -101,7 +111,7 @@ Use the **SSH Key** field to enter the full content of the private key available
 
 Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`.
 
-#### Advanced
+### Advanced
 
 Enable the **Manually Provision Nodes** field if you choose to manually set up your database nodes. Otherwise, YugabyteDB Anywhere will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
 
@@ -162,10 +172,10 @@ Note that if you provide a hostname, the universe might experience issues commun
 
 To provision your nodes manually, you have the following two options:
 
-1. If the SSH user you provided has sudo privileges but requires a password, you can [run the preprovisioning script](#running-the-preprovisioning-script).
-2. If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#setting-up-database-nodes-manually).
+1. If the SSH user you provided has sudo privileges but requires a password, you can [run the preprovisioning script](#run-the-preprovisioning-script).
+2. If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#set-up-database-nodes-manually).
 
-#### Running the preprovisioning script
+#### Run the preprovisioning script
 
 This step is only required if you set **Manually Provision Nodes** to true and the SSH user has sudo privileges which require a password; otherwise you skip this step.
 
@@ -199,7 +209,7 @@ Optionally, use the `--ask_password` flag if the sudo user requires password aut
 
 This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
 
-#### Setting up database nodes manually
+#### Set up database nodes manually
 
 This step is only required if you set **Manually Provision Nodes** to true and the SSH user does not have sudo privileges at all; otherwise you skip this step.
 

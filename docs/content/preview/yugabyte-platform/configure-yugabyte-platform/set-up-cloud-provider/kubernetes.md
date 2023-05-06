@@ -74,14 +74,14 @@ A provider configuration describes your cloud environment (its service account, 
 
 To deploy YugabyteDB universes on Kubernetes, you need to your Kubernetes provider credentials. YugabyteDB Anywhere uses those credentials to automatically provision and de-provision the pods that run YugabyteDB.
 
-Before you install YugabyteDB on a Kubernetes cluster, perform the following:
+Before you create a Kubernetes provider, perform the following:
 
 - Create a `yugabyte-platform-universe-management` service account.
 - Create a `kubeconfig` file of the service account you created to configure access to the Kubernetes cluster.
 
 This needs to be done for each Kubernetes cluster if you are doing a multi-cluster setup.
 
-If YugabyteDB Anywhere is deployed on Kubernetes, you can use the existing service account to discover details about the Kubernetes cluster and auto-fill the provider configuration. You can then modify these settings to further customize the provider. See [Configure Kubernetes](#configure-kubernetes).
+If YugabyteDB Anywhere is deployed on Kubernetes, you can use the existing service account to discover details about the Kubernetes cluster and auto-fill the provider configuration. You can then modify these settings to further customize the provider. See [Create a provider](#create-a-provider).
 
 ### Service account
 
