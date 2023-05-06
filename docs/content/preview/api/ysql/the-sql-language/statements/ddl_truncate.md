@@ -114,7 +114,7 @@ This is the result:
  frog      | frog-child-c
 ```
 
-The `\d children` metacommand shows that it has a foreign key constraint to the  `parents` table.  This makes it a (transitive) dependent object of that table:
+The `\d children` meta-command shows that it has a foreign key constraint to the  `parents` table.  This makes it a (transitive) dependent object of that table:
 
 ```output
 Indexes:

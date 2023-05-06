@@ -33,7 +33,7 @@ Normally in PostgreSQL, and therefore in YSQL, a function invocation must be wri
 
 - _current_date_, _current_time_, _current_timestamp_, _localtime_, and _localtimestamp_.
 
-Notice that the \\_df_ metacommand produces no output for each of these five functions.
+Notice that the \\_df_ meta-command produces no output for each of these five functions.
 
 Each of these is in the group [functions that return the current date-time moment](#functions-that-return-the-current-date-time-moment-current-date-time-moment). If you invoke one of these using empty trailing parentheses, then you get the generic _42601_ syntax error. Each of these five names is reserved in SQL. For example, if you try to create a table with a column whose name is one of these five (without trailing parentheses in this case, of course), then you get the same _42601_ error. Notice that within this set of five exceptional functions that must not be invoked with empty trailing parentheses, these four have a variant that has a single _precision_ parameter: _current_time(precision)_, _current_timestamp(precision)_, _localtime(precision)_, and _localtimestamp(precision)_. This specifies the precision of the seconds value. (This explains why _current_date_ has no _precision_ variant.)
 

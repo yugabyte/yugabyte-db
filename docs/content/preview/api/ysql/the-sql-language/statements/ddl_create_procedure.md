@@ -182,7 +182,7 @@ set search_path = pg_catalog, pg_temp
 language plpgsql;
 ```
 
-Yugabyte recommends that you avoid exploiting this freedom and choose a standard order where, especially, you write the body last.  (Try the \\_sf_ metacommand for a procedure that you created. It always shows the source text last, no matter what order your _create [or replace]_ used.) For example, it helps readability to specify the language immediately before the body. Following this practice will allow you to review, and discuss, your code in a natural way by distinguishing, informally, between the procedure _header_ (i.e. everything that comes before the body) and the _implementation_ (i.e. the body).
+Yugabyte recommends that you avoid exploiting this freedom and choose a standard order where, especially, you write the body last.  (Try the \\_sf_ meta-command for a procedure that you created. It always shows the source text last, no matter what order your _create [or replace]_ used.) For example, it helps readability to specify the language immediately before the body. Following this practice will allow you to review, and discuss, your code in a natural way by distinguishing, informally, between the procedure _header_ (i.e. everything that comes before the body) and the _implementation_ (i.e. the body).
 {{< /tip >}}
 
 

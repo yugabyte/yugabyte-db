@@ -57,7 +57,7 @@ It produces this result:
        3 | ant
 ```
 
-Notice that YSQL has named the `SELECT` list items _"column1"_ and _"column2_". The result is a so-called `SETOF`. It means a set of rows, just as is produced by a `SELECT` statement. (You'll see the term if you describe the `generate_series()` built-in table function with the `\df` metacommand.) To use the rows that the `VALUES` statement produces as the input for `array_agg()`, you need to use a named `type`, thus:
+Notice that YSQL has named the `SELECT` list items _"column1"_ and _"column2_". The result is a so-called `SETOF`. It means a set of rows, just as is produced by a `SELECT` statement. (You'll see the term if you describe the `generate_series()` built-in table function with the `\df` meta-command.) To use the rows that the `VALUES` statement produces as the input for `array_agg()`, you need to use a named `type`, thus:
 
 ```plpgsql
 create type rt as (f1 int, f2 text);
@@ -193,14 +193,14 @@ input value:       anyarray
 return value:      SETOF anyelement
 ```
 
-As the sketch at the start of this page indicated, the input to unnest is an array. To use what the code example in the account of array_agg() set in the `ysqlsh` variable _"result&#95;arr"_ in a SQL statement, you must quote it and typecast it to _"rt[]"_. This can be done with the \set metacommand, thus:
+As the sketch at the start of this page indicated, the input to unnest is an array. To use what the code example in the account of array_agg() set in the `ysqlsh` variable _"result&#95;arr"_ in a SQL statement, you must quote it and typecast it to _"rt[]"_. This can be done with the \set meta-command, thus:
 
 ```plpgsql
 \set unnest_arg '\'':result_arr'\'::rt[]'
 \echo :unnest_arg
 ```
 
-The `\set` metacommand uses the backslash character to escape the single quote character that it also uses to surround the string that it assigns to the target `ysqlsh` variable. The `\echo` metacommand shows this:
+The `\set` meta-command uses the backslash character to escape the single quote character that it also uses to surround the string that it assigns to the target `ysqlsh` variable. The `\echo` meta-command shows this:
 
 ```output
 '{"(1,dog)","(2,cat)","(3,ant)"}'::rt[]
@@ -287,7 +287,7 @@ from tab
 \echo :unnest_arg
 ```
 
-Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` metacommand acts as the terminator. This makes the `ysqlsh` output less noisy. This is the result:
+Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` meta-command acts as the terminator. This makes the `ysqlsh` output less noisy. This is the result:
 
 ```output
 '{{1,2,3},{4,5,6},{7,8,9}}'::int[]

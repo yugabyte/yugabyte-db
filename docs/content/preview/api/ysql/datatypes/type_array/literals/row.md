@@ -13,7 +13,7 @@ type: docs
 
 The word "row" has two different uses; but these uses are really different sides of the same coin. A row in a schema-level table is actually an occurrence of a _"row"_ type—in other words, a _"row"_ type value. In this case, the schema-level _"row"_ type is created automatically as a side effect of executing the `CREATE TABLE` statement. It has the same name as the table. (This is allowed because tables and types are in different namespaces.) Further, a column in a schema-level table can have a user-defined _"row"_ type as its data type, and in this case the _"row"_ type need not be partnered with a table.
 
-You might see the term _"record"_ when you use the `\df` metacommand to show the signature of a function. Briefly, it's an anonymous _"row"_ type. You produce a record instance when you use a literal that has the correct form of a _"row"_ type but when you omit the typecast operator. If you adhere to recommended practice, and always explicitly typecast such literals, then you needn't try to understand what a record is.
+You might see the term _"record"_ when you use the `\df` meta-command to show the signature of a function. Briefly, it's an anonymous _"row"_ type. You produce a record instance when you use a literal that has the correct form of a _"row"_ type but when you omit the typecast operator. If you adhere to recommended practice, and always explicitly typecast such literals, then you needn't try to understand what a record is.
 
 You can read more about these notions in the PostgreSQL documentation here:
 
@@ -75,9 +75,9 @@ select v1::text as text_typecast from t where k = 1
 ```
 The keyword `ROW` names the _"row"_ type constructor function. It is optional, but is used here for emphasis.
 
-The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest).
+The `\gset` meta-command was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest).
 
-Notice that, in this example, the `SELECT` statement is terminated by the `\gset` metacommand on the next line rather than by the usual semicolon. The `\gset` metacommand is silent. The `\echo` metacommand shows this:
+Notice that, in this example, the `SELECT` statement is terminated by the `\gset` meta-command on the next line rather than by the usual semicolon. The `\gset` meta-command is silent. The `\echo` meta-command shows this:
 
 ```
 (1,2,3)
@@ -92,12 +92,12 @@ You can see the general form already:
 
 The next section, [_"Row"_ type with `text` fields](./#row-type-with-text-fields), shows that more needs to be said. But the two rules that you have already noticed always hold.
 
-To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
+To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` meta-command:
 ```plpgsql
 \set canonical_literal '\'':result_text_typecast'\''::row_t
 \echo :canonical_literal
 ```
-. The `\echo` metacommand now shows this:
+. The `\echo` meta-command now shows this:
 ```
 '(1,2,3)'::row_t
 ```
@@ -133,7 +133,7 @@ select v1::text as text_typecast from t where k = 1
 ```
 Here, the `ROW` keyword in the _"row"_ type constructor function is omitted to emphasize its optional status.
 
-The `\echo` metacommand shows this:
+The `\echo` meta-command shows this:
 ```
 (a,',"a b","()",",","""","\\",)
 ```
@@ -155,12 +155,12 @@ In addition to the first two rules, you notice the following.
 
 There's another rule that the present example does not show. Though not every comma-separated value was surrounded by double quotes, it's _never harmful_ to do this. You can confirm this with your own test, Yugabyte recommends that, for consistency, you always surround every `text` value within the parentheses of a _"row"_ type literal with double quotes.
 
-To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this, as you did for the `int` example above, with the `\set` metacommand. But you must use dollar quotes because the literal itself has an interior single quote.
+To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this, as you did for the `int` example above, with the `\set` meta-command. But you must use dollar quotes because the literal itself has an interior single quote.
 ```plpgsql
 \set canonical_literal '$$':result_text_typecast'$$'::row_t
 \echo :canonical_literal
 ```
-The `\echo` metacommand now shows this:
+The `\echo` meta-command now shows this:
 ```
 $$(a,',"a b","()",",","""","\\",)$$::row_t
 ```
@@ -204,17 +204,17 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-The `\echo` metacommand shows this:
+The `\echo` meta-command shows this:
 
 ```
 ("2019-01-27 11:48:33","2020-03-30 14:19:21")
 ```
-To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
+To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` meta-command:
 ```plpgsql
 \set canonical_literal '\'':result_text_typecast'\''::row_t
 \echo :canonical_literal
 ```
-. The `\echo` metacommand now shows this:
+. The `\echo` meta-command now shows this:
 ```
 '("2019-01-27 11:48:33","2020-03-30 14:19:21")'::row_t
 ```
@@ -243,16 +243,16 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-The `\echo` metacommand shows this:
+The `\echo` meta-command shows this:
 ```
  (t,f,)
 ```
-To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
+To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` meta-command:
 ```plpgsql
 \set canonical_literal '\'':result_text_typecast'\''::row_t
 \echo :canonical_literal
 ```
-. The `\echo` metacommand now shows this:
+. The `\echo` meta-command now shows this:
 ```
 '(t,f,)'::row_t
 ```

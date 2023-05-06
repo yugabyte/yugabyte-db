@@ -125,7 +125,7 @@ The _create_ fails with the _42P13_ error thus:
 return type mismatch in function declared to return integer
 ```
 
-and the "detail" says _Actual return type is bigint_. The _\df count_ metacommand shows that its return data type is indeed _bigint_. So you must either create the function with _returns bigint_ or use a typecast thus:
+and the "detail" says _Actual return type is bigint_. The \\_df count_ meta-command shows that its return data type is indeed _bigint_. So you must either create the function with _returns bigint_ or use a typecast thus:
 
 ```plpgsql
 drop function if exists s.f() cascade;
