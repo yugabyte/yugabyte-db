@@ -111,38 +111,39 @@ Concurrent operations in a cluster can lead to transactional conflicts, catalog 
 
 ## Upgrades and xCluster
 
-When xCluster replication is configured, replication needs to be temporarily paused when upgrading any of the clusters involved in xCluster replication. Use the following procedure to upgrade clusters involved in xCluster replication:
+When xCluster replication is configured, replication needs to be temporarily paused when upgrading any of the clusters involved in xCluster replication.
+
+Use the following procedure to upgrade clusters involved in xCluster replication:
 
 1. Pause xCluster replication on the clusters involved in replication. If the replication setup is bi-directional, ensure that replication is paused in both directions.
 
-```sh
-yb-admin 
--master_addresses <master_ips> 
--certs_dir_name <cert_dir> \
-set_universe_replication_enabled <replication_group_name> 0
-```
+    ```sh
+    yb-admin 
+    -master_addresses <master_ips> 
+    -certs_dir_name <cert_dir> \
+    set_universe_replication_enabled <replication_group_name> 0
+    ```
 
-Expect to see the following output:
+    Expect to see the following output:
 
-```output
-Replication disabled successfully
-```
+    ```output
+    Replication disabled successfully
+    ```
 
 2. Proceed to perform upgrade of all the clusters involved.
 3. Resume replication on all the clusters involved using yb-admin.
 
-```sh
-yb-admin 
--master_addresses <master_ips> 
--certs_dir_name <cert_dir> \
-set_universe_replication_enabled <replication_group_name> 1
-```
+    ```sh
+    yb-admin 
+    -master_addresses <master_ips> 
+    -certs_dir_name <cert_dir> \
+    set_universe_replication_enabled <replication_group_name> 1
+    ```
 
-Expect to see the following output:
+    Expect to see the following output:
 
-```output
-Replication enabled successfully
-```
-
+    ```output
+    Replication enabled successfully
+    ```
 
 Downgrades are not currently supported. This is tracked in GitHub issue [#13686](https://github.com/yugabyte/yugabyte-db/issues/13686).
