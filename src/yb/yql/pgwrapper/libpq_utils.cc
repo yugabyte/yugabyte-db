@@ -720,6 +720,26 @@ Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
   return connection;
 }
 
+namespace {
+
+std::vector<std::string> PerfArguments(int pid) {
+  return {"perf", "record", "-g", Format("-p$0", pid), Format("-o/tmp/perf.$0.data", pid)};
+}
+
+}
+
+PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
+    : process_("perf",
+               PerfArguments(CHECK_RESULT(conn->FetchValue<PGUint32>("SELECT pg_backend_pid()")))) {
+
+  CHECK_OK(process_.Start());
+}
+
+PGConnPerf::~PGConnPerf() {
+  CHECK_OK(process_.Kill(SIGINT));
+  LOG(INFO) << "Perf exec code: " << CHECK_RESULT(process_.Wait());
+}
+
 template GetValueResult<int16_t> GetValue<int16_t>(PGresult*, int, int);
 template GetValueResult<int32_t> GetValue<int32_t>(PGresult*, int, int);
 template GetValueResult<int64_t> GetValue<int64_t>(PGresult*, int, int);

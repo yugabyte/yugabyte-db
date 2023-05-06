@@ -45,6 +45,7 @@
 
 #include <assert.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/port.h"
@@ -421,14 +422,19 @@ struct EndianHelper<1, Endian> {
 } // namespace internal
 
 template <class T, class Endian>
+auto LoadRaw(const void* p) {
+  return internal::EndianHelper<sizeof(T), Endian>::Load(p);
+}
+
+template <class T, class Endian>
 T Load(const void* p) {
-  return static_cast<T>(internal::EndianHelper<sizeof(T), Endian>::Load(p));
+  return bit_cast<T>(LoadRaw<T, Endian>(p));
 }
 
 template <class T, class Endian>
 void Store(void *p, T v) {
   typedef typename std::make_unsigned<T>::type UnsignedT;
-  internal::EndianHelper<sizeof(T), Endian>::Store(p, static_cast<UnsignedT>(v));
+  internal::EndianHelper<sizeof(T), Endian>::Store(p, bit_cast<UnsignedT>(v));
 }
 
 } // namespace yb

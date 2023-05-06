@@ -49,7 +49,7 @@ class PgDml : public PgStatement {
   // If any serialized Postgres expressions appended to other lists require explicit addition
   // of their column references. Those column references should have Postgres type information.
   // Other PgExpr kinds are automatically scanned and their column references are appended.
-  Status AppendColumnRef(PgExpr *colref, bool is_primary);
+  Status AppendColumnRef(PgColumnRef *colref, bool is_primary);
 
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
@@ -92,7 +92,7 @@ class PgDml : public PgStatement {
   // key, or neither.
   Result<YBCPgColumnInfo> GetColumnInfo(int attr_num) const;
 
-  bool has_aggregate_targets();
+  bool has_aggregate_targets() const;
 
   bool has_doc_op() const {
     return doc_op_ != nullptr;
@@ -194,12 +194,8 @@ class PgDml : public PgStatement {
   // - "target_desc_" is the table descriptor where data will be read from.
   // - "targets_" are either selected or returned expressions by DML statements.
   PgTable target_;
-  std::vector<PgExpr*> targets_;
-
-  // Qual is a where clause condition pushed to the DocDB to filter scanned rows
-  // Qual supports PgExprs holding serialized Postgres expressions, and require the column
-  // references used in these Quals to be explicitly added with AppendColumnRef()
-  std::vector<PgExpr*> quals_;
+  std::vector<PgFetchedTarget*> targets_;
+  bool has_aggregate_targets_ = false;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the
   // the DML statement being executed.

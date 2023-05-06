@@ -28,7 +28,9 @@ class PgDocData : public PgWire {
  public:
   static void LoadCache(const Slice& cache, int64_t *total_row_count, Slice *cursor);
 
-  static PgWireDataHeader ReadDataHeader(Slice *cursor);
+  static bool ReadHeaderIsNull(Slice *cursor) {
+    return cursor->consume_byte() != 0;
+  }
 };
 
 }  // namespace pggate
