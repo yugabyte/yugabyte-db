@@ -32,43 +32,9 @@ The following steps are necessary to set up YugabyteDB for use with the Debezium
 
    In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
+## Serialization {.tabset}
 
-### Tablet splitting
-
-YugabyteDB also supports [tablet splitting](../../../architecture/docdb-sharding/tablet-splitting). While streaming changes, if the YugabyteDB source connector detects that a tablet has been split, it gracefully handles the splitting and starts polling for the children tablets.
-
-### Dynamic addition of new tables
-
-If a new table is added to a namespace on which there is an active stream ID, then it will be added to the stream. The YugabyteDB source connector launches a poller thread at startup which continuously checks if there is a new table added to the stream ID it is configured to poll for, after the connector detects that there is a new table, it signals the Kafka Connect runtime to restart the connector so that the newly added table can be polled. The behaviour of this poller thread can be governed by the configuration properties `auto.add.new.tables` and `new.table.poll.interval.ms`, refer to [configuration properties](#connector-configuration-properties) for more details.
-
-### Schema evolution
-
-The YugabyteDB source connector caches schema at the tablet level, this means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, CDC service emits a record with the new schema for all the tablets. The YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
-
-{{< warning title="No backfill support" >}}
-
-If you alter the schema of the source table to add a default value for an existing column, the connector will NOT emit any event for the schema change. The default value will only be published in the records created after schema change is made. In such cases, it is recommended to alter the schema in your sinks to add the default value there as well.
-
-{{< /warning >}}
-
-## Avro serialization
-
-## Protobuf serialization
-To use the [protobuf](http://protobuf.dev) format for the serialization/de-serialization of the kafka messages, you can use the [Protobuf Converter](https://www.confluent.io/hub/confluentinc/kafka-connect-protobuf-converter). After downloading and including the required `JAR` files in the Kafka-Connect enviornment, you can directly configure the CDC source and sink connectors to use this converter.
-
-```json
-{
-  ...,
-  config: {
-    ...,
-     "key.converter": "io.confluent.connect.protobuf.ProtobufConverter",
-     "value.converter": "io.confluent.connect.protobuf.ProtobufConverter"
-  }
-}
-```
-
-### AVRO serialization
-
+### Avro
 The YugabyteDB source connector also supports AVRO serialization with schema registry. To use AVRO serialization, simply add the following configuration to your connector:
 
 ```json
@@ -81,6 +47,23 @@ The YugabyteDB source connector also supports AVRO serialization with schema reg
   ...
 }
 ```
+### JSON
+
+### Protobuf
+To use the [protobuf](http://protobuf.dev) format for the serialization/de-serialization of the kafka messages, you can use the [Protobuf Converter](https://www.confluent.io/hub/confluentinc/kafka-connect-protobuf-converter). After downloading and including the required `JAR` files in the Kafka-Connect enviornment, you can directly configure the CDC source and sink connectors to use this converter.
+
+```json
+{
+  ...,
+  config: {
+    ...,
+     "key.converter": "io.confluent.connect.protobuf.ProtobufConverter",
+     "value.converter": "io.confluent.connect.protobuf.ProtobufConverter"
+  }
+}
+```
+## {-}
+
 ## Before image
 
 [Before image](../#before-image) refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when it will be configured using a stream ID enabled with before image. For more information about how to create the stream ID for a before image, see [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
@@ -173,45 +156,28 @@ delete from employee where employee_id=1001;
 ```
 
 CDC records for update and delete statements without enabling before image would be 
-| CDC record for UPDATE | CDC record for DELETE |
-| ----------- | ----------- |
-| ```sh
-{
-  "before": null,
-  "after": {
-    "public.employee.Value":{
-      "employee_id": {
-        "value": 1001
-      },
-      "employee_name": {
-        "employee_name": {
-          "value": {
-            "string": "Bob"
-          }
-        }
-      }
-    }
-  },
-  "op": "u"
-}
-``` | ```sh
-{
-  "before": {
-    "public.employee.Value":{
-      "employee_id": {
-        "value": 1001
-      },
-      "employee_name": null
-    }
-  },
-  "after": null,
-  "op": "d"
-}
-``` |
-
-
-
-
+| CDC record for UPDATE           | CDC record for DELETE         |
+| -----------------------------   | ----------------------------- |
+| `json`                          | `json`                          |
+|`{   `                           |`{`                              |
+| ` "before": null,     `         |  `"before": {`                  |
+|  `"after": {   `                |   ` "public.employee.Value":{.` |
+|   ` "public.employee.Value":{.` |     ` "employee_id": { `        |
+|     ` "employee_id": {  `       |       ` "value": 1001  `        |
+|       ` "value": 1001   `       |     ` },  `                     |
+|     ` },     `                  |     ` "employee_name": null `   |
+|     ` "employee_name": {   `    |   ` }   `                       |
+|       ` "employee_name": {.  `  |  `},  `                         |
+|         ` "value": {  `         |  `"after": null, `              |
+|           ` "string": "Bob". `  |  `"op": "d"   `                 |
+|         ` }   `                 |`}  `                            |
+|       ` }   `                   |                          |
+|     ` }   `                     |                               |
+|   ` }  `                        |                               |
+|  `}, `                          |                               |
+|  `"op": "u"  `                  |                               |
+|`}  `                            |                               |
+|                                 |                               |
 
 With before image enabled, the update and delete records look like
 
@@ -272,9 +238,15 @@ CDC record for DELETE:
 
 ## Schema evolution
 
-Table schema is needed for decoding and processing the changes and populating CDC records. Thus, older schemas are retained if CDC streams are lagging. Also, older schemas not needed for any of the existing active CDC streams are garbage collected. In addition, if before image is enabled, the schema needed for populating before image as well is retained. 
+Table schema is needed for decoding and processing the changes and populating CDC records. Thus, older schemas are retained if CDC streams are lagging. Also, older schemas not needed for any of the existing active CDC streams are garbage collected. In addition, if before image is enabled, the schema needed for populating before image as well is retained. The YugabyteDB source connector caches schema at the tablet level, this means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, CDC service emits a record with the new schema for all the tablets. The YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
 
-For example, let us consider the following employee table (with schema version 0 at the time of table creation) into which a row is inserted, followed by a DDL resulting in schema version 1 and an update of the row inserted, and subsequently another DDL incrementing the schema version to 2. If a CDC stream created for employee table lags and is in the process of streaming the update, corresponding schema version 1 is used for populating the update record. 
+{{< warning title="No backfill support" >}}
+
+If you alter the schema of the source table to add a default value for an existing column, the connector will NOT emit any event for the schema change. The default value will only be published in the records created after schema change is made. In such cases, it is recommended to alter the schema in your sinks to add the default value there as well.
+
+{{< /warning >}}
+
+Let us consider the following employee table (with schema version 0 at the time of table creation) into which a row is inserted, followed by a DDL resulting in schema version 1 and an update of the row inserted, and subsequently another DDL incrementing the schema version to 2. If a CDC stream created for employee table lags and is in the process of streaming the update, corresponding schema version 1 is used for populating the update record. 
 
 ```sh
 create table employee(employee_id int primary key, employee_name varchar); // schema version 0
