@@ -13,44 +13,24 @@ menu:
 type: docs
 ---
 
-## Release series 1.9.5.y
+In order to stream data change events from YugabyteDB databases, you need to use Debezium YugabyteDB connector. To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. You can download the connector from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases). The connector supports Kafka Connect version 2.x and above, and for YugabyteDB, it supports version 2.14 and above. For more connector configuration details and complete steps, refer to the Debezium connector doc
 
-### Tested versions
+## Setting up YugabyteDB for CDC
 
-| Software | Versions |
-| :--- | :--- |
-| **Java** | 11+ |
-| **Kafka Connect** | 2.x, 3.x |
-| **YugabyteDB** | 2.14, 2.16, 2.17 |
-
-### Release resources
-
-* [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
-* [Maven artifacts](https://s3.console.aws.amazon.com/s3/buckets/repository.yugabyte.com?region=us-east-1&prefix=maven/release/io/debezium/debezium-connector-yugabytedb/&showversions=false)
-
-### Reporting issues
-
-To report issues and file tickets, visit our [GitHub](https://github.com/yugabyte/yugabyte-db/issues/new/choose) and add the label `area/cdcsdk`.
-
-## Setup
-
-To use the YugabyteDB Debezium connector, do the following. For complete steps, follow the guide to [running the Debezium connector for YugabyteDB](../../../integrations/cdc/debezium/).
-
+The following steps are necessary to set up YugabyteDB for use with the Debezium YugabyteDB connector. 
 1. Create a DB stream ID.
 
-   Before you use the YugabyteDB connector to monitor the changes committed on a YugabyteDB server, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool.
+   Before you use the YugabyteDB connector to retriev data change events from YugabyteDB database, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CLI command.
 
 1. Make sure the master ports are open.
 
-   The YugabyteDB connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
+   The connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
 
 1. Monitor available disk space.
 
-   The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
+   The change records for CDC are read from the WAL. YugabyteDB CDC maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
    In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
-
-Read on to learn how the connector works. Or, skip to [how to deploy the connector](#deployment).
 
 
 ### Tablet splitting
@@ -87,6 +67,90 @@ To use the [protobuf](http://protobuf.dev) format for the serialization/de-seria
 }
 ```
 
+### AVRO serialization
+
+The YugabyteDB source connector also supports AVRO serialization with schema registry. To use AVRO serialization, simply add the following configuration to your connector:
+
+```json
+{
+  ...
+  "key.converter":"io.confluent.connect.avro.AvroConverter",
+  "key.converter.schema.registry.url":"http://host-url-for-schema-registry:8081",
+  "value.converter":"io.confluent.connect.avro.AvroConverter",
+  "value.converter.schema.registry.url":"http://host-url-for-schema-registry:8081"
+  ...
+}
+```
+## Before image
+
+[Before image](../#before-image) refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when it will be configured using a stream ID enabled with before image. For more information about how to create the stream ID for a before image, see [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
+
+{{< tip title="Use transformers" >}}
+
+Add a transformer in the source connector while using with before image; you can add the following property directly to your configuration:
+
+```properties
+...
+"transforms":"unwrap,extract",
+"transforms.unwrap.type":"io.debezium.connector.yugabytedb.transforms.PGCompatible",
+"transforms.unwrap.drop.tombstones":"false",
+"transforms.extract.type":"io.debezium.transforms.ExtractNewRecordState",
+"transforms.extract.drop.tombstones":"false",
+...
+```
+
+{{< /tip >}}
+
+After you've enabled before image and are using the suggested transformers, the effect of an update statement with the record structure is as follows:
+
+```sql
+UPDATE customers SET email = 'service@example.com' WHERE id = 1;
+```
+
+```output.json {hl_lines=[4,9,14,28]}
+{
+  "schema": {...},
+  "payload": {
+    "before": { --> 1
+      "id": 1,
+      "name": "Vaibhav Kushwaha",
+      "email": "vaibhav@example.com"
+    }
+    "after": { --> 2
+      "id": 1,
+      "name": "Vaibhav Kushwaha",
+      "email": "service@example.com"
+    },
+    "source": { --> 3
+      "version": "1.9.5.y.11",
+      "connector": "yugabytedb",
+      "name": "dbserver1",
+      "ts_ms": -8881476960074,
+      "snapshot": "false",
+      "db": "yugabyte",
+      "sequence": "[null,\"1:5::0:0\"]",
+      "schema": "public",
+      "table": "customers",
+      "txId": "",
+      "lsn": "1:5::0:0",
+      "xmin": null
+    },
+    "op": "u", --> 4
+    "ts_ms": 1646149134341,
+    "transaction": null
+  }
+}
+```
+
+The highlighted fields in the update event are:
+
+| Item | Field name | Description |
+| :--- | :--------- | :---------- |
+| 1 | before | The value of the row before the update operation. |
+| 2 | after | Specifies the state of the row after the change event occurred. In this example, the value of `email` has changed to `service@example.com`. |
+| 3 | source | Mandatory field that describes the source metadata for the event. This has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
+| 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
+
 ## Before image
 
 Before image refers to the state of a row before the change event occurred. It is populated for UPDATE and DELETE events. For INSERT events, before image doesn't make sense as the change record itself is in the context of new row insertion. 
@@ -109,8 +173,9 @@ delete from employee where employee_id=1001;
 ```
 
 CDC records for update and delete statements without enabling before image would be 
-```sh
-CDC record for UPDATE:
+| CDC record for UPDATE | CDC record for DELETE |
+| ----------- | ----------- |
+| ```sh
 {
   "before": null,
   "after": {
@@ -129,8 +194,7 @@ CDC record for UPDATE:
   },
   "op": "u"
 }
-
-CDC record for DELETE:
+``` | ```sh
 {
   "before": {
     "public.employee.Value":{
@@ -143,7 +207,11 @@ CDC record for DELETE:
   "after": null,
   "op": "d"
 }
-```
+``` |
+
+
+
+
 
 With before image enabled, the update and delete records look like
 
