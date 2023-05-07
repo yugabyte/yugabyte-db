@@ -28,7 +28,6 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "commands/cluster.h"
-#include "commands/dbcommands.h"
 #include "commands/matview.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
@@ -48,8 +47,10 @@
 #include "utils/syscache.h"
 
 /* YB includes. */
+#include "commands/dbcommands.h"
 #include "commands/ybccmds.h"
 #include "executor/ybcModifyTable.h"
+#include "pg_yb_utils.h"
 
 typedef struct
 {

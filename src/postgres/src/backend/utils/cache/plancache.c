@@ -76,6 +76,8 @@
 #include "utils/syscache.h"
 #include "optimizer/ybcplan.h"
 
+/* Yugabyte includes */
+#include "pg_yb_utils.h"
 
 /*
  * We must skip "overhead" operations that involve database access when the

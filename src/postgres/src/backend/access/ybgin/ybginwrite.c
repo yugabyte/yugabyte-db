@@ -34,6 +34,7 @@
 #include "executor/ybcModifyTable.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
+#include "pg_yb_utils.h"
 #include "storage/off.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"

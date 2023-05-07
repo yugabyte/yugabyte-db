@@ -122,8 +122,6 @@ enum SysCacheIdentifier
 #define SysCacheSize (YBTABLEGROUPOID + 1)
 };
 
-extern Bitmapset *YBSysTablePrimaryKey(Oid relid);
-
 /* Used in IsYugaByteEnabled() mode only */
 extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
 extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);

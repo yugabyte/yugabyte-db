@@ -63,11 +63,12 @@ if(IS_GCC)
 endif()
 
 if(IS_CLANG)
-  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND NOT IS_APPLE_CLANG)
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "14.0.0")
     add_pg_c_cxx_flags(-Wno-error=unused-but-set-variable)
   endif()
 
-  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "15.0.0")
+  if(("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "15.0.0") OR
+     (IS_APPLE_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "14.0.3"))
     add_pg_c_cxx_flags(-Wno-error=deprecated-non-prototype)
   endif()
 endif()
@@ -102,6 +103,22 @@ set(POSTGRES_EXTRA_PREPROCESSOR_FLAGS "")
 if(APPLE AND NOT "${MACOS_SDK_INCLUDE_DIR}" STREQUAL "")
   string(APPEND POSTGRES_EXTRA_PREPROCESSOR_FLAGS
          " -isystem ${MACOS_SDK_INCLUDE_DIR}")
+endif()
+
+if(NOT "$ENV{YB_VALGRIND_PATH}" STREQUAL "")
+
+  string(APPEND POSTGRES_EXTRA_PREPROCESSOR_FLAGS " -DUSE_VALGRIND")
+
+  find_path(VALGRIND_INCLUDE_PATH "valgrind/valgrind.h"
+            "/usr/include"
+            "/usr/local/include"
+            $ENV{CPATH})
+
+  if (${VALGRIND_INCLUDE_PATH} STREQUAL "VALGRIND_INCLUDE_PATH-NOTFOUND")
+    message(FATAL_ERROR "Compiling with Valgrind support, but could not find Valgrind's header"
+      " files. If you have Valgrind installed in an atypical location, add the include directory"
+      " to CPATH and retry.")
+  endif()
 endif()
 
 set(PG_INCLUDE_DIRS "${YB_PREFIX_COMMON}/include")
@@ -200,4 +217,4 @@ add_dependencies(postgres configure_postgres)
 # ------------------------------------------------------------------------------------------------
 
 # Libraries that we link into the postgres binary.
-add_dependencies(postgres yb_pggate server_process)
+add_dependencies(postgres yb_pggate server_process yb_pggate_webserver)

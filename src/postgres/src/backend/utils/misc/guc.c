@@ -4108,6 +4108,22 @@ static struct config_int ConfigureNamesInt[] =
 	 * - Please make appropriate modification.
 	 */
 	{
+		{"yb_wait_for_backends_catalog_version_timeout", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Timeout in milliseconds to wait for backends to reach"
+						 " desired catalog versions."),
+			gettext_noop("The actual time spent may be longer than that by as"
+						 " much as master flag"
+						 " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms."
+						 " Setting to zero or less results in no timeout."
+						 " Currently used by concurrent CREATE INDEX."),
+			GUC_UNIT_MS
+		},
+		&yb_wait_for_backends_catalog_version_timeout,
+		5 * 60 * 1000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_planner_custom_plan_threshold", PGC_USERSET, QUERY_TUNING,
 			gettext_noop("The number of times to force custom plan generation "
 						 "for prepared statements before considering a "
@@ -4119,6 +4135,26 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 #endif
+
+	{
+		{"yb_fetch_row_limit", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Maximum number of rows to fetch per scan. 0 = No limit"),
+			NULL
+		},
+		&yb_fetch_row_limit,
+		1024, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_fetch_size_limit", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Maximum size of a fetch response. 0 = No limit"),
+			NULL, GUC_UNIT_KB
+		},
+		&yb_fetch_size_limit,
+		0, 0, MAX_KILOBYTES,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -6530,6 +6566,15 @@ InitializeGUCOptionsFromEnvironment(void)
 	env = getenv("PGCLIENTENCODING");
 	if (env != NULL)
 		SetConfigOption("client_encoding", env, PGC_POSTMASTER, PGC_S_ENV_VAR);
+
+	/*
+	* YB: For backwards compatibility, set the value of yb_fetch_row_limit
+	* to the value of ysql_prefetch_limit (which is deprecated).
+	*/
+	env = getenv("FLAGS_ysql_prefetch_limit");
+	if (env != NULL)
+		SetConfigOption("yb_fetch_row_limit", env,
+				PGC_POSTMASTER, PGC_S_ENV_VAR);
 
 	/*
 	 * rlimit isn't exactly an "environment variable", but it behaves about

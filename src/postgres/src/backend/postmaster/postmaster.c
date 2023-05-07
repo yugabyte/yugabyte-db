@@ -197,7 +197,6 @@ typedef struct bkend
 } Backend;
 
 static dlist_head BackendList = DLIST_STATIC_INIT(BackendList);
-int too_many_conn = 0;
 
 #ifdef EXEC_BACKEND
 static Backend *ShmemBackendArray;
@@ -2516,7 +2515,7 @@ retry1:
 			break;
 		case CAC_TOOMANY:
 			/* increment rejection counter */
-			too_many_conn++;
+			(*yb_too_many_conn)++;
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 					 errmsg("sorry, too many clients already")));

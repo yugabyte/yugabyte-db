@@ -1,9 +1,3 @@
-CREATE INDEX onek_two_idx ON onek USING lsm(two);
-DROP INDEX onek_two_idx;
-DROP INDEX onek_two_idx;
-ERROR:  index "onek_two_idx" does not exist
-DROP INDEX IF EXISTS onek_two_idx;
-NOTICE:  index "onek_two_idx" does not exist, skipping
 --
 -- Create index on existing table with data
 --

@@ -34,6 +34,7 @@
 
 /* YB includes */
 #include "commands/progress.h"
+#include "pg_yb_utils.h"
 
 #define UINT32_ACCESS_ONCE(var)		 ((uint32)(*((volatile uint32 *)&(var))))
 
@@ -545,14 +546,15 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 
 		/*
 		 * Fill in tuples_done for concurrent create indexes on YB relations
-		 * that are in the backfilling phase.
+		 * that are in the backfilling phase. Note: This block will not be
+		 * executed for indexes on non-YB relations (temporary relations)
+		 * because they are always built non-concurrently.
 		 */
 		if (IsYugaByteEnabled() && cmdtype == PROGRESS_COMMAND_CREATE_INDEX &&
 			(beentry->st_progress_param[PROGRESS_CREATEIDX_COMMAND]
 			 == PROGRESS_CREATEIDX_COMMAND_CREATE_CONCURRENTLY) &&
 			(beentry->st_progress_param[PROGRESS_CREATEIDX_PHASE]
 			 == YB_PROGRESS_CREATEIDX_BACKFILLING) &&
-			IsYBRelationById(beentry->st_progress_command_target) &&
 			index_progress_iterator)
 		{
 			/*
@@ -596,14 +598,16 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 				 * In YB, we only use the command, index_relid, phase,
 				 * tuples_total, tuples_done, partitions_total, partitions_done
 				 * columns for YB indexes. For temp indexes, tuples_total and
-				 * tuples_done aren't computed so we set those to null too.
+				 * tuples_done aren't computed (the beentry progress params
+				 * are set to an invalid value (-1)) so we set those to null
+				 * too.
 				 */
 				if (i == PROGRESS_CREATEIDX_COMMAND ||
 					i == PROGRESS_CREATEIDX_INDEX_OID ||
 					i == PROGRESS_CREATEIDX_PHASE ||
 					i == PROGRESS_CREATEIDX_PARTITIONS_TOTAL ||
 					i == PROGRESS_CREATEIDX_PARTITIONS_DONE ||
-					(IsYBRelationById(beentry->st_progress_command_target) &&
+					(beentry->st_progress_param[i] != -1 &&
 					 (i == PROGRESS_CREATEIDX_TUPLES_TOTAL ||
 					  i == PROGRESS_CREATEIDX_TUPLES_DONE)))
 					continue;
@@ -2658,14 +2662,15 @@ yb_pg_stat_retrieve_concurrent_index_progress()
 
 		/*
 		 * Filter out commands besides concurrent create indexes on YB
-		 * relations that are in the backfilling phase.
+		 * relations that are in the backfilling phase.  Note: This block will
+		 * not be executed for indexes on non-YB relations (temporary
+		 * relations) because they are always built non-concurrently.
 		 */
 		if (beentry->st_progress_command != PROGRESS_COMMAND_CREATE_INDEX ||
 			(beentry->st_progress_param[PROGRESS_CREATEIDX_COMMAND]
 			 != PROGRESS_CREATEIDX_COMMAND_CREATE_CONCURRENTLY) ||
 			(beentry->st_progress_param[PROGRESS_CREATEIDX_PHASE]
-			 < YB_PROGRESS_CREATEIDX_BACKFILLING) ||
-			!IsYBRelationById(beentry->st_progress_command_target))
+			 < YB_PROGRESS_CREATEIDX_BACKFILLING))
 			continue;
 
 		database_oids[num_indexes] = beentry->st_databaseid;

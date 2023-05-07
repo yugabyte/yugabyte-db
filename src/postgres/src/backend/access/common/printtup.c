@@ -23,6 +23,9 @@
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
 
+/* YB includes. */
+#include "common/pg_yb_common.h"
+
 
 static void printtup_startup(DestReceiver *self, int operation,
 							 TupleDesc typeinfo);

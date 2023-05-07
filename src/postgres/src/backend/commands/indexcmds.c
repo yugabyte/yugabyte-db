@@ -15,6 +15,8 @@
 
 #include "postgres.h"
 
+#include <inttypes.h>
+
 #include "access/amapi.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
@@ -621,7 +623,7 @@ DefineIndex(Oid relationId,
 		pgstat_progress_start_command(PROGRESS_COMMAND_CREATE_INDEX,
 									  relationId);
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_COMMAND,
-									 concurrent ?
+									 concurrent && IsYBRelationById(relationId) ?
 									 PROGRESS_CREATEIDX_COMMAND_CREATE_CONCURRENTLY :
 									 PROGRESS_CREATEIDX_COMMAND_CREATE);
 	}
@@ -670,11 +672,22 @@ DefineIndex(Oid relationId,
 			PROGRESS_CREATEIDX_TUPLES_TOTAL,
 			PROGRESS_CREATEIDX_TUPLES_DONE,
 		};
-		const int64	values[] = {
-			YB_PROGRESS_CREATEIDX_INITIALIZING,
-			rel->rd_rel->reltuples,
-			0
-		};
+		int64	values[3];
+		values[0] = YB_PROGRESS_CREATEIDX_INITIALIZING;
+		if (IsYBRelation(rel))
+		{
+			values[1] = rel->rd_rel->reltuples;
+			values[2] = 0;
+		}
+		else
+		{
+			/*
+			 * For temp tables, we set tuples_total and tuples_done to an
+			 * invalid value (-1) because we do not compute them.
+			 */
+			values[1] = -1;
+			values[2] = -1;
+		}
 		pgstat_progress_update_multi_param(3, cols, values);
 	}
 #endif
@@ -1564,6 +1577,10 @@ DefineIndex(Oid relationId,
 				}
 
 				childidxs = RelationGetIndexList(childrel);
+
+				/* YB_TODO "convert_tuples_by_name_map" is no longer called here.
+				 * Need to pass `false yb_ignore_type_mismatch` differently.
+				 */
 				attmap =
 					build_attrmap_by_name(RelationGetDescr(childrel),
 										  parentDesc);
@@ -4828,3 +4845,68 @@ set_indexsafe_procflags(void)
 	ProcGlobal->statusFlags[MyProc->pgxactoff] = MyProc->statusFlags;
 	LWLockRelease(ProcArrayLock);
 }
+
+#ifdef YB_TODO
+/* YB_TODO(neil) Do we still needs this function */
+static void
+YbWaitForBackendsCatalogVersion()
+{
+	if (yb_disable_wait_for_backends_catalog_version)
+		return;
+
+	int num_lagging_backends = -1;
+	int retries_left = 10;
+	const TimestampTz start = GetCurrentTimestamp();
+	while (num_lagging_backends != 0)
+	{
+		if (yb_wait_for_backends_catalog_version_timeout > 0 &&
+			TimestampDifferenceExceeds(start,
+									   GetCurrentTimestamp(),
+									   yb_wait_for_backends_catalog_version_timeout))
+			ereport(ERROR,
+					(errmsg("timed out waiting for postgres backends to catch"
+							" up"),
+					 errdetail("%d backends on database %u are still behind"
+							   " catalog version %" PRIu64 ".",
+							   num_lagging_backends,
+							   MyDatabaseId,
+							   YbGetCatalogCacheVersion()),
+					 errhint("Run the following query on all tservers to find"
+							 " the lagging backends: SELECT * FROM"
+							 " pg_stat_activity WHERE catalog_version < %"
+							 PRIu64 " AND datid = %u;",
+							 YbGetCatalogCacheVersion(),
+							 MyDatabaseId)));
+
+		YBCStatus s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
+														 YbGetCatalogCacheVersion(),
+														 &num_lagging_backends);
+
+		if (!s)		/* ok */
+			continue;
+		if (YBCStatusIsTryAgain(s))
+		{
+			YBCFreeStatus(s);
+			continue;
+		}
+		/*
+		 * TODO(#5030): there is a bug where master commits a catalog
+		 * version bump and the following read doesn't pick it up.  This is
+		 * short-lived, so there only needs to be a few retries.
+		 */
+		const char *msg = YBCStatusMessageBegin(s);
+		if (strstr(msg, "Requested catalog version is too high"))
+		{
+			elog((retries_left > 3 ? DEBUG1 : NOTICE),
+				 "Retrying wait for backends catalog version: %s",
+				 msg);
+			if (retries_left-- > 0)
+			{
+				YBCFreeStatus(s);
+				continue;
+			}
+		}
+		HandleYBStatus(s);
+	}
+}
+#endif

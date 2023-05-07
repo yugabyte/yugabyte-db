@@ -37,6 +37,8 @@
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
 
 /*
  * Convert a "text" filename argument to C string, and check it's allowable.

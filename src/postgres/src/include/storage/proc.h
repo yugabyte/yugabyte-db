@@ -437,6 +437,9 @@ extern int	RetryMaxBackoffMsecs;
 extern int	RetryMinBackoffMsecs;
 extern double RetryBackoffMultiplier;
 
+/* Metrics */
+extern int *yb_too_many_conn;
+
 /*
  * Function Prototypes
  */

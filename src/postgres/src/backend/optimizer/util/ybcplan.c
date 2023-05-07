@@ -101,7 +101,6 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 	if (modifyTable->plan.initPlan != NIL)
 		return false;
 
-<<<<<<< HEAD
 	/* Check the data source is a single plan */
 	if (list_length(modifyTable->plans) != 1)
 		return false;
@@ -114,7 +113,7 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 	 */
 	if (!IsA(plan, Result) || outerPlan(plan))
 		return false;
-=======
+
 	/* YB_TODO(neil@yugabyte) Make sure that checking resultRelations is similar to checking
 	 * old pg11 attributes "node->plans".
 	 */
@@ -158,7 +157,8 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 			 *       planner not setting the node to Result.
 			 */
 			return false;
->>>>>>> Fix compilation error in src/optimizer - complete
+		}
+	}
 
 	/* Complex expressions in the target list may require DocDB requests */
 	if (YbIsTransactionalExpr((Node *) plan->targetlist))

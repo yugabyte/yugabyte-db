@@ -59,7 +59,6 @@
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
-
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -81,6 +80,7 @@
 
 /* Yugabyte includes */
 #include "commands/tablegroup.h"
+#include "catalog/pg_yb_catalog_version.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "pg_yb_utils.h"
 
@@ -4453,7 +4453,9 @@ pg_class_aclmask_ext(Oid table_oid, Oid roleid, AclMode mask,
 	if ((mask & (ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_TRUNCATE | ACL_USAGE)) &&
 		IsSystemClass(table_oid, classForm) &&
 		classForm->relkind != RELKIND_VIEW &&
-		!superuser_arg(roleid))
+		!superuser_arg(roleid) &&
+		/* yb_db_admin is allowed to update pg_yb_catalog_version. */
+		!(IsYbDbAdminUser(roleid) && table_oid == YBCatalogVersionRelationId))
 		mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_TRUNCATE | ACL_USAGE);
 
 	/*

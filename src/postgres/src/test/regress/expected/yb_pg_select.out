@@ -294,6 +294,9 @@ SELECT onek2.unique1, onek2.stringu1 FROM onek2
 RESET enable_seqscan;
 RESET enable_bitmapscan;
 RESET enable_sort;
+SELECT two, stringu1, ten, string4
+   INTO TABLE tmp
+   FROM onek;
 --
 -- Test ORDER BY options
 --
@@ -639,13 +642,11 @@ RESET enable_indexscan;
 explain (costs off)
 select unique1, unique2 from onek2
   where (unique2 = 11 or unique1 = 0) and stringu1 < 'B' order by unique2;
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
- Sort
-   Sort Key: unique2
-   ->  Seq Scan on onek2
-         Remote Filter: ((stringu1 < 'B'::name) AND ((unique2 = 11) OR (unique1 = 0)))
-(4 rows)
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using onek2_u2_prtl on onek2
+   Remote Filter: ((unique2 = 11) OR (unique1 = 0))
+(2 rows)
 
 select unique1, unique2 from onek2
   where (unique2 = 11 or unique1 = 0) and stringu1 < 'B' order by unique2;

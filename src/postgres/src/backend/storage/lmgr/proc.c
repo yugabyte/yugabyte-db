@@ -84,6 +84,7 @@ NON_EXEC_STATIC slock_t *ProcStructLock = NULL;
 PROC_HDR   *ProcGlobal = NULL;
 NON_EXEC_STATIC PGPROC *AuxiliaryProcs = NULL;
 PGPROC	   *PreparedXactProcs = NULL;
+int *yb_too_many_conn = NULL;
 
 /* If we are waiting for a lock, this points to the associated LOCALLOCK */
 static LOCALLOCK *lockAwaited = NULL;
@@ -116,6 +117,9 @@ ProcGlobalShmemSize(void)
 	size = add_size(size, mul_size(TotalProcs, sizeof(*ProcGlobal->xids)));
 	size = add_size(size, mul_size(TotalProcs, sizeof(*ProcGlobal->subxidStates)));
 	size = add_size(size, mul_size(TotalProcs, sizeof(*ProcGlobal->statusFlags)));
+
+	/* yb_too_many_conn metric */
+	size = add_size(size, sizeof(int));
 
 	return size;
 }
@@ -295,6 +299,9 @@ InitProcGlobal(void)
 	/* Create ProcStructLock spinlock, too */
 	ProcStructLock = (slock_t *) ShmemAlloc(sizeof(slock_t));
 	SpinLockInit(ProcStructLock);
+
+	yb_too_many_conn = (int *) ShmemAlloc(sizeof(int));
+	(*yb_too_many_conn) = 0;
 }
 
 /*
@@ -352,6 +359,10 @@ InitProcess(void)
 		 * in the autovacuum case?
 		 */
 		SpinLockRelease(ProcStructLock);
+
+		/* increment rejection counter */
+		(*yb_too_many_conn)++;
+
 		if (am_walsender)
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),

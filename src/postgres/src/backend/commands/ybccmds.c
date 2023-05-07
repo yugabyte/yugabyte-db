@@ -559,10 +559,14 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 				relation_close(idxRel, AccessShareLock);
 				continue;
 			}
+
 			AttrMap *attmap;
 			IndexStmt *idxstmt;
 			Oid constraintOid;
 
+			/* YB_TODO "convert_tuples_by_name_map" is no longer called here.
+			 * Need to pass `false yb_ignore_type_mismatch` differently.
+			 */
 			attmap = build_attrmap_by_name(RelationGetDescr(rel), RelationGetDescr(parentRel));
 			idxstmt = generateClonedIndexStmt(NULL, idxRel, attmap, &constraintOid);
 
@@ -1136,17 +1140,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 
 		case AT_AlterColumnType:
 		{
-			/*
-			 * Only supports variants that don't require on-disk changes.
-			 * For now, that is just varchar and varbit.
-			 */
-			ColumnDef*			colDef = (ColumnDef *) cmd->def;
 			HeapTuple			typeTuple;
-			Form_pg_attribute	attTup;
-			Oid					curTypId;
-			Oid					newTypId;
-			int32				curTypMod;
-			int32				newTypMod;
 
 			/* Get current typid and typmod of the column. */
 			typeTuple = SearchSysCacheAttName(relationId, cmd->name);
@@ -1156,64 +1150,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						errmsg("column \"%s\" of relation \"%s\" does not exist",
 								cmd->name, RelationGetRelationName(rel))));
 			}
-			attTup = (Form_pg_attribute) GETSTRUCT(typeTuple);
-			curTypId = attTup->atttypid;
-			curTypMod = attTup->atttypmod;
 			ReleaseSysCache(typeTuple);
-
-			/* Get the new typid and typmod of the column. */
-			typenameTypeIdAndMod(NULL, colDef->typeName, &newTypId, &newTypMod);
-
-			/* Only varbit and varchar don't cause on-disk changes. */
-			switch (newTypId)
-			{
-				case VARCHAROID:
-				case VARBITOID:
-				{
-					/*
-					* Check for type equality, and that the new size is greater than or equal
-					* to the old size, unless the current size is infinite (-1).
-					*/
-					if (newTypId != curTypId ||
-						(newTypMod < curTypMod && newTypMod != -1) ||
-						(newTypMod > curTypMod && curTypMod == -1))
-					{
-						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("This ALTER TABLE command is not yet supported.")));
-					}
-					break;
-				}
-
-				default:
-				{
-					if (newTypId == curTypId && newTypMod == curTypMod)
-					{
-						/* Types are the same, no changes will occur. */
-						break;
-					}
-					/* timestamp <-> timestamptz type change is allowed
-						if no rewrite is needed */
-					if (curTypId == TIMESTAMPOID && newTypId == TIMESTAMPTZOID &&
-						!TimestampTimestampTzRequiresRewrite()) {
-						break;
-					}
-					if (curTypId == TIMESTAMPTZOID && newTypId == TIMESTAMPOID &&
-						!TimestampTimestampTzRequiresRewrite()) {
-						break;
-					}
-					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("This ALTER TABLE command is not yet supported.")));
-				}
-			}
-			/*
-			 * Do not allow collation update because that requires different collation
-			 * encoding and therefore can cause on-disk changes.
-			 */
-			Oid cur_collation_id = attTup->attcollation;
-			Oid new_collation_id = GetColumnDefCollation(NULL, colDef, newTypId);
-			if (cur_collation_id != new_collation_id)
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("This ALTER TABLE command is not yet supported.")));
 			break;
 		}
 
@@ -1455,6 +1392,13 @@ YBCPrepareAlterTable(List** subcmds,
 	}
 
 	return handles;
+}
+
+void
+YBCSetTableIdForAlterTable(YBCPgStatement handle, Oid databaseId,
+						   Oid relationId)
+{
+	HandleYBStatus(YBCPgAlterTableSetTableId(handle, databaseId, relationId));
 }
 
 void

@@ -59,6 +59,9 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 
 /*
  * The namespace search path is a possibly-empty list of namespace OIDs.

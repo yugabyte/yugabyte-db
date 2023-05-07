@@ -277,6 +277,7 @@
 #include "utils/tuplesort.h"
 
 /* Yugabyte includes */
+#include "pg_yb_utils.h"
 #include "catalog/yb_type.h"
 #include "utils/fmgroids.h"
 #include "utils/numeric.h"

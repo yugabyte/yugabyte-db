@@ -47,7 +47,8 @@ CREATE TABLE idxpart1 PARTITION OF idxpart FOR VALUES FROM (MINVALUE) TO (MAXVAL
 CREATE INDEX partidx_abc_idx ON idxpart (a, b, c);
 INSERT INTO idxpart (a, b, c) SELECT i, i, i FROM generate_series(1, 50) i;
 ALTER TABLE idxpart ALTER COLUMN c TYPE numeric;
-ERROR:  This ALTER TABLE command is not yet supported.
+ERROR:  changing column type of a partitioned table is not yet implemented
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16980. React with thumbs up to raise its priority
 DROP TABLE idxpart;
 -- If a table without index is attached as partition to a table with
 -- an index, the index is automatically created
@@ -879,6 +880,7 @@ ERROR:  insufficient columns in PRIMARY KEY constraint definition
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "b" which is part of the partition key.
 alter table idxpart add primary key (a, b);	-- this works
 ERROR:  changing primary key of a partitioned table is not yet implemented
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16980. React with thumbs up to raise its priority
 -- TODO: Adding primary key to a partitioned table is not yet implemented (#14196).
 -- \d idxpart
 -- create table idxpart1 partition of idxpart for values from (0, 0) to (1000, 1000);
@@ -973,6 +975,7 @@ create table idxpart0 partition of idxpart (i) for values with (modulus 2, remai
 create table idxpart1 partition of idxpart (i) for values with (modulus 2, remainder 1);
 alter table idxpart0 add primary key(i);
 ERROR:  changing primary key of a partitioned table is not yet implemented
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16980. React with thumbs up to raise its priority
 -- Uncomment when changing primary key of a partitioned table is implemented (#14196)
 /*
 alter table idxpart add primary key(i);
