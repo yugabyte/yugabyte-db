@@ -15,7 +15,7 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>

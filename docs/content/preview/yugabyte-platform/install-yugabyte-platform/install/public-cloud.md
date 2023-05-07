@@ -33,8 +33,8 @@ For installation overview, select one of the following installation types:
 
   <li >
     <a href="../private-cloud/" class="nav-link">
-      <i class="fa-solid fa-link-slash"></i>
-      Private Cloud
+      <i class="fa-solid fa-building"></i>
+      On-premises
     </a>
   </li>
 </ul>

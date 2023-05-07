@@ -1,6 +1,6 @@
 ---
 title: Install YugabyteDB Anywhere software - OpenShift
-headerTitle: Install YugabyteDB Anywhere software - OpenShift
+headerTitle: Install YugabyteDB Anywhere - OpenShift
 linkTitle: Install software
 description: Install YugabyteDB Anywhere software in your OpenShift environment
 menu:
@@ -15,7 +15,7 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>

@@ -1,8 +1,8 @@
 ---
-title: Prerequisites
-headerTitle: Prerequisites
+title: Prerequisites - Replicated
+headerTitle: Prerequisites - Replicated
 linkTitle: Prerequisites
-description: Prerequisites for installing YugabyteDB Anywhere.
+description: Prerequisites for installing YugabyteDB Anywhere using Replicated.
 menu:
   preview_yugabyte-platform:
     identifier: prerequisites
@@ -15,7 +15,7 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link active">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>

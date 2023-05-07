@@ -1,8 +1,9 @@
 ---
-title: Prerequisites - Installer
-headerTitle: Prerequisites - Installer
+title: Prerequisites - YBA Installer
+headerTitle: Prerequisites - YBA Installer
 linkTitle: Prerequisites
-description: Prerequisites for installing YugabyteDB Anywhere using the installer
+description: Prerequisites for installing YugabyteDB Anywhere using YBA Installer
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-platform:
     identifier: prerequisites-installer
@@ -15,7 +16,7 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>

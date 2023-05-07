@@ -1,6 +1,6 @@
 ---
 title: Install YugabyteDB Anywhere software - Kubernetes
-headerTitle: Install YugabyteDB Anywhere software - Kubernetes
+headerTitle: Install YugabyteDB Anywhere - Kubernetes
 linkTitle: Install software
 description: Install YugabyteDB Anywhere software in your Kubernetes environment.
 menu:
@@ -14,7 +14,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>

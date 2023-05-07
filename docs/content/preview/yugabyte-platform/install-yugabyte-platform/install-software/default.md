@@ -1,6 +1,6 @@
 ---
 title: Install YugabyteDB Anywhere
-headerTitle: Install YugabyteDB Anywhere
+headerTitle: Install YugabyteDB Anywhere - Replicated
 linkTitle: Install software
 description: Install the YugabyteDB Anywhere software.
 aliases:
@@ -17,7 +17,7 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link active">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>
@@ -42,7 +42,7 @@ type: docs
 
 </ul>
 
-YugabyteDB universes and clusters are created and managed using YugabyteDB Anywhere. The default option is to install YugabyteDB Anywhere on a host machine that is connected to the Internet.
+Install YugabyteDB Anywhere on a host machine that is connected to the Internet using Replicated.
 
 ## Install Replicated
 

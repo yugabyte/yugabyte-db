@@ -67,10 +67,10 @@ type: indexpage
     <a class="section-link icon-offset" href="prepare-on-prem-nodes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Prepare nodes</div>
+        <div class="title">Prepare on-premises nodes</div>
       </div>
       <div class="body">
-        Prepare YugabyteDB nodes for on-premises installation.
+        For on-premises installations, prepare YugabyteDB nodes.
       </div>
     </a>
   </div>

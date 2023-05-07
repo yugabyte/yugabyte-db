@@ -1,8 +1,9 @@
 ---
 title: Install YugabyteDB Anywhere software - Installer
-headerTitle: Install YugabyteDB Anywhere software - Installer
+headerTitle: Install YugabyteDB Anywhere - YBA Installer
 linkTitle: Install software
-description: Install YugabyteDB Anywhere software using the Installer
+description: Install YugabyteDB Anywhere software using YBA Installer
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -15,7 +16,7 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>
@@ -40,11 +41,11 @@ type: docs
 
 </ul>
 
-To install YugabyteDB Anywhere, you can use YugabyteDB Anywhere Installer.
+Use YBA Installer to install YugabyteDB Anywhere on a host. YBA Installer performs preflight checks to validate the workspace is ready to run YugabyteDB Anywhere. YBA Installer also provides basic functionality for managing installations, including backup and restore of an installation, upgrading, basic licensing, and uninstalling the software.
 
 ## Prerequisites
 
-Unless otherwise specified, you can use a user account for executing the steps described in this document. Using admin account for all the steps should work as well.
+Unless otherwise specified, you can use a user account for executing the steps described in this document. Using an admin account for all the steps should work as well.
 
 ## Installer-based installation
 
@@ -93,7 +94,7 @@ $ ./yba-ctl help
 
 ### Configure YBA Installer
 
-Many YBA Installer commands require a configuration file, including preflight and install. When using these commands with out a configuration file, you are prompted to continue using default values. For example:
+Many YBA Installer commands require a configuration file, including `preflight` and `install`. When using these commands without a configuration file, you are prompted to continue using default values. For example:
 
 ```sh
 $ sudo ./yba-ctl preflight
@@ -123,24 +124,26 @@ You can set the following configuration options.
 
 #### YugabyteDB Anywhere configuration options
 
+You can configure the following YugabyteDB Anywhere options.
+
 | Option | Description |
 | :--- | :--- |
 | Port | Specify a custom port for the YugabyteDB Anywhere UI to run on
 | keyStorePassword | Password for the Java keystore. Will be generated if left empty
 | appSecret | Play framework crypto secret. Will be generated if left empty
 
-OAuth related settings are described in the following table.
+OAuth related settings are described in the following table. Only set these fields if you intend to use OIDC SSO for your YugabyteDB Anywhere installation (otherwise leave it empty).
 
 | Option | Description |
 | :--- | :--- |
-| `useOauth` | Boolean that determines if OIDC SSO needs to be enabled on YugabyteDB Anywhere. Default to false, but override it to true if you intend on using OIDC SSO for your YugabyteDB Anywhere installation (must be a boolean).
-| `ybSecurityType` | The Security Type corresponding to the OIDC SSO for your YugabyteDB Anywhere installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
-| `ybOidcClientId` | The Client Id corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
-| `ybOidcSecret` | The OIDC Secret Key corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
-| `ybOidcDiscoveryUri` | The OIDC Discovery URI corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty, must be a valid url).
-| `ywWrl` | The Platform IP corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty, must be a valid url).
-| `ybOidcScope` | The OIDC Scope corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty).
-| `ybOidcEmailAtr` | The OIDC Email Attr corresponding to the OIDC SSO for your platform installation. Only set this field if you intend on using OIDC SSO for your platform installation (otherwise leave it empty, must be a valid email address).
+| `useOauth` | Boolean that determines if OIDC SSO needs to be enabled on YugabyteDB Anywhere. Default is false. Set to true if you intend on using OIDC SSO for your YugabyteDB Anywhere installation (must be a boolean).
+| `ybSecurityType` | The Security Type corresponding to the OIDC SSO for your YugabyteDB Anywhere installation.
+| `ybOidcClientId` | The Client ID corresponding to the OIDC SSO for your platform installation.
+| `ybOidcSecret` | The OIDC Secret Key corresponding to the OIDC SSO for your platform installation.
+| `ybOidcDiscoveryUri` | The OIDC Discovery URI corresponding to the OIDC SSO for your platform installation. Must be a valid URL.
+| `ywWrl` | The Platform IP corresponding to the OIDC SSO for your platform installation. Must be a valid URL.
+| `ybOidcScope` | The OIDC Scope corresponding to the OIDC SSO for your platform installation.
+| `ybOidcEmailAtr` | The OIDC Email Attr corresponding to the OIDC SSO for your platform installation. Must be a valid email address.
 
 Http and Https proxy settings are described in the following table.
 
@@ -159,17 +162,24 @@ Http and Https proxy settings are described in the following table.
 
 | Option | Description |
 | :--- | :--- |
-| `Port` | external Prometheus port
+| `Port` | External Prometheus port
 | `restartSeconds` | Systemd will restart Prometheus after this number of seconds after a crash
-| `scrapeInterval` | how often Prometheus scrapes for database metrics
-| `scrapeTimeout` | timeout for inactivity during scraping
-| `maxConcurrency` | Max concurrent queries to be executed by Prometheus
-| `maxSamples` | The maximum number of samples that a single query can load into memory
+| `scrapeInterval` | How often Prometheus scrapes for database metrics
+| `scrapeTimeout` | Timeout for inactivity during scraping
+| `maxConcurrency` | Maximum concurrent queries to be executed by Prometheus
+| `maxSamples` | Maximum number of samples that a single query can load into memory
 | `Timeout` | The time threshold for inactivity after which Prometheus will be declared inactive
 
-#### Bring your own PostgreSQL
+#### Configure PostgreSQL
 
-PostgreSQL is divided into two different subsections - `install` and `useExisting`. Install contains information on how YBA Installer should install PostgreSQL, while useExisting is to provide YBA Installer with information on how to connect to a postgres instance that you provision and manage separately. These options are mutually exclusive, and can be turned on/off using the enabled option. Exactly one of these two sections must have enabled = true, while the other must have enabled = false.
+By default, YBA Installer provides a version of PostgreSQL. If you prefer, you can use your own version of PostgreSQL.
+
+PostgreSQL configuration is divided into two different subsections:
+
+- `install` - contains information on how YBA Installer should install PostgreSQL
+- `useExisting` - provides YBA Installer with information on how to connect to a PostgreSQL instance that you provision and manage separately.
+
+These options are mutually exclusive, and can be turned on or off using the enabled option. Exactly one of these two sections must have enabled = true, while the other must have enabled = false.
 
 **Install options**
 
@@ -186,11 +196,11 @@ PostgreSQL is divided into two different subsections - `install` and `useExistin
 | Host | IP address/domain name of the PostgreSQL server.
 | Port | Port PostgreSQL is running on.
 | Username and password | Used to authenticate with PostgreSQL.
-| Pg_dump_path<br/>pg_restore_path | Required paths to pgdump and pgrestore on the locale system that are compatible with the version of PostgreSQL you provide. Pgdump and pgrestore are used for backup and restore workflows, and are required for a functioning install.
+| Pg_dump_path<br/>pg_restore_path | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install.
 
 ### Run preflight checks
 
-After yba-ctl is installed and configured, start by running the preflight checks to ensure that the expected ports are available, the hardware meets the YBA minimum requirements, and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
+After yba-ctl is installed and configured, start by running the preflight checks to ensure that the expected ports are available, the hardware meets the minimum requirements, and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
 
 ```sh
 $ sudo ./yba-ctl preflight
@@ -290,7 +300,7 @@ INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 
 ## Reconfigure
 
-YBA Installer can be used to reconfigure an installed YBA instance. Some basics can be changed here, such as the proxy settings for ‘platform’. Others are unable to be changed, such as the install root, service username, or if you brought your own postgres.
+YBA Installer can be used to reconfigure an installed YBA instance. 
 
 To reconfigure an installation, edit the `/opt/yba-ctl/yba-ctl.yml` configuration file with your changes, and then run the command as follows:
 
@@ -298,9 +308,11 @@ To reconfigure an installation, edit the `/opt/yba-ctl/yba-ctl.yml` configuratio
 $ sudo yba-ctl reconfigure
 ```
 
+Note that some settings can't be reconfigured, such as the install root, service username, or if you brought your own PostgreSQL.
+
 ## Service management
 
-yba-ctl also provides basic service management, with `start`, `stop`, and `restart` commands. Each of these can be performed for all the services (platform, postgres, and prometheus), or any individual service.
+yba-ctl provides basic service management, with `start`, `stop`, and `restart` commands. Each of these can be performed for all the services (platform, postgres, and prometheus), or any individual service.
 
 ```sh
 $ sudo yba-ctl [start, stop, reconfigure]
