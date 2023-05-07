@@ -74,6 +74,12 @@ Where
   - Only operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `IN` and `NOT IN` can be used for conditions on clustering and regular columns.
   - Only `IN` operator can be used for conditions on tuples of clustering columns.
 
+### `ALLOW FILTERING` option
+
+- By default, YCQL only allows select queries on columns that are part of the primary key.
+- The `ALLOW FILTERING` option enables filtering on columns that are not part of the primary key.
+- This can result in partition scan or full table scan, thus, the performance of the query can be unpredictable.
+
 ### `IF` clause
 
 - The `if_expression` must evaluate to boolean values.
@@ -205,7 +211,7 @@ ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id 
              1 |           2 | Accounting |          Jane
 ```
 
-### Select with condition on a regular column, using WHERE clause
+### Select with condition on a regular column, using WHERE clause and ALLOW FILTERING options
 
 ```sql
 ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John' ALLOW FILTERING;
