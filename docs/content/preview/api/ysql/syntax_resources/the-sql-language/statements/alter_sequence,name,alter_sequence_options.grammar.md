@@ -10,6 +10,6 @@ alter_sequence_options ::= [ AS seq_data_type ]
                            [ MAXVALUE maxvalue | NO MAXVALUE ] 
                            [ START [ WITH ] start ] 
                            [ RESTART [ [ WITH ] restart ] ] 
-                           [ CACHE cache ] 
+                           [ CACHE cache ] [ [ NO ] CYCLE ] 
                            [ OWNED BY table_name.table_column | NONE ]
 ```

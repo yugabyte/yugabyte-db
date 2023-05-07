@@ -198,6 +198,7 @@ alter_sequence_options = [ 'AS' seq_data_type ]
                            [ 'START' [ 'WITH' ] start ]
                            [ 'RESTART' [ [ 'WITH' ] restart ] ]
                            [ 'CACHE' cache ]
+                           [ [ 'NO' ] 'CYCLE' ]
                            [ 'OWNED BY' table_name.table_column | 'NONE' ] ;
 
 seq_data_type = ( 'smallint' | 'integer' | 'bigint' ) ;
