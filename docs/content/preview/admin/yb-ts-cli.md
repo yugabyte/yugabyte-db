@@ -280,12 +280,19 @@ The duration, in milliseconds (ms), before the RPC request times out.
 
 Default: `60000` (1000 ms = 1 sec)
 
+##### --certs_dir_name
+
+To connect to a cluster with TLS enabled, you must include the `-certs_dir_name` flag with the directory location where the root certificate is located.
+
+Default: `""`
+
+
 ## Examples
 
 ### Return the status of a tablet server
 
 ```sh
-./bin/yb-ts-cli -server_address=127.0.0.1 status
+./bin/yb-ts-cli --server_address=127.0.0.1 [ -certs_dir_name <cert_dir> ] status
 ```
 
 ```output
@@ -317,7 +324,7 @@ version_info {
 ### Display the current hybrid time
 
 ```sh
-./bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] current_hybrid_time
+./bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] [ -certs_dir_name <cert_dir> ] current_hybrid_time
 ```
 
 ```output
