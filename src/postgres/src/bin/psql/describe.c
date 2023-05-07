@@ -3764,7 +3764,8 @@ add_colocation_footer(printTableContent *const cont, char relkind,
 	if ((relkind == RELKIND_RELATION ||
 		 relkind == RELKIND_INDEX ||
 		 relkind == RELKIND_PARTITIONED_TABLE ||
-		 relkind == RELKIND_PARTITIONED_INDEX) &&
+		 relkind == RELKIND_PARTITIONED_INDEX ||
+		 relkind == RELKIND_MATVIEW) &&
 		colocation)
 	{
 		PQExpBufferData buf;

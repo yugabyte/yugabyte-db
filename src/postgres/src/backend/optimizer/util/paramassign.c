@@ -338,7 +338,8 @@ replace_nestloop_param_var(PlannerInfo *root, Var *var)
 			 * This refers to a batched var. Offset by the appropriate
 			 * batch no.
 			 */
-			if (bms_is_member(var->varno, root->yb_cur_batched_relids))
+			if (root->yb_cur_batch_no >= 0 &&
+				 bms_is_member(var->varno, root->yb_cur_batched_relids))
 			{
 				param->paramid += root->yb_cur_batch_no;
 			}

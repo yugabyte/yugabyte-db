@@ -60,6 +60,6 @@ extern bool join_clause_is_movable_into(RestrictInfo *rinfo,
  */
 extern List * yb_get_actual_batched_clauses(PlannerInfo *root,
 											List *restrictinfo_list,
-						   					IndexPath *inner_index);
+											Path *inner_path);
 
 #endif							/* RESTRICTINFO_H */

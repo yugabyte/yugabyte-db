@@ -8121,6 +8121,14 @@
   prorettype => 'bool', proargtypes => 'int4',
   prosrc => 'pg_log_backend_memory_contexts' },
 
+# YB_REVIEW(minghui) Needs verify if this is correct.
+{ oid => '8059', descr => 'increments catalog versions of all databases',
+  proname => 'yb_increment_all_db_catalog_versions', prolang => 'sql', procost => '1000',
+  prokind => 'f', proisstrict => 't', provolatile => 'v', proparallel => 'u',
+  prorettype => 'void', proargtypes => 'bool', proargnames => '{is_breaking_change}',
+  prosrc => 'update pg_catalog.pg_yb_catalog_version set current_version = current_version + 1,
+  last_breaking_version = case when is_breaking_change then current_version + 1 else last_breaking_version end' },
+
 # non-persistent series generator
 { oid => '1066', descr => 'non-persistent series generator',
   proname => 'generate_series', prorows => '1000',

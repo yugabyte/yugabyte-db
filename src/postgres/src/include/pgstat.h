@@ -564,8 +564,6 @@ typedef struct PgBackendStatus
 
 	/* current state */
 	BackendState st_state;
-	/* new connection count */
-	int yb_new_conn;
 
 	/* application name; MUST be null-terminated */
 	char	   *st_appname;
@@ -948,6 +946,12 @@ extern char *pgstat_ybstat_filename;
 extern char *pgstat_ybstat_tmpname;
 
 /*
+ * Metric to track number of sql connections established since
+ * postmaster started.
+ */
+extern uint64_t *yb_new_conn;
+
+/*
  * Variables in pgstat_bgwriter.c
  */
 
@@ -998,6 +1002,7 @@ extern PGDLLIMPORT PgStat_WalStats PendingWalStats;
  * YB functions called from backends
  * ----------
  */
+extern PgBackendStatus *getBackendStatusArray(void);
 extern void yb_pgstat_report_allocated_mem_bytes(void);
 extern void yb_pgstat_set_catalog_version(uint64_t catalog_version);
 extern void yb_pgstat_set_has_catalog_version(bool has_catalog_version);

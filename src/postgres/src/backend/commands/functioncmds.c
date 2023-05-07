@@ -49,7 +49,6 @@
 #include "catalog/pg_type.h"
 #include "commands/alter.h"
 #include "commands/defrem.h"
-#include "commands/extension.h"
 #include "commands/proclang.h"
 #include "executor/execdesc.h"
 #include "executor/executor.h"
@@ -76,6 +75,10 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+
+/* YB includes. */
+#include "commands/extension.h"
+#include "pg_yb_utils.h"
 
 /*
  *	 Examine the RETURNS clause of the CREATE FUNCTION statement

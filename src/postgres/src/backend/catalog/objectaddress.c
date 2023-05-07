@@ -70,7 +70,6 @@
 #include "commands/policy.h"
 #include "commands/proclang.h"
 #include "commands/tablespace.h"
-#include "commands/tablegroup.h"
 #include "commands/trigger.h"
 #include "foreign/foreign.h"
 #include "funcapi.h"
@@ -91,10 +90,13 @@
 #include "utils/regproc.h"
 #include "utils/syscache.h"
 
+/* YB includes. */
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
+#include "commands/tablegroup.h"
 #include "commands/yb_profile.h"
+#include "pg_yb_utils.h"
 
 /*
  * ObjectProperty

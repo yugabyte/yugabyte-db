@@ -72,6 +72,9 @@
 #include "include/hypopg.h"
 #include "include/hypopg_index.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 #if PG_VERSION_NUM >= 90600
 /* this will be updated, when needed, by hypo_discover_am */
 static Oid	BLOOM_AM_OID = InvalidOid;

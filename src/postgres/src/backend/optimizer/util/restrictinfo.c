@@ -577,15 +577,15 @@ void add_batched_rinfo(RestrictInfo *rinfo, RestrictInfo *batched)
 
 List *
 yb_get_actual_batched_clauses(PlannerInfo *root,
-						   	  List *restrictinfo_list,
-							  IndexPath *inner_index)
+										List *restrictinfo_list,
+										Path *inner_path)
 {
 	Relids 		batchedrelids = root->yb_cur_batched_relids;
 	List	   *result = NIL;
 	ListCell   *l;
 	ListCell   *lc;
 
-	Relids inner_req_rels = PATH_REQ_OUTER(&inner_index->path);
+	Relids inner_req_rels = PATH_REQ_OUTER(inner_path);
 
 	/*
 	 * We only zip up clauses involving outer relations A and B if they can
@@ -622,8 +622,8 @@ yb_get_actual_batched_clauses(PlannerInfo *root,
 			security_level = rinfo->security_level;
 			RestrictInfo *tmp_batched =
 				get_batched_restrictinfo(rinfo,
-										batchedrelids,
-										inner_index->indexinfo->rel->relids);
+					batchedrelids,
+					inner_path->parent->relids);
 
 			if (tmp_batched)
 			{

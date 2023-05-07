@@ -60,7 +60,7 @@ $(error YB_BUILD_ROOT is not set)
 endif
 # Do not append $(YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS) here. We will append it
 # later, after initializing SHLIB_LINK.
-LIBS += -L$(YB_BUILD_ROOT)/lib -lyb_util -lyb_pggate -lyb_common
+LIBS += -L$(YB_BUILD_ROOT)/lib -lyb_util -lyb_pggate -lyb_pggate_util
 
 CCLD = $(CXX)
 

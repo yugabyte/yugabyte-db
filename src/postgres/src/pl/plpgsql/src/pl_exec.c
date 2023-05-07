@@ -51,7 +51,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-#include "yb/common/ybc_util.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 #include "pg_yb_utils.h"
 

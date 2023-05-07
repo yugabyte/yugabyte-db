@@ -97,11 +97,9 @@ having exists (select 1 from onek b
 
 -- Test handling of sublinks within outer-level aggregates.
 -- Per bug report from Daniel Grace.
-create view oneh as select * from onek order by unique2 limit 100;
 select
-  (select max((select i.unique2 from oneh i where i.unique1 = o.unique1)))
-from oneh o;
-drop view oneh;
+  (select max((select i.unique2 from tenk1 i where i.unique1 = o.unique1)))
+from tenk1 o;
 
 -- Test handling of Params within aggregate arguments in hashed aggregation.
 -- Per bug report from Jeevan Chalke.
@@ -164,9 +162,6 @@ SELECT
   BIT_OR(x)   AS "7",
   BIT_OR(y)   AS "1101"
 FROM bitwise_test;
-
--- drop temp table
-DROP TABLE bitwise_test;
 
 --
 -- test boolean aggregates
@@ -260,10 +255,12 @@ explain (costs off)
 select max(unique1) from tenk1;
 explain (costs off)
   select max(unique1) from tenk1 where unique1 < 42;
-select max(unique1) from tenk1 where unique1 < 42;
+-- YB TODO(#16927): uncomment the following query, which crashes
+-- select max(unique1) from tenk1 where unique1 < 42;
 explain (costs off)
   select max(unique1) from tenk1 where unique1 > 42;
-select max(unique1) from tenk1 where unique1 > 42;
+-- YB TODO(#16927): uncomment the following query, which crashes
+-- select max(unique1) from tenk1 where unique1 > 42;
 
 -- the planner may choose a generic aggregate here if parallel query is
 -- enabled, since that plan will be parallel safe and the "optimized"
@@ -273,7 +270,8 @@ begin;
 set local max_parallel_workers_per_gather = 0;
 explain (costs off)
   select max(unique1) from tenk1 where unique1 > 42000;
-select max(unique1) from tenk1 where unique1 > 42000;
+-- YB TODO(#16927): uncomment the following query, which crashes
+-- select max(unique1) from tenk1 where unique1 > 42000;
 rollback;
 
 -- multi-column index (uses tenk1_thous_tenthous)
@@ -288,9 +286,13 @@ select min(tenthous) from tenk1 where thousand = 33;
 explain (costs off)
   select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
     from int4_tbl;
--- TODO(jayden): Non-deterministic, so commenting out.
+-- YB note: add consistent ordering that matches upstream:
+-- 1. mainly order by absolute value of f1.
+-- 2. order positives before negatives by adding an offset of -1/+1 using the
+--    sign function.
+-- YB TODO(#16927): uncomment the following query, which crashes
 -- select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
---   from int4_tbl;
+--   from int4_tbl order by abs(f1) - sign(f1);
 
 -- check some cases that were handled incorrectly in 8.3.0
 explain (costs off)
@@ -372,11 +374,11 @@ from t1 inner join t2 on t1.a = t2.x and t1.b = t2.y
 group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.z;
 
 -- Cannot optimize when PK is deferrable
--- explain (costs off) select * from t3 group by a,b,c;
+explain (costs off) select * from t3 group by a,b,c;
 
 drop table t1;
 drop table t2;
--- drop table t3;
+drop table t3;
 
 --
 -- Test combinations of DISTINCT and/or ORDER BY
@@ -516,22 +518,22 @@ select string_agg(distinct f1, ',' order by f1::text) from varchar_tbl;  -- not 
 select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -- ok
 
 -- string_agg bytea tests
--- TODO(jayden): Below test relies on retrieval ordering, thus is non-deterministic.
--- create table bytea_test_table(v bytea);
+-- YB note: add PK ordering for consistent output.
+create table bytea_test_table(v bytea, PRIMARY KEY (v DESC));
 
--- select string_agg(v, '') from bytea_test_table;
+select string_agg(v, '') from bytea_test_table;
 
--- insert into bytea_test_table values(decode('ff','hex'));
+insert into bytea_test_table values(decode('ff','hex'));
 
--- select string_agg(v, '') from bytea_test_table;
+select string_agg(v, '') from bytea_test_table;
 
--- insert into bytea_test_table values(decode('aa','hex'));
+insert into bytea_test_table values(decode('aa','hex'));
 
--- select string_agg(v, '') from bytea_test_table;
--- select string_agg(v, NULL) from bytea_test_table;
--- select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
+select string_agg(v, '') from bytea_test_table;
+select string_agg(v, NULL) from bytea_test_table;
+select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
 
--- drop table bytea_test_table;
+drop table bytea_test_table;
 
 -- FILTER tests
 

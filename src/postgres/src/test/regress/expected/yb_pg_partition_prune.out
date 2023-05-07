@@ -2185,6 +2185,28 @@ select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
                Index Cond: (col1 = tbl1.col1)
 (15 rows)
 
+/*+Set(yb_bnl_batch_size 1024)*/ explain (analyze, costs off, summary off, timing off)
+select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=2 loops=1)
+   Join Filter: (tbl1.col1 = tprt_1.col1)
+   ->  Seq Scan on tbl1 (actual rows=2 loops=1)
+   ->  Append (actual rows=2 loops=1)
+         ->  Index Scan using tprt1_idx on tprt_1 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt2_idx on tprt_2 (actual rows=2 loops=1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt3_idx on tprt_3 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt4_idx on tprt_4 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt5_idx on tprt_5 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt6_idx on tprt_6 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+(16 rows)
+
 select tbl1.col1, tprt.col1 from tbl1
 inner join tprt on tbl1.col1 > tprt.col1
 order by tbl1.col1, tprt.col1;
@@ -2233,6 +2255,28 @@ select * from tbl1 inner join tprt on tbl1.col1 = tprt.col1;
          ->  Index Scan using tprt6_idx on tprt_6 (never executed)
                Index Cond: (col1 = tbl1.col1)
 (15 rows)
+
+/*+Set(yb_bnl_batch_size 1024)*/ explain (analyze, costs off, summary off, timing off)
+select * from tbl1 inner join tprt on tbl1.col1 = tprt.col1;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=3 loops=1)
+   Join Filter: (tbl1.col1 = tprt_1.col1)
+   ->  Seq Scan on tbl1 (actual rows=5 loops=1)
+   ->  Append (actual rows=3 loops=1)
+         ->  Index Scan using tprt1_idx on tprt_1 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt2_idx on tprt_2 (actual rows=2 loops=1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt3_idx on tprt_3 (actual rows=1 loops=1)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt4_idx on tprt_4 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt5_idx on tprt_5 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt6_idx on tprt_6 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+(16 rows)
 
 select tbl1.col1, tprt.col1 from tbl1
 inner join tprt on tbl1.col1 > tprt.col1
@@ -2312,6 +2356,28 @@ select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
          ->  Index Scan using tprt6_idx on tprt_6 (never executed)
                Index Cond: (col1 = tbl1.col1)
 (15 rows)
+
+/*+Set(yb_bnl_batch_size 1024)*/ explain (analyze, costs off, summary off, timing off)
+select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=0 loops=1)
+   Join Filter: (tbl1.col1 = tprt_1.col1)
+   ->  Seq Scan on tbl1 (actual rows=1 loops=1)
+   ->  Append (actual rows=0 loops=1)
+         ->  Index Scan using tprt1_idx on tprt_1 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt2_idx on tprt_2 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt3_idx on tprt_3 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt4_idx on tprt_4 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt5_idx on tprt_5 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+         ->  Index Scan using tprt6_idx on tprt_6 (never executed)
+               Index Cond: (col1 = ANY (ARRAY[tbl1.col1, $1, $2, ..., $1023]))
+(16 rows)
 
 select tbl1.col1, tprt.col1 from tbl1
 inner join tprt on tbl1.col1 = tprt.col1

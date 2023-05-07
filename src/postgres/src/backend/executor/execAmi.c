@@ -66,6 +66,7 @@
 #include "utils/syscache.h"
 
 /* Yugabyte includes */
+#include "pg_yb_utils.h"
 #include "executor/nodeYbSeqscan.h"
 
 static bool IndexSupportsBackwardScan(Oid indexid);
