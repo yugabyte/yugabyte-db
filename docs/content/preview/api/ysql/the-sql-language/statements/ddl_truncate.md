@@ -52,7 +52,8 @@ The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule sp
 
 `TRUNCATE` in the current implementation is not transactional.
 
-We recommend against using:
+You should avoid using TRUNCATE in the following circumstances:
+
 * truncate inside of a multi-step transaction 
 * or running truncate concurrently with our read/write operations in the same table.
 
