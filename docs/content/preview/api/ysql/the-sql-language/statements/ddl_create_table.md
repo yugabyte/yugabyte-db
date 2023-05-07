@@ -58,6 +58,16 @@ For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DE
 
 If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used to hash partition the table, and rows that share the same value for `a` are stored in ascending order of their value for `b`.
 
+{{<note title="Tables always have a primary key">}}
+
+Unlike PostgreSQL that uses heap-oriented tables, YugabyteDB uses index-organized tables, that is, the full row is stored together
+with the primary key (see [DocDB Persistence](../../../../../architecture/docdb/persistence/)). 
+
+When a primary key is not defined, YugabyteDB will use an internal `ybrowid` value as the primary key. In this case, the table will be sharded on `ybrowid HASH`.
+
+{{</note>}}
+
+
 ### Foreign key
 
 `FOREIGN KEY` and `REFERENCES` specifies that the set of columns can only contain values that are present in the referenced column(s) of the referenced table. It is used to enforce referential integrity of data.
