@@ -45,17 +45,10 @@ Use YBA Installer to install YugabyteDB Anywhere on a host. YBA Installer perfor
 
 ## Prerequisites
 
-Unless otherwise specified, you can use a user account for executing the steps described in this document. Using an admin account for all the steps should work as well.
+- Ensure your machine satisfies the [minimum requirements](../../prerequisites/installer/).
+- Unless otherwise specified, you can use a user account for executing the steps described in this document. Using an admin account should work as well.
 
-## Installer-based installation
-
-To install YugabyteDB Anywhere using the Installer, do the following:
-
-- [Download YBA Installer](#download-yba-installer)
-- [Configure YBA Installer](#configure-yba-installer)
-- [Run preflight checks](#run-preflight-checks)
-- [Provide a license](#provide-a-license)
-- [Install the software](#install-the-software)
+## Download and configure YBA Installer
 
 ### Download YBA Installer
 
@@ -198,37 +191,7 @@ These options are mutually exclusive, and can be turned on or off using the enab
 | Username and password | Used to authenticate with PostgreSQL.
 | Pg_dump_path<br/>pg_restore_path | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install.
 
-### Run preflight checks
-
-After yba-ctl is installed and configured, start by running the preflight checks to ensure that the expected ports are available, the hardware meets the minimum requirements, and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
-
-```sh
-$ sudo ./yba-ctl preflight
-```
-
-```output
-#  Check name             Status   Error
-1  license                Critical stat /opt/yba-ctl/YBA.lic: no such file or directory
-2  install does not exist Pass
-3  validate-config        Pass
-4  user                   Pass
-5  cpu                    Pass
-6  memory                 Pass
-7  port                   Pass
-8  python                 Pass
-9  disk-availability      Pass
-10 postgres               Pass
-```
-
-Some checks can be ignored, such as CPU or memory. Others, such as python, are hard requirements, and YugabyteDB Anywhere can't work until these checks pass. All checks should pass for a production installation.
-
-If a check is failing and you want to skip it, you can pass `–skip_preflight <name>[,<name2>]`.
-
-```sh
-$ sudo ./yba-ctl preflight --skip_preflight cpu
-```
-
-At this point, the license check fails as no license has been provided to YBA Installer.
+## Install YugabyteDB Anywhere using YBA Installer
 
 ### Provide a license
 
@@ -248,32 +211,34 @@ The license can be provided to YBA Installer in one of two ways:
     $ sudo ./yba-ctl install -l /path/to/license
     ```
 
-After the license is added, all preflight checks should pass:
+### Run preflight checks
 
-```sh
-$ sudo ./yba-ctl license add -l ~/yugabyte_anywhere.lic
-```
-
-```output
-INFO[2023-04-18T20:52:13Z] Added license, services can be started now
-```
+Start by running the preflight checks to ensure that the expected ports are available, the hardware meets the [minimum requirements](../../prerequisites/installer/), and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
 
 ```sh
 $ sudo ./yba-ctl preflight
 ```
 
 ```output
-#  Check name             Status Error
-1  install does not exist Pass
-2  validate-config        Pass
-3  user                   Pass
-4  cpu                    Pass
-5  memory                 Pass
-6  port                   Pass
-7  python                 Pass
-8  disk-availability      Pass
-9  license                Pass
+#  Check name             Status   Error
+1  license                Critical stat /opt/yba-ctl/YBA.lic: no such file or directory
+2  install does not exist Pass
+3  validate-config        Pass
+4  user                   Pass
+5  cpu                    Pass
+6  memory                 Pass
+7  port                   Pass
+8  python                 Pass
+9  disk-availability      Pass
 10 postgres               Pass
+```
+
+Some checks can be ignored, such as CPU or memory. Others, such as having a license and python installed, are hard requirements, and YugabyteDB Anywhere can't work until these checks pass. All checks should pass for a production installation.
+
+If a check is failing and you want to skip it, you can pass `–skip_preflight <name>[,<name2>]`.
+
+```sh
+$ sudo ./yba-ctl preflight --skip_preflight cpu
 ```
 
 ### Install the software
@@ -296,11 +261,13 @@ Services:
 INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 ```
 
-`install` runs all preflight checks first, and then proceeds to do a full install, and then waits for YugabyteDB Anywhere to start. After the install succeeds, you can immediately start using YugabyteDB Anywhere.
+The `install` command runs all [preflight checks](#run-preflight-checks) first, and then proceeds to do a full install, and then waits for YugabyteDB Anywhere to start. After the install succeeds, you can immediately start using YugabyteDB Anywhere.
 
-## Reconfigure
+## Manage a YugabyteDB Anywhere installation
 
-YBA Installer can be used to reconfigure an installed YBA instance. 
+### Reconfigure
+
+YBA Installer can be used to reconfigure an installed YugabyteDB Anywhere instance.
 
 To reconfigure an installation, edit the `/opt/yba-ctl/yba-ctl.yml` configuration file with your changes, and then run the command as follows:
 
@@ -310,16 +277,16 @@ $ sudo yba-ctl reconfigure
 
 Note that some settings can't be reconfigured, such as the install root, service username, or if you brought your own PostgreSQL.
 
-## Service management
+### Service management
 
-yba-ctl provides basic service management, with `start`, `stop`, and `restart` commands. Each of these can be performed for all the services (platform, postgres, and prometheus), or any individual service.
+YBA Installer provides basic service management, with `start`, `stop`, and `restart` commands. Each of these can be performed for all the services (platform, postgres, and prometheus), or any individual service.
 
 ```sh
 $ sudo yba-ctl [start, stop, reconfigure]
 $ sudo yba-ctl [start, stop, reconfigure] prometheus
 ```
 
-In addition to the state changing operations, you can use the `status` command to show the status of all YBA services, in addition to other information such as the log and configuration location, versions of each service, and the URL to access the YugabyteDB Anywhere UI.
+In addition to the state changing operations, you can use the `status` command to show the status of all YugabyteDB Anywhere services, in addition to other information such as the log and configuration location, versions of each service, and the URL to access the YugabyteDB Anywhere UI.
 
 ```sh
 $ sudo yba-ctl status
@@ -336,7 +303,7 @@ Services:
       yb-platform |  2.19.0.0-b59 |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
 ```
 
-## Upgrade
+### Upgrade
 
 To upgrade using YBA Installer, first download the version of YBA Installer corresponding to the version of YugabyteDB Anywhere you want to upgrade to. See [Download YBA Installer](#download-yba-installer). Upgrade works similarly to the install workflow, by first running preflight checks to validate the system is in a good state. When ready to upgrade, run the upgrade command from the untarred directory of the target version of the YBA upgrade:
 
@@ -344,9 +311,9 @@ To upgrade using YBA Installer, first download the version of YBA Installer corr
 $ sudo ./yba-ctl upgrade
 ```
 
-The upgrade takes a few minutes to complete. When finished, use the `status` command to verify that YugabyteDB Anywhere has been upgraded to the target version.
+The upgrade takes a few minutes to complete. When finished, use the [status command](#service-management) to verify that YugabyteDB Anywhere has been upgraded to the target version.
 
-## Backup and restore
+### Backup and restore
 
 YBA Installer also provides utilities to take full backups of the YugabyteDB Anywhere state (not YugabyteDB however) and later restore from them. This not only includes data seen in YBA for your universes, but also metrics stored in Prometheus.
 
@@ -367,7 +334,7 @@ To restore from the same backup, use the `restoreBackup` commmand:
 $ sudo yba-ctl restoreBackup ~/test_backup/backup_23-04-25-16-64.tgz
 ```
 
-## Clean (uninstall)
+### Clean (uninstall)
 
 To uninstall a YBA instance, YBA Installer also provides a clean functionality with two modes. By default, `clean` removes the YugabyteDB Anywhere software, but keeps any data such as PostgreSQL or Prometheus information. You can also run `clean` with the `–all` flag to delete all data.
 
@@ -392,19 +359,37 @@ INFO[2023-04-24T23:58:14Z] Uninstalling prometheus
 INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 ```
 
-## Yugabundle migration
+## Migrate a YugabyteDB Anywhere installation
 
-Detailed instructions on how to migrate from a Yugabundle deployment to a YBA-Installer deployment.
+You can migrate a YugabyteDB Anywhere installation from a Replicated-based deployment to a YBA-Installer deployment.
 
-### Migrate from Yugabundle to YBA Installer
+### Migrate from Replicated to YBA Installer
 
-Binary Execution Path
+## Binary execution path
 
-The above workflow descriptions use 2 different methods to execute yba-ctl. The first seen is local execution using ./yba-ctl, and the second is using just yba-ctl. This is done on purpose, as some commands require local execution context.
+The above workflow descriptions use two different methods to execute yba-ctl:
 
-- such as install or upgrade - while others require the context of the installed system, such as the backup commands or clean. Some commands do not have this context, such as license or preflight, as these can be run on both installed systems and fresh environments
+- local execution using `./yba-ctl`
+- installed execution using `yba-ctl`
 
-If the correct execution is not used, yba-ctl will fail with errors
+This is because some commands require local execution context, while others require the context of the installed system.
+
+Local-only Commands:
+
+- `install`
+- `upgrade`
+
+Global-only Commands:
+
+- `createBackup`
+- `restoreBackup`
+- `clean`
+- `start`, `stop`, `restart`, and `status`
+- `reconfigure`
+
+The `license` and `preflight` commands can be run in either context.
+
+If you don't use the correct execution path, yba-ctl fails with an error:
 
 ```sh
 $ sudo ./yba-ctl createBackup ~/backup.tgz
@@ -413,22 +398,6 @@ $ sudo ./yba-ctl createBackup ~/backup.tgz
 ```output
 FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 ```
-
-Local-only Commands:
-
-- install
-- upgrade
-
-Global-only Commands:
-
-- createBackup
-- restoreBackup
-- clean
-- start, stop, restart, and status
-- reconfigure
-- Both
-- preflight
-- license
 
 ## Non-root installation
 
