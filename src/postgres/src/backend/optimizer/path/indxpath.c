@@ -615,7 +615,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			Relids outer_relids =
 				bms_difference(rinfo->required_relids, inner_relids);
 			RestrictInfo *tmp_batched =
-				get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
+				yb_get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
 
 			/* Disabling batching the same inner attno twice for now. */
 			if (tmp_batched)
@@ -676,7 +676,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	{
 		RestrictInfo *rinfo = lfirst(lc);
 		RestrictInfo *batched =
-			get_batched_restrictinfo(rinfo,
+			yb_get_batched_restrictinfo(rinfo,
 									 batchedrelids,
 									 index->rel->relids);
 		if (!bms_is_subset(batched_and_inner_relids, rinfo->clause_relids))
