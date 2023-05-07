@@ -50,7 +50,7 @@ The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule sp
 
 {{< note title="Truncate is not transactional" >}}
 
-`TRUNCATE` in our current implementation is not transactional.
+`TRUNCATE` in the current implementation is not transactional.
 
 We recommend against using:
 * truncate inside of a multi-step transaction 
