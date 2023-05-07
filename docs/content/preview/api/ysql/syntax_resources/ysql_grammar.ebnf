@@ -531,6 +531,8 @@ create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'CONCURRENTLY' | 'NONCONCURRENTLY
                '(' index_elem { ',' index_elem } ')' \
                [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
                [ 'TABLESPACE' tablespace_name ] \
+               [ 'SPLIT' ( 'INTO' integer 'TABLETS'
+                      | 'AT' 'VALUES' '(' split_row { ',' split_row } ')' ) ]
                [ 'WHERE' boolean_expression ] ;
 
 index_elem = ( column_name | '(' expression ')' ) [ operator_class_name ]

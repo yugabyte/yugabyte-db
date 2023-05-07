@@ -153,6 +153,30 @@ By default, YugabyteDB presplits an index into `ysql_num_shards_per_tserver * nu
 
 {{< /note >}}
 
+### SPLIT AT VALUES
+
+For range-sharded indexes, you can use the `SPLIT AT VALUES` clause to set split points to presplit range-sharded indexes.
+
+**Example**
+
+```plpgsql
+CREATE TABLE tbl(
+  a int,
+  b int,
+  primary key(a asc, b desc);
+);
+
+CREATE INDEX idx1 ON tbl(b asc, a desc) SPLIT AT VALUES((100), (200), (200, 5));
+```
+
+In the example above, there are three split points and so four tablets will be created for the index:
+
+- tablet 1: `b=<lowest>, a=<lowest>` to `b=100, a=<lowest>`
+- tablet 2: `b=100, a=<lowest>` to `b=200, a=<lowest>`
+- tablet 3: `b=200, a=<lowest>` to `b=200, a=5`
+- tablet 4: `b=200, a=5` to `b=<highest>, a=<highest>`
+
+
 ## Examples
 
 ### Unique index with HASH column ordering
