@@ -387,7 +387,7 @@ Global-only Commands:
 - `start`, `stop`, `restart`, and `status`
 - `reconfigure`
 
-The `license` and `preflight` commands can be run in either context.
+The `help`, `license`, and `preflight` commands can be run in either context.
 
 If you don't use the correct execution path, yba-ctl fails with an error:
 
