@@ -55,7 +55,7 @@ The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule sp
 You should avoid using TRUNCATE in the following circumstances:
 
 * inside of a multi-step transaction 
-* or running truncate concurrently with our read/write operations in the same table.
+* concurrently with read and write operations in the same table
 
 If this is mostly for CI/CD on smaller datasets, you can use `DELETE FROM table;`.  
 This is heavier weight (and also not recommended for very large data sets) but will be transactional.
