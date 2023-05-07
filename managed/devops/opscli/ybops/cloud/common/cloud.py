@@ -66,6 +66,8 @@ class AbstractCloud(AbstractCommandParser):
 
     def __init__(self, name):
         super(AbstractCloud, self).__init__(name)
+
+    def init(self, args=None):
         devops_home = os.environ.get("yb_devops_home")
         vars_file = os.path.join(devops_home,
                                  AbstractCloud.VARS_DIR_SUFFIX,

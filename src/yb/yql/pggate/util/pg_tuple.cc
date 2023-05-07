@@ -16,7 +16,7 @@
 
 #include <glog/logging.h>
 
-#include "yb/yql/pggate/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
 
 namespace yb {
 namespace pggate {

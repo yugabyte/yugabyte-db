@@ -282,6 +282,7 @@ func InitViper() {
 		viper.Set("ybdb.install.enabled", true)
 		viper.Set("ybdb.install.port", 5433)
 		viper.Set("ybdb.install.restartSeconds", 10)
+		viper.Set("ybdb.install.read_committed_isolation", true)
 	}
 }
 

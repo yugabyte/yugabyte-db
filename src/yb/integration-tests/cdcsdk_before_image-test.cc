@@ -204,9 +204,18 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageExpiration)) {
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
 
   uint32_t record_size = change_resp2.cdc_sdk_proto_records_size();
+  uint32_t seen_dml_record = 0;
   for (uint32_t i = 0; i < record_size; ++i) {
     const CDCSDKProtoRecordPB record = change_resp2.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+    // Ignore DDL records which are created due to leadership changes.
+    if (record.row_message().op() == RowMessage::DDL) {
+      continue;
+    }
+
+    CheckRecord(
+        record, expected_records[seen_dml_record], count, true,
+        expected_before_image_records[seen_dml_record]);
+    seen_dml_record += 1;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {

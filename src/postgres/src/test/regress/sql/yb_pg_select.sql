@@ -173,16 +173,24 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
 RESET enable_indexscan;
 -- check multi-index cases too
 -- TODO(#4634): bitmap scan should be used when implemented.
--- YB edit: add "order by unique2" for consistent ordering.
+-- YB edit: add "ORDER BY unique2" for consistent ordering.
 explain (costs off)
+SELECT * FROM (
 select unique1, unique2 from onek2
-  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B' order by unique2;
+  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B'
+LIMIT ALL) ybview ORDER BY unique2;
+SELECT * FROM (
 select unique1, unique2 from onek2
-  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B' order by unique2;
+  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B'
+LIMIT ALL) ybview ORDER BY unique2;
 -- TODO(#4634): bitmap scan should be used when implemented.
--- YB edit: add "order by unique2" for consistent ordering.
+-- YB edit: add "ORDER BY unique2" for consistent ordering.
 explain (costs off)
+SELECT * FROM (
 select unique1, unique2 from onek2
-  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0 order by unique2;
+  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0
+LIMIT ALL) ybview ORDER BY unique2;
+SELECT * FROM (
 select unique1, unique2 from onek2
-  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0 order by unique2;
+  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0
+LIMIT ALL) ybview ORDER BY unique2;

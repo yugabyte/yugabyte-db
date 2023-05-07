@@ -480,9 +480,9 @@ const getBootstrapTableUUIDs = async (
   ysqlTableUUIDToKeyspace: Map<string, string>
 ) => {
   // Check if bootstrap is required, for each selected table
-  let bootstrapTests: { [tableUUID: string]: boolean }[] = [];
+  let bootstrapTest: { [tableUUID: string]: boolean } = {};
   try {
-    bootstrapTests = await isBootstrapRequired(
+    bootstrapTest = await isBootstrapRequired(
       sourceUniverseUUID,
       selectedTableUUIDs.map(adaptTableUUID),
       xClusterConfigType
@@ -504,38 +504,32 @@ const getBootstrapTableUUIDs = async (
   }
 
   const bootstrapTableUUIDs = new Set<string>();
-
-  bootstrapTests.forEach((bootstrapTest) => {
-    // Each bootstrapTest response is of the form {<tableUUID>: boolean}.
-    // Until the backend supports multiple tableUUIDs per request, the response object
-    // will only contain one tableUUID.
-    // Note: Once backend does support multiple tableUUIDs per request, we will replace this
-    //       logic with one that simply filters on the keys (tableUUIDs) of the returned object.
-    const tableUUID = Object.keys(bootstrapTest)[0];
-
-    if (bootstrapTest[tableUUID]) {
-      switch (configTableType) {
-        case TableType.YQL_TABLE_TYPE:
-          bootstrapTableUUIDs.add(tableUUID);
-          return;
-        case TableType.PGSQL_TABLE_TYPE: {
-          bootstrapTableUUIDs.add(tableUUID);
-          // YSQL ONLY: In addition to the current table, add all other tables in the same keyspace
-          //            for bootstrapping.
-          const keyspace = ysqlTableUUIDToKeyspace.get(tableUUID);
-          if (keyspace !== undefined) {
-            const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(keyspace);
-            if (tableUUIDs !== undefined) {
-              tableUUIDs.forEach((tableUUID) => bootstrapTableUUIDs.add(tableUUID));
+  if (bootstrapTest) {
+    Object.keys(bootstrapTest).forEach((tableUUID) => {
+      if (bootstrapTest[tableUUID]) {
+        switch (configTableType) {
+          case TableType.YQL_TABLE_TYPE:
+            bootstrapTableUUIDs.add(tableUUID);
+            return;
+          case TableType.PGSQL_TABLE_TYPE: {
+            bootstrapTableUUIDs.add(tableUUID);
+            // YSQL ONLY: In addition to the current table, add all other tables in the same keyspace
+            //            for bootstrapping.
+            const keyspace = ysqlTableUUIDToKeyspace.get(tableUUID);
+            if (keyspace !== undefined) {
+              const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(keyspace);
+              if (tableUUIDs !== undefined) {
+                tableUUIDs.forEach((tableUUID) => bootstrapTableUUIDs.add(tableUUID));
+              }
             }
+            return;
           }
-          return;
+          default:
+            assertUnreachableCase(configTableType);
         }
-        default:
-          assertUnreachableCase(configTableType);
       }
-    }
-  });
+    });
+  }
   return Array.from(bootstrapTableUUIDs);
 };
 

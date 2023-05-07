@@ -26,6 +26,7 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
+#include "yb/common/ybc_util.h"
 
 #include "yb/docdb/doc_pg_expr.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/viper"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
 // ValidateReconfig should be called before a reconfig, to make sure the new config doesnt' change
@@ -20,4 +21,29 @@ func (s State) ValidateReconfig() error {
 		return fmt.Errorf("cannot change service username from %s", s.Username)
 	}
 	return nil
+}
+
+type DbUpgradeWorkflow string
+
+const (
+	PgToYbdb   DbUpgradeWorkflow = "switchPgToYbdb"
+	YbdbToPg   DbUpgradeWorkflow = "switchYbdbToPg"
+	PgToPg     DbUpgradeWorkflow = "pgToPg"
+	YbdbToYbdb DbUpgradeWorkflow = "YbdbToYbdb"
+)
+
+func (s State) GetDbUpgradeWorkFlow() DbUpgradeWorkflow {
+	if viper.GetBool("postgres.useExisting") != s.Postgres.UseExisting {
+		log.Fatal("cannot change existing postgres install type")
+	}
+	if viper.GetBool("ybdb.install.enabled") {
+		if s.Ybdb.IsEnabled {
+			return YbdbToYbdb
+		}
+		//Allow switching from postgres to ybdb.
+		return PgToYbdb
+	} else if s.Ybdb.IsEnabled {
+		return YbdbToPg
+	}
+	return PgToPg
 }

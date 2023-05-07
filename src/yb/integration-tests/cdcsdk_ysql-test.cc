@@ -5944,9 +5944,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamWithAllTablesHaveNonPri
 
   // Set checkpoint should throw an error, for the tablet that is not part of the stream, because
   // it's non-primary key table.
-  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  LOG(INFO) << "Response for setcheckpoint: " << resp.DebugString();
-  ASSERT_TRUE(resp.has_error());
+  ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets));
 
   ASSERT_OK(WriteRowsHelper(
       0 /* start */, 1 /* end */, &test_cluster_, true, 2, tables_wo_pk[0].c_str()));
@@ -7785,6 +7783,41 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddManyColocatedTablesOnNames
         "CREATE TABLE $0(id1 int primary key, value_2 int, value_3 int);", table_name));
     LOG(INFO) << "Done create table: " << table_name;
   }
+}
+
+TEST_F(
+    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetAndSetCheckpointWithDefaultNumTabletsForTable)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  // Create a table with default number of tablets.
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+
+  auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  OpId op_id = {change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index()};
+  auto set_resp2 =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, op_id, change_resp.safe_hybrid_time()));
+  ASSERT_FALSE(set_resp2.has_error());
+
+  GetChangesResponsePB change_resp2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  OpId op_id2 = {
+      change_resp.cdc_sdk_checkpoint().term(), change_resp2.cdc_sdk_checkpoint().index()};
+  auto set_resp3 =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, op_id2, change_resp2.safe_hybrid_time()));
+  ASSERT_FALSE(set_resp2.has_error());
 }
 
 }  // namespace cdc

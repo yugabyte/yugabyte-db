@@ -99,6 +99,7 @@ class AbstractMethod(object):
         """Hook for setting up actual command execution.
         """
         logging.debug("...calling {}".format(self.name))
+        self.cloud.init(args)
         if self.need_validation:
             self.cloud.validate_credentials()
         self.cloud.init_cloud_api(args)

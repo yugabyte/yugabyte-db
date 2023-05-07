@@ -105,7 +105,7 @@ Status ConsensusMetadata::Load(FsManager* fs_manager,
   std::unique_ptr<ConsensusMetadata> cmeta(new ConsensusMetadata(fs_manager,
                                                                  tablet_id,
                                                                  peer_uuid));
-  RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(fs_manager->env(),
+  RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(fs_manager->encrypted_env(),
       VERIFY_RESULT(fs_manager->GetConsensusMetadataPath(tablet_id)),
       &cmeta->pb_));
   cmeta->UpdateActiveRole(); // Needs to happen here as we sidestep the accessor APIs.
@@ -283,7 +283,7 @@ Status ConsensusMetadata::Flush() {
 
   string meta_file_path = VERIFY_RESULT(fs_manager_->GetConsensusMetadataPath(tablet_id_));
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
-                          fs_manager_->env(), meta_file_path, pb_,
+                          fs_manager_->encrypted_env(), meta_file_path, pb_,
                           pb_util::OVERWRITE,
                           // Always fsync the consensus metadata.
                           pb_util::SYNC),
