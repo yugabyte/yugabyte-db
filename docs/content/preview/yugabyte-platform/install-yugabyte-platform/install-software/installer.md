@@ -57,21 +57,7 @@ Download and extract the YBA Installer by entering the following commands:
 ```sh
 $ wget YBA_installer_url/YBA_installer_full-2.17.3.0-b123-centos-x86_64.tar.gz
 $ tar -xf YBA_installer_full-2.17.3.0-b123-centos-x86_64.tar.gz
-
-$ ls
-```
-
-```output
-YBA_installer_full-2.17.3.0-b123  YBA_installer_full-2.17.3.0-b123-centos-x86_64.tar.gz
-```
-
-```sh
 $ cd YBA_installer_full-2.17.3.0-b123/
-$ ls
-```
-
-```output
-version_metadata.json  yba-ctl  yba-ctl.yml.reference  YBA_installer-2.17.3.0-b123-linux-amd64  yugabundle-2.17.4.0-b123-centos-x86_64.tar.gz
 ```
 
 This bundle provides everything needed, except a license, to complete a fresh install of YugabyteDB Anywhere:
