@@ -347,7 +347,7 @@ INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 
 ## Migrate a YugabyteDB Anywhere installation
 
-You can migrate a YugabyteDB Anywhere installation from a Replicated-based deployment to a YBA-Installer deployment.
+You can migrate a YugabyteDB Anywhere installation from a Replicated-based deployment to a YBA Installer deployment.
 
 ### Migrate from Replicated to YBA Installer
 
