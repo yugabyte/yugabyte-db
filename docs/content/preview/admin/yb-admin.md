@@ -596,7 +596,7 @@ yb-admin \
 * *table_name*: The name of the table.
 * *table_id*: The unique UUID associated with the table.
 * *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for flushing to end. Default value is `20`.
-* *ADD_INDEXES*: If the DB should also flush the secondary indexes associated with the table.
+* *ADD_INDEXES*: If the DB should also flush the secondary indexes associated with the table. Default is false.
 
 
 **Example**
