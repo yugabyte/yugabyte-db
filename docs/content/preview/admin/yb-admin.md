@@ -593,7 +593,7 @@ yb-admin \
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *table*: <namespace> <table_name> | tableid.<table_id>
 * *namespace*: The namespace of the DB of the table.
-* *table_name*: The name of the table.
+* *table_name*: The name of the table to flush.
 * *table_id*: The unique UUID associated with the table.
 * *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for flushing to end. Default value is `20`.
 * *ADD_INDEXES*: If the DB should also flush the secondary indexes associated with the table. Default is false.
