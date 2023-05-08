@@ -607,7 +607,9 @@ yb-admin \
     flush_table ysql.yugabyte table_name
     
 ```
-
+```output
+Flushed [yugabyte.table_name] tables.
+```
 ---
 
 ### Backup and snapshot commands
