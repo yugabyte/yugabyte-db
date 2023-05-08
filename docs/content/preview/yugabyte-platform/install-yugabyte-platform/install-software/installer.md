@@ -351,21 +351,21 @@ You can migrate a YugabyteDB Anywhere installation from a Replicated-based deplo
 
 ### Migrate from Replicated to YBA Installer
 
-## Binary execution path
+## Running yba-ctl commands
 
-The above workflow descriptions use two different methods to execute yba-ctl:
+YBA Installer commands are run in the following contexts:
 
-- local execution using `./yba-ctl`
-- installed execution using `yba-ctl`
+- local execution path using `./yba-ctl`
+- installed execution path using `yba-ctl`
 
 This is because some commands require local execution context, while others require the context of the installed system.
 
-Local-only Commands:
+The following commands must be run using the local execution path:
 
 - `install`
 - `upgrade`
 
-Global-only Commands:
+The following commands must be run using the installed execution path:
 
 - `createBackup`
 - `restoreBackup`
