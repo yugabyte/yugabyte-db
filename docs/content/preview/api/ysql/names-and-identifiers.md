@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: names-and-identifiers
     parent: api-ysql
-    weight: 50
+    weight: 30
 aliases:
 type: docs
 ---

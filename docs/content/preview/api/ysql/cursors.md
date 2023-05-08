@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: cursors
     parent: api-ysql
-    weight: 150
+    weight: 50
 aliases:
 type: docs
 ---

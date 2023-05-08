@@ -7,12 +7,12 @@ menu:
   preview:
     identifier: txn-model-for-top-level-sql
     parent: api-ysql
-    weight: 30
+    weight: 20
 aliases:
 type: docs
 ---
 
-This section describes how top-level SQL statements, sent to the PostgreSQL server using TCP/IP, execute. The same model, of course, applies for how YugabyteDB's YSQL subsystem  executes such statements. The chapter [Frontend/Backend Protocol](https://www.postgresql.org/docs/11/protocol.html) in the PostgreSQL describes how the server processes, and responds to, SQL statements that are sent this way. 
+This section describes how top-level SQL statements, sent to the PostgreSQL server using TCP/IP, execute. The same model, of course, applies for how YugabyteDB's YSQL subsystem  executes such statements. The chapter [Frontend/Backend Protocol](https://www.postgresql.org/docs/11/protocol.html) in the PostgreSQL documentation describes how the server processes, and responds to, SQL statements that are sent this way. 
 
 ## Client-side libraries and tools
 

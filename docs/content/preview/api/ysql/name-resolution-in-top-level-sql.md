@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: name-resolution-in-top-level-sql
     parent: api-ysql
-    weight: 70
+    weight: 40
 aliases:
 type: docs
 ---

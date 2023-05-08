@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: api-ysql-datatypes
     parent: api-ysql
-    weight: 400
+    weight: 80
 aliases:
   - /preview/api/ysql/datatypes/
 type: indexpage

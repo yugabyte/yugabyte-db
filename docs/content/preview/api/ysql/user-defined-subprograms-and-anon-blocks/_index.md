@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: user-defined-subprograms-and-anon-blocks
     parent: api-ysql
-    weight: 300
+    weight: 70
 aliases:
 type: indexpage
 showRightNav: true
