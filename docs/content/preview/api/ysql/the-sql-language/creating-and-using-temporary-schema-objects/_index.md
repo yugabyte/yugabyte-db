@@ -29,7 +29,7 @@ Here are some scenarios where temporary schema-objects are useful.
 - Oracle Database supports its equivalent of PostgreSQL's _prepare-and-execute_ paradigm for anonymous PL/SQL blocks as well as for regular DML statements. But PostgreSQL's _prepare_ statement supports only regular DML statements and not the _do_ statement. In Oracle Database, parameterized anonymous PL/SQL blocks are used when the encapsulated steps need to be done several times in a session, binding in different actual arguments each time, during some kind of set up flow, but never need to be done again. A temporary _[language plpgsql](../../user-defined-subprograms-and-anon-blocks/#language-plpgsql-subprograms)_ procedure in PostgreSQL, and therefore in YSQL, meets this use case perfectly.
 - See the section [Porting from Oracle PL/SQL](https://www.postgresql.org/docs/11/plpgsql-porting.html) in the PostgreSQL documentation.
 
-Look. now, at each of the following child sections:
+Look, now, at each of the following child sections:
 
 - [Temporary tables, views, and sequences](./temporary-tables-views-sequences-and-indexes/)
 
