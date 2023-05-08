@@ -21,7 +21,7 @@ The following steps are necessary to set up YugabyteDB for use with the Debezium
 
 1. Create a DB stream ID.
 
-    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CLI command.
+    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CLI command. Please refer to the yb-admin reference documentation for more details. 
 
 1. Make sure the master ports are open.
 
@@ -71,8 +71,11 @@ To use the [protobuf](http://protobuf.dev) format for the serialization/de-seria
 
 ## Before image
 
-[Before image](../#before-image) refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when it will be configured using a stream ID enabled with before image. For more information about how to create the stream ID for a before image, see [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
+[Before image](../#before-image) refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when it will be configured using a stream ID enabled with before image. It is populated for UPDATE and DELETE events. For INSERT events, before image doesn't make sense as the change record itself is in the context of new row insertion. 
 
+Yugabyte uses multiversion concurrency control(MVCC) mechanism, and compacts data at regular intervals. The compaction or the history retention is controlled by [history retention interval flag](../../reference/configuration/yb-tserver/#timestamp_history_retention_interval_sec). However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream so that the previous row state is retained/available. Consequently, in the case of a lagging CDC stream, the amount of space required for the database grows as more data is retained. On the other hand, older rows that are not needed for any of the active CDC streams are identified and garbage collected.
+
+Schema version that is currently being used by a CDC stream will be used to frame before and current row images. The before image functionality is disabled by default unless it is specifically turned on during the CDC stream creation. [yb-admin](../../admin/yb-admin/#enabling-before-image) command can be used to create a CDC stream with before image enabled.
 {{< tip title="Use transformers" >}}
 
 Add a transformer in the source connector while using with before image; you can add the following property directly to your configuration:
@@ -139,17 +142,8 @@ The highlighted fields in the update event are:
 | 3 | source | Mandatory field that describes the source metadata for the event. This has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
 | 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 
-## Before image
 
-Before image refers to the state of a row before the change event occurred. It is populated for UPDATE and DELETE events. For INSERT events, before image doesn't make sense as the change record itself is in the context of new row insertion. 
-
-Yugabyte uses multiversion concurrency control(MVCC) mechanism, and compacts data at regular intervals. The compaction or the history retention is controlled by [history retention interval flag](../../reference/configuration/yb-tserver/#timestamp_history_retention_interval_sec). However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream so that the previous row state is retained/available. Consequently, in the case of a lagging CDC stream, the amount of space required for the database grows as more data is retained. On the other hand, older rows that are not needed for any of the active CDC streams are identified and garbage collected.
-
-Schema version that is currently being used by a CDC stream will be used to frame before and current row images.
-
-The before image functionality is disabled by default unless it is specifically turned on during the CDC stream creation. [yb-admin](../../admin/yb-admin/#enabling-before-image) command can be used to create a CDC stream with before image enabled.
-
-For example, consider the following employee table into which a row is inserted, subsquently updated, and deleted:
+Here is one more example, consider the following employee table into which a row is inserted, subsquently updated, and deleted:
 
 ```sql
 create table employee(employee_id int primary key, employee_name varchar);
@@ -313,8 +307,6 @@ CDC record for UPDATE (using schema version 1):
     "op": "u"
 }
 ```
-
-## Transformations
 
 ## Content-based routing
 
