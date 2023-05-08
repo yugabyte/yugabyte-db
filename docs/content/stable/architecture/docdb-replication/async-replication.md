@@ -78,7 +78,7 @@ Because 2DC replication is done asynchronously and by replicating the WAL (and t
 
 ### Limitations
 
-#### Transactional semantics 
+#### Transactional semantics
 
 - Transactions from the source are not applied atomically on the target. That is, some changes in a transaction may be visible before others.
 - Transactions from the source might not respect global ordering on the target. While transactions affecting the same shards, are guaranteed to be timeline consistent even on the target, transactions affecting different shards might end up being visible on the target in a different order than they were committed on the source.
@@ -116,12 +116,13 @@ This is tracked in [#10976](https://github.com/yugabyte/yugabyte-db/issues/10976
 - Encryption at rest is supported. Note that the clusters can technically use different KMS configurations. However, for bootstrapping a sink cluster, the reliance is on the backup and restore flow. As such, a limitation from that is inherited, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken. This means both the source and the sink must have access to the same KMS configurations.
 - YSQL colocation is supported.
 - YSQL geo-partitioning is supported. Note that you must configure replication on all new partitions manually, as DDL changes are not replicated automatically.
+- Source and target universes can have different number of tablets.
+- Tablet splitting is supported on both source and target universes.
 
 #### Not currently supported
 
 - Tablegroups are not supported, as per [#11157](https://github.com/yugabyte/yugabyte-db/issues/11157).
-- Tablet splitting is disabled for tables involved in replication, as per [#10175](https://github.com/yugabyte/yugabyte-db/issues/10175).
-- [Savepoints](../../../explore/ysql-language-features/advanced-features/savepoints/) are not supported, as per [#14308](https://github.com/yugabyte/yugabyte-db/issues/14308). 
+- [Savepoints](../../../explore/ysql-language-features/advanced-features/savepoints/) are not supported, as per [#14308](https://github.com/yugabyte/yugabyte-db/issues/14308).
 
 ## Transactional guarantees
 
