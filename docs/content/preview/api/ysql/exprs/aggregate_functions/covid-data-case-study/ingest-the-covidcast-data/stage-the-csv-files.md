@@ -17,7 +17,7 @@ It isn't essential to do this. It's very unlikely that the names of the objects 
 
 ## Create and populate the "covidcast_names" table
 
-Each of the `.csv` files that you downloaded has its unique name; each will be imported, using the `\copy` metacommand "as is" into a dedicated staging table whose name reflects the source `.csv` file; and each has its own value in the [_"signal"_](../inspect-the-csv-files/#signal) column. Because these names will be needed in various places within the overall set of scripts, they are defined in the _"covidcast_names"_ table, thus:
+Each of the `.csv` files that you downloaded has its unique name; each will be imported, using the `\copy` meta-command "as is" into a dedicated staging table whose name reflects the source `.csv` file; and each has its own value in the [_"signal"_](../inspect-the-csv-files/#signal) column. Because these names will be needed in various places within the overall set of scripts, they are defined in the _"covidcast_names"_ table, thus:
 
 ```plpgsql
 drop table if exists covidcast_names cascade;
@@ -49,7 +49,7 @@ call cr_staging_tables();
 
 This invocation is included in [`ingest-the-data.sql`](../ingest-scripts/ingest-the-data-sql).
 
-Now take an inventory of your tables with the `\d` metacommand. You should see something like this, with the names of the user and schema that you created in place of _"u1"_:
+Now take an inventory of your tables with the `\d` meta-command. You should see something like this, with the names of the user and schema that you created in place of _"u1"_:
 
 ```
  Schema |      Name       | Type  | Owner
@@ -60,7 +60,7 @@ Now take an inventory of your tables with the `\d` metacommand. You should see s
  u1     | symptoms        | table | u1
 ```
 
-## Use the \copy metacommand to copy the data from each .csv file into its staging table
+## Use the \copy meta-command to copy the data from each .csv file into its staging table
 
 The [`COPY`](../../../../../the-sql-language/statements/cmd_copy) SQL statement is designed to ingest data from a file "as is". However, its simple use requires that the to-be-read (or to-be-written) file resides _server-side_ on the local filesystem of the YB-TServer that you connect to. If you specify `stdin` as the argument of `COPY FROM`, then these input and output channels are defined client-side in the environment of the client where you run `ysqlsh`. This sounds promising. But the snag is that you must include the text of the `COPY FROM` statement at the start of the file that contains the data that you intend to ingest. This is described in the [stdin and stdout](../../../../../the-sql-language/statements/cmd_copy/#stdin-and-stdout) section of the documentation for the `COPY` statement.
 
