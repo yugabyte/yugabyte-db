@@ -13,9 +13,9 @@ menu:
 type: docs
 ---
 
-This tutorial describes how to configure Yugabyte CDC and stream data into Amazon MSK using Debezium connector.
+Amazon Managed Streaming for Apache Kafka (Amazon MSK) is a fully managed, highly available, and secure Apache Kafka service offered by Amazon Web Services (AWS). Using Amazon MSK, you can build and run applications using Apache Kafka without having to manage and operate your own Kafka clusters.
 
-The tutorial assumes some familiarity with AWS, Apache Kafka, and CDC.
+This tutorial describes how to configure Yugabyte CDC and stream data into Amazon MSK using Debezium connector, and assumes some familiarity with AWS, Apache Kafka, and CDC.
 
 ![Architecture of YugabyteDB to MSK using Debezium](/images/explore/cdc/aws_msk_images/architecture.jpg)
 
@@ -187,7 +187,7 @@ Create a test table:
 CREATE TABLE test (id INT PRIMARY KEY, name TEXT);
 ```
 
-Enable CDC using yb-admin. The following command enables CDC on all the schemas and tables in the Yugabyte database.
+Enable CDC using yb-admin. The following command enables CDC on all the schemas and tables in the YugabyteDB database.
 
 ```sh
 ./bin/yb-admin — master_addresses <master_addresses>:7100 create_change_data_stream ysql.yugabyte
@@ -225,11 +225,13 @@ This example creates a cluster with two zones.
 
 ![Amazon Brokers](https://miro.medium.com/v2/resize:fit:700/0*vwLr8-tZqsxGuvuO)
 
-Under Networking Section, select VPC and Private subnets same as that of Yugabyte Cluster . Choose the security group created in step 3 from the drop down list.
+Under the Networking section, select the same VPC and Private subnets as used by the YugabyteDB cluster.
+
+Choose the security group you created previously.
 
 ![Amazon Security Groups](https://miro.medium.com/v2/resize:fit:700/0*PMGfUb7LB7CjtM1C)
 
-Enable logging on your cluster to ease debugging . In this demo, we are using S3 bucket to store the logs.
+Enable logging on your cluster to help with debugging. This example uses the S3 bucket to store the logs.
 
 ![Amazon S3 logging](https://miro.medium.com/v2/resize:fit:700/0*MOv37Ars6QWVPPiv)
 
