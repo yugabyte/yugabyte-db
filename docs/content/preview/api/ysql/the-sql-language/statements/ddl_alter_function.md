@@ -10,6 +10,12 @@ menu:
 type: docs
 ---
 
+{{< tip title="See the dedicated 'User-defined subprograms and anonymous blocks' section." >}}
+User-defined functions are part of a larger area of functionality. See this major section:
+
+- [User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"](../../../user-defined-subprograms-and-anon-blocks/) 
+{{< /tip >}}
+
 ## Synopsis
 
 Use the `ALTER FUNCTION` statement to change properties of an existing function.

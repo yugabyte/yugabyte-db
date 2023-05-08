@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: api-ysql-keywords
     parent: api-ysql
-    weight: 500
+    weight: 90
 aliases:
   - /preview/api/ysql/keywords
 type: docs
