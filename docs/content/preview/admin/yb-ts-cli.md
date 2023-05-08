@@ -282,7 +282,7 @@ Default: `60000` (1000 ms = 1 sec)
 
 ##### --certs_dir_name
 
-To connect to a cluster with TLS enabled, you must include the `-certs_dir_name` flag with the directory location where the root certificate is located.
+To connect to a cluster with TLS enabled, you must include the `--certs_dir_name` flag with the directory location where the root certificate is located.
 
 Default: `""`
 
