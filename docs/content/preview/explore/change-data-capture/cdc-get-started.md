@@ -13,28 +13,30 @@ menu:
 type: docs
 ---
 
-In order to stream data change events from YugabyteDB databases, you need to use Debezium YugabyteDB connector. To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. You can download the connector from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases). The connector supports Kafka Connect version 2.x and above, and for YugabyteDB, it supports version 2.14 and above. For more connector configuration details and complete steps, refer to the Debezium connector doc
+To stream data change events from YugabyteDB databases, you need to use Debezium YugabyteDB connector. To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. You can download the connector from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases). The connector supports Kafka Connect version 2.x and later, and for YugabyteDB, it supports version 2.14 and later. For more connector configuration details and complete steps, refer to [Debezium connector](../debezium-connector-yugabytedb/).
 
 ## Setting up YugabyteDB for CDC
 
-The following steps are necessary to set up YugabyteDB for use with the Debezium YugabyteDB connector. 
+The following steps are necessary to set up YugabyteDB for use with the Debezium YugabyteDB connector:
+
 1. Create a DB stream ID.
 
-   Before you use the YugabyteDB connector to retriev data change events from YugabyteDB database, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CLI command.
+    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CLI command.
 
 1. Make sure the master ports are open.
 
-   The connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
+    The connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
 
 1. Monitor available disk space.
 
-   The change records for CDC are read from the WAL. YugabyteDB CDC maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
+    The change records for CDC are read from the WAL. YugabyteDB CDC maintains checkpoints internally for each DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
-   In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+    In case CDC is lagging or away for some time, the disk usage may grow and cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [YB-TServer flag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
 ## Serialization {.tabset}
 
 ### Avro
+
 The YugabyteDB source connector also supports AVRO serialization with schema registry. To use AVRO serialization, simply add the following configuration to your connector:
 
 ```json
@@ -47,10 +49,12 @@ The YugabyteDB source connector also supports AVRO serialization with schema reg
   ...
 }
 ```
+
 ### JSON
 
 ### Protobuf
-To use the [protobuf](http://protobuf.dev) format for the serialization/de-serialization of the kafka messages, you can use the [Protobuf Converter](https://www.confluent.io/hub/confluentinc/kafka-connect-protobuf-converter). After downloading and including the required `JAR` files in the Kafka-Connect enviornment, you can directly configure the CDC source and sink connectors to use this converter.
+
+To use the [protobuf](http://protobuf.dev) format for the serialization/de-serialization of the Kafka messages, you can use the [Protobuf Converter](https://www.confluent.io/hub/confluentinc/kafka-connect-protobuf-converter). After downloading and including the required `JAR` files in the Kafka-Connect envioronment, you can directly configure the CDC source and sink connectors to use this converter.
 
 ```json
 {
@@ -62,6 +66,7 @@ To use the [protobuf](http://protobuf.dev) format for the serialization/de-seria
   }
 }
 ```
+
 ## {-}
 
 ## Before image
@@ -144,7 +149,8 @@ Schema version that is currently being used by a CDC stream will be used to fram
 
 The before image functionality is disabled by default unless it is specifically turned on during the CDC stream creation. [yb-admin](../../admin/yb-admin/#enabling-before-image) command can be used to create a CDC stream with before image enabled.
 
-For example, let us consider the following employee table into which a row is inserted, subsquently updated and deleted.
+For example, consider the following employee table into which a row is inserted, subsquently updated, and deleted:
+
 ```sh
 create table employee(employee_id int primary key, employee_name varchar);
 
@@ -308,12 +314,13 @@ CDC record for UPDATE (using schema version 1):
 ## Transformations
 
 ## Content-based routing
-By default, the Yugabyte Debezium connector streams all of the change events that it reads from a table to a single static topic. However, you may want to re-route the events into different kafka topics based on the event's content. It is possible through debezium's `ContentBasedRouter`. But first, there are two additional dependencies that need to be placed in the Kafka-Connect environment. These are not included in the official *yugabyte-debezium-connector* for security reasons. In particular, these dependencies are
+
+By default, the Yugabyte Debezium connector streams all of the change events that it reads from a table to a single static topic. However, you may want to re-route the events into different Kafka topics based on the event's content. It is possible through Debezium's `ContentBasedRouter`. But first, there are two additional dependencies that need to be placed in the Kafka-Connect environment. These are not included in the official *yugabyte-debezium-connector* for security reasons. In particular, these dependencies are:
 
 - Debezium routing SMT (Single Message Transform)
 - Groovy JSR223 implementation (or other scripting languages that integrate with [JSR 223](https://jcp.org/en/jsr/detail?id=223))
 
-To get started, you can rebuild the *yugabyte-debezium-connector* image including these dependencies. Here’s what the Dockerfile would look like:
+To get started, you can rebuild the *yugabyte-debezium-connector* image including these dependencies. Here's what the Dockerfile would look like:
 
 ```Dockerfile
 FROM quay.io/yugabyte/debezium-connector:latest
@@ -337,12 +344,13 @@ To configure a content-based router you need to add the following lines to your 
   }
 }
 ```
+
 The `<routing-expression>` contains the logic for routing of the events. For example, if you want to re-route the events based on the `country` column in user's table, you may use a expression similar to
 
 ```
 value.after != null ? (value.after?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null) : (value.before?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null)"
 ```
 
-This expression checks if the value of the row after the operation has the country set to “UK.” If *yes* then the expression returns “uk_users.” If *no*, it returns *null*, and in case the row after the operation is *null* (for example, in a “delete” operation), the expression also checks for the same condition on row values before the operation. The value that is returned determines which new Kafka Topic will receive the re-routed event. If it returns *null*, the event is sent to the default topic.
+This expression checks if the value of the row after the operation has the country set to "UK". If *yes* then the expression returns "uk_users." If *no*, it returns *null*, and in case the row after the operation is *null* (for example, in a "delete" operation), the expression also checks for the same condition on row values before the operation. The value that is returned determines which new Kafka Topic will receive the re-routed event. If it returns *null*, the event is sent to the default topic.
 
-For more advanced routing configuration, you can refer to [Debezium’s official documentation](https://debezium.io/documentation/reference/stable/transformations/content-based-routing.html) on content-based routing.
+For more advanced routing configuration, you can refer to [Debezium's official documentation](https://debezium.io/documentation/reference/stable/transformations/content-based-routing.html) on content-based routing.
