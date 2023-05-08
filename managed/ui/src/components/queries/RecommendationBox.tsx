@@ -99,7 +99,7 @@ const getRecommendation = (type: RecommendationType, summary: ReactNode | string
     type === RecommendationType.HOT_SHARD ||
     type === RecommendationType.REJECTED_CONNECTIONS
   ) {
-    return <CustomRecommendations summary={summary} suggestion={data.suggestion} />;
+    return <CustomRecommendations summary={summary} suggestion={data.suggestion} type={type} />;
   }
   return null;
 };
@@ -113,6 +113,25 @@ export const RecommendationBox: FC<RecommendationProps> = ({
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
+
+  const [open, setOpen] = useState(false);
+  // const [resolved1, setResolved] = useState(false);
+
+  const handleResolveRecommendation = (event: ChangeEvent<HTMLInputElement>) => {
+    const isChecked = event.target.checked;
+    onResolve(idKey, isChecked);
+    // setResolved(isChecked);
+    if (isChecked) {
+      setOpen(false);
+    }
+    event.stopPropagation();
+  };
+
+  const handleOpenBox = () => {
+    if (!resolved) {
+      setOpen((val) => !val);
+    }
+  };
 
   const getTypeTagColor = (recommendationType: RecommendationType) => {
     switch (recommendationType) {
@@ -204,25 +223,6 @@ export const RecommendationBox: FC<RecommendationProps> = ({
     }
   };
 
-  const [open, setOpen] = useState(false);
-  // const [resolved1, setResolved] = useState(false);
-
-  const handleResolveRecommendation = (event: ChangeEvent<HTMLInputElement>) => {
-    const isChecked = event.target.checked;
-    onResolve(idKey, isChecked);
-    // setResolved(isChecked);
-    if (isChecked) {
-      setOpen(false);
-    }
-    event.stopPropagation();
-  };
-
-  const handleOpenBox = () => {
-    if (!resolved) {
-      setOpen((val) => !val);
-    }
-  };
-
   return (
     <div className={classes.recommendation}>
       <Box
@@ -232,7 +232,7 @@ export const RecommendationBox: FC<RecommendationProps> = ({
         className={resolved ? classes.strikeThroughText : classes.itemHeader}
       >
         {getTypeTagColor(type)}
-        <span>{getSummaryContent(type, data)}</span>
+        <span>{!open && getSummaryContent(type, data)}</span>
         <Box ml="auto">
           <YBCheckbox
             label={'Resolved'}
