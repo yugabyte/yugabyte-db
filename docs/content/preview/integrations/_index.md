@@ -49,6 +49,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="atomicjar/">
+      <img src="/images/section_icons/develop/ecosystem/atomicjar-icon.png">
+      AtomicJar Testcontainers
+    </a>
+  </li>
+
+  <li>
     <a href="camunda/">
       <img src="/images/section_icons/develop/ecosystem/camunda.png">
       Camunda
