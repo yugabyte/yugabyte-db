@@ -138,6 +138,8 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
 
   processors_mem_tracker_ = MemTracker::CreateTracker("CQL processors", server->mem_tracker());
 
+  requests_mem_tracker_ = MemTracker::CreateTracker("CQL Requests", server->mem_tracker());
+
   auth_prepared_stmt_ = std::make_shared<ql::Statement>(
       "",
       Substitute("SELECT $0, $1 FROM system_auth.roles WHERE role = ?",
