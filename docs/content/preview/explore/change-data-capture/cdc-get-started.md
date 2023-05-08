@@ -151,7 +151,7 @@ The before image functionality is disabled by default unless it is specifically 
 
 For example, consider the following employee table into which a row is inserted, subsquently updated, and deleted:
 
-```sh
+```sql
 create table employee(employee_id int primary key, employee_name varchar);
 
 insert into employee values(1001, 'Alice');
@@ -161,9 +161,11 @@ update employee set employee_name='Bob' where employee_id=1001;
 delete from employee where employee_id=1001;
 ```
 
-CDC records for update and delete statements without enabling before image would be 
-| CDC record for UPDATE           | CDC record for DELETE         |
-| -----------------------------   | ----------------------------- |
+CDC records for update and delete statements without enabling before image would be as follows:
+
+```json
+| CDC record for UPDATE           | CDC record for DELETE           |
+| -----------------------------   | ------------------------------- |
 | `json`                          | `json`                          |
 |`{   `                           |`{`                              |
 | ` "before": null,     `         |  `"before": {`                  |
@@ -177,17 +179,18 @@ CDC records for update and delete statements without enabling before image would
 |         ` "value": {  `         |  `"after": null, `              |
 |           ` "string": "Bob". `  |  `"op": "d"   `                 |
 |         ` }   `                 |`}  `                            |
-|       ` }   `                   |                          |
-|     ` }   `                     |                               |
-|   ` }  `                        |                               |
-|  `}, `                          |                               |
-|  `"op": "u"  `                  |                               |
-|`}  `                            |                               |
-|                                 |                               |
+|       ` }   `                   |                                 |
+|     ` }   `                     |                                 |
+|   ` }  `                        |                                 |
+|  `}, `                          |                                 |
+|  `"op": "u"  `                  |                                 |
+|`}  `                            |                                 |
+|                                 |                                 |
+```
 
-With before image enabled, the update and delete records look like
+With before image enabled, the update and delete records look like the following:
 
-```sh
+```json
 CDC record for UPDATE:
 {
   "before": {
@@ -254,7 +257,7 @@ If you alter the schema of the source table to add a default value for an existi
 
 Let us consider the following employee table (with schema version 0 at the time of table creation) into which a row is inserted, followed by a DDL resulting in schema version 1 and an update of the row inserted, and subsequently another DDL incrementing the schema version to 2. If a CDC stream created for employee table lags and is in the process of streaming the update, corresponding schema version 1 is used for populating the update record. 
 
-```sh
+```sql
 create table employee(employee_id int primary key, employee_name varchar); // schema version 0
 
 insert into employee values(1001, 'Alice');
@@ -266,9 +269,9 @@ update employee set dept_id=9 where employee_id=1001; // currently streaming rec
 alter table employee add dept_name varchar; // schema version 2
 ```
 
-Update CDC record would be 
-```sh
+Update CDC record would be
 
+```json
 CDC record for UPDATE (using schema version 1):
 {
   "before": {
