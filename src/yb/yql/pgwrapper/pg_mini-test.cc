@@ -44,6 +44,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -1859,6 +1860,57 @@ TEST_F_EX(
   ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
   ASSERT_OK(conn.Fetch("SELECT * FROM test"));
   ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+TEST_F_EX(
+    PgMiniSingleTServerTest, TestDeferrablePagingInSerializableIsolation,
+    PgSmallPrefetchTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (key INT PRIMARY KEY, v INT)"));
+  constexpr auto kNumRows = 4u;
+  for (auto i = 0u; i < kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, $1)", i, 0));
+  }
+
+  constexpr auto kWriteNumIterations = 1000u;
+
+  CountDownLatch sync_start_latch(2);
+  std::atomic<size_t> num_write_iterations{0};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(), &num_write_iterations, &sync_start_latch]() {
+        auto write_conn = ASSERT_RESULT(Connect());
+        sync_start_latch.CountDown();
+        sync_start_latch.Wait();
+        while (!stop.load(std::memory_order_acquire)) {
+          ASSERT_OK(write_conn.Execute("UPDATE test SET v=0"));
+          ASSERT_OK(write_conn.Execute("UPDATE test SET v=1"));
+          num_write_iterations.fetch_add(2, std::memory_order_acq_rel);
+        }
+      });
+
+  // Since each DEFERRABLE waits for max_clock_skew_usec, set it to a low value to avoid a
+  // very large test time.
+  SetAtomicFlag(2 * 1000, &FLAGS_max_clock_skew_usec);
+
+  constexpr auto kReadNumIterations = 1000u;
+  auto read_conn = ASSERT_RESULT(Connect());
+  sync_start_latch.CountDown();
+  sync_start_latch.Wait();
+  for (auto i = 0u; i < kReadNumIterations ||
+          num_write_iterations.load(std::memory_order_acquire) < kWriteNumIterations; ++i) {
+    ASSERT_OK(read_conn.Execute(
+        "BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE"));
+
+    auto res = ASSERT_RESULT(read_conn.FetchMatrix("SELECT v FROM test", kNumRows, 1));
+
+    // Ensure that all rows in the table have the same value.
+    auto common_value_for_all_rows = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    for (auto i = 1u; i < kNumRows; ++i) {
+      ASSERT_EQ(common_value_for_all_rows, ASSERT_RESULT(GetInt32(res.get(), i, 0)));
+    }
+    ASSERT_OK(read_conn.Execute("COMMIT"));
+  }
 }
 
 class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {

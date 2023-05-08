@@ -112,10 +112,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Returns true if our current read point requires restart.
   bool IsRestartRequired();
 
-  // Defer the read hybrid time to the global limit.  Since the global limit should not change for a
-  // session, this call is idempotent.
-  void DeferReadPoint();
-
   // Changes transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
 

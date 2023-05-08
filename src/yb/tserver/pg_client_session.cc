@@ -873,8 +873,15 @@ PgClientSession::SetupSession(
   RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, session->read_point()));
 
   if (options.defer_read_point()) {
-    // This call is idempotent, meaning it has no effect after the first call.
-    session->DeferReadPoint();
+    // Deferring allows avoiding read restart errors in case of a READ ONLY transaction by setting
+    // the read point to the global limit (i.e., read time + max clock skew) and hence waiting out
+    // any ambiguity of data visibility that might arise from clock skew.
+    RSTATUS_DCHECK(
+      !transaction, IllegalState,
+      "Deferring read point is only allowed in SERIALIZABLE DEFERRABLE READ ONLY, a distributed "
+      "transaction is unexpected here.");
+
+    RETURN_NOT_OK(session->read_point()->TrySetDeferredCurrentReadTime());
   }
 
   // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not

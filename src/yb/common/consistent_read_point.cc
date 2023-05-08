@@ -20,22 +20,45 @@ ConsistentReadPoint::ConsistentReadPoint(const scoped_refptr<ClockBase>& clock)
     : clock_(clock) {
 }
 
-void ConsistentReadPoint::SetReadTime(
-    const ReadHybridTime& read_time, HybridTimeMap&& local_limits) {
-  std::lock_guard<simple_spinlock> lock(mutex_);
+void ConsistentReadPoint::SetReadTimeUnlocked(
+    const ReadHybridTime& read_time, HybridTimeMap* local_limits) {
   read_time_ = read_time;
   read_time_.local_limit = read_time.global_limit;
   restart_read_ht_ = read_time_.read;
-  local_limits_ = std::move(local_limits);
+  if (local_limits) {
+    local_limits_ = std::move(*local_limits);
+  } else {
+    local_limits_.clear();
+  }
   restarts_.clear();
 }
 
+void ConsistentReadPoint::SetCurrentReadTimeUnlocked() {
+  SetReadTimeUnlocked(ReadHybridTime::FromHybridTimeRange(clock_->NowRange()));
+}
+
+void ConsistentReadPoint::SetReadTime(
+    const ReadHybridTime& read_time, HybridTimeMap&& local_limits) {
+  std::lock_guard lock(mutex_);
+  SetReadTimeUnlocked(read_time, &local_limits);
+}
+
 void ConsistentReadPoint::SetCurrentReadTime() {
-  std::lock_guard<simple_spinlock> lock(mutex_);
-  read_time_ = ReadHybridTime::FromHybridTimeRange(clock_->NowRange());
-  restart_read_ht_ = read_time_.read;
-  local_limits_.clear();
-  restarts_.clear();
+  std::lock_guard lock(mutex_);
+  SetCurrentReadTimeUnlocked();
+}
+
+Status ConsistentReadPoint::TrySetDeferredCurrentReadTime() {
+  std::lock_guard lock(mutex_);
+  if (read_time_) {
+    RSTATUS_DCHECK_EQ(
+        read_time_.read, read_time_.global_limit, IllegalState, "Deferred read point is expected.");
+  } else {
+    SetCurrentReadTimeUnlocked();
+    read_time_.read = read_time_.global_limit;
+    restart_read_ht_ = read_time_.read;
+  }
+  return Status::OK();
 }
 
 ReadHybridTime ConsistentReadPoint::GetReadTime(const TabletId& tablet) const {
