@@ -40,7 +40,7 @@ You need to build the Testcontainer project using the following steps:
 
 1. Define the library dependency in the build file. Refer to the `build.grade` file for complete details.
 
-    ```conf
+    ```properties
 
     // version details for the BOM
     extra["testcontainersVersion"] = "1.17.6"
@@ -55,11 +55,12 @@ You need to build the Testcontainer project using the following steps:
     imports {
         mavenBom("org.testcontainers:testcontainers-bom:${property("testcontainersVersion")}")
     }
+    }
     ```
 
 1. Initialize the YugabyteDB Testcontainer using the `@Container` annotation.
 
-    ```conf
+    ```properties
     @Container
     YugabyteDBYSQLContainer container = new YugabyteDBYSQLContainer("yugabytedb/yugabyte:2.16.0.0-b90").withDatabaseName("yugabyte").withUsername("yugabyte").withPassword("yugabyte").withReuse(true);
     ```
@@ -68,7 +69,7 @@ You need to build the Testcontainer project using the following steps:
 
    The following snippet is required to populate the data source information:
 
-   ```conf
+   ```properties
    @DynamicPropertySource
    static void datasourceProps(final DynamicPropertyRegistry registry) {
      registry.add("spring.datasource.url", container::getJdbcUrl);
@@ -80,7 +81,7 @@ You need to build the Testcontainer project using the following steps:
 
     An alternative to the preceding step is to define the `tc` JDBC URL in the `application-test.yaml` properties file.
 
-    ```conf
+    ```properties
     spring:
       datasource:
         url: jdbc:tc:yugabyte:2.14.4.0-b26:///yugabyte
@@ -92,18 +93,17 @@ You need to build the Testcontainer project using the following steps:
 
 This example uses the standard way of writing integration test cases for the Spring Boot test framework with the following annotations:
 
-- `@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)` : This annotation loads the application context. The `webEnvironment` attribute is set to NONE because you do not want to start the embedded servlet container for your test. This property is mainly used when you want to test the service or repository layer.
+- `@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)` - This annotation loads the application context. The `webEnvironment` attribute is set to NONE because you do not want to start the embedded servlet container for your test. This property is mainly used when you want to test the service or repository layer.
 
-- `@AutoConfigureTestDatabase(replace = NONE)` : This annotation replaces any data source with the embedded H2 instance by default. So, you need to override this behavior by adding `replace=Replace.NONE` so that the application uses the real database through Testcontainers.
+- `@AutoConfigureTestDatabase(replace = NONE)` - This annotation replaces any data source with the embedded H2 instance by default. So, you need to override this behavior by adding `replace=Replace.NONE` so that the application uses the real database through Testcontainers.
 
-- `@Testcontainers` : This annotation enables Testcontainers for the test class.
+- `@Testcontainers` - This annotation enables Testcontainers for the test class.
 
-- `@ActiveProfiles(“test”)` : This annotation activates the test application profile (application-test.[yaml|properties]). This profile configures the application to use the real database through Testcontainers.
+- `@ActiveProfiles(“test”)` - This annotation activates the test application profile (application-test.[yaml|properties]). This profile configures the application to use the real database through Testcontainers.
 
-- `@DataJpaTest`: This annotation is for a JPA test focusing only on the repository components.
+- `@DataJpaTest`- This annotation is for a JPA test focusing only on the repository components.
 
-Refer to the `TodoApplicationServiceTest.java`  to learn how to test the service layer and `TodoApplicationRepositoryTest.java` to
-test the repository layer.
+Refer to `TodoApplicationServiceTest.java` and `TodoApplicationRepositoryTest.java` to learn how to test the service layer and repository layer respectively.
 
 ## Learn more
 
