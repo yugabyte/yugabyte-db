@@ -204,9 +204,8 @@ Type LoadInt(const Slice& slice, size_t offset) {
 
 // ------------------------------------ CQL request -----------------------------------
 bool CQLRequest::ParseRequest(
-  const Slice& mesg, const CompressionScheme compression_scheme,
-  unique_ptr<CQLRequest>* request, unique_ptr<CQLResponse>* error_response) {
-
+    const Slice& mesg, const CompressionScheme compression_scheme, unique_ptr<CQLRequest>* request,
+    unique_ptr<CQLResponse>* error_response, const MemTrackerPtr& request_mem_tracker) {
   *request = nullptr;
   *error_response = nullptr;
 
@@ -251,6 +250,7 @@ bool CQLRequest::ParseRequest(
   size_t body_size = mesg.size() - kMessageHeaderLength;
   const uint8_t* body_data = body_size > 0 ? mesg.data() + kMessageHeaderLength : to_uchar_ptr("");
   unique_ptr<uint8_t[]> buffer;
+  ScopedTrackedConsumption compression_mem_tracker;
 
   if (header.flags & kMetadataFlag) {
     if (body_size < kMetadataSize) {
@@ -288,6 +288,7 @@ bool CQLRequest::ParseRequest(
         buffer = std::make_unique<uint8_t[]>(uncomp_size);
         body_data += sizeof(uncomp_size);
         body_size -= sizeof(uncomp_size);
+        compression_mem_tracker = ScopedTrackedConsumption(request_mem_tracker, uncomp_size);
         const int size = LZ4_decompress_safe(
             to_char_ptr(body_data), to_char_ptr(buffer.get()), narrow_cast<int>(body_size),
             uncomp_size);
@@ -306,6 +307,7 @@ bool CQLRequest::ParseRequest(
         size_t uncomp_size = 0;
         if (GetUncompressedLength(to_char_ptr(body_data), body_size, &uncomp_size)) {
           buffer = std::make_unique<uint8_t[]>(uncomp_size);
+          compression_mem_tracker = ScopedTrackedConsumption(request_mem_tracker, uncomp_size);
           if (RawUncompress(to_char_ptr(body_data), body_size, to_char_ptr(buffer.get()))) {
             body_data = buffer.get();
             body_size = uncomp_size;
@@ -332,28 +334,28 @@ bool CQLRequest::ParseRequest(
   // Construct the skeleton request by the opcode
   switch (header.opcode) {
     case Opcode::STARTUP:
-      request->reset(new StartupRequest(header, body));
+      request->reset(new StartupRequest(header, body, request_mem_tracker));
       break;
     case Opcode::AUTH_RESPONSE:
-      request->reset(new AuthResponseRequest(header, body));
+      request->reset(new AuthResponseRequest(header, body, request_mem_tracker));
       break;
     case Opcode::OPTIONS:
-      request->reset(new OptionsRequest(header, body));
+      request->reset(new OptionsRequest(header, body, request_mem_tracker));
       break;
     case Opcode::QUERY:
-      request->reset(new QueryRequest(header, body));
+      request->reset(new QueryRequest(header, body, request_mem_tracker));
       break;
     case Opcode::PREPARE:
-      request->reset(new PrepareRequest(header, body));
+      request->reset(new PrepareRequest(header, body, request_mem_tracker));
       break;
     case Opcode::EXECUTE:
-      request->reset(new ExecuteRequest(header, body));
+      request->reset(new ExecuteRequest(header, body, request_mem_tracker));
       break;
     case Opcode::BATCH:
-      request->reset(new BatchRequest(header, body));
+      request->reset(new BatchRequest(header, body, request_mem_tracker));
       break;
     case Opcode::REGISTER:
-      request->reset(new RegisterRequest(header, body));
+      request->reset(new RegisterRequest(header, body, request_mem_tracker));
       break;
 
     // These are not request but response opcodes
@@ -417,8 +419,9 @@ int64_t CQLRequest::ParseRpcQueueLimit(const Slice& mesg) {
   return static_cast<int64_t>(queue_limit);
 }
 
-CQLRequest::CQLRequest(const Header& header, const Slice& body) : CQLMessage(header), body_(body) {
-}
+CQLRequest::CQLRequest(
+    const Header& header, const Slice& body, size_t object_size, const MemTrackerPtr& mem_tracker)
+    : CQLMessage(header), body_(body), consumption_(mem_tracker, object_size + body.size()) {}
 
 CQLRequest::~CQLRequest() {
 }
@@ -633,9 +636,9 @@ Status CQLRequest::ParseConsistency(Consistency* consistency) {
 }
 
 // ------------------------------ Individual CQL requests -----------------------------------
-StartupRequest::StartupRequest(const Header& header, const Slice& body)
-    : CQLRequest(header, body) {
-}
+StartupRequest::StartupRequest(
+    const Header& header, const Slice& body, const MemTrackerPtr& mem_tracker)
+    : CQLRequest(header, body, sizeof(*this), mem_tracker) {}
 
 StartupRequest::~StartupRequest() {
 }
@@ -645,9 +648,9 @@ Status StartupRequest::ParseBody() {
 }
 
 //----------------------------------------------------------------------------------------
-AuthResponseRequest::AuthResponseRequest(const Header& header, const Slice& body)
-    : CQLRequest(header, body) {
-}
+AuthResponseRequest::AuthResponseRequest(
+    const Header& header, const Slice& body, const MemTrackerPtr& mem_tracker)
+    : CQLRequest(header, body, sizeof(*this), mem_tracker) {}
 
 AuthResponseRequest::~AuthResponseRequest() {
 }
@@ -692,8 +695,9 @@ Status AuthResponseRequest::AuthQueryParameters::GetBindVariable(
 }
 
 //----------------------------------------------------------------------------------------
-OptionsRequest::OptionsRequest(const Header& header, const Slice& body) : CQLRequest(header, body) {
-}
+OptionsRequest::OptionsRequest(
+    const Header& header, const Slice& body, const MemTrackerPtr& mem_tracker)
+    : CQLRequest(header, body, sizeof(*this), mem_tracker) {}
 
 OptionsRequest::~OptionsRequest() {
 }
@@ -704,8 +708,9 @@ Status OptionsRequest::ParseBody() {
 }
 
 //----------------------------------------------------------------------------------------
-QueryRequest::QueryRequest(const Header& header, const Slice& body) : CQLRequest(header, body) {
-}
+QueryRequest::QueryRequest(
+    const Header& header, const Slice& body, const MemTrackerPtr& mem_tracker)
+    : CQLRequest(header, body, sizeof(*this), mem_tracker) {}
 
 QueryRequest::~QueryRequest() {
 }
@@ -717,8 +722,9 @@ Status QueryRequest::ParseBody() {
 }
 
 //----------------------------------------------------------------------------------------
-PrepareRequest::PrepareRequest(const Header& header, const Slice& body) : CQLRequest(header, body) {
-}
+PrepareRequest::PrepareRequest(
+    const Header& header, const Slice& body, const MemTrackerPtr& mem_tracker)
+    : CQLRequest(header, body, sizeof(*this), mem_tracker) {}
 
 PrepareRequest::~PrepareRequest() {
 }
@@ -729,8 +735,9 @@ Status PrepareRequest::ParseBody() {
 }
 
 //----------------------------------------------------------------------------------------
-ExecuteRequest::ExecuteRequest(const Header& header, const Slice& body) : CQLRequest(header, body) {
-}
+ExecuteRequest::ExecuteRequest(
+    const Header& header, const Slice& body, const MemTrackerPtr& mem_tracker)
+    : CQLRequest(header, body, sizeof(*this), mem_tracker) {}
 
 ExecuteRequest::~ExecuteRequest() {
 }
@@ -748,8 +755,9 @@ Status ExecuteRequest::ParseBody() {
 }
 
 //----------------------------------------------------------------------------------------
-BatchRequest::BatchRequest(const Header& header, const Slice& body) : CQLRequest(header, body) {
-}
+BatchRequest::BatchRequest(
+    const Header& header, const Slice& body, const MemTrackerPtr& mem_tracker)
+    : CQLRequest(header, body, sizeof(*this), mem_tracker) {}
 
 BatchRequest::~BatchRequest() {
 }
@@ -811,9 +819,9 @@ Status BatchRequest::ParseBody() {
 }
 
 //----------------------------------------------------------------------------------------
-RegisterRequest::RegisterRequest(const Header& header, const Slice& body)
-    : CQLRequest(header, body) {
-}
+RegisterRequest::RegisterRequest(
+    const Header& header, const Slice& body, const MemTrackerPtr& mem_tracker)
+    : CQLRequest(header, body, sizeof(*this), mem_tracker) {}
 
 RegisterRequest::~RegisterRequest() {
 }
