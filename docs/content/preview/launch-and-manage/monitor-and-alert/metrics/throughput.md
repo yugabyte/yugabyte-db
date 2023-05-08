@@ -43,15 +43,15 @@ The list of attributes for latency metrics at `<node-ip>:7000/metrics`, `<node-i
 | Attribute | Description |
 | :--- | :--- |
 | `total_count` | The number of times the latency of a metric has been measured.
-| `min` | The minimum value of the latency for the metric across all measurements.
-| `mean` | The average latency for the metric across all measurements.
-| `Percentile_75` | The latency at which 75% of the requests were completed successfully for the metric.
-| `Percentile_95` | The latency at which 95% of the requests were completed successfully for the metric.
-| `Percentile_99` | The latency at which 99% of the requests were completed successfully for the metric.
-| `Percentile_99_9` | The latency at which 99.9% of the requests were completed successfully for the metric.
-| `Percentile_99_99` | The latency at which 99.99% of the requests were completed successfully for the metric.
-| `max` | The maximum value of latency for the metric across all measurements.
-| `total_sum` | The aggregate latency for the metrics across all measurements.
+| `min` | The minimum value of the latency across all measurements of this metric.
+| `mean` | The average latency across all measurements of this metric.
+| `Percentile_75` | The 75th percentile latency across all measurements of this metric
+| `Percentile_95` | The 95th percentile latency across all measurements of this metric
+| `Percentile_99` | The 99th percentile latency across all measurements of this metric
+| `Percentile_99_9` | The 99.9th percentile latency across all measurements of this metric
+| `Percentile_99_99` | The 99.99th percentile latency across all measurements of this metric
+| `max` | The maximum value of latency across all measurements of this metric.
+| `total_sum` | The aggregate latency across all measurements of this metric.
 
 For example, if `SELECT * FROM table` is executed once and returns 8 rows in 10 microseconds, the `handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt` metric would have the following attribute values: `total_count=1`, `total_sum=10`, `min=10`, `max=10`, and `mean=10`. If the same query is run again and returns in 6 microseconds, then the attributes would be as follows: `total_count=2`, `total_sum=16`, `min=6`, `max=10`, and `mean=8`.
 
