@@ -12,9 +12,16 @@ menu:
 type: docs
 ---
 
-As referenced in the earlier section, YugabyteDB has latency metrics for Tables/Tablets available on port `9000` for Tserver and port `7000` for master. Additionally, YugabyteDb supports query processing and connection metrics on port `13000` for YSQL and on port `12000` for YCQL. Table/Tablet metrics on Master and Tserver have different set of attributes, which enable you to calculate throughput as compared to query processing and connection metrics for YSQL and YCQL. These are described below. 
+As referenced in the earlier section, YugabyteDB has latency metrics for Tables/Tablets in JSON format are available on`<node-ip>:9000/metrics` for Yb-Tserver and port `<node-ip>:7000/metrics` for Yb-Master. Additionally, YugabyteDB supports query processing and connection metrics on port `<node-ip>:13000/metrics` for YSQL and on port `<node-ip>:12000/metrics` for YCQL. The attributes within the latency metrics enable you to calculate throughput.
 
-Latency metrics for Tables and Tablets in JSON format, for example, `handler_latency_yb_tserver_TabletServerService_Read` - latency metrics to perform READ operation at a tablet level, will have this body 
+{{< note title="Note" >}}
+
+Latency metrics at `<node-ip>:13000/metrics`for YSQL query processing and connections have different set of attributes as compared to YCQL query processing metrics and Table/Tablet metrics on both Yb-Master and Yb-Tserver. 
+
+{{< /note >}}
+
+For example, `handler_latency_yb_tserver_TabletServerService_Read` metric to perform READ operation at a tablet level available at `/metrics` endpoint in JSON format, will have this form:
+
 ```json
 {
   "name": "handler_latency_yb_tserver_TabletServerService_Read",
@@ -31,7 +38,7 @@ Latency metrics for Tables and Tablets in JSON format, for example, `handler_lat
 }
 ```
 
-And will include the following attributes:
+The list of attributes for latency metrics at `<node-ip>:7000/metrics`, `<node-ip>:9000/metrics` and `<node-ip>:12000/metrics` with their description follows:
 
 | Attribute | Description |
 | :--- | :--- |
@@ -48,9 +55,9 @@ And will include the following attributes:
 
 For example, if `SELECT * FROM table` is executed once and returns 8 rows in 10 microseconds, the `handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt` metric would have the following attribute values: `total_count=1`, `total_sum=10`, `min=10`, `max=10`, and `mean=10`. If the same query is run again and returns in 6 microseconds, then the attributes would be as follows: `total_count=2`, `total_sum=16`, `min=6`, `max=10`, and `mean=8`.
 
-Although these attributes are present in all latency metrics, they may not be calculated for all the metrics.
+Although these attributes are present in all latency metrics, they may not be calculated by YugabyteDB.
 
-Query processing and connection latency metrics for YSQL and YCQL in JSON format, for example, `handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt` - latency metrics to perform READ operation at a tablet level, will have this body
+Query processing and connection latency metrics for YSQL at `/metrics` endpoint in JSON format, for example, `handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt` - latency metrics to perform READ operation at a tablet level, will have this form:
 ```json
 {
     "name": "handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt",
@@ -59,7 +66,7 @@ Query processing and connection latency metrics for YSQL and YCQL in JSON format
     "rows": 11100
 }
 ```
-And will include the following attributes:
+The list of attributes for latency metrics at `<node-ip>:13000/metrics` with their description follows:
 
 | Attribute | Description |
 | `count` | The number of times the latency of a metric has been measured.
@@ -99,7 +106,7 @@ The YSQL throughput can be viewed as an aggregate across the whole cluster, per 
 
 ## YCQL query processing
 
-YCQL query processing metrics represent the total inclusive time it takes YugabyteDB to process a YCQL statement after the query processing layer begins execution. These metrics include the time taken to parse and execute the YCQL statement, replicate over the network, the time spent in the storage layer, and so on. The preceding metrics do not capture the time to deserialize the network bytes and parse the query.
+YCQL query processing metrics represent the total inclusive time it takes YugabyteDB to process a YCQL statement after the query processing layer begins execution. These metrics include the time taken to parse and execute the YCQL statement, replicate over the network (in case of write operations), the time spent in the storage layer, and so on. The preceding metrics do not capture the time to deserialize the network bytes and parse the query.
 
 The following are key metrics for evaluating YCQL query processing.
 
