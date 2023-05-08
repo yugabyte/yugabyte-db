@@ -292,7 +292,7 @@ Default: `""`
 ### Return the status of a tablet server
 
 ```sh
-./bin/yb-ts-cli --server_address=127.0.0.1 -certs_dir_name "/path/to/dir/name" status
+./bin/yb-ts-cli --server_address=127.0.0.1 --certs_dir_name="/path/to/dir/name" status
 ```
 
 ```output
