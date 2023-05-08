@@ -130,11 +130,12 @@ Because 2DC replication is done asynchronously and by replicating the WAL (and t
 - Encryption at rest is supported. Note, the clusters can technically use different KMS configurations. However, for bootstrapping a sink cluster, we rely on the backup/restore flow. As such, we inherit a limitation from that, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken. This means both the source and the sink must have access to the same KMS configurations.
 - YSQL colocation is supported.
 - YSQL geo-partitioning is supported. Note, you must configure replication on all new partitions manually, as we do not replicate DDL changes automatically.
+- Source and target universes can have different number of tablets.
+- Tablet splitting is supported on both source and target universes.
 
 #### Not (yet) supported
 
 - Tablegroups are not yet supported [#11157](https://github.com/yugabyte/yugabyte-db/issues/11157).
-- Tablet splitting will be disabled for tables involved in replication [#10175](https://github.com/yugabyte/yugabyte-db/issues/10175).
 
 ## Transactional guarantees
 
