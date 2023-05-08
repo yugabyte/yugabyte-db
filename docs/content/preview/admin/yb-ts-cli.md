@@ -292,7 +292,7 @@ Default: `""`
 ### Return the status of a tablet server
 
 ```sh
-./bin/yb-ts-cli --server_address=127.0.0.1 [ -certs_dir_name <cert_dir> ] status
+./bin/yb-ts-cli --server_address=127.0.0.1 -certs_dir_name "/path/to/dir/name" status
 ```
 
 ```output
@@ -324,7 +324,7 @@ version_info {
 ### Display the current hybrid time
 
 ```sh
-./bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] [ -certs_dir_name <cert_dir> ] current_hybrid_time
+./bin/yb-ts-cli  --server_address=yb-tserver-1:9100 current_hybrid_time
 ```
 
 ```output
