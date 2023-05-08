@@ -148,5 +148,4 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
       </div>
     </a>
   </div>
-
 </div>
