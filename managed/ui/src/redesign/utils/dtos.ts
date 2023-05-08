@@ -44,6 +44,7 @@ export interface CpuMeasureRecommendation {
 export interface CustomRecommendation {
   summary: React.ReactNode | string;
   suggestion: string;
+  type: string;
 }
 
 export interface IndexSchemaQueryData {
