@@ -75,6 +75,7 @@ public class Universe extends Model {
   public static final String HELM2_LEGACY = "helm2Legacy";
   public static final String DUAL_NET_LEGACY = "dualNetLegacy";
   public static final String USE_CUSTOM_IMAGE = "useCustomImage";
+  public static final String IS_MULTIREGION = "isMultiRegion";
   // Flag for whether we have https on for master/tserver UI
   public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
 
@@ -92,8 +93,7 @@ public class Universe extends Model {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Universe UUID: %s doesn't belong " + "to Customer UUID: %s",
-              universeUUID, customer.getUuid()));
+              "Universe %s doesn't belong to Customer %s", universeUUID, customer.getUuid()));
     }
     return universe;
   }

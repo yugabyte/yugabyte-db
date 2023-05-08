@@ -35,6 +35,7 @@ export type EditProvider = (
   values: YBProviderMutation,
   options?: {
     shouldValidate?: boolean;
+    ignoreValidationErrors?: boolean;
     mutateOptions?: MutateOptions<
       YBPTask,
       Error | AxiosError<YBPBeanValidationError | YBPError>,
@@ -88,9 +89,14 @@ export const ProviderEditView = ({ isProviderInUse, providerConfig }: ProviderEd
     }
   });
   const editProvider: EditProvider = async (values, options) => {
-    const { shouldValidate = false, mutateOptions } = options ?? {};
+    const { shouldValidate = false, ignoreValidationErrors = false, mutateOptions } = options ?? {};
     return editProviderMutation.mutateAsync(
-      { providerUUID: providerConfig.uuid, values: values, shouldValidate: shouldValidate },
+      {
+        providerUUID: providerConfig.uuid,
+        values: values,
+        shouldValidate: shouldValidate,
+        ignoreValidationErrors: ignoreValidationErrors
+      },
       {
         ...mutateOptions
       }

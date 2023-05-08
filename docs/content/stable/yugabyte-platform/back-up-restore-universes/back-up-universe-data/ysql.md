@@ -79,6 +79,8 @@ To access a list of all backups from all universes, including the deleted univer
 
 You can use **Backup Details** to add an incremental backup (YBA version 2.16 or later for universes with YugabyteDB version 2.16 or later only).
 
+You can also create incremental backups using YB-Controller on Kubernetes universes (YBA version 2.17 or later for universes with YugabyteDB version 2.17 or later only).
+
 Incremental backups are taken on top of a complete backup. To reduce the length of time spent on each backup, only SST files that are new to YugabyteDB and not present in the previous backups are incrementally backed up. For example, in most cases, for incremental backups occurring every hour, the 1-hour delta would be significantly smaller compared to the complete backup. The restore happens until the point of the defined increment.
 
 You can create an incremental backup on any complete or incremental backup taken using YB-Controller, as follows:

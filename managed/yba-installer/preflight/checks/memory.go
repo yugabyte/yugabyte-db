@@ -13,7 +13,7 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
-var defaultMinMemoryLimit float64 = 15
+var defaultMinMemoryLimit float64 = 8
 
 // Memory check initialized
 var Memory = &memoryCheck{"memory", true}

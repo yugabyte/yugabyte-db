@@ -97,6 +97,9 @@
 #include "utils/spccache.h"
 #include "utils/tuplesort.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 
 #define LOG2(x)  (log(x) / 0.693147180559945)
 

@@ -93,6 +93,7 @@ DEFINE_UNKNOWN_string(ysql_hba_conf, "",
               "Deprecated, use `ysql_hba_conf_csv` flag instead. " \
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
+DECLARE_string(tmp_dir);
 
 // gFlag wrappers over Postgres GUC parameter.
 // The value type should match the GUC parameter, or it should be a string, in which case Postgres
@@ -160,6 +161,12 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false,
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
     "Delay in milliseconds between stages of online index build. For testing purposes.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 60 * 1000, // 5 min
+    "Timeout in milliseconds to wait for backends to reach desired catalog versions. The actual"
+    " time spent may be longer than that by as much as master flag"
+    " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms. Setting to zero or less"
+    " results in no timeout. Currently used by concurrent CREATE INDEX.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1,
     "Batch size of nested loop joins.");
@@ -589,6 +596,12 @@ Status PgWrapper::Start() {
   pg_proc_->SetEnv("FLAGS_yb_pg_terminate_child_backend",
                     FLAGS_yb_pg_terminate_child_backend ? "true" : "false");
   pg_proc_->SetEnv("FLAGS_yb_backend_oom_score_adj", FLAGS_yb_backend_oom_score_adj);
+
+  // Pass down custom temp path through environment variable.
+  if (!VERIFY_RESULT(Env::Default()->DoesDirectoryExist(FLAGS_tmp_dir))) {
+    return STATUS_FORMAT(IOError, "Directory $0 does not exist", FLAGS_tmp_dir);
+  }
+  pg_proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
   pg_proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));

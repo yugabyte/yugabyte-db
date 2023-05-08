@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
-import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.migrations.V235.KmsConfig;
 import io.ebean.Ebean;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;

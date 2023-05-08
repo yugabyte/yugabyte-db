@@ -106,8 +106,8 @@ Status CDCSDKTestBase::CreateDatabase(
     const std::string& namespace_name,
     bool colocated) {
   auto conn = VERIFY_RESULT(cluster->Connect());
-      RETURN_NOT_OK(conn.ExecuteFormat(
-      "CREATE DATABASE $0$1", namespace_name, colocated ? " colocated = true" : ""));
+  RETURN_NOT_OK(conn.ExecuteFormat(
+      "CREATE DATABASE $0$1", namespace_name, colocated ? " with colocation = true" : ""));
   return Status::OK();
 }
 

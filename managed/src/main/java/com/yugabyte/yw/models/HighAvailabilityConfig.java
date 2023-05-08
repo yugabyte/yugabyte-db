@@ -106,7 +106,7 @@ public class HighAvailabilityConfig extends Model {
   }
 
   public static void update(HighAvailabilityConfig config, String clusterKey) {
-    config.setClusterKey(clusterKey);
+    config.clusterKey = clusterKey;
     config.update();
   }
 

@@ -13,6 +13,7 @@ var InstallChecks = []Check{
 	checks.Python,
 	checks.DiskAvail,
 	checks.License,
+	checks.DBConfigCheck,
 }
 
 // InstallChecksWithPostgres adds onto the base list with postgres checks

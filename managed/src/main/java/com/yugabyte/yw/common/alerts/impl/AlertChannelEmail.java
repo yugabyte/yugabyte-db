@@ -44,8 +44,8 @@ public class AlertChannelEmail extends AlertChannelBase {
     AlertChannelEmailParams params = (AlertChannelEmailParams) channel.getParams();
     List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customer.getUuid());
     Context context = new Context(channel, channelTemplates, variables);
-    String title = getNotificationTitle(alert, context);
-    String text = getNotificationText(alert, context);
+    String title = getNotificationTitle(alert, context, false);
+    String text = getNotificationText(alert, context, true);
 
     SmtpData smtpData =
         params.isDefaultSmtpSettings()

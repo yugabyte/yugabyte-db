@@ -38,6 +38,9 @@
 #include "miscadmin.h"
 #include "utils/memutils.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 
 /* ----------------------------------------------------------------
  *		ExecUnique

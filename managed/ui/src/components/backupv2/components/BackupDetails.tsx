@@ -130,7 +130,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-        return config.metadata.configUUID === backupDetails?.kmsConfigUUID;
+        return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
       })
     : undefined;
 
@@ -282,7 +282,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </div>
               <div>
                 <div className="header-text">KMS Config</div>
-                <div>{kmsConfig ? kmsConfig.label : '-'}</div>
+                <div>{kmsConfig ? kmsConfig.metadata?.name : '-'}</div>
               </div>
             </div>
             {!storageConfigName && (

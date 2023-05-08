@@ -33,6 +33,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -172,6 +173,16 @@ public class CloudProviderApiController extends AuthenticatedController {
     CloudType providerCode = CloudType.valueOf(reqProvider.getCode());
     Provider providerEbean;
     if (providerCode.equals(CloudType.kubernetes)) {
+      /*
+       * Marking the k8s providers created starting from YBA version 2.18
+       * as non legacy. The default behaviour of this flag is `true` indicating
+       * the legacy provider.
+       *
+       * This will be removed once we fix the old providers & can safely start returning
+       * the merged configs.
+       */
+      KubernetesInfo k8sInfo = CloudInfoInterface.get(reqProvider);
+      k8sInfo.setLegacyK8sProvider(false);
       providerEbean = cloudProviderHandler.createKubernetesNew(customer, reqProvider);
     } else {
       providerEbean =

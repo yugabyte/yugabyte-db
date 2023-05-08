@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,38 +31,97 @@ import org.apache.commons.lang3.StringUtils;
 
 public class KubernetesUtil {
 
-  // TODO(bhavin192): there should be proper merging of the
-  // configuration from all the levels. Something like storage class
-  // from AZ level, kubeconfig from global level, namespace from
-  // region level and so on.
+  // ToDo: Old k8s provider needs to be fixed, so that we can get
+  // rid of the old merging logic, & start treating them same as the
+  // new providers.
+  // https://yugabyte.atlassian.net/browse/PLAT-8492?focusedCommentId=64822
 
   // Get the zones with the kubeconfig for that zone.
   public static Map<UUID, Map<String, String>> getConfigPerAZ(PlacementInfo pi) {
     Map<UUID, Map<String, String>> azToConfig = new HashMap<>();
     for (PlacementCloud pc : pi.cloudList) {
       Provider provider = Provider.getOrBadRequest(pc.uuid);
-      Map<String, String> cloudConfig = CloudInfoInterface.fetchEnvVars(provider);
-      for (PlacementRegion pr : pc.regionList) {
-        Region region = Region.getOrBadRequest(pr.uuid);
-        Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(region);
-        for (PlacementAZ pa : pr.azList) {
-          AvailabilityZone az = AvailabilityZone.getOrBadRequest(pa.uuid);
-          Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
-          if (cloudConfig.containsKey("KUBECONFIG")) {
-            azToConfig.put(pa.uuid, cloudConfig);
-          } else if (regionConfig.containsKey("KUBECONFIG")) {
-            azToConfig.put(pa.uuid, regionConfig);
-          } else if (zoneConfig.containsKey("KUBECONFIG")) {
-            azToConfig.put(pa.uuid, zoneConfig);
-          } else {
-            throw new RuntimeException("No config found at any level");
-          }
+      KubernetesInfo k8sInfo = CloudInfoInterface.get(provider);
+      if (k8sInfo.isLegacyK8sProvider()) {
+        // Merging for the legacy provider.
+        Map<UUID, Map<String, String>> legacyProviderAzToConfig =
+            getLegacyProviderAzToConfig(pc, provider);
+        azToConfig.putAll(legacyProviderAzToConfig);
+      } else {
+        Map<UUID, Map<String, String>> newProviderAzToConfig =
+            getNewProviderAzToConfig(pc, provider);
+        azToConfig.putAll(newProviderAzToConfig);
+      }
+    }
+
+    return azToConfig;
+  }
+
+  /*
+   * Legacy k8s providers created before YBA version 2.18.0
+   * For these providers we assume, the configs present at the level
+   * as that of `KUBECONFIG` will be the complete config set to look at.
+   *
+   * Legacy providers will be identified via property `legacyK8sProvider` that
+   * will be introduced as part of V231 migration for k8s providers.
+   */
+  public static Map<UUID, Map<String, String>> getLegacyProviderAzToConfig(
+      PlacementCloud pc, Provider provider) {
+    Map<UUID, Map<String, String>> azToConfig = new HashMap<>();
+    Map<String, String> cloudConfig = CloudInfoInterface.fetchEnvVars(provider);
+    for (PlacementRegion pr : pc.regionList) {
+      Region region = Region.getOrBadRequest(pr.uuid);
+      Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(region);
+      for (PlacementAZ pa : pr.azList) {
+        AvailabilityZone az = AvailabilityZone.getOrBadRequest(pa.uuid);
+        Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
+        if (cloudConfig.containsKey("KUBECONFIG")) {
+          azToConfig.put(pa.uuid, cloudConfig);
+        } else if (regionConfig.containsKey("KUBECONFIG")) {
+          azToConfig.put(pa.uuid, regionConfig);
+        } else if (zoneConfig.containsKey("KUBECONFIG")) {
+          azToConfig.put(pa.uuid, zoneConfig);
+        } else {
+          throw new RuntimeException("No config found at any level");
         }
       }
     }
 
     return azToConfig;
   }
+
+  /*
+   * New k8s providers created starting YBA version 2.18.0
+   * For these providers we will merge the configs(returning a combined config map)
+   * giving preferences to the properties that are present at the lowest level.
+   * Preference Order: Zone > Region > Provider Configs.
+   *
+   * New providers will be identified via property `legacyK8sProvider` that
+   * be false for these.
+   */
+  public static Map<UUID, Map<String, String>> getNewProviderAzToConfig(
+      PlacementCloud pc, Provider provider) {
+    Map<UUID, Map<String, String>> azToConfig = new HashMap<>();
+    for (PlacementRegion pr : pc.regionList) {
+      Region region = Region.getOrBadRequest(pr.uuid);
+      for (PlacementAZ pa : pr.azList) {
+        AvailabilityZone az = AvailabilityZone.getOrBadRequest(pa.uuid);
+        Map<String, String> cloudConfig = CloudInfoInterface.fetchEnvVars(provider);
+        Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(region);
+        cloudConfig.putAll(regionConfig);
+        Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
+        cloudConfig.putAll(zoneConfig);
+        if (cloudConfig.containsKey("KUBECONFIG")) {
+          azToConfig.put(pa.uuid, cloudConfig);
+        } else {
+          throw new RuntimeException("No config found at any level");
+        }
+      }
+    }
+
+    return azToConfig;
+  }
+
   /**
    * For a k8s, finds all associated kubeconfig file paths related to each availability zone.
    *
@@ -83,8 +143,9 @@ public class KubernetesUtil {
         List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(region.getUuid());
         for (AvailabilityZone zone : zones) {
           azKubeConfig = CloudInfoInterface.fetchEnvVars(zone).getOrDefault("KUBECONFIG", null);
+          // Zone Level Config must have the highest priority.
           String kubeConfig =
-              ObjectUtils.firstNonNull(providerKubeConfig, regionKubeConfig, azKubeConfig);
+              ObjectUtils.firstNonNull(azKubeConfig, regionKubeConfig, providerKubeConfig);
           if (kubeConfig != null) {
             azToKubeConfig.put(zone.getUuid(), kubeConfig);
           } else {

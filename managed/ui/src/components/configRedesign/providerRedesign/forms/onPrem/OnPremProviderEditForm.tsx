@@ -29,6 +29,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
@@ -151,8 +152,10 @@ export const OnPremProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT_NEW);
+  const showEditRegionFormModal = (options?: { isExistingRegion: boolean }) => {
+    setRegionOperation(
+      options?.isExistingRegion ? RegionOperation.EDIT_EXISTING : RegionOperation.EDIT_NEW
+    );
     setIsRegionFormModalOpen(true);
   };
   const hideRegionFormModal = () => {
@@ -182,10 +185,9 @@ export const OnPremProviderEditForm = ({
   );
   const currentProviderVersion = formMethods.watch('version', defaultValues.version);
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
-
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
-  const isFormDisabled =
-    isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const existingRegions = providerConfig.regions.map((region) => region.code);
+  const isFormDisabled = getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -223,6 +225,7 @@ export const OnPremProviderEditForm = ({
               <RegionList
                 providerCode={ProviderCode.ON_PREM}
                 regions={regions}
+                existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
@@ -379,7 +382,7 @@ export const OnPremProviderEditForm = ({
               btnText="Apply Changes"
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton

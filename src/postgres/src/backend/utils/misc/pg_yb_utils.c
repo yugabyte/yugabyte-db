@@ -1050,6 +1050,7 @@ bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 bool yb_enable_sequence_pushdown = true;
 bool yb_disable_wait_for_backends_catalog_version = false;
+int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 
 //------------------------------------------------------------------------------
 // YB Debug utils.

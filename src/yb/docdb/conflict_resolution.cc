@@ -653,16 +653,16 @@ using IntentTypesContainer = std::map<KeyBuffer, IntentData>;
 
 class IntentProcessor {
  public:
-  IntentProcessor(IntentTypesContainer* container, const IntentTypeSet& strong_intent_types)
+  IntentProcessor(IntentTypesContainer* container, const IntentTypeSet& intent_types)
       : container_(*container),
-        strong_intent_types_(strong_intent_types),
-        weak_intent_types_(StrongToWeak(strong_intent_types_))
+        intent_types_(intent_types),
+        weak_intent_types_(MakeWeak(intent_types_))
   {}
 
-  void Process(
-      dockv::IntentStrength strength, dockv::FullDocKey full_doc_key, KeyBytes* intent_key) {
-    const auto is_strong = strength == dockv::IntentStrength::kStrong;
-    const auto& intent_type_set = is_strong ? strong_intent_types_ : weak_intent_types_;
+  void Process(dockv::AncestorDocKey ancestor_doc_key,
+               dockv::FullDocKey full_doc_key,
+               KeyBytes* intent_key) {
+    const auto& intent_type_set = ancestor_doc_key ? weak_intent_types_ : intent_types_;
     auto i = container_.find(intent_key->data());
     if (i == container_.end()) {
       container_.emplace(intent_key->data(),
@@ -702,7 +702,7 @@ class IntentProcessor {
 
  private:
   IntentTypesContainer& container_;
-  const IntentTypeSet strong_intent_types_;
+  const IntentTypeSet intent_types_;
   const IntentTypeSet weak_intent_types_;
 };
 
@@ -950,7 +950,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     IntentTypesContainer container;
     IntentProcessor write_processor(
         &container,
-        GetStrongIntentTypeSet(metadata_.isolation, dockv::OperationKind::kWrite, row_mark));
+        GetIntentTypeSet(metadata_.isolation, dockv::OperationKind::kWrite, row_mark));
     for (const auto& doc_op : doc_ops()) {
       paths.clear();
       IsolationLevel ignored_isolation_level;
@@ -977,7 +977,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     if (!pairs.empty()) {
       IntentProcessor read_processor(
           &container,
-          GetStrongIntentTypeSet(metadata_.isolation, dockv::OperationKind::kRead, row_mark));
+          GetIntentTypeSet(metadata_.isolation, dockv::OperationKind::kRead, row_mark));
       RETURN_NOT_OK(EnumerateIntents(
           pairs,
           [&read_processor] (
@@ -1130,14 +1130,13 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
     boost::container::small_vector<size_t, 32> key_prefix_lengths;
     KeyBytes encoded_key_buffer;
 
-    IntentTypeSet strong_intent_types;
+    IntentTypeSet intent_types;
 
-    dockv::EnumerateIntentsCallback callback = [&strong_intent_types, resolver](
-        dockv::IntentStrength intent_strength, dockv::FullDocKey full_doc_key, Slice,
+    dockv::EnumerateIntentsCallback callback = [&intent_types, resolver](
+        dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey, Slice,
         KeyBytes* encoded_key_buffer, dockv::LastKey) {
       return resolver->ReadIntentConflicts(
-          intent_strength == dockv::IntentStrength::kStrong ? strong_intent_types
-                                                            : StrongToWeak(strong_intent_types),
+          ancestor_doc_key ? MakeWeak(intent_types) : intent_types,
           encoded_key_buffer);
     };
 
@@ -1146,8 +1145,8 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
       IsolationLevel isolation;
       RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &isolation));
 
-      strong_intent_types = GetStrongIntentTypeSet(isolation, dockv::OperationKind::kWrite,
-                                                   RowMarkType::ROW_MARK_ABSENT);
+      intent_types = GetIntentTypeSet(
+          isolation, dockv::OperationKind::kWrite, RowMarkType::ROW_MARK_ABSENT);
 
       for (const auto& doc_path : doc_paths) {
         VLOG_WITH_PREFIX_AND_FUNC(4)

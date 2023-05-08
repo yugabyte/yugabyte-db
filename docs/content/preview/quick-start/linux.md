@@ -149,7 +149,9 @@ Expect an output similar to the following:
 
 The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end-user requests for data updates and queries.
 
-Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations. The [YB-Master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at <http://127.0.0.1:7000> and the [YB-TServer Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at <http://127.0.0.1:9000>.
+Each of these processes exposes its own Admin UI that you can use to check the status of the corresponding process, and perform certain administrative operations. The UIs are available via your local machine's IP address, as displayed in the **Web console** output of the `status` command you ran.
+
+The [YB-Master Admin UI](../../reference/configuration/yb-master/#admin-ui) uses port 7000 and is typically at <http://127.0.0.1:7000>, while the [YB-TServer Admin UI](../../reference/configuration/yb-tserver/#admin-ui) uses port 9000 and is typically at <http://127.0.0.1:9000>.
 
 #### Overview and YB-Master status
 

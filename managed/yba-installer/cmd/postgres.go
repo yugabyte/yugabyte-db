@@ -223,6 +223,12 @@ func (pg Postgres) Uninstall(removeData bool) error {
 			log.Info(fmt.Sprintf("Error %s removing postgres data dir %s.", err.Error(), pg.dataDir))
 			return err
 		}
+
+		if err := common.RemoveAll(pg.ConfFileLocation); err != nil {
+			log.Info(fmt.Sprintf("Error %s removing postgres conf dir %s.", err.Error(),
+				pg.ConfFileLocation))
+			return err
+		}
 	}
 
 	if common.HasSudoAccess() {
@@ -270,20 +276,37 @@ func (pg Postgres) CreateBackup() {
 	log.Debug("postgres backup comlete")
 }
 
-func (pg Postgres) RestoreBackup() {
+func (pg Postgres) CreateYugawareBackup(outFile string) {
+	log.Debug("Starting postgres yugaware database backup.")
+	pg_dump := filepath.Join(common.GetActiveSymlink(), "/pgsql/bin/pg_dump")
+	args := []string{
+		"-p", viper.GetString("postgres.install.port"),
+		"-h", "localhost",
+		"-U", pg.getPgUserName(),
+		"-Fp",
+		"-f", outFile,
+		"yugaware",
+	}
+	out := shell.Run(pg_dump, args...)
+	if !out.SucceededOrLog() {
+		log.Fatal("Yugaware postgres backup failed: " + out.Error.Error())
+	}
+	log.Debug("yugware postgres backup complete")
+}
+
+func (pg Postgres) RestoreBackup(backupPath string) {
 	log.Debug("postgres starting restore from backup")
-	inFile := filepath.Join(common.GetBaseInstall(), "data", "postgres_backup")
-	if _, err := os.Stat(inFile); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(backupPath); errors.Is(err, os.ErrNotExist) {
 		log.Fatal("backup file does not exist")
 	}
 
 	psql := filepath.Join(pg.PgBin, "psql")
 	args := []string{
-		"-d", "postgres",
-		"-f", inFile,
+		"-d", "yugaware",
+		"-f", backupPath,
 		"-h", "localhost",
 		"-p", viper.GetString("postgres.port"),
-		"-U", viper.GetString("service_username"),
+		"-U", pg.getPgUserName(),
 	}
 	out := shell.Run(psql, args...)
 	if !out.SucceededOrLog() {
@@ -307,7 +330,8 @@ func (pg Postgres) UpgradeMajorVersion() {
 	pg.setUpDataDir()
 	pg.modifyPostgresConf()
 	pg.Start()
-	pg.RestoreBackup()
+	backupFile := filepath.Join(common.GetBaseInstall(), "data", "postgres_backup")
+	pg.RestoreBackup(backupFile)
 
 	if !common.HasSudoAccess() {
 		pg.CreateCronJob()

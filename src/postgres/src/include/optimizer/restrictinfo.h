@@ -40,14 +40,6 @@ extern bool restriction_is_or_clause(RestrictInfo *restrictinfo);
 extern bool restriction_is_securely_promotable(RestrictInfo *restrictinfo,
 								   RelOptInfo *rel);
 
-/* 
- * Utility function to carry out the functionality of get_actual_clauses but
- * with consideration for batched relation ids. Extracted batched clauses 
- * should be zipped up into smaller clauses and added to the returned list.
- */
-extern List * yb_get_actual_batched_clauses(PlannerInfo *root,
-														  List *restrictinfo_list,
-						   							  Path *inner_path);
 extern List *get_actual_clauses(List *restrictinfo_list);
 extern List *extract_actual_clauses(List *restrictinfo_list,
 					   bool pseudoconstant);

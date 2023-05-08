@@ -88,15 +88,6 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Custom script to run on VM boot during universe provisioning",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO Yury
-  public static final ConfKeyInfo<Boolean> skipKeyPairValidation =
-      new ConfKeyInfo<>(
-          "yb.provider.skip_keypair_validation",
-          ScopeType.PROVIDER,
-          "Skip Key Pair Validation",
-          "TODO",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Integer> minPyVer =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.min_python_version",
@@ -296,15 +287,6 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ScopeType.PROVIDER,
           "Enable Node Agent Client",
           "Enable node agent client for communication to DB nodes.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-
-  public static final ConfKeyInfo<Boolean> installNodeAgentServer =
-      new ConfKeyInfo<>(
-          "yb.node_agent.server.install",
-          ScopeType.PROVIDER,
-          "Install Node Agent Server",
-          "Install node agent server on DB nodes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 

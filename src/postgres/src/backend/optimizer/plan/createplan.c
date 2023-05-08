@@ -23,6 +23,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "foreign/fdwapi.h"
@@ -810,6 +811,153 @@ build_path_tlist(PlannerInfo *root, Path *path)
 		resno++;
 	}
 	return tlist;
+}
+
+
+/* Simple var comparison function. */
+static int _exprcol_cmp(const void *a, const void *b, void *cxt)
+{
+	int a_int = ((Var *) get_leftop(*((const Expr**) a)))->varattno;
+	int b_int = ((Var *) get_leftop(*((const Expr**) b)))->varattno;
+
+	return a_int - b_int;
+}
+
+/*
+ * Takes a list of batched clauses (those with clauses of the form
+ * var1 = BatchedExpr(f(o_var1, o_var2...)))) and zips them up to form
+ * multiple batched clauses of the form
+ * (var1, var2 ...) =
+ * BatchedExpr(f1(o_var1, o_var2...), f2(o_var1, o_var2...)...)
+ * where the LHS is sorted ascendingly by attribute number.
+ */
+static List *yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
+{
+	if (list_length(b_exprs) <= 1)
+	{
+		return b_exprs;
+	}
+
+	List *zipped_exprs = NIL;
+	ListCell *lcc;
+	Relids cumulative_rels = NULL;
+	foreach(lcc, root->yb_availBatchedRelids)
+	{
+		Relids avail_relids = (Relids) lfirst(lcc);
+
+		/* Check to make sure we haven't already seen these rels. */
+		if (bms_is_subset(avail_relids, cumulative_rels))
+			continue;
+
+		Assert(!bms_overlap(avail_relids, cumulative_rels));
+
+		cumulative_rels = bms_add_members(cumulative_rels, avail_relids);
+
+		Expr **exprcols =
+			palloc(sizeof(Expr*) * list_length(b_exprs));
+
+		int len = 0;
+		ListCell *lc;
+		foreach(lc, b_exprs)
+		{
+			Expr *b_expr = (Expr *) lfirst(lc);
+			Relids req_relids = pull_varnos(get_rightop(b_expr));
+			if (bms_overlap(req_relids, avail_relids))
+			{
+				exprcols[len] = b_expr;
+				len++;
+			}
+		}
+
+		/* If there wasn't a single clause relevant to avail_relids, continue. */
+		if (len == 0)
+			continue;
+
+		if (should_sort)
+		{
+			/* Sort based on index column. */
+			qsort_arg(exprcols, len, sizeof(OpExpr*),
+					_exprcol_cmp, NULL);
+		}
+
+		/*
+		 * v1 = BatchedExpr(f1(o)) AND v2 = BatchedExpr(f2(o))
+		 * becomes ROW(v1, v2) = BatchedExpr(ROW(f1(o),f2(o)))
+		 */
+
+		RowExpr *leftop = makeNode(RowExpr);
+		RowExpr *rightop = makeNode(RowExpr);
+
+		Oid opresulttype = -1;
+		bool opretset = false;
+		Oid opcolloid = -1;
+		Oid inputcollid = -1;
+
+		for (int i = 0; i < len; i++)
+		{
+			Expr *b_expr = (Expr *) exprcols[i];
+			OpExpr *opexpr = (OpExpr *) b_expr;
+			opresulttype = opexpr->opresulttype;
+			opretset = opexpr->opretset;
+			opcolloid = opexpr->opcollid;
+			inputcollid = opexpr->inputcollid;
+
+			Expr *left_expr = (Expr *) get_leftop(b_expr);
+			leftop->args = lappend(leftop->args, left_expr);
+
+			Expr *right_expr =
+				(Expr *) ((YbBatchedExpr *) get_rightop(b_expr))->orig_expr;
+			rightop->args = lappend(rightop->args, right_expr);
+		}
+
+		pfree(exprcols);
+
+		leftop->colnames = NIL;
+		leftop->row_format = COERCE_EXPLICIT_CALL;
+		leftop->row_typeid = RECORDOID;
+
+		rightop->colnames = NIL;
+		rightop->row_format = COERCE_EXPLICIT_CALL;
+		rightop->row_typeid = RECORDOID;
+
+		YbBatchedExpr *right_batched_expr = makeNode(YbBatchedExpr);
+		right_batched_expr->orig_expr = (Expr*) rightop;
+		Expr *zipped = (Expr*) make_opclause(RECORD_EQ_OP, opresulttype, opretset,
+									(Expr*) leftop, (Expr*) right_batched_expr,
+									opcolloid, inputcollid);
+		zipped_exprs = lappend(zipped_exprs, zipped);
+	}
+
+	return zipped_exprs;
+}
+
+static List *
+yb_get_actual_batched_clauses(PlannerInfo *root,
+										List *restrictinfo_list,
+										Path * inner_path)
+{
+	Assert(bms_num_members(inner_path->parent->relids) == 1);
+	List *batched_quals = NIL;
+	ListCell *lc;
+	foreach(lc, restrictinfo_list)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+		RestrictInfo *tmp_batched =
+			get_batched_restrictinfo(rinfo,
+											 root->yb_cur_batched_relids,
+											 inner_path->parent->relids);
+
+		if (tmp_batched)
+		{
+			OpExpr *op = (OpExpr *) tmp_batched->clause;
+
+			if (list_member_ptr(batched_quals, op))
+				continue;
+
+			batched_quals = lappend(batched_quals, op);
+		}
+	}
+	return yb_zip_batched_exprs(root, batched_quals, false);
 }
 
 /*
@@ -5434,6 +5582,43 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 								   (void *) root);
 }
 
+
+static List *
+yb_get_fixed_batched_indexquals(PlannerInfo *root, IndexPath *index_path)
+{
+	List *batched_quals = NIL;
+	if (!bms_is_empty(root->yb_cur_batched_relids))
+	{
+		ListCell *lcc;
+		ListCell *lci;
+		
+		forboth(lcc, index_path->indexquals, lci, index_path->indexqualcols)
+		{
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lcc);
+			RestrictInfo *tmp_batched =
+				get_batched_restrictinfo(rinfo,
+									root->yb_cur_batched_relids,
+									index_path->indexinfo->rel->relids);
+
+			if (tmp_batched)
+			{
+				int indexcol = lfirst_int(lci);
+				OpExpr *op = (OpExpr *) tmp_batched->clause;
+
+				if (list_member_ptr(batched_quals, op))
+					continue;
+
+				op = copyObject(op);
+				linitial(op->args) = fix_indexqual_operand(linitial(op->args),
+													index_path->indexinfo,
+													indexcol);
+				batched_quals = lappend(batched_quals, op);
+			}
+		}
+	}
+	return batched_quals;
+}
+
 /*
  * fix_indexqual_references
  *	  Adjust indexqual clauses to the form the executor's indexqual
@@ -5463,7 +5648,15 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path)
 
 	fixed_indexquals = NIL;
 
-	List *batched_rinfos = NIL;
+	List *batched_quals = yb_get_fixed_batched_indexquals(root, index_path);
+	batched_quals = yb_zip_batched_exprs(root, batched_quals, true);
+
+	foreach(lcc, batched_quals)
+	{
+		Expr *clause = (Expr *) lfirst(lcc);
+		Node *fixed_clause = replace_nestloop_params(root, (Node *) clause);
+		fixed_indexquals = lappend(fixed_indexquals, fixed_clause);
+	}
 
 	forboth(lcc, index_path->indexquals, lci, index_path->indexqualcols)
 	{
@@ -5472,14 +5665,12 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path)
 			get_batched_restrictinfo(rinfo,
 									 root->yb_cur_batched_relids,
 									 index_path->indexinfo->rel->relids);
-
+		/*
+		 * YB: We should have already processed this qual in
+		 * get_fixed_batched_indexquals.
+		 */
 		if (tmp_batched)
-		{
-			if (list_member_ptr(batched_rinfos, tmp_batched))
-				continue;
-			rinfo = tmp_batched;
-			batched_rinfos = lappend(batched_rinfos, tmp_batched);
-		}
+			continue;
 
 		int			indexcol = lfirst_int(lci);
 		Node	   *clause;
@@ -5556,26 +5747,6 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path)
 				lfirst(lca) = fix_indexqual_operand(lfirst(lca),
 													index,
 													lfirst_int(lcai));
-			}
-		}
-		else if (IsA(clause, ScalarArrayOpExpr) &&
-				 IsA(linitial(((ScalarArrayOpExpr*) clause)->args), RowExpr))
-		{
-			ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
-
-			RowExpr *leftrow = linitial(saop->args);
-
-			ListCell *lc;
-			foreach(lc, leftrow->args)
-			{
-				Node *operand = lfirst(lc);
-				for(int i = 0; i < index->nkeycolumns; i++)
-				{
-					if(match_index_to_operand(operand, i, index))
-					{
-						lfirst(lc) = fix_indexqual_operand(operand, index, i);
-					}
-				}
 			}
 		}
 		else if (IsA(clause, ScalarArrayOpExpr))

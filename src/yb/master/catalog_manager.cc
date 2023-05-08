@@ -512,6 +512,8 @@ DEFINE_test_flag(uint64, delay_sys_catalog_reload_secs, 0,
 
 DECLARE_bool(transaction_tables_use_preferred_zones);
 
+DECLARE_string(tmp_dir);
+
 DEFINE_RUNTIME_bool(batch_ysql_system_tables_metadata, true,
     "Whether change metadata operation and SysCatalogTable upserts for ysql system tables during a "
     "create database is performed one by one or batched together");
@@ -1617,8 +1619,8 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
       initial_snapshot_writer_.emplace();
     }
 
-    Status status = PgWrapper::InitDbForYSQL(
-        master_addresses_str, "/tmp", master_->GetSharedMemoryFd());
+    Status status =
+        PgWrapper::InitDbForYSQL(master_addresses_str, FLAGS_tmp_dir, master_->GetSharedMemoryFd());
 
     if (FLAGS_create_initial_sys_catalog_snapshot && status.ok()) {
       auto sys_catalog_tablet_result = sys_catalog_->tablet_peer()->shared_tablet_safe();
@@ -7371,6 +7373,13 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     table->set_relation_type(relation_type);
     table->set_state(ltm->pb.state());
     table->set_pgschema_name(ltm->schema().pgschema_name());
+    if (table_info->colocated()) {
+      table->mutable_colocated_info()->set_colocated(true);
+      if (!table_info->IsColocationParentTable()) {
+        table->mutable_colocated_info()->set_parent_table_id(
+            VERIFY_RESULT(GetParentTableIdForColocatedTableUnlocked(table_info)));
+      }
+    }
   }
   return Status::OK();
 }
@@ -12872,13 +12881,18 @@ Status CatalogManager::CheckIfPitrActive(
 
 Result<TableId> CatalogManager::GetParentTableIdForColocatedTable(
     const scoped_refptr<TableInfo>& table) {
+  SharedLock lock(mutex_);
+  return GetParentTableIdForColocatedTableUnlocked(table);
+}
+
+Result<TableId> CatalogManager::GetParentTableIdForColocatedTableUnlocked(
+    const scoped_refptr<TableInfo>& table) {
   DCHECK(table->colocated());
   DCHECK(!IsColocationParentTableId(table->id()));
 
-  auto ns_info = VERIFY_RESULT(FindNamespaceById(table->namespace_id()));
+  auto ns_info = VERIFY_RESULT(FindNamespaceByIdUnlocked(table->namespace_id()));
   TableId parent_table_id;
 
-  SharedLock lock(mutex_);
   auto tablegroup = tablegroup_manager_->FindByTable(table->id());
   if (ns_info->colocated()) {
     // Two types of colocated database: (1) pre-Colocation GA (2) Colocation GA

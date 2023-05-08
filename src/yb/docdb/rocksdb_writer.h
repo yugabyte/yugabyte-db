@@ -81,7 +81,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   }
 
   Status operator()(
-      dockv::IntentStrength intent_strength, dockv::FullDocKey, Slice value_slice,
+      dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey full_doc_key, Slice value_slice,
       dockv::KeyBytes* key, dockv::LastKey last_key);
 
  private:
@@ -107,7 +107,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   rocksdb::DirectWriteHandler* handler_;
   RowMarkType row_mark_;
   SubTransactionId subtransaction_id_;
-  dockv::IntentTypeSet strong_intent_types_;
+  dockv::IntentTypeSet intent_types_;
   std::unordered_map<KeyBuffer, dockv::IntentTypeSet, ByteBufferHash> weak_intents_;
 };
 

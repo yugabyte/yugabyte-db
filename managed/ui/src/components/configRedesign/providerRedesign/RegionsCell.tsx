@@ -5,7 +5,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import React from 'react';
-import { Box } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 
 import { usePillStyles } from './utils';
 
@@ -27,7 +27,7 @@ export const RegionsCell = ({ regions }: RegionsCellProps) => {
 
   return (
     <Box display="flex" gridGap="5px">
-      <span>{firstRegion.name}</span>
+      <Typography variant="body2">{firstRegion.name}</Typography>
       {sortedRegions.length > 1 && <div className={classes.pill}>+{sortedRegions.length - 1}</div>}
     </Box>
   );

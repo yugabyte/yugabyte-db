@@ -25,7 +25,7 @@ public class SupportBundleCleanup {
 
   private final Config config;
 
-  private SupportBundleUtil supportBundleUtil;
+  private final SupportBundleUtil supportBundleUtil;
 
   @Inject
   public SupportBundleCleanup(
@@ -71,9 +71,8 @@ public class SupportBundleCleanup {
       SupportBundle.delete(supportBundle.getBundleUUID());
 
       log.info(
-          "Automatically deleted Support Bundle with UUID: "
-              + supportBundle.getBundleUUID().toString()
-              + ", with status = Failed");
+          "Automatically deleted Support Bundle with UUID: {}, with status = Failed",
+          supportBundle.getBundleUUID());
     } else if (supportBundle.getStatus() == SupportBundleStatusType.Running) {
       return;
     } else {
@@ -91,9 +90,8 @@ public class SupportBundleCleanup {
         supportBundleUtil.deleteFile(supportBundle.getPathObject());
 
         log.info(
-            "Automatically deleted Support Bundle with UUID: "
-                + supportBundle.getBundleUUID().toString()
-                + ", with status = Success");
+            "Automatically deleted Support Bundle with UUID: {}, with status = success",
+            supportBundle.getBundleUUID());
       }
     }
   }

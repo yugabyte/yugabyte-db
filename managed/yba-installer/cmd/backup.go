@@ -41,19 +41,22 @@ func CreateBackupScript(outputPath string, dataDir string,
 	if verbose {
 		args = append(args, "--verbose")
 	}
-	if viper.GetBool("postgres.useExisting.enabled") {
+	if viper.GetBool("ybdb.install.enabled") {
+		args = append(args, "--ysql_dump_path", plat.YsqlDump)
+		args = addYbdbArgs(args)
+	} else if viper.GetBool("postgres.useExisting.enabled") {
 		if viper.GetString("postgres.useExisting.pg_dump_path") != "" {
 			args = append(args, "--pg_dump_path", viper.GetString("postgres.useExisting.pg_dump_path"))
 			createPgPass()
 			args = append(args, "--pgpass_path", common.PgpassPath())
+			args = addPostgresArgs(args)
 		} else {
 			log.Fatal("pg_dump path must be set. Stopping backup process")
 		}
 	} else {
 		args = append(args, "--pg_dump_path", plat.PgBin+"/pg_dump")
+		args = addPostgresArgs(args)
 	}
-
-	args = addPostgresArgs(args)
 
 	log.Info("Creating a backup of your YugabyteDB Anywhere Installation.")
 	out := shell.Run(fileName, args...)
@@ -97,7 +100,10 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 		args = append(args, "-e", common.GetCurrentUser())
 	}
 
-	if viper.GetBool("postgres.useExisting.enabled") {
+	if viper.GetBool("ybdb.install.enabled") {
+		args = append(args, "--ysqlsh_path", plat.YsqlBin)
+		args = addYbdbArgs(args)
+	} else if viper.GetBool("postgres.useExisting.enabled") {
 		if viper.GetString("postgres.useExisting.pg_restore_path") != "" {
 			args = append(args, "--pg_restore_path", viper.GetString(
 				"postgres.useExisting.pg_restore_path"))
@@ -105,13 +111,14 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 				createPgPass()
 				args = append(args, "--pgpass_path", common.PgpassPath())
 			}
+			args = addPostgresArgs(args)
 		} else {
 			log.Fatal("pg_restore path must be set. Stopping restore process.")
 		}
 	} else {
 		args = append(args, "--pg_restore_path", plat.PgBin+"/pg_restore")
+		args = addPostgresArgs(args)
 	}
-	args = addPostgresArgs(args)
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
 	if out := shell.Run(fileName, args...); !out.SucceededOrLog() {
 		log.Fatal("Restore script failed. May need to restart services.")
@@ -131,6 +138,15 @@ func addPostgresArgs(args []string) []string {
 		args = append(args, "--db_host", "localhost")
 		args = append(args, "--db_port", viper.GetString("postgres.install.port"))
 	}
+	return args
+}
+
+func addYbdbArgs(args []string) []string {
+	args = append(args, "--db_username", "yugabyte")
+	args = append(args, "--db_host", "localhost")
+	args = append(args, "--db_port", viper.GetString("ybdb.install.port"))
+	args = append(args, "--ybdb")
+
 	return args
 }
 
@@ -230,7 +246,7 @@ func restoreBackupCmd() *cobra.Command {
 					}
 					if err := plat.Stop(); err != nil {
 						log.Warn(fmt.Sprintf(
-							"Error %s stopping yb-platform. Continuing with yugabundle restore."))
+							"Error %s stopping yb-platform. Continuing with yugabundle restore.", err.Error()))
 					}
 					var db *sql.DB
 					var connStr string

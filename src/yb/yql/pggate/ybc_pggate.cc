@@ -828,7 +828,8 @@ YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_prima
 }
 
 YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref, bool is_primary) {
-  return ToYBCStatus(pgapi->DmlAppendColumnRef(handle, colref, is_primary));
+  return ToYBCStatus(pgapi->DmlAppendColumnRef(
+      handle, down_cast<PgColumnRef*>(colref), is_primary));
 }
 
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {

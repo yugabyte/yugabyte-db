@@ -30,6 +30,8 @@ type platformDirectories struct {
 	DataDir             string
 	cronScript          string
 	PgBin               string
+	YsqlDump            string
+	YsqlBin             string
 	PlatformPackages    string
 }
 
@@ -42,6 +44,8 @@ func newPlatDirectories(version string) platformDirectories {
 		cronScript: filepath.Join(
 			common.GetInstallerSoftwareDir(), common.CronDir, "managePlatform.sh"),
 		PgBin:            common.GetSoftwareRoot() + "/pgsql/bin",
+		YsqlDump:         common.GetActiveSymlink() + "/ybdb/postgres/bin/ysql_dump",
+		YsqlBin:          common.GetSoftwareRoot() + "/ybdb/bin/ysqlsh",
 		PlatformPackages: common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + version,
 	}
 }
@@ -99,6 +103,7 @@ func (plat Platform) Name() string {
 func (plat Platform) Install() error {
 	log.Info("Starting Platform install")
 	config.GenerateTemplate(plat)
+
 	plat.createNecessaryDirectories()
 	plat.untarDevopsAndYugawarePackages()
 	plat.copyYbcPackages()

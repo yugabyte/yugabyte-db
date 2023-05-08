@@ -73,24 +73,19 @@ public class CloudAccessKeySetup extends CloudTaskBase {
           taskParams().setUpChrony,
           taskParams().ntpServers,
           taskParams().showSetUpChrony,
-          taskParams().skipKeyPairValidate);
+          taskParams().skipKeyValidateAndUpload);
     } else {
-      // For add region, we should verify if the skipKeyPairValidate is set, so that we don't
-      // try to add the key unnecessarily. It is false by default, so unless someone explicitly
-      // sets it, the key will be added.
-      if (!taskParams().skipKeyPairValidate) {
-        accessManager.addKey(
-            region.getUuid(),
-            accessKeyCode,
-            null,
-            taskParams().sshUser,
-            taskParams().sshPort,
-            taskParams().airGapInstall,
-            taskParams().skipProvisioning,
-            taskParams().setUpChrony,
-            taskParams().ntpServers,
-            taskParams().showSetUpChrony);
-      }
+      accessManager.addKey(
+          region.getUuid(),
+          accessKeyCode,
+          null,
+          taskParams().sshUser,
+          taskParams().sshPort,
+          taskParams().airGapInstall,
+          taskParams().skipProvisioning,
+          taskParams().setUpChrony,
+          taskParams().ntpServers,
+          taskParams().showSetUpChrony);
     }
 
     if (provider.getCloudCode().equals(Common.CloudType.onprem)) {

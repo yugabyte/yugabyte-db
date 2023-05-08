@@ -120,7 +120,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // a separate statistic in addition as they can be cleaned in a compaction.
   void IncrementKeyFoundStats(const bool obsolete, const EncodedDocHybridTime& write_time);
 
-  void Done();
+  void FinalizeKeyFoundStats();
 
   Status AssignHasNextStatus(const Status& status);
 

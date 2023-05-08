@@ -58,7 +58,7 @@ public class NodeAgentPoller {
   private static final Duration POLLER_INITIAL_DELAY = Duration.ofMinutes(1);
   private static final String LIVE_POLLER_POOL_NAME = "node_agent.live_node_poller";
   private static final String DEAD_POLLER_POOL_NAME = "node_agent.dead_node_poller";
-  private static final int MAX_FAILED_CONN_COUNT = 100;
+  private static final int MAX_FAILED_CONN_COUNT = 50;
 
   private final ConfigHelper configHelper;
   private final RuntimeConfGetter confGetter;

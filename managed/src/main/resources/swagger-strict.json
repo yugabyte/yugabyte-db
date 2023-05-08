@@ -1769,7 +1769,7 @@
         },
         "backupType" : {
           "description" : "Backup type",
-          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "enum" : [ "PGSQL_TABLE_TYPE", "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE" ],
           "type" : "string"
         },
         "backupUUID" : {
@@ -4933,6 +4933,9 @@
         "showSetUpChrony" : {
           "type" : "boolean"
         },
+        "skipKeyValidateAndUpload" : {
+          "type" : "boolean"
+        },
         "skipProvisioning" : {
           "type" : "boolean"
         },
@@ -7274,6 +7277,9 @@
         },
         "cloudInfo" : {
           "$ref" : "#/definitions/CloudInfo"
+        },
+        "enableNodeAgent" : {
+          "type" : "boolean"
         },
         "installNodeExporter" : {
           "type" : "boolean"

@@ -651,6 +651,12 @@ public class UniverseCRUDHandler {
         primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
         primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
 
+        // Check if universe has multi-regions configured at creation time.
+        int numRegions = primaryIntent.regionList.size();
+        boolean isMultiRegion = numRegions > 1;
+        universe.updateConfig(
+            ImmutableMap.of(Universe.IS_MULTIREGION, Boolean.toString(isMultiRegion)));
+
         if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.updateConfig(

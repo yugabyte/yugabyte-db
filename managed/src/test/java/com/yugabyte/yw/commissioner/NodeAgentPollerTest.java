@@ -72,7 +72,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
         .thenReturn(Duration.ofSeconds(3));
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.maxParallelNodeAgentUpgrades)))
         .thenReturn(1);
-    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, mockConfGetter);
+    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper);
     nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
     nodeAgentPoller =
         new NodeAgentPoller(

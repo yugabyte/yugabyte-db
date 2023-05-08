@@ -71,7 +71,7 @@
 
 DECLARE_bool(enable_process_lifetime_heap_profiling);
 DECLARE_string(heap_profile_path);
-
+DECLARE_string(tmp_dir);
 
 using std::endl;
 using std::ifstream;
@@ -189,7 +189,7 @@ static void PprofCpuProfileHandler(const Webserver::WebRequest& req,
   string secs_str = FindWithDefault(req.parsed_args, "seconds", "");
   int32_t seconds = ParseLeadingInt32Value(secs_str.c_str(), PPROF_DEFAULT_SAMPLE_SECS);
   // Build a temporary file name that is hopefully unique.
-  string tmp_prof_file_name = strings::Substitute("/tmp/yb_cpu_profile.$0.$1", getpid(), rand());
+  string tmp_prof_file_name = Format("$0/yb_cpu_profile.$1.$2", FLAGS_tmp_dir, getpid(), rand());
 
   LOG(INFO) << "Starting a cpu profile:"
             << " profiler file name=" << tmp_prof_file_name

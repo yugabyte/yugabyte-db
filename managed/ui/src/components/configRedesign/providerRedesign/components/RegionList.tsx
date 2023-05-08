@@ -94,7 +94,9 @@ const contextualHelpers = ({
     case ProviderCode.GCP: {
       const handleEditRegion = (regionField: CloudVendorRegionField) => {
         setRegionSelection(regionField);
-        showEditRegionFormModal();
+        showEditRegionFormModal({
+          isExistingRegion: existingRegions?.includes(regionField.code) ?? false
+        });
       };
       const handleDeleteRegion = (regionField: CloudVendorRegionField) => {
         setRegionSelection(regionField);
@@ -184,7 +186,9 @@ const contextualHelpers = ({
     case ProviderCode.ON_PREM: {
       const handleEditRegion = (regionField: ConfigureOnPremRegionFormValues) => {
         setRegionSelection(regionField);
-        showEditRegionFormModal();
+        showEditRegionFormModal({
+          isExistingRegion: existingRegions?.includes(regionField.code) ?? false
+        });
       };
       const handleDeleteRegion = (regionField: ConfigureOnPremRegionFormValues) => {
         setRegionSelection(regionField);

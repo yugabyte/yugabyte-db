@@ -110,6 +110,10 @@ public class GFlagsUtil {
   public static final String WEBSERVER_CERTIFICATE_FILE = "webserver_certificate_file";
   public static final String WEBSERVER_PRIVATE_KEY_FILE = "webserver_private_key_file";
   public static final String WEBSERVER_CA_CERTIFICATE_FILE = "webserver_ca_certificate_file";
+  public static final String RAFT_HEARTBEAT_INTERVAL = "raft_heartbeat_interval_ms";
+  public static final String LEADER_LEASE_DURATION_MS = "leader_lease_duration_ms";
+  public static final String LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS =
+      "leader_failure_max_missed_heartbeat_periods";
 
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
   public static final String CORES_DIR_PATH = "/cores";
@@ -209,6 +213,14 @@ public class GFlagsUtil {
       extra_gflags.put(FS_DATA_DIRS, mountPoints);
     } else {
       throw new RuntimeException("mountpoints and numVolumes are missing from taskParam");
+    }
+
+    boolean isMultiRegion =
+        universe.getConfig().getOrDefault(Universe.IS_MULTIREGION, "false").equals("true");
+    if (isMultiRegion) {
+      extra_gflags.put(RAFT_HEARTBEAT_INTERVAL, String.valueOf(1500));
+      extra_gflags.put(LEADER_LEASE_DURATION_MS, String.valueOf(6000));
+      extra_gflags.put(LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS, String.valueOf(5));
     }
 
     NodeDetails node = universe.getNode(taskParam.nodeName);

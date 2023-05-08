@@ -47,6 +47,7 @@ Patch releases in the preview release series (`MAJOR.ODD.PATCH`) introduce new f
 
 {{< note title="Note" >}}
 
-The preview release series is not supported for production deployments.
+- The preview release series is not supported for production deployments.
+- There is currently no migration path from a preview release to a stable release.
 
 {{< /note >}}
