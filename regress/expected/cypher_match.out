@@ -1787,6 +1787,61 @@ ERROR:  duplicate edge variable 'b' within a clause
 LINE 1: ...pher('cypher_match', $$ MATCH p=(a)-[b:knows]->()-[b]->(a) R...
                                                              ^
 --
+-- self referencing property constraints (issue #898)
+--
+SELECT * FROM cypher('cypher_match', $$ MATCH (a {name:a.name}) RETURN a $$) as (a agtype);
+                                            a                                             
+------------------------------------------------------------------------------------------
+ {"id": 281474976710660, "label": "", "properties": {"age": 4, "name": "F"}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {"age": 4, "name": "T"}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"age": 3, "name": "orphan"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710668, "label": "", "properties": {"name": "John"}}::vertex
+(5 rows)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH (a {name:a.name, age:a.age}) RETURN a $$) as (a agtype);
+                                            a                                             
+------------------------------------------------------------------------------------------
+ {"id": 281474976710660, "label": "", "properties": {"age": 4, "name": "F"}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {"age": 4, "name": "T"}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"age": 3, "name": "orphan"}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH (a {name:a.name}) MATCH (a {age:a.age}) RETURN a $$) as (a agtype);
+                                            a                                             
+------------------------------------------------------------------------------------------
+ {"id": 281474976710660, "label": "", "properties": {"age": 4, "name": "F"}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {"age": 4, "name": "T"}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"age": 3, "name": "orphan"}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[u {relationship: u.relationship}]->(b) RETURN p $$) as (a agtype);
+                                                                                                                                                                     a                                                                                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 281474976710661, "label": "", "properties": {"age": 4, "name": "T"}}::vertex, {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge, {"id": 281474976710666, "label": "", "properties": {"age": 6}}::vertex]::path
+ [{"id": 281474976710659, "label": "", "properties": {"age": 3, "name": "orphan"}}::vertex, {"id": 4785074604081154, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710659, "properties": {"years": 4, "relationship": "enemies"}}::edge, {"id": 281474976710666, "label": "", "properties": {"age": 6}}::vertex]::path
+(2 rows)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[u {relationship: u.relationship, years: u.years}]->(b) RETURN p $$) as (a agtype);
+                                                                                                                                                                     a                                                                                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 281474976710661, "label": "", "properties": {"age": 4, "name": "T"}}::vertex, {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge, {"id": 281474976710666, "label": "", "properties": {"age": 6}}::vertex]::path
+ [{"id": 281474976710659, "label": "", "properties": {"age": 3, "name": "orphan"}}::vertex, {"id": 4785074604081154, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710659, "properties": {"years": 4, "relationship": "enemies"}}::edge, {"id": 281474976710666, "label": "", "properties": {"age": 6}}::vertex]::path
+(2 rows)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(a {name:a.name})-[u {relationship: u.relationship}]->(b {age:b.age}) RETURN p $$) as (a agtype);
+                                                                                                                                                                     a                                                                                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 281474976710661, "label": "", "properties": {"age": 4, "name": "T"}}::vertex, {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge, {"id": 281474976710666, "label": "", "properties": {"age": 6}}::vertex]::path
+ [{"id": 281474976710659, "label": "", "properties": {"age": 3, "name": "orphan"}}::vertex, {"id": 4785074604081154, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710659, "properties": {"years": 4, "relationship": "enemies"}}::edge, {"id": 281474976710666, "label": "", "properties": {"age": 6}}::vertex]::path
+(2 rows)
+
+SELECT * FROM cypher('cypher_match', $$ CREATE () WITH * MATCH (x{n0:x.n1}) RETURN 0 $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);

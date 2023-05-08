@@ -3819,6 +3819,13 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
             entity = make_transform_entity(cpstate, ENT_VERTEX, (Node *)node,
                                            expr);
 
+            /* 
+             * We want to add tranformed entity to entities before tranforming props
+             * so that props referncing currently transformed entity can be resolved.
+             */
+            cpstate->entities = lappend(cpstate->entities, entity);
+            entities = lappend(entities, entity);
+            
             /* transform the properties if they exist */
             if (node->props)
             {
@@ -3886,9 +3893,6 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                     lappend(cpstate->property_constraint_quals, n);
             }
 
-            cpstate->entities = lappend(cpstate->entities, entity);
-            entities = lappend(entities, entity);
-
             prev_entity = entity;
         }
         /* odd increments of i are edges */
@@ -3935,7 +3939,12 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                 entity = make_transform_entity(cpstate, ENT_EDGE, (Node *)rel,
                                                expr);
 
+                /* 
+                 * We want to add tranformed entity to entities before tranforming props
+                 * so that props referncing currently transformed entity can be resolved.
+                 */
                 cpstate->entities = lappend(cpstate->entities, entity);
+                entities = lappend(entities, entity);
 
                 if (rel->props)
                 {
@@ -4000,8 +4009,6 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                     cpstate->property_constraint_quals =
                         lappend(cpstate->property_constraint_quals, r);
                 }
-
-                entities = lappend(entities, entity);
 
                 prev_entity = entity;
             }
