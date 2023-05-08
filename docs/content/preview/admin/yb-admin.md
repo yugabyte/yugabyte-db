@@ -606,7 +606,6 @@ yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     flush_table ysql.yugabyte table_name
     
-Flushed [yugabyte.table_name] tables.
 ```
 
 ---
