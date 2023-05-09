@@ -25,7 +25,7 @@ cffi==1.15.1
 chardet==4.0.0
 click==8.0.4
 colorama==0.4.3
-cryptography==3.3.2
+cryptography==39.0.1
 deepdiff==5.5.0
 distro==1.5.0
 docutils==0.15.2
