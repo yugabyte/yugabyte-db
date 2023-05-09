@@ -81,7 +81,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
             mockPlatformExecutorFactory,
             mockPlatformScheduler,
             nodeAgentManager,
-            mockNodeAgentClient);
+            mockNodeAgentClient,
+            mockSwamperHelper);
     nodeAgentPoller.init();
     nodeAgentHandler.enableConnectionValidation(false);
     when(mockAppConfig.getString(eq("yb.storage.path"))).thenReturn("/tmp");

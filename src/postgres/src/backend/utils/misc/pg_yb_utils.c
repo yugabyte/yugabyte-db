@@ -87,7 +87,7 @@
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 
-#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pgstat.h"
 

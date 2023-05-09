@@ -15,6 +15,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction_priority.h"
+#include "yb/common/ybc_util.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -23,7 +24,6 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
@@ -32,8 +32,8 @@
 #include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/util/flags.h"
 
 DEFINE_UNKNOWN_bool(use_node_hostname_for_local_tserver, false,
     "Connect to local t-server by using host name instead of local IP");

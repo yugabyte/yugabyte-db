@@ -9,14 +9,14 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-#include "yb/yql/pggate/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
 
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
 using std::string;
 
-namespace yb::pggate {
+namespace yb {
 
 namespace {
 YBCPAllocFn g_palloc_fn = nullptr;
@@ -65,4 +65,4 @@ const char* YBCPAllocStdString(const std::string& s) {
   return result;
 }
 
-} // namespace yb::pggate
+} // namespace yb

@@ -761,7 +761,6 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
-  CHECK_NE(conf_.tserver_shm_fd, -1);
   proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
 #ifdef OS_MACOSX
   // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
@@ -792,6 +791,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
 
     // Pass non-default flags to the child process using FLAGS_... environment variables.
     static const std::vector<string> explicit_flags{"pggate_master_addresses",
+                                                    "pggate_tserver_shm_fd",
                                                     "certs_dir",
                                                     "certs_for_client_dir",
                                                     "mem_tracker_tcmalloc_gc_release_bytes",

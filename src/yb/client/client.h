@@ -57,6 +57,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 
+#include "yb/encryption/encryption.pb.h"
+
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/gutil/macros.h"
@@ -843,6 +845,8 @@ class YBClient {
   void LookupAllTablets(const std::shared_ptr<YBTable>& table,
                         CoarseTimePoint deadline,
                         LookupTabletRangeCallback callback);
+
+  Result<encryption::UniverseKeyRegistryPB> GetFullUniverseKeyRegistry();
 
   // Get the AutoFlagConfig from master. Returns std::nullopt if master is runnning on an older
   // version that does not support AutoFlags.

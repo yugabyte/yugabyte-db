@@ -75,21 +75,20 @@ DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1680,
 namespace yb {
 namespace docdb {
 
-using dockv::IntentStrength;
 using dockv::KeyBytes;
 using dockv::KeyEntryType;
 using dockv::KeyEntryTypeAsChar;
 
 namespace {
 
-// key should be valid prefix of doc key, ending with some complete pritimive value or group end.
-Status ApplyIntent(RefCntPrefix key,
-                   const dockv::IntentTypeSet intent_types,
-                   LockBatchEntries *keys_locked) {
+// key should be valid prefix of doc key, ending with some complete primitive value or group end.
+Status ApplyIntent(
+    RefCntPrefix key, dockv::IntentTypeSet intent_types, LockBatchEntries* keys_locked) {
+  RSTATUS_DCHECK(!intent_types.None(), InternalError, "Empty intent types is not allowed");
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
   // get two kGroupEnd at end of strong intent.
   RETURN_NOT_OK(dockv::RemoveGroupEndSuffix(&key));
-  keys_locked->push_back({key, intent_types});
+  keys_locked->push_back({std::move(key), intent_types});
   return Status::OK();
 }
 
@@ -105,9 +104,9 @@ struct DetermineKeysToLockResult {
 Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    const IsolationLevel isolation_level,
-    const dockv::OperationKind operation_kind,
-    const RowMarkType row_mark_type,
+    IsolationLevel isolation_level,
+    dockv::OperationKind operation_kind,
+    RowMarkType row_mark_type,
     bool transactional_table,
     dockv::PartialRangeKeyIntents partial_range_key_intents) {
   DetermineKeysToLockResult result;
@@ -121,11 +120,11 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
       level = isolation_level;
     }
-    auto strong_intent_types = GetStrongIntentTypeSet(level, operation_kind, row_mark_type);
+    auto intent_types = GetIntentTypeSet(level, operation_kind, row_mark_type);
     if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
         operation_kind == dockv::OperationKind::kWrite &&
         doc_op->RequireReadSnapshot()) {
-      strong_intent_types = dockv::IntentTypeSet(
+      intent_types = dockv::IntentTypeSet(
           {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite});
     }
 
@@ -146,15 +145,15 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
       if (doc_path.size() > 0 && transactional_table) {
         partial_key.Resize(0);
         RETURN_NOT_OK(ApplyIntent(
-            partial_key, StrongToWeak(strong_intent_types), &result.lock_batch));
+            partial_key, MakeWeak(intent_types), &result.lock_batch));
       }
-      for (size_t prefix_length : key_prefix_lengths) {
+      for (auto prefix_length : key_prefix_lengths) {
         partial_key.Resize(prefix_length);
         RETURN_NOT_OK(ApplyIntent(
-            partial_key, StrongToWeak(strong_intent_types), &result.lock_batch));
+            partial_key, MakeWeak(intent_types), &result.lock_batch));
       }
 
-      RETURN_NOT_OK(ApplyIntent(doc_path, strong_intent_types, &result.lock_batch));
+      RETURN_NOT_OK(ApplyIntent(doc_path, intent_types, &result.lock_batch));
     }
 
     if (doc_op->RequireReadSnapshot()) {
@@ -163,19 +162,16 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   }
 
   if (!read_pairs.empty()) {
-    const auto strong_read_intent_types = GetStrongIntentTypeSet(
-        isolation_level, dockv::OperationKind::kRead, row_mark_type);
+    const auto read_intent_types = GetIntentTypeSet(isolation_level, operation_kind, row_mark_type);
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
-        [&result, &strong_read_intent_types](
-            IntentStrength strength, dockv::FullDocKey, Slice value, KeyBytes* key,
+        [&result, &read_intent_types](
+            dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey, Slice, KeyBytes* key,
             dockv::LastKey) {
-          RefCntPrefix prefix(key->AsSlice());
-          return ApplyIntent(prefix,
-                             strength == IntentStrength::kStrong
-                                ? strong_read_intent_types
-                                : StrongToWeak(strong_read_intent_types),
-                             &result.lock_batch);
+          return ApplyIntent(
+              RefCntPrefix(key->AsSlice()),
+              ancestor_doc_key ? MakeWeak(read_intent_types) : read_intent_types,
+              &result.lock_batch);
         }, partial_range_key_intents));
   }
 

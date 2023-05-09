@@ -22,6 +22,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
+#include "yb/common/ybc_util.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -30,7 +31,6 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_session.h"
-#include "yb/yql/pggate/util/ybc_util.h"
 
 namespace yb {
 namespace pggate {

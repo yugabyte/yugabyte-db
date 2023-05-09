@@ -155,6 +155,9 @@ typedef struct PgTypeEntity {
   // - Set to (-1) for types of variable in-memory size - VARSIZE_ANY should be used.
   int64_t datum_fixed_size;
 
+  // Whether we could use cast to convert value to datum.
+  bool direct_datum;
+
   // Converting Postgres datum to YugaByte expression.
   YBCPgDatumToData datum_to_yb;
 

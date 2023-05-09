@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 
 #include <stdarg.h>
 
@@ -19,6 +19,7 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ybc-internal.h"
 
 #include "yb/gutil/stringprintf.h"
 
@@ -33,8 +34,6 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
-
-#include "yb/yql/pggate/util/ybc-internal.h"
 
 using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),
@@ -70,7 +69,7 @@ int yb_fetch_row_limit = 0;
 
 int yb_fetch_size_limit = 0;
 
-namespace yb::pggate {
+namespace yb {
 
 namespace {
 
@@ -317,7 +316,7 @@ YBCStatus YBCInit(const char* argv0,
   if (cstring_to_text_with_len_fn) {
     YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
   }
-  auto status = InitGFlags(argv0);
+  auto status = yb::InitGFlags(argv0);
   if (status.ok() && !FLAGS_TEST_process_info_dir.empty()) {
     WriteCurrentProcessInfo(FLAGS_TEST_process_info_dir);
   }
@@ -403,4 +402,4 @@ void YBCInitThreading() {
 
 } // extern "C"
 
-} // namespace yb::pggate
+} // namespace yb

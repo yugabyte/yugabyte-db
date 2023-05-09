@@ -109,19 +109,14 @@ Result<DecodedIntentValue> DecodeIntentValue(
 // Decodes transaction ID from intent value. Consumes it from intent_value slice.
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);
 
-IntentTypeSet GetStrongIntentTypeSet(
+IntentTypeSet GetIntentTypeSet(
     IsolationLevel level, OperationKind operation_kind, RowMarkType row_mark);
 
-inline IntentTypeSet StrongToWeak(IntentTypeSet inp) {
-  IntentTypeSet result(inp.ToUIntPtr() >> kStrongIntentFlag);
-  DCHECK((inp & result).None());
-  return result;
-}
+inline IntentTypeSet MakeWeak(IntentTypeSet inp) {
+  static constexpr auto kWeakIntentMask = (1 << kStrongIntentFlag) - 1;
 
-inline IntentTypeSet WeakToStrong(IntentTypeSet inp) {
-  IntentTypeSet result(inp.ToUIntPtr() << kStrongIntentFlag);
-  DCHECK((inp & result).None());
-  return result;
+  const auto value = inp.ToUIntPtr();
+  return IntentTypeSet((value >> kStrongIntentFlag) | (value & kWeakIntentMask));
 }
 
 bool HasStrong(IntentTypeSet inp);
@@ -135,12 +130,15 @@ bool IntentValueType(char ch);
 YB_STRONGLY_TYPED_BOOL(LastKey);
 
 // Enumerates intents corresponding to provided key value pairs.
-// For each key it generates a strong intent and for each parent of each it generates a weak one.
-// functor should accept 3 arguments:
-// intent_kind - kind of intent weak or strong
+// functor should accept 4 arguments:
+// ancestor_doc_key - indicates that doc key is an ancestor of provided key
+// full_doc_key - indicates that doc key does not omit any final range components
 // value_slice - value of intent
 // key - pointer to key in format of SubDocKey (no ht)
-// last_key - whether it is last strong key in enumeration
+// last_key - whether it is the last leaf (non-ancestor) key in enumeration
+
+// Indicates that doc key is an ancestor of provided key or key it self.
+YB_STRONGLY_TYPED_BOOL(AncestorDocKey);
 
 // Indicates that the intent contains a full document key, i.e. it does not omit any final range
 // components of the document key. This flag is also true for intents that include subdocument keys.
@@ -155,7 +153,7 @@ YB_STRONGLY_TYPED_BOOL(FullDocKey);
 // So, we use boost::function which doesn't have such issue:
 // http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
 using EnumerateIntentsCallback = boost::function<
-    Status(IntentStrength, FullDocKey, Slice, KeyBytes*, LastKey)>;
+    Status(AncestorDocKey, FullDocKey, Slice, KeyBytes*, LastKey)>;
 
 Status EnumerateIntents(
     Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,

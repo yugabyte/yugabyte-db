@@ -382,6 +382,7 @@ class YBClient::Data {
   std::shared_ptr<master::MasterDclProxy> master_dcl_proxy() const;
   std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy() const;
   std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy() const;
+  std::shared_ptr<master::MasterEncryptionProxy> master_encryption_proxy() const;
 
   HostPort leader_master_hostport() const;
 
@@ -494,6 +495,7 @@ class YBClient::Data {
   std::shared_ptr<master::MasterDclProxy> master_dcl_proxy_;
   std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy_;
   std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy_;
+  std::shared_ptr<master::MasterEncryptionProxy> master_encryption_proxy_;
 
   // Ref-counted RPC instance: since 'SetMasterServerProxyAsync' call
   // is asynchronous, we need to hold a reference in this class

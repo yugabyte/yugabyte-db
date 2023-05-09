@@ -577,6 +577,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status ChangeEncryptionInfo(
       const ChangeEncryptionInfoRequestPB* req, ChangeEncryptionInfoResponsePB* resp);
 
+  Status GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
+                                    GetFullUniverseKeyRegistryResponsePB* resp);
+
   Status UpdateXClusterConsumerOnTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
@@ -1031,6 +1034,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Get the parent table id for a colocated table. The table parameter must be colocated and
   // not satisfy IsColocationParentTableId.
   Result<TableId> GetParentTableIdForColocatedTable(const scoped_refptr<TableInfo>& table);
+  Result<TableId> GetParentTableIdForColocatedTableUnlocked(
+      const scoped_refptr<TableInfo>& table) REQUIRES_SHARED(mutex_);
 
   Result<std::optional<cdc::ConsumerRegistryPB>> GetConsumerRegistry();
   Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();

@@ -1419,22 +1419,21 @@ Status PgClientSession::FetchSequenceTuple(
                              sequence_id);
   }
 
-  int64_t first_value = 0, last_value = 0;
   // Get the range start
-  if (PgDocData::ReadDataHeader(&cursor).is_null()) {
+  if (PgDocData::ReadHeaderIsNull(&cursor)) {
     return STATUS_SUBSTITUTE(InternalError,
                              "Invalid value range start has been fetched from sequence $0",
                              sequence_id);
   }
-  cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &first_value));
+  auto first_value = PgDocData::ReadNumber<int64_t>(&cursor);
 
   // Get the range end
-  if (PgDocData::ReadDataHeader(&cursor).is_null()) {
+  if (PgDocData::ReadHeaderIsNull(&cursor)) {
     return STATUS_SUBSTITUTE(InternalError,
                              "Invalid value range end has been fetched from sequence $0",
                              sequence_id);
   }
-  cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &last_value));
+  auto last_value = PgDocData::ReadNumber<int64_t>(&cursor);
 
   if (use_sequence_cache) {
     entry->SetRange(first_value, last_value);
@@ -1500,21 +1499,16 @@ Status PgClientSession::ReadSequenceTuple(
     return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
   }
 
-  PgWireDataHeader header = PgDocData::ReadDataHeader(&cursor);
-  if (header.is_null()) {
+  if (PgDocData::ReadHeaderIsNull(&cursor)) {
     return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
   }
-  int64_t last_val = 0;
-  size_t read_size = PgDocData::ReadNumber(&cursor, &last_val);
-  cursor.remove_prefix(read_size);
+  auto last_val = PgDocData::ReadNumber<int64_t>(&cursor);
   resp->set_last_val(last_val);
 
-  header = PgDocData::ReadDataHeader(&cursor);
-  if (header.is_null()) {
+  if (PgDocData::ReadHeaderIsNull(&cursor)) {
     return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
   }
-  bool is_called = false;
-  read_size = PgDocData::ReadNumber(&cursor, &is_called);
+  auto is_called = PgDocData::ReadNumber<bool>(&cursor);
   resp->set_is_called(is_called);
   return Status::OK();
 }

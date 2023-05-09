@@ -7,7 +7,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 import time
 
-from azure.common.credentials import ServicePrincipalCredentials
+from azure.identity import ClientSecretCredential
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
@@ -89,10 +89,10 @@ class GetPriceWorker(Thread):
 
 
 def get_credentials():
-    credentials = ServicePrincipalCredentials(
+    credentials = ClientSecretCredential(
         client_id=os.environ.get("AZURE_CLIENT_ID"),
-        secret=os.environ.get("AZURE_CLIENT_SECRET"),
-        tenant=os.environ.get("AZURE_TENANT_ID")
+        client_secret=os.environ.get("AZURE_CLIENT_SECRET"),
+        tenant_id=os.environ.get("AZURE_TENANT_ID")
     )
     return credentials
 
@@ -104,7 +104,7 @@ def create_resource_group(region, subscription_id=None, resource_group=None):
     if resource_group_client.resource_groups.check_existence(rg):
         return
     resource_group_params = {'location': region}
-    return resource_group_client.resource_groups.create_or_update(rg, resource_group_params)
+    return resource_group_client.resource_groups.begin_create_or_update(rg, resource_group_params)
 
 
 def id_to_name(resourceId):
@@ -170,7 +170,7 @@ class AzureBootstrapClient():
         }
         logging.debug("Creating Virtual Network {} with CIDR {}".format(
             YUGABYTE_VNET_PREFIX.format(region), cidr))
-        creation_result = self.network_client.virtual_networks.create_or_update(
+        creation_result = self.network_client.virtual_networks.begin_create_or_update(
             RESOURCE_GROUP,
             YUGABYTE_VNET_PREFIX.format(region),
             vnet_params
@@ -185,7 +185,7 @@ class AzureBootstrapClient():
             YUGABYTE_SUBNET_PREFIX.format(region),
             cidr
         ))
-        creation_result = self.network_client.subnets.create_or_update(
+        creation_result = self.network_client.subnets.begin_create_or_update(
             RESOURCE_GROUP,
             vNet,
             YUGABYTE_SUBNET_PREFIX.format(region),
@@ -270,9 +270,9 @@ class AzureBootstrapClient():
             return
         subnet = self.get_default_subnet(vnet)
         if subnet:
-            self.network_client.subnets.delete(RESOURCE_GROUP, vnet, subnet).result()
+            self.network_client.subnets.begin_delete(RESOURCE_GROUP, vnet, subnet).result()
             logging.debug("Successfully deleted subnet {}".format(subnet))
-        self.network_client.virtual_networks.delete(RESOURCE_GROUP, vnet).result()
+        self.network_client.virtual_networks.begin_delete(RESOURCE_GROUP, vnet).result()
         logging.debug("Successfully deleted vnet {}".format(vnet))
 
     def get_vnet_id(self, vnet):
@@ -325,14 +325,14 @@ class AzureBootstrapClient():
         pp1 = self.gen_peering_params(region2, vnet2)
         pp2 = self.gen_peering_params(region1, vnet1)
         # Peer 2 to 1
-        peer1 = self.network_client.virtual_network_peerings.create_or_update(
+        peer1 = self.network_client.virtual_network_peerings.begin_create_or_update(
             RESOURCE_GROUP,
             vnet1,
             YUGABYTE_PEERING_FORMAT.format(region1, region2),
             pp1
         )
         # Peer 1 to 2
-        peer2 = self.network_client.virtual_network_peerings.create_or_update(
+        peer2 = self.network_client.virtual_network_peerings.begin_create_or_update(
             RESOURCE_GROUP,
             vnet2,
             YUGABYTE_PEERING_FORMAT.format(region2, region1),
@@ -396,7 +396,7 @@ class AzureCloudAdmin():
             if disk_throughput is not None:
                 disk_params['disk_mbps_read_write'] = disk_throughput
 
-        data_disk = self.compute_client.disks.create_or_update(
+        data_disk = self.compute_client.disks.begin_create_or_update(
             RESOURCE_GROUP,
             disk_name,
             disk_params
@@ -409,10 +409,11 @@ class AzureCloudAdmin():
             "managed_disk": {
                 "storageAccountType": AZURE_SKU_FORMAT[vol_type],
                 "id": data_disk.id
-            }
+            },
+            "caching": "ReadOnly"
         })
 
-        async_disk_attach = self.compute_client.virtual_machines.create_or_update(
+        async_disk_attach = self.compute_client.virtual_machines.begin_create_or_update(
             RESOURCE_GROUP,
             vm_name,
             vm
@@ -428,7 +429,7 @@ class AzureCloudAdmin():
             vm.storage_profile.os_disk.name
         )
         disk.tags = tags
-        self.compute_client.disks.create_or_update(
+        self.compute_client.disks.begin_create_or_update(
             RESOURCE_GROUP,
             disk.name,
             disk
@@ -441,7 +442,7 @@ class AzureCloudAdmin():
                 disk.name
             )
             disk.tags = tags
-            self.compute_client.disks.create_or_update(
+            self.compute_client.disks.begin_create_or_update(
                 RESOURCE_GROUP,
                 disk.name,
                 disk
@@ -466,7 +467,7 @@ class AzureCloudAdmin():
         if tags:
             public_ip_addess_params["tags"] = tags
 
-        creation_result = self.network_client.public_ip_addresses.create_or_update(
+        creation_result = self.network_client.public_ip_addresses.begin_create_or_update(
             RESOURCE_GROUP,
             self.get_public_ip_name(vm_name),
             public_ip_addess_params
@@ -496,7 +497,7 @@ class AzureCloudAdmin():
             nic_params['networkSecurityGroup'] = {'id': self.get_nsg_id(nsg)}
         if tags:
             nic_params['tags'] = tags
-        creation_result = self.network_client.network_interfaces.create_or_update(
+        creation_result = self.network_client.network_interfaces.begin_create_or_update(
             RESOURCE_GROUP,
             self.get_nic_name(vm_name),
             nic_params
@@ -521,7 +522,7 @@ class AzureCloudAdmin():
                 if (disk.name.startswith(vm_name) and disk.tags
                         and disk.tags.get('node-uuid') == node_uuid):
                     logging.info("[app] Deleting disk {}".format(disk.name))
-                    disk_del = self.compute_client.disks.delete(RESOURCE_GROUP, disk.name)
+                    disk_del = self.compute_client.disks.begin_delete(RESOURCE_GROUP, disk.name)
                     disk_dels[disk.name] = disk_del
 
         nic_name = self.get_nic_name(vm_name)
@@ -534,8 +535,8 @@ class AzureCloudAdmin():
                 nic_info = self.network_client.network_interfaces.get(RESOURCE_GROUP, nic_name)
                 if nic_info.tags and nic_info.tags.get('node-uuid') == node_uuid:
                     logging.info("[app] Deleting nic {}".format(nic_name))
-                    nic_del = self.network_client.network_interfaces.delete(RESOURCE_GROUP,
-                                                                            nic_name)
+                    nic_del = self.network_client.network_interfaces.begin_delete(RESOURCE_GROUP,
+                                                                                  nic_name)
                     nic_del.wait()
                     logging.info("[app] Deleted nic {}".format(nic_name))
             except CloudError as e:
@@ -559,7 +560,8 @@ class AzureCloudAdmin():
             ip_addr = self.network_client.public_ip_addresses.get(RESOURCE_GROUP, ip_name)
             if ip_addr and ip_addr.tags and ip_addr.tags.get('node-uuid') == node_uuid:
                 logging.info("[app] Deleting ip {}".format(ip_name))
-                ip_del = self.network_client.public_ip_addresses.delete(RESOURCE_GROUP, ip_name)
+                ip_del = self.network_client.public_ip_addresses.begin_delete(RESOURCE_GROUP,
+                                                                              ip_name)
                 ip_del.wait()
                 logging.info("[app] Deleted ip {}".format(ip_name))
         except CloudError as e:
@@ -584,7 +586,7 @@ class AzureCloudAdmin():
         # Delete the VM first. Any subsequent failure will invoke the orphaned
         # resource deletion.
         logging.info("[app] Deleting vm {}".format(vm_name))
-        vmdel = self.compute_client.virtual_machines.delete(RESOURCE_GROUP, vm_name)
+        vmdel = self.compute_client.virtual_machines.begin_delete(RESOURCE_GROUP, vm_name)
         vmdel.wait()
         logging.info("[app] Deleted vm {}".format(vm_name))
 
@@ -593,22 +595,22 @@ class AzureCloudAdmin():
         data_disks = vm.storage_profile.data_disks
         for disk in data_disks:
             logging.info("[app] Deleting disk {}".format(disk.name))
-            disk_del = self.compute_client.disks.delete(RESOURCE_GROUP, disk.name)
+            disk_del = self.compute_client.disks.begin_delete(RESOURCE_GROUP, disk.name)
             disk_dels[disk.name] = disk_del
 
         logging.info("[app] Deleting os disk {}".format(os_disk_name))
-        disk_del = self.compute_client.disks.delete(RESOURCE_GROUP, os_disk_name)
+        disk_del = self.compute_client.disks.begin_delete(RESOURCE_GROUP, os_disk_name)
         disk_dels[os_disk_name] = disk_del
 
         nic_name = self.get_nic_name(vm_name)
         ip_name = self.get_public_ip_name(vm_name)
         logging.info("[app] Deleting nic {}".format(nic_name))
-        nic_del = self.network_client.network_interfaces.delete(RESOURCE_GROUP, nic_name)
+        nic_del = self.network_client.network_interfaces.begin_delete(RESOURCE_GROUP, nic_name)
         nic_del.wait()
         logging.info("[app] Deleted nic {}".format(nic_name))
 
         logging.info("[app] Deleting ip {}".format(ip_name))
-        ip_del = self.network_client.public_ip_addresses.delete(RESOURCE_GROUP, ip_name)
+        ip_del = self.network_client.public_ip_addresses.begin_delete(RESOURCE_GROUP, ip_name)
         ip_del.wait()
         logging.info("[app] Deleted ip {}".format(ip_name))
 
@@ -723,7 +725,7 @@ class AzureCloudAdmin():
         self.add_tag_resource(vm_parameters, "yb-server-type", server_type)
         for k in tags:
             self.add_tag_resource(vm_parameters, k, tags[k])
-        creation_result = self.compute_client.virtual_machines.create_or_update(
+        creation_result = self.compute_client.virtual_machines.begin_create_or_update(
             RESOURCE_GROUP,
             vm_name,
             vm_parameters
@@ -931,17 +933,17 @@ class AzureCloudAdmin():
         parameters, subscr_id = self._get_dns_record_set_args(
             dns_zone_id, domain_name_prefix, ip_list)
         # Setting if_none_match="*" will cause this to error if a record with the name exists.
-        return self.get_dns_client(subscr_id).record_sets.create_or_update(if_none_match="*",
-                                                                           **parameters)
+        return self.get_dns_client(subscr_id).record_sets.begin_create_or_update(if_none_match="*",
+                                                                                 **parameters)
 
     def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
         parameters, subscr_id = self._get_dns_record_set_args(
             dns_zone_id, domain_name_prefix, ip_list)
-        return self.get_dns_client(subscr_id).record_sets.update(**parameters)
+        return self.get_dns_client(subscr_id).record_sets.begin_update(**parameters)
 
     def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
         parameters, subscr_id = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix)
-        return self.get_dns_client(subscr_id).record_sets.delete(**parameters)
+        return self.get_dns_client(subscr_id).record_sets.begin_delete(**parameters)
 
     def _get_dns_record_set_args(self, dns_zone_id, domain_name_prefix, ip_list=None):
         zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
@@ -988,12 +990,12 @@ class AzureCloudAdmin():
         )
 
     def deallocate_instance(self, vm_name):
-        async_vm_deallocate = self.compute_client.virtual_machines.deallocate(RESOURCE_GROUP,
-                                                                              vm_name)
+        async_vm_deallocate = self.compute_client.virtual_machines.begin_deallocate(RESOURCE_GROUP,
+                                                                                    vm_name)
         async_vm_deallocate.wait()
         return async_vm_deallocate.result()
 
     def start_instance(self, vm_name):
-        async_vm_start = self.compute_client.virtual_machines.start(RESOURCE_GROUP, vm_name)
+        async_vm_start = self.compute_client.virtual_machines.begin_start(RESOURCE_GROUP, vm_name)
         async_vm_start.wait()
         return async_vm_start.result()

@@ -85,9 +85,9 @@ Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row with
 
 Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the transaction.
 
-### Temporary or Temp
+### TEMPORARY or TEMP
 
-Using this qualifier will create a temporary table. Temporary tables are only visible in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well.
+Using this qualifier will create a temporary table. Temporary tables are visible only in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
 ### TABLESPACE
 

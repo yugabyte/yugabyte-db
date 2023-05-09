@@ -39,7 +39,7 @@
 #include "utils/relcache.h"
 #include "utils/resowner.h"
 
-#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*

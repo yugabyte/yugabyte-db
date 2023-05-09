@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/common/ybc_util.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
@@ -105,8 +107,9 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ManyRowsInsert)) {
 
 class PgMiniBigPrefetchTest : public PgSingleTServerTest {
  public:
-  Status SetupConnection(PGConn* conn) const override {
-    return conn->Execute("SET yb_fetch_row_limit = 20000000");
+  void SetUp() override {
+    yb_fetch_row_limit = 20000000;
+    PgSingleTServerTest::SetUp();
   }
 
   void Run(int rows, int block_size, int reads, bool compact = false, bool select = false) {
@@ -248,8 +251,9 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
 
 class PgNoPrefetchTest : public PgSingleTServerTest {
  protected:
-  Status SetupConnection(PGConn* conn) const override {
-    return conn->Execute("SET yb_fetch_row_limit = 1");
+  void SetUp() override {
+    yb_fetch_row_limit = 1;
+    PgSingleTServerTest::SetUp();
   }
 
   void Run(int rows, int block_size, int reads) {

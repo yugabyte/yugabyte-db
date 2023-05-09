@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     parent: alerts-monitoring
     identifier: slow-queries-dashboard
-    weight: 10
+    weight: 30
 type: docs
 ---
 
