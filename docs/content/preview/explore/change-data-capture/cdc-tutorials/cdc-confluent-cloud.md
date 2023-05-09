@@ -19,17 +19,17 @@ This tutorial describes how to configure a YugabyteDB connector to publish chang
 
 ![Architecture of YugabyteDB to Confluent Cloud pipeline](/images/explore/cdc/confluent_images/cdc_confluent_cloud.png)
 
-### Configuring Confluent Cloud cluster
+### Configure a Confluent Cloud cluster
 
-First, you will need to setup a Confluend Cloud cluster on the provider of your choice. For more information, visit [Manage Kafka Clusters on Confluent Cloud](https://docs.confluent.io/cloud/current/clusters/create-cluster.html).
+First, you need to set up a Confluent Cloud cluster on the provider of your choice. For more information, refer to [Manage Kafka Clusters on Confluent Cloud](https://docs.confluent.io/cloud/current/clusters/create-cluster.html) in the Confluent documentation.
 
 ### Download the credentials
 
-Create a API key for your cluster and save it to be used further. See [Confluent Cloud API Keys](https://docs.confluent.io/cloud/current/access-management/authenticate/api-keys/api-keys.html) for reference.
+Create an API key for your Confluent cluster and save it. See [Confluent Cloud API Keys](https://docs.confluent.io/cloud/current/access-management/authenticate/api-keys/api-keys.html) for instructions.
 
 ### Create custom Kafka Connect image with YugabyteDB connector
 
-To create a Kafka Connect image with the YugabyteDB connector, we start with the [base image](https://hub.docker.com/r/confluentinc/cp-server-connect/).
+To create a Kafka Connect image with the YugabyteDB connector, start with the [base image](https://hub.docker.com/r/confluentinc/cp-server-connect/).
 
 1. Create a directory which will be used to store all related files.
 
@@ -52,13 +52,13 @@ ADD debezium-connector-yugabytedb-1.9.5.y.22.jar /usr/share/java/kafka/
 USER 1001
 ```
 
-To build the image, execute the following command:
+1. To build the image, execute the following command:
 
 ```sh
 docker build . -t custom-connect:latest
 ```
 
-4. Create a `docker-compose.yaml` file with the following contents.
+4. Create a `docker-compose.yaml` file with the following contents:
 
 ```yaml
 version: '3'
@@ -128,7 +128,7 @@ services:
 
 {{< note title="Using Schema Registry" >}}
 
-If the configuration is such that it needs schema registry as well, then the following environment variables need to be added to the above docker compose file:
+If the configuration is such that it needs schema registry as well, then you need to add the following environment variables to the Docker compose file:
 
 ```yaml
 CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
@@ -155,10 +155,10 @@ To configure authorization, follow the instructions on [Confluent docs](https://
 
 {{< /note >}}
 
-5. Start the Kafka Connect cluster
+5. Start the Kafka Connect cluster.
 
 ```sh
 docker-compose up
 ```
 
-6. [Deploy the connector](../debezium-connector-yugabytedb/#deployment)
+6. [Deploy the connector](../debezium-connector-yugabytedb/#deployment).
