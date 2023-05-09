@@ -20,7 +20,7 @@
 
 /* YB includes. */
 #include "common/pg_yb_common.h"
-#include "yb/server/pgsql_webserver_wrapper.h"
+#include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
 
 PG_MODULE_MAGIC;
 
