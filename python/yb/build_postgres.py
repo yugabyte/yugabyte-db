@@ -23,10 +23,8 @@ import re
 import sys
 import multiprocessing
 import subprocess
-import hashlib
 import time
 import semantic_version  # type: ignore
-import shlex
 import pathlib
 
 from overrides import overrides
@@ -57,6 +55,8 @@ from yb.compile_commands import create_compile_commands_symlink, get_compile_com
 from yb.compile_commands_processor import CompileCommandProcessor
 from yb.cmake_cache import CMakeCache, load_cmake_cache
 from yb.file_util import mkdir_p
+from yb.string_util import compute_sha256
+from yb.timestamp_saver import TimestampSaver
 
 
 ALLOW_REMOTE_COMPILATION = True
@@ -104,10 +104,6 @@ ALL_FLAG_ENV_VAR_NAMES = COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES + ['CPPFLAGS']
 FILES_INCLUDING_GENERATED_FILES_FROM_SAME_DIR = ['guc.c', 'tuplesort.c']
 
 UNDEFINED_DYNAMIC_LOOKUP_FLAG_RE = re.compile(r'\s-undefined\s+dynamic_lookup\b')
-
-
-def sha256(s: str) -> str:
-    return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
 
 def adjust_compiler_flag(flag: str, step: str, language: str) -> Optional[str]:
@@ -655,12 +651,11 @@ class PostgresBuilder(YbBuildToolBase):
         env_vars_str = self.get_env_vars_str(self.env_vars_for_build_stamp)
         build_stamp = "\n".join([
             "git_commit_sha1=%s" % git_hash,
-            "git_diff_sha256=%s" % hashlib.sha256(git_diff).hexdigest(),
+            "git_diff_sha256=%s" % compute_sha256(git_diff),
             ])
 
         if include_env_vars:
-            build_stamp += "\nenv_vars_sha256=%s" % hashlib.sha256(
-                env_vars_str.encode('utf-8')).hexdigest()
+            build_stamp += "\nenv_vars_sha256=%s" % compute_sha256(env_vars_str)
 
         return build_stamp.strip()
 
@@ -690,6 +685,22 @@ class PostgresBuilder(YbBuildToolBase):
             )
 
         run_program(['chmod', 'u+x', make_script_path])
+
+    def run_make_install(self, make_cmd: List[str], make_cmd_suffix: List[str]) -> None:
+        work_dir = os.getcwd()
+        complete_make_install_cmd = make_cmd + ['install'] + make_cmd_suffix
+        start_time_sec = time.time()
+        with TimestampSaver(self.pg_prefix, file_suffix='.h') as _:
+            run_program(
+                shlex_join(complete_make_install_cmd),
+                stdout_stderr_prefix='make_install',
+                cwd=work_dir,
+                error_ok=True,
+                # TODO: get rid of shell=True.
+                shell=True,
+            ).print_output_and_raise_error_if_failed()
+            logging.info("Successfully ran 'make install' in the %s directory in %.2f sec",
+                         work_dir, time.time() - start_time_sec)
 
     def make_postgres(self) -> None:
         self.set_env_vars('make')
@@ -731,18 +742,10 @@ class PostgresBuilder(YbBuildToolBase):
 
                 complete_make_cmd = make_cmd + make_cmd_suffix
                 complete_make_cmd_str = shlex_join(complete_make_cmd)
-                complete_make_install_cmd = make_cmd + ['install'] + make_cmd_suffix
                 self.run_make_with_retries(work_dir, complete_make_cmd_str)
 
                 if self.build_type != 'compilecmds' or work_dir == self.pg_build_root:
-                    run_program(
-                        ' '.join(shlex.quote(arg) for arg in complete_make_install_cmd),
-                        stdout_stderr_prefix='make_install',
-                        cwd=work_dir,
-                        error_ok=True,
-                        shell=True  # TODO: get rid of shell=True.
-                    ).print_output_and_raise_error_if_failed()
-                    logging.info("Successfully ran 'make install' in the %s directory", work_dir)
+                    self.run_make_install(make_cmd, make_cmd_suffix)
                 else:
                     logging.info(
                             "Not running 'make install' in the %s directory since we are only "
@@ -771,8 +774,10 @@ class PostgresBuilder(YbBuildToolBase):
         Runs Make in the current directory with up to TRANSIENT_BUILD_RETRIES retries.
         """
         attempt = 0
+        start_time_sec = time.time()
         while attempt <= TRANSIENT_BUILD_RETRIES:
             attempt += 1
+            attempt_start_time_sec = time.time()
             make_result = run_program(
                 complete_make_cmd_str,
                 stdout_stderr_prefix='make',
@@ -797,8 +802,14 @@ class PostgresBuilder(YbBuildToolBase):
                     make_result.print_output_to_stdout()
                     raise RuntimeError("PostgreSQL compilation failed")
             else:
-                logging.info("Successfully ran 'make' in the %s directory", work_dir)
-                break  # No error, break out of retry loop
+                attempt_elapsed_time_sec = time.time() - attempt_start_time_sec
+                log_msg = "Successfully ran 'make' in the %s directory in %.2f sec"
+                log_args = [work_dir, attempt_elapsed_time_sec]
+                if attempt > 1:
+                    log_msg += "at attempt %d, total time for all attempts: %.2f sec"
+                    log_args.extend([attempt, time.time() - start_time_sec])
+                logging.info(log_msg, *log_args)
+                return
         else:
             raise RuntimeError(
                     f"Maximum build attempts reached ({TRANSIENT_BUILD_RETRIES} attempts).")
@@ -956,7 +967,9 @@ class PostgresBuilder(YbBuildToolBase):
         saved_build_stamp = self.get_saved_build_stamp()
         initial_build_stamp = self.get_build_stamp(include_env_vars=True)
         initial_build_stamp_no_env = self.get_build_stamp(include_env_vars=False)
-        logging.info("PostgreSQL build stamp:\n%s", initial_build_stamp)
+        logging.info("PostgreSQL build stamp (%s):\n%s",
+                     os.path.relpath(self.build_stamp_path, YB_SRC_ROOT),
+                     initial_build_stamp)
 
         if initial_build_stamp == saved_build_stamp:
             if self.export_compile_commands and not self.skip_pg_compile_commands:
