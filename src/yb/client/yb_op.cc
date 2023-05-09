@@ -129,7 +129,7 @@ Result<const PartitionKey&> FindPartitionKeyByUpperBound(
       partitions, static_cast<std::string_view>(request.upper_bound().key()));
   if (!request.upper_bound().is_inclusive()) {
     RSTATUS_DCHECK_NE(idx, 0U, InvalidArgument,
-                      "Upped bound must not be exclusive when points to the first partition.");
+                      "Upper bound must not be exclusive when it points to the first partition.");
     --idx;
   }
   return partitions[idx];
