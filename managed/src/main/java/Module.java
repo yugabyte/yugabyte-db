@@ -2,10 +2,10 @@
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
-import com.google.inject.name.Names;
+import com.google.inject.Singleton;
+import com.google.inject.name.Named;
 import com.nimbusds.oauth2.sdk.ParseException;
 import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudModules;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
@@ -13,8 +13,8 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
@@ -184,7 +184,8 @@ public class Module extends AbstractModule {
     }
   }
 
-  private void setProviderMetadata(Config config, OidcConfiguration oidcConfiguration) {
+  private void setProviderMetadata(
+      com.typesafe.config.Config config, OidcConfiguration oidcConfiguration) {
     String providerMetadata = config.getString("yb.security.oidcProviderMetadata");
     if (providerMetadata.isEmpty()) {
       String discoveryURI = config.getString("yb.security.discoveryURI");
