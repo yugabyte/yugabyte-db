@@ -7375,9 +7375,8 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     table->set_pgschema_name(ltm->schema().pgschema_name());
     if (table_info->colocated()) {
       table->mutable_colocated_info()->set_colocated(true);
-      if (!table_info->IsColocationParentTable()) {
-        table->mutable_colocated_info()->set_parent_table_id(
-            VERIFY_RESULT(GetParentTableIdForColocatedTableUnlocked(table_info)));
+      if (!table_info->IsColocationParentTable() && ltm->pb.has_parent_table_id()) {
+        table->mutable_colocated_info()->set_parent_table_id(ltm->pb.parent_table_id());
       }
     }
   }
