@@ -25,8 +25,14 @@
 
 #include "nodes/cypher_nodes.h"
 
-#define AGE_DEFAULT_ALIAS_PREFIX "_age_default_alias_"
-#define AGE_DEFAULT_VARNAME_PREFIX "_age_varname_"
+/*
+ * Every internal alias or variable name should be prefixed
+ * with AGE_DEFAULT_PREFIX. Grammer restricts variables
+ * prefixed with _age_default_ in user query to be used.
+ */
+#define AGE_DEFAULT_PREFIX "_age_default_"
+#define AGE_DEFAULT_ALIAS_PREFIX AGE_DEFAULT_PREFIX"alias_"
+#define AGE_DEFAULT_VARNAME_PREFIX AGE_DEFAULT_PREFIX"varname_"
 
 typedef struct cypher_parsestate
 {

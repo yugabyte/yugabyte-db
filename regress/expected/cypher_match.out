@@ -1787,6 +1787,61 @@ ERROR:  duplicate edge variable 'b' within a clause
 LINE 1: ...pher('cypher_match', $$ MATCH p=(a)-[b:knows]->()-[b]->(a) R...
                                                              ^
 --
+-- Default alias check (issue #883)
+--
+SELECT * FROM cypher('cypher_match', $$ MATCH (_) RETURN _ $$) as (a agtype);
+                                            a                                             
+------------------------------------------------------------------------------------------
+ {"id": 281474976710662, "label": "", "properties": {"i": 1, "j": 2, "k": 3}}::vertex
+ {"id": 281474976710663, "label": "", "properties": {"i": 1, "j": 3}}::vertex
+ {"id": 281474976710664, "label": "", "properties": {"i": 2, "k": 3}}::vertex
+ {"id": 281474976710665, "label": "", "properties": {"age": 4}}::vertex
+ {"id": 281474976710666, "label": "", "properties": {"age": 6}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {"age": 4, "name": "F"}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {"age": 4, "name": "T"}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"age": 3, "name": "orphan"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710668, "label": "", "properties": {"name": "John"}}::vertex
+(10 rows)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH () MATCH (_{name: "Dave"}) RETURN 0 $$) as (a agtype);
+ a 
+---
+ 0
+(1 row)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH () MATCH (_{name: "Dave"}) RETURN _ $$) as (a agtype);
+                                      a                                       
+------------------------------------------------------------------------------
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH (my_age_default_{name: "Dave"}) RETURN my_age_default_$$) as (a agtype);
+                                      a                                       
+------------------------------------------------------------------------------
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH () MATCH (my_age_default_{name: "Dave"}) RETURN my_age_default_$$) as (a agtype);
+                                      a                                       
+------------------------------------------------------------------------------
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+(1 row)
+
+-- these should fail as they are prefixed with _age_default_ which is only for internal use
+SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_) RETURN _age_default_ $$) as (a agtype);
+ERROR:  _age_default_ is only for internal use
+LINE 1: SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_...
+                                                       ^
+SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_a) RETURN _age_default_a $$) as (a agtype);
+ERROR:  _age_default_ is only for internal use
+LINE 1: SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_...
+                                                       ^
+SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_whatever) RETURN 0 $$) as (a agtype);
+ERROR:  _age_default_ is only for internal use
+LINE 1: SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_...
+                                                       ^
+--
 -- self referencing property constraints (issue #898)
 --
 SELECT * FROM cypher('cypher_match', $$ MATCH (a {name:a.name}) RETURN a $$) as (a agtype);

@@ -843,6 +843,20 @@ SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[b:knows]->()-[b:knows]->(a)
 SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[b:knows]->()-[b]->(a) RETURN p $$)as (p agtype);
 
 --
+-- Default alias check (issue #883)
+--
+SELECT * FROM cypher('cypher_match', $$ MATCH (_) RETURN _ $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH () MATCH (_{name: "Dave"}) RETURN 0 $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH () MATCH (_{name: "Dave"}) RETURN _ $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH (my_age_default_{name: "Dave"}) RETURN my_age_default_$$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH () MATCH (my_age_default_{name: "Dave"}) RETURN my_age_default_$$) as (a agtype);
+
+-- these should fail as they are prefixed with _age_default_ which is only for internal use
+SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_) RETURN _age_default_ $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_a) RETURN _age_default_a $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_whatever) RETURN 0 $$) as (a agtype);
+
+--
 -- self referencing property constraints (issue #898)
 --
 SELECT * FROM cypher('cypher_match', $$ MATCH (a {name:a.name}) RETURN a $$) as (a agtype);

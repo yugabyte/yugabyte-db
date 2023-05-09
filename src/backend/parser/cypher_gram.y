@@ -32,6 +32,7 @@
 #include "nodes/cypher_nodes.h"
 #include "parser/ag_scanner.h"
 #include "parser/cypher_gram.h"
+#include "parser/cypher_parse_node.h"
 
 // override the default action for locations
 #define YYLLOC_DEFAULT(current, rhs, n) \
@@ -183,8 +184,11 @@
 
 %{
 //
+// internal alias check
+static bool has_internal_default_prefix(char *str);
+
 // unique name generation
-#define UNIQUE_NAME_NULL_PREFIX "_unique_null_prefix"
+#define UNIQUE_NAME_NULL_PREFIX AGE_DEFAULT_PREFIX"unique_null_prefix"
 static char *create_unique_name(char *prefix_name);
 static unsigned long get_a_unique_number(void);
 
@@ -1827,6 +1831,15 @@ property_key_name:
 
 var_name:
     symbolic_name
+    {
+        if (has_internal_default_prefix($1))
+        {
+            ereport(ERROR,
+                (errcode(ERRCODE_SYNTAX_ERROR),
+                    errmsg("%s is only for internal use", AGE_DEFAULT_PREFIX),
+                    ag_scanner_errposition(@1, scanner)));   
+        }
+    }
     ;
 
 var_name_opt:
@@ -2199,6 +2212,12 @@ static char *create_unique_name(char *prefix_name)
     return name;
 }
 
+/* function to check if given string has internal alias as prefix */
+static bool has_internal_default_prefix(char *str)
+{
+    return strncmp(AGE_DEFAULT_PREFIX, str, strlen(AGE_DEFAULT_PREFIX)) == 0;
+}
+
 /* function to return a unique unsigned long number */
 static unsigned long get_a_unique_number(void)
 {
@@ -2411,7 +2430,7 @@ static cypher_relationship *build_VLE_relation(List *left_arg,
         (cnl->name == NULL && cnr->label != NULL) ||
         (cnl->name == NULL && cnr->props != NULL))
     {
-        cnl->name = create_unique_name("_vle_function_start_var");
+        cnl->name = create_unique_name(AGE_DEFAULT_PREFIX"vle_function_start_var");
     }
 
     /* add in the start vertex as a ColumnRef if necessary */
@@ -2443,7 +2462,7 @@ static cypher_relationship *build_VLE_relation(List *left_arg,
     if (cnr->name == NULL &&
         (cnr->label != NULL || cnr->props != NULL))
     {
-        cnr->name = create_unique_name("_vle_function_end_var");
+        cnr->name = create_unique_name(AGE_DEFAULT_PREFIX"vle_function_end_var");
     }
     /*
      * We need a NULL for the target vertex in the VLE match to
