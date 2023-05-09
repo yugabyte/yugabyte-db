@@ -3,7 +3,7 @@ title: CDC monitoring in YugabyteDB
 headerTitle: Monitor
 linkTitle: Monitor
 description: Monitor Change Data Capture in YugabyteDB.
-headcontent: Change Data Capture in YugabyteDB
+headcontent: Monitor deployed CDC connectors
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:

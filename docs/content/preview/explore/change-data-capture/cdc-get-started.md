@@ -3,7 +3,7 @@ title: Get started with CDC in YugabyteDB
 headerTitle: Get started
 linkTitle: Get started
 description: Get started with Change Data Capture in YugabyteDB.
-headcontent: Change Data Capture in YugabyteDB
+headcontent: Get set up for using CDC in YugabyteDB
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:

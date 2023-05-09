@@ -22,7 +22,7 @@ type: indexpage
         <div class="title">Overview</div>
       </div>
       <div class="body">
-        Change data capture in YugabyteDB.
+        Introduction to CDC in YugabyteDB.
       </div>
     </a>
   </div>
@@ -46,7 +46,7 @@ type: indexpage
         <div class="title">Get started</div>
       </div>
       <div class="body">
-        Get started with Change data capture in YugabyteDB.
+        Get set up for using CDC in YugabyteDB.
       </div>
     </a>
   </div>
@@ -58,7 +58,7 @@ type: indexpage
         <div class="title">Tutorials</div>
       </div>
       <div class="body">
-        Change data capture tutorials and examples.
+        Examples for streaming data to Amazon MSK, Azure Event Hubs, Confluent Cloud, and more.
       </div>
     </a>
   </div>
@@ -70,7 +70,7 @@ type: indexpage
         <div class="title">Monitor</div>
       </div>
       <div class="body">
-        View CDC metrics.
+        Monitor deployed CDC connectors.
       </div>
     </a>
   </div>
