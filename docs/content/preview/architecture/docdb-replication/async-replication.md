@@ -133,7 +133,6 @@ A number of interactions across features is supported.
 
 #### Not currently supported
 
-- Tablegroups are not supported, as per [#11157](https://github.com/yugabyte/yugabyte-db/issues/11157).
 - [Savepoints](../../../explore/ysql-language-features/advanced-features/savepoints/) are not supported, as per [#14308](https://github.com/yugabyte/yugabyte-db/issues/14308).
 
 ## Transactional guarantees
