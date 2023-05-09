@@ -38,7 +38,7 @@ Note: Review the [prerequisites](../../orms/php/ysql-laravel//#prerequisites) fo
 
 ### Step 2: Configure the datasource in Laravel project
 
-Update the `.env` file for configuring the Laravel project to connect to the YugabyteDB cluster.
+Update the `.env` file in the `yb-laravel-example` directory to configure the Laravel project to connect to the YugabyteDB cluster as follows:
 
 ```txt
 DB_CONNECTION=pgsql
@@ -55,7 +55,9 @@ Note: This step assumes that YugabyteDB database is running at `127.0.0.1:5433`.
 
 ### Step 3: Generate the Employees Model class
 
-Eloquent ORM works with database tables using the [Model](https://laravel.com/docs/10.x/eloquent#generating-model-classes) classes. Create a new model class `Employees` using the following command:
+Eloquent ORM works with database tables using the [Model](https://laravel.com/docs/10.x/eloquent#generating-model-classes) classes.
+
+In the `yb-laravel-example` directory, create a new model class `Employees` using the following command:
 
 ```php
 php artisan make:model Employees  --migration
