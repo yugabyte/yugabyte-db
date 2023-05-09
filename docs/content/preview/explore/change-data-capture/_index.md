@@ -64,18 +64,6 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cdc-configuration/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
-        <div class="title">Advanced configuration</div>
-      </div>
-      <div class="body">
-        Change data capture in YugabyteDB.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-monitor/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
@@ -83,18 +71,6 @@ type: indexpage
       </div>
       <div class="body">
         View CDC metrics.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cdc-reference/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/export_import.png" aria-hidden="true" />
-        <div class="title">Reference</div>
-      </div>
-      <div class="body">
-        Change data capture command reference.
       </div>
     </a>
   </div>
