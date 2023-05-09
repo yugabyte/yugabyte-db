@@ -67,4 +67,3 @@ Because YugabyteDB is a distributed SQL database, YSQL has a number of features 
 | [Data distribution with HASH](../linear-scalability/sharding-data/) | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
 | [Tablespaces](going-beyond-sql/tablespaces/) | Enables pinning of data in tables and table partitions to different geographic locations |
 | [Follower Reads](going-beyond-sql/follower-reads-ysql/)| Enables more read IOPS with low latencies in YugabyteDB clusters |
-| Tablegroups | Enables colocation of multiple smaller tables into one tablet for better performance |

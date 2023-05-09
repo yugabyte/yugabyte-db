@@ -51,7 +51,7 @@ Regardless of the alert level, you create an alert as follows:
 
     - The **Threshold** field allows you to define the value (for example, number of milliseconds, resets, errors, nodes) that must be reached by the metric to trigger the alert.
 
-    - The **Alert Destination** field allows you to select one of the previously defined recipients of the alert. For more information, see [Define alert destinations](#define-alert-destinations).
+    - The **Alert Destination** field allows you to select one of the previously defined recipients of the alert. For more information, see [Manage alert destinations](#manage-alert-destinations).
 
     - If you selected an alert destination that uses a notification channel with one or more [custom variables](#customize-notification-templates) defined, click **Custom variables used by the notification channels** and choose the value to use in the alert for each custom variable.
 
@@ -59,7 +59,7 @@ Regardless of the alert level, you create an alert as follows:
 
 ## Manage alert destinations
 
-When an alert is triggered, alert data is sent to a specific alert destination that consists of one or more [notification channels](#define-notification-channels). You can define a new destination for your alerts, and view details of, edit, or delete an existing destination.
+When an alert is triggered, alert data is sent to a specific alert destination that consists of one or more [notification channels](#manage-notification-channels). You can define a new destination for your alerts, and view details of, edit, or delete an existing destination.
 
 To manage notification channels, navigate to **Admin > Alert Configurations > Alert Destinations**.
 
@@ -73,7 +73,7 @@ To create a new destination, do the following:
 
 1. In the Choose Channels field, click to select notification channels for the alert destination.
 
-    To create a new notification channel, click **Add Channel** and complete the **Create new alert channel** dialog, as described in [Define notification channels](#define-notification-channels).
+    To create a new notification channel, click **Add Channel** and complete the **Create new alert channel** dialog, as described in [Manage notification channels](#manage-notification-channels).
 
 1. Click **Save** to create the alert destination.
 
