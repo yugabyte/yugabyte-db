@@ -46,7 +46,7 @@ To optimally configure and run a Debezium YugabyteDB connector, it is helpful to
 
 ### Security
 
-Currently, for any user that has the access to the cluster, authentication is done via that user. SSL support based verification is provided for all the required keys and certificates are passed to the connector.
+Currently, for any user that has the access to the cluster, authentication is done via that user. SSL support-based verification is provided for all the required keys and certificates are passed to the connector.
 
 {{< note title="Note" >}}
 
@@ -56,7 +56,7 @@ Per-user CDC privileges are planned for a future release.
 
 ### Snapshots
 
-Most YugabyteDB servers are configured to not retain the complete history of the database in the WAL segments. This means that the YugayteDB connector would be unable to see the entire history of the database by reading only the WAL. Consequently, the first time that the connector starts, it performs an initial consistent snapshot of the database. The default behavior for performing a snapshot consists of the following steps. You can change this behavior by setting the `snapshot.mode` connector configuration property to a value other than initial.
+Most YugabyteDB servers are configured to not retain the complete history of the database in the WAL segments. This means that the YugayteDB connector would be unable to see the entire history of the database by reading only the WAL. Consequently, the first time that the connector starts, it performs an initial consistent snapshot of the database. You can change this behavior by setting the `snapshot.mode` connector configuration property to a value other than initial.
 
 After the connector completes its initial snapshot, the YugabyteDB connector continues streaming the changes. This ensures that the connector does not miss any updates. If the connector stops again for any reason, upon restart, the connector continues streaming changes from where it previously left off.
 
@@ -66,13 +66,13 @@ Options for the `snapshot.mode` connector configuration property are as follows:
 | :--- | :--- |
 | `never` | The connector never performs a snapshot. When a connector is configured in this way, the behaviour is as follows. If an offset is stored on the server, the connector will resume the streaming from that position. If no offset is stored on the server, the connector will bootstrap the tablets, meaning that it will stream data from that point onwards only, and then start streaming. The `never` snapshot mode is useful when you know that your data of interest will be coming after the point you have deployed your connector. |
 | `initial` | The connector performs a snapshot every time it starts. When a connector is configured this way, the behaviour is as follows. If the snapshot was stopped midway, the connector continues to take the snapshot from that position. If the snapshot was completed previously for the given stream ID, then the connector resumes streaming from the point checkpoints are stored on the server. |
-| `initial_only` | The connector performs a database snapshot and stops before streaming any change event records. If the connector had started but did not complete a snapshot before stopping, the connector resumes the snapshot process from the point it stopped and stops when snapshot completes. |
+| `initial_only` | The connector performs a database snapshot and stops before streaming any change event records. If the connector had started but did not complete a snapshot before stopping, the connector resumes the snapshot process from the point it stopped and stops when the snapshot completes. |
 
 ### Streaming changes
 
 The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected.
 
-The connector keeps polling for changes and whenever there is a change, the connector processes them, converts them to a specific format (Protobuf or JSON in the case of Debezium plugin) and writes them on an output stream, which can then be consumed by clients.
+The connector keeps polling for changes and whenever there is a change, the connector processes them, converts them to a specific format (Protobuf or JSON in the case of the Debezium plugin) and writes them on an output stream, which can then be consumed by clients.
 
 The Debezium YugabyteDB connector acts as a YugabyteDB client. When the connector receives changes it transforms the events into Debezium create, update, or delete events that include the LSN of the event. The YugabyteDB connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
 
@@ -90,11 +90,11 @@ The YugabyteDB connector retrieves schema information as part of the change even
 
 By default, the YugabyteDB connector writes change events for all `INSERT`, `UPDATE`, and `DELETE` operations that occur in a table to a single Apache Kafka topic that is specific to that table. The connector names change event topics as _serverName.schemaName.tableName_.
 
-The components of a topic name are:
+The components of a topic name are as follows:
 
-* _serverName_ is the logical name of the connector, as specified by the `database.server.name` configuration property.
-* _schemaName_ is the name of the database schema in which the change event occurred.
-* _tableName_ is the name of the database table in which the change event occurred.
+* _serverName_ - the logical name of the connector, as specified by the `database.server.name` configuration property.
+* _schemaName_ - the name of the database schema in which the change event occurred.
+* _tableName_ - the name of the database table in which the change event occurred.
 
 For example, suppose that `dbserver` is the logical server name in the configuration for a connector that is capturing changes in a YugabyteDB installation that has a `yugabyte` database and an `inventory` schema that contains four tables: `products`, `products_on_hand`, `customers`, and `orders`. The connector would stream records to these four Kafka topics:
 
@@ -116,7 +116,7 @@ If the default topic names don't meet your requirements, you can configure custo
 
 ### Meta information
 
-In addition to data change event, each record produced by the YugabyteDB connector contains some metadata. Metadata includes information about which tablet caused the change event to occur, the commit time, table, database, offset of the event, for example:
+In addition to the data change event, each record produced by the YugabyteDB connector contains some metadata. Metadata includes information about which tablet caused the change event to occur, the commit time, table, database, offset of the event, for example:
 
 ```output.json
 "source": {
@@ -139,7 +139,7 @@ In addition to data change event, each record produced by the YugabyteDB connect
 * `sequence` and `lsn` indicate the offset to which the change event belongs.
 * `schema` is the schema name to which the table belongs.
 * `table` is the name of the table to which the change event belongs.
-* `txId` contains the transaction ID if the change event is a part of any transaction, it's empty otherwise.
+* `txId` contains the transaction ID if the change event is a part of any transaction; otherwise it is empty.
 
 ### Transaction metadata
 
@@ -158,7 +158,7 @@ For every transaction `BEGIN` and `END`, Debezium generates an event containing 
 * `event_count` (for `END` events) - total number of events emitted by the transaction
 * `data_collections` (for `END` events) - an array of pairs of `data_collection` and `event_count` that provides the number of events emitted by changes originating from given data collection
 
-**Example:**
+For example:
 
 ```output.json
 {
@@ -185,7 +185,7 @@ For every transaction `BEGIN` and `END`, Debezium generates an event containing 
 }
 ```
 
-Unless overridden via the `transaction.topic` option, transaction events are written to the topic with name as _database.server.name_.transaction.
+Unless overridden via the `transaction.topic` option, transaction events are written to the topic and named _database.server.name_.transaction.
 
 #### Change data event enrichment
 
@@ -223,7 +223,9 @@ The Debezium YugabyteDB connector generates a data change event for each row-lev
 
 Debezium and Kafka Connect are designed around continuous streams of event messages. However, the structure of these events may change over time, which can be difficult for consumers to handle. To address this, each event contains the schema for its content. This makes each event self-contained.
 
-The following skeleton JSON shows the basic four parts of a change event. However, how you configure the Kafka Connect converter that you choose to use in your application determines the representation of these four parts in change events. A schema field is in a change event only when you configure the converter to produce it. Likewise, the event key and event payload are in a change event only if you configure a converter to produce it. If you use the JSON converter and you configure it to produce all four basic change event parts, change events have this structure:
+The following skeleton JSON shows the basic four parts of a change event. However, how you configure the Kafka Connect converter that you choose to use in your application determines the representation of these four parts in change events. A schema field is in a change event only when you configure the converter to produce it. Likewise, the event key and event payload are in a change event only if you configure a converter to produce it.
+
+If you use the JSON converter and you configure it to produce all four basic change event parts, change events have the following structure:
 
 ```output.json
 {
@@ -251,7 +253,7 @@ The following skeleton JSON shows the basic four parts of a change event. Howeve
 
 {{< warning title="Naming conflicts due to invalid characters" >}}
 
-The YugabyteDB connector ensures that all Kafka Connect schema names adhere to the [Avro schema name format](http://avro.apache.org/docs/current/spec.html#names). This means that the logical server name must start with a Latin letter or an underscore, that is, a-z, A-Z, or \_. Each remaining character in the logical server name and each character in the schema and table names must be a Latin letter, a digit, or an underscore, that is, a-z, A-Z, 0-9, or \_. Invalid characters are replaced with an underscore character.
+The YugabyteDB connector ensures that all Kafka Connect schema names adhere to the [Avro schema name format](http://avro.apache.org/docs/current/spec.html#names). This means that the logical server name must start with a Latin letter or an underscore (a-z, A-Z, or \_). Each remaining character in the logical server name and each character in the schema and table names must be a Latin letter, a digit, or an underscore (a-z, A-Z, 0-9, or \_). Invalid characters are replaced with an underscore character.
 
 This can lead to unexpected conflicts if the logical server name, a schema name, or a table name contains invalid characters, in the event that the only characters that distinguish names from one another are invalid, and thus replaced with underscores.
 
@@ -274,7 +276,7 @@ CREATE TABLE customers (
 
 #### Example change event key
 
-If the `database.server.name` connector configuration property has the value `dbserver1`, every change event for the `customers` table while it has this definition has the same key structure, which in JSON looks like this:
+If the `database.server.name` connector configuration property has the value `dbserver1`, every change event for the `customers` table while it has this definition has the same key structure, which in JSON looks like the following:
 
 ```output.json
 {
@@ -535,7 +537,9 @@ The following example shows the value portion of a change event that the connect
 
 </details>
 
-The fields in the create event are:
+<br/>
+
+The fields in the create event are as follows:
 
 | Item | Field name | Description |
 | :--- | :--------- | :---------- |
@@ -544,7 +548,7 @@ The fields in the create event are:
 | 3 | payload | The key for the row for which this change event was generated. |
 | 4 | before | Optional field specifying the state of the row before the event occurred. This field is null when the `op` field is `c` for create, as in this example, because the change event is for new content. |
 | 5 | after | Optional field specifying the state of the row after the event occurred. In this example, the field contains the values of the new row's `id`, `name`, and `email` columns. |
-| 6 | source | Mandatory field describing the source metadata for the event. This field contains information you can use to compare this event with other events, with regard to the origin of the events, the order in which the events occurred, and whether the events were part of the same transaction. The source metadata includes: <ul> <li> Debezium version <li> Connector type and name <li> Database and table that containing the new row <li> Stringified JSON array of additional offset information, where the first value is always the last committed LSN, and the second value is always the current LSN. Either value may be null. <li> Schema name <li> If the event was part of a snapshot <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
+| 6 | source | Mandatory field describing the source metadata for the event. This field contains information you can use to compare this event with other events, with regard to the origin of the events, the order in which the events occurred, and whether the events were part of the same transaction. The source metadata includes: <ul> <li> Debezium version <li> Connector type and name <li> Database and table containing the new row <li> Stringified JSON array of additional offset information, where the first value is always the last committed LSN, and the second value is always the current LSN. Either value may be null. <li> Schema name <li> If the event was part of a snapshot <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
 | 7 | op | Mandatory string that describes the type of operation that caused the connector to generate the event. In this example, `c` indicates that the operation created a row. Valid values are: <ul><li> `c` = create <li> `r` = read (applies to only snapshots) <li> `u` = update <li> `d` = delete</ul> |
 | 8 | ts_ms | Optional field containing the time at which the connector processed the event. The time is based on the system clock in the JVM running the Kafka Connect task. <br/> In the source object, `ts_ms` indicates the time that the change was made in the database. By comparing the value for `payload.source.ts_ms` with the value for `payload.ts_ms`, you can determine the lag between the source database update and Debezium. |
 
@@ -554,7 +558,7 @@ The value of a change event for an update in the sample `customers` table has th
 
 Note that updating the columns for a row's **primary/unique key** changes the value of the row's key. When a key changes, Debezium outputs three events: a DELETE event and a [tombstone event](#tombstone-events) with the old key for the row, followed by an event with the new key for the row. See [Primary key updates](#primary-key-updates) on this page for details.
 
-Here is an example of a change event value in an event that the connector generates for an update in the `customers` table:
+The following example shows a change event value in an event that the connector generates for an update in the `customers` table:
 
 ```sql
 UPDATE customers SET email = 'service@example.com' WHERE id = 1;
@@ -618,7 +622,7 @@ An UPDATE operation that changes a row's primary key field(s) is known as a prim
 
 ### Delete events
 
-The value in a _delete_ change event has the same schema portion as create and update events for the same table. The _payload_ portion in a delete event for the sample _customers_ table looks like this:
+The value in a _delete_ change event has the same schema portion as create and update events for the same table. The _payload_ portion in a delete event for the sample _customers_ table looks like the following:
 
 ```sql
 DELETE FROM customers WHERE id = 1;

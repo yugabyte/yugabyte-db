@@ -1,8 +1,8 @@
 ---
-title: Change data capture Tutorials and environments
-headerTitle: Tutorials and environments
-linkTitle: Tutorials and environments
-description: Change data capture and YugabyteDB tutorials and environments.
+title: Change data capture environment tutorials
+headerTitle: CDC Environments
+linkTitle: Environments
+description: Use YugabyteDB CDC with different environments.
 headcontent: 
 image: /images/section_icons/index/develop.png
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
