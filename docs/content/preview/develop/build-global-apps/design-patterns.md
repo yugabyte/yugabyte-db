@@ -26,10 +26,10 @@ To provide uninterrupted service to your users, it's crucial to ensure that your
 
 ### Multi-region cluster with synchronous replication
 
-You can set up your cluster across different regions/zones with multiple replicas (typically 3) such that the replicas are in different regions/zones. When a node fails in a region or an entire region/zone fails, a replica in another region/zone will be promoted to leader in seconds, without any loss of data. This is possible because of the [synchronous replication using raft consensus protocol](../../../architecture/docdb-replication/replication).
+You can set up your cluster across different regions/zones with multiple replicas (typically 3) such that the replicas are in different regions/zones. When a node fails in a region or an entire region/zone fails, a replica in another region/zone will be promoted to leader in seconds, without any loss of data. This is possible because of the [synchronous replication using the raft consensus protocol](../../../architecture/docdb-replication/replication).
 
 {{<tip>}}
-For more information, see  [Sync replication with stretch cluster](./design-patterns-basic.md#sync-replication-with-stretch-cluster)
+For more information, see  [Stretch Cluster](./design-patterns-ha#stretch-cluster)
 {{</tip>}}
 
 ### Dual cluster with async replication
@@ -37,9 +37,8 @@ For more information, see  [Sync replication with stretch cluster](./design-patt
 You can set up a separate cluster with [xCluster](../../../architecture/docdb-replication/async-replication/) replication. Replication can be configured to be either unidirectional, which is useful to create a standby cluster or bidirectional, which would enable you to write to both clusters at the same time. The key thing to remember in xCluster is that it uses asynchronous replication, which means updates will not wait for the other universe to catch up and the two clusters could be out of sync for a while.
 
 {{<tip>}}
-For more information, see  [Bi-directional async replication](./design-patterns-basic.md#bidirectional-async-replication-with-xcluster)
+For more information, see  [Active-Active Multi-Master](./design-patterns-ha#active-active-multi-master)
 {{</tip>}}
-
 
 ## Performance
 
@@ -56,7 +55,7 @@ For more details, see  [Preferred Leaders](./global-performance#reducing-latency
 Just like how you can set up alternate clusters and replicas for fault tolerance, you can set up a separate [read replica](../../../architecture/docdb-replication/read-replicas/) cluster to improve the read latency in a different region. Read replicas are non-voting members of the raft group and can have a different replication factor from the primary cluster.
 
 {{<tip>}}
-For more information, see  [Read Replicas](./design-patterns-basic#unidirectional-async-replication-with-read-replicas)
+For more information, see  [Read Replicas](./design-patterns-ha#read-replica)
 {{</tip>}}
 
 ## Compliance
@@ -65,10 +64,10 @@ To comply with data residency laws in various countries, you might have to place
 
 ### Pinning tables to local geographies
 
-Different tables can be attached to different [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) setup for different geographies. With this, you can ensure that certain tables in specific geographies.
+Different tables can be attached to different [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) setup for different geographies. With this, you can ensure that certain tables are in specific geographies.
 
 {{<tip>}}
-For more details, see  [Pinning tables](./design-patterns-compliance#pinning-tables-to-local-geographies)
+For more details, see  [Geo local tables](./design-patterns-compliance#geo-local-tables)
 {{</tip>}}
 
 ### Pinning partitions to local geographies
@@ -76,7 +75,7 @@ For more details, see  [Pinning tables](./design-patterns-compliance#pinning-tab
 Your table data can be [partitioned](../../../explore/ysql-language-features/advanced-features/partitions/) and attached to [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) setup for different geographies. With this, you can ensure that the rows belonging to different users will be located in their respective countries.
 
 {{<tip>}}
-For more details, see  [Pinning partitions](./design-patterns-compliance#pinning-partitions-to-local-geographies)
+For more details, see  [Pinning partitions](./design-patterns-compliance#geo-partitioned-tables)
 {{</tip>}}
 
 

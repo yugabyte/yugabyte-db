@@ -1,7 +1,7 @@
 ---
 title: Compliance design patterns for global applications
 headerTitle: Compliance design patterns for global applications
-linkTitle: Compliance design patterns
+linkTitle: Compliance patterns
 description: Ensure compliance of data residency laws in  global applications
 headcontent: Learn how to design global applications ensuring compliance
 image: /images/section_icons/quick_start/sample_apps.png
@@ -12,18 +12,12 @@ menu:
     weight: 202
 type: docs
 ---
-{{<warning title="WORK IN PROGRESS!">}}
-
-- Design pattern 1 - Pinning partitions to local geographies, but cons are access to data is not easy to restrict by geo
-- Design pattern 2 - independent clusters + xcluster for a few tables
-- Design pattern 3 - many independent clusters, with a global "locator" database
-{{</warning>}}
 
 Data residency laws require data about a nation's citizens or residents to be collected, processed, and/or stored inside the country. Multi-national businesses must operate under local data regulations that dictate how the data of a nation's residents must be stored within its borders. Re-architecting your storage layer and applications to support these could be a very daunting task.
 
 Let's look at a few natural design patterns with YugabyteDB that you can choose from to help you comply with data residency laws with ease.
 
-## Pinning tables to local geographies
+## Geo local tables
 
 By default, all tables are distributed across all fault zones defined for the cluster. There may be scenarios where you just want some tables to be located in specific regions/zones, have a different replication factor, or have different leader preferences.
 
@@ -64,13 +58,13 @@ This would enforce the tables to be distributed as shown in the illustration.
 Tablespaces also work with indexes and not just tables.
 {{</note>}}
 
-## Pinning partitions to local geographies
+## Geo partitioned tables
 
 Creating separate tables and pinning them to different geographies may not be an acceptable schema for all applications. You might want to have data of users from different countries (eg. US/Germany/India) in the same table, but just store the rows in their regions to comply with the country's data-protection laws (eg. GDPR), or to reduce latency for the users in those countries.
 
 For this, YugabyteDB supports [Row-level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/). This combines two well-known PostgreSQL concepts, [partitioning](../../../explore/ysql-language-features/advanced-features/partitions/), and [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/). The idea is to partition your table according to the geo-locality, then attach each partition to a different tablespace to store the partition in a specific location.
 
-Let's say we have a table of users, which has user data from the US and Germany. We want the data of all German users to be in Europe and the data of all US users to be located in the US. to set this up, follow these steps.
+Let's say we have a table of users, which has user data from the US and Germany. We want the data of all German users to be in Europe and the data of all US users to be located in the US. To set this up, follow these steps.
 
 1. Create the Tablespaces
 
@@ -131,3 +125,19 @@ Instead of explicitly specifying values like EU/US for geo, it would be easier t
 For more design patterns, see  [Design Patterns](../../../../explore/transactions/isolation-levels/)
 {{</tip>}}
 
+## Partial geo replication
+
+Similar to having separate tables for certain geographies, you can create separate clusters for separate geographies within which you maintain all data for certain users and have just the common data replicated across the clusters.
+
+Let's consider the case of an e-commerce company that has to maintain user data and order information within specific geographies but has one common product catalog. You can set up separate clusters within each country to store the local user data and their orders and you can share the product catalog by placing it in one cluster and have that set of tables alone be asynchronously replicated to other clusters via xCluster. This pattern has several advantages.
+
+- Maintain product catalog in one location, but have it replicated in multiple places.
+- Adhere to the local compliance laws by placing user data within country boundaries.
+- The local data is immediately consistent as each is an isolated cluster.
+- All users can fetch their data with very low latency as their data is closer to them.
+
+## Locator database
+
+The locator pattern is a shared-nothing pattern that involves setting up separate clusters for keeping user data in separate geographies. The key is to maintain a separate database containing the map of all users and the cluster their data is located in. Your application first looks up the location of the user from the locator database and connects to that user's cluster for all operations related to the user.
+
+Now, your application complies with local data residency laws and the user data is closer to the user, so service latency is very low. One disadvantage of this pattern is that all common data(eg. product catalog, lookup tables ...) has to be maintained in multiple locations.

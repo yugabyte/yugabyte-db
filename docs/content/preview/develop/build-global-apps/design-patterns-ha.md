@@ -1,9 +1,9 @@
 ---
-title: Basic design patterns for global applications
-headerTitle: Basic design patterns for global applications
-linkTitle: Basic Design patterns
-description: Build global applications using stand design patterns
-headcontent: Design globally distributed applications using basic patterns
+title: HA design patterns for global applications
+headerTitle: HA design patterns for global applications
+linkTitle: HA patterns
+description: Build highly available global applications
+headcontent: Design highly available global applications
 image: /images/section_icons/quick_start/sample_apps.png
 menu:
   preview:
@@ -17,7 +17,7 @@ type: docs
 ---
 <!--
 Stretch cluster with sync replication
-Unidirectional async replication (transaction and non transactional)
+Unidirectional async replication (transaction and non-transactional)
 Bidirectional async replication
 Read replicas
 -->
@@ -28,7 +28,7 @@ Deploying applications in multiple data centers and splitting data across them c
 
 Let's look at some basic design patterns that you can adopt with YugabyteDB for global applications distributed across multiple regions.
 
-## Sync replication with stretch cluster
+## Stretch cluster (Sync replication)
 
 To be ready for region failures and be highly available, you can deploy your cluster across multiple regions. A **stretch cluster** is a cluster that stretches across multiple regions. Let’s consider a stretch cluster that is distributed across three regions: `us-east`, `us-central`, and `us-west`. Automatically the leaders are placed across the three regions and the corresponding followers are placed in other regions in a load-balanced manner as shown in the following illustration.
 
@@ -38,12 +38,11 @@ The **stretch** cluster as shown in the above diagram is automatically resilient
 
 As the leaders are distributed across all the regions, processing even a simple query might end up going to all the regions resulting in higher latencies. But you can set up [preferred zones for leaders](../global-performance#reducing-latency-with-preferred-leaders) and [follower reads](../global-performance#reducing-read-latency-with-follower-reads) to diminish the latency issues.
 
-
-## Bidirectional async replication with xCluster
+## Active-Active Multi-Master
 
 For use cases that do not require synchronous replication or cannot justify the operating costs associated with managing three or more data centers, YugabyteDB supports two-data-center (2DC) deployments that use asynchronous cross-cluster ([xCluster](../../../architecture/docdb-replication/async-replication)) replication built on top of [change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture).
 
-You can set up two separate clusters and connect them via xCluster. Writes will be replicated asynchronously both ways and conflict resolution will be done using the last-writer-wins scheme. xCluster is a very useful and simple paradigm to achieve high availability and reduced latency at a low cost (as compared to a 3DC setup). But it has its downsides.
+You can set up two separate clusters and connect them via xCluster. Writes will be _replicated asynchronously both ways_ and conflict resolution will be done using the last-writer-wins scheme. xCluster is a very useful and simple paradigm to achieve high availability and reduced latency at a low cost (as compared to a 3DC setup). But it has its downsides.
 
 ![Bidirectional async replication with xCluster](/images/develop/global-apps/xcluster-twoway.png)
 
@@ -56,17 +55,17 @@ The replication happens at the DocDB layer bypassing the query layer, some stand
 
 Another thing to note in xCluster is that transaction updates are NOT committed atomically from the source to the target and hence the target cluster could be transactionally inconsistent.
 
-## Unidirectional async replication with xCluster
+## Active-Active Single-Master
 
-Just like how you can set up bi-directional replication with [xCluster](../../../architecture/docdb-replication/async-replication), you can set up a unidirectional replication from the source to the target. This is useful if you want a separate cluster for disaster recovery or [blue/green](https://en.wikipedia.org/wiki/Blue-green_deployment) deploy testing. 
+Just like how you can set up bi-directional replication with [xCluster](../../../architecture/docdb-replication/async-replication), you can set up an _asynchronous unidirectional replication_ from the source to the target. This is useful if you want a separate standby cluster for disaster recovery or [blue/green](https://en.wikipedia.org/wiki/Blue-green_deployment) deploy testing.
 
 ![Unidirectional async replication with xCluster](/images/develop/global-apps/xcluster-oneway.png)
 
 The same limitations mentioned in the [Bidirectional async replication](#bidirectional-async-replication-with-xcluster) section apply here too.
 
-## Unidirectional async replication with read replicas
+## Read Replica
 
-Read Replicas are a read-only extension to the primary cluster. With read replicas, the primary data of the cluster is copied across one or more nodes in a different region. Read replicas do not add to write latencies because data is asynchronously replicated to replicas. To read data from a read replica, you need to enable follower reads for the cluster.
+Read Replicas are a read-only extension to the primary cluster. With read replicas, the primary data of the cluster is copied across one or more nodes in a different region. Read replicas do not add to write latencies because data is _asynchronously replicated_ to replicas. To read data from a read replica, you need to enable follower reads for the cluster.
 
 ![Unidirectional async replication with read replicas](/images/develop/global-apps/read-replica.png)
 
