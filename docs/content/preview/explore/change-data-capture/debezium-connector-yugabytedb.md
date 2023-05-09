@@ -832,10 +832,6 @@ Mappings for network address types:
 | MACADDR | STRING | MAC addresses. |
 | MACADDR8 | STRING | MAC addresses in EUI-64 format. |
 
-### Default values
-
-If a default value is specified for a columnn in the database schema, the change events emitted from the server will be containing these values populated already.
-
 ### Example data type behaviors
 
 | Datatype | What you insert in YSQL | What you get in the Kafka topic | Notes |
