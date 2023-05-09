@@ -157,8 +157,12 @@ public class RuntimeConfService extends AuthenticatedController {
   }
 
   private boolean isValidScope(String path, UUID scopeUUID) {
-    ScopeType scope = keyMetaData.get(path).getScope();
-    return scope.isValid(scopeUUID);
+    if (keyMetaData.containsKey(path)) {
+      ScopeType scope = keyMetaData.get(path).getScope();
+      return scope.isValid(scopeUUID);
+    } else {
+      return true;
+    }
   }
 
   public String getKeyIfPresent(
