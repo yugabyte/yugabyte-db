@@ -276,6 +276,18 @@ SELECT * FROM cypher('cypher_set_1', $$
 $$) AS (p agtype);
 
 --
+-- Check passing mismatched types with SET
+-- Issue 899
+--
+SELECT * FROM cypher('cypher_set_1', $$
+    CREATE (x) SET x.n0 = (true OR true) RETURN x
+$$) AS (p agtype);
+
+SELECT * FROM cypher('cypher_set_1', $$
+    CREATE (x) SET x.n0 = (true OR false), x.n1 = (false AND false), x.n2 = (false = false) RETURN x
+$$) AS (p agtype);
+
+--
 -- Clean up
 --
 DROP TABLE tbl;

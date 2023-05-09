@@ -10145,3 +10145,109 @@ Datum age_unnest(PG_FUNCTION_ARGS)
 
     PG_RETURN_NULL();
 }
+
+/*
+ * Volatile wrapper replacement. The previous version was PL/SQL
+ * and could only handle AGTYPE input and returned AGTYPE output.
+ * This version will create the appropriate AGTYPE based off of
+ * the input type.
+ */
+PG_FUNCTION_INFO_V1(agtype_volatile_wrapper);
+
+Datum agtype_volatile_wrapper(PG_FUNCTION_ARGS)
+{
+    int nargs = PG_NARGS();
+    Oid type = InvalidOid;
+    bool isnull = PG_ARGISNULL(0);
+
+    /* check for null and pass it through */
+    if (isnull)
+    {
+        PG_RETURN_NULL();
+    }
+
+    /* check for more than one argument */
+    if (nargs > 1)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("agtype_volatile_wrapper: too many args")));
+
+    }
+
+    /* get the type of the input argument */
+    type = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+    /* if it is NOT an AGTYPE, we need convert it to one, if possible */
+    if (type != AGTYPEOID)
+    {
+        agtype_value agtv_result;
+        Datum arg = PG_GETARG_DATUM(0);
+
+        /* check for PG types that easily translate to AGTYPE */
+        if (type == BOOLOID)
+        {
+            agtv_result.type = AGTV_BOOL;
+            agtv_result.val.boolean = DatumGetBool(arg);
+        }
+        else if (type == INT2OID || type == INT4OID || type == INT8OID)
+        {
+            agtv_result.type = AGTV_INTEGER;
+
+            if (type == INT8OID)
+            {
+                agtv_result.val.int_value = DatumGetInt64(arg);
+            }
+            else if (type == INT4OID)
+            {
+                agtv_result.val.int_value = (int64) DatumGetInt32(arg);
+            }
+            else if (type == INT4OID)
+            {
+                agtv_result.val.int_value = (int64) DatumGetInt16(arg);
+            }
+        }
+        else if (type == FLOAT4OID || type == FLOAT8OID)
+        {
+            agtv_result.type = AGTV_FLOAT;
+
+            if (type == FLOAT8OID)
+            {
+                agtv_result.val.float_value = DatumGetFloat8(arg);
+            }
+            else if (type == FLOAT4OID)
+            {
+                agtv_result.val.float_value = (float8) DatumGetFloat4(arg);
+            }
+        }
+        else if (type == NUMERICOID)
+        {
+            agtv_result.type = AGTV_NUMERIC;
+            agtv_result.val.numeric = DatumGetNumeric(arg);
+        }
+        else if (type == CSTRINGOID)
+        {
+            agtv_result.type = AGTV_STRING;
+            agtv_result.val.string.val = DatumGetCString(arg);
+            agtv_result.val.string.len = strlen(agtv_result.val.string.val);
+        }
+        else if (type == TEXTOID)
+        {
+            agtv_result.type = AGTV_STRING;
+            agtv_result.val.string.val = text_to_cstring(DatumGetTextPP(arg));
+            agtv_result.val.string.len = strlen(agtv_result.val.string.val);
+        }
+        else
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("agtype_volatile_wrapper: unsupported arg type")));
+        }
+
+        /* return the built result */
+        PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+    }
+
+    /* otherwise, just pass it through */
+    PG_RETURN_POINTER(PG_GETARG_DATUM(0));
+}

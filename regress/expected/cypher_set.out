@@ -807,6 +807,26 @@ $$) AS (p agtype);
 (1 row)
 
 --
+-- Check passing mismatched types with SET
+-- Issue 899
+--
+SELECT * FROM cypher('cypher_set_1', $$
+    CREATE (x) SET x.n0 = (true OR true) RETURN x
+$$) AS (p agtype);
+                                    p                                     
+--------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"n0": true}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set_1', $$
+    CREATE (x) SET x.n0 = (true OR false), x.n1 = (false AND false), x.n2 = (false = false) RETURN x
+$$) AS (p agtype);
+                                                 p                                                 
+---------------------------------------------------------------------------------------------------
+ {"id": 281474976710658, "label": "", "properties": {"n0": true, "n1": false, "n2": true}}::vertex
+(1 row)
+
+--
 -- Clean up
 --
 DROP TABLE tbl;

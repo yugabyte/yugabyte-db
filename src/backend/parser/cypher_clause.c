@@ -5457,7 +5457,7 @@ static Expr *add_volatile_wrapper(Expr *node)
 {
     Oid oid;
 
-    oid = get_ag_func_oid("agtype_volatile_wrapper", 1, AGTYPEOID);
+    oid = get_ag_func_oid("agtype_volatile_wrapper", 1, ANYOID);
 
     return (Expr *)makeFuncExpr(oid, AGTYPEOID, list_make1(node), InvalidOid,
                                 InvalidOid, COERCE_EXPLICIT_CALL);

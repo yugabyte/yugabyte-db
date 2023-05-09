@@ -3158,15 +3158,14 @@ AS 'MODULE_PATHNAME';
 -- functions we need. Wrap the function with this to
 -- prevent that from happening
 --
-CREATE FUNCTION ag_catalog.agtype_volatile_wrapper(agt agtype)
-RETURNS agtype AS $return_value$
-BEGIN
-	RETURN agt;
-END;
-$return_value$ LANGUAGE plpgsql
+
+CREATE FUNCTION ag_catalog.agtype_volatile_wrapper("any")
+RETURNS agtype
+LANGUAGE c
 VOLATILE
 CALLED ON NULL INPUT
-PARALLEL SAFE;
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
 
 --
 -- agtype - list literal (`[expr, ...]`)
@@ -4203,8 +4202,8 @@ CALLED ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.age_create_barbell_graph(graph_name name, 
-                                                graph_size int, 
+CREATE FUNCTION ag_catalog.age_create_barbell_graph(graph_name name,
+                                                graph_size int,
                                                 bridge_size int,
                                                 node_label name = NULL,
                                                 node_properties agtype = NULL,
