@@ -895,16 +895,16 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 ## Setting up YugabyteDB
 
-Before using the YugabyteDB connector to monitor the changes on a YugabyteDB server, you will need to ensure a couple of things:
+Before using the YugabyteDB connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
-* Ensure that you have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../admin/yb-admin#create_change_data_stream) command.
-* The table which is supposed to be monitor should contain a primary key on it. Only the tables which have a primary key can be streamed. See [limitations](../../change-data-capture/cdc-overview/#known-limitations).
+* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../admin/yb-admin#create_change_data_stream) command.
+* The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed. See [limitations](../../change-data-capture/cdc-overview/#known-limitations).
 
 ### WAL disk space consumption
 
-In certain cases, it is possible for YugabyteDB disk space consumed by WAL files to spike or increase out of proportions. There are some possible reasons for this situation:
+In certain cases, it is possible for YugabyteDB disk space consumed by WAL files to spike or increase out of proportion. There are some possible reasons for this.
 
-* The connector is lagging behind in streaming the changes. In this case, the latest checkpoint the connector has received is way behind the last record available in WAL. Since the latest changes are not consumed yet, CDC will not allow the WAL files to be cleaned up, thus causing higher disk consumption. This is the expected behaviour and no action is needed from the user. However, the efficiency of the connector can be increased by increasing the number of tasks so that more processing can happen parallely.
+For example, the connector is lagging behind in streaming the changes. In this case, the latest checkpoint the connector has received is way behind the last record available in WAL. Because the latest changes are not consumed yet, CDC will not allow the WAL files to be cleaned up, thus causing higher disk consumption. This is the expected behaviour and no action is needed. However, the efficiency of the connector can be increased by increasing the number of tasks so that more processing can happen in parallel.
 
 ## Deployment
 
