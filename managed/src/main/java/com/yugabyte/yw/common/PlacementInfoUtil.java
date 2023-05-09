@@ -188,6 +188,10 @@ public class PlacementInfoUtil {
           return ConfigureNodesMode.UPDATE_CONFIG_FROM_USER_INTENT;
         }
 
+        if (tempIntent.onlyReplicationFactorChanged(existingIntent)) {
+          return ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
+        }
+
         return ConfigureNodesMode.NEW_CONFIG;
       }
     }
@@ -999,9 +1003,10 @@ public class PlacementInfoUtil {
       throw new UnsupportedOperationException("Cluster type cannot be modified.");
     }
 
-    if (existingIntent.replicationFactor != userIntent.replicationFactor) {
+    if (oldCluster.clusterType == PRIMARY
+        && existingIntent.replicationFactor != userIntent.replicationFactor) {
       LOG.error(
-          "Replication factor cannot be changed from {} to {}",
+          "Replication factor for primary cluster cannot be changed from {} to {}",
           existingIntent.replicationFactor,
           userIntent.replicationFactor);
       throw new UnsupportedOperationException("Replication factor cannot be modified.");
@@ -1037,8 +1042,7 @@ public class PlacementInfoUtil {
       ClusterType clusterType, int numNodes, int replicationFactor) {
     // We only support a replication factor of 1,3,5,7 for primary cluster.
     // And any value from 1 to 7 for read only cluster.
-    if ((clusterType == PRIMARY && !supportedRFs.contains(replicationFactor))
-        || (clusterType == ASYNC && !supportedReadOnlyRFs.contains(replicationFactor))) {
+    if ((clusterType == PRIMARY && !supportedRFs.contains(replicationFactor))) {
       String errMsg =
           String.format(
               "Replication factor %d not allowed, must be one of %s.",
