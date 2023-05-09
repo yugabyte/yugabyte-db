@@ -1030,6 +1030,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Get the parent table id for a colocated table. The table parameter must be colocated and
   // not satisfy IsColocationParentTableId.
   Result<TableId> GetParentTableIdForColocatedTable(const scoped_refptr<TableInfo>& table);
+  Result<TableId> GetParentTableIdForColocatedTableUnlocked(
+      const scoped_refptr<TableInfo>& table) REQUIRES_SHARED(mutex_);
 
   Result<std::optional<cdc::ConsumerRegistryPB>> GetConsumerRegistry();
   Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
