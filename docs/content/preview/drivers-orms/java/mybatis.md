@@ -35,19 +35,19 @@ type: docs
 
 </ul>
 
-[MyBatis](https://mybatis.org/mybatis-3/) is a java persistence framework with support for custom SQL, stored procedures and advanced object mapping. MyBatis eliminates the needs for writing native JDBC code, manual results mapping and setting of DB parameters. MyBatis provides a simple XML and annotation based support for query to object mapping for retrieving the database records.
+[MyBatis](https://mybatis.org/mybatis-3/) is a Java persistence framework with support for custom SQL, stored procedures, and advanced object mapping. MyBatis eliminates the need for writing native JDBC code, manual results mapping, and setting of DB parameters. MyBatis provides simple XML- and annotation-based support for query-to-object mapping for retrieving database records.
 
 YugabyteDB YSQL API has full compatibility with MyBatis for Data persistence in Java applications. This page provides details for building Java applications using MyBatis for connecting to a YugabyteDB database.
 
 ## CRUD operations
 
-Learn the basic steps required for connecting to the YugabyteDB database using MyBatis framework. The full working app using MyBatis framework can be found in the [Java ORM example application](../../orms/java/ysql-mybatis/) page.
+Learn the basic steps required for connecting to the YugabyteDB database using MyBatis framework. The full working application is documented on the [Java ORM example application](../../orms/java/ysql-mybatis/) page.
 
 The following sections demonstrate how to perform common tasks required for Java application development using MyBatis persistence framework.
 
 ### Step 1: Add the MyBatis dependency to your Java Project
 
-Use the below [Maven](https://maven.apache.org/guides/development/guide-building-maven.html) dependency in your project's `pom.xml` file:
+Use the following [Maven](https://maven.apache.org/guides/development/guide-building-maven.html) dependency in your project's `pom.xml` file:
 
 ```xml
 <dependency>
@@ -87,9 +87,9 @@ public class User {
 
 ### Step 3: Create the MyBatis data mapper for User object
 
-MyBatis framework uses [Data Mappers](https://mybatis.org/mybatis-3/sqlmap-xml.html). Data mapper XMLs are used for configuring DMLs that will be performed against an entity. Generally Mappers are used for defining insert, update, delete and select statements, they are referred to as Mapped SQL statements.
+MyBatis framework uses [data mappers](https://mybatis.org/mybatis-3/sqlmap-xml.html). Data mapper XML files are used for configuring DMLs that will be performed against an entity. Generally mappers are used for defining insert, update, delete, and select statements, and they are referred to as mapped SQL statements.
 
-Create a xml file `UserMapper.xml` in the resources folder of your java project and copy the below content.
+Create the XML file `UserMapper.xml` in the resources folder of your Java project and copy the following content:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8" ?>
@@ -125,9 +125,9 @@ Create a xml file `UserMapper.xml` in the resources folder of your java project 
 
 ### Step 4: Configure the data mappers and datasource in MyBatis configuration file
 
-All the data mappers are required to be defined in the mybatis configuration file. Create `mybatis-config.xml` in the resources folder to configure the mybatis framework. 
+All the data mappers must be defined in the MyBatis configuration file. Create `mybatis-config.xml` in the resources folder to configure the MyBatis framework. 
 
-In the `mybatis-config.xml`, Define the User data mapper and the datasource for connecting to the YugabyteDB database.
+In `mybatis-config.xml`, define the User data mapper and the datasource for connecting to the YugabyteDB database.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8" ?>
@@ -165,9 +165,9 @@ In the `mybatis-config.xml`, Define the User data mapper and the datasource for 
 
 ### Step 5: Create MyBatis SQLSessionFactory object
 
-[SQLSession](https://mybatis.org/mybatis-3/configuration.html#properties) provides methods for performing DB operations, retrieving mappers and result set mapping etc.
+[SQLSession](https://mybatis.org/mybatis-3/configuration.html#properties) provides methods for performing database operations, retrieving mappers and result set mapping, and so forth.
 
-SQLSessionFactory is not thread safe, hence we will need thread safe way of instantiating SQLSession. Lets create `MyBatisUtil.java` class in base package for creating thread-safe way of creating the SQLSessionFactory.
+SQLSessionFactory is not thread safe, so you need a thread safe way of instantiating SQLSession. Create the `MyBatisUtil.java` class in the base package to implement a thread-safe way of creating the SQLSessionFactory.
 
 ```java
 
@@ -201,7 +201,7 @@ public class MybatisUtil {
 
 Create a Data Access Object (DAO) `UserDAO.java` in the base package. The DAO is used for implementing the basic CRUD operations for the domain object `User.java`.
 
-Copy the below code into your project.
+Copy the following code into your project:
 
 ```java
 import java.util.List;
@@ -259,7 +259,7 @@ public class UserDAO {
 
 ### Step 6: Query the YugabyteDB cluster using MyBatis Framework
 
-Create a java class `MyBatisExample.java` in the base package of your project. Below sample code inserts a user record and queries the table content using MyBatis.
+Create a java class `MyBatisExample.java` in the base package of your project. The following sample code inserts a user record and queries the table content using MyBatis.
 
 ```java
 import java.sql.SQLException;
@@ -291,7 +291,7 @@ public class MyBatisExample {
 }
 ```
 
-when you run the java project, `MyBatisExample.java` should output the following:
+When you run the Java project, `MyBatisExample.java` should output the following:
 
 ```txt
 Connected to the YugabyteDB Cluster successfully.
