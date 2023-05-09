@@ -72,7 +72,7 @@ A provider configuration describes your cloud environment (its service account, 
 
 ## Prerequisites
 
-To deploy YugabyteDB universes on Kubernetes, you need to your Kubernetes provider credentials. YugabyteDB Anywhere uses those credentials to automatically provision and de-provision the pods that run YugabyteDB.
+To deploy YugabyteDB universes on Kubernetes, you need to provide your Kubernetes provider credentials. YugabyteDB Anywhere uses those credentials to automatically provision and de-provision the pods that run YugabyteDB.
 
 Before you create a Kubernetes provider, perform the following:
 
@@ -193,9 +193,9 @@ Navigate to **Configs > Infrastructure > Managed Kubernetes Service** to see a l
 
 ### View and edit providers
 
-To view a provider, select it in the list to display the **Overview**.
+To view a provider, select it in the list of Managed Kubernetes Service Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. Refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
 
 To view the universes created using the provider, select **Universes**.
 
@@ -203,7 +203,7 @@ To delete the provider, click **Actions** and choose **Delete Configuration**. Y
 
 ### Create a provider
 
-To create an Kubernetes provider:
+To create a Kubernetes provider:
 
 1. Click **Create Config** to open the **Create Kubernetes Provider Configuration** page.
 
@@ -241,9 +241,9 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Click **Add Zone** and complete the corresponding portion of the dialog. Notice that there are might be multiple zones.
 
-1. Use the **Zone** field to select a zone label that should match the value of failure domain zone label on the nodes. For example, `topology.kubernetes.io/zone` would place the pods in that zone.
+1. Use the **Zone Code** field to select a zone label that should match the value of failure domain zone label on the nodes. For example, `topology.kubernetes.io/zone` would place the pods in that zone.
 
-1. Use **Kube Config** to upload the `kubeconfig` file. If this file is available at the provider level, you are not required to supply it.
+1. Optionally, use **Kube Config** to upload the `kubeconfig` file. If this file is available at the provider level, you are not required to supply it.
 
 1. Optionally, use the **Storage Classes** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and takes into account [storage class considerations](../../../install-yugabyte-platform/prepare-environment/kubernetes/#configure-storage-class).
 

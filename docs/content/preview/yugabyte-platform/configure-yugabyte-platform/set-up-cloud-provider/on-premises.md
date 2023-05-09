@@ -75,9 +75,9 @@ Navigate to **Configs > Infrastructure > On-Premises Datacenters** to see a list
 
 ### View and edit providers
 
-To view a provider, select it in the list to display the **Overview**.
+To view a provider, select it in the list of On Prem Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. Refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
 
 To view the universes created using the provider, select **Universes**.
 
@@ -121,11 +121,11 @@ If any of the following statements are applicable to your use case, you need to 
 - Sudo user requires a password.
 - The SSH user is not a sudo user.
 
-Use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
+Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
 
 Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
 
-The **Node Exporter User** field allows you to override the default Prometheus user. This is helpful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+The **Node Exporter User** field allows you to override the default prometheus user. This is helpful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
 
 Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
 

@@ -73,7 +73,7 @@ A provider configuration describes your cloud environment (its service account, 
 
 When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
 
-- Create VMs on AWS using the following
+- Create VMs on AWS using the following:
   - the service account
   - specified regions and availability zones (this can be a subset of those specified in the provider configuration)
   - a Linux image
@@ -86,7 +86,7 @@ Create an Amazon Web Services (AWS) provider configuration if your target cloud 
 ## Prerequisites
 
 - An AWS Service Account with sufficient privileges is highly recommended. This account must have permissions to create VMs, and access to the VPC and security groups described below. Required input: Access Key ID and Secret Access Key for the AWS Service Account.
-- An AWS VPC for each region. Required input: for each Region, a VPC ID.
+- An AWS VPC for each region. Required input: for each region, a VPC ID.
 - AWS Security Groups must exist to allow network connectivity so that YugabyteDB Anywhere can create AWS VMs when deploying a universe. Required input: for each region, a Security Group ID.
 
 For more information on setting up an AWS service account and security groups, refer to [Prepare the AWS cloud environment](../../../install-yugabyte-platform/prepare-environment/aws/).
@@ -97,9 +97,9 @@ Navigate to **Configs > Infrastructure > Amazon Web Services** to see a list of 
 
 ### View and edit providers
 
-To view a provider, select it in the list to display the **Overview**.
+To view a provider, select it in the list of AWS Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. Refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
 
 To view the universes created using the provider, select **Universes**.
 
@@ -125,12 +125,12 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 ### Cloud Info
 
-**Credential Type**. YugabyteDB Anywhere requires the ability to create VMs in AWS. To do this, you ca do one of the following:
+**Credential Type**. YugabyteDB Anywhere requires the ability to create VMs in AWS. To do this, you can do one of the following:
 
 - Create an AWS Service Account with the required permissions (refer to [Prepare the AWS cloud environment](../../../install-yugabyte-platform/prepare-environment/aws/)), and provide your AWS Access Key ID and Secret Access Key.
 - Provision the YugabyteDB Anywhere VM instance with an IAM role that has sufficient permissions by attaching an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YugabyteDB Anywhere VM in the **EC2** tab. For more information, see [Deploy the YugabyteDB universe using an IAM role](../../../install-yugabyte-platform/prepare-environment/aws/#deploy-the-yugabytedb-universe-using-an-iam-role).
 
-**AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](../../../../drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YugabyteDB Anywhere integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
+** Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](../../../../drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YugabyteDB Anywhere integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
 
 ### Regions
 
@@ -145,7 +145,7 @@ You can customize your network, including the virtual network, as follows:
   - **Specify an existing VPC**. Select this option to use a VPC that you have created in AWS.
   - **Create a new VPC**. Select this option to create a new VPC using YugabyteDB Anywhere. This option is considered beta and is not recommended for production use cases. If there are any classless inter-domain routing (CIDR) conflicts, using this option can result in a silent failure. For example, the following will result in a silent failure:
     - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
-    - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
+    - Creating a new VPC with a CIDR block that overlaps with any of the existing subnets.
 
     To use this option, contact {{% support-platform %}}.
 

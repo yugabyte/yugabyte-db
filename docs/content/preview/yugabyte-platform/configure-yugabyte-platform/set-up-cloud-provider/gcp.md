@@ -72,7 +72,7 @@ A provider configuration describes your cloud environment (its service account, 
 
 When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
 
-- Create instances on GCP using the following
+- Create instances on GCP using the following:
   - your cloud provider credentials
   - specified regions and availability zones (this can be a subset of those specified in the provider configuration)
   - a Linux image
@@ -80,11 +80,11 @@ When deploying a universe, YugabyteDB Anywhere uses the provider configuration s
 
 - Provision those VMs with YugabyteDB, relying on connectivity from YugabyteDB Anywhere to each VM via SSH (using the specified security groups).
 
-Create an Google Cloud Platform provider configuration if your target cloud is GCP.
+Create a Google Cloud Platform provider configuration if your target cloud is GCP.
 
 ## Prerequisites
 
-- cloud provider credentials. YugabyteDB Anywhere uses your credentials to automatically provision and de-provision instances that run YugabyteDB. An instance for YugabyteDB includes a compute instance, as well as local or remote disk storage attached to the compute instance.
+- Cloud provider credentials. YugabyteDB Anywhere uses your credentials to automatically provision and de-provision instances that run YugabyteDB. An instance for YugabyteDB includes a compute instance, as well as local or remote disk storage attached to the compute instance.
 
 ## Configure GCP
 
@@ -92,9 +92,9 @@ Navigate to **Configs > Infrastructure > Google Cloud Platform** to see a list o
 
 ### View and edit providers
 
-To view a provider, select it in the list to display the **Overview**.
+To view a provider, select it in the list of GCP Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. Refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
 
 To view the universes created using the provider, select **Universes**.
 

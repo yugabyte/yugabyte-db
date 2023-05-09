@@ -71,7 +71,7 @@ A provider configuration describes your cloud environment (its service account, 
 
 When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
 
-- Create VMs on Azure using the following
+- Create VMs on Azure using the following:
   - the service account
   - specified regions and availability zones (this can be a subset of those specified in the provider configuration)
   - a Linux image
@@ -99,9 +99,9 @@ Navigate to **Configs > Infrastructure > Microsoft Azure** to see a list of all 
 
 ### View and edit providers
 
-To view a provider, select it in the list to display the **Overview**.
+To view a provider, select it in the list of AZU Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. Refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
 
 To view the universes created using the provider, select **Universes**.
 

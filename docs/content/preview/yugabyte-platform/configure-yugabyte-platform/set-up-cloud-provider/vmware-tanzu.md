@@ -79,7 +79,7 @@ Before you start, ensure that you have created the [kubeconfig file](../kubernet
 
 To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), navigate to **Configs > Infrastructure > VMware Tanzu**.
 
-This lists all currently configured providers.
+This lists all currently configured VMWare Tanzu providers.
 
 To create a TKG provider, click **Create Kubernetes Config**. For more information, refer to [Create a provider](../kubernetes/#create-a-provider).
 
