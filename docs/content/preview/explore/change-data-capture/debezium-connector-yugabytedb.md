@@ -65,7 +65,7 @@ Options for the `snapshot.mode` connector configuration property are as follows:
 | Option | Description |
 | :--- | :--- |
 | `never` | The connector never performs a snapshot. When a connector is configured in this way, the behaviour is as follows. If an offset is stored on the server, the connector will resume the streaming from that position. If no offset is stored on the server, the connector will bootstrap the tablets, meaning that it will stream data from that point onwards only, and then start streaming. The `never` snapshot mode is useful when you know that your data of interest will be coming after the point you have deployed your connector. |
-| `initial` | The connector performs a snapshot everytime it starts. When a connector is configured this way, the behaviour is as follows. If the snapshot was stopped midway, the connector continues to take the snapshot from that position. If the snapshot was completed previously for the given stream ID, then the connector resumes streaming from the point checkpoints are stored on the server. |
+| `initial` | The connector performs a snapshot every time it starts. When a connector is configured this way, the behaviour is as follows. If the snapshot was stopped midway, the connector continues to take the snapshot from that position. If the snapshot was completed previously for the given stream ID, then the connector resumes streaming from the point checkpoints are stored on the server. |
 | `initial_only` | The connector performs a database snapshot and stops before streaming any change event records. If the connector had started but did not complete a snapshot before stopping, the connector resumes the snapshot process from the point it stopped and stops when snapshot completes. |
 
 ### Streaming changes
@@ -952,7 +952,8 @@ You can send this configuration with a `POST` command to a running Kafka Connect
 * Reads the transaction log.
 * Streams change event records to Kafka topics.
 
-{{< note title="Custom record extractor" >}}
+#### Custom record extractor
+
 YugabyteDB uses a custom record extractor (`YBExtractNewRecordState`) so that the sinks understand the format in which data is sent. For example, if you are using a JDBC sink connector, you need to add two more properties to the sink configuration:
 
 | Property | Value |
@@ -961,7 +962,6 @@ YugabyteDB uses a custom record extractor (`YBExtractNewRecordState`) so that th
 | `transforms.unwrap.type` | `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState` |
 
 See [Transformers](#transformers).
-{{< /note >}}
 
 ### Adding connector configuration
 
@@ -979,7 +979,7 @@ To run a YugabyteDB connector, create a connector configuration and add the conf
 
 #### Results
 
-After the connector starts, it will perform a snapshot of the tables depending on the configuration if the connector is set to take snapshots. The connector then starts generating data change events for row-level operations and streaming change event records to Kafka topics.
+After the connector starts, it will perform a snapshot of the tables depending on the configuration and if the connector is set to take snapshots. The connector then starts generating data change events for row-level operations and streaming change event records to Kafka topics.
 
 ### Connector configuration properties
 
@@ -1000,14 +1000,14 @@ The following properties are _required_ unless a default value is available:
 | database.streamid | N/A | Stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
 | table.max.num.tablets | 300 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
-| database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<br/><br/> `disable` uses an unencrypted connection <br/><br/> `require` uses an encrypted connection and fails if it can't be established <br/><br/> `verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found. |
+| database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<ul><li>`disable` uses an unencrypted connection</li><li>`require` uses an encrypted connection and fails if it can't be established</li><li>`verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found.</li></ul> |
 | database.sslrootcert | N/A | The path to the file which contains the root certificate against which the server is to be validated. |
 | database.sslcert | N/A | Path to the file containing the client's SSL certificate. |
 | database.sslkey | N/A | Path to the file containing the client's private key. |
 | schema.include.list | N/A | An optional, comma-separated list of regular expressions that match names of schemas for which you **want** to capture changes. Any schema name not included in `schema.include.list` is excluded from having its changes captured. By default, all non-system schemas have their changes captured. Do not also set the `schema.exclude.list` property. |
 | schema.exclude.list | N/A | An optional, comma-separated list of regular expressions that match names of schemas for which you **do not** want to capture changes. Any schema whose name is not included in `schema.exclude.list` has its changes captured, with the exception of system schemas. Do not also set the `schema.include.list` property. |
 | table.include.list | N/A | An optional, comma-separated list of regular expressions that match fully-qualified table identifiers for tables whose changes you want to capture. Any table not included in `table.include.list` does not have its changes captured. Each identifier is of the form _schemaName.tableName_. By default, the connector captures changes in every non-system table in each schema whose changes are being captured. Do not also set the `table.exclude.list` property. |
-| table.exclude.list | N/A | An optional, comma-separated list of regular expressions that match fully-qualified table identifiers for tables whose changes you **do not** want to capture. Any table not included in `table.exclude.list` has it changes captured. Each identifier is of the form _schemaName.tableName_. Do not also set the `table.include.list` property. |
+| table.exclude.list | N/A | An optional, comma-separated list of regular expressions that match fully-qualified table identifiers for tables whose changes you **do not** want to capture. Any table not included in `table.exclude.list` has its changes captured. Each identifier is of the form _schemaName.tableName_. Do not also set the `table.include.list` property. |
 | column.include.list | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be included in change event record values. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. Do not also set the `column.exclude.list` property. |
 | column.exclude.list | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be excluded from change event record values. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. Do not also set the `column.include.list` property. |
 | column.truncate.to._length_.chars | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. In change event records, values in these columns are truncated if they are longer than the number of characters specified by _length_ in the property name. You can specify multiple properties with different lengths in a single configuration. Length must be a positive integer, for example, `column.truncate.to.20.chars`. |
@@ -1022,7 +1022,7 @@ The APIs used to fetch the changes are set up to work with TLSv1.2 only. Make su
 
 {{< note title="Obtaining universe certificates" >}}
 
-If you have a YugabyteDB cluster with SSL enabled, need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
+If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
 
 * [Local deployments](../../../secure/tls-encryption/)
 * [YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
@@ -1034,17 +1034,17 @@ Advanced connector configuration properties:
 
 | Property | Default | Description |
 | :------- | :------ | :---------- |
-| snapshot.mode | N/A | `never` - Don't take a snapshot <br/><br/> `initial` - Take a snapshot when the connector is first started <br/><br/> `initial_only` - Only take a snapshot of the table, do not stream further changes |
-| snapshot.include.collection.list | All tables specified in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (<schemaName>.<tableName>) of the tables to include in a snapshot. The specified items must also be named in the connector's `table.include.list` property. This property takes effect only if the connector's `snapshot.mode` property is set to a value other than `never`. |
+| snapshot.mode | N/A | `never` - Don't take a snapshot <br/> `initial` - Take a snapshot when the connector is first started <br/> `initial_only` - Only take a snapshot of the table, do not stream further changes |
+| snapshot.include.collection.list | All tables specified in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (`<schemaName>.<tableName>`) of the tables to include in a snapshot. The specified items must also be named in the connector's `table.include.list` property. This property takes effect only if the connector's `snapshot.mode` property is set to a value other than `never`. |
 | cdc.poll.interval.ms | 500 | The interval at which the connector will poll the database for the changes. |
 | admin.operation.timeout.ms | 60000 | The default timeout used for administrative operations (such as createTable, deleteTable, getTables, etc). |
 | operation.timeout.ms | 60000 | The default timeout used for user operations (using sessions and scanners). |
 | socket.read.timeout.ms | 60000 | The default timeout to use when waiting on data from a socket. |
 | time.precision.mode | adaptive | Time, date, and timestamps can be represented with different kinds of precision: <br/><br/> `adaptive` captures the time and timestamp values exactly as in the database using millisecond precision values based on the database column's type. <br/><br/> `adaptive_time_microseconds` captures the date, datetime and timestamp values exactly as in the database using millisecond precision values based on the database column's type. An exception is `TIME` type fields, which are always captured as microseconds. <br/><br/> `connect` always represents time and timestamp values by using Kafka Connect's built-in representations for Time, Date, and Timestamp, which use millisecond precision regardless of the database columns' precision. See temporal values. |
-| decimal.handling.mode | double | The `precise` mode is not currently supported. <br/><br/>  `double` maps all the numeric, double, and money types as Java double values (FLOAT64) <br/><br/>  `string` represents the numeric, double, and money types as their string-formatted form <br/><br/> |
+| decimal.handling.mode | double | The `precise` mode is not currently supported. <br/><br/>  `double` maps all the numeric, double, and money types as Java double values (FLOAT64). <br/><br/>  `string` represents the numeric, double, and money types as their string-formatted form. <br/><br/> |
 | binary.handling.mode | hex | `hex` is the only supported mode. All binary strings are converted to their respective hex format and emitted as their string representation . |
 | interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/> `numeric` represents intervals using approximate number of microseconds. <br/><br/> `string` represents intervals exactly by using the string pattern representation<br/> `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`.<br/> For example: P1Y2M3DT4H5M6.78S. See [YugabyteDB data types](../../../api/ysql/datatypes/). |
-| transaction.topic | `${database.server.name}`<br/>`.transaction` | Controls the name of the topic to which the connector sends transaction metadata messages. The placeholder `${database.server.name}` can be used for referring to the connector's logical name; defaults to `${database.server.name}.transaction`, for example `dbserver1.transaction` |
+| transaction.topic | `${database.server.name}`<br/>`.transaction` | Controls the name of the topic to which the connector sends transaction metadata messages. The placeholder `${database.server.name}` can be used for referring to the connector's logical name; defaults to `${database.server.name}.transaction`, for example `dbserver1.transaction`. |
 | provide.transaction.metadata | `false` | Determines whether the connector generates events with transaction boundaries and enriches change event envelopes with transaction metadata. Specify `true` if you want the connector to do this. See [Transaction metadata](#transaction-metadata) for details. |
 | skipped.operations | N/A | A comma-separated list of operation types to be skipped during streaming. The types are `c` for insert/create operations, `u` for update operations, and `d` for delete operations. By default, no operations are skipped. |
 | max.queue.size | 20240 | Positive integer value for the maximum size of the blocking queue. The connector places change events received from streaming replication in the blocking queue before writing them to Kafka. This queue can provide back pressure when, for example, writing records to Kafka is slower that it should be, or when Kafka is not available. |
@@ -1059,15 +1059,15 @@ Advanced connector configuration properties:
 
 ### Transformers
 
-There are three transformers available: YBExtractNewRecordState, ExtractTopic, and PGCompatible.
+The following three transformers are available: YBExtractNewRecordState, ExtractTopic, and PGCompatible.
 
 #### YBExtractNewRecordState SMT
 
 Transformer type: `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState`
 
-Unlike the Debezium Connector for PostgreSQL, we only send the `after` image of the "set of columns" that are modified. PostgreSQL sends the complete `after` image of the row which has changed. So by default if the column was not changed, it is not a part of the payload we send and the default value is set to `null`.
+Unlike the Debezium Connector for PostgreSQL, the YugabyteDB connector only sends the `after` image of the "set of columns" that are modified. PostgreSQL sends the complete `after` image of the row which has changed. So by default if the column was not changed, it is not a part of the payload that is sent and the default value is set to `null`.
 
-To differentiate between the case where a column is set to `null` and the case in which it's not modified, we change the value type to a struct. In this structure, an unchanged column is `{'value': null}`, whereas the column changed to a null value is `{'value': null, 'set': true}`.
+To differentiate between the case where a column is set to `null` and the case in which it's not modified, the YugabyteDB connector changes the value type to a struct. In this structure, an unchanged column is `{'value': null}`, whereas the column changed to a null value is `{'value': null, 'set': true}`.
 
 A schema registry requires that, once a schema is registered, records must contain only payloads with that schema version. If you're using a schema registry, the YugabyteDB Debezium connector's approach can be problematic, as the schema may change with every message. For example, if we keep changing the record to only include the value of modified columns, the schema of each record will be different (the total number unique schemas will be a result of making all possible combinations of columns) and thus would require sending a schema with every record.
 
@@ -1133,24 +1133,24 @@ In the following situations, the connector fails when trying to start, reports a
 
 In these cases, the error message has details about the problem and possibly a suggested workaround. After you correct the configuration or address the YugabyteDB problem, restart the connector.
 
-### TServer becomes unavailable
+### YB-TServer becomes unavailable
 
-In case one of the tablet servers crashes, the replicas on other TServer nodes will become the leader for the tablets that were hosted on the crashed server. The YugabyteDB connector will figure out the new tablet leaders and start streaming from the checkpoint the Debezium maintains.
+In case one of the tablet servers crashes, the replicas on other YB-TServer nodes will become the leader for the tablets that were hosted on the crashed server. The YugabyteDB connector will figure out the new tablet leaders and start streaming from the checkpoint the Debezium maintains.
 
 ### YugabyteDB server failures
 
-In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable (using a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags)) amount of time for the availability of the TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
+In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable (using a [flag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags)) amount of time for the availability of the YB-TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
 
 ### Connector unable to find table association with stream ID
 
-In this case, Connector throws exception with error message that table is not a part of the stream ID
+In this case, the Connector throws an exception with an error message that the table is not a part of the stream ID.
 
 This can happen in the following 2 scenarios:
 
 * The stream ID you have created might belong to any other database than the one being polled.
 * The table you are asking to poll for has no primary keys on it. In this case, the table will not be a part of the stream ID. To continue, add a primary key on the table and create a new stream ID on the database.
 
-### YugabyteDB TServer becomes unavailable
+### YugabyteDB server becomes unavailable
 
 When the connector is running, the YugabyteDB server that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and stops. When the server is available again, restart the connector.
 
