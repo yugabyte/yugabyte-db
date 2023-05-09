@@ -17,18 +17,6 @@ type: indexpage
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cdc-confluent-cloud/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/ecosystem/confluent-cloud.jpg" aria-hidden="true" />
-        <div class="title">Confluent Cloud</div>
-      </div>
-      <div class="body">
-        Confluent Cloud.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-aws-msk/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/ecosystem/amazon-msk.png" aria-hidden="true" />
@@ -39,7 +27,7 @@ type: indexpage
       </div>
     </a>
   </div>
-
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-aws-msk-redshift/">
       <div class="head">
@@ -51,7 +39,7 @@ type: indexpage
       </div>
     </a>
   </div>
-
+-->
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-azure-event-hub/">
       <div class="head">
@@ -60,6 +48,18 @@ type: indexpage
       </div>
       <div class="body">
         Azure Event Hub.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cdc-confluent-cloud/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/ecosystem/confluent-cloud.jpg" aria-hidden="true" />
+        <div class="title">Confluent Cloud</div>
+      </div>
+      <div class="body">
+        Confluent Cloud.
       </div>
     </a>
   </div>
@@ -75,7 +75,7 @@ type: indexpage
       </div>
     </a>
   </div>
-
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-google-pubsub/">
       <div class="head">
@@ -87,7 +87,8 @@ type: indexpage
       </div>
     </a>
   </div>
-
+-->
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-examples/">
       <div class="head">
@@ -99,5 +100,5 @@ type: indexpage
       </div>
     </a>
   </div>
-
+-->
 </div>
