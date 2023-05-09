@@ -21,7 +21,6 @@
 #include "pg_type_d.h" // NOLINT
 
 #include "yb/common/value.pb.h"
-#include "yb/common/ybc_util.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
@@ -30,6 +29,7 @@
 #include "yb/util/shared_mem.h"
 #include "yb/util/test_util.h"
 
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 // This file comes from this directory:
