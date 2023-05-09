@@ -486,7 +486,8 @@ TEST_F(CDCServiceTest, TestCreateCDCStream) {
   NamespaceId ns_id;
   std::vector<TableId> table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options));
+  StreamModeTransactional transactional(false);
+  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options, &transactional));
   ASSERT_EQ(table_ids.front(), table_.table()->id());
 }
 
@@ -499,8 +500,8 @@ TEST_F(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
   NamespaceId ns_id;
   std::vector<TableId> table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options));
-
+  StreamModeTransactional transactional(false);
+  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options, &transactional));
 
   // Verify that the wal retention time was set at the tablet level.
   VerifyWalRetentionTime(cluster_.get(), kCDCTestTableName, FLAGS_cdc_wal_retention_time_secs);
@@ -513,7 +514,8 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
   NamespaceId ns_id;
   std::vector<TableId> table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options));
+  StreamModeTransactional transactional(false);
+  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options, &transactional));
   ASSERT_EQ(table_ids.front(), table_.table()->id());
 
 
@@ -537,7 +539,7 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
   ns_id.clear();
   table_ids.clear();
   options.clear();
-  Status s = client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options);
+  Status s = client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options, &transactional);
   ASSERT_TRUE(s.IsNotFound());
 
   for (const auto& tablet_id : tablet_ids) {

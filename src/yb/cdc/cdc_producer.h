@@ -12,7 +12,9 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 
@@ -20,12 +22,14 @@
 #include <boost/unordered_map.hpp>
 
 #include "yb/cdc/cdc_service.service.h"
+#include "yb/cdc/cdc_util.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/master/master_replication.pb.h"
@@ -42,6 +46,7 @@ using EnumLabelCache = std::unordered_map<NamespaceName, EnumOidLabelMap>;
 
 using CompositeAttsMap = std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>;
 using CompositeTypeCache = std::unordered_map<NamespaceName, CompositeAttsMap>;
+YB_DEFINE_ENUM(RefreshStreamMapOption, (kNone)(kAlways)(kIfInitiatedState));
 
 struct SchemaDetails {
   SchemaVersion schema_version;
@@ -53,11 +58,17 @@ using SchemaDetailsMap = std::map<TableId, SchemaDetails>;
 
 struct StreamMetadata {
   NamespaceId ns_id;
-  std::vector<TableId> table_ids;
+  std::mutex table_ids_mutex_;
+  std::vector<TableId> table_ids GUARDED_BY(table_ids_mutex_);
   CDCRecordType record_type;
   CDCRecordFormat record_format;
   CDCRequestSource source_type;
   CDCCheckpointType checkpoint_type;
+  std::atomic<master::SysCDCStreamEntryPB_State> state;
+  StreamModeTransactional transactional = StreamModeTransactional::kFalse;
+
+  std::mutex load_mutex_;
+  bool loaded_ GUARDED_BY(load_mutex_) = false;
 
   struct StreamTabletMetadata {
     std::mutex mutex_;
@@ -70,18 +81,31 @@ struct StreamMetadata {
 
   StreamMetadata() = default;
 
-  StreamMetadata(NamespaceId ns_id,
-                 std::vector<TableId> table_ids,
-                 CDCRecordType record_type,
-                 CDCRecordFormat record_format,
-                 CDCRequestSource source_type,
-                 CDCCheckpointType checkpoint_type)
+  StreamMetadata(
+      NamespaceId ns_id,
+      std::vector<TableId> table_ids,
+      CDCRecordType record_type,
+      CDCRecordFormat record_format,
+      CDCRequestSource source_type,
+      CDCCheckpointType checkpoint_type,
+      StreamModeTransactional transactional)
       : ns_id(std::move(ns_id)),
         table_ids((std::move(table_ids))),
         record_type(record_type),
         record_format(record_format),
         source_type(source_type),
-        checkpoint_type(checkpoint_type) {
+        checkpoint_type(checkpoint_type),
+        transactional(transactional),
+        loaded_(true) {}
+
+  void Clear() REQUIRES(load_mutex_, table_ids_mutex_) {
+    loaded_ = false;
+    table_ids.clear();
+
+    {
+      std::lock_guard l_tablet_meta(tablet_metadata_map_mutex_);
+      tablet_metadata_map_.clear();
+    }
   }
 
   std::shared_ptr<StreamTabletMetadata> GetTabletMetadata(const TabletId& tablet_id)
