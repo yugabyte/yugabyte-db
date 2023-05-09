@@ -248,6 +248,7 @@ public class BackupTableParams extends TableManagerParams {
     this.expiryTimeUnit = tableParams.expiryTimeUnit;
     this.backupType = tableParams.backupType;
     this.isFullBackup = tableParams.isFullBackup;
+    this.allTables = tableParams.allTables;
     this.scheduleUUID = tableParams.scheduleUUID;
     this.scheduleName = tableParams.scheduleName;
     this.disableChecksum = tableParams.disableChecksum;
