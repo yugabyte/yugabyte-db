@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { createGlobalState } from 'react-use';
 import { browserStorage } from '@app/helpers';
 
+import YBLogoFull from '@app/assets/yugabyteDB-logo.svg';
 import YBLogo from '@app/assets/yb-logo.svg';
 import RocketIcon from '@app/assets/rocket.svg';
 import SettingsIcon from '@app/assets/cog.svg';
@@ -50,12 +51,15 @@ const useStyles = makeStyles((theme) => ({
     }
   },
   logoIcon: {
-    width: themeVariables.sidebarWidthMin,
-    minWidth: themeVariables.sidebarWidthMin,
+    width: "100%",
     height: themeVariables.sidebarWidthMin,
     minHeight: themeVariables.sidebarWidthMin,
-    padding: theme.spacing(1.5),
-    marginRight: theme.spacing(0.5)
+    padding: theme.spacing(2.5),
+    marginRight: theme.spacing(3)
+  },
+  logoIconCollapsed: {
+    padding: theme.spacing(2),
+    marginRight: 0
   },
   claimShirtIcon: {
     display: 'flex',
@@ -208,10 +212,11 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
       <div className={clsx(classes.filler, isCollapsed && classes.collapsed)} />
       <div className={clsx(classes.sidebar, isCollapsed && classes.collapsed)}>
         <Link to="/" className={classes.linkRow}>
-          <YBLogo className={classes.logoIcon} />
-          <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
-            {t('common.appTitle')}
-          </Typography>
+          {!isCollapsed ?
+            <YBLogoFull className={classes.logoIcon} />
+            :
+            <YBLogo className={clsx(classes.logoIcon, classes.logoIconCollapsed)} />
+          }
         </Link>
         {/* {!runtimeConfig?.PLGOnboardingPhase1 && (
           <NavLinkWithDisable
