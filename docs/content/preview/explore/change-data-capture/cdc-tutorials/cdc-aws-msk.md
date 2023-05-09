@@ -207,34 +207,34 @@ For more information on CDC commands, refer to [Change data capture commands](..
 
 Create a Security Group with inbound and outbound rules configured to ensure access to the MSK cluster and YugabyteDB. In this example, enable incoming traffic from all the ports.
 
-![Edit Inbound Rules](https://miro.medium.com/v2/resize:fit:700/0*GCIXUAlFVQbvCNpX)
+![Edit Inbound Rules](/images/explore/cdc/aws_msk_images/edit-inbound-rules.png)
 
 ### Upload Debezium connector Jar file to the S3 bucket
 
 Download the YugabyteDB Debezium connector jar from the [repository](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar) and upload it to an S3 bucket.
 
-![Upload to S3](https://miro.medium.com/v2/resize:fit:700/0*gk4kNo4roN6w1aSJ)
+![Upload to S3](/images/explore/cdc/aws_msk_images/upload-to-s3.png)
 
 ### Configure the Amazon MSK cluster
 
 This example creates an Amazon MSK cluster in same VPC as that of the YugabyteDB cluster. Note that this is a generic configuration, it might differ based your organizational IT policy.
 
-![MSK cluster settings](https://miro.medium.com/v2/resize:fit:700/0*zcTnuwYjgMLYZszE)
+![MSK cluster settings](/images/explore/cdc/aws_msk_images/msk-cluster-settings.png)
 
 This example creates a cluster with two zones.
 
-![Amazon Brokers](https://miro.medium.com/v2/resize:fit:700/0*vwLr8-tZqsxGuvuO)
+![Amazon Brokers](/images/explore/cdc/aws_msk_images/amazon-brokers.png)
 
 Under the Networking section, select the same VPC and Private subnets as used by the YugabyteDB cluster.
 
 Choose the security group you created previously.
 
-![Amazon Security Groups](https://miro.medium.com/v2/resize:fit:700/0*PMGfUb7LB7CjtM1C)
+![Amazon Security Groups](/images/explore/cdc/aws_msk_images/amazon-security-groups.png)
 
 Enable logging on your cluster to help with debugging. This example uses the S3 bucket to store the logs.
 
-![Amazon S3 logging](https://miro.medium.com/v2/resize:fit:700/0*MOv37Ars6QWVPPiv)
+![Amazon S3 logging](/images/explore/cdc/aws_msk_images/amazon-s3-logging.png)
 
 The cluster is now is now configured successfully.
 
-![Amazon MSK Create Cluster](https://miro.medium.com/v2/resize:fit:700/0*1_esGoZGOpGwHnDD)
+![Amazon MSK Create Cluster](/images/explore/cdc/aws_msk_images/amazon-msk-create-cluster.png)
