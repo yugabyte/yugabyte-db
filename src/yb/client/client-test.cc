@@ -758,7 +758,7 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsInvalidArgument());
 #ifndef NDEBUG
-  }, ".*Upped bound must not be exclusive when points to the first partition.*");
+  }, ".*Upper bound must not be exclusive when it points to the first partition.*");
 #endif
 }
 
