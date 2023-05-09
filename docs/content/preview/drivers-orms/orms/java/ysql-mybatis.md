@@ -1,5 +1,5 @@
 ---
-title: Java ORM example application that uses YSQL
+title: Java MyBatis ORM example application that uses YSQL
 headerTitle: Java ORM example application
 linkTitle: Java
 description: Java ORM example application with MyBatis persistence framework and use the YSQL API to connect to and interact with YugabyteDB.
@@ -38,7 +38,7 @@ type: docs
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [MyBatis persistence framework](https://mybatis.org/mybatis-3/index.html). The scenario is that of an e-commerce application. Database access in this application is managed through MyBatis .
+The following tutorial implements a REST API server using the [MyBatis persistence framework](https://mybatis.org/mybatis-3/index.html). The scenario is that of an e-commerce application. Database access in this application is managed using MyBatis.
 
 The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/java/mybatis) repository.
 
@@ -160,7 +160,7 @@ List of relations
 (7 rows)
 ```
 
-Note the 4 tables and 3 sequences in the list above.
+Note the 4 tables and 3 sequences.
 
 ```plpgsql
 yugabyte=# SELECT count(*) FROM users;

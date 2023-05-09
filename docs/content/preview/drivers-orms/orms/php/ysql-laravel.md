@@ -47,7 +47,7 @@ There are a number of options that can be customized in the `.env` file located 
 $ cd orm-examples/php/laravel
 ```
 
-## Setup the database to use Laravel migrations
+## Set up the database to use Laravel migrations
 
 ```sh
 php artisan migrate:install
@@ -145,7 +145,7 @@ List of relations
 (7 rows)
 ```
 
-Note the 4 tables and 3 sequences in the list above.
+Note the 4 tables and 3 sequences.
 
 ```plpgsql
 yugabyte=# SELECT count(*) FROM users;

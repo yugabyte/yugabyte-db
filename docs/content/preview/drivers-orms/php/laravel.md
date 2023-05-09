@@ -22,11 +22,11 @@ type: docs
   </li>
 </ul>
 
-[Laravel](https://laravel.com/docs/10.x/readme) is a php web application framework with expressive, elegant syntax. Along with many features required for web development, Laravel includes [Eloquent](https://laravel.com/docs/10.x/eloquent#introduction) ORM which provides a robust and intuitive database ORM.
+[Laravel](https://laravel.com/docs/10.x/readme) is a PHP web application framework. Along with many features required for web development, Laravel includes [Eloquent](https://laravel.com/docs/10.x/eloquent#introduction) ORM which provides a robust database ORM.
 
-YugabyteDB YSQL API has full compatibility with Laravel's Eloquent ORM for data persistence in php applications.
+YugabyteDB YSQL API has full compatibility with Laravel's Eloquent ORM for data persistence in PHP applications.
 
-Learn the basic steps required for connecting to the YugabyteDB database using Laravel framework. The full working app using Laravel framework can be found in the [PHP ORM example application](../../orms/php/ysql-laravel/) page.
+Learn the basic steps required for connecting to the YugabyteDB database using Laravel framework. The full working application can be found on the [PHP ORM example application](../../orms/php/ysql-laravel/) page.
 
 ### Step 1: Create a Laravel project
 
@@ -55,13 +55,13 @@ Note: This step assumes that YugabyteDB database is running at `127.0.0.1:5433`.
 
 ### Step 3: Generate the Employees Model class
 
-Eloquent ORM works with Database tables using the [Model](https://laravel.com/docs/10.x/eloquent#generating-model-classes) classes. Lets create a new model class `Employees` using the below command.
+Eloquent ORM works with database tables using the [Model](https://laravel.com/docs/10.x/eloquent#generating-model-classes) classes. Create a new model class `Employees` using the following command:
 
 ```php
 php artisan make:model Employees  --migration
 ```
 
-This command generates model classes in `app\Models` directory and migration classes in `database\migrations` directory respectively.
+This command generates model classes in the `app\Models` directory and migration classes in the `database\migrations` directory respectively.
 
 Update the `database\migrations\xxxx_create_employees_table.php` file to define the `employees` table.
 
@@ -95,16 +95,16 @@ class Employees extends Model
 
 ### Step 4: Create a seeder for Employees table
 
-Laravel provides ability to load a table with data using [seed](https://laravel.com/docs/10.x/seeding) and [Eloquent Factories](Eloquent: Factories). Let's create files required for seeding the `Employees` model.
+Laravel provides the ability to load a table with data using [seed](https://laravel.com/docs/10.x/seeding) and [Eloquent Factories](Eloquent: Factories). Create the files required for seeding the `Employees` model as follows:
 
 ```txt
 php artisan make:factory EmployeesFactory
 php artisan make:seeder EmployeesSeeder
 ```
 
-`EmployeesFactory.php` file will get generated in the `database\factories` directory and `EmployeesSeeder.php` file will get generated in the `database\seeders` directory.
+The `EmployeesFactory.php` file is generated in the `database\factories` directory and the `EmployeesSeeder.php` file is generated in the `database\seeders` directory.
 
-Add the below code to load 10 dummy employees into `Employees` table.
+Add the following code to load 10 dummy employees into the `Employees` table:
 
 ```php
 class EmployeesFactory extends Factory
@@ -141,11 +141,11 @@ class EmployeesSeeder extends Seeder
 }
 ```
 
-### Step 5: apply the migrations and seed the table
+### Step 5: Apply the migrations and seed the table
 
-Laravel provides way to apply the DDLs against the database using [Migrations](https://laravel.com/docs/10.x/migrations). The database migrations are generated in `database\migrations` directory. 
+Laravel provides a way to apply the DDLs against the database using [Migrations](https://laravel.com/docs/10.x/migrations). The database migrations are generated in the `database\migrations` directory. 
 
-Run the below command to create and seed `Employees` table in YugabyteDB.
+Run the following command to create and seed the `Employees` table in YugabyteDB:
 
 ```sh
 php artisan migrate:fresh
@@ -162,7 +162,7 @@ php artisan make:resource EmployeesCollection
 php artisan make:controller EmployeesController
 ```
 
-`EmployeesController.php` will get generated under `http/controllers` directory. Add the below content into controller file.
+`EmployeesController.php` is generated in the `app/Http/Controllers` directory. Add the following content to the controller file:
 
 ```php
 <?php
@@ -207,7 +207,7 @@ class EmployeesController extends Controller
 }
 ```
 
-All the below code to `routes\api.php` file to enable HTTP access for performing CRUD against `Employees` table.
+Add the following code to the `routes\api.php` file to enable HTTP access for performing CRUD against the `Employees` table:
 
 ```php
 Route::get('/employees', function () {
@@ -219,13 +219,13 @@ Route::post('/employees', [EmployeesController::class, 'store']);
 
 ## Run the project
 
-1. Laravel provides a embedded web server to handle the HTTP request. We can start the app using the below command.
+Laravel provides an embedded web server to handle the HTTP request. Start the application using the following command:
 
 ```txt
 php artisan serve
 ```
 
-2. Create an employee using a POST request.
+Create an employee using a POST request.
 
 ```txt
 curl -X POST http://localhost:8000/api/employees \
@@ -233,7 +233,7 @@ curl -X POST http://localhost:8000/api/employees \
 -d "name=yugadev&age=25&email=yugadev@yugabyte.com"
 ```
 
-check the database for the new employee
+Check the database for the new employee:
 
 ```sql
 yugabyte=# select * from employees where name='yugadev';
@@ -243,7 +243,7 @@ yugabyte=# select * from employees where name='yugadev';
 (1 row)
 ```
 
-3. Get the details of all the `Employees` using a GET request.
+Get the details of all the `Employees` using a GET request.
 
 ```txt
 curl  -v -X GET http://localhost:8000/api/employees
