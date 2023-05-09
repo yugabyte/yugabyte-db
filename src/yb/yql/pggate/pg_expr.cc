@@ -22,7 +22,6 @@
 
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_type.h"
-#include "yb/common/ybc-internal.h"
 
 #include "yb/util/decimal.h"
 #include "yb/util/flags.h"
@@ -30,6 +29,7 @@
 
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DEFINE_test_flag(bool, do_not_add_enum_sort_order, false,

@@ -37,7 +37,7 @@
 #include "utils/catcache.h"
 #include "utils/datetime.h"
 #include "utils/syscache.h"
-#include "yb/server/pgsql_webserver_wrapper.h"
+#include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
 
 #include "pg_yb_utils.h"
 
@@ -370,7 +370,6 @@ webserver_worker_main(Datum unused)
   conn_metrics.new_conn = yb_new_conn;
 
   RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &conn_metrics);
-
   HandleYBStatus(StartWebserver(webserver));
 
   WaitLatch(&MyProc->procLatch, WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
