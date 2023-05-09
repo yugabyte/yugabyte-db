@@ -85,8 +85,6 @@ Specify `false` to only superusers or the owner of the database can clone it.
 
 ### COLOCATION
 
-Colocated table support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
 Specify `true` if all tables for this database should be colocated on a single tablet. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for details on when colocated tables are beneficial.
 
 Default is `false` and every table in the database will have its own set of tablets.

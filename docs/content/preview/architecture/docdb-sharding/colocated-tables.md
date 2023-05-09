@@ -3,7 +3,6 @@ title: Colocated tables
 headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Learn how colocated tables aggregate data into a single tablet.
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /preview/architecture/docdb/colocated_tables/
 menu:
