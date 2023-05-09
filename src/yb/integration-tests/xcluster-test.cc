@@ -120,6 +120,7 @@ DECLARE_bool(allow_insecure_connections);
 DECLARE_string(certs_dir);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(TEST_fail_setup_system_universe_replication);
+DECLARE_bool(TEST_enable_replicate_transaction_status_table);
 
 namespace yb {
 
@@ -509,6 +510,7 @@ class XClusterTest : public XClusterTestBase,
     if (enable_replicate_transaction_status_table) {
       producer_tables.push_back(producer_transaction_table_);
       transactional = Transactional::kTrue;
+      FLAGS_TEST_enable_replicate_transaction_status_table = true;
     }
     RETURN_NOT_OK(SetupUniverseReplication(producer_tables, {LeaderOnly::kTrue, transactional}));
 
@@ -1281,6 +1283,7 @@ TEST_P(XClusterTest, PollWithProducerNodesRestart) {
   uint32_t replication_factor = 3, tablet_count = 4, master_count = 3;
   auto tables = ASSERT_RESULT(
       SetUpWithParams({tablet_count}, {tablet_count}, replication_factor,  master_count));
+  FLAGS_TEST_enable_replicate_transaction_status_table = true;
   ASSERT_OK(
       SetupUniverseReplication({tables[0]} /* all producer tables */,
                                {LeaderOnly::kFalse, Transactional::kFalse}));
@@ -1350,6 +1353,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   auto tables = ASSERT_RESULT(
       SetUpWithParams({tablet_count}, {tablet_count}, replication_factor,  master_count));
 
+  FLAGS_TEST_enable_replicate_transaction_status_table = true;
   ASSERT_OK(SetupUniverseReplication({tables[0]}, {LeaderOnly::kFalse, Transactional::kFalse}));
 
   // After creating the cluster, make sure all tablets being polled for.
@@ -1547,6 +1551,7 @@ TEST_P(XClusterTestTransactionalOnly, OnlyApplyTransactionOnCaughtUpTablet) {
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables =
       {tables[0], producer_transaction_table_};
+  FLAGS_TEST_enable_replicate_transaction_status_table = true;
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables,
       {} /* bootstrap_ids */, {LeaderOnly::kTrue, Transactional::kTrue}));
@@ -1573,6 +1578,7 @@ TEST_P(XClusterTestTransactionalOnly, TransactionsWithoutApply) {
 
   auto producer_table = tables[0];
   auto consumer_table = tables[1];
+  FLAGS_TEST_enable_replicate_transaction_status_table = true;
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table},
       {} /* bootstrap_ids */, {LeaderOnly::kTrue, Transactional::kTrue}));
@@ -1855,6 +1861,7 @@ TEST_P(XClusterTestTransactionalOnly, TransactionStatusTableWithBootstrap) {
   }
 
   // 5. Setup replication.
+  FLAGS_TEST_enable_replicate_transaction_status_table = true;
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables,
       bootstrap_ids, {LeaderOnly::kTrue, Transactional::kTrue}));

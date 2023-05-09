@@ -2121,7 +2121,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     NamespaceId ns_id;
     std::vector<TableId> stream_table_ids;
     std::unordered_map<std::string, std::string> options;
-    RETURN_NOT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+    StreamModeTransactional transactional(false);
+    RETURN_NOT_OK(test_client()->GetCDCStream(
+        stream_id, &ns_id, &stream_table_ids, &options, &transactional));
     return stream_table_ids;
   }
 
