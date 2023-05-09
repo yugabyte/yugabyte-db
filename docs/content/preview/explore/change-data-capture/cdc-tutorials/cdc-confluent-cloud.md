@@ -9,7 +9,7 @@ menu:
   preview:
     parent: cdc-tutorials
     identifier: cdc-confluent-cloud
-    weight: 10
+    weight: 30
 type: docs
 ---
 

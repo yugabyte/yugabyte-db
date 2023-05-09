@@ -53,13 +53,13 @@ If you're running a Windows Machine then you can [leverage Docker on Windows wit
 
 Follow the Redpanda [Quick Start](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker) to spin up the Redpanda cluster using single- or multi-broker configuration using docker-compose or using a Redpanda cloud account.
 
-Post installation and setup using the docker option, you can see docker containers are up and running. It shows two docker containers (redpanda-console and redpanda broker) in the below screenshot (Figure 2)
+Post installation and setup using the docker option, you can see docker containers are up and running. The following illustration shows two docker containers (Redpanda-Console and Redpanda Broker):
 
 ![Redpanda Docker Containers](/images/explore/cdc/redpanda_images/Fig2_Redpand_Docker_Container.jpg)
 
 ### Deploy YugabyteDB Debezium connector (docker container)
 
-Link the Redpanda Broker Address with YugabyteDB CDC Connector as highlighted in yellow below.
+Link the Redpanda Broker address with YugabyteDB CDC Connector as follows;
 
 ```sh
 sudo docker run -it --rm --name connect --net=host -p 8089:8089 -e GROUP_ID=1 -e BOOTSTRAP_SERVERS=127.0.0.1:19092 -e CONNECT_REST_PORT=8082 -e CONNECT_GROUP_ID="1" -e CONFIG_STORAGE_TOPIC=my_connect_configs -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses -e CONNECT_KEY_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_VALUE_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_INTERNAL_KEY_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_INTERNAL_VALUE_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_REST_ADVERTISED_HOST_NAME="connect" quay.io/yugabyte/debezium-connector:latest
@@ -67,9 +67,7 @@ sudo docker run -it --rm --name connect --net=host -p 8089:8089 -e GROUP_ID=1 -e
 
 ### Deploy the source connector using Redpanda
 
-Create and deploy the source connector as follows.
-
-Change the database hostname, database master addresses, database user, password, database name, logical server name, and table include list and StreamID as per your configuration (in yellow).
+Create and deploy the source connector as follows, changing the parameters as per your configuration:
 
 ```sh
 curl -i -X  POST -H  "Accept:application/json" -H  "Content-Type:application/json" localhost:8083/connectors/ -d '{

@@ -18,15 +18,6 @@ rightNav:
   hideH4: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../debezium-connector-yugabytedb/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
-
 The Debezium connector for YugabyteDB captures row-level changes in the schemas of a YugabyteDB database.
 
 The first time it connects to a YugabyteDB cluster or universe, the connector takes a consistent snapshot of the tables it is configured for. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content that are committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
@@ -37,7 +28,7 @@ The Debezium connector for YugabyteDB reads the changes produced by YugabyteDB. 
 
 The connector produces a change event for every row-level insert, update, and delete operation that was captured, and sends change event records for each table in separate Kafka topics. Client applications read the Kafka topics corresponding to database tables of interest, and can react to every row-level event they receive from those topics.
 
-![CDC Pipeline with Debezium and Kafka](/images/architecture/cdc-2dc/cdc-pipeline.png)
+![What is CDC](/images/explore/cdc-overview-what.png)
 
 YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by taking a snapshot of each of the database schemas. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
 
@@ -962,14 +953,14 @@ You can send this configuration with a `POST` command to a running Kafka Connect
 * Streams change event records to Kafka topics.
 
 {{< note title="Custom record extractor" >}}
-We use a custom record extractor (`YBExtractNewRecordState`) so that the sinks understand the format in which we are sending the data. For example, if you are using a JDBC sink connector, you need to add two more properties to the sink configuration:
+YugabyteDB uses a custom record extractor (`YBExtractNewRecordState`) so that the sinks understand the format in which data is sent. For example, if you are using a JDBC sink connector, you need to add two more properties to the sink configuration:
 
 | Property | Value |
 | :------- | :---- |
 | `transforms` | `unwrap` |
 | `transforms.unwrap.type` | `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState` |
 
-See the following section for more details on `YBExtractNewRecordState`.
+See [Transformers](#transformers).
 {{< /note >}}
 
 ### Adding connector configuration
@@ -988,8 +979,7 @@ To run a YugabyteDB connector, create a connector configuration and add the conf
 
 #### Results
 
-After the connector starts, it will perform a snapshot of the tables depending on the configuration if the connector is set to to take snapshots. The connector then starts generating data change events for row-level operations and streaming change event records to Kafka topics.
-
+After the connector starts, it will perform a snapshot of the tables depending on the configuration if the connector is set to take snapshots. The connector then starts generating data change events for row-level operations and streaming change event records to Kafka topics.
 
 ### Connector configuration properties
 
@@ -1123,99 +1113,7 @@ PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all
 
 ## Monitoring
 
-### Status of the deployed connector
-
-You can use the rest APIs to monitor your deployed connectors. The following operations are available:
-
-* List all connectors
-
-   ```sh
-   curl -X GET localhost:8083/connectors/
-   ```
-
-* Get a connector's configuration
-
-   ```sh
-   curl -X GET localhost:8083/connectors/<connector-name>
-   ```
-
-* Get the status of all tasks with their configuration
-
-   ```sh
-   curl -X GET localhost:8083/connectors/<connector-name>/tasks
-   ```
-
-* Get the status of the specified task
-
-   ```sh
-   curl -X GET localhost:8083/connectors/<connector-name>/tasks/<task-id>
-   ```
-
-* Get the connector's status, and the status of its tasks
-
-   ```sh
-   curl -X GET localhost:8083/connectors/<connector-name>/status
-   ```
-
-### Metrics
-
-In addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide, the YugabyteDB source connector provides two other types of metrics:
-
-* _CDC Service metrics_ provide information about CDC service in YugabyteDB.
-
-| Metric name | Type | Description |
-| :---- | :---- | :---- |
-| cdcsdk_change_event_count | `long` | The Change Event Count metric shows the number of records sent by the CDC Service. |
-| cdcsdk_traffic_sent | `long` | The number of milliseconds since the connector has read and processed the most recent event. |
-| cdcsdk_event_lag_micros | `long` | The LAG metric is calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the CDC connector. |
-| cdcsdk_expiry_time_ms | `long` | The time left to read records from WAL is tracked by the Stream Expiry Time (ms) |
-
-#### Snapshot metrics
-
-The **MBean** is `debezium.yugabytedb:type=connector-metrics,server=<database.server.name>,task=<task.id>,context=snapshot`.
-
-Snapshot metrics are only available when a snapshot operation is active, or if a snapshot has occurred since the last connector start. The following snapshot metrics are available:
-
-| Metric name | Type | Description |
-| :---- | :---- | :---- |
-| LastEvent | `string` | The last snapshot event that the connector has read. |
-| MilliSecondsSinceLastEvent | `long` | The number of milliseconds since the connector has read and processed the most recent event. |
-| TotalNumberOfEventsSeen | `long` | The total number of events that this connector has seen since the last start or metrics reset. |
-| NumberOfEventsFiltered | `long` | The number of events that have been filtered by include/exclude list filtering rules configured on the connector. |
-| QueueTotalCapacity | `int` | The length the queue used to pass events between the snapshotter and the main Kafka Connect loop. |
-| QueueRemainingCapacity | `int` | The free capacity of the queue used to pass events between the snapshotter and the main Kafka Connect loop. |
-| SnapshotRunning | `boolean` | Whether the snapshot is currently running. |
-| SnapshotPaused | `boolean` | Whether the snapshot was paused one or more times. |
-| SnapshotAborted | `boolean` | Whether the snapshot has been aborted. |
-| SnapshotCompleted | `boolean` | Whether the snapshot has been completed. |
-| SnapshotDurationInSeconds | `long` | The total number of seconds that the snapshot has taken so far, even if not complete. Includes also time when snapshot was paused.|
-| SnapshotPausedDurationInSeconds | `long` | The total number of seconds that the snapshot was paused. If the snapshot was paused more than once, this is the cumulative pause time. |
-| MaxQueueSizeInBytes | `long` | The maximum buffer of the queue, in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
-| CurrentQueueSizeInBytes | `long` | The current volume, in bytes, of records in the queue. |
-
-#### Streaming metrics
-
-The **MBean** is `debezium.yugabytedb:type=connector-metrics,server=<database.server.name>,task=<task.id>,context=streaming`.
-
-The following streaming metrics are available:
-
-| Metric name | Type | Description |
-| :---- | :---- | :---- |
-| LastEvent | `string` | The last streaming event that the connector has read. |
-| MilliSecondsSinceLastEvent | `long` | The number of milliseconds since the connector has read and processed the most recent event. |
-| TotalNumberOfEventsSeen | `long` | The total number of events that this connector has seen since the last start or metrics reset. |
-| TotalNumberOfCreateEventsSeen | `long` | The total number of create events that this connector has seen since the last start or metrics reset. |
-| TotalNumberOfUpdateEventsSeen | `long` |The total number of update events that this connector has seen since the last start or metrics reset. |
-| TotalNumberOfDeleteEventsSeen | `long` | The total number of delete events that this connector has seen since the last start or metrics reset. |
-| NumberOfEventsFiltered | `long` | The total number of events (since the last start or metrics reset) that have been filtered by include/exclude list filtering rules configured on the connector. |
-| QueueTotalCapacity | `int` | The length the queue used to pass events between the streamer and the main Kafka Connect loop. |
-| QueueRemainingCapacity | `int` | The free capacity of the queue used to pass events between the streamer and the main Kafka Connect loop. |
-| Connected | `boolean` | Indicates whether the connector is currently connected to the database server. |
-| MilliSecondsBehindSource | `long` | The number of milliseconds between the last change event’s timestamp and when the connector processed it. The value incorporates any differences between the clocks on the machines where the database server and the connector are running. |
-| SourceEventPosition | `Map<String, String>` | The coordinates of the last received event. |
-| LastTransactionId | `string` | Transaction identifier of the last processed transaction. |
-| MaxQueueSizeInBytes | `long` | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
-| CurrentQueueSizeInBytes | `long` | The current volume, in bytes, of records in the queue. |
+For information on monitoring CDC, refer to [Monitor](../cdc-monitor/).
 
 ## Behavior when things go wrong
 

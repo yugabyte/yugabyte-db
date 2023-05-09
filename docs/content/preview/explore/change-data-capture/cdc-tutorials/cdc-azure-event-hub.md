@@ -1,19 +1,19 @@
 ---
-title: Azure Synapse Analytics Integration using Azure Event Hub tutorial for YugabyteDB CDC
-headerTitle: Azure Event Hub
-linkTitle: Azure Event Hub
-description: Azure Synapse Analytics Integration using Azure Event Hub for Change Data Capture in YugabyteDB.
-headcontent: Azure Synapse Analytics integration using Azure Event Hub
+title: Azure Synapse Analytics Integration using Azure Event Hubs tutorial for YugabyteDB CDC
+headerTitle: Azure Event Hubs
+linkTitle: Azure Event Hubs
+description: Azure Synapse Analytics Integration using Azure Event Hubs for Change Data Capture in YugabyteDB.
+headcontent: Azure Synapse Analytics integration using Azure Event Hubs
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     parent: cdc-tutorials
     identifier: cdc-azure-event-hub
-    weight: 30
+    weight: 20
 type: docs
 ---
 
-The following tutorial describes the steps to sync CDC data from [YugabyteDB Anywhere](https://www.yugabyte.com/anywhere/) to your Azure Synapse Analytics workspace using Azure offerings such as Azure Event Hub and Azure Data Lake Storage (ADLS) Gen2.
+The following tutorial describes the steps to sync CDC data from [YugabyteDB Anywhere](https://www.yugabyte.com/anywhere/) to your Azure Synapse Analytics workspace using Azure offerings such as Azure Event Hubs and Azure Data Lake Storage (ADLS) Gen2.
 
 ## Reference architecture
 
@@ -42,12 +42,12 @@ The following table describes how the data flows through each of these component
 | 4 | ADLS (Azure Data Lake Services) Gen2 | CDC data from the Azure Event Hub is saved to ADLS Gen2 in Parquet format |
 | 5 | Azure Synapse workspace | Azure SQL Pools and Spark Pools can be used to analyze the CDC data from Yugabyte in near real time |
 
-### Prerequisites
+## Prerequisites
 
 To get started, you'll need the following:
 
-- YugabyteDB Anywhere database with CDC enabled
-- An Azure Event Hubs instance
+- YugabyteDB Anywhere database with CDC enabled.
+- An Azure Event Hubs instance.
 - An Azure Synapse Analytics workspace with SQL Pools and Spark Pools. Tables can be created in the SQL Pools to house the CDC data.
 - An Azure Data Lake Storage Gen2 account. The Yugabyte CDC data resides in this Storage account and can be queried using external tables in Synapse SQL Pools.
 
@@ -57,7 +57,7 @@ Use the following steps to move YugabyteDB CDC data into Azure Synapse Analytics
 
 ### Step 1: Create an Event Hubs namespace and Event Hubs
 
-Azure Event Hubs will be used to capture the CDC data from YugabyteDB. To create Event Hubs namespace and Event Hubs, we have provided a link to the [quickstart instructions](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-create). Save the Event Hubs connection string and fully qualified domain name (FQDN) for later use. For instructions, see [Get an Event Hubs connection string](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-get-connection-string).
+Azure Event Hubs will be used to capture the CDC data from YugabyteDB. To create Event Hubs namespace and Event Hubs, refer to the [Quickstart instructions](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-create) in the Microsoft documentation. Save the Event Hubs connection string and fully qualified domain name (FQDN) for later use. For instructions, see [Get an Event Hubs connection string](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-get-connection-string).
 
 ### Step 2: Create a YugabyteDB CDC Connector
 
@@ -69,9 +69,9 @@ Now that you have created Event Hubs in Azure, you need to create a YugabyteDB C
 
 1. Configure your event hub to connect and receive data from the Debezium Connector for Yugabyte. You can create an Azure Event Hub configuration file that will be saved locally on the machine, for example you can save the configuration file as `eventhub.config` in the Kafka `bin` directory. The sample available in the [Kafka Connect for Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-kafka-connect-tutorial#configure-kafka-connect-for-event-hubs) documentation will help with this configuration.
 
-1. Download the debezium-connector-yugabytedb-1.9.5.y.15.jar file from the Yugabyte GitHub repository, <https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar>. Save this jar file in your Kafka `libs` folder (for example, `/home/azureuser/kafka_2.12-3.2.0/libs`).
+1. Download the Debezium connector jar file from the Yugabyte GitHub repository (<https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar>). Save this jar file in your Kafka `libs` folder (for example, `/home/azureuser/kafka_2.12-3.2.0/libs`).
 
-1. Navigate to the Kafka bin directory (for example, /home/azureuser/kafka_2.12-3.2.0/bin) on your machine and run the following command
+1. Navigate to the Kafka bin directory (for example, /home/azureuser/kafka_2.12-3.2.0/bin) on your machine and run the following command:
 
     ```sh
     ./connect-distributed.sh <Event Hub configuration file>

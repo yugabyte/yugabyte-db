@@ -1,6 +1,6 @@
 ---
-title: CDC monitoring and debugging in YugabyteDB
-headerTitle: Monitor and debug
+title: CDC monitoring in YugabyteDB
+headerTitle: Monitor
 linkTitle: Monitor
 description: Monitor Change Data Capture in YugabyteDB.
 headcontent: Change Data Capture in YugabyteDB
@@ -13,9 +13,54 @@ menu:
 type: docs
 ---
 
-## Monitoring
+## Status of the deployed connector
 
-In addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide, the YugabyteDB source connector provides two other types of metrics:
+You can use the rest APIs to monitor your deployed connectors. The following operations are available:
+
+* List all connectors
+
+   ```sh
+   curl -X GET localhost:8083/connectors/
+   ```
+
+* Get a connector's configuration
+
+   ```sh
+   curl -X GET localhost:8083/connectors/<connector-name>
+   ```
+
+* Get the status of all tasks with their configuration
+
+   ```sh
+   curl -X GET localhost:8083/connectors/<connector-name>/tasks
+   ```
+
+* Get the status of the specified task
+
+   ```sh
+   curl -X GET localhost:8083/connectors/<connector-name>/tasks/<task-id>
+   ```
+
+* Get the connector's status, and the status of its tasks
+
+   ```sh
+   curl -X GET localhost:8083/connectors/<connector-name>/status
+   ```
+
+## Metrics
+
+In addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide, the YugabyteDB source connector provides the following types of metrics.
+
+### CDC Service metrics
+
+Provide information about CDC service in YugabyteDB.
+
+| Metric name | Type | Description |
+| :---- | :---- | :---- |
+| cdcsdk_change_event_count | `long` | The Change Event Count metric shows the number of records sent by the CDC Service. |
+| cdcsdk_traffic_sent | `long` | The number of milliseconds since the connector has read and processed the most recent event. |
+| cdcsdk_event_lag_micros | `long` | The LAG metric is calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the CDC connector. |
+| cdcsdk_expiry_time_ms | `long` | The time left to read records from WAL is tracked by the Stream Expiry Time (ms). |
 
 ### Snapshot metrics
 
@@ -63,13 +108,3 @@ The following streaming metrics are available:
 | LastTransactionId | `string` | Transaction identifier of the last processed transaction. |
 | MaxQueueSizeInBytes | `long` | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
 | CurrentQueueSizeInBytes | `long` | The current volume, in bytes, of records in the queue. |
-
-### YugabyteDB CDC metrics
-YugabyteDB CDC provides follwing metrics
-
-| Metric name | Type | Description |
-| :---- | :---- | :---- |
-| cdcsdk_change_event_count | `long` | The Change Event Count metric shows the number of records sent by the CDC Service. |
-| cdcsdk_traffic_sent | `long` | The number of milliseconds since the connector has read and processed the most recent event. |
-| cdcsdk_event_lag_micros | `long` | The LAG metric is calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the CDC connector. |
-| cdcsdk_expiry_time_ms | `long` | The time left to read records from WAL is tracked by the Stream Expiry Time (ms) |

@@ -9,13 +9,13 @@ menu:
   preview:
     parent: cdc-tutorials
     identifier: cdc-aws-msk
-    weight: 20
+    weight: 10
 type: docs
 ---
 
-This tutorial describes how to configure Yugabyte CDC and stream data into Amazon MSK using Debezium connector.
+Amazon Managed Streaming for Apache Kafka (Amazon MSK) is a fully managed, highly available, and secure Apache Kafka service offered by Amazon Web Services (AWS). Using Amazon MSK, you can build and run applications using Apache Kafka without having to manage and operate your own Kafka clusters.
 
-The tutorial assumes some familiarity with AWS, Apache Kafka, and CDC.
+This tutorial describes how to configure Yugabyte CDC and stream data into Amazon MSK using Debezium connector, and assumes some familiarity with AWS, Apache Kafka, and CDC.
 
 ![Architecture of YugabyteDB to MSK using Debezium](/images/explore/cdc/aws_msk_images/architecture.jpg)
 
@@ -187,7 +187,7 @@ Create a test table:
 CREATE TABLE test (id INT PRIMARY KEY, name TEXT);
 ```
 
-Enable CDC using yb-admin. The following command enables CDC on all the schemas and tables in the Yugabyte database.
+Enable CDC using yb-admin. The following command enables CDC on all the schemas and tables in the YugabyteDB database.
 
 ```sh
 ./bin/yb-admin — master_addresses <master_addresses>:7100 create_change_data_stream ysql.yugabyte
@@ -207,32 +207,34 @@ For more information on CDC commands, refer to [Change data capture commands](..
 
 Create a Security Group with inbound and outbound rules configured to ensure access to the MSK cluster and YugabyteDB. In this example, enable incoming traffic from all the ports.
 
-![Edit Inbound Rules](https://miro.medium.com/v2/resize:fit:700/0*GCIXUAlFVQbvCNpX)
+![Edit Inbound Rules](/images/explore/cdc/aws_msk_images/edit-inbound-rules.png)
 
 ### Upload Debezium connector Jar file to the S3 bucket
 
 Download the YugabyteDB Debezium connector jar from the [repository](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar) and upload it to an S3 bucket.
 
-![Upload to S3](https://miro.medium.com/v2/resize:fit:700/0*gk4kNo4roN6w1aSJ)
+![Upload to S3](/images/explore/cdc/aws_msk_images/upload-to-s3.png)
 
 ### Configure the Amazon MSK cluster
 
 This example creates an Amazon MSK cluster in same VPC as that of the YugabyteDB cluster. Note that this is a generic configuration, it might differ based your organizational IT policy.
 
-![MSK cluster settings](https://miro.medium.com/v2/resize:fit:700/0*zcTnuwYjgMLYZszE)
+![MSK cluster settings](/images/explore/cdc/aws_msk_images/msk-cluster-settings.png)
 
 This example creates a cluster with two zones.
 
-![Amazon Brokers](https://miro.medium.com/v2/resize:fit:700/0*vwLr8-tZqsxGuvuO)
+![Amazon Brokers](/images/explore/cdc/aws_msk_images/amazon-brokers.png)
 
-Under Networking Section, select VPC and Private subnets same as that of Yugabyte Cluster . Choose the security group created in step 3 from the drop down list.
+Under the Networking section, select the same VPC and Private subnets as used by the YugabyteDB cluster.
 
-![Amazon Security Groups](https://miro.medium.com/v2/resize:fit:700/0*PMGfUb7LB7CjtM1C)
+Choose the security group you created previously.
 
-Enable logging on your cluster to ease debugging . In this demo, we are using S3 bucket to store the logs.
+![Amazon Security Groups](/images/explore/cdc/aws_msk_images/amazon-security-groups.png)
 
-![Amazon S3 logging](https://miro.medium.com/v2/resize:fit:700/0*MOv37Ars6QWVPPiv)
+Enable logging on your cluster to help with debugging. This example uses the S3 bucket to store the logs.
+
+![Amazon S3 logging](/images/explore/cdc/aws_msk_images/amazon-s3-logging.png)
 
 The cluster is now is now configured successfully.
 
-![Amazon MSK Create Cluster](https://miro.medium.com/v2/resize:fit:700/0*1_esGoZGOpGwHnDD)
+![Amazon MSK Create Cluster](/images/explore/cdc/aws_msk_images/amazon-msk-create-cluster.png)
