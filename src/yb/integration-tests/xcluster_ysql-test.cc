@@ -119,7 +119,6 @@ DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_bool(use_libbacktrace);
-DECLARE_bool(xcluster_consistent_wal);
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
@@ -669,7 +668,6 @@ constexpr int kTransactionalConsistencyTestDurationSecs = 30;
 class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
  public:
   void SetUp() override {
-    FLAGS_xcluster_consistent_wal = true;
     XClusterYsqlTest::SetUp();
   }
 
@@ -3345,7 +3343,6 @@ class XClusterYsqlTestReadOnly : public XClusterYsqlTest {
 
  protected:
   void SetUp() override {
-    FLAGS_xcluster_consistent_wal = true;
     XClusterYsqlTest::SetUp();
   }
 

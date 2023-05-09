@@ -539,9 +539,11 @@ class YBClient {
       bool active = true,
       const NamespaceId& namespace_id = "");
 
-  void CreateCDCStream(const TableId& table_id,
-                       const std::unordered_map<std::string, std::string>& options,
-                       CreateCDCStreamCallback callback);
+  void CreateCDCStream(
+      const TableId& table_id,
+      const std::unordered_map<std::string, std::string>& options,
+      cdc::StreamModeTransactional transactional,
+      CreateCDCStreamCallback callback);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(const std::vector<CDCStreamId>& streams,
@@ -570,7 +572,8 @@ class YBClient {
   Status GetCDCStream(const CDCStreamId &stream_id,
                       NamespaceId* ns_id,
                       std::vector<TableId>* table_ids,
-                      std::unordered_map<std::string, std::string>* options);
+                      std::unordered_map<std::string, std::string>* options,
+                      cdc::StreamModeTransactional* transactional);
 
   void GetCDCStream(const CDCStreamId& stream_id,
                     std::shared_ptr<TableId> table_id,

@@ -1416,17 +1416,21 @@ Result<CDCStreamId> YBClient::CreateCDCStream(
   return resp.stream_id();
 }
 
-void YBClient::CreateCDCStream(const TableId& table_id,
-                               const std::unordered_map<std::string, std::string>& options,
-                               CreateCDCStreamCallback callback) {
+void YBClient::CreateCDCStream(
+    const TableId& table_id,
+    const std::unordered_map<std::string, std::string>& options,
+    cdc::StreamModeTransactional transactional,
+    CreateCDCStreamCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  data_->CreateCDCStream(this, table_id, options, deadline, callback);
+  data_->CreateCDCStream(this, table_id, options, transactional, deadline, callback);
 }
 
-Status YBClient::GetCDCStream(const CDCStreamId& stream_id,
-                              NamespaceId* ns_id,
-                              std::vector<ObjectId>* object_ids,
-                              std::unordered_map<std::string, std::string>* options) {
+Status YBClient::GetCDCStream(
+    const CDCStreamId& stream_id,
+    NamespaceId* ns_id,
+    std::vector<ObjectId>* object_ids,
+    std::unordered_map<std::string, std::string>* options,
+    cdc::StreamModeTransactional* transactional) {
   // Setting up request.
   GetCDCStreamRequestPB req;
   req.set_stream_id(stream_id);
@@ -1453,6 +1457,8 @@ Status YBClient::GetCDCStream(const CDCStreamId& stream_id,
   if (!resp.stream().has_namespace_id()) {
     options->emplace(cdc::kIdType, cdc::kTableId);
   }
+
+  *transactional = cdc::StreamModeTransactional(resp.stream().transactional());
 
   return Status::OK();
 }

@@ -1547,11 +1547,13 @@ void GetColocatedTabletSchemaRpc::ProcessResponse(const Status& status) {
 class CreateCDCStreamRpc
     : public ClientMasterRpc<CreateCDCStreamRequestPB, CreateCDCStreamResponsePB> {
  public:
-  CreateCDCStreamRpc(YBClient* client,
-                     CreateCDCStreamCallback user_cb,
-                     const TableId& table_id,
-                     const std::unordered_map<std::string, std::string>& options,
-                     CoarseTimePoint deadline);
+  CreateCDCStreamRpc(
+      YBClient* client,
+      CreateCDCStreamCallback user_cb,
+      const TableId& table_id,
+      const std::unordered_map<std::string, std::string>& options,
+      cdc::StreamModeTransactional transactional,
+      CoarseTimePoint deadline);
 
   string ToString() const override;
 
@@ -1561,23 +1563,24 @@ class CreateCDCStreamRpc
   void CallRemoteMethod() override;
   void ProcessResponse(const Status& status) override;
 
-  CreateCDCStreamCallback user_cb_;
-  std::string table_id_;
-  std::unordered_map<std::string, std::string> options_;
+  const CreateCDCStreamCallback user_cb_;
+  const std::string table_id_;
 };
 
-CreateCDCStreamRpc::CreateCDCStreamRpc(YBClient* client,
-                                       CreateCDCStreamCallback user_cb,
-                                       const TableId& table_id,
-                                       const std::unordered_map<std::string, std::string>& options,
-                                       CoarseTimePoint deadline)
+CreateCDCStreamRpc::CreateCDCStreamRpc(
+    YBClient* client,
+    CreateCDCStreamCallback user_cb,
+    const TableId& table_id,
+    const std::unordered_map<std::string, std::string>& options,
+    cdc::StreamModeTransactional transactional,
+    CoarseTimePoint deadline)
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
-      table_id_(table_id),
-      options_(options) {
+      table_id_(table_id) {
   req_.set_table_id(table_id_);
-  req_.mutable_options()->Reserve(narrow_cast<int>(options_.size()));
-  for (const auto& option : options_) {
+  req_.mutable_options()->Reserve(narrow_cast<int>(options.size()));
+  req_.set_transactional(transactional);
+  for (const auto& option : options) {
     auto* op = req_.add_options();
     op->set_key(option.first);
     op->set_value(option.second);
@@ -2090,13 +2093,15 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
   return actual_index_permissions;
 }
 
-void YBClient::Data::CreateCDCStream(YBClient* client,
-                                     const TableId& table_id,
-                                     const std::unordered_map<std::string, std::string>& options,
-                                     CoarseTimePoint deadline,
-                                     CreateCDCStreamCallback callback) {
+void YBClient::Data::CreateCDCStream(
+    YBClient* client,
+    const TableId& table_id,
+    const std::unordered_map<std::string, std::string>& options,
+    cdc::StreamModeTransactional transactional,
+    CoarseTimePoint deadline,
+    CreateCDCStreamCallback callback) {
   auto rpc = StartRpc<internal::CreateCDCStreamRpc>(
-      client, callback, table_id, options, deadline);
+      client, callback, table_id, options, transactional, deadline);
 }
 
 void YBClient::Data::DeleteCDCStream(YBClient* client,
