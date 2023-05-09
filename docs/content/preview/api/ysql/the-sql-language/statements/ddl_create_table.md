@@ -126,15 +126,15 @@ In the example above, there are three split points and so four tablets will be c
 - tablet 3: `a=200, b=<lowest>` to `a=200, b=5`
 - tablet 4: `a=200, b=5` to `a=<highest>, b=<highest>`
 
-### COLOCATED
+### COLOCATION
 
 Colocated table support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 For colocated databases, specify `false` to opt this table out of colocation. This means that the table won't be stored on the same tablet as the rest of the tables for this database, but instead, will have its own set of tablets.
 
-Use this option for large tables that need to be scaled out. See [colocated tables architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) for more details on when colocation is useful.
+Use this option for large tables that need to be scaled out. See [colocated tables architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) for more details on when colocation is beneficial.
 
-Note that `COLOCATED = true` has no effect if the database that this table is part of is not colocated since colocation today is supported only at the database level.
+Note that `COLOCATION = true` has no effect if the database that this table is part of is not colocated as colocation today is supported only at the database level.
 
 ### Storage parameters
 
@@ -270,9 +270,9 @@ yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT INTO 10 TABLETS;
 ### Opt a table out of colocation
 
 ```plpgsql
-yugabyte=# CREATE DATABASE company WITH colocated = true;
+yugabyte=# CREATE DATABASE company WITH COLOCATION = true;
 
-yugabyte=# CREATE TABLE employee(id INT PRIMARY KEY, name TEXT) WITH (colocated = false);
+yugabyte=# CREATE TABLE employee(id INT PRIMARY KEY, name TEXT) WITH (COLOCATION = false);
 ```
 
 In this example, database `company` is colocated and all tables other than the `employee` table are stored on a single tablet.
