@@ -14,13 +14,24 @@ menu:
 type: docs
 ---
 
-For installation overview, select one of the following installation types:
+Before you get started, decide whether you are deploying on Public cloud, Private cloud, or Kubernetes. All of these process flows follow the same general steps:
+
+- Install and configure YugabyteDB Anywhere.
+- Create a Provider Configuration (choose among AWS, GCP, Azure, on-prem, or various Kubernetes options).
+- Create a Universe using the configuration.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../public-cloud/" class="nav-link active">
       <i class="fa-solid fa-cloud"></i>
       Public Cloud
+    </a>
+  </li>
+
+  <li >
+    <a href="../private-cloud/" class="nav-link">
+      <i class="fa-solid fa-building"></i>
+      On-premises
     </a>
   </li>
 
@@ -31,15 +42,9 @@ For installation overview, select one of the following installation types:
     </a>
   </li>
 
-  <li >
-    <a href="../private-cloud/" class="nav-link">
-      <i class="fa-solid fa-building"></i>
-      On-premises
-    </a>
-  </li>
 </ul>
 
-The following diagram depicts the YugabyteDB Anywhere installation process in a public cloud:
+The following diagram shows the YugabyteDB Anywhere installation process in a public cloud. Click elements of the chart to access detailed steps.
 
 <div class="image-with-map">
 <img src="/images/ee/flowchart/yb-install-public-cloud.png" usemap="#image-map">

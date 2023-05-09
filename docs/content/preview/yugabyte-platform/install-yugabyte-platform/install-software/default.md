@@ -13,6 +13,10 @@ menu:
 type: docs
 ---
 
+Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA Prerequisites](../../prerequisites/default/).
+
+Note: For higher availability, one or more additional YugabyteDB Anywhere instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
@@ -21,13 +25,13 @@ type: docs
   </li>
 
   <li>
-    <a href="../kubernetes/" class="nav-link">
-      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
+    <a href="../airgapped/" class="nav-link">
+      <i class="fa-solid fa-link-slash"></i>Replicated - Airgapped</a>
   </li>
 
   <li>
-    <a href="../airgapped/" class="nav-link">
-      <i class="fa-solid fa-link-slash"></i>Airgapped</a>
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
   <li>
@@ -37,7 +41,7 @@ type: docs
 
   <li>
     <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building"></i>Installer</a>
+      <i class="fa-solid fa-building"></i>YBA Installer</a>
   </li>
 
 </ul>

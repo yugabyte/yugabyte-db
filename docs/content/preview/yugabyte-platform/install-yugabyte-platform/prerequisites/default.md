@@ -1,7 +1,7 @@
 ---
 title: Prerequisites - Replicated
-headerTitle: Prerequisites - Replicated
-linkTitle: Prerequisites
+headerTitle: Prerequisites for YBA - Replicated
+linkTitle: YBA prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere using Replicated.
 menu:
   preview_yugabyte-platform:
@@ -10,6 +10,18 @@ menu:
     weight: 20
 type: docs
 ---
+
+There are three major ways to install YBA:
+
+| Method | Use If |
+| :--- | :--- |
+| Replicated, using Docker containers | You're able to use Docker containers. |
+| Kubernetes via helm chart | You're deploying in Kubernetes. |
+| YBA Installer | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
+
+All installation methods support installing YBA with and without (airgapped) Internet connectivity.
+
+Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact contact {{% support-platform %}} for assistance.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -25,12 +37,16 @@ type: docs
 
   <li>
     <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building" aria-hidden="true"></i>Installer</a>
+      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
   </li>
 
 </ul>
 
-YugabyteDB Anywhere first needs to be installed on a host computer, and then you configure YugabyteDB Anywhere to work in your on-premises private cloud or in a public cloud environment. In a public cloud environment, YugabyteDB Anywhere spawns instances for starting a YugabyteDB universe. In a private cloud environment, you use YugabyteDB Anywhere to add nodes in which you want to be in the YugabyteDB universe. To manage these nodes, YugabyteDB Anywhere requires SSH access to each of the nodes.
+YugabyteDB Anywhere first needs to be installed on a host computer, and then you configure YugabyteDB Anywhere to work in your on-premises private cloud or in a public cloud environment.
+
+In a public cloud environment, YugabyteDB Anywhere spawns instances on the cloud provider for hosting a YugabyteDB universe.
+
+In a private cloud environment, you use YugabyteDB Anywhere to add the nodes that will host the YugabyteDB universe. To manage these nodes, YugabyteDB Anywhere requires SSH access to each of the nodes.
 
 ## Supported Linux distributions
 
