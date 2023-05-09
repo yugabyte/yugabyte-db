@@ -93,6 +93,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<String> oidcProviderMetadata =
+      new ConfKeyInfo<>(
+          "yb.security.oidcProviderMetadata",
+          ScopeType.GLOBAL,
+          "Provider Metadata from discoveryURI",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
   public static final ConfKeyInfo<String> oidcScope =
       new ConfKeyInfo<>(
           "yb.security.oidcScope",
