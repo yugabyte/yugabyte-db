@@ -9,7 +9,7 @@ menu:
   preview:
     parent: cdc-tutorials
     identifier: cdc-aws-msk
-    weight: 20
+    weight: 10
 type: docs
 ---
 

@@ -18,15 +18,6 @@ rightNav:
   hideH4: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../debezium-connector-yugabytedb/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
-
 The Debezium connector for YugabyteDB captures row-level changes in the schemas of a YugabyteDB database.
 
 The first time it connects to a YugabyteDB cluster or universe, the connector takes a consistent snapshot of the tables it is configured for. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content that are committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
@@ -37,7 +28,7 @@ The Debezium connector for YugabyteDB reads the changes produced by YugabyteDB. 
 
 The connector produces a change event for every row-level insert, update, and delete operation that was captured, and sends change event records for each table in separate Kafka topics. Client applications read the Kafka topics corresponding to database tables of interest, and can react to every row-level event they receive from those topics.
 
-![CDC Pipeline with Debezium and Kafka](/images/architecture/cdc-2dc/cdc-pipeline.png)
+![What is CDC](/images/explore/cdc-overview-what.png)
 
 YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by taking a snapshot of each of the database schemas. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
 
@@ -962,14 +953,14 @@ You can send this configuration with a `POST` command to a running Kafka Connect
 * Streams change event records to Kafka topics.
 
 {{< note title="Custom record extractor" >}}
-We use a custom record extractor (`YBExtractNewRecordState`) so that the sinks understand the format in which we are sending the data. For example, if you are using a JDBC sink connector, you need to add two more properties to the sink configuration:
+YugabyteDB uses a custom record extractor (`YBExtractNewRecordState`) so that the sinks understand the format in which data is sent. For example, if you are using a JDBC sink connector, you need to add two more properties to the sink configuration:
 
 | Property | Value |
 | :------- | :---- |
 | `transforms` | `unwrap` |
 | `transforms.unwrap.type` | `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState` |
 
-See the following section for more details on `YBExtractNewRecordState`.
+See [Transformers](#transformers).
 {{< /note >}}
 
 ### Adding connector configuration
@@ -988,8 +979,7 @@ To run a YugabyteDB connector, create a connector configuration and add the conf
 
 #### Results
 
-After the connector starts, it will perform a snapshot of the tables depending on the configuration if the connector is set to to take snapshots. The connector then starts generating data change events for row-level operations and streaming change event records to Kafka topics.
-
+After the connector starts, it will perform a snapshot of the tables depending on the configuration if the connector is set to take snapshots. The connector then starts generating data change events for row-level operations and streaming change event records to Kafka topics.
 
 ### Connector configuration properties
 
@@ -1123,7 +1113,7 @@ PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all
 
 ## Monitoring
 
-For monitoring refer this Monitoring page.
+For information on monitoring CDC, refer to [Monitor](../cdc-monitor/).
 
 ## Behavior when things go wrong
 

@@ -15,8 +15,7 @@ type: docs
 
 To stream data change events from YugabyteDB databases, you need to use Debezium YugabyteDB connector. To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. You can download the connector from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases). The connector supports Kafka Connect version 2.x and later, and for YugabyteDB, it supports version 2.14 and later. For more connector configuration details and complete steps, refer to [Debezium connector](../debezium-connector-yugabytedb/).
 
-
-## Ordering guarantees 
+## Ordering guarantees
 
 |Ordering guarantee| Description|
 |----------| ----------------------------|
@@ -24,14 +23,13 @@ To stream data change events from YugabyteDB databases, you need to use Debezium
 |At least once delivery|Updates for rows are streamed at least once. This can happen in the case of Kafka Connect Node failure. If the Kafka Connect Node pushes the records to Kafka and crashes before committing the offset, on restart, it will again get the same set of records.|
 |No gaps in change stream|Note that after you have received a change for a row for some timestamp `t`, you won't receive a previously unseen change for that row at a lower timestamp. Receiving any change implies that you have received _all older changes_ for that row.|
 
-
-## Setting up YugabyteDB for CDC
+## Set up YugabyteDB for CDC
 
 The following steps are necessary to set up YugabyteDB for use with the Debezium YugabyteDB connector:
 
 1. Create a DB stream ID.
 
-    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CLI command. Please refer to the yb-admin reference documentation for more details. 
+    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the yb-admin CLI command. Refer to the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference documentation for more details.
 
 1. Make sure the master ports are open.
 
@@ -43,11 +41,13 @@ The following steps are necessary to set up YugabyteDB for use with the Debezium
 
     In case CDC is lagging or away for some time, the disk usage may grow and cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [YB-TServer flag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
-## Serialization {.tabset}
+## Serialization
 
-### Avro
+{{< tabpane text=true >}}
 
-The YugabyteDB source connector also supports AVRO serialization with schema registry. To use AVRO serialization, simply add the following configuration to your connector:
+  {{% tab header="Avro" lang="avro" %}}
+
+The YugabyteDB source connector also supports AVRO serialization with schema registry. To use AVRO serialization, add the following configuration to your connector:
 
 ```json
 {
@@ -60,11 +60,17 @@ The YugabyteDB source connector also supports AVRO serialization with schema reg
 }
 ```
 
-### JSON
+  {{% /tab %}}
 
-### Protobuf
+  {{% tab header="JSON" lang="json" %}}
 
-To use the [protobuf](http://protobuf.dev) format for the serialization/de-serialization of the Kafka messages, you can use the [Protobuf Converter](https://www.confluent.io/hub/confluentinc/kafka-connect-protobuf-converter). After downloading and including the required `JAR` files in the Kafka-Connect envioronment, you can directly configure the CDC source and sink connectors to use this converter.
+JSON content
+
+  {{% /tab %}}
+
+  {{% tab header="Protobuf" lang="protobuf" %}}
+
+To use the [protobuf](http://protobuf.dev) format for the serialization/de-serialization of the Kafka messages, you can use the [Protobuf Converter](https://www.confluent.io/hub/confluentinc/kafka-connect-protobuf-converter). After downloading and including the required `JAR` files in the Kafka-Connect environment, you can directly configure the CDC source and sink connectors to use this converter.
 
 ```json
 {
@@ -77,15 +83,18 @@ To use the [protobuf](http://protobuf.dev) format for the serialization/de-seria
 }
 ```
 
-## {-}
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 ## Before image
 
-[Before image](../#before-image) refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when it will be configured using a stream ID enabled with before image. It is populated for UPDATE and DELETE events. For INSERT events, before image doesn't make sense as the change record itself is in the context of new row insertion. 
+Before image refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when it will be configured using a stream ID enabled with before image. It is populated for UPDATE and DELETE events. For INSERT events, before image doesn't make sense as the change record itself is in the context of new row insertion.
 
-Yugabyte uses multiversion concurrency control(MVCC) mechanism, and compacts data at regular intervals. The compaction or the history retention is controlled by [history retention interval flag](../../reference/configuration/yb-tserver/#timestamp_history_retention_interval_sec). However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream so that the previous row state is retained/available. Consequently, in the case of a lagging CDC stream, the amount of space required for the database grows as more data is retained. On the other hand, older rows that are not needed for any of the active CDC streams are identified and garbage collected.
+Yugabyte uses multi-version concurrency control (MVCC) mechanism, and compacts data at regular intervals. The compaction or the history retention is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream so that the previous row state is retained, and available. Consequently, in the case of a lagging CDC stream, the amount of space required for the database grows as more data is retained. On the other hand, older rows that are not needed for any of the active CDC streams are identified and garbage collected.
 
-Schema version that is currently being used by a CDC stream will be used to frame before and current row images. The before image functionality is disabled by default unless it is specifically turned on during the CDC stream creation. [yb-admin](../../admin/yb-admin/#enabling-before-image) command can be used to create a CDC stream with before image enabled.
+Schema version that is currently being used by a CDC stream will be used to frame before and current row images. The before image functionality is disabled by default unless it is specifically turned on during the CDC stream creation. The [yb-admin](../../../admin/yb-admin/#enabling-before-image) `create_change_data_stream` command can be used to create a CDC stream with before image enabled.
+
 {{< tip title="Use transformers" >}}
 
 Add a transformer in the source connector while using with before image; you can add the following property directly to your configuration:
@@ -152,7 +161,6 @@ The highlighted fields in the update event are:
 | 3 | source | Mandatory field that describes the source metadata for the event. This has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
 | 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 
-
 Here is one more example, consider the following employee table into which a row is inserted, subsquently updated, and deleted:
 
 ```sql
@@ -167,35 +175,17 @@ delete from employee where employee_id=1001;
 
 CDC records for update and delete statements without enabling before image would be as follows:
 
-```json
-| CDC record for UPDATE           | CDC record for DELETE           |
-| -----------------------------   | ------------------------------- |
-| `json`                          | `json`                          |
-|`{   `                           |`{`                              |
-| ` "before": null,     `         |  `"before": {`                  |
-|  `"after": {   `                |   ` "public.employee.Value":{.` |
-|   ` "public.employee.Value":{.` |     ` "employee_id": { `        |
-|     ` "employee_id": {  `       |       ` "value": 1001  `        |
-|       ` "value": 1001   `       |     ` },  `                     |
-|     ` },     `                  |     ` "employee_name": null `   |
-|     ` "employee_name": {   `    |   ` }   `                       |
-|       ` "employee_name": {.  `  |  `},  `                         |
-|         ` "value": {  `         |  `"after": null, `              |
-|           ` "string": "Bob". `  |  `"op": "d"   `                 |
-|         ` }   `                 |`}  `                            |
-|       ` }   `                   |                                 |
-|     ` }   `                     |                                 |
-|   ` }  `                        |                                 |
-|  `}, `                          |                                 |
-|  `"op": "u"  `                  |                                 |
-|`}  `                            |                                 |
-|                                 |                                 |
-```
-
 With before image enabled, the update and delete records look like the following:
 
-```json
-CDC record for UPDATE:
+<table>
+<tr>
+<td> CDC record for UPDATE: </td> <td> CDC record for DELETE: </td>
+</tr>
+
+<tr>
+<td>
+
+<pre>
 {
   "before": {
     "public.employee.Value":{
@@ -227,8 +217,12 @@ CDC record for UPDATE:
   },
   "op": "u"
 }
+</pre>
+</td>
 
-CDC record for DELETE:
+<td>
+
+<pre>
 {
   "before": {
     "public.employee.Value":{
@@ -247,11 +241,13 @@ CDC record for DELETE:
   "after": null,
   "op": "d"
 }
-```
+</pre>
+
+</td> </tr> </table>
 
 ## Schema evolution
 
-Table schema is needed for decoding and processing the changes and populating CDC records. Thus, older schemas are retained if CDC streams are lagging. Also, older schemas not needed for any of the existing active CDC streams are garbage collected. In addition, if before image is enabled, the schema needed for populating before image as well is retained. The YugabyteDB source connector caches schema at the tablet level, this means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, CDC service emits a record with the new schema for all the tablets. The YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
+Table schema is needed for decoding and processing the changes and populating CDC records. Thus, older schemas are retained if CDC streams are lagging. Also, older schemas that are not needed for any of the existing active CDC streams are garbage collected. In addition, if before image is enabled, the schema needed for populating before image is also retained. The YugabyteDB source connector caches schema at the tablet level. This means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, the CDC service emits a record with the new schema for all the tablets. The YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
 
 {{< warning title="No backfill support" >}}
 
@@ -259,7 +255,7 @@ If you alter the schema of the source table to add a default value for an existi
 
 {{< /warning >}}
 
-Let us consider the following employee table (with schema version 0 at the time of table creation) into which a row is inserted, followed by a DDL resulting in schema version 1 and an update of the row inserted, and subsequently another DDL incrementing the schema version to 2. If a CDC stream created for employee table lags and is in the process of streaming the update, corresponding schema version 1 is used for populating the update record. 
+Consider the following employee table (with schema version 0 at the time of table creation) into which a row is inserted, followed by a DDL resulting in schema version 1 and an update of the row inserted, and subsequently another DDL incrementing the schema version to 2. If a CDC stream created for the employee table lags and is in the process of streaming the update, corresponding schema version 1 is used for populating the update record.
 
 ```sql
 create table employee(employee_id int primary key, employee_name varchar); // schema version 0
@@ -273,7 +269,7 @@ update employee set dept_id=9 where employee_id=1001; // currently streaming rec
 alter table employee add dept_name varchar; // schema version 2
 ```
 
-Update CDC record would be
+Update CDC record would be as follows:
 
 ```json
 CDC record for UPDATE (using schema version 1):
@@ -342,7 +338,7 @@ Longer values of `cdc_intent_retention_ms`, coupled with longer CDC lags (period
 
 ## Content-based routing
 
-By default, the Yugabyte Debezium connector streams all of the change events that it reads from a table to a single static topic. However, you may want to re-route the events into different Kafka topics based on the event's content. It is possible through Debezium's `ContentBasedRouter`. But first, there are two additional dependencies that need to be placed in the Kafka-Connect environment. These are not included in the official *yugabyte-debezium-connector* for security reasons. In particular, these dependencies are:
+By default, the Yugabyte Debezium connector streams all of the change events that it reads from a table to a single static topic. However, you may want to re-route the events into different Kafka topics based on the event's content. You can do this using the Debezium `ContentBasedRouter`. But first, two additional dependencies need to be placed in the Kafka-Connect environment. These are not included in the official *yugabyte-debezium-connector* for security reasons. These dependencies are:
 
 - Debezium routing SMT (Single Message Transform)
 - Groovy JSR223 implementation (or other scripting languages that integrate with [JSR 223](https://jcp.org/en/jsr/detail?id=223))
@@ -357,7 +353,7 @@ RUN cd $KAFKA_CONNECT_YB_DIR && curl -so groovy-4.0.9.jar  https://repo1.maven.o
 RUN cd $KAFKA_CONNECT_YB_DIR && curl -so groovy-jsr223-4.0.9.jar  https://repo1.maven.org/maven2/org/apache/groovy/groovy-jsr223/4.0.9/groovy-jsr223-4.0.9.jar
 ```
 
-To configure a content-based router you need to add the following lines to your connector configuration.
+To configure a content-based router, you need to add the following lines to your connector configuration:
 
 ```json
 {
@@ -372,7 +368,7 @@ To configure a content-based router you need to add the following lines to your 
 }
 ```
 
-The `<routing-expression>` contains the logic for routing of the events. For example, if you want to re-route the events based on the `country` column in user's table, you may use a expression similar to
+The `<routing-expression>` contains the logic for routing of the events. For example, if you want to re-route the events based on the `country` column in user's table, you may use a expression similar to the following:
 
 ```
 value.after != null ? (value.after?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null) : (value.before?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null)"
@@ -380,4 +376,4 @@ value.after != null ? (value.after?.country?.value == '\''UK'\'' ? '\''uk_users'
 
 This expression checks if the value of the row after the operation has the country set to "UK". If *yes* then the expression returns "uk_users." If *no*, it returns *null*, and in case the row after the operation is *null* (for example, in a "delete" operation), the expression also checks for the same condition on row values before the operation. The value that is returned determines which new Kafka Topic will receive the re-routed event. If it returns *null*, the event is sent to the default topic.
 
-For more advanced routing configuration, you can refer to [Debezium's official documentation](https://debezium.io/documentation/reference/stable/transformations/content-based-routing.html) on content-based routing.
+For more advanced routing configuration, refer to the [Debezium documentation](https://debezium.io/documentation/reference/stable/transformations/content-based-routing.html) on content-based routing.
