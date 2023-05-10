@@ -706,7 +706,7 @@ If there is a default value for any column in a the YugabyteDB database schema, 
 
 ### Basic types
 
-Mappings for YugabyteDB basic data types:
+The following table describes mappings for YugabyteDB basic data types.
 
 | YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
 | :------------------ | :------------------------- | :-------------------------- |
@@ -727,8 +727,8 @@ Mappings for YugabyteDB basic data types:
 | INTERVAL [P] | INT64 | `io.debezium.time.MicroDuration` (default) <br/> The approximate number of microseconds for a time interval using the 365.25 / 12.0 formula for days per month average. |
 | INTERVAL [P] | STRING | `io.debezium.time.Interval` <br/> (when `interval.handling.mode` is `string`) <br/> The string representation of the interval value that follows the pattern <br/> P\<years>Y\<months>M\<days>DT\<hours>H\<minutes>M\<seconds>S. <br/> For example, `P1Y2M3DT4H5M6.78S`. |
 | BYTEA | STRING | A hex encoded string. |
-| JSON, JSONB | STRING | `io.debezium.data.Json` <br/><br/> Contains the string representation of a JSON document, array, or scalar. |
-| UUID | STRING | `io.debezium.data.Uuid` <br/><br/> Contains the string representation of a YugabyteDB UUID value. |
+| JSON, JSONB | STRING | `io.debezium.data.Json` <br/> Contains the string representation of a JSON document, array, or scalar. |
+| UUID | STRING | `io.debezium.data.Uuid` <br/> Contains the string representation of a YugabyteDB UUID value. |
 | DATE | INT32 | Number of days since the UNIX epoch (January 1, 1970). |
 | TIME | INT32 | Milliseconds since midnight. |
 | TIMESTAMP | INT64 | Milliseconds since the UNIX epoch (1970-01-01 00:00:00). |
@@ -753,37 +753,37 @@ Other than YugabyteDB's `TIMESTAMPTZ` and `TIMETZ` data types, which contain tim
 
 When the `time.precision.mode` property is set to adaptive (the default), the connector determines the literal type and semantic type based on the column's data type definition. This ensures that events exactly represent the values in the database.
 
-Mappings when `time.precision.mode` is `adaptive`:
+The following table describes mappings when `time.precision.mode` is `adaptive`.
 
 | YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
 | :------------------ | :------------------------- | :-------------------------- |
-| DATE | INT32 | `io.debezium.time.Date` <br/><br/> Represents the number of days since the epoch. |
-| TIME([P]) | INT32 | `io.debezium.time.Time` <br/><br/> Represents the number of milliseconds past midnight, and does not include timezone information. |
-| TIMESTAMP([P]) | INT64 | `io.debezium.time.Timestamp` <br/><br/> Represents the number of milliseconds since the epoch, and does not include timezone information. |
+| DATE | INT32 | `io.debezium.time.Date` <br/> The number of days since the epoch. |
+| TIME([P]) | INT32 | `io.debezium.time.Time` <br/> The number of milliseconds past midnight, and does not include timezone information. |
+| TIMESTAMP([P]) | INT64 | `io.debezium.time.Timestamp` <br/> The number of milliseconds since the epoch, and does not include timezone information. |
 
 #### Adaptive (microseconds) mode
 
 When the `time.precision.mode` configuration property is set to `adaptive_time_microseconds`, the connector determines the literal type and semantic type for temporal types based on the column's data type definition. This ensures that events exactly represent the values in the database, except all `TIME` fields are captured as microseconds.
 
-Mappings when `time.precision.mode` is `adaptive_time_microseconds`:
+The following table describes mappings when `time.precision.mode` is `adaptive_time_microseconds`.
 
 | YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) |
 | :------------------- | :------------------------- | :-------------------------- |
-| DATE | INT32 | `io.debezium.time.Date` <br/><br/> Represents the number of days since the epoch. |
-| TIME([P]) | INT64 | `io.debezium.time.MicroTime` <br/><br/> Represents the time value in microseconds and doesn't include timezone information. YugabyteDB allows precision P to be in the range 0-6 to store up to microsecond precision. |
-| TIMESTAMP([P]) | INT64 | `io.debezium.time.Timestamp` <br/><br/> Represents the number of milliseconds since the UNIX epoch, and doesn't include timezone information. |
+| DATE | INT32 | `io.debezium.time.Date` <br/> The number of days since the epoch. |
+| TIME([P]) | INT64 | `io.debezium.time.MicroTime` <br/> The time value in microseconds and doesn't include timezone information. YugabyteDB allows precision P to be in the range 0-6 to store up to microsecond precision. |
+| TIMESTAMP([P]) | INT64 | `io.debezium.time.Timestamp` <br/> The number of milliseconds since the UNIX epoch, and doesn't include timezone information. |
 
 #### Connect mode
 
 When the `time.precision.mode` configuration property is set to `connect`, the connector uses Kafka Connect logical types. This may be beneficial when consumers can handle only the built-in Kafka Connect logical types and are unable to handle variable-precision time values. However, because YugabyteDB supports microsecond precision, the events generated by a connector with the `connect` time precision mode **results in a loss of precision** when the database column has a fractional second precision value that is greater than 3.
 
-Mappings when `time.precision.mode` is `connect`:
+The following table describes mappings when `time.precision.mode` is `connect`.
 
 | YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
 | :------------------ | :------------------------- | :-------------------------- |
-| DATE| INT32 | `org.apache.kafka.connect.data.Date` <br/><br/> The number of days since the UNIX epoch. |
-| TIME([P]) | INT64 | `org.apache.kafka.connect.data.Time` <br/><br/> The number of milliseconds since midnight, and doesn't include timezone information. YugabyteDB allows P to be in the range 0-6 to store up to microsecond precision, though this mode results in a loss of precision when P is greater than 3. |
-| TIMESTAMP([P]) | INT64 | `org.apache.kafka.connect.data.Timestamp` <br/><br/> The number of milliseconds since the UNIX epoch, and doesn't include timezone information. YugabyteDB allows P to be in the range 0-6 to store up to microsecond precision, though this mode results in a loss of precision when P is greater than 3. |
+| DATE| INT32 | `org.apache.kafka.connect.data.Date` <br/> The number of days since the UNIX epoch. |
+| TIME([P]) | INT64 | `org.apache.kafka.connect.data.Time` <br/> The number of milliseconds since midnight, and doesn't include timezone information. YugabyteDB allows P to be in the range 0-6 to store up to microsecond precision, though this mode results in a loss of precision when P is greater than 3. |
+| TIMESTAMP([P]) | INT64 | `org.apache.kafka.connect.data.Timestamp` <br/> The number of milliseconds since the UNIX epoch, and doesn't include timezone information. YugabyteDB allows P to be in the range 0-6 to store up to microsecond precision, though this mode results in a loss of precision when P is greater than 3. |
 
 ### TIMESTAMP type
 
@@ -803,9 +803,9 @@ YugabyteDB doesn't currently support the `decimal.handling.mode` property value 
 
 {{< /note >}}
 
-When the `decimal.handling.mode` property is set to `double`, the connector represents all `DECIMAL`, `NUMERIC` and `MONEY` values as Java double values and encodes them as shown in the following table.
+When the `decimal.handling.mode` property is set to `double`, the connector represents all `DECIMAL`, `NUMERIC`, and `MONEY` values as Java double values and encodes them as shown in the following table.
 
-Mappings when `decimal.handling.mode` is `double`:
+The following table describes mappings when `decimal.handling.mode` is `double`.
 
 | YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) |
 | :------------------- | :------------------------- | :-------------------------- |
@@ -815,7 +815,7 @@ Mappings when `decimal.handling.mode` is `double`:
 
 The other possible value for `decimal.handling.mode` is `string`. In this case, the connector represents `DECIMAL`, `NUMERIC`, and `MONEY` values as their formatted string representation, and encodes them as shown in the following table.
 
-Mappings when `decimal.handling.mode` is `string`:
+The following table describes mappings when `decimal.handling.mode` is `string`.
 
 | YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) |
 | :------------------- | :------------------------- | :-------------------------- |
@@ -827,7 +827,7 @@ Mappings when `decimal.handling.mode` is `string`:
 
 YugabyteDB has data types that can store IPv4, IPv6, and MAC addresses. You should use these types instead of plain text types to store network addresses, as network address types offer input error checking and specialized operators and functions.
 
-Mappings for network address types:
+The following table describes mappings for network address types.
 
 | YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) |
 | :------------------- | :------------------------- | :-------------------------- |
@@ -849,7 +849,7 @@ Mappings for network address types:
 | CHARACTER [ (N) ] | 'five5' | "five5" | |
 | CHARACTER VARYING [ (n) ] | 'sampletext' | "sampletext" | |
 | CIDR | '10.1.0.0/16' | "10.1.0.0/16" | |
-| DATE | '2021-11-25' | 18956 | The value in the Kafka topic is the number of days since the Unix epoch (1970-01-01) |
+| DATE | '2021-11-25' | 18956 | The value in the Kafka topic is the number of days since the Unix epoch (1970-01-01). |
 | DOUBLE PRECISION | 567.89 | 567.89 | |
 | INET | '192.166.1.1' | "192.166.1.1" | |
 | INTEGER | 1 | 1 | |
@@ -872,7 +872,7 @@ Mappings for network address types:
 | SERIAL | Cannot insert explicitly | | |
 | TEXT | 'text to verify behaviour' | "text to verify behaviour" | |
 | TIME [ (P) ] [ WITHOUT TIME ZONE ] | '12:47:32' | 46052000 | The output value is the number of milliseconds since midnight. |
-| TIME [ (p) ] WITH TIME ZONE | '12:00:00+05:30' | "06:30:00Z" | The output value is the equivalent of the inserted time in UTC. The Z stands for Zero Timezone |
+| TIME [ (p) ] WITH TIME ZONE | '12:00:00+05:30' | "06:30:00Z" | The output value is the equivalent of the inserted time in UTC. The Z stands for Zero Timezone. |
 | TIMESTAMP [ (p) ] [ WITHOUT TIME ZONE ] | '2021-11-25 12:00:00' | 1637841600000 | The output value is the number of milliseconds since the UNIX epoch (January 1, 1970, at midnight). |
 | TIMESTAMP [ (p) ] WITH TIME ZONE | '2021-11-25 12:00:00+05:30' | "2021-11-25T06:30:00Z" | This output value is the timestamp value in UTC wherein the Z stands for Zero Timezone and T acts as a separator between the date and time. This format is defined by the sensible practical standard ISO 8601. |
 | UUID | 'ffffffff-ffff-ffff-ffff-ffffffffffff' | "ffffffff-ffff-ffff-ffff-ffffffffffff" | |
