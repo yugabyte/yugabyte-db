@@ -556,275 +556,320 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
 1. Enable the `yugabyte` user to run the following commands as sudo or root:
 
-   ```sh
-   yugabyte ALL=(ALL:ALL) NOPASSWD:
-   /bin/systemctl start yb-master, \
-   /bin/systemctl stop yb-master, \
-   /bin/systemctl restart yb-master, \
-   /bin/systemctl enable yb-master, \
-   /bin/systemctl disable yb-master, \
-   /bin/systemctl start yb-tserver, \
-   /bin/systemctl stop yb-tserver, \
-   /bin/systemctl restart yb-tserver, \
-   /bin/systemctl enable yb-tserver, \
-   /bin/systemctl disable yb-tserver, \
-   /bin/systemctl start yb-bind_check.service, \
-   /bin/systemctl stop yb-bind_check.service, \
-   /bin/systemctl restart yb-bind_check.service, \
-   /bin/systemctl enable yb-bind_check.service, \
-   /bin/systemctl disable yb-bind_check.service, \
-   /bin/systemctl start yb-zip_purge_yb_logs.timer, \
-   /bin/systemctl stop yb-zip_purge_yb_logs.timer, \
-   /bin/systemctl restart yb-zip_purge_yb_logs.timer, \
-   /bin/systemctl enable yb-zip_purge_yb_logs.timer, \
-   /bin/systemctl disable yb-zip_purge_yb_logs.timer, \
-   /bin/systemctl start yb-clean_cores.timer, \
-   /bin/systemctl stop yb-clean_cores.timer, \
-   /bin/systemctl restart yb-clean_cores.timer, \
-   /bin/systemctl enable yb-clean_cores.timer, \
-   /bin/systemctl disable yb-clean_cores.timer, \
-   /bin/systemctl start yb-collect_metrics.timer, \
-   /bin/systemctl stop yb-collect_metrics.timer, \
-   /bin/systemctl restart yb-collect_metrics.timer, \
-   /bin/systemctl enable yb-collect_metrics.timer, \
-   /bin/systemctl disable yb-collect_metrics.timer, \
-   /bin/systemctl start yb-zip_purge_yb_logs, \
-   /bin/systemctl stop yb-zip_purge_yb_logs, \
-   /bin/systemctl restart yb-zip_purge_yb_logs, \
-   /bin/systemctl enable yb-zip_purge_yb_logs, \
-   /bin/systemctl disable yb-zip_purge_yb_logs, \
-   /bin/systemctl start yb-clean_cores, \
-   /bin/systemctl stop yb-clean_cores, \
-   /bin/systemctl restart yb-clean_cores, \
-   /bin/systemctl enable yb-clean_cores, \
-   /bin/systemctl disable yb-clean_cores, \
-   /bin/systemctl start yb-collect_metrics, \
-   /bin/systemctl stop yb-collect_metrics, \
-   /bin/systemctl restart yb-collect_metrics, \
-   /bin/systemctl enable yb-collect_metrics, \
-   /bin/systemctl disable yb-collect_metrics, \
-   /bin/systemctl daemon-reload
-   ```
+    ```sh
+    yugabyte ALL=(ALL:ALL) NOPASSWD:
+    /bin/systemctl start yb-master, \
+    /bin/systemctl stop yb-master, \
+    /bin/systemctl restart yb-master, \
+    /bin/systemctl enable yb-master, \
+    /bin/systemctl disable yb-master, \
+    /bin/systemctl start yb-tserver, \
+    /bin/systemctl stop yb-tserver, \
+    /bin/systemctl restart yb-tserver, \
+    /bin/systemctl enable yb-tserver, \
+    /bin/systemctl disable yb-tserver, \
+    /bin/systemctl start yb-controller, \
+    /bin/systemctl stop yb-controller, \
+    /bin/systemctl restart yb-controller, \
+    /bin/systemctl enable yb-controller, \
+    /bin/systemctl disable yb-controller, \
+    /bin/systemctl start yb-bind_check.service, \
+    /bin/systemctl stop yb-bind_check.service, \
+    /bin/systemctl restart yb-bind_check.service, \
+    /bin/systemctl enable yb-bind_check.service, \
+    /bin/systemctl disable yb-bind_check.service, \
+    /bin/systemctl start yb-zip_purge_yb_logs.timer, \
+    /bin/systemctl stop yb-zip_purge_yb_logs.timer, \
+    /bin/systemctl restart yb-zip_purge_yb_logs.timer, \
+    /bin/systemctl enable yb-zip_purge_yb_logs.timer, \
+    /bin/systemctl disable yb-zip_purge_yb_logs.timer, \
+    /bin/systemctl start yb-clean_cores.timer, \
+    /bin/systemctl stop yb-clean_cores.timer, \
+    /bin/systemctl restart yb-clean_cores.timer, \
+    /bin/systemctl enable yb-clean_cores.timer, \
+    /bin/systemctl disable yb-clean_cores.timer, \
+    /bin/systemctl start yb-collect_metrics.timer, \
+    /bin/systemctl stop yb-collect_metrics.timer, \
+    /bin/systemctl restart yb-collect_metrics.timer, \
+    /bin/systemctl enable yb-collect_metrics.timer, \
+    /bin/systemctl disable yb-collect_metrics.timer, \
+    /bin/systemctl start yb-zip_purge_yb_logs, \
+    /bin/systemctl stop yb-zip_purge_yb_logs, \
+    /bin/systemctl restart yb-zip_purge_yb_logs, \
+    /bin/systemctl enable yb-zip_purge_yb_logs, \
+    /bin/systemctl disable yb-zip_purge_yb_logs, \
+    /bin/systemctl start yb-clean_cores, \
+    /bin/systemctl stop yb-clean_cores, \
+    /bin/systemctl restart yb-clean_cores, \
+    /bin/systemctl enable yb-clean_cores, \
+    /bin/systemctl disable yb-clean_cores, \
+    /bin/systemctl start yb-collect_metrics, \
+    /bin/systemctl stop yb-collect_metrics, \
+    /bin/systemctl restart yb-collect_metrics, \
+    /bin/systemctl enable yb-collect_metrics, \
+    /bin/systemctl disable yb-collect_metrics, \
+    /bin/systemctl daemon-reload
+    ```
 
 2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):
 
-   `yb-master.service`
+    `yb-master.service`
 
-   ```properties
-   [Unit]
-   Description=Yugabyte master service
-   Requires=network-online.target
-   After=network.target network-online.target multi-user.target
-   StartLimitInterval=100
-   StartLimitBurst=10
+    ```properties
+    [Unit]
+    Description=Yugabyte master service
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    StartLimitInterval=100
+    StartLimitBurst=10
 
-   [Path]
-   PathExists=/home/yugabyte/master/bin/yb-master
-   PathExists=/home/yugabyte/master/conf/server.conf
+    [Path]
+    PathExists=/home/yugabyte/master/bin/yb-master
+    PathExists=/home/yugabyte/master/conf/server.conf
 
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   # Start
-   ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
-   Restart=on-failure
-   RestartSec=5
-   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
-   KillMode=process
-   TimeoutStopFailureMode=terminate
-   KillSignal=SIGTERM
-   TimeoutStopSec=10
-   FinalKillSignal=SIGKILL
-   # Logs
-   StandardOutput=syslog
-   StandardError=syslog
-   # ulimit
-   LimitCORE=infinity
-   LimitNOFILE=1048576
-   LimitNPROC=12000
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    # Start
+    ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
+    Restart=on-failure
+    RestartSec=5
+    # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+    KillMode=process
+    TimeoutStopFailureMode=terminate
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    FinalKillSignal=SIGKILL
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+    # ulimit
+    LimitCORE=infinity
+    LimitNOFILE=1048576
+    LimitNPROC=12000
 
-   [Install]
-   WantedBy=default.target
-   ```
+    [Install]
+    WantedBy=default.target
+    ```
 
-   `yb-tserver.service`
+    `yb-tserver.service`
 
-   ```properties
-   [Unit]
-   Description=Yugabyte tserver service
-   Requires=network-online.target
-   After=network.target network-online.target multi-user.target
-   StartLimitInterval=100
-   StartLimitBurst=10
+    ```properties
+    [Unit]
+    Description=Yugabyte tserver service
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    StartLimitInterval=100
+    StartLimitBurst=10
 
-   [Path]
-   PathExists=/home/yugabyte/tserver/bin/yb-tserver
-   PathExists=/home/yugabyte/tserver/conf/server.conf
+    [Path]
+    PathExists=/home/yugabyte/tserver/bin/yb-tserver
+    PathExists=/home/yugabyte/tserver/conf/server.conf
 
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   # Start
-   ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
-   Restart=on-failure
-   RestartSec=5
-   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
-   KillMode=process
-   TimeoutStopFailureMode=terminate
-   KillSignal=SIGTERM
-   TimeoutStopSec=10
-   FinalKillSignal=SIGKILL
-   # Logs
-   StandardOutput=syslog
-   StandardError=syslog
-   # ulimit
-   LimitCORE=infinity
-   LimitNOFILE=1048576
-   LimitNPROC=12000
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    # Start
+    ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
+    Restart=on-failure
+    RestartSec=5
+    # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+    KillMode=process
+    TimeoutStopFailureMode=terminate
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    FinalKillSignal=SIGKILL
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+    # ulimit
+    LimitCORE=infinity
+    LimitNOFILE=1048576
+    LimitNPROC=12000
 
-   [Install]
-   WantedBy=default.target
-   ```
+    [Install]
+    WantedBy=default.target
+    ```
 
-   `yb-zip_purge_yb_logs.service`
+    `yb-zip_purge_yb_logs.service`
 
-   ```properties
-   [Unit]
-   Description=Yugabyte logs
-   Wants=yb-zip_purge_yb_logs.timer
+    ```properties
+    [Unit]
+    Description=Yugabyte logs
+    Wants=yb-zip_purge_yb_logs.timer
 
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    Type=oneshot
+    WorkingDirectory=/home/yugabyte/bin
+    ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
+    [Install]
+    WantedBy=multi-user.target
+    ```
 
-   `yb-zip_purge_yb_logs.timer`
+    `yb-zip_purge_yb_logs.timer`
 
-   ```properties
-   [Unit]
-   Description=Yugabyte logs
-   Requires=yb-zip_purge_yb_logs.service
+    ```properties
+    [Unit]
+    Description=Yugabyte logs
+    Requires=yb-zip_purge_yb_logs.service
 
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-zip_purge_yb_logs.service
-   # Run hourly at minute 0 (beginning) of every hour
-   OnCalendar=00/1:00
+    [Timer]
+    User=yugabyte
+    Group=yugabyte
+    Unit=yb-zip_purge_yb_logs.service
+    # Run hourly at minute 0 (beginning) of every hour
+    OnCalendar=00/1:00
 
-   [Install]
-   WantedBy=timers.target
-   ```
+    [Install]
+    WantedBy=timers.target
+    ```
 
-   `yb-clean_cores.service`
+    `yb-clean_cores.service`
 
-   ```properties
-   [Unit]
-   Description=Yugabyte clean cores
-   Wants=yb-clean_cores.timer
+    ```properties
+    [Unit]
+    Description=Yugabyte clean cores
+    Wants=yb-clean_cores.timer
 
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    Type=oneshot
+    WorkingDirectory=/home/yugabyte/bin
+    ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
+    [Install]
+    WantedBy=multi-user.target
+    ```
 
-   `yb-clean_cores.timer`
+    `yb-controller.service`
 
-   ```properties
-   [Unit]
-   Description=Yugabyte clean cores
-   Requires=yb-clean_cores.service
+    ```properties
+    [Unit]
+    Description=Yugabyte Controller
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    StartLimitInterval=100
+    StartLimitBurst=10
 
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-clean_cores.service
-   # Run every 10 minutes offset by 5 (5, 15, 25...)
-   OnCalendar=*:0/10:30
+    [Path]
+    PathExists=/home/yugabyte/controller/bin/yb-controller-server
+    PathExists=/home/yugabyte/controller/conf/server.conf
 
-   [Install]
-   WantedBy=timers.target
-   ```
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    # Start
+    ExecStart=/home/yugabyte/controller/bin/yb-controller-server \
+        --flagfile /home/yugabyte/controller/conf/server.conf
+    Restart=always
+    RestartSec=5
+    # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+    KillMode=control-group
+    TimeoutStopFailureMode=terminate
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    FinalKillSignal=SIGKILL
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+    # ulimit
+    LimitCORE=infinity
+    LimitNOFILE=1048576
+    LimitNPROC=12000
 
-   `yb-collect_metrics.service`
+    [Install]
+    WantedBy=default.target
+    ```
 
-   ```properties
-   [Unit]
-   Description=Yugabyte collect metrics
-   Wants=yb-collect_metrics.timer
+    `yb-clean_cores.timer`
 
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
+    ```properties
+    [Unit]
+    Description=Yugabyte clean cores
+    Requires=yb-clean_cores.service
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
+    [Timer]
+    User=yugabyte
+    Group=yugabyte
+    Unit=yb-clean_cores.service
+    # Run every 10 minutes offset by 5 (5, 15, 25...)
+    OnCalendar=*:0/10:30
 
-   `yb-collect_metrics.timer`
+    [Install]
+    WantedBy=timers.target
+    ```
 
-   ```properties
-   [Unit]
-   Description=Yugabyte collect metrics
-   Requires=yb-collect_metrics.service
+    `yb-collect_metrics.service`
 
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-collect_metrics.service
-   # Run every 1 minute
-   OnCalendar=*:0/1:0
+    ```properties
+    [Unit]
+    Description=Yugabyte collect metrics
+    Wants=yb-collect_metrics.timer
 
-   [Install]
-   WantedBy=timers.target
-   ```
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    Type=oneshot
+    WorkingDirectory=/home/yugabyte/bin
+    ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
 
-   `yb-bind_check.service`
+    [Install]
+    WantedBy=multi-user.target
+    ```
 
-   ```properties
-   [Unit]
-   Description=Yugabyte IP bind check
-   Requires=network-online.target
-   After=network.target network-online.target multi-user.target
-   Before=yb-controller.service yb-tserver.service yb-master.service yb-collect_metrics.timer
-   StartLimitInterval=100
-   StartLimitBurst=10
+    `yb-collect_metrics.timer`
 
-   [Path]
-   PathExists=/home/yugabyte/controller/bin/yb-controller-server
-   PathExists=/home/yugabyte/controller/conf/server.conf
+    ```properties
+    [Unit]
+    Description=Yugabyte collect metrics
+    Requires=yb-collect_metrics.service
 
-   [Service]
-   # Start
-   ExecStart=/home/yugabyte/controller/bin/yb-controller-server \
-       --flagfile /home/yugabyte/controller/conf/server.conf \
-       --only_bind --logtostderr
-   Type=oneshot
-   KillMode=control-group
-   KillSignal=SIGTERM
-   TimeoutStopSec=10
-   # Logs
-   StandardOutput=syslog
-   StandardError=syslog
+    [Timer]
+    User=yugabyte
+    Group=yugabyte
+    Unit=yb-collect_metrics.service
+    # Run every 1 minute
+    OnCalendar=*:0/1:0
 
-   [Install]
-   WantedBy=default.target
-   ```
+    [Install]
+    WantedBy=timers.target
+    ```
+
+    `yb-bind_check.service`
+
+    ```properties
+    [Unit]
+    Description=Yugabyte IP bind check
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    Before=yb-controller.service yb-tserver.service yb-master.service yb-collect_metrics.timer
+    StartLimitInterval=100
+    StartLimitBurst=10
+
+    [Path]
+    PathExists=/home/yugabyte/controller/bin/yb-controller-server
+    PathExists=/home/yugabyte/controller/conf/server.conf
+
+    [Service]
+    # Start
+    ExecStart=/home/yugabyte/controller/bin/yb-controller-server \
+        --flagfile /home/yugabyte/controller/conf/server.conf \
+        --only_bind --logtostderr
+    Type=oneshot
+    KillMode=control-group
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+
+    [Install]
+    WantedBy=default.target
+    ```
 
 ### Use node agents
 
