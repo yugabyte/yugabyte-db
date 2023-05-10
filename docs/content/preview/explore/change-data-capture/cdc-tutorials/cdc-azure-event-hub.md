@@ -104,7 +104,7 @@ Now that you have created Event Hubs in Azure, you need to create a YugabyteDB C
     }'
     ```
 
-    Replace the StreamID and database details as needed. Don't forget to also replace the $IP variable with your YugabyteDB address or DNS Name.
+    Replace the StreamID and database details as needed. Additionally, replace the $IP variable with your YugabyteDB address or DNS Name.
 
 ### Step 3: Configure the YugabyteDB CDC Connector
 
