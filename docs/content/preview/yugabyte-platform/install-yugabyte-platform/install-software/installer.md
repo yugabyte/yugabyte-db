@@ -9,6 +9,8 @@ menu:
     parent: install-yugabyte-platform
     identifier: install-software-4-installer
     weight: 88
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -50,7 +52,7 @@ Use YBA Installer to install YBA on a host. YBA Installer performs preflight che
 ## Prerequisites
 
 - Ensure your machine satisfies the [minimum requirements](../../prerequisites/installer/).
-- Unless otherwise specified, you can use a user account for executing the steps described in this document. Using an admin account should work as well.
+- For production deployments, root privileges (or equivalent sudo access) are required for some YBA Installer commands. (You can use YBA Installer without root access, but this is not recommended for production; refer to [Non-root installation](#non-root-installation).)
 
 ## Download and configure YBA Installer
 
@@ -90,15 +92,15 @@ No config file found at '/opt/yba-ctl/yba-ctl.yml', creating it with default val
 Do you want to proceed with the default config? [yes/NO]:
 ```
 
-If you respond with `y` or `yes`, the operation continues and the configuration file is created using default values at the specified location.
+Respond with `y` or `yes` to create the configuration file using default configuration settings and continue the operation.
 
-If you respond with `n` or `no`, the configuration file is still created, but the command exits.
+Respond with `n` or `no` to create the configuration file using default configuration settings and exit the command.
 
 To change the default values, edit the file, and then re-run the `yba-ctl` command.
 
 #### YBA Installer configuration options
 
-You can set the following configuration options.
+You can set the following YBA Installer configuration options.
 
 | Option | Description |
 | :--- | :--- |
@@ -107,9 +109,9 @@ You can set the following configuration options.
 | `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. |
 | `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. |
 
-#### YugabyteDB Anywhere configuration options
+#### YBA configuration options
 
-You can configure the following YBA options.
+You can configure the following YBA configuration options.
 
 | Option | Description |
 | :--- | :--- |
@@ -183,7 +185,7 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 | Username and password | Used to authenticate with PostgreSQL.
 | Pg_dump_path<br/>pg_restore_path | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install.
 
-## Install YugabyteDB Anywhere using YBA Installer
+## Install YBA using YBA Installer
 
 ### Provide a license
 
@@ -255,7 +257,7 @@ INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 
 The `install` command runs all [preflight checks](#run-preflight-checks) first, and then proceeds to do a full install, and then waits for YBA to start. After the install succeeds, you can immediately start using YBA.
 
-## Manage a YugabyteDB Anywhere installation
+## Manage a YBA installation
 
 ### Reconfigure
 
@@ -328,7 +330,9 @@ $ sudo yba-ctl restoreBackup ~/test_backup/backup_23-04-25-16-64.tgz
 
 ### Clean (uninstall)
 
-To uninstall a YBA instance, YBA Installer also provides a clean functionality with two modes. By default, `clean` removes the YugabyteDB Anywhere software, but keeps any data such as PostgreSQL or Prometheus information. You can also run `clean` with the `–all` flag to delete all data.
+To uninstall a YBA instance, YBA Installer also provides a `clean` command.
+
+By default, `clean` removes the YugabyteDB Anywhere software, but keeps any data such as PostgreSQL or Prometheus information:
 
 ```sh
 $ sudo yba-ctl clean
@@ -340,6 +344,8 @@ INFO[2023-04-24T23:58:14Z] Uninstalling prometheus
 INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 ```
 
+To delete all data, run `clean` with the `–all` flag as follows:
+
 ```sh
 $ sudo yba-ctl clean -all
 ```
@@ -350,12 +356,6 @@ INFO[2023-04-24T23:58:13Z] Uninstalling yb-platform
 INFO[2023-04-24T23:58:14Z] Uninstalling prometheus
 INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 ```
-
-## Migrate a YugabyteDB Anywhere installation
-
-You can migrate a YugabyteDB Anywhere installation from a Replicated-based deployment to a YBA Installer deployment.
-
-### Migrate from Replicated to YBA Installer
 
 ## Running yba-ctl commands
 
