@@ -208,4 +208,3 @@ To do this, follow the instructions in the Microsoft documentation:
 - [Synapse SQL documentation for external tables](https://learn.microsoft.com/en-us/azure/synapse-analytics/sql/develop-tables-external-tables?tabs=hadoop#external-tables-in-dedicated-sql-pool-and-serverless-sql-pool); or
 - [Query captured data in Parquet format with Azure Synapse Analytics Serverless SQL](https://learn.microsoft.com/en-us/azure/stream-analytics/event-hubs-parquet-capture-tutorial#query-using-azure-synapse-serverless-sql)
 
-And that's it! With these six steps, you can connect the YugabyteDB CDC Connector to Azure Event Hubs and ingest data into Azure Synapse Analytics for analysis.
