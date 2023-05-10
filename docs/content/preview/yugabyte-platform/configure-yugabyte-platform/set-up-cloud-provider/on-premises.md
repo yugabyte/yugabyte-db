@@ -107,11 +107,11 @@ If the SSH user requires a password for sudo access or the SSH user does not hav
 
 In the **SSH Port** field, provide the port number of SSH client connections.
 
-Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances.
-
-Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`.
+Use the **SSH Private Key Content** field to upload the private key PEM file available to the SSH user for gaining access via SSH into your instances.
 
 ### Advanced
+
+Disable the **DB Nodes have public internet access** option if you want the installation to run in an air-gapped mode without expecting any internet access.
 
 Enable the **Manually Provision Nodes** field if you choose to manually set up your database nodes. Otherwise, YugabyteDB Anywhere will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
 
@@ -133,8 +133,6 @@ Use the **Node Exporter Port** field to specify the port number for the node exp
 
 - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
 - Select **Don't set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
-
-Enable the **Air Gap Install** field if you want the installation to run in an air-gapped mode without expecting any internet access.
 
 ### Configure hardware for YugabyteDB nodes
 
@@ -870,7 +868,7 @@ You can install a node agent as follows:
            Enter the option number: 1
            • Completed Node Agent Configuration
            • Node Agent Registration Successful
-   You can install a systemd service on linux machines by running node-agent-installer.sh -t install-service (Requires sudo access).
+   You can install a systemd service on linux machines by running sudo node-agent-installer.sh -c install-service --user yugabyte (Requires sudo access).
    ```
 
 1. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:

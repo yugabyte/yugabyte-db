@@ -241,5 +241,3 @@ If you are not already subscribed and have not accepted the **Terms and Conditio
 If that is the case, click **Accept Terms** and wait for the page to switch to a successful state. After the operation completes, or if you previously subscribed and accepted the terms, you should see a message similar to the following:
 
 ![Marketplace success](/images/ee/aws-setup/marketplace-success-almalinux.png)
-
-Now you are ready to create a YugabyteDB universe on AWS.

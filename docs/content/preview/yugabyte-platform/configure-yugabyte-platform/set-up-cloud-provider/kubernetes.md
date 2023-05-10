@@ -247,11 +247,15 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Optionally, use the **Storage Classes** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and takes into account [storage class considerations](../../../install-yugabyte-platform/prepare-environment/kubernetes/#configure-storage-class).
 
-1. In the **Kube Domain** field, provide the DNS domain name used in the Kubernetes cluster.
+1. Optionally, use the **Kube Pod Address Template** field to enter the pod address template.
+
+1. Optionally, in the **Kube Domain** field, provide the DNS domain name used in the Kubernetes cluster.
 
 1. Use the **Kube Namespace** field to specify the namespace. If the provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
 1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YugabyteDB Anywhere uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../../deploy/kubernetes/single-zone/oss/helm-chart/).
+
+1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer type and enter the issuer name. For more information, refer to [Enable encryption in transit](../../../security/enable-encryption-in-transit/#kubernetes-cert-manager).
 
 If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
 
