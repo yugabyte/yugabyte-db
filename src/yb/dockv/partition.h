@@ -195,6 +195,15 @@ class PartitionSchema {
     std::vector<RangeSplit> splits;
 
     friend bool operator==(const RangeSchema&, const RangeSchema&) = default;
+
+    size_t DynamicMemoryUsage() const {
+      size_t size = sizeof(*this);
+      for (auto& split : splits) {
+        size += split.column_bounds.size();
+      }
+      size += (column_ids.size() * sizeof(ColumnId));
+      return size;
+    }
   };
 
   static constexpr int32_t kPartitionKeySize = 2;
@@ -373,6 +382,17 @@ class PartitionSchema {
   static boost::optional<std::pair<Partition, Partition>> SplitHashPartitionForStatusTablet(
       const Partition& partition);
 
+  size_t DynamicMemoryUsage() const {
+    size_t size = sizeof(*this) + range_schema_.DynamicMemoryUsage();
+    for (auto& hash_bucket_schema : hash_bucket_schemas_) {
+      size += hash_bucket_schema.DynamicMemoryUsage();
+    }
+    if (hash_schema_) {
+      size += sizeof(hash_schema_);
+    }
+    return size;
+  }
+
  private:
 
   struct HashBucketSchema {
@@ -381,6 +401,10 @@ class PartitionSchema {
     uint32_t seed;
 
     friend bool operator==(const HashBucketSchema&, const HashBucketSchema&) = default;
+
+    size_t DynamicMemoryUsage() const {
+      return sizeof(*this) + (column_ids.size() * sizeof(ColumnId));
+    }
   };
 
   // Convertion between PB and partition schema.
