@@ -95,7 +95,6 @@ export const ReplicationFactor = ({
             name={REPLICATION_FACTOR_FIELD}
             fullWidth
             type="number"
-            disabled={disabled}
             inputProps={{
               'data-testid': 'ReplicationFactor-Input',
               min: ASYNC_RF_MIN,
