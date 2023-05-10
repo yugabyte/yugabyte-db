@@ -1,7 +1,7 @@
 ---
 title: Install YugabyteDB Anywhere
 headerTitle: Install YugabyteDB Anywhere - Replicated
-linkTitle: Install software
+linkTitle: Install YBA software
 description: Install the YugabyteDB Anywhere software.
 aliases:
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
