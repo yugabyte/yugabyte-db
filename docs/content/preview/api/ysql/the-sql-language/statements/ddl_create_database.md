@@ -83,11 +83,9 @@ Specify how many concurrent connections can be made to this database. Default of
 `true` — This database can be cloned by any user with `CREATEDB` privileges.
 Specify `false` to only superusers or the owner of the database can clone it.
 
-### COLOCATED
+### COLOCATION
 
-Colocated table support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
-Specify `true` if all tables for this database should be colocated on a single tablet. See [colocated tables architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) for details on when colocated tables are useful.
+Specify `true` if tables for this database should be colocated on a single tablet by default. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for details on when colocated tables are beneficial.
 
 Default is `false` and every table in the database will have its own set of tablets.
 
@@ -96,10 +94,10 @@ Default is `false` and every table in the database will have its own set of tabl
 ### Create a colocated database
 
 ```plpgsql
-yugabyte=# CREATE DATABASE company WITH COLOCATED = true;
+yugabyte=# CREATE DATABASE company WITH COLOCATION = true;
 ```
 
-In this example, all tables in the database `company` will be colocated on a single tablet.
+In this example, tables in the database `company` will be colocated on a single tablet by default.
 
 ## See also
 

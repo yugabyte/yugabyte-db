@@ -42,11 +42,11 @@ The following example shows a document stored in DocDB:
 
 ```text
 DocumentKey1 = {
-	SubKey1 = {
-		SubKey2 = Value1
-		SubKey3 = Value2
-	},
-	SubKey4 = Value3
+  SubKey1 = {
+    SubKey2 = Value1
+    SubKey3 = Value2
+  },
+  SubKey4 = Value3
 }
 ```
 
@@ -65,8 +65,7 @@ DocumentKey1, SubKey1, SubKey3, T10 -> Value2
 DocumentKey1, SubKey4, T10 -> Value3
 ```
 
-Deletions of documents and subdocuments are performed by writing a single Tombstone marker at the
-corresponding value. During compaction, overwritten or deleted values are cleaned up to reclaim space.
+Deletions of documents and subdocuments are performed by writing a single Tombstone marker at the corresponding value. During compaction, overwritten or deleted values are cleaned up to reclaim space.
 
 ## Mapping SQL rows to DocDB
 
@@ -80,7 +79,7 @@ The document key contains the full primary key with column values organized in t
 2. The hash columns are stored.
 3. The clustering (range) columns are stored.
 
-Each data type supported in YSQL or YCQL is represented by a unique byte. The type prefix is also present in the primary key’s hash or range components.
+Each data type supported in YSQL or YCQL is represented by a unique byte. The type prefix is also present in the primary key hash or range components.
 
 ### Non-primary key columns
 
@@ -131,7 +130,7 @@ Testing the packed row feature with different configurations showed significant 
 The packed row feature works for the YSQL API using the YSQL-specific GFlags with most cross features like backup and restore, schema changes, and so on, subject to certain known limitations which are currently under development:
 
 * [#15740](https://github.com/yugabyte/yugabyte-db/issues/15740) Integration with CDC and schema changes (Beta) - There are some known limitations with schema changes/DDLs and CDC and Packed Row feature.
-* [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143) Colocated and xCluster (Beta) - There are some limitations around propagation of schema changes for colocated tables in xCluster in the packed row format that are being worked on.
+* [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143) Colocated and xCluster - There are some limitations around propagation of schema changes for colocated tables in xCluster in the packed row format that are being worked on.
 * [#14369](https://github.com/yugabyte/yugabyte-db/issues/14369) Packed row support for YCQL is limited and is still being hardened.
 
 ## Data expiration in YCQL
@@ -188,6 +187,7 @@ The entries in DocDB would look similar to the following:
 (hash1, 'user1', 10), msg_props_column_id, 'subject', T1 -> 'hello'
 </code>
 </pre>
+
 ### Update entire row
 
 The following example updates an entire row:
@@ -265,8 +265,8 @@ T5: DELETE FROM msgs    // Delete entire row corresponding to msg_id 10
 
 The following are the two types of TTL used in YCQL:
 
-- Table-level TTL: YCQL allows the TTL property to be specified at the table level. In this case, TTL is not stored on a per key-value pair basis in RocksDB; instead, TTL is implicitly enforced on reads and during compactions to reclaim space.
-- Row- and column-level TTL: YCQL allows the TTL property to be specified at the level of each `INSERT` and `UPDATE` operation. In such cases, TTL is stored as part of the RocksDB value.
+* Table-level TTL: YCQL allows the TTL property to be specified at the table level. In this case, TTL is not stored on a per key-value pair basis in RocksDB; instead, TTL is implicitly enforced on reads and during compactions to reclaim space.
+* Row- and column-level TTL: YCQL allows the TTL property to be specified at the level of each `INSERT` and `UPDATE` operation. In such cases, TTL is stored as part of the RocksDB value.
 
 The following example demonstrates use of the row-level TTL:
 
