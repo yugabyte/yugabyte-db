@@ -558,14 +558,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Retention duration for a dead node agent before deletion",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> maxParallelNodeAgentUpgrades =
-      new ConfKeyInfo<>(
-          "yb.node_agent.max_parallel_upgrades",
-          ScopeType.GLOBAL,
-          "Max Parallel Node Agent Upgrades",
-          "Maximum number of parallel node agent upgrades",
-          ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> backwardCompatibleDate =
       new ConfKeyInfo<>(
           "yb.api.backward_compatible_date",

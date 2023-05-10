@@ -3452,6 +3452,24 @@
       "required" : [ "dataType", "displayName", "helpTxt", "key", "scope", "tags" ],
       "type" : "object"
     },
+    "Config" : {
+      "properties" : {
+        "certPath" : {
+          "type" : "string"
+        },
+        "offloadable" : {
+          "type" : "boolean"
+        },
+        "serverCert" : {
+          "type" : "string"
+        },
+        "serverKey" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "certPath", "offloadable", "serverCert", "serverKey" ],
+      "type" : "object"
+    },
     "ConfigEntry" : {
       "description" : "Configuration entry",
       "properties" : {
@@ -6040,6 +6058,162 @@
         }
       },
       "required" : [ "nodeAction" ],
+      "type" : "object"
+    },
+    "NodeAgent" : {
+      "description" : "Node agent details",
+      "properties" : {
+        "archType" : {
+          "description" : "Node agent host machine arch",
+          "enum" : [ "ARM64", "AMD64" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "config" : {
+          "$ref" : "#/definitions/Config",
+          "description" : "Node agent configuration",
+          "readOnly" : true
+        },
+        "customerUuid" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "home" : {
+          "description" : "Node agent installation directory",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ip" : {
+          "description" : "Node agent server IP",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Node agent name",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "osType" : {
+          "description" : "Node agent host OS",
+          "enum" : [ "DARWIN", "LINUX" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "port" : {
+          "description" : "Node agent server port",
+          "format" : "int32",
+          "readOnly" : true,
+          "type" : "integer"
+        },
+        "state" : {
+          "description" : "Node agent state",
+          "enum" : [ "REGISTERING", "UPGRADE", "UPGRADED", "READY" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "updatedAt" : {
+          "description" : "Updated time",
+          "example" : "2022-12-21T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Node agent UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "version" : {
+          "description" : "Node agent installed version",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "NodeAgentResp" : {
+      "description" : "Node agent details",
+      "properties" : {
+        "archType" : {
+          "description" : "Node agent host machine arch",
+          "enum" : [ "ARM64", "AMD64" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "config" : {
+          "$ref" : "#/definitions/Config",
+          "description" : "Node agent configuration",
+          "readOnly" : true
+        },
+        "customerUuid" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "home" : {
+          "description" : "Node agent installation directory",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ip" : {
+          "description" : "Node agent server IP",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Node agent name",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "osType" : {
+          "description" : "Node agent host OS",
+          "enum" : [ "DARWIN", "LINUX" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "port" : {
+          "description" : "Node agent server port",
+          "format" : "int32",
+          "readOnly" : true,
+          "type" : "integer"
+        },
+        "reachable" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "state" : {
+          "description" : "Node agent state",
+          "enum" : [ "REGISTERING", "UPGRADE", "UPGRADED", "READY" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "updatedAt" : {
+          "description" : "Updated time",
+          "example" : "2022-12-21T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Node agent UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "version" : {
+          "description" : "Node agent installed version",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "versionMatched" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        }
+      },
       "type" : "object"
     },
     "NodeConfig" : {
@@ -15507,6 +15681,72 @@
         "tags" : [ "Customer management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/node_agents" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "ListNodeAgents",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "nodeIp",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/NodeAgentResp"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List Node Agents",
+        "tags" : [ "Node Agents" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/node_agents/{nUUID}" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "GetNodeAgent",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "nUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NodeAgentResp"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get Node Agent",
+        "tags" : [ "Node Agents" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/nodes/{nodeUUID}/list" : {
       "get" : {
         "description" : "",
@@ -22594,6 +22834,43 @@
         "tags" : [ "Table management" ]
       }
     },
+    "/api/v1/node_agents/download" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "DownloadNodeAgentInstaller",
+        "parameters" : [ {
+          "default" : "INSTALLER",
+          "in" : "query",
+          "name" : "downloadType",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "os",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "arch",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "produces" : [ "application/gzip", "application/x-sh" ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Download Node Agent Installer or Package",
+        "tags" : [ "Node Agents" ]
+      }
+    },
     "/api/v1/prometheus_metrics" : {
       "get" : {
         "description" : "",
@@ -22794,6 +23071,8 @@
     "name" : "Maintenance windows"
   }, {
     "name" : "Metrics"
+  }, {
+    "name" : "Node Agents"
   }, {
     "name" : "Node instances"
   }, {

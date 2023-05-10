@@ -36,6 +36,7 @@ func SetupConfigureCommand(parentCmd *cobra.Command) {
 		Bool("disable_egress", false, "Disable connection from node agent.")
 	/* Required only if egress is disabled. */
 	configureCmd.PersistentFlags().StringP("id", "i", "", "Node agent ID")
+	configureCmd.PersistentFlags().StringP("customer_id", "c", "", "Customer ID")
 	configureCmd.PersistentFlags().StringP("cert_dir", "d", "", "Node agent cert directory")
 	configureCmd.PersistentFlags().StringP("node_ip", "n", "", "Node IP")
 	configureCmd.PersistentFlags().StringP("node_port", "p", "", "Node Port")
@@ -49,6 +50,7 @@ func configurePreValidator(cmd *cobra.Command, args []string) {
 			Fatalf(server.Context(), "Error in reading disable_egress - %s", err.Error())
 	} else if disabled {
 		cmd.MarkPersistentFlagRequired("id")
+		cmd.MarkPersistentFlagRequired("customer_id")
 		cmd.MarkPersistentFlagRequired("cert_dir")
 		cmd.MarkPersistentFlagRequired("node_ip")
 		cmd.MarkPersistentFlagRequired("node_port")
@@ -81,6 +83,17 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent ID - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagString(
+		ctx,
+		cmd,
+		"customer_id",
+		util.CustomerIdKey,
+		true, /* isRequired */
+		nil,  /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store customer ID - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagString(
 		ctx,

@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.controllers.JWTVerifier;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
@@ -322,7 +323,7 @@ public class NodeAgentManager {
   // Returns the YBA software version.
   public String getSoftwareVersion() {
     return Objects.requireNonNull(
-        (String) configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version"));
+        (String) configHelper.getConfig(ConfigType.SoftwareVersion).get("version"));
   }
 
   /**

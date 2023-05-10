@@ -5,22 +5,32 @@ package com.yugabyte.yw.controllers;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler.NodeAgentDownloadFile;
 import com.yugabyte.yw.forms.NodeAgentForm;
+import com.yugabyte.yw.forms.NodeAgentResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import javax.inject.Inject;
 import play.mvc.Http;
 import play.mvc.Result;
 
-@Api(hidden = true)
+@Api(
+    value = "Node Agents",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class NodeAgentController extends AuthenticatedController {
 
   @Inject NodeAgentHandler nodeAgentHandler;
 
+  @ApiOperation(
+      value = "Register Node Agent",
+      response = NodeAgent.class,
+      hidden = true,
+      nickname = "RegisterNodeAgent")
   public Result register(UUID customerUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUuid);
     NodeAgentForm payload = parseJsonAndValidate(request, NodeAgentForm.class);
@@ -34,14 +44,25 @@ public class NodeAgentController extends AuthenticatedController {
     return PlatformResults.withData(nodeAgent);
   }
 
+  @ApiOperation(
+      value = "List Node Agents",
+      response = NodeAgentResp.class,
+      responseContainer = "List",
+      nickname = "ListNodeAgents")
   public Result list(UUID customerUuid, String nodeIp) {
     return PlatformResults.withData(nodeAgentHandler.list(customerUuid, nodeIp));
   }
 
+  @ApiOperation(value = "Get Node Agent", response = NodeAgentResp.class, nickname = "GetNodeAgent")
   public Result get(UUID customerUuid, UUID nodeUuid) {
     return PlatformResults.withData(nodeAgentHandler.get(customerUuid, nodeUuid));
   }
 
+  @ApiOperation(
+      value = "Update Node Agent State",
+      response = NodeAgent.class,
+      hidden = true,
+      nickname = "UpdateNodeAgentState")
   public Result updateState(UUID customerUuid, UUID nodeUuid, Http.Request request) {
     NodeAgentForm payload = parseJsonAndValidate(request, NodeAgentForm.class);
     NodeAgent nodeAgent = nodeAgentHandler.updateState(customerUuid, nodeUuid, payload);
@@ -54,6 +75,11 @@ public class NodeAgentController extends AuthenticatedController {
     return PlatformResults.withData(nodeAgent);
   }
 
+  @ApiOperation(
+      value = "Unregister Node Agent",
+      response = YBPSuccess.class,
+      hidden = true,
+      nickname = "UnregisterNodeAgent")
   public Result unregister(UUID customerUuid, UUID nodeUuid, Http.Request request) {
     NodeAgent.getOrBadRequest(customerUuid, nodeUuid);
     nodeAgentHandler.unregister(nodeUuid);
@@ -66,6 +92,11 @@ public class NodeAgentController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
+  @ApiOperation(
+      value = "Download Node Agent Installer or Package",
+      response = String.class,
+      produces = "application/gzip, application/x-sh",
+      nickname = "DownloadNodeAgentInstaller")
   public Result download(String downloadType, String os, String arch) {
     NodeAgentDownloadFile fileToDownload =
         nodeAgentHandler.validateAndGetDownloadFile(downloadType, os, arch);
