@@ -1,54 +1,37 @@
 ---
-title: Java ORM example application that uses YSQL
-headerTitle: Java ORM example application
-linkTitle: Java
-description: Java ORM example application with Hibernate ORM and use the YSQL API to connect to and interact with YugabyteDB.
+title: PHP ORM example application
+headerTitle: PHP ORM example application
+linkTitle: PHP
+description: PHP ORM example application.
 menu:
   preview:
-    identifier: java-hibernate
+    identifier: php-orm
     parent: orm-tutorials
-    weight: 620
+    weight: 660
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../ysql-hibernate/" class="nav-link active">
+  <li >
+    <a href="../ysql-gorm/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      Hibernate ORM
-    </a>
-  </li>
-  <li>
-    <a href="../ysql-spring-data/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      Spring Data JPA
-    </a>
-  </li>
-   <li>
-    <a href="../ysql-ebean/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      Ebean ORM
-    </a>
-  </li>
-  <li>
-    <a href="../ysql-mybatis/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      MyBatis
+      Laravel ORM
     </a>
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Hibernate ORM](https://hibernate.org/orm/). The scenario is that of an e-commerce application. Database access in this application is managed through Hibernate ORM.
+The following tutorial implements a REST API server using the [Laravel](https://laravel.com/docs/10.x/readme) web development framework. The scenario is that of an e-commerce application. Database access in this application is managed through Laravel's Eloquent ORM.
 
-The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate) repository.
+The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/php/laravel) repository.
 
 ## Prerequisites
 
 This tutorial assumes that you have:
 
 - YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
-- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
-- [Apache Maven](https://maven.apache.org/index.html) 3.3, or later, is installed.
+- PHP 7.3+
+- Laravel 8.40+
+- Composer (Depedency Manager for PHP)
 
 ## Clone the "orm-examples" repository
 
@@ -56,24 +39,33 @@ This tutorial assumes that you have:
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-There are a number of options that can be customized in the properties file located at `src/main/resources/hibernate.cfg.xml`. Given YSQL's compatibility with the PostgreSQL language, the `hibernate.dialect` property is set to `org.hibernate.dialect.PostgreSQLDialect` and the `hibernate.connection.url` is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
+There are a number of options that can be customized in the `.env` file located in the Laravel project. Given YSQL's compatibility with the PostgreSQL language, the datasource `DB_CONNECTION` property is set to `pgsql`.
 
 ## Build the application
 
 ```sh
-$ cd orm-examples/java/hibernate
+$ cd orm-examples/php/laravel
 ```
 
+## Set up the database to use Laravel migrations
+
 ```sh
-$ mvn -DskipTests package
+php artisan migrate:install
+php artisan migrate:fresh
+```
+
+## Load the tables
+
+```sh
+php artisan db:seed
 ```
 
 ## Run the application
 
-Start the Hibernate application's REST API server at `http://localhost:8080`.
+Start the Laravel application's REST API server at `http://localhost:8000`.
 
 ```sh
-$ mvn exec:java -Dexec.mainClass=com.yugabyte.hibernatedemo.server.BasicHttpServer
+php artisan serve
 ```
 
 ## Send requests to the application
@@ -82,12 +74,12 @@ Create 2 users.
 
 ```sh
 $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@example.com" }' \
-   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
+   -v -X POST -H 'Content-Type:application/json' http://localhost:8000/users
 ```
 
 ```sh
 $ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@example.com" }' \
-   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
+   -v -X POST -H 'Content-Type:application/json' http://localhost:8000/users
 ```
 
 Create 2 products.
@@ -95,13 +87,13 @@ Create 2 products.
 ```sh
 $ curl \
   --data '{ "productName": "Notebook", "description": "200 page notebook", "price": 7.50 }' \
-  -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
+  -v -X POST -H 'Content-Type:application/json' http://localhost:8000/products
 ```
 
 ```sh
 $ curl \
   --data '{ "productName": "Pencil", "description": "Mechanical pencil", "price": 2.50 }' \
-  -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
+  -v -X POST -H 'Content-Type:application/json' http://localhost:8000/products
 ```
 
 Create 2 orders.
@@ -109,13 +101,13 @@ Create 2 orders.
 ```sh
 $ curl \
   --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 } ] }' \
-  -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
+  -v -X POST -H 'Content-Type:application/json' http://localhost:8000/orders
 ```
 
 ```sh
 $ curl \
   --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
-  -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
+  -v -X POST -H 'Content-Type:application/json' http://localhost:8000/orders
 ```
 
 ## Query results
@@ -153,7 +145,7 @@ List of relations
 (7 rows)
 ```
 
-Note the 4 tables and 3 sequences in the list above.
+Note the 4 tables and 3 sequences.
 
 ```plpgsql
 yugabyte=# SELECT count(*) FROM users;
