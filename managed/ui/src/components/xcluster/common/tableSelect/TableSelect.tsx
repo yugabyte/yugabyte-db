@@ -23,6 +23,7 @@ import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import {
   adaptTableUUID,
   formatBytes,
+  getAllXClusterConfigs,
   getSharedXClusterConfigs,
   tableSort
 } from '../../ReplicationUtils';
@@ -417,13 +418,19 @@ export const TableSelect = (props: TableSelectProps) => {
   );
   const ybSoftwareVersion = getPrimaryCluster(sourceUniverseQuery.data.universeDetails.clusters)
     ?.userIntent.ybSoftwareVersion;
+  const hasExisitingReplicationConfig =
+    [
+      ...getAllXClusterConfigs(sourceUniverseQuery.data),
+      ...getAllXClusterConfigs(targetUniverseQuery.data)
+    ].length > 0;
   const isTransactionalAtomicitySupported =
     !!ybSoftwareVersion &&
     compareYBSoftwareVersions(
       TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
       ybSoftwareVersion,
       true
-    ) < 0;
+    ) < 0 &&
+    !hasExisitingReplicationConfig;
   return (
     <>
       {isTransactionalAtomicityEnabled &&
@@ -448,6 +455,10 @@ export const TableSelect = (props: TableSelectProps) => {
                     </li>
                     <li>PITR must be enabled on the target universe.</li>
                     <li>enable_pg_savepoint must be set to false for both tserver and master</li>
+                    <li>
+                      Neither the source universe nor the target universe universe is a participant
+                      in any other xCluster configuration.
+                    </li>
                   </ol>
                   You may find further information on this feature on our{' '}
                   <a href={XCLUSTER_REPLICATION_DOCUMENTATION_URL}>public docs.</a>
