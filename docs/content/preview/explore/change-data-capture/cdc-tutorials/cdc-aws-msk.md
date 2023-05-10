@@ -21,7 +21,9 @@ This tutorial describes how to configure Yugabyte CDC and stream data into Amazo
 
 ### Configure IAM roles and policies
 
-Create a new role with the required accesses to AWS services. This following example uses the name `yb_cdc_kafka_role`. The IAM roles and policies are generic and can be fine-tuned based on your organization IT policies. Configure the Trusted entities as follows:
+Create a new role with the required accesses to AWS services.
+
+The following example uses the name `yb_cdc_kafka_role`. The IAM roles and policies are generic and can be fine-tuned based on your organization IT policies. Configure the Trusted entities as follows:
 
 ```json
 {
@@ -181,31 +183,31 @@ Create a policy with access to the following AWS services:
 
 Ensure that YugabyteDB is up and running. To install YugabyteDB on your cloud virtual machine, refer to [Quick start](../../../../quick-start/linux/).
 
-Create a test table:
+1. Create a test table:
 
-```sql
-CREATE TABLE test (id INT PRIMARY KEY, name TEXT);
-```
+    ```sql
+    CREATE TABLE test (id INT PRIMARY KEY, name TEXT);
+    ```
 
-Enable CDC using yb-admin. The following command enables CDC on all the schemas and tables in the YugabyteDB database.
+1. Enable CDC using yb-admin. The following command enables CDC on all the schemas and tables in the YugabyteDB database.
 
-```sh
-./bin/yb-admin — master_addresses <master_addresses>:7100 create_change_data_stream ysql.yugabyte
-```
+    ```sh
+    ./bin/yb-admin — master_addresses <master_addresses>:7100 create_change_data_stream ysql.yugabyte
+    ```
 
-If you have a multi-node YugabyteDB setup, you need to provide a comma-separated list of **host:port** values of both the leader and the follower nodes as the `master_addresses` argument.
+    If you have a multi-node YugabyteDB setup, you need to provide a comma-separated list of **host:port** values of both the leader and the follower nodes as the `master_addresses` argument.
 
-If successful, the command returns the CDC stream ID:
+    If successful, the command returns the CDC stream ID:
 
-```output
-CDC Stream ID: 90fe97d59a504bb6acbfd6a940
-```
+    ```output
+    CDC Stream ID: 90fe97d59a504bb6acbfd6a940
+    ```
 
 For more information on CDC commands, refer to [Change data capture commands](../../../../admin/yb-admin/#change-data-capture-cdc-commands).
 
 ### Configure the AWS Security Group
 
-Create a Security Group with inbound and outbound rules configured to ensure access to the MSK cluster and YugabyteDB. In this example, enable incoming traffic from all the ports.
+Create a Security Group with inbound and outbound rules configured to ensure access to the MSK cluster and YugabyteDB. For this example, enable incoming traffic from all the ports.
 
 ![Edit Inbound Rules](/images/explore/cdc/aws_msk_images/edit-inbound-rules.png)
 
@@ -219,21 +221,23 @@ Download the YugabyteDB Debezium connector jar from the [repository](https://git
 
 For this example, create an Amazon MSK cluster in the same VPC as that of the YugabyteDB cluster. Note that this is a generic configuration, and it may differ based on your organizational IT policy.
 
-![MSK cluster settings](/images/explore/cdc/aws_msk_images/msk-cluster-settings.png)
+1. Navigate to **Cluster Settings**.
 
-Create a cluster with two zones.
+    ![MSK cluster settings](/images/explore/cdc/aws_msk_images/msk-cluster-settings.png)
 
-![Amazon Brokers](/images/explore/cdc/aws_msk_images/amazon-brokers.png)
+1. Create a cluster with two zones.
 
-In the **Networking** section, select the same VPC and Private subnets as used by the YugabyteDB cluster.
+    ![Amazon Brokers](/images/explore/cdc/aws_msk_images/amazon-brokers.png)
 
-Choose the security group you created previously.
+1. In the **Networking** section, select the same VPC and Private subnets as used by the YugabyteDB cluster.
 
-![Amazon Security Groups](/images/explore/cdc/aws_msk_images/amazon-security-groups.png)
+1. Choose the security group you created previously.
 
-Enable logging on your cluster to help with debugging. This example uses the S3 bucket to store the logs.
+    ![Amazon Security Groups](/images/explore/cdc/aws_msk_images/amazon-security-groups.png)
 
-![Amazon S3 logging](/images/explore/cdc/aws_msk_images/amazon-s3-logging.png)
+1. Enable logging on your cluster to help with debugging. This example uses the S3 bucket to store the logs.
+
+    ![Amazon S3 logging](/images/explore/cdc/aws_msk_images/amazon-s3-logging.png)
 
 The cluster is now configured successfully.
 
