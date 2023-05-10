@@ -112,7 +112,7 @@ After you have created the YugabyteDB CDC Connector, you must configure it to se
 
 To connect the CDC Connector to Event Hubs, edit the `config.yaml` file in the directory where you created the YugabyteDB CDC Connector, with the following parameters:
 
-- `dest_conf`: Connection string for the event hub. You can find this connection string in the Azure portal by navigating to Event Hubs and clicking on "Shared access policies". Then click on "RootManageSharedAccessKey" and copy the "Connection string - primary key".
+- `dest_conf`: Connection string for the event hub. You can find this connection string in the Azure portal by navigating to **Event Hubs > Shared access policies**, click **RootManageSharedAccessKey** and copy the "Connection string - primary key".
 - `batch_size`: Maximum number of events that can be sent in a single batch.
 - `batch_timeout_ms`: Maximum time (in milliseconds) that can elapse before a batch is sent, even if it is not full.
 - `consumer_threads`: Number of threads that the CDC Connector will use to consume events from YugabyteDB. Set this value based on the number of cores on your machine.
