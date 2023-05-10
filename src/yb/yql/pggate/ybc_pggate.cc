@@ -16,6 +16,7 @@
 #include <atomic>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 #include "yb/client/table_info.h"
@@ -37,6 +38,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
+#include "yb/util/signal_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
@@ -101,9 +103,20 @@ inline YBCStatus YBCStatusOK() {
   return nullptr;
 }
 
+class ThreadIdChecker {
+ public:
+  bool operator()() const {
+    return std::this_thread::get_id() == thread_id_;
+  }
+
+ private:
+  const std::thread::id thread_id_ = std::this_thread::get_id();
+};
+
 // Using a raw pointer here to fully control object initialization and destruction.
 pggate::PgApiImpl* pgapi;
 std::atomic<bool> pgapi_shutdown_done;
+const ThreadIdChecker is_main_thread;
 
 template<class T, class Functor>
 YBCStatus ExtractValueFromResult(Result<T> result, const Functor& functor) {
@@ -146,6 +159,20 @@ inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
   return Bound{.value = value, .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
 }
 
+Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
+                      int count,
+                      const PgCallbacks& pg_callbacks) {
+  return WithMaskedYsqlSignals([data_type_table, count, &pg_callbacks] {
+    YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr /* context */);
+    return static_cast<Status>(Status::OK());
+  });
+}
+
+Status PgInitSessionImpl(const char* database_name) {
+  const std::string db_name(database_name ? database_name : "");
+  return WithMaskedYsqlSignals([&db_name] { return pgapi->InitSession(db_name); });
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -181,10 +208,13 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
 extern "C" {
 
 void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks) {
-  YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr);
+  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks));
 }
 
 void YBCDestroyPgGate() {
+  LOG_IF(DFATAL, !is_main_thread())
+    << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
+
   if (pgapi_shutdown_done.exchange(true)) {
     LOG(DFATAL) << __PRETTY_FUNCTION__ << " should only be called once";
     return;
@@ -197,6 +227,9 @@ void YBCDestroyPgGate() {
 }
 
 void YBCInterruptPgGate() {
+  LOG_IF(DFATAL, !is_main_thread())
+    << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
+
   pgapi->Interrupt();
 }
 
@@ -205,8 +238,7 @@ const YBCPgCallbacks *YBCGetPgCallbacks() {
 }
 
 YBCStatus YBCPgInitSession(const char *database_name) {
-  const std::string db_name(database_name ? database_name : "");
-  return ToYBCStatus(pgapi->InitSession(db_name));
+  return ToYBCStatus(PgInitSessionImpl(database_name));
 }
 
 YBCPgMemctx YBCPgCreateMemctx() {
