@@ -20,7 +20,7 @@ The following tutorial describes how to configure a YugabyteDB connector to publ
 
 ### Configure a Confluent Cloud cluster
 
-First, you need to set up a Confluent Cloud cluster on the provider of your choice. For more information, refer to [Manage Kafka Clusters on Confluent Cloud](https://docs.confluent.io/cloud/current/clusters/create-cluster.html) in the Confluent documentation.
+Set up a Confluent Cloud cluster on the provider of your choice. For more information, refer to [Manage Kafka Clusters on Confluent Cloud](https://docs.confluent.io/cloud/current/clusters/create-cluster.html) in the Confluent documentation.
 
 ### Download the credentials
 
