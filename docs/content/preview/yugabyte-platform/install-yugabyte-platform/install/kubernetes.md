@@ -12,7 +12,9 @@ menu:
 type: docs
 ---
 
-Before you get started, decide whether you are deploying on Public cloud, Private cloud, or Kubernetes. All of these process flows follow the same general steps:
+Before you get started, decide whether you are deploying on Public cloud, On-premises, or Kubernetes. In public cloud, YugabyteDB Anywhere (YBA) creates and launches virtual machine (VM) instances on the cloud to become nodes in a YugabyteDB universe, and YBA needs permissions to create VMs. In On-premises, you manually create VMs, and then provide the hostnames of these VMs to YBA, where they become "free nodes" to be used in creating universes.
+
+All of these process flows follow the same general steps:
 
 - Install and configure YugabyteDB Anywhere.
 - Create a Provider Configuration (choose among AWS, GCP, Azure, on-prem, or various Kubernetes options).

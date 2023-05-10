@@ -1,6 +1,6 @@
 ---
 title: Prerequisites - Replicated
-headerTitle: Prerequisites for YBA - Replicated
+headerTitle: Prerequisites for YBA
 linkTitle: YBA prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere using Replicated.
 menu:
@@ -11,17 +11,17 @@ menu:
 type: docs
 ---
 
-There are three major ways to install YBA:
+There are three methods of installing YugabyteDB Anywhere (YBA):
 
-| Method | Use If |
-| :--- | :--- |
-| Replicated, using Docker containers | You're able to use Docker containers. |
-| Kubernetes via helm chart | You're deploying in Kubernetes. |
-| YBA Installer | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
+| Method | Using | Use If |
+| :--- | :--- | :--- |
+| Replicated | Docker containers | You're able to use Docker containers. |
+| Kubernetes | Helm chart | You're deploying in Kubernetes. |
+| YBA Installer | yba-ctl CLI | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
 
 All installation methods support installing YBA with and without (airgapped) Internet connectivity.
 
-Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact contact {{% support-platform %}} for assistance.
+Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -42,28 +42,21 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
 
 </ul>
 
-YugabyteDB Anywhere first needs to be installed on a host computer, and then you configure YugabyteDB Anywhere to work in your on-premises private cloud or in a public cloud environment.
-
-In a public cloud environment, YugabyteDB Anywhere spawns instances on the cloud provider for hosting a YugabyteDB universe.
-
-In a private cloud environment, you use YugabyteDB Anywhere to add the nodes that will host the YugabyteDB universe. To manage these nodes, YugabyteDB Anywhere requires SSH access to each of the nodes.
-
 ## Supported Linux distributions
 
 You can install YugabyteDB Anywhere on the following Linux distributions:
 
 - CentOS (default)
-- Ubuntu 18 and 20, via Replicated
+- Ubuntu 18 and 20
 - Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/).
 
 ## Hardware requirements
 
 A node running YugabyteDB Anywhere is expected to meet the following requirements:
 
-- 4 cores (minimum) or 8 cores (recommended)
-- 8 GB RAM (minimum) or 10 GB RAM (recommended)
-- 100 GB SSD disk or more
-- x86-64 CPU architecture
+- 4 cores
+- 8 GB memory
+- 200 GB disk space
 
 ## Prepare the host
 

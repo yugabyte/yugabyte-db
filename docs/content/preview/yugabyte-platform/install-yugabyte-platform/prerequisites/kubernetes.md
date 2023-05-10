@@ -1,6 +1,6 @@
 ---
 title: Prerequisites - Kubernetes
-headerTitle: Prerequisites for YBA - Kubernetes
+headerTitle: Prerequisites for YBA
 linkTitle: YBA prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere in your Kubernetes environment
 menu:
@@ -11,17 +11,17 @@ menu:
 type: docs
 ---
 
-There are three major ways to install YBA:
+There are three methods of installing YugabyteDB Anywhere (YBA):
 
-| Method | Use If |
-| :--- | :--- |
-| Replicated, using Docker containers | You're able to use Docker containers. |
-| Kubernetes via helm chart | You're deploying in Kubernetes. |
-| YBA Installer | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
+| Method | Using | Use If |
+| :--- | :--- | :--- |
+| Replicated | Docker containers | You're able to use Docker containers. |
+| Kubernetes | Helm chart | You're deploying in Kubernetes. |
+| YBA Installer | yba-ctl CLI | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
 
 All installation methods support installing YBA with and without (airgapped) Internet connectivity.
 
-Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact contact {{% support-platform %}} for assistance.
+Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -41,8 +41,6 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
   </li>
 
 </ul>
-
-YugabyteDB Anywhere first needs to be installed on a Kubernetes cluster, and then you configure YugabyteDB Anywhere to work in your Kubernetes cluster, on-premises private cloud, or in a public cloud environment.
 
 ## Hardware requirements
 
