@@ -51,7 +51,7 @@ import { toast } from 'react-toastify';
 import { components } from 'react-select';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import { find, isFunction, omit } from 'lodash';
+import { find, findIndex, isFunction, omit } from 'lodash';
 import { BACKUP_API_TYPES } from '../common/IBackup';
 import { TableType } from '../../../redesign/helpers/dtos';
 import clsx from 'clsx';
@@ -122,9 +122,9 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
 
   const kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
-        const labelName = config.metadata.provider + ' - ' + config.metadata.name;
-        return { value: config.metadata.configUUID, label: labelName };
-      })
+      const labelName = config.metadata.provider + ' - ' + config.metadata.name;
+      return { value: config.metadata.configUUID, label: labelName };
+    })
     : [];
 
   const restore = useMutation(
@@ -177,7 +177,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
   );
 
   const footerActions = [
-    () => {},
+    () => { },
     () => {
       setCurrentStep(currentStep - 1);
       setOverrideSubmitLabel(TEXT_RENAME_DATABASE);
@@ -216,12 +216,35 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
       }
       return;
     }
-    // in YCQL, if we try to restore a single keyspace, while the keyspace already exists in the db, with no conflicting tables, we should allow it
+    // find if the user has entered the duplicate keyspace name
+    // we could have just find uniq(user_entered_keyspace), but in table by table backup
+    // we can have duplicate keyspace, so we make sure that single keyspace entered by user map with single keyspace
+    // in the backup_details
+    const renamedKeyspacemap = {};
+    let hasduplicateName = false;
+    values['keyspaces'].forEach((k: string, i: number) => {
+      if (!k) return;
+      const keyspaceToMatch = backup_details?.commonBackupInfo.responseList[i].keyspace;
+      if (!renamedKeyspacemap[k]) {
+        renamedKeyspacemap[k] = keyspaceToMatch;
+      } else if (renamedKeyspacemap[k] !== keyspaceToMatch) {
+        isFunction(options.setFieldError) &&
+          options.setFieldError(`keyspaces[${i}]`, 'Duplicate keyspace name');
+        hasduplicateName = true;
+      }
+    });
+    // return if duplicate keyspace name is found.
+    if (hasduplicateName) {
+      isFunction(options.setSubmitting) && options.setSubmitting(false);
+      return;
+    }
+
+    // for YCQL, we skip the table overwriding check in front end and defer it to the backend
     // see https://yugabyte.atlassian.net/browse/PLAT-6460
-    if (!isRestoreEntireBackup && values['backup']['backupType'] === BACKUP_API_TYPES.YCQL) {
+    if (values['backup']['backupType'] === BACKUP_API_TYPES.YCQL) {
       if (options.doRestore) {
         restore.mutate({
-          backup_details,
+          backup_details: backup_details as IBackup,
           values
         });
         return;
@@ -234,20 +257,6 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
       return;
     }
 
-    // find if the duplicate values is present in rename values
-    const duplicatesInRenameValues: boolean[] = values.keyspaces
-      .filter(Boolean)
-      .map((item: string, index: number) => values.keyspaces.indexOf(item) === index);
-
-    if (!duplicatesInRenameValues.every((val) => val)) {
-      duplicatesInRenameValues.forEach(
-        (val, index) =>
-          !val &&
-          options.setFieldError &&
-          options.setFieldError(`keyspaces[${index}]`, 'Duplicate name')
-      );
-      return;
-    }
 
     setIsFetchingTables(true);
     options.setFieldValue('should_rename_keyspace', true, false);
@@ -307,11 +316,11 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
     keyspaces:
       currentStep === 1
         ? Yup.array(
-            Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
-              message: 'Invalid keyspace name',
-              excludeEmptyString: true
-            })
-          )
+          Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
+            message: 'Invalid keyspace name',
+            excludeEmptyString: true
+          })
+        )
         : Yup.array(Yup.string()),
     parallelThreads: Yup.number()
       .min(1, 'Parallel threads should be greater than or equal to 1')
@@ -551,9 +560,8 @@ function RestoreChooseUniverseForm({
             <Field
               name="should_rename_keyspace"
               component={YBCheckBox}
-              label={`Rename databases in this backup before restoring (${
-                values['disable_keyspace_rename'] ? 'Required' : 'Optional'
-              })`}
+              label={`Rename databases in this backup before restoring (${values['disable_keyspace_rename'] ? 'Required' : 'Optional'
+                })`}
               input={{
                 checked: values['should_rename_keyspace'],
                 onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -605,6 +613,7 @@ export function RenameKeyspace({
   };
   setFieldValue: Function;
 }) {
+  const isTableByTableBackup = values.backup.commonBackupInfo.tableByTableBackup;
   return (
     <div className="rename-keyspace-step">
       <Row>
@@ -628,9 +637,12 @@ export function RenameKeyspace({
         render={({ form: { errors } }) =>
           values.backup.commonBackupInfo.responseList.map(
             (keyspace: Keyspace_Table, index: number) =>
-              values['searchText'] &&
-              keyspace.keyspace &&
-              keyspace.keyspace.indexOf(values['searchText']) === -1 ? null : (
+              (values['searchText'] &&
+                keyspace.keyspace &&
+                !keyspace.keyspace.includes(values['searchText'])) ||
+                findIndex(values.backup.commonBackupInfo.responseList, {
+                  keyspace: keyspace.keyspace
+                }) !== index ? null : (
                 // eslint-disable-next-line react/jsx-indent
                 <Row key={index}>
                   <Col lg={6} className="keyspaces-input no-padding">
@@ -653,7 +665,23 @@ export function RenameKeyspace({
                       input={{
                         value: values['keyspaces'][`${index}`]
                       }}
-                      onValueChanged={(val: any) => setFieldValue(`keyspaces[${index}]`, val)}
+                      onValueChanged={(val: any) => {
+                        if (isTableByTableBackup) {
+                          // if the tableByTable option is enabled, keyspaces with duplicate
+                          // names can be present. So, we show unique keyspaces in the rename form.
+                          // and update the new names for all the duplicate keyspaces
+                          // See, https://yugabyte.atlassian.net/browse/PLAT-8319
+                          values.backup.commonBackupInfo.responseList.forEach(
+                            (table: any, i: number) => {
+                              if (table.keyspace === keyspace.keyspace) {
+                                setFieldValue(`keyspaces[${i}]`, val);
+                              }
+                            }
+                          );
+                        } else {
+                          setFieldValue(`keyspaces[${index}]`, val);
+                        }
+                      }}
                       placeHolder="Add new name"
                     />
                     {errors['keyspaces']?.[index] && values['keyspaces']?.[index] && (

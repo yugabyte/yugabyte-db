@@ -32,6 +32,7 @@ public class ScheduleResp {
   boolean backlogStatus;
   long incrementalBackupFrequency;
   TimeUnit incrementalBackupFrequencyTimeUnit;
+  Boolean tableByTableBackup;
 
   @Value
   @Builder

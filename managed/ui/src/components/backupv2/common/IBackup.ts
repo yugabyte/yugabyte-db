@@ -42,6 +42,8 @@ export interface Keyspace_Table {
   tablesList: string[];
   storageLocation?: string;
   defaultLocation?: string;
+  tableNameList?: string[];
+  tableUUIDList?: string[];
 }
 
 export interface ICommonBackupInfo {
@@ -57,6 +59,7 @@ export interface ICommonBackupInfo {
   totalBackupSizeInBytes?: number;
   updateTime: number;
   parallelism: number;
+  tableByTableBackup: boolean;
 }
 
 export interface IBackup {
@@ -71,6 +74,7 @@ export interface IBackup {
   customerUUID: string;
   universeName: string;
   isStorageConfigPresent: boolean;
+  isTableByTableBackup: boolean;
   isUniversePresent: boolean;
   onDemand: boolean;
   updateTime: number;

@@ -154,9 +154,13 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
     backupType === BackupTypes.INCREMENT_BACKUP
       ? incrementalBackup?.responseList
       : backup.commonBackupInfo.responseList;
-  const filteredDBList = (dbList || []).filter((e) => {
-    return !(keyspaceSearch && e.keyspace.indexOf(keyspaceSearch) < 0);
-  });
+  const filteredDBList = (dbList ?? [])
+    .filter((e) => {
+      return !(keyspaceSearch && !e.keyspace.includes(keyspaceSearch));
+    })
+    .map((t, index) => {
+      return { ...t, index };
+    });
   return (
     <div className="backup-table-list ycql-table" id="ycql-table">
       <BootstrapTable
@@ -171,7 +175,7 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
         trClassName="clickable"
         tableHeaderClass="table-list-header"
       >
-        <TableHeaderColumn dataField="keyspace" isKey={true} hidden={true} />
+        <TableHeaderColumn dataField="index" isKey={true} hidden={true} />
         <TableHeaderColumn dataField="keyspace">Keyspace</TableHeaderColumn>
         <TableHeaderColumn dataField="tablesList" dataFormat={(cell) => cell.length}>
           Tables
@@ -345,29 +349,29 @@ const IncrementalBackupCard = ({
         {[Backup_States.FAILED, Backup_States.FAILED_TO_DELETE, Backup_States.STOPPED].includes(
           incrementalBackup.state
         ) && (
-          <>
-            <YBButton
-              btnIcon="fa fa-trash-o"
-              btnText="Delete"
-              className="incremental-backup-action-button incremental-backup-delete-button"
-              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                e.stopPropagation();
-                setShowDeleteConfirmDialog(true);
-              }}
-            />
-            <YBModal
-              name="delete-incremental-backup"
-              title="Confirm Delete"
-              className="backup-modal"
-              showCancelButton
-              onFormSubmit={() => doDeleteBackup.mutate()}
-              onHide={() => setShowDeleteConfirmDialog(false)}
-              visible={showDeleteConfirmDialog}
-            >
-              Are you sure you want to delete this incremental backup?
-            </YBModal>
-          </>
-        )}
+            <>
+              <YBButton
+                btnIcon="fa fa-trash-o"
+                btnText="Delete"
+                className="incremental-backup-action-button incremental-backup-delete-button"
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  e.stopPropagation();
+                  setShowDeleteConfirmDialog(true);
+                }}
+              />
+              <YBModal
+                name="delete-incremental-backup"
+                title="Confirm Delete"
+                className="backup-modal"
+                showCancelButton
+                onFormSubmit={() => doDeleteBackup.mutate()}
+                onHide={() => setShowDeleteConfirmDialog(false)}
+                visible={showDeleteConfirmDialog}
+              >
+                Are you sure you want to delete this incremental backup?
+              </YBModal>
+            </>
+          )}
         {!rest.hideRestore && incrementalBackup.state === Backup_States.COMPLETED && (
           <YBButton
             btnText="Restore to this point"
