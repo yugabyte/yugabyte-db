@@ -158,7 +158,8 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
     selected_ycql_tables: [] as any[],
     parallel_threads: PARALLEL_THREADS_RANGE.MIN,
     storage_config: null as any,
-    baseBackupUUID: backup.commonBackupInfo.baseBackupUUID
+    baseBackupUUID: backup.commonBackupInfo.baseBackupUUID,
+    isTableByTableBackup: backup.commonBackupInfo.tableByTableBackup
   };
   if (backup.isFullBackup) {
     formValues['db_to_backup'] = {

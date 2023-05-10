@@ -22,7 +22,7 @@ import {
 } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
-import { find, isFunction } from 'lodash';
+import { find, findIndex, isFunction } from 'lodash';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { getKMSConfigs, addIncrementalBackup } from '../common/BackupAPI';
@@ -99,17 +99,39 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             tableUUIDList: r.allTables
               ? []
               : backupTablesPresentInUniverse.map(
-                  (tableName) => find(tablesInUniverse, { tableName,  keySpace: r.keyspace })?.tableUUID
+                  (tableName) =>
+                    find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
                 )
           };
         });
       }
 
+      const uniqueKeyspaceResponseList: any[] = [];
+
+      responseList.forEach((r) => {
+        const indexOfKeyspace = findIndex(uniqueKeyspaceResponseList, { keyspace: r.keyspace });
+        if (indexOfKeyspace !== -1) {
+          uniqueKeyspaceResponseList[indexOfKeyspace] = {
+            ...uniqueKeyspaceResponseList[indexOfKeyspace],
+            tableNameList: [
+              ...uniqueKeyspaceResponseList[indexOfKeyspace].tableNameList,
+              ...r.tableNameList!
+            ],
+            tableUUIDList: [
+              ...uniqueKeyspaceResponseList[indexOfKeyspace].tableUUIDList,
+              ...r.tableUUIDList!
+            ]
+          };
+        } else {
+          uniqueKeyspaceResponseList.push(r);
+        }
+      });
+
       return addIncrementalBackup({
         ...backupDetails!,
         commonBackupInfo: {
           ...backupDetails!.commonBackupInfo,
-          responseList
+          responseList: uniqueKeyspaceResponseList
         }
       });
     },

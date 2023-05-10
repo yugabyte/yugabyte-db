@@ -506,6 +506,7 @@ public class Schedule extends Model {
         builder.backupInfo(getV2ScheduleBackupInfo(params));
         builder.incrementalBackupFrequency(params.incrementalBackupFrequency);
         builder.incrementalBackupFrequencyTimeUnit(params.incrementalBackupFrequencyTimeUnit);
+        builder.tableByTableBackup(params.tableByTableBackup);
         if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
           Backup latestSuccessfulIncrementalBackup =
               ScheduleUtil.fetchLatestSuccessfulBackupForSchedule(

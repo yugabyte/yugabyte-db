@@ -161,7 +161,8 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
     parallelism: values['parallel_threads'],
     sse: values['storage_config'].name === 'S3',
     storageConfigUUID: values['storage_config'].value,
-    universeUUID: values['universeUUID']
+    universeUUID: values['universeUUID'],
+    tableByTableBackup: values['isTableByTableBackup']
   };
 
   let dbMap: Dictionary<any> = [];
@@ -269,7 +270,8 @@ export const addIncrementalBackup = (backup: IBackup) => {
     storageConfigUUID: backup.commonBackupInfo.storageConfigUUID,
     universeUUID: backup.universeUUID,
     baseBackupUUID: backup.commonBackupInfo.baseBackupUUID,
-    keyspaceTableList: backup.commonBackupInfo.responseList
+    keyspaceTableList: backup.commonBackupInfo.responseList,
+    tableByTableBackup: backup.commonBackupInfo.tableByTableBackup
   };
 
   return axios.post(requestUrl, payload);
