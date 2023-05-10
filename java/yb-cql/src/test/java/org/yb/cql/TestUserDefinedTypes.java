@@ -760,8 +760,6 @@ public class TestUserDefinedTypes extends BaseCQLTest {
                                        "{u:{{i:1,t:'a'},{i:2,t:'b'}}}]}, 1]",
                                "Row[{u:[{u:{{i:1,t:'a'},{i:2,t:'b'}}}]}, 3]");
 
-      session.execute("DROP TABLE " + tableName2);
-
       //--------------------------------------------------------------------------------------------
       // Test UDTs inside collections in table.
 
@@ -801,10 +799,26 @@ public class TestUserDefinedTypes extends BaseCQLTest {
       assertEquals(k, rows.get(0).getSet("k", UDTValue.class));
       assertEquals(v2, rows.get(0).getList("v", UDTValue.class));
 
-      session.execute("DROP TABLE " + tableName3);
-
       //--------------------------------------------------------------------------------------------
       // Test dropping types.
+
+      // udt4 is referenced in tableName & tableName2 & tableName3. Possible errors:
+      // tableName : It is used in column u4 of table test_coll_with_nested_udts
+      // tableName2: It is used in column u4 of table test_coll_with_nested_udts_pk
+      // tableName3: It is used in column k of table test_coll_with_nested_udts_coll
+      runInvalidStmt("DROP TYPE udt4", "is used in column");
+      // udt2 is referenced in tableName & tableName2 & tableName3. Possible errors:
+      // tableName : It is used in column u2 of table test_coll_with_nested_udts
+      // tableName2: It is used in column u4 of table test_coll_with_nested_udts_pk
+      // tableName3: It is used in column k of table test_coll_with_nested_udts_coll
+      runInvalidStmt("DROP TYPE udt2", "is used in column");
+      session.execute("DROP TABLE " + tableName3);
+
+      // udt4 is referenced in tableName & tableName2. Possible errors:
+      // tableName : It is used in column u4 of table test_coll_with_nested_udts
+      // tableName2: It is used in column u4 of table test_coll_with_nested_udts_pk
+      runInvalidStmt("DROP TYPE udt4", "is used in column u4 of table " + tableName);
+      session.execute("DROP TABLE " + tableName2);
 
       // Types cannot be dropped while they are used in a table.
       runInvalidStmt("DROP TYPE udt4", "is used in column u4 of table " + tableName);
