@@ -10,6 +10,8 @@ menu:
     identifier: docdb-colocated-tables
     parent: architecture-docdb-sharding
     weight: 1144
+rightNav:
+  hideH4: true
 type: docs
 ---
 
