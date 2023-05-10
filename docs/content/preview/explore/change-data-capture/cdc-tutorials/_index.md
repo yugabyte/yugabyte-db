@@ -1,6 +1,6 @@
 ---
 title: Change data capture environment tutorials
-headerTitle: Kafka Environments
+headerTitle: Kafka environments
 linkTitle: Environments
 description: Use YugabyteDB CDC with different Kafka environments.
 headcontent: 
@@ -71,7 +71,7 @@ type: indexpage
         <div class="title">Redpanda</div>
       </div>
       <div class="body">
-        Redpanda.
+        Use YugabyteDB CDC with Redpanda as message broker.
       </div>
     </a>
   </div>

@@ -37,9 +37,9 @@ The following table describes how the data flows through each of these component
 
 | Step | Operations/Tasks | Component |
 | --- | --- | --- |
-| 1 | CDC Enabled and [Create the Stream ID](../../../../integrations/cdc/debezium/) for specific YSQL database (that is, the database name). | YugabyteDB |
-| 2 | [Install and configure Redpanda](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker) and download YugabyteDB Debezium Connector as referred in [point#3](https://docs.google.com/document/d/1b2dQfMydXWr1iQ7SY_-l0Gda9NdklrHW-a6kBAoUKhg/edit#heading=h.earrcamsknhe) | Redpanda Cloud or Redpanda Docker and YugabyteDB CDC Connector |
-| 3 | Create and Deploy connector configuration in Redpanda as mentioned in step #4 | Redpanda, Kafka Connect |
+| 1 | CDC Enabled and [Create the Stream ID](../../../../integrations/cdc/debezium/) for specific YSQL database. | YugabyteDB |
+| 2 | [Install and configure Redpanda](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker) and download YugabyteDB Debezium Connector. | Redpanda Cloud or Redpanda Docker<br/>YugabyteDB CDC Connector |
+| 3 | Create and Deploy connector configuration in Redpanda. | Redpanda, Kafka Connect |
 
 ## Set up Redpanda with YugabyteDB CDC
 
@@ -59,7 +59,7 @@ Post installation and setup using the docker option, you can see docker containe
 
 ### Deploy YugabyteDB Debezium connector (docker container)
 
-Link the Redpanda Broker address with YugabyteDB CDC Connector as follows;
+Link the Redpanda Broker address with YugabyteDB Debezium connector as follows;
 
 ```sh
 sudo docker run -it --rm --name connect --net=host -p 8089:8089 -e GROUP_ID=1 -e BOOTSTRAP_SERVERS=127.0.0.1:19092 -e CONNECT_REST_PORT=8082 -e CONNECT_GROUP_ID="1" -e CONFIG_STORAGE_TOPIC=my_connect_configs -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses -e CONNECT_KEY_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_VALUE_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_INTERNAL_KEY_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_INTERNAL_VALUE_CONVERTER="org.apache.kafka.connect.json.JsonConverter" -e CONNECT_REST_ADVERTISED_HOST_NAME="connect" quay.io/yugabyte/debezium-connector:latest
@@ -100,7 +100,7 @@ curl -i -X  POST -H  "Accept:application/json" -H  "Content-Type:application/jso
 
 ### Monitor the messages through Redpanda
 
-The following illustration shows the Redpanda broker details installed locally using Docker and the topic that was subscribed (for example, dbeserver5.public.balaredpandatest) and the schema registry with key and value details of the topic.
+The following illustration shows the Redpanda broker details installed locally using Docker and the topic that was subscribed (for example, `dbeserver5.public.balaredpandatest`) and the schema registry with key and value details of the topic.
 
 ![Redpanda broker details](/images/explore/cdc/redpanda_images/Monitor1.jpg)
 
