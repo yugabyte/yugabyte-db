@@ -49,7 +49,7 @@ To get started, you'll need the following:
 - YugabyteDB Anywhere database with CDC enabled.
 - An Azure Event Hubs instance.
 - An Azure Synapse Analytics workspace with SQL Pools and Spark Pools. Tables can be created in the SQL Pools to house the CDC data.
-- An Azure Data Lake Storage Gen2 account. The Yugabyte CDC data resides in this Storage account and can be queried using external tables in Synapse SQL Pools.
+- An Azure Data Lake Storage Gen2 account. The YugabyteDB CDC data resides in this Storage account and can be queried using external tables in Synapse SQL Pools.
 
 ## Get Started
 
