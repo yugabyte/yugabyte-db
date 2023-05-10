@@ -146,7 +146,7 @@ CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO: "SCHEMA_REGISTRY_U
 
 - To configure authentication, follow the instructions in [Configure Authentication for Confluent Platform with Ansible Playbooks](https://docs.confluent.io/ansible/current/ansible-authenticate.html).
 
-To configure authorization, follow the instructions in [Configure Authorization for Confluent Platform with Ansible Playbooks](https://docs.confluent.io/ansible/current/ansible-authorize.html).
+- To configure authorization, follow the instructions in [Configure Authorization for Confluent Platform with Ansible Playbooks](https://docs.confluent.io/ansible/current/ansible-authorize.html).
 
     {{< /note >}}
 
