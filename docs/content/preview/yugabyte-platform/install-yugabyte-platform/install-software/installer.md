@@ -96,94 +96,9 @@ Respond with `y` or `yes` to create the configuration file using default configu
 
 Respond with `n` or `no` to create the configuration file using default configuration settings and exit the command.
 
-To change the default values, edit the file, and then re-run the `yba-ctl` command.
+By default, YBA Installer installs YBA in `/opt/yugabyte` and creates a Linux user `yugabyte` to run YBA processes.
 
-#### YBA Installer configuration options
-
-You can set the following YBA Installer configuration options.
-
-| Option | Description |
-| :--- | :--- |
-| `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. |
-| `host` | Hostname or IP Address used for CORS and certificate creation. Optional. |
-| `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. |
-| `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. |
-
-#### YBA configuration options
-
-You can configure the following YBA configuration options.
-
-| Option | Description |
-| :--- | :--- |
-| `Port` | Specify a custom port for the YBA UI to run on.
-| `keyStorePassword` | Password for the Java keystore. Auto-generated if left empty.
-| `appSecret` | Play framework crypto secret. Auto-generated if left empty.
-
-OAuth related settings are described in the following table. Only set these fields if you intend to use OIDC SSO for your YugabyteDB Anywhere installation (otherwise leave it empty).
-
-| Option | Description |
-| :--- | :--- |
-| `useOauth` | Boolean that determines if OIDC SSO needs to be enabled for YBA. Default is false. Set to true if you intend on using OIDC SSO for your YBA installation (must be a boolean).
-| `ybSecurityType` | The Security Type corresponding to the OIDC SSO for your YBA installation.
-| `ybOidcClientId` | The Client ID corresponding to the OIDC SSO for your YBA installation.
-| `ybOidcSecret` | The OIDC Secret Key corresponding to the OIDC SSO for your YBA installation.
-| `ybOidcDiscoveryUri` | The OIDC Discovery URI corresponding to the OIDC SSO for your YBA installation. Must be a valid URL.
-| `ywWrl` | The Platform IP corresponding to the OIDC SSO for your YBA installation. Must be a valid URL.
-| `ybOidcScope` | The OIDC Scope corresponding to the OIDC SSO for your YBA installation.
-| `ybOidcEmailAtr` | The OIDC Email Attr corresponding to the OIDC SSO for your YBA installation. Must be a valid email address.
-
-Http and Https proxy settings are described in the following table.
-
-| Option | Description |
-| :--- | :--- |
-| `http_proxy` |            Specify the setting for HTTP_PROXY
-| `java_http_proxy_port` |  Specify -Dhttp.proxyPort
-| `java_http_proxy_host` |  Specify -Dhttp.proxyHost
-| `https_proxy` |           Specify the setting for HTTPS_PROXY
-| `java_https_proxy_port` | Specify -Dhttps.proxyPort
-| `java_https_proxy_host` | Specify -Dhttps.proxyHost
-| `no_proxy` |              Specify the setting for NO_PROXY
-| `java_non_proxy` |        Specify  -Dhttps.nonProxyHosts.
-
-#### Prometheus configuration options
-
-| Option | Description |
-| :--- | :--- |
-| `Port` | External Prometheus port
-| `restartSeconds` | Systemd will restart Prometheus after this number of seconds after a crash.
-| `scrapeInterval` | How often Prometheus scrapes for database metrics.
-| `scrapeTimeout` | Timeout for inactivity during scraping.
-| `maxConcurrency` | Maximum concurrent queries to be executed by Prometheus.
-| `maxSamples` | Maximum number of samples that a single query can load into memory.
-| `Timeout` | The time threshold for inactivity after which Prometheus will be declared inactive.
-
-#### Configure PostgreSQL
-
-By default, YBA Installer provides a version of PostgreSQL. If you prefer, you can use your own version of PostgreSQL.
-
-PostgreSQL configuration is divided into two different subsections:
-
-- `install` - contains information on how YBA Installer should install PostgreSQL.
-- `useExisting` - provides YBA Installer with information on how to connect to a PostgreSQL instance that you provision and manage separately.
-
-These options are mutually exclusive, and can be turned on or off using the _enabled_ option. Exactly one of these two sections must have enabled = true, while the other must have enabled = false.
-
-**Install options**
-
-| Option | Description |
-| :--- | :--- |
-| Port | Port PostgreSQL is listening to.
-| restartSecond | Wait time to restart PostgreSQL if the service crashes.
-| locale | locale is used during initialization of the db.
-
-**useExisting options**
-
-| Option | Description |
-| :--- | :--- |
-| Host | IP address/domain name of the PostgreSQL server.
-| Port | Port PostgreSQL is running on.
-| Username and password | Used to authenticate with PostgreSQL.
-| Pg_dump_path<br/>pg_restore_path | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install.
+To change these and other default values, edit the `yba-ctl.yml` file, and then re-run the `yba-ctl` command. You can change configuration options post-install using the [reconfigure](#reconfigure) command. For a list of options, refer to [Configuration options](#configuration-options).
 
 ## Install YBA using YBA Installer
 
@@ -398,3 +313,92 @@ YBA Installer also supports a non-root installation, where sudo access is not re
 To facilitate a non-root install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
 
 To perform a non-root installation, run any of the preceding commands without root access. You can't switch between a root and non-root installation, and yba-ctl will return an error if sudo is not used when operating in a root installation.
+
+## Configuration options
+
+### YBA Installer configuration options
+
+You can set the following YBA Installer configuration options.
+
+| Option | Description |
+| :--- | :--- |
+| `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. |
+| `host` | Hostname or IP Address used for CORS and certificate creation. Optional. |
+| `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. |
+| `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. |
+
+### YBA configuration options
+
+You can configure the following YBA configuration options.
+
+| Option | Description |
+| :--- | :--- |
+| `Port` | Specify a custom port for the YBA UI to run on.
+| `keyStorePassword` | Password for the Java keystore. Auto-generated if left empty.
+| `appSecret` | Play framework crypto secret. Auto-generated if left empty.
+
+OAuth related settings are described in the following table. Only set these fields if you intend to use OIDC SSO for your YugabyteDB Anywhere installation (otherwise leave it empty).
+
+| Option | Description |
+| :--- | :--- |
+| `useOauth` | Boolean that determines if OIDC SSO needs to be enabled for YBA. Default is false. Set to true if you intend on using OIDC SSO for your YBA installation (must be a boolean).
+| `ybSecurityType` | The Security Type corresponding to the OIDC SSO for your YBA installation.
+| `ybOidcClientId` | The Client ID corresponding to the OIDC SSO for your YBA installation.
+| `ybOidcSecret` | The OIDC Secret Key corresponding to the OIDC SSO for your YBA installation.
+| `ybOidcDiscoveryUri` | The OIDC Discovery URI corresponding to the OIDC SSO for your YBA installation. Must be a valid URL.
+| `ywWrl` | The Platform IP corresponding to the OIDC SSO for your YBA installation. Must be a valid URL.
+| `ybOidcScope` | The OIDC Scope corresponding to the OIDC SSO for your YBA installation.
+| `ybOidcEmailAtr` | The OIDC Email Attr corresponding to the OIDC SSO for your YBA installation. Must be a valid email address.
+
+Http and Https proxy settings are described in the following table.
+
+| Option | Description |
+| :--- | :--- |
+| `http_proxy` |            Specify the setting for HTTP_PROXY
+| `java_http_proxy_port` |  Specify -Dhttp.proxyPort
+| `java_http_proxy_host` |  Specify -Dhttp.proxyHost
+| `https_proxy` |           Specify the setting for HTTPS_PROXY
+| `java_https_proxy_port` | Specify -Dhttps.proxyPort
+| `java_https_proxy_host` | Specify -Dhttps.proxyHost
+| `no_proxy` |              Specify the setting for NO_PROXY
+| `java_non_proxy` |        Specify  -Dhttps.nonProxyHosts.
+
+### Prometheus configuration options
+
+| Option | Description |
+| :--- | :--- |
+| `Port` | External Prometheus port
+| `restartSeconds` | Systemd will restart Prometheus after this number of seconds after a crash.
+| `scrapeInterval` | How often Prometheus scrapes for database metrics.
+| `scrapeTimeout` | Timeout for inactivity during scraping.
+| `maxConcurrency` | Maximum concurrent queries to be executed by Prometheus.
+| `maxSamples` | Maximum number of samples that a single query can load into memory.
+| `Timeout` | The time threshold for inactivity after which Prometheus will be declared inactive.
+
+### Configure PostgreSQL
+
+By default, YBA Installer provides a version of PostgreSQL. If you prefer, you can use your own version of PostgreSQL.
+
+PostgreSQL configuration is divided into two different subsections:
+
+- `install` - contains information on how YBA Installer should install PostgreSQL.
+- `useExisting` - provides YBA Installer with information on how to connect to a PostgreSQL instance that you provision and manage separately.
+
+These options are mutually exclusive, and can be turned on or off using the _enabled_ option. Exactly one of these two sections must have enabled = true, while the other must have enabled = false.
+
+**Install options**
+
+| Option | Description |
+| :--- | :--- |
+| Port | Port PostgreSQL is listening to.
+| restartSecond | Wait time to restart PostgreSQL if the service crashes.
+| locale | locale is used during initialization of the db.
+
+**useExisting options**
+
+| Option | Description |
+| :--- | :--- |
+| Host | IP address/domain name of the PostgreSQL server.
+| Port | Port PostgreSQL is running on.
+| Username and password | Used to authenticate with PostgreSQL.
+| Pg_dump_path<br/>pg_restore_path | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install.
