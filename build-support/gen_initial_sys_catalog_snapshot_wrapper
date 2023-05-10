@@ -17,4 +17,4 @@ set -euo pipefail
 
 activate_virtualenv
 set_pythonpath
-"$YB_SRC_ROOT"/python/yb/gen_initial_sys_catalog_snapshot.py "$@"
+"$YB_SCRIPT_PATH_GEN_INITIAL_SYS_CATALOG_SNAPSHOT" "$@"
