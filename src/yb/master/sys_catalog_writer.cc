@@ -31,6 +31,10 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 
+DEFINE_RUNTIME_bool(ignore_null_sys_catalog_entries, false,
+                    "Whether we should ignore system catalog entries with NULL value during "
+                    "iteration.");
+
 namespace yb {
 namespace master {
 
@@ -60,9 +64,18 @@ Status ReadNextSysCatalogRow(
   SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
   RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
   RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
-  SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption, "Found wrong metadata type");
-  RETURN_NOT_OK(callback(entry_id.binary_value(), metadata.binary_value()));
-  return Status::OK();
+  if (metadata.type() != InternalType::kBinaryValue) {
+    auto status = STATUS_FORMAT(
+        Corruption, "Unexpected value type for metadata: $0, row: $1, type: $2, id: $3",
+        metadata.type(), value_map.ToString(), static_cast<SysRowEntryType>(entry_type),
+        Slice(entry_id.binary_value()).ToDebugHexString());
+    if (FLAGS_ignore_null_sys_catalog_entries && IsNull(metadata)) {
+      LOG(DFATAL) << status;
+      return Status::OK();
+    }
+    return status;
+  }
+  return callback(entry_id.binary_value(), metadata.binary_value());
 }
 
 } // namespace
