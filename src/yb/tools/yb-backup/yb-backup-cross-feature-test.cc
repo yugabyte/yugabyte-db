@@ -1316,8 +1316,23 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupChecksumsDisabled))
 
 YB_STRONGLY_TYPED_BOOL(SourceDatabaseIsColocated);
 
-class YBBackupTestWithPackedRows : public YBBackupTest,
-                                   public ::testing::WithParamInterface<SourceDatabaseIsColocated> {
+class YBBackupCrossColocation : public YBBackupTest,
+                                public ::testing::WithParamInterface<SourceDatabaseIsColocated> {
+ protected:
+  void SetUp() override {
+    YBBackupTest::SetUp();
+    if (GetParam()) {
+      ASSERT_NO_FATALS(RunPsqlCommand(
+          Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
+      SetDbName(backup_db_name);
+    }
+  }
+
+  const std::string backup_db_name = GetParam() ? "colo_db" : "yugabyte";
+  const std::string restore_db_name = "restored_db";
+};
+
+class YBBackupTestWithPackedRows : public YBBackupCrossColocation {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
@@ -1479,6 +1494,51 @@ TEST_P(
 
 INSTANTIATE_TEST_CASE_P(
     PackedRows, YBBackupTestWithPackedRows,
+    ::testing::Values(SourceDatabaseIsColocated::kFalse, SourceDatabaseIsColocated::kTrue));
+
+TEST_P(YBBackupCrossColocation, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreWithInvalidIndex)) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (id INT NOT NULL, c1 INT, PRIMARY KEY (id))"));
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t1 (id, c1) VALUES ($0, $0)", i)));
+  }
+  ASSERT_NO_FATALS(CreateIndex("CREATE INDEX t1_c1_idx ON t1(c1)"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "UPDATE pg_index SET indisvalid='f' WHERE indexrelid = 't1_c1_idx'::regclass", "UPDATE 1"));
+  const std::string backup_dir = GetTempDir("backup");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", backup_keyspace, "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"}));
+
+  SetDbName(restore_db_name);
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT * from t1 ORDER BY id;",
+      R"#(
+                 id | c1
+                ----+----
+                  0 |  0
+                  1 |  1
+                  2 |  2
+                (3 rows)
+      )#"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT indexname from pg_indexes where schemaname = 'public'",
+      R"#(
+                indexname
+                -----------
+                 t1_pkey
+                (1 row)
+      )#"));
+  // Try to recreate the index to ensure import_snapshot didn't import any metadata for the invalid
+  // index.
+  ASSERT_NO_FATALS(CreateIndex("CREATE INDEX t1_c1_idx ON t1(c1)"));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    CrossColocationTests, YBBackupCrossColocation,
     ::testing::Values(SourceDatabaseIsColocated::kFalse, SourceDatabaseIsColocated::kTrue));
 
 }  // namespace tools
