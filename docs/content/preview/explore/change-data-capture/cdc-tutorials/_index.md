@@ -1,8 +1,8 @@
 ---
 title: Change data capture environment tutorials
-headerTitle: CDC Environments
+headerTitle: Kafka Environments
 linkTitle: Environments
-description: Use YugabyteDB CDC with different environments.
+description: Use YugabyteDB CDC with different Kafka environments.
 headcontent: 
 image: /images/section_icons/index/develop.png
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
