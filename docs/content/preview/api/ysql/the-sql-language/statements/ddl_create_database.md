@@ -97,7 +97,7 @@ Default is `false` and every table in the database will have its own set of tabl
 yugabyte=# CREATE DATABASE company WITH COLOCATION = true;
 ```
 
-In this example, all tables in the database `company` will be colocated on a single tablet.
+In this example, tables in the database `company` will be colocated on a single tablet by default.
 
 ## See also
 
