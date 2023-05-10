@@ -790,6 +790,66 @@ $$) AS r(result agtype);
 SELECT agtype_in('[NaN, {"e": 2.718281::numeric, "one": Infinity, "pie": 3.1415927}, 2::numeric, null]');
 
 --
+-- Test typecast ::pg_float8
+--
+SELECT * FROM cypher('expr', $$
+RETURN 0::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN '2.71'::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 2.71::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2::numeric}, 2, null][1].one)::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1::pg_float8, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].one)
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1::pg_float8, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].one)::float
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][3])::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN (['NaN'::pg_float8, {one: 'inf'::pg_float8, pie: 3.1415927, e: 2.718281::numeric}, 2::numeric, null])
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].e)::pg_float8
+$$) AS r(result agtype);
+-- test NaN, Infinity and -Infinity
+SELECT * FROM cypher('expr', $$
+RETURN 'NaN'::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 'inf'::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN '-inf'::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 'infinity'::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN '-infinity'::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN null::pg_float8
+$$) AS r(result agtype);
+-- these should fail
+SELECT * FROM cypher('expr', $$
+RETURN ''::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN '2:71'::pg_float8
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 'infi'::pg_float8
+$$) AS r(result agtype);
+
+--
 -- Test typecast :: transform and execution logic for object (vertex & edge)
 --
 SELECT * FROM cypher('expr', $$
@@ -2140,6 +2200,9 @@ SELECT * from cypher('expr', $$
     RETURN pg_catalog.sqrt(25::pg_float8)
 $$) as (result agtype);
 SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt("25"::pg_float8)
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
     RETURN ag_catalog.age_sqrt(25)
 $$) as (result agtype);
 -- should return null
@@ -2149,9 +2212,6 @@ $$) as (result agtype);
 -- should fail
 SELECT * from cypher('expr', $$
     RETURN pg_catalog.sqrt()
-$$) as (result agtype);
-SELECT * from cypher('expr', $$
-    RETURN pg_catalog.sqrt("1"::pg_float8)
 $$) as (result agtype);
 SELECT * from cypher('expr', $$
     RETURN pg_catalog.sqrt(-1::pg_float8)
@@ -2387,6 +2447,9 @@ SELECT * FROM cypher('opt_forms', $$MATCH (u)-->()<--(v) RETURN *$$) AS (col1 ag
 -- Added typecasts ::pg_bigint and ::pg_float8
 SELECT * FROM cypher('expr', $$
 RETURN true::pg_bigint
+$$) AS (result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN "1.0"::pg_float8
 $$) AS (result agtype);
 SELECT * from cypher('expr', $$
 RETURN pg_catalog.sqrt(pg_catalog.sqrt(pg_catalog.sqrt(256::pg_bigint)))

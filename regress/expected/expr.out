@@ -1735,6 +1735,143 @@ SELECT agtype_in('[NaN, {"e": 2.718281::numeric, "one": Infinity, "pie": 3.14159
 (1 row)
 
 --
+-- Test typecast ::pg_float8
+--
+SELECT * FROM cypher('expr', $$
+RETURN 0::pg_float8
+$$) AS r(result agtype);
+ result 
+--------
+ 0.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN '2.71'::pg_float8
+$$) AS r(result agtype);
+ result 
+--------
+ 2.71
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN 2.71::pg_float8
+$$) AS r(result agtype);
+ result 
+--------
+ 2.71
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2::numeric}, 2, null][1].one)::pg_float8
+$$) AS r(result agtype);
+ result 
+--------
+ 1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1::pg_float8, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].one)
+$$) AS r(result agtype);
+ result 
+--------
+ 1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1::pg_float8, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].one)::float
+$$) AS r(result agtype);
+ result 
+--------
+ 1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][3])::pg_float8
+$$) AS r(result agtype);
+ result 
+--------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN (['NaN'::pg_float8, {one: 'inf'::pg_float8, pie: 3.1415927, e: 2.718281::numeric}, 2::numeric, null])
+$$) AS r(result agtype);
+                                        result                                        
+--------------------------------------------------------------------------------------
+ [NaN, {"e": 2.718281::numeric, "one": Infinity, "pie": 3.1415927}, 2::numeric, null]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].e)::pg_float8
+$$) AS r(result agtype);
+  result  
+----------
+ 2.718281
+(1 row)
+
+-- test NaN, Infinity and -Infinity
+SELECT * FROM cypher('expr', $$
+RETURN 'NaN'::pg_float8
+$$) AS r(result agtype);
+ result 
+--------
+ NaN
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN 'inf'::pg_float8
+$$) AS r(result agtype);
+  result  
+----------
+ Infinity
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN '-inf'::pg_float8
+$$) AS r(result agtype);
+  result   
+-----------
+ -Infinity
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN 'infinity'::pg_float8
+$$) AS r(result agtype);
+  result  
+----------
+ Infinity
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN '-infinity'::pg_float8
+$$) AS r(result agtype);
+  result   
+-----------
+ -Infinity
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN null::pg_float8
+$$) AS r(result agtype);
+ result 
+--------
+ 
+(1 row)
+
+-- these should fail
+SELECT * FROM cypher('expr', $$
+RETURN ''::pg_float8
+$$) AS r(result agtype);
+ERROR:  invalid input syntax for type double precision: ""
+SELECT * FROM cypher('expr', $$
+RETURN '2:71'::pg_float8
+$$) AS r(result agtype);
+ERROR:  invalid input syntax for type double precision: "2:71"
+SELECT * FROM cypher('expr', $$
+RETURN 'infi'::pg_float8
+$$) AS r(result agtype);
+ERROR:  invalid input syntax for type double precision: "infi"
+--
 -- Test typecast :: transform and execution logic for object (vertex & edge)
 --
 SELECT * FROM cypher('expr', $$
@@ -5067,6 +5204,14 @@ $$) as (result agtype);
 (1 row)
 
 SELECT * from cypher('expr', $$
+    RETURN pg_catalog.sqrt("25"::pg_float8)
+$$) as (result agtype);
+ result 
+--------
+ 5.0
+(1 row)
+
+SELECT * from cypher('expr', $$
     RETURN ag_catalog.age_sqrt(25)
 $$) as (result agtype);
  result 
@@ -5091,10 +5236,6 @@ ERROR:  function pg_catalog.sqrt() does not exist
 LINE 2:     RETURN pg_catalog.sqrt()
                               ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * from cypher('expr', $$
-    RETURN pg_catalog.sqrt("1"::pg_float8)
-$$) as (result agtype);
-ERROR:  cannot cast agtype string to type float
 SELECT * from cypher('expr', $$
     RETURN pg_catalog.sqrt(-1::pg_float8)
 $$) as (result agtype);
@@ -5893,6 +6034,14 @@ $$) AS (result agtype);
  result 
 --------
  1
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN "1.0"::pg_float8
+$$) AS (result agtype);
+ result 
+--------
+ 1.0
 (1 row)
 
 SELECT * from cypher('expr', $$
