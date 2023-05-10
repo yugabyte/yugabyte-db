@@ -294,6 +294,7 @@ public class SwamperHelper {
     ArrayNode targetNodes = Json.newArray();
     ObjectNode labels = Json.newObject();
     targetNodes.add(String.format("%s:%d", nodeAgent.getIp(), nodeAgent.getPort()));
+    labels.put(KnownAlertLabels.CUSTOMER_UUID.labelName(), nodeAgent.getCustomerUuid().toString());
     labels.put(KnownAlertLabels.NODE_AGENT_UUID.labelName(), nodeAgent.getUuid().toString());
     target.set("targets", targetNodes);
     target.set("labels", labels);
