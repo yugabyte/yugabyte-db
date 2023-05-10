@@ -66,7 +66,7 @@ $ cd YBA_installer_full-2.17.3.0-b123/
 
 This bundle provides everything needed, except a [license](#provide-a-license), to complete a fresh install of YBA:
 
-- `yba-ctl` executable binary is used to perform all of the YBA Installer workflows. yba-ctl commands need to be run in the correct context; see [Service management](#running-yba-ctl-commands).
+- `yba-ctl` executable binary is used to perform all of the YBA Installer workflows.
 - `yba-ctl.yml.reference` is a YAML reference for the available configuration options for both YBA Installer and YugabyteDB Anywhere.
 
 To see a full list of commands, run the following command:
@@ -74,6 +74,8 @@ To see a full list of commands, run the following command:
 ```sh
 $ ./yba-ctl help
 ```
+
+yba-ctl commands need to be run in the correct context; see [Running yb-ctl commands](#running-yba-ctl-commands).
 
 ### Configure YBA Installer
 
