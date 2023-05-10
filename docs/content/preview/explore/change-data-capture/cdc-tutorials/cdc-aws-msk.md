@@ -235,6 +235,6 @@ Enable logging on your cluster to help with debugging. This example uses the S3 
 
 ![Amazon S3 logging](/images/explore/cdc/aws_msk_images/amazon-s3-logging.png)
 
-The cluster is now is now configured successfully.
+The cluster is now configured successfully.
 
 ![Amazon MSK Create Cluster](/images/explore/cdc/aws_msk_images/amazon-msk-create-cluster.png)
