@@ -346,6 +346,10 @@ class YBSchema {
 
   std::string ToString() const;
 
+  size_t DynamicMemoryUsage() const {
+    return schema_->memory_footprint_including_this() + sizeof(*this);
+  }
+
  private:
   friend YBSchema YBSchemaFromSchema(const Schema& schema);
   friend const Schema& internal::GetSchema(const YBSchema& schema);
