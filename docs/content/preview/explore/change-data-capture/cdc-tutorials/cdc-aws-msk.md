@@ -225,7 +225,7 @@ Create a cluster with two zones.
 
 ![Amazon Brokers](/images/explore/cdc/aws_msk_images/amazon-brokers.png)
 
-Under the Networking section, select the same VPC and Private subnets as used by the YugabyteDB cluster.
+In the **Networking** section, select the same VPC and Private subnets as used by the YugabyteDB cluster.
 
 Choose the security group you created previously.
 
