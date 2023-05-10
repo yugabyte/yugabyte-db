@@ -14,7 +14,7 @@ type: docs
 ---
 
 
-This tutorial describes how to configure a YugabyteDB connector to publish changes to Confluent Cloud. Simultaneously, this assumes some familiarity with Docker and YAML files.
+This following tutorial describes how to configure a YugabyteDB connector to publish changes to Confluent Cloud. The tutorial assumes some familiarity with Docker and YAML files.
 
 ![Architecture of YugabyteDB to Confluent Cloud pipeline](/images/explore/cdc/confluent_images/cdc_confluent_cloud.png)
 
