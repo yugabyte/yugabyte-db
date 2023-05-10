@@ -978,9 +978,9 @@ public class CloudProviderHandler {
         LOG.error(
             "Received validation error,  ignoreValidationErrors=" + ignoreValidationErrors, e);
         newErrors = e.getContentJson();
+        provider.setLastValidationErrors(newErrors);
+        provider.save();
         if (!ignoreValidationErrors) {
-          provider.setLastValidationErrors(newErrors);
-          provider.save();
           throw e;
         }
       }
