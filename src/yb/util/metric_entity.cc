@@ -319,6 +319,7 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   if (strcmp(prototype_->name(), "tablet") == 0 || strcmp(prototype_->name(), "table") == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
+    prometheus_attr["table_type"] = attrs["table_type"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
   } else if (
       strcmp(prototype_->name(), "server") == 0 || strcmp(prototype_->name(), "cluster") == 0) {
@@ -328,6 +329,7 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   } else if (strcmp(prototype_->name(), "cdc") == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
+    prometheus_attr["table_type"] = attrs["table_type"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
   } else if (strcmp(prototype_->name(), "cdcsdk") == 0) {
