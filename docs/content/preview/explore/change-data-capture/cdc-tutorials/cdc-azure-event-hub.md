@@ -195,7 +195,7 @@ query = (df2.writeStream.format('delta') \
 )
 ```
 
-Save and execute this code snippet in the Azure Synapse Analytics Workspace using a Spark Pool with Pyspark as the language after making changes as appropriate.
+Save and execute this code snippet in the Azure Synapse Analytics Workspace using a Spark Pool with Pyspark as the language after making any appropriate changes.
 
 You can analyze the data in the ADLS Gen2 account using Spark pools as described in [Query captured data in Parquet format with Azure Synapse Analytics Spark Pools](https://learn.microsoft.com/en-us/azure/stream-analytics/event-hubs-parquet-capture-tutorial#query-using-azure-synapse-spark).
 
