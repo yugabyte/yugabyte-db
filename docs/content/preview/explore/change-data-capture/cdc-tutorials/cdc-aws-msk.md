@@ -221,7 +221,7 @@ For this example, create an Amazon MSK cluster in the same VPC as that of the Yu
 
 ![MSK cluster settings](/images/explore/cdc/aws_msk_images/msk-cluster-settings.png)
 
-This example creates a cluster with two zones.
+Create a cluster with two zones.
 
 ![Amazon Brokers](/images/explore/cdc/aws_msk_images/amazon-brokers.png)
 
