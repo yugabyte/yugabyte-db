@@ -120,7 +120,7 @@ To connect the CDC Connector to Event Hubs, edit the `config.yaml` file in the d
 
 ### Step 4: Run the YugabyteDB CDC Connector
 
-Start the YugabyteDB CDC Connector by running the following command:
+Start the YugabyteDB CDC Connector using the following command:
 
 ```sh
 sql $ yb-connect-cdc start --cdc_dir <directory>
