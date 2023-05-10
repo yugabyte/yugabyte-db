@@ -1,5 +1,5 @@
 adal==1.2.7
-ansible==2.9.27
+ansible==5.0.0a1
 ansible-vault==2.1.0
 awscli==1.19.73
 azure-common==1.1.25
@@ -16,7 +16,7 @@ certifi==2022.12.7
 cffi==1.15.1
 chardet==4.0.0
 colorama==0.4.3
-cryptography==3.3.2
+cryptography==39.0.1
 deepdiff==5.5.0
 distro==1.5.0
 docutils==0.15.2
@@ -41,7 +41,7 @@ mitogen==0.2.9
 msrest==0.6.21
 msrestazure==0.6.4
 oauth2client==3.0.0
-oauthlib==3.1.1
+oauthlib==3.2.2
 ordered-set==4.0.2
 paramiko==2.12.0
 protobuf==3.19.6;python_version<"3.10"
@@ -55,7 +55,7 @@ PyJWT==2.4.0
 PyNaCl==1.4.0
 pyparsing==2.4.7
 python-dateutil==2.8.2
-python-ldap==3.3.1
+python-ldap==3.4.0
 pytz==2021.1
 PyYAML==5.4.1
 requests==2.25.1
