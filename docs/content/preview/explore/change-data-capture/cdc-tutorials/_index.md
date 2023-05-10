@@ -59,7 +59,7 @@ type: indexpage
         <div class="title">Confluent Cloud</div>
       </div>
       <div class="body">
-        Confluent Cloud.
+       Use YugabyteDB connector to publish changes to Confluent Cloud.
       </div>
     </a>
   </div>
