@@ -106,7 +106,7 @@ ADD_YB_LIBRARY(opid_proto
 # the build directory.
 set(VERSION_STAMP_FILE ${CMAKE_BINARY_DIR}/version_metadata.json)
 
-list(APPEND GEN_VERSION_INFO_COMMAND "${BUILD_SUPPORT_DIR}/gen_version_info.py")
+list(APPEND GEN_VERSION_INFO_COMMAND "${YB_SRC_ROOT}/python/yugabyte/gen_version_info.py")
 list(APPEND GEN_VERSION_INFO_COMMAND "--build-type=${CMAKE_BUILD_TYPE}")
 if(YB_GIT_HASH)
   message(STATUS "Provided git hash: ${YB_GIT_HASH}")

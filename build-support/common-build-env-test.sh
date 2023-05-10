@@ -191,5 +191,35 @@ test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fa
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang15 0
 
 # -------------------------------------------------------------------------------------------------
+# Test existence of scripts pointed to by specical "script path" variables.
+# -------------------------------------------------------------------------------------------------
+
+list_yb_script_path_var_names() {
+  env | grep -E '^YB_SCRIPT_PATH_' | sed 's/=.*//g'
+}
+
+# Unset all script path variables in case some of them are set from outside.
+for script_path_var_name in $( list_yb_script_path_var_names ); do
+  unset "${script_path_var_name}"
+done
+
+# Then set them again from scratch.
+yb_script_paths_are_set=false
+set_script_paths
+
+# Verify that the script pointed to by each of these variables exists.
+for script_path_var_name in $( list_yb_script_path_var_names ); do
+  script_path_var_value=${!script_path_var_name}
+  if [[ ! -f ${script_path_var_value} ]]; then
+    fatal "Script path variable '$script_path_var_name' points to a non-existent file: " \
+          "'$script_path_var_value'"
+  fi
+  if [[ ! -x ${script_path_var_value} ]]; then
+    fatal "Script path variable '$script_path_var_name' points to a non-executable file: " \
+          "'$script_path_var_value'"
+  fi
+done
+
+# -------------------------------------------------------------------------------------------------
 
 echo "${0##/*} succeeded"

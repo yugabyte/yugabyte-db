@@ -598,7 +598,7 @@ analyze_existing_core_file() {
     echo "$debugger_input" |
       "${debugger_cmd[@]}" 2>&1 |
       grep -Ev "^\[New LWP [0-9]+\]$" |
-      "$YB_SRC_ROOT"/build-support/dedup_thread_stacks.py |
+      "$YB_SCRIPT_PATH_DEDUP_THREAD_STACKS" |
       tee -a "$append_output_to"
   ) >&2
   set -e
@@ -790,8 +790,8 @@ handle_cxx_test_xml_output() {
       # parse_test_failure will also generate XML file in this case.
     fi
     echo "Generating an XML output file using parse_test_failure.py: $xml_output_file" >&2
-    "$YB_SRC_ROOT"/build-support/parse_test_failure.py -x \
-        "$junit_test_case_id" "$test_log_path" >"$xml_output_file"
+    "$YB_SCRIPT_PATH_PARSE_TEST_FAILURE" -x "$junit_test_case_id" "$test_log_path" \
+      >"$xml_output_file"
   fi
 
   process_tree_supervisor_append_log_to_on_error=$test_log_path
@@ -808,7 +808,7 @@ handle_cxx_test_xml_output() {
     log "Test succeeded, updating $xml_output_file"
   fi
   update_test_result_xml_cmd=(
-    "$YB_SRC_ROOT"/build-support/update_test_result_xml.py
+    "$YB_SCRIPT_PATH_UPDATE_TEST_RESULT_XML"
     --result-xml "$xml_output_file"
     --mark-as-failed "$test_failed"
   )
@@ -1023,7 +1023,7 @@ run_postproces_test_result_script() {
   fi
   (
     set_pythonpath
-    "$VIRTUAL_ENV/bin/python" "${YB_SRC_ROOT}/python/yb/postprocess_test_result.py" \
+    "$VIRTUAL_ENV/bin/python" "$YB_SCRIPT_PATH_POSTPROCESS_TEST_RESULT" \
       "${args[@]}" "$@"
   )
 }
@@ -1038,7 +1038,7 @@ rewrite_test_log() {
   (
     # TODO: we should just set PYTHONPATH globally, e.g. at the time we activate virtualenv.
     set_pythonpath
-    "${VIRTUAL_ENV}/bin/python" "${YB_SRC_ROOT}/python/yb/rewrite_test_log.py" \
+    "${VIRTUAL_ENV}/bin/python" "$YB_SCRIPT_PATH_REWRITE_TEST_LOG" \
         --input-log-path "${test_log_path}" \
         --replace-original \
         --yb-src-root "${YB_SRC_ROOT}" \
@@ -1371,7 +1371,7 @@ run_tests_on_spark() {
     # Finished task 2791.0 in stage 0.0 (TID 2791) in 10436 ms on <ip> (executor 3) (2900/2908)
     time "$spark_submit_cmd_path" \
       --driver-cores "$INITIAL_SPARK_DRIVER_CORES" \
-      "$YB_SRC_ROOT/build-support/run_tests_on_spark.py" \
+      "$YB_SCRIPT_PATH_RUN_TESTS_ON_SPARK" \
       "${run_tests_args[@]}" "$@" 2>&1 | \
       grep -Ev "TaskSetManager: (Starting task|Finished task .* \([0-9]+[1-9]/[0-9]+\))" \
            --line-buffered
@@ -1715,7 +1715,7 @@ run_java_test() {
     else
       log "Process tree supervisor script reported an error, marking the test as failed in" \
           "$junit_xml_path"
-      "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
+      "$YB_SCRIPT_PATH_UPDATE_TEST_RESULT_XML" \
         --result-xml "$junit_xml_path" \
         --mark-as-failed true \
         --extra-message "Process supervisor script reported errors (e.g. unterminated processes)."

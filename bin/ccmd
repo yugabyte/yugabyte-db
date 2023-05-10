@@ -6,4 +6,4 @@ set -euo pipefail
 activate_virtualenv
 set_pythonpath
 
-python3 "${YB_SRC_ROOT}/python/yb/ccmd_tool.py" "$@"
+python3 "$YB_SCRIPT_PATH_CCMD_TOOL" "$@"

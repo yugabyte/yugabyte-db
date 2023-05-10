@@ -28,7 +28,7 @@ if [[ $( uname -m ) == "x86_64" ]]; then
 fi
 
 dep_graph_cmd=(
-  "${YB_SRC_ROOT}/python/yb/dependency_graph.py"
+  "$YB_SCRIPT_PATH_DEPENDENCY_GRAPH"
   "--build-root=${YB_SRC_ROOT}/build/${build_root_basename}"
   "--file-regex=^.*/yb-tserver-dynamic$"
 )

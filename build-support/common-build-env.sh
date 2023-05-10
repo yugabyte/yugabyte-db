@@ -29,9 +29,58 @@ fi
 
 readonly YB_COMMON_BUILD_ENV_SOURCED=1
 
+yb_script_paths_are_set=false
+
 # -------------------------------------------------------------------------------------------------
 # Functions used during initialization
 # -------------------------------------------------------------------------------------------------
+
+set_script_paths() {
+  if [[ $yb_script_paths_are_set == "true" ]]; then
+    return
+  fi
+  yb_script_paths_are_set=true
+
+  # We check that all of these scripts actually exist in common-build-env-test.sh, that's why it is
+  # useful to invoke them using these constants.
+  export YB_SCRIPT_PATH_AGGREGATE_TEST_REPORTS=\
+$YB_SRC_ROOT/python/yugabyte/aggregate_test_reports.py
+  export YB_SCRIPT_PATH_BUILD_POSTGRES=$YB_SRC_ROOT/python/yugabyte/build_postgres.py
+  export YB_SCRIPT_PATH_CCMD_TOOL=$YB_SRC_ROOT/python/yugabyte/ccmd_tool.py
+  export YB_SCRIPT_PATH_CHECK_PYTHON_SYNTAX=$YB_SRC_ROOT/python/yugabyte/check_python_syntax.py
+  export YB_SCRIPT_PATH_DEDUP_THREAD_STACKS=$YB_SRC_ROOT/python/yugabyte/dedup_thread_stacks.py
+  export YB_SCRIPT_PATH_DEPENDENCY_GRAPH=$YB_SRC_ROOT/python/yugabyte/dependency_graph.py
+  export YB_SCRIPT_PATH_DOWNLOAD_AND_EXTRACT_ARCHIVE=\
+$YB_SRC_ROOT/python/yugabyte/download_and_extract_archive.py
+  export YB_SCRIPT_PATH_FIX_PATHS_IN_COMPILE_ERRORS=\
+$YB_SRC_ROOT/python/yugabyte/fix_paths_in_compile_errors.py
+  export YB_SCRIPT_PATH_FOSSA_ANALYSIS=$YB_SRC_ROOT/python/yugabyte/fossa_analysis.py
+  export YB_SCRIPT_PATH_GEN_AUTO_FLAGS_JSON=$YB_SRC_ROOT/python/yugabyte/gen_auto_flags_json.py
+  export YB_SCRIPT_PATH_GEN_FLAGS_METADATA=$YB_SRC_ROOT/python/yugabyte/gen_flags_metadata.py
+  export YB_SCRIPT_PATH_GEN_INITIAL_SYS_CATALOG_SNAPSHOT=\
+$YB_SRC_ROOT/python/yugabyte/gen_initial_sys_catalog_snapshot.py
+  export YB_SCRIPT_PATH_GEN_VERSION_INFO=$YB_SRC_ROOT/python/yugabyte/gen_version_info.py
+  export YB_SCRIPT_PATH_IS_SAME_PATH=$YB_SRC_ROOT/python/yugabyte/is_same_path.py
+  export YB_SCRIPT_PATH_KILL_LONG_RUNNING_MINICLUSTER_DAEMONS=\
+$YB_SRC_ROOT/python/yugabyte/kill_long_running_minicluster_daemons.py
+  export YB_SCRIPT_PATH_MAKE_RPATH_RELATIVE=$YB_SRC_ROOT/python/yugabyte/make_rpath_relative.py
+  export YB_SCRIPT_PATH_PARSE_TEST_FAILURE=$YB_SRC_ROOT/python/yugabyte/parse_test_failure.py
+  export YB_SCRIPT_PATH_POSTPROCESS_TEST_RESULT=\
+$YB_SRC_ROOT/python/yugabyte/postprocess_test_result.py
+  export YB_SCRIPT_PATH_PROCESS_TREE_SUPERVISOR=\
+$YB_SRC_ROOT/python/yugabyte/process_tree_supervisor.py
+  export YB_SCRIPT_PATH_REWRITE_TEST_LOG=$YB_SRC_ROOT/python/yugabyte/rewrite_test_log.py
+  export YB_SCRIPT_PATH_RUN_PVS_STUDIO_ANALYZER=\
+$YB_SRC_ROOT/python/yugabyte/run_pvs_studio_analyzer.py
+  export YB_SCRIPT_PATH_RUN_TESTS_ON_SPARK=$YB_SRC_ROOT/python/yugabyte/run_tests_on_spark.py
+  export YB_SCRIPT_PATH_SPLIT_LONG_COMMAND_LINE=\
+$YB_SRC_ROOT/python/yugabyte/split_long_command_line.py
+  export YB_SCRIPT_PATH_THIRDPARTY_TOOL=$YB_SRC_ROOT/python/yugabyte/thirdparty_tool.py
+  export YB_SCRIPT_PATH_UPDATE_TEST_RESULT_XML=\
+$YB_SRC_ROOT/python/yugabyte/update_test_result_xml.py
+  export YB_SCRIPT_PATH_YB_RELEASE_CORE_DB=$YB_SRC_ROOT/python/yugabyte/yb_release_core_db.py
+  export YB_SCRIPT_PATH_LIST_PACKAGED_TARGETS=$YB_SRC_ROOT/python/yugabyte/list_packaged_targets.py
+}
 
 set_yb_src_root() {
   export YB_SRC_ROOT=$1
@@ -42,6 +91,8 @@ set_yb_src_root() {
   YB_COMPILER_WRAPPER_CC=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/cc
   YB_COMPILER_WRAPPER_CXX=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/c++
   yb_java_project_dirs=( "$YB_SRC_ROOT/java" )
+
+  set_script_paths
 }
 
 # Puts the current Git SHA1 in the current directory into the current_sha1 variable.
@@ -394,7 +445,7 @@ set_build_root() {
 
   if [[ -n ${predefined_build_root:-} &&
         $predefined_build_root != "$BUILD_ROOT" ]] &&
-     ! "$YB_BUILD_SUPPORT_DIR/is_same_path.py" "$predefined_build_root" "$BUILD_ROOT"; then
+     ! "$YB_SCRIPT_PATH_IS_SAME_PATH" "$predefined_build_root" "$BUILD_ROOT"; then
     fatal "An inconsistency between predefined BUILD_ROOT ('$predefined_build_root') and" \
           "computed BUILD_ROOT ('$BUILD_ROOT')."
   fi
@@ -1147,7 +1198,7 @@ download_and_extract_archive() {
           log "[Host $(hostname)] $FLOCK_MSG: $lock_path, proceeding with archive installation."
           (
             set -x
-            "$YB_SRC_ROOT/python/yb/download_and_extract_archive.py" \
+            "$YB_SCRIPT_PATH_DOWNLOAD_AND_EXTRACT_ARCHIVE" \
               --url "$url" \
               --dest-dir-parent "$dest_dir_parent" \
               --local-cache-dir "$LOCAL_DOWNLOAD_DIR"
@@ -2167,7 +2218,7 @@ check_python_script_syntax() {
   git ls-files -t '*.py' \
     | grep -v '^S' \
     | sed 's/^[[:alpha:]] //' \
-    | xargs -P 8 -n 1 "$YB_BUILD_SUPPORT_DIR/check_python_syntax.py"
+    | xargs -P 8 -n 1 "$YB_SCRIPT_PATH_CHECK_PYTHON_SYNTAX"
   popd
 }
 
