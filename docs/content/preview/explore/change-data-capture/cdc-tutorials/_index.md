@@ -23,7 +23,7 @@ type: indexpage
         <div class="title">Amazon MSK</div>
       </div>
       <div class="body">
-        Amazon MSK
+        Configure and stream data into Amazon MSK using Debezium connector.
       </div>
     </a>
   </div>
@@ -47,7 +47,7 @@ type: indexpage
         <div class="title">Azure Event Hub</div>
       </div>
       <div class="body">
-        Azure Event Hub.
+        Connect to Azure Event Hubs and ingest data into Azure Synapse Analytics for analysis.
       </div>
     </a>
   </div>
