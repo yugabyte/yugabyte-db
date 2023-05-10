@@ -523,9 +523,9 @@ SELECT agtype_in('true') < '1::numeric';
 --
 SELECT agtype_to_bool(agtype_in('true'));
 SELECT agtype_to_bool(agtype_in('false'));
+SELECT agtype_to_bool(agtype_in('1'));
 -- These should all fail
 SELECT agtype_to_bool(agtype_in('null'));
-SELECT agtype_to_bool(agtype_in('1'));
 SELECT agtype_to_bool(agtype_in('1.0'));
 SELECT agtype_to_bool(agtype_in('"string"'));
 SELECT agtype_to_bool(agtype_in('[1,2,3]'));
@@ -545,6 +545,24 @@ SELECT bool_to_agtype(true) <> bool_to_agtype(false);
 --
 SELECT agtype_to_int8(agtype_in('true'));
 SELECT agtype_to_int8(agtype_in('false'));
+
+--
+-- Test boolean to integer cast
+--
+SELECT agtype_to_int4(agtype_in('true'));
+SELECT agtype_to_int4(agtype_in('false'));
+SELECT agtype_to_int4(agtype_in('null'));
+
+--
+-- Test agtype to integer cast
+--
+SELECT agtype_to_int4(agtype_in('1'));
+SELECT agtype_to_int4(agtype_in('1.45'));
+SELECT agtype_to_int4(agtype_in('1.444::numeric'));
+-- These should all fail
+SELECT agtype_to_int4(agtype_in('"string"'));
+SELECT agtype_to_int4(agtype_in('[1, 2, 3]'));
+SELECT agtype_to_int4(agtype_in('{"int":1}'));
 
 --
 -- Test agtype to int[]

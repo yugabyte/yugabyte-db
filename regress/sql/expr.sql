@@ -518,6 +518,17 @@ SELECT * FROM cypher('type_coercion', $$
 	RETURN true
 $$) AS (i bigint);
 
+SELECT * FROM cypher('type_coercion', $$
+	RETURN true
+$$) AS (i int);
+
+--
+-- Coerce to Postgres bool/boolean type
+--
+SELECT * FROM cypher('type_coercion', $$
+    RETURN 1
+$$) AS (i bool);
+
 --Invalid String Format
 SELECT * FROM cypher('type_coercion', $$
 	RETURN '1.0'
@@ -585,6 +596,12 @@ SELECT * FROM cypher('expr', $$
 RETURN 2.71::numeric::int
 $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
+RETURN true::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN false::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
 RETURN ([0, {one: 1.0, pie: 3.1415927, e: 2::numeric}, 2, null][1].one)::int
 $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
@@ -620,7 +637,29 @@ $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
 RETURN 'infinity'::float::int
 $$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ''::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 'falze'::int
+$$) AS r(result agtype);
+--
+-- Test from an agtype value to agtype int
+--
+SELECT * FROM cypher('expr', $$
+RETURN 0::bool
+$$) AS r(result agtype);
 
+-- these should fail
+SELECT * FROM cypher('expr', $$
+RETURN 1.23::bool
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ''::bool
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 'falze'::bool
+$$) AS r(result agtype);
 -- Test from an agtype value to an agtype numeric
 --
 SELECT * FROM cypher('expr', $$

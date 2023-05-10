@@ -2077,11 +2077,15 @@ SELECT agtype_to_bool(agtype_in('false'));
  f
 (1 row)
 
+SELECT agtype_to_bool(agtype_in('1'));
+ agtype_to_bool 
+----------------
+ t
+(1 row)
+
 -- These should all fail
 SELECT agtype_to_bool(agtype_in('null'));
 ERROR:  cannot cast agtype null to type boolean
-SELECT agtype_to_bool(agtype_in('1'));
-ERROR:  cannot cast agtype integer to type boolean
 SELECT agtype_to_bool(agtype_in('1.0'));
 ERROR:  cannot cast agtype float to type boolean
 SELECT agtype_to_bool(agtype_in('"string"'));
@@ -2138,6 +2142,55 @@ SELECT agtype_to_int8(agtype_in('false'));
               0
 (1 row)
 
+--
+-- Test boolean to integer cast
+--
+SELECT agtype_to_int4(agtype_in('true'));
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4(agtype_in('false'));
+ agtype_to_int4 
+----------------
+              0
+(1 row)
+
+SELECT agtype_to_int4(agtype_in('null'));
+ agtype_to_int4 
+----------------
+               
+(1 row)
+
+--
+-- Test agtype to integer cast
+--
+SELECT agtype_to_int4(agtype_in('1'));
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4(agtype_in('1.45'));
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4(agtype_in('1.444::numeric'));
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+-- These should all fail
+SELECT agtype_to_int4(agtype_in('"string"'));
+ERROR:  invalid input syntax for integer: "string"
+SELECT agtype_to_int4(agtype_in('[1, 2, 3]'));
+ERROR:  cannot cast agtype array to type int
+SELECT agtype_to_int4(agtype_in('{"int":1}'));
+ERROR:  cannot cast agtype object to type int
 --
 -- Test agtype to int[]
 --

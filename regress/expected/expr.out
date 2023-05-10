@@ -1147,6 +1147,25 @@ $$) AS (i bigint);
  1
 (1 row)
 
+SELECT * FROM cypher('type_coercion', $$
+	RETURN true
+$$) AS (i int);
+ i 
+---
+ 1
+(1 row)
+
+--
+-- Coerce to Postgres bool/boolean type
+--
+SELECT * FROM cypher('type_coercion', $$
+    RETURN 1
+$$) AS (i bool);
+ i 
+---
+ t
+(1 row)
+
 --Invalid String Format
 SELECT * FROM cypher('type_coercion', $$
 	RETURN '1.0'
@@ -1253,6 +1272,22 @@ $$) AS r(result agtype);
 (1 row)
 
 SELECT * FROM cypher('expr', $$
+RETURN true::int
+$$) AS r(result agtype);
+ result 
+--------
+ 1
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN false::int
+$$) AS r(result agtype);
+ result 
+--------
+ 0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
 RETURN ([0, {one: 1.0, pie: 3.1415927, e: 2::numeric}, 2, null][1].one)::int
 $$) AS r(result agtype);
  result 
@@ -1335,6 +1370,38 @@ SELECT * FROM cypher('expr', $$
 RETURN 'infinity'::float::int
 $$) AS r(result agtype);
 ERROR:  bigint out of range
+SELECT * FROM cypher('expr', $$
+RETURN ''::int
+$$) AS r(result agtype);
+ERROR:  invalid input syntax for integer: ""
+SELECT * FROM cypher('expr', $$
+RETURN 'falze'::int
+$$) AS r(result agtype);
+ERROR:  invalid input syntax for integer: "falze"
+--
+-- Test from an agtype value to agtype int
+--
+SELECT * FROM cypher('expr', $$
+RETURN 0::bool
+$$) AS r(result agtype);
+ result 
+--------
+ false
+(1 row)
+
+-- these should fail
+SELECT * FROM cypher('expr', $$
+RETURN 1.23::bool
+$$) AS r(result agtype);
+ERROR:  cannot cast agtype float to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN ''::bool
+$$) AS r(result agtype);
+ERROR:  cannot cast agtype string to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN 'falze'::bool
+$$) AS r(result agtype);
+ERROR:  cannot cast agtype string to type boolean
 -- Test from an agtype value to an agtype numeric
 --
 SELECT * FROM cypher('expr', $$
