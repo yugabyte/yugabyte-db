@@ -500,12 +500,14 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch() {
   return DocWriteBatch(
-      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior_, &monotonic_counter_);
+      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior_,
+      dummy_scoped_rw_operation_, &monotonic_counter_);
 }
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch(InitMarkerBehavior init_marker_behavior) {
   return DocWriteBatch(
-      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior, &monotonic_counter_);
+      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior,
+      dummy_scoped_rw_operation_, &monotonic_counter_);
 }
 
 DocWriteBatch& DocDBRocksDBUtil::DefaultDocWriteBatch() {

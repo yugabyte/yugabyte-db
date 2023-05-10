@@ -2543,7 +2543,7 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 namespace {
 
 Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
-  auto scoped_read_operation = tablet->CreateNonAbortableScopedRWOperation();
+  auto scoped_read_operation = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
   const shared_ptr<Schema> schema = tablet->metadata()->schema();

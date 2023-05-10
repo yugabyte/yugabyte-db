@@ -272,13 +272,14 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
                              const DocDB& doc_db,
+                             std::reference_wrapper<const ScopedRWOperation> pending_op,
                              LWKeyValueWriteBatchPB* write_batch,
                              InitMarkerBehavior init_marker_behavior,
                              std::atomic<int64_t>* monotonic_counter,
                              HybridTime* restart_read_ht,
                              const string& table_name) {
   DCHECK_ONLY_NOTNULL(restart_read_ht);
-  DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, monotonic_counter);
+  DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, pending_op, monotonic_counter);
   DocOperationApplyData data = {&doc_write_batch, deadline, read_time, restart_read_ht};
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     Status s = doc_op->Apply(data);
