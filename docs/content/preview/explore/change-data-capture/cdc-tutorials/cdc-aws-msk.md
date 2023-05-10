@@ -217,7 +217,7 @@ Download the YugabyteDB Debezium connector jar from the [repository](https://git
 
 ### Configure the Amazon MSK cluster
 
-This example creates an Amazon MSK cluster in same VPC as that of the YugabyteDB cluster. Note that this is a generic configuration, it might differ based your organizational IT policy.
+For this example, create an Amazon MSK cluster in the same VPC as that of the YugabyteDB cluster. Note that this is a generic configuration, and it may differ based on your organizational IT policy.
 
 ![MSK cluster settings](/images/explore/cdc/aws_msk_images/msk-cluster-settings.png)
 
