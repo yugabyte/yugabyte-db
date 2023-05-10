@@ -839,8 +839,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // this tablet. If transaction_ids is not empty, restrict returned information to locks which are
   // held or requested by the given set of transaction_ids.
   Status GetLockStatus(
-      const std::set<TransactionId>& transaction_ids,
-      TabletLockInfoPB* tablet_lock_info) const;
+      const std::set<TransactionId>& transaction_ids, TabletLockInfoPB* tablet_lock_info) const;
+
+  docdb::ExternalTxnIntentsState* GetExternalTxnIntentsState() const {
+    return external_txn_intents_state_.get();
+  }
 
  private:
   friend class Iterator;

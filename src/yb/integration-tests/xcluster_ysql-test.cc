@@ -50,6 +50,8 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/docdb/docdb.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -106,7 +108,6 @@ DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_bool(enable_delete_truncate_xcluster_replicated_table);
 DECLARE_bool(enable_load_balancing);
 DECLARE_uint32(external_intent_cleanup_secs);
-DECLARE_uint32(external_transaction_retention_window_secs);
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(log_max_seconds_to_retain);
 DECLARE_int32(log_min_seconds_to_retain);
@@ -396,6 +397,16 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
   }
 
+  void VerifyExternalTxnIntentsStateEmpty() {
+    tserver::TSTabletManager::TabletPtrs tablet_ptrs;
+    for (auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
+      mini_tserver->server()->tablet_manager()->GetTabletPeers(&tablet_ptrs);
+      for (auto& tablet : tablet_ptrs) {
+        ASSERT_EQ(0, tablet->GetExternalTxnIntentsState()->EntryCount());
+      }
+    }
+  }
+
   Status TruncateTable(Cluster* cluster,
                        std::vector<string> table_ids) {
     RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
@@ -661,6 +672,8 @@ TEST_F(XClusterYsqlTest, GenerateSeries) {
   ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
 
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  VerifyExternalTxnIntentsStateEmpty();
 }
 
 constexpr int kTransactionalConsistencyTestDurationSecs = 30;
@@ -781,8 +794,14 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
 
   Status WaitForIntentsCleanedUpOnConsumer() {
     return WaitFor(
-        [&]() { return CountIntents(consumer_cluster()) == 0; }, MonoDelta::FromSeconds(30),
-        "Intents cleaned up");
+        [&]() {
+          if (CountIntents(consumer_cluster()) == 0) {
+            VerifyExternalTxnIntentsStateEmpty();
+            return true;
+          }
+          return false;
+        },
+        MonoDelta::FromSeconds(30), "Intents cleaned up");
   }
 };
 
@@ -1346,6 +1365,8 @@ TEST_F(XClusterYsqlTest, GenerateSeriesMultipleTransactions) {
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table->id());
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  VerifyExternalTxnIntentsStateEmpty();
 }
 
 TEST_F(XClusterYsqlTest, ChangeRole) {
