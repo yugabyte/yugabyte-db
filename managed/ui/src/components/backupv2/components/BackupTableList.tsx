@@ -151,9 +151,13 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
     backupType === BackupTypes.INCREMENT_BACKUP
       ? incrementalBackup?.responseList
       : backup.commonBackupInfo.responseList;
-  const filteredDBList = (dbList ?? []).filter((e) => {
-    return !(keyspaceSearch && !e.keyspace.includes(keyspaceSearch));
-  });
+  const filteredDBList = (dbList ?? [])
+    .filter((e) => {
+      return !(keyspaceSearch && !e.keyspace.includes(keyspaceSearch));
+    })
+    .map((t, index) => {
+      return { ...t, index };
+    });
   return (
     <div className="backup-table-list ycql-table" id="ycql-table">
       <BootstrapTable
@@ -168,7 +172,7 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
         trClassName="clickable"
         tableHeaderClass="table-list-header"
       >
-        <TableHeaderColumn dataField="keyspace" isKey={true} hidden={true} />
+        <TableHeaderColumn dataField="index" isKey={true} hidden={true} />
         <TableHeaderColumn dataField="keyspace">Keyspace</TableHeaderColumn>
         <TableHeaderColumn dataField="tablesList" dataFormat={(cell) => cell.length}>
           Tables
