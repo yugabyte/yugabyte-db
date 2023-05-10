@@ -24,6 +24,7 @@
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/util/monotime.h"
+#include "yb/util/operation_counter.h"
 
 namespace yb {
 namespace docdb {
@@ -46,6 +47,7 @@ class YQLStorageIf {
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const qlexpr::QLScanSpec& spec,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   virtual Status BuildYQLScanSpec(
@@ -74,6 +76,7 @@ class YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
       const DocDBStatistics* statistics = nullptr) const = 0;
 
@@ -92,6 +95,7 @@ class YQLStorageIf {
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const dockv::DocKey& start_doc_key,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
       const DocDBStatistics* statistics = nullptr) const = 0;
 
@@ -105,6 +109,7 @@ class YQLStorageIf {
       const ReadHybridTime& read_time,
       const QLValuePB& min_ybctid,
       const QLValuePB& max_ybctid,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
       const DocDBStatistics* statistics = nullptr) const = 0;
 };

@@ -2333,6 +2333,9 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
 Status CatalogManager::RestoreSysCatalog(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
+
+  auto tablet_pending_op = tablet->CreateScopedRWOperationBlockingRocksDbShutdownStart();
+
   bool restore_successful = false;
   // If sys catalog restoration fails then unblock other RPCs.
   auto scope_exit = ScopeExit([this, &restore_successful] {
@@ -2350,20 +2353,22 @@ Status CatalogManager::RestoreSysCatalog(
   // Remove ": " to patch suffix.
   log_prefix.erase(log_prefix.size() - 2);
   tablet->InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
-  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
 
+  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
+  // db can't be closed concurrently, so it is ok to use dummy ScopedRWOperation.
+  auto db_pending_op = ScopedRWOperation();
   auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
   // Load objects to restore and determine obsolete objects.
   RestoreSysCatalogState state(restoration);
-  RETURN_NOT_OK(state.LoadRestoringObjects(doc_read_context(), doc_db));
+  RETURN_NOT_OK(state.LoadRestoringObjects(doc_read_context(), doc_db, db_pending_op));
   // Load existing objects from RocksDB because on followers they are NOT present in loaded sys
   // catalog state.
-  RETURN_NOT_OK(state.LoadExistingObjects(doc_read_context(), tablet->doc_db()));
+  RETURN_NOT_OK(state.LoadExistingObjects(doc_read_context(), tablet->doc_db(), tablet_pending_op));
   RETURN_NOT_OK(state.Process());
 
   docdb::DocWriteBatch write_batch(
-      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
+      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
 
   // Restore the pg_catalog tables.
   if (FLAGS_enable_ysql && state.IsYsqlRestoration()) {

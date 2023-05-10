@@ -1789,7 +1789,7 @@ void TSTabletManager::StartShutdown() {
 
 void TSTabletManager::CompleteShutdown() {
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
-    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse);
+    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
   }
 
   // Shut down the apply pool.
@@ -2896,7 +2896,7 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
   }
   // If shutdown was initiated by someone else we should not wait for shutdown to complete.
   if (tablet_peer && tablet_peer->StartShutdown()) {
-    tablet_peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse);
+    tablet_peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
   }
   tserver::LogAndTombstone(meta, msg, uuid, status, ts_tablet_manager);
   return status;

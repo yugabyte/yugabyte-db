@@ -57,7 +57,7 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr,
+                     std::reference_wrapper<const ScopedRWOperation> pending_op,
                      const DocDBStatistics* statistics = nullptr);
 
   DocRowwiseIterator(const dockv::ReaderProjection& projection,
@@ -66,7 +66,7 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr,
+                     ScopedRWOperation&& pending_op,
                      const DocDBStatistics* statistics = nullptr);
 
   ~DocRowwiseIterator() override;

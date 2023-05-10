@@ -38,6 +38,7 @@
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/util/memory/arena_list.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -132,6 +133,7 @@ Status AssembleDocWriteBatch(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     LWKeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
