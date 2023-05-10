@@ -7,8 +7,8 @@ headcontent: Learn how to design globally distributed applications using simple 
 image: /images/section_icons/quick_start/sample_apps.png
 menu:
   preview:
-    identifier: global-apps-design-patterns
-    parent: build-global-apps
+    identifier1: global-apps-design-patterns
+    parent1: build-global-apps
     weight: 202
 rightNav:
   hideH3: true
@@ -24,20 +24,20 @@ Let's look at a few classes of design patterns that you can adopt with YugabyteD
 
 To provide uninterrupted service to your users, it's crucial to ensure that your applications can handle machine failures, network outages, and power failures. Global applications must be deployed in multiple locations with standby locations that can take over when the primary location fails. You can deploy YugabyteDB in the following configurations to ensure your applications are highly available.
 
-### Multi-region cluster with synchronous replication
+### Single cluster spread across multiple regions
 
 You can set up your cluster across different regions/zones with multiple replicas (typically 3) such that the replicas are in different regions/zones. When a node fails in a region or an entire region/zone fails, a replica in another region/zone will be promoted to leader in seconds, without any loss of data. This is possible because of the [synchronous replication using the raft consensus protocol](../../../architecture/docdb-replication/replication).
 
 {{<tip>}}
-For more information, see  [Stretch Cluster](./design-patterns-ha#stretch-cluster)
+For more information, see  [Stretch Cluster](../design-patterns-ha#stretch-cluster)
 {{</tip>}}
 
-### Dual cluster with async replication
+### Two clusters serving data together
 
 You can set up a separate cluster with [xCluster](../../../architecture/docdb-replication/async-replication/) replication. Replication can be configured to be either unidirectional, which is useful to create a standby cluster or bidirectional, which would enable you to write to both clusters at the same time. The key thing to remember in xCluster is that it uses asynchronous replication, which means updates will not wait for the other universe to catch up and the two clusters could be out of sync for a while.
 
 {{<tip>}}
-For more information, see  [Active-Active Multi-Master](./design-patterns-ha#active-active-multi-master)
+For more information, see  [Active-Active Multi-Master](../design-patterns-ha#active-active-multi-master)
 {{</tip>}}
 
 ## Performance
@@ -47,7 +47,7 @@ For more information, see  [Active-Active Multi-Master](./design-patterns-ha#act
 By default, all leaders are distributed across multiple regions in a global application. As all writes and reads go to the leaders this leads to an increase in latency even for a simple query as the table leader and index leader could be in different regions. You can ensure all leaders are located in the same region by setting up preferred zones for leaders.
 
 {{<tip>}}
-For more details, see  [Preferred Leaders](./global-performance#reducing-latency-with-preferred-leaders)
+For more details, see  [Preferred Leaders](../global-performance#reducing-latency-with-preferred-leaders)
 {{</tip>}}
 
 ### Reduce read latency with read replicas
@@ -55,7 +55,7 @@ For more details, see  [Preferred Leaders](./global-performance#reducing-latency
 Just like how you can set up alternate clusters and replicas for fault tolerance, you can set up a separate [read replica](../../../architecture/docdb-replication/read-replicas/) cluster to improve the read latency in a different region. Read replicas are non-voting members of the raft group and can have a different replication factor from the primary cluster.
 
 {{<tip>}}
-For more information, see  [Read Replicas](./design-patterns-ha#read-replica)
+For more information, see  [Read Replicas](../design-patterns-ha#read-replica)
 {{</tip>}}
 
 ## Compliance

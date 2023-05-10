@@ -1,15 +1,15 @@
 ---
 title: Performance of global applications
 headerTitle: Enhance performance of global applications
-linkTitle: Performance
+linkTitle: 3. Performance patterns
 description: Enhance the performance of global applications
-headcontent: Learn how to improve the performance of your global application
+headcontent: Improve the performance of your global application
 image: /images/section_icons/quick_start/sample_apps.png
 menu:
   preview:
     identifier: global-apps-performance
     parent: build-global-apps
-    weight: 204
+    weight: 203
 type: docs
 ---
 

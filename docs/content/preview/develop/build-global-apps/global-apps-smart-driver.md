@@ -1,15 +1,15 @@
 ---
 title: Automatic load balancing and failover with Smart Driver
 headerTitle: Automatic load balancing and failover of global applications
-linkTitle: Load Balancing and Failover
-description: Automatic load balancing and failover 
+linkTitle: 4. Load balancing patterns
+description: Automatic load balancing and failover
 headcontent: Learn how to load balance and failover with Smart Driver
 image: /images/section_icons/quick_start/sample_apps.png
 menu:
   preview:
     identifier: global-apps-smartdriver
     parent: build-global-apps
-    weight: 205
+    weight: 204
 type: docs
 ---
 
@@ -21,15 +21,15 @@ The [Smart Driver for YSQL](../../../drivers-orms/smart-drivers/) provides advan
 
 With [YugabyteDB YSQL Smart Drivers](../../../drivers-orms/smart-drivers/), available in multiple languages, you do not need a separate load balancer service. The smart driver needs the IP/hostname of just one node in the cluster.
 
-{{<note title="Note" >}}
-It is a good idea to pass in a few more nodes from different zones/regions to handle a single-node/zone/region failure.
-{{</note>}}
-
 It automatically fetches the complete node list from the cluster and spreads the connections from your applications to various nodes in the cluster. It also refreshes the node list regularly (default: 5 minutes). This can be activated by passing the `load_balance` option in your connection string like
 
 ```python
 cxnstr = "postgres://username:password@<node-ip>:5433/database_name?load_balance=true"
 ```
+
+{{<note title="Note" >}}
+It is a good practice to pass in a few more nodes in the connection string from different zones/regions to handle connectivity issues during the initial connection. For example, `postgres://node1,node2,node3/ ...`
+{{</note>}}
 
 If you've set preferred leaders, you can use the `topology_keys` option to send connections only to nodes in that region. For example, if you had set us-central as your preferred region, then adding the following `topology_keys` would make sure the client connects only to the nodes in us-central.
 
@@ -38,6 +38,10 @@ cxnstr = "load_balance=true&topology_keys=aws.us-central.*"
 ```
 
 ![Cluster-aware load balancing](/images/develop/global-apps/smart-driver-loadbalance.png)
+
+{{<tip>}}
+For more details, see [Smart load-balancing](../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing)
+{{</tip>}}
 
 ## Cluster-aware failover
 
@@ -50,6 +54,10 @@ cxnstr = "load_balance=true&topology_keys=aws.us-central.*:1,aws.us-west.*:2"
 This ensures that initial connections are made to `us-central`. In case `us-central` fails, only then will connections will be automatically made to `us-west`.
 
 ![Cluster-aware failover](/images/develop/global-apps/smart-driver-failover.png)
+
+{{<tip>}}
+For more details, see [Fallback topology keys](../../../drivers-orms/smart-drivers/#fallback-topology-keys)
+{{</tip>}}
 
 ## DNS Load-balancing
 
@@ -82,7 +90,9 @@ ybcluster.mycompany.com. 0  IN  A  127.0.0.1
 
 DNS servers typically will default to a round-robin policy when multiple IP addresses are attached to the same hostname. When a client application connects to your YugabyteDB cluster, it will get a different IP address every time thereby automatically load-balancing your cluster. One problem with this is that the local resolver client on a machine could cache the last resolution for a while. During this period all applications on a machine would end up connecting to the same node.
 
+{{<tip>}}
 You can configure this on your cloud provider's DNS like [AWS Route 53](https://aws.amazon.com/route53/), [Azure DNS](https://azure.microsoft.com/en-us/products/dns/) or [GCP DNS](https://cloud.google.com/dns)
+{{</tip>}}
 
 ## NLB Load-balancing
 
@@ -94,13 +104,17 @@ You can configure this on your cloud provider's DNS like [AWS Route 53](https://
 
 One caveat is that even though NLBs are fast (can handle millions of requests per second), they sit in between the client and the DB nodes. This is an additional hop for your request to get to the DB nodes. Depending on the performance needs of your application, this may be a concern.
 
-Most cloud providers offer NLB as a service to their users, for example, [Elastic Load balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/), [GCP Cloud Load Balancer](https://cloud.google.com/load-balancing) or [Azure Load Balancer](https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-overview).
+{{<tip>}}
+Most cloud providers offer NLB as a service to their users. See [Elastic Load balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/), [GCP Cloud Load Balancer](https://cloud.google.com/load-balancing) or [Azure Load Balancer](https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-overview).
+{{</tip>}}
 
 ## Kubernetes-based global apps
 
-[Kubernetes](https://kubernetes.io/) is designed to run across [multiple zones within a region](https://kubernetes.io/docs/setup/best-practices/multiple-zones/). For global applications, YugabyteDB needs to be deployed across multiple Kubernetes clusters located in different regions. For example, you can deploy a three-region YugabyteDB cluster on three Kubernetes clusters, each deployed in a different region, using the standard single-zone YugabyteDB Helm chart to deploy one-third of the nodes in the database cluster in each of the three clusters.
+[Kubernetes](https://kubernetes.io/) is designed to run across [multiple zones within a region](https://kubernetes.io/docs/setup/best-practices/multiple-zones/). For global applications, YugabyteDB needs to be deployed across multiple Kubernetes clusters located in different regions. For example, you can deploy a three-region YugabyteDB cluster on three Kubernetes clusters, each deployed in a different region, using the standard single-zone [YugabyteDB Helm chart](https://artifacthub.io/packages/helm/yugabyte/yugabyte) to deploy one-third of the nodes in the database cluster in each of the three clusters.
+
+On kubernetes, YugabytedDB t-servers and master servers are modeled as [StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) so that the pods get presistent storage access and have stable network names/ids across restarts.
 
 
 {{<tip>}}
-For more information, see  [Deploying on GKE](../../deploy/kubernetes/multi-cluster/)
+For more information, see  [Deploying on GKE](../../../deploy/kubernetes/multi-cluster/gke/helm-chart/)
 {{</tip>}}
