@@ -176,6 +176,10 @@ public class PlacementInfoUtil {
           return ConfigureNodesMode.UPDATE_CONFIG_FROM_USER_INTENT;
         }
 
+        if (tempIntent.onlyReplicationFactorChanged(existingIntent)) {
+          return ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
+        }
+
         return ConfigureNodesMode.NEW_CONFIG;
       }
     }

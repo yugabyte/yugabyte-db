@@ -2704,12 +2704,6 @@ export default class ClusterFields extends Component {
                         minVal={ASYNC_MIN_REPLICATION_FACTOR}
                         maxVal={ASYNC_MAX_REPLICATION_FACTOR}
                         onInputChanged={this.replicationFactorChanged}
-                        className={
-                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading() ||
-                          getPromiseState(cloud.instanceTypes).isLoading()
-                            ? 'readonly'
-                            : ''
-                        }
                         input={{
                           name: `${clusterType}.replicationFactor`,
                           onKeyDown: (e) => {
@@ -2729,7 +2723,6 @@ export default class ClusterFields extends Component {
                           }
                         }}
                         val={Number(this.state.replicationFactor)}
-                        disabled={isReadOnlyOnEdit}
                       />
                     ]
                   : null}

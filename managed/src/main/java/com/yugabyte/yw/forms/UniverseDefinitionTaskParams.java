@@ -637,6 +637,27 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
+    public boolean onlyReplicationFactorChanged(UserIntent other) {
+      if (universeName.equals(other.universeName)
+          && provider.equals(other.provider)
+          && providerType == other.providerType
+          && replicationFactor != other.replicationFactor
+          && regionList.equals(other.regionList)
+          && Objects.equals(preferredRegion, other.preferredRegion)
+          && instanceType.equals(other.instanceType)
+          && numNodes == other.numNodes
+          && ybSoftwareVersion.equals(other.ybSoftwareVersion)
+          && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
+          && assignPublicIP == other.assignPublicIP
+          && assignStaticPublicIP == other.assignStaticPublicIP
+          && useTimeSync == other.useTimeSync
+          && dedicatedNodes == other.dedicatedNodes
+          && Objects.equals(masterInstanceType, other.masterInstanceType)) {
+        return true;
+      }
+      return false;
+    }
+
     private static boolean newRegionsAdded(List<UUID> left, List<UUID> right) {
       return (new HashSet<>(left)).containsAll(new HashSet<>(right));
     }
