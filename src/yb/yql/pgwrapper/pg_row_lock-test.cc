@@ -875,4 +875,22 @@ TEST_F_EX(
   TestInOperatorLock();
 }
 
+TEST_F_EX(
+    PgRowLockTest, YB_DISABLE_TEST_IN_TSAN(PartialKeyRowLockConflict),
+    PgMiniTestTxnHelperSerializable) {
+  auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+  auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (h INT, r INT, v INT, PRIMARY KEY(h, r))"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 2, 3)"));
+
+  ASSERT_OK(StartTxn(&conn));
+  ASSERT_OK(conn.Fetch("SELECT * FROM t WHERE h = 1 AND r = 2 FOR KEY SHARE"));
+
+  // Check that FOR KEY SHARE + FOR UPDATE conflicts.
+  // FOR KEY SHARE uses regular and FOR UPDATE uses high txn priority.
+  ASSERT_OK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE h = 1 FOR UPDATE"));
+  ASSERT_NOK(conn.Execute("COMMIT"));
+}
+
 }  // namespace yb::pgwrapper

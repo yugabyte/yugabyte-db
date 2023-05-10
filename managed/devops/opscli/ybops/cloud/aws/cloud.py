@@ -501,6 +501,14 @@ class AwsCloud(AbstractCloud):
         )
         waiter = ec2.get_waiter('volume_in_use')
         waiter.wait(VolumeIds=[vol_id])
+        logging.info("Setting delete on termination for {} attached to {}"
+                     .format(vol_id, host_info['id']))
+        # Even if this fails, volumes are already tagged for cleanup.
+        ec2.modify_instance_attribute(InstanceId=host_info['id'],
+                                      Attribute='blockDeviceMapping',
+                                      BlockDeviceMappings=[{
+                                          'DeviceName': label,
+                                          'Ebs': {'DeleteOnTermination': True}}])
 
     def unmount_disk(self, host_info, vol_id):
         logging.info("Unmounting volume {} from host {}".format(vol_id, host_info['id']))

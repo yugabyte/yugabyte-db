@@ -10,11 +10,14 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
+import hashlib
 import os
 import pathlib
 
+from typing import Optional, List, Dict, Tuple, Any
 
-def mkdir_p(dir_path) -> None:
+
+def mkdir_p(dir_path: str) -> None:
     """
     Similar to the "mkdir -p ..." shell command. Creates the given directory and all enclosing
     directories. No-op if the directory already exists.
@@ -44,3 +47,18 @@ def read_file(file_path: str) -> str:
 def write_file(content: str, output_file_path: str) -> None:
     with open(output_file_path, 'w') as output_file:
         output_file.write(content)
+
+
+def compute_file_sha256(file_path: str) -> str:
+    """
+    Compute the SHA-256 checksum of the given file.
+    """
+    buf_size = 1048576
+    sha256 = hashlib.sha256()
+    with open(file_path, 'rb') as f:
+        while True:
+            data = f.read(buf_size)
+            if not data:
+                break
+            sha256.update(data)
+    return sha256.hexdigest()

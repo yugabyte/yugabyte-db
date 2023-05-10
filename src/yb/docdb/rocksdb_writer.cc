@@ -235,8 +235,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       LOG(WARNING) << "Performing a write with row lock " << RowMarkType_Name(row_mark_)
                    << " when only reads are expected";
     }
-    strong_intent_types_ = GetStrongIntentTypeSet(
-        isolation_level_, dockv::OperationKind::kWrite, row_mark_);
+    intent_types_ = GetIntentTypeSet(isolation_level_, dockv::OperationKind::kWrite, row_mark_);
 
     // We cannot recover from failures here, because it means that we cannot apply replicated
     // operation.
@@ -245,8 +244,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   }
 
   if (!put_batch_.read_pairs().empty()) {
-    strong_intent_types_ = GetStrongIntentTypeSet(
-        isolation_level_, dockv::OperationKind::kRead, row_mark_);
+    intent_types_ = GetIntentTypeSet(isolation_level_, dockv::OperationKind::kRead, row_mark_);
     RETURN_NOT_OK(EnumerateIntents(
         put_batch_.read_pairs(), std::ref(*this), partial_range_key_intents_));
   }
@@ -256,10 +254,10 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 
 // Using operator() to pass this object conveniently to EnumerateIntents.
 Status TransactionalWriter::operator()(
-    dockv::IntentStrength intent_strength, dockv::FullDocKey, Slice value_slice,
+    dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey, Slice value_slice,
     dockv::KeyBytes* key, dockv::LastKey last_key) {
-  if (intent_strength == dockv::IntentStrength::kWeak) {
-    weak_intents_[key->data()] |= StrongToWeak(strong_intent_types_);
+  if (ancestor_doc_key) {
+    weak_intents_[key->data()] |= MakeWeak(intent_types_);
     return Status::OK();
   }
 
@@ -297,7 +295,7 @@ Status TransactionalWriter::operator()(
   ++intra_txn_write_id_;
 
   char intent_type[2] = { KeyEntryTypeAsChar::kIntentTypeSet,
-                          static_cast<char>(strong_intent_types_.ToUIntPtr()) };
+                          static_cast<char>(intent_types_.ToUIntPtr()) };
 
   DocHybridTimeBuffer doc_ht_buffer;
 

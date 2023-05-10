@@ -20,12 +20,12 @@ The following table describes key throughput and latency metrics for the storage
 
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `Rocksdb_number_db_next`  | keys | counter | Whenever a tuple is read/updated from the database, a request is made to RocksDB key. Each database operation makes multiple requests to RocksDB. The number of NEXT operations performed to look up a key by RocksDB when a tuple is read/updated by the database. |
-| `Rocksdb_number_db_prev`  | keys | counter | The number of PREV operations performed to look up a key by RocksDB when a tuple is read/updated from the database. |
-| `Rocksdb_number_db_seek`  | keys | counter | The number of SEEK operations performed to look up a key by the RocksDB when a tuple is read/updated from the database. |
-| `Rocksdb_db_write_micros` | microseconds | counter | The time spent by RocksDB in microseconds to write data. |
-| `Rocksdb_db_get_micros` | microseconds | counter | The time spent by RocksDB in microseconds to retrieve data matching a value. |
-| `Rocksdb_db_seek_micros`  | microseconds | counter | The time spent by RocksDB in microseconds to retrieve data in a range query. |
+| `rocksdb_number_db_next`  | keys | counter | Whenever a tuple is read/updated from the database, a request is made to RocksDB key. Each database operation makes multiple requests to RocksDB. The number of NEXT operations performed to look up a key by RocksDB when a tuple is read/updated by the database. |
+| `rocksdb_number_db_prev`  | keys | counter | The number of PREV operations performed to look up a key by RocksDB when a tuple is read/updated from the database. |
+| `rocksdb_number_db_seek`  | keys | counter | The number of SEEK operations performed to look up a key by the RocksDB when a tuple is read/updated from the database. |
+| `rocksdb_db_write_micros` | microseconds | counter | The time spent by RocksDB in microseconds to write data. |
+| `rocksdb_db_get_micros` | microseconds | counter | The time spent by RocksDB in microseconds to retrieve data matching a value. |
+| `rocksdb_db_seek_micros`  | microseconds | counter | The time spent by RocksDB in microseconds to retrieve data in a range query. |
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.
 

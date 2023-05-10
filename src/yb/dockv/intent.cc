@@ -110,10 +110,8 @@ IntentTypeSet AllStrongIntents() {
   return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
 }
 
-IntentTypeSet GetStrongIntentTypeSet(
-    IsolationLevel level,
-    OperationKind operation_kind,
-    RowMarkType row_mark) {
+IntentTypeSet GetIntentTypeSet(
+    IsolationLevel level, OperationKind operation_kind, RowMarkType row_mark) {
   if (IsValidRowMarkType(row_mark)) {
     // Mapping of postgres locking levels to DocDB intent types is described in details by the
     // following comment https://github.com/yugabyte/yugabyte-db/issues/1199#issuecomment-501041018
@@ -282,12 +280,12 @@ inline bool IsEndOfSubKeys(const Slice& key) {
 //
 // The beginning of each intent key will also include any cotable_id or colocation_id,
 // if present.
+template<class Functor>
 Status EnumerateWeakIntents(
     Slice key,
-    const EnumerateIntentsCallback& functor,
+    const Functor& functor,
     KeyBytes* encoded_key_buffer,
     PartialRangeKeyIntents partial_range_key_intents) {
-  static const Slice kEmptyIntentValue;
 
   encoded_key_buffer->Clear();
   if (key.empty()) {
@@ -334,9 +332,7 @@ Status EnumerateWeakIntents(
   }
 
   // For any non-empty key we already know that the empty key intent is weak.
-  RETURN_NOT_OK(functor(
-      IntentStrength::kWeak, FullDocKey::kFalse, kEmptyIntentValue, encoded_key_buffer,
-      LastKey::kFalse));
+  RETURN_NOT_OK(functor(FullDocKey::kFalse, encoded_key_buffer));
 
   auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::kUpToHash));
 
@@ -361,9 +357,7 @@ Status EnumerateWeakIntents(
     }
 
     // Generate a weak intent that only includes the hash component.
-    RETURN_NOT_OK(functor(
-        IntentStrength::kWeak, FullDocKey(key[0] == KeyEntryTypeAsChar::kGroupEnd),
-        kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
+    RETURN_NOT_OK(functor(FullDocKey(key[0] == KeyEntryTypeAsChar::kGroupEnd), encoded_key_buffer));
 
     // Remove the kGroupEnd we added a bit earlier so we can append some range components.
     encoded_key_buffer->RemoveLastByte();
@@ -388,9 +382,7 @@ Status EnumerateWeakIntents(
     }
     FullDocKey full_doc_key(key[0] == KeyEntryTypeAsChar::kGroupEnd);
     if (partial_range_key_intents || full_doc_key) {
-      RETURN_NOT_OK(functor(
-          IntentStrength::kWeak, full_doc_key, kEmptyIntentValue, encoded_key_buffer,
-          LastKey::kFalse));
+      RETURN_NOT_OK(functor(full_doc_key, encoded_key_buffer));
     }
     encoded_key_buffer->RemoveLastByte();
     range_key_start = key.cdata();
@@ -410,27 +402,34 @@ Status EnumerateWeakIntents(
       // This was the last subkey.
       return Status::OK();
     }
-    RETURN_NOT_OK(functor(
-        IntentStrength::kWeak, FullDocKey::kTrue, kEmptyIntentValue, encoded_key_buffer,
-        LastKey::kFalse));
+    RETURN_NOT_OK(functor(FullDocKey::kTrue, encoded_key_buffer));
     subkey_start = key.cdata();
   }
 
   return STATUS(
-      Corruption,
-      "Expected to reach the end of the key after decoding last valid subkey");
+      Corruption, "Expected to reach the end of the key after decoding last valid subkey");
 }
 
-}  // anonymous namespace
+}  // namespace
 
 Status EnumerateIntents(
     Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key) {
   RETURN_NOT_OK(EnumerateWeakIntents(
-      key, functor, encoded_key_buffer, partial_range_key_intents));
+      key,
+      [&functor](FullDocKey full_doc_key, KeyBytes* encoded_key_buffer) {
+        return functor(
+            AncestorDocKey::kTrue,
+            full_doc_key,
+            Slice() /* intent_value */,
+            encoded_key_buffer,
+            LastKey::kFalse);
+      },
+      encoded_key_buffer,
+      partial_range_key_intents));
   return functor(
-      IntentStrength::kStrong, FullDocKey::kTrue, intent_value, encoded_key_buffer, last_key);
+      AncestorDocKey::kFalse, FullDocKey::kTrue, intent_value, encoded_key_buffer, last_key);
 }
 
 }  // namespace yb::dockv

@@ -21,10 +21,10 @@ using uint64 = uint64_t;
 #include <stdatomic.h>
 #endif
 
-#include "yb/common/ybc_util.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 #ifdef __cplusplus
-namespace yb {
+namespace yb::pggate {
 extern "C" {
 #define YB_ATOMIC_ULLONG std::atomic_ullong
 #else
@@ -102,5 +102,5 @@ void WriteStatArrayElemToJson(void *p1, void *p2);
 
 #ifdef __cplusplus
 }  // extern "C"
-}  // namespace yb
+}  // namespace yb::pggate
 #endif

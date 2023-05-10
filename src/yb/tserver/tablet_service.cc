@@ -2687,22 +2687,24 @@ void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
 void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
                                       GetLockStatusResponsePB* resp,
                                       rpc::RpcContext context) {
-  TransactionId txn_id = TransactionId::Nil();
-  if (req->has_transaction_id() && !req->transaction_id().empty()) {
-    auto id_or_status = FullyDecodeTransactionId(req->transaction_id());
+  std::set<TransactionId> transaction_ids;
+  for (auto& txn_id : req->transaction_ids()) {
+    auto id_or_status = FullyDecodeTransactionId(txn_id);
     if (!id_or_status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
       return;
     }
-    txn_id = *id_or_status;
+    transaction_ids.insert(*id_or_status);
   }
+
   if (req->has_tablet_id() && !req->tablet_id().empty()) {
     PerformAtLeader(req, resp, &context,
-      [req, resp, &txn_id](const LeaderTabletPeer& tablet_peer) -> Status {
-        const auto& tablet = tablet_peer.tablet;
-        return tablet->GetLockStatus(
-            txn_id, req->subtransaction_id(), resp->add_tablet_lock_infos());
-        return Status::OK();
+      [resp, &transaction_ids](const LeaderTabletPeer& tablet_peer) -> Status {
+        auto s = tablet_peer.tablet->GetLockStatus(transaction_ids, resp->add_tablet_lock_infos());
+        if (!s.ok()) {
+          resp->Clear();
+        }
+        return s;
       });
     return;
   }
@@ -2715,9 +2717,8 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       // TODO(pglocks): https://github.com/yugabyte/yugabyte-db/issues/15647
       // Include leader_term in response so client may pick only the latest leader if multiple
       // tablets respond.
-      const auto& tablet = tablet_peer->shared_tablet();
-      auto s = tablet->GetLockStatus(
-          txn_id, req->subtransaction_id(), resp->add_tablet_lock_infos());
+      auto s = tablet_peer->shared_tablet()->GetLockStatus(
+          transaction_ids, resp->add_tablet_lock_infos());
       if (!s.ok()) {
         resp->Clear();
         SetupErrorAndRespond(resp->mutable_error(), s, &context);

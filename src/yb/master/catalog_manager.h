@@ -1034,6 +1034,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Get the parent table id for a colocated table. The table parameter must be colocated and
   // not satisfy IsColocationParentTableId.
   Result<TableId> GetParentTableIdForColocatedTable(const scoped_refptr<TableInfo>& table);
+  Result<TableId> GetParentTableIdForColocatedTableUnlocked(
+      const scoped_refptr<TableInfo>& table) REQUIRES_SHARED(mutex_);
 
   Result<std::optional<cdc::ConsumerRegistryPB>> GetConsumerRegistry();
   Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
@@ -1128,6 +1130,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Create a new CDC stream with the specified attributes.
   Status CreateCDCStream(
       const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status CreateNewCDCStream(
+      const CreateCDCStreamRequestPB& req, const std::string& id_type_option_value,
+      CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc);
+  Status AddTableIdToCDCStream(const CreateCDCStreamRequestPB& req) EXCLUDES(mutex_);
 
   // Get the Table schema from system catalog table.
   Status GetTableSchemaFromSysCatalog(

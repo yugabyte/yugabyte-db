@@ -22,10 +22,11 @@
 #include <cstddef>
 #include <string>
 
-#include "yb/common/ybc_util.h"
 #include "yb/util/status_fwd.h"
 
-namespace yb {
+#include "yb/yql/pggate/util/ybc_util.h"
+
+namespace yb::pggate {
 
 // Convert our C++ status to YBCStatus, which can be returned to PostgreSQL C code.
 YBCStatus ToYBCStatus(const Status& status);
@@ -41,4 +42,4 @@ void* YBCCStringToTextWithLen(const char* c, int size);
 // Duplicate the given string in memory allocated using PostgreSQL's palloc.
 const char* YBCPAllocStdString(const std::string& s);
 
-} // namespace yb
+} // namespace yb::pggate

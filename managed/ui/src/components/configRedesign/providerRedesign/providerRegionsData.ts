@@ -8,6 +8,7 @@ export const AWS_REGIONS = {
   'ap-south-1': { zones: ['ap-south-1a', 'ap-south-1b', 'ap-south-1c'] },
   'ap-southeast-1': { zones: ['ap-southeast-1a', 'ap-southeast-1b', 'ap-southeast-1c'] },
   'ap-southeast-2': { zones: ['ap-southeast-2a', 'ap-southeast-2b', 'ap-southeast-2c'] },
+  'ap-southeast-3': { zones: ['ap-southeast-3a', 'ap-southeast-3b', 'ap-southeast-3c'] },
   'ca-central-1': { zones: ['ca-central-1a', 'ca-central-1b'] },
   'eu-central-1': { zones: ['eu-central-1a', 'eu-central-1b', 'eu-central-1c'] },
   'eu-west-1': { zones: ['eu-west-1a', 'eu-west-1b', 'eu-west-1c'] },
@@ -27,6 +28,7 @@ export const AWS_REGIONS = {
 export const AZURE_REGIONS = {
   westus: { name: 'West US', zones: ['westus'] },
   westus2: { name: 'West US 2', zones: ['westus2-1', 'westus2-2', 'westus2-3'] },
+  westus3: { name: 'West US 3', zones: ['westus3-1', 'westus3-2', 'westus3-3'] },
   westcentralus: { name: 'West Central US', zones: ['westcentralus'] },
   centralus: { name: 'Central US', zones: ['centralus-1', 'centralus-2', 'centralus-3'] },
   northcentralus: { name: 'North Central US', zones: ['northcentralus'] },
@@ -56,29 +58,41 @@ export const AZURE_REGIONS = {
     name: 'Germany West Central',
     zones: ['germanywestcentral-1', 'germanywestcentral-2', 'germanywestcentral-3']
   },
-  norwayeast: { name: 'Norway East', zones: ['norwayeast'] },
-  switzerlandnorth: { name: 'Switzerland North', zones: ['switzerlandnorth'] },
-  eastasia: { name: 'East Asia', zones: ['eastasia'] },
+  norwayeast: { name: 'Norway East', zones: ['norwayeast-1', 'norwayeast-2', 'norwayeast-3'] },
+  switzerlandnorth: {
+    name: 'Switzerland North',
+    zones: ['switzerlandnorth-1', 'switzerlandnorth-2', 'switzerlandnorth-3']
+  },
+  eastasia: { name: 'East Asia', zones: ['eastasia-1', 'eastasia-2', 'eastasia-3'] },
   southeastasia: {
     name: 'Southeast Asia',
     zones: ['southeastasia-1', 'southeastasia-2', 'southeastasia-3']
   },
-  centralindia: { name: 'Central India', zones: ['centralindia'] },
+  centralindia: {
+    name: 'Central India',
+    zones: ['centralindia-1', 'centralindia-2', 'centralindia-3']
+  },
   southindia: { name: 'South India', zones: ['southindia'] },
   westindia: { name: 'West India', zones: ['westindia'] },
   japaneast: { name: 'Japan East', zones: ['japaneast-1', 'japaneast-2', 'japaneast-3'] },
   japanwest: { name: 'Japan West', zones: ['japanwest'] },
-  koreacentral: { name: 'Korea Central', zones: ['koreacentral'] },
+  koreacentral: {
+    name: 'Korea Central',
+    zones: ['koreacentral-1', 'koreacentral-2', 'koreacentral-3']
+  },
   koreasouth: { name: 'Korea South', zones: ['koreasouth'] },
-  uaenorth: { name: 'UAE North', zones: ['uaenorth'] },
+  uaenorth: { name: 'UAE North', zones: ['uaenorth-1', 'uaenorth-2', 'uaenorth-3'] },
   australiacentral: { name: 'Australia Central', zones: ['australiacentral'] },
   australiaeast: {
     name: 'Australia East',
     zones: ['australiaeast-1', 'australiaeast-2', 'australiaeast-3']
   },
   australiasoutheast: { name: 'Australia Southeast', zones: ['australiasoutheast'] },
-  southafricanorth: { name: 'South Africa North', zones: ['southafricanorth'] },
-  brazilsouth: { name: 'Brazil South', zones: ['brazilsouth'] }
+  southafricanorth: {
+    name: 'South Africa North',
+    zones: ['southafricanorth-1', 'southafricanorth-2', 'southafricanorth-3']
+  },
+  brazilsouth: { name: 'Brazil South', zones: ['brazilsouth-1', 'brazilsouth-2', 'brazilsouth-3'] }
 } as const;
 
 // Sourced from opscli/ybops/data/gcp-metadata.yml

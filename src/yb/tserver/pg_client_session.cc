@@ -441,10 +441,17 @@ struct PerformData {
       if (op->has_sidecar()) {
         op_resp.set_rows_data_sidecar(narrow_cast<int>(op->sidecar_index()));
       }
-      if (resp.has_catalog_read_time() && op_resp.has_paging_state()) {
-        // Prevent further paging reads from read restart errors.
-        // See the ProcessUsedReadTime(...) function for details.
-        *op_resp.mutable_paging_state()->mutable_read_time() = resp.catalog_read_time();
+      if (op_resp.has_paging_state()) {
+        if (resp.has_catalog_read_time()) {
+          // Prevent further paging reads from read restart errors.
+          // See the ProcessUsedReadTime(...) function for details.
+          *op_resp.mutable_paging_state()->mutable_read_time() = resp.catalog_read_time();
+        }
+        if (transaction && transaction->isolation() == IsolationLevel::SERIALIZABLE_ISOLATION) {
+          // Delete read time from paging state since a read time is not used in serializable
+          // isolation level.
+          op_resp.mutable_paging_state()->clear_read_time();
+        }
       }
       op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
     }
@@ -895,6 +902,7 @@ struct RpcPerformQuery : public PerformData {
 
 Status PgClientSession::Perform(
     PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+  VLOG(5) << "Perform rpc: " << req->ShortDebugString();
   auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache_, req, resp, context);
   auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context);
   if (!status.ok()) {
@@ -1419,22 +1427,21 @@ Status PgClientSession::FetchSequenceTuple(
                              sequence_id);
   }
 
-  int64_t first_value = 0, last_value = 0;
   // Get the range start
-  if (PgDocData::ReadDataHeader(&cursor).is_null()) {
+  if (PgDocData::ReadHeaderIsNull(&cursor)) {
     return STATUS_SUBSTITUTE(InternalError,
                              "Invalid value range start has been fetched from sequence $0",
                              sequence_id);
   }
-  cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &first_value));
+  auto first_value = PgDocData::ReadNumber<int64_t>(&cursor);
 
   // Get the range end
-  if (PgDocData::ReadDataHeader(&cursor).is_null()) {
+  if (PgDocData::ReadHeaderIsNull(&cursor)) {
     return STATUS_SUBSTITUTE(InternalError,
                              "Invalid value range end has been fetched from sequence $0",
                              sequence_id);
   }
-  cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &last_value));
+  auto last_value = PgDocData::ReadNumber<int64_t>(&cursor);
 
   if (use_sequence_cache) {
     entry->SetRange(first_value, last_value);
@@ -1500,21 +1507,16 @@ Status PgClientSession::ReadSequenceTuple(
     return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
   }
 
-  PgWireDataHeader header = PgDocData::ReadDataHeader(&cursor);
-  if (header.is_null()) {
+  if (PgDocData::ReadHeaderIsNull(&cursor)) {
     return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
   }
-  int64_t last_val = 0;
-  size_t read_size = PgDocData::ReadNumber(&cursor, &last_val);
-  cursor.remove_prefix(read_size);
+  auto last_val = PgDocData::ReadNumber<int64_t>(&cursor);
   resp->set_last_val(last_val);
 
-  header = PgDocData::ReadDataHeader(&cursor);
-  if (header.is_null()) {
+  if (PgDocData::ReadHeaderIsNull(&cursor)) {
     return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
   }
-  bool is_called = false;
-  read_size = PgDocData::ReadNumber(&cursor, &is_called);
+  auto is_called = PgDocData::ReadNumber<bool>(&cursor);
   resp->set_is_called(is_called);
   return Status::OK();
 }

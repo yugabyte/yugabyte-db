@@ -1071,7 +1071,7 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
       db_stream_id,
       std::make_shared<StreamMetadata>(
           ns_id, table_ids, req->record_type(), req->record_format(), req->source_type(),
-          req->checkpoint_type()));
+          req->checkpoint_type(), StreamModeTransactional(req->transactional())));
 
   session->SetDeadline(deadline);
 
@@ -1129,7 +1129,8 @@ void CDCServiceImpl::CreateCDCStream(
                      req->record_type(),
                      req->record_format(),
                      req->source_type(),
-                     req->checkpoint_type()));
+                     req->checkpoint_type(),
+                     StreamModeTransactional(req->transactional())));
   } else if (req->has_namespace_name()) {
     auto deadline = GetDeadline(context, client());
     Status status = CreateCDCStreamForNamespace(req, resp, deadline);
@@ -1280,8 +1281,10 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
   std::vector<TableId> table_ids;
   NamespaceId ns_id;
   std::unordered_map<std::string, std::string> options;
+  StreamModeTransactional transactional(false);
   RPC_STATUS_RETURN_ERROR(
-      client()->GetCDCStream(req->table_info().stream_id(), &ns_id, &table_ids, &options),
+      client()->GetCDCStream(
+          req->table_info().stream_id(), &ns_id, &table_ids, &options, &transactional),
       resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   // This means the table has not been added to the stream's metadata.
@@ -1466,11 +1469,17 @@ void CDCServiceImpl::ListTablets(
 
 Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCServiceImpl::GetTablets(
     const CDCStreamId& stream_id) {
-  auto stream_metadata = VERIFY_RESULT(GetStream(stream_id, /*ignore_cache*/ true));
+  auto stream_metadata = VERIFY_RESULT(GetStream(stream_id, RefreshStreamMapOption::kAlways));
   client::YBTableName table_name;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> all_tablets;
 
-  for (const auto& table_id : stream_metadata->table_ids) {
+  std::vector<TableId> table_ids;
+  {
+    std::lock_guard l_table(stream_metadata->table_ids_mutex_);
+    table_ids = stream_metadata->table_ids;
+  }
+
+  for (const auto& table_id : table_ids) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     table_name.set_table_id(table_id);
     RETURN_NOT_OK(client()->GetTablets(
@@ -1567,7 +1576,7 @@ void CDCServiceImpl::GetChanges(
       CDCErrorPB::LEADER_NOT_READY,
       context);
 
-  auto stream_result = GetStream(stream_id);
+  auto stream_result = GetStream(stream_id, RefreshStreamMapOption::kIfInitiatedState);
   RPC_RESULT_RETURN_ERROR(
       stream_result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
   std::shared_ptr<StreamMetadata> stream_meta_ptr =*stream_result;
@@ -2842,7 +2851,7 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
 
   auto duration = CoarseMonoClock::Now() - start;
   if (duration > (kMaxDurationForTabletLookup * 1ms)) {
-    LOG(WARNING) << "LookupTabletByKey took long time: " << duration;
+    LOG(WARNING) << "LookupTabletByKey took long time: " << AsString(duration);
   }
 
   auto remote_tablet = VERIFY_RESULT(future.get());
@@ -4085,7 +4094,7 @@ Status CDCServiceImpl::InsertRowForColocatedTableInCDCStateTable(
   auto column_id = cdc_state->ColumnId(master::kCdcData);
   auto map_value_pb = client::AddMapColumn(req, column_id);
   client::AddMapEntryToColumn(
-      map_value_pb, kCDCSDKSafeTime, ToString(cdc_sdk_safe_time.ToUint64()));
+      map_value_pb, kCDCSDKSafeTime, AsString(cdc_sdk_safe_time.ToUint64()));
   client::AddMapEntryToColumn(map_value_pb, kCDCSDKSnapshotKey, "");
 
   session->Apply(op);
@@ -4144,14 +4153,14 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
     auto column_id = cdc_state->ColumnId(master::kCdcData);
     // TODO Adithya: Explore updating the value of existing values in kCdcData column.
     auto map_value_pb = client::AddMapColumn(req, column_id);
-    client::AddMapEntryToColumn(map_value_pb, kCDCSDKActiveTime, ToString(last_active_time));
+    client::AddMapEntryToColumn(map_value_pb, kCDCSDKActiveTime, AsString(last_active_time));
     client::AddMapEntryToColumn(
-        map_value_pb, kCDCSDKSafeTime, ToString(cdc_sdk_safe_time.ToUint64()));
+        map_value_pb, kCDCSDKSafeTime, AsString(cdc_sdk_safe_time.ToUint64()));
     if (is_snapshot) {
       // The 'GetChanges' call bootstrapping snapshot will have snapshot key empty.
       // In cases of taking snapshot for a colocated table, we will only update the "snapshot_key"
       // in the rows for meant each colocated tableId.
-      client::AddMapEntryToColumn(map_value_pb, kCDCSDKSnapshotKey, ToString(snapshot_key));
+      client::AddMapEntryToColumn(map_value_pb, kCDCSDKSnapshotKey, AsString(snapshot_key));
     }
 
     VLOG(2) << "Updating cdc state table with: checkpoint: " << commit_op_id.ToString()
@@ -4209,8 +4218,8 @@ Status CDCServiceImpl::UpdateSnapshotDone(
   auto map_value_pb = client::AddMapColumn(req, column_id);
   client::AddMapEntryToColumn(
       map_value_pb, kCDCSDKSafeTime,
-      ToString(!cdc_sdk_checkpoint.has_snapshot_time() ? 0 : cdc_sdk_checkpoint.snapshot_time()));
-  client::AddMapEntryToColumn(map_value_pb, kCDCSDKActiveTime, ToString(current_time));
+      AsString(!cdc_sdk_checkpoint.has_snapshot_time() ? 0 : cdc_sdk_checkpoint.snapshot_time()));
+  client::AddMapEntryToColumn(map_value_pb, kCDCSDKActiveTime, AsString(current_time));
   cdc_state->AddStringColumnValue(
       req, master::kCdcCheckpoint,
       OpId(cdc_sdk_checkpoint.term(), cdc_sdk_checkpoint.index()).ToString());
@@ -4244,8 +4253,8 @@ Status CDCServiceImpl::UpdateActiveTime(
 
   const auto& column_id = cdc_state->ColumnId(master::kCdcData);
   auto map_value_pb = client::AddMapColumn(req, column_id);
-  client::AddMapEntryToColumn(map_value_pb, kCDCSDKActiveTime, ToString(last_active_time));
-  client::AddMapEntryToColumn(map_value_pb, kCDCSDKSafeTime, ToString(snapshot_time));
+  client::AddMapEntryToColumn(map_value_pb, kCDCSDKActiveTime, AsString(last_active_time));
+  client::AddMapEntryToColumn(map_value_pb, kCDCSDKSafeTime, AsString(snapshot_time));
 
   auto* condition = req->mutable_if_expr()->mutable_condition();
   condition->set_op(QL_OP_EXISTS);
@@ -4321,54 +4330,76 @@ void CDCServiceImpl::RemoveCDCTabletMetrics(
 }
 
 Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(
-    const std::string& stream_id, bool ignore_cache) {
-  if (!ignore_cache) {
-    auto stream = GetStreamMetadataFromCache(stream_id);
-    if (stream != nullptr) {
-      return stream;
-    }
+    const std::string& stream_id, RefreshStreamMapOption opts) {
+  std::shared_ptr<StreamMetadata> stream_metadata;
+  {
+    SharedLock l(mutex_);
+    stream_metadata = FindPtrOrNull(stream_metadata_, stream_id);
   }
 
-  // Look up stream in sys catalog.
-  std::vector<ObjectId> object_ids;
-  NamespaceId ns_id;
-  std::unordered_map<std::string, std::string> options;
-  RETURN_NOT_OK(client()->GetCDCStream(stream_id, &ns_id, &object_ids, &options));
-
-  auto stream_metadata = std::make_shared<StreamMetadata>();
-
-  AddDefaultOptionsIfMissing(&options);
-
-  for (const auto& option : options) {
-    if (option.first == kRecordType) {
-      SCHECK(
-          CDCRecordType_Parse(option.second, &stream_metadata->record_type), IllegalState,
-          "CDC record type parsing error");
-    } else if (option.first == kRecordFormat) {
-      SCHECK(
-          CDCRecordFormat_Parse(option.second, &stream_metadata->record_format), IllegalState,
-          "CDC record format parsing error");
-    } else if (option.first == kSourceType) {
-      SCHECK(
-          CDCRequestSource_Parse(option.second, &stream_metadata->source_type), IllegalState,
-          "CDC record format parsing error");
-    } else if (option.first == kCheckpointType) {
-      SCHECK(
-          CDCCheckpointType_Parse(option.second, &stream_metadata->checkpoint_type), IllegalState,
-          "CDC record format parsing error");
-    } else if (option.first == cdc::kIdType && option.second == cdc::kNamespaceId) {
-      stream_metadata->ns_id = ns_id;
-      stream_metadata->table_ids.insert(
-          stream_metadata->table_ids.end(), object_ids.begin(), object_ids.end());
-    } else if (option.first == cdc::kIdType && option.second == cdc::kTableId) {
-      stream_metadata->table_ids.insert(
-          stream_metadata->table_ids.end(), object_ids.begin(), object_ids.end());
-    } else {
-      LOG(WARNING) << "Unsupported CDC option: " << option.first;
-    }
+  if (stream_metadata == nullptr) {
+    std::lock_guard l(mutex_);
+    stream_metadata =
+        LookupOrInsert(&stream_metadata_, stream_id, std::make_shared<StreamMetadata>());
   }
 
-  AddStreamMetadataToCache(stream_id, stream_metadata);
+  std::lock_guard l(stream_metadata->load_mutex_);
+
+  if (!stream_metadata->loaded_ || opts == RefreshStreamMapOption::kAlways ||
+      (opts == RefreshStreamMapOption::kIfInitiatedState &&
+       stream_metadata->state == master::SysCDCStreamEntryPB_State_INITIATED)) {
+    std::lock_guard l_table(stream_metadata->table_ids_mutex_);
+    stream_metadata->Clear();
+
+    // Look up stream in sys catalog.
+    std::vector<ObjectId> object_ids;
+    NamespaceId ns_id;
+    std::unordered_map<std::string, std::string> options;
+    StreamModeTransactional transactional(false);
+
+    RETURN_NOT_OK(client()->GetCDCStream(stream_id, &ns_id, &object_ids, &options, &transactional));
+
+    AddDefaultOptionsIfMissing(&options);
+
+    for (const auto& [key, value] : options) {
+      if (key == kRecordType) {
+        SCHECK(
+            CDCRecordType_Parse(value, &stream_metadata->record_type), IllegalState,
+            "CDC record type parsing error");
+      } else if (key == kRecordFormat) {
+        SCHECK(
+            CDCRecordFormat_Parse(value, &stream_metadata->record_format), IllegalState,
+            "CDC record format parsing error");
+      } else if (key == kSourceType) {
+        SCHECK(
+            CDCRequestSource_Parse(value, &stream_metadata->source_type), IllegalState,
+            "CDC record format parsing error");
+      } else if (key == kCheckpointType) {
+        SCHECK(
+            CDCCheckpointType_Parse(value, &stream_metadata->checkpoint_type), IllegalState,
+            "CDC record format parsing error");
+      } else if (key == cdc::kIdType && value == cdc::kNamespaceId) {
+        stream_metadata->ns_id = ns_id;
+        stream_metadata->table_ids.insert(
+            stream_metadata->table_ids.end(), object_ids.begin(), object_ids.end());
+      } else if (key == cdc::kIdType && value == cdc::kTableId) {
+        stream_metadata->table_ids.insert(
+            stream_metadata->table_ids.end(), object_ids.begin(), object_ids.end());
+      } else if (key == cdc::kStreamState) {
+        master::SysCDCStreamEntryPB_State state;
+        SCHECK(
+            master::SysCDCStreamEntryPB_State_Parse(value, &state), IllegalState,
+            "CDC state parsing error");
+        stream_metadata->state = state;
+      } else {
+        LOG(WARNING) << "Unsupported CDC Stream option: " << key;
+      }
+    }
+
+    stream_metadata->transactional = transactional;
+    stream_metadata->loaded_ = true;
+  }
+
   return stream_metadata;
 }
 
@@ -4378,20 +4409,9 @@ void CDCServiceImpl::RemoveStreamFromCache(const CDCStreamId& stream_id) {
 }
 
 void CDCServiceImpl::AddStreamMetadataToCache(
-    const std::string& stream_id, const std::shared_ptr<StreamMetadata>& metadata) {
-  std::lock_guard<decltype(mutex_)> l(mutex_);
-  stream_metadata_.emplace(stream_id, metadata);
-}
-
-std::shared_ptr<StreamMetadata> CDCServiceImpl::GetStreamMetadataFromCache(
-    const std::string& stream_id) {
-  SharedLock<decltype(mutex_)> l(mutex_);
-  auto it = stream_metadata_.find(stream_id);
-  if (it != stream_metadata_.end()) {
-    return it->second;
-  } else {
-    return nullptr;
-  }
+    const std::string& stream_id, const std::shared_ptr<StreamMetadata>& stream_metadata) {
+  std::lock_guard l(mutex_);
+  InsertOrUpdate(&stream_metadata_, stream_id, stream_metadata);
 }
 
 Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info) {
