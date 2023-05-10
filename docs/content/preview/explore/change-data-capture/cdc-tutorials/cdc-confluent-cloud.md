@@ -13,7 +13,6 @@ menu:
 type: docs
 ---
 
-## Confluent Cloud
 
 This tutorial describes how to configure a YugabyteDB connector to publish changes to Confluent Cloud. Simultaneously, this assumes some familiarity with Docker and YAML files.
 
