@@ -49,6 +49,11 @@ static const std::string kNamespaceName = "test_namespace";
 static const std::string kKeyColumnName = "key";
 static const uint32_t kRangePartitionInterval = 500;
 
+template <typename TabletServer>
+auto GetSafeTime(const TabletServer* tserver, const NamespaceId& namespace_id) {
+  return tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+}
+
 class XClusterTestBase : public YBTest {
  public:
   class Cluster {

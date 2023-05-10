@@ -552,6 +552,7 @@ Status GetChangesForXCluster(
   consensus::ReadOpsResult read_ops;
 
   SCHECK(tablet_peer, NotFound, Format("Tablet id $0 not found", tablet_id));
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
 
   auto leader_safe_time = VERIFY_RESULT(tablet_peer->LeaderSafeTime());
   SCHECK(
@@ -565,7 +566,10 @@ Status GetChangesForXCluster(
 
   bool update_apply_safe_time = false;
   auto now = MonoTime::Now();
-  auto tablet = tablet_peer->shared_tablet();
+  auto* txn_participant = tablet->transaction_participant();
+  // Check if both the table and stream are transactional.
+  bool transactional = (txn_participant != nullptr) && stream_metadata->transactional &&
+                       !FLAGS_TEST_enable_replicate_transaction_status_table;
 
   // In order to provide a transactionally consistent WAL, we need to perform the below steps:
   // If last_apply_safe_time is kInvalid
@@ -578,9 +582,7 @@ Status GetChangesForXCluster(
   //    b. Reset last_apply_safe_time and apply_safe_time_checkpoint_op_id
   //  5. Else don't set any response.apply_safe_time. The next GetChanges RPC will reuse the
   //     computed last_apply_safe_time and apply_safe_time_checkpoint_op_id
-  if (stream_metadata->transactional && !FLAGS_TEST_enable_replicate_transaction_status_table &&
-      tablet && tablet->transaction_participant() &&
-      !stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
+  if (transactional && !stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
     // See if its time to update the apply safe time.
     if (!stream_tablet_metadata->last_apply_safe_time_update_time_ ||
         stream_tablet_metadata->last_apply_safe_time_update_time_ +
@@ -588,7 +590,7 @@ Status GetChangesForXCluster(
             now) {
       update_apply_safe_time = true;
       // Resolve and apply intents to make the leader_safe_time a valid apply_safe_time candidate.
-      RETURN_NOT_OK(tablet->transaction_participant()->ResolveIntents(leader_safe_time, deadline));
+      RETURN_NOT_OK(txn_participant->ResolveIntents(leader_safe_time, deadline));
     }
   }
 
@@ -618,8 +620,6 @@ Status GetChangesForXCluster(
   OpId checkpoint;
   TxnStatusMap txn_map;
   if (!replicate_intents) {
-    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-    auto txn_participant = tablet->transaction_participant();
     if (txn_participant) {
       request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
     }
@@ -697,7 +697,7 @@ Status GetChangesForXCluster(
     consumption.Add(resp->SpaceUsedLong());
   }
 
-  if (stream_metadata->transactional && !FLAGS_TEST_enable_replicate_transaction_status_table) {
+  if (transactional) {
     // We can set the apply_safe_time if no messages were read from the WAL and there is nothing
     // to send. Or, the apply_safe_time_checkpoint_op_id_ was included in the response.
     if ((checkpoint.index == 0 && !read_ops.have_more_messages) ||
