@@ -4,6 +4,7 @@ package model
 
 import (
 	"fmt"
+	"time"
 )
 
 type RegisterRequest struct {
@@ -14,7 +15,7 @@ type NodeAgent struct {
 	CommonInfo
 	Uuid         string          `json:"uuid"`
 	CustomerUuid string          `json:"customerUuid"`
-	UpdatedAt    int             `json:"updatedAt"`
+	UpdatedAt    time.Time       `json:"updatedAt"`
 	Config       NodeAgentConfig `json:"config"`
 }
 
