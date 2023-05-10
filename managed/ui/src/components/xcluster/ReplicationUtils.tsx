@@ -358,6 +358,14 @@ export const getEnabledConfigActions = (
 };
 
 /**
+ * Returns the UUIDs for all xCluster configs associated with the provided universe.
+ */
+export const getAllXClusterConfigs = (universe: Universe) => [
+  ...(universe.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? []),
+  ...(universe.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? [])
+];
+
+/**
  * Returns the UUID for all xCluster configs with the provided source and target universe.
  */
 export const getSharedXClusterConfigs = (sourceUniverse: Universe, targetUniverse: Universe) => {
