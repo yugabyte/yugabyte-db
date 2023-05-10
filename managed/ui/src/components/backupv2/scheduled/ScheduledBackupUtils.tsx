@@ -70,7 +70,8 @@ export const convertScheduleToFormValues = (
     selected_ycql_tables: [] as any[],
     keep_indefinitely: schedule.backupInfo.timeBeforeDelete === 0,
     parallel_threads: schedule.backupInfo.parallelism ?? 8,
-    scheduleObj: schedule
+    scheduleObj: schedule,
+    isTableByTableBackup: schedule.tableByTableBackup
   };
 
   if (schedule.backupInfo?.fullBackup) {
