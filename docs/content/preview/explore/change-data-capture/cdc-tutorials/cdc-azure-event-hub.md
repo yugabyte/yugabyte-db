@@ -136,7 +136,7 @@ You have several options to move data from Azure Event Hubs to a Synapse workspa
 
 An Azure Synapse pipeline, which subscribes to changes in Event Hubs via a custom trigger, can be used to move CDC data into an ADLS Gen 2 account. One option to accomplish this is to create a Spark Notebook from Azure Synapse Studio which connects to Event Hubs for the specific topic(s) and stores the data in an ADLS Gen2 folder.
 
-Sample code for a PySpark Notebook for an IoT management application, which pulls data from each of the event hubs every five minutes for analysis, is shared below. This Python code will pull the messages from the event hub and persists them in ADLS Gen2.
+Following is a sample code for a PySpark Notebook for an IoT management application, which pulls data from each of the event hubs every five minutes for analysis. This Python code will pull the messages from the event hub and persist them in ADLS Gen2.
 
 ```python
 # Event Hub Connection String with the topic name as db
