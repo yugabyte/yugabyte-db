@@ -26,7 +26,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -373,7 +373,7 @@ public class Universe extends Model {
             "select universe_details_json::jsonb->>'%s' as field from universe"
                 + " where universe_uuid = :universeUUID",
             fieldName);
-    SqlQuery sqlQuery = Ebean.createSqlQuery(query);
+    SqlQuery sqlQuery = DB.sqlQuery(query);
     sqlQuery.setParameter("universeUUID", universeUUID);
     return sqlQuery.findOneOrEmpty().map(row -> clazz.cast(row.get("field")));
   }
@@ -393,7 +393,7 @@ public class Universe extends Model {
             "select universe_uuid, universe_details_json::jsonb->>'%s' as field from universe"
                 + " where customer_id = :customerId",
             fieldName);
-    SqlQuery sqlQuery = Ebean.createSqlQuery(query);
+    SqlQuery sqlQuery = DB.sqlQuery(query);
     sqlQuery.setParameter("customerId", customerId);
     return sqlQuery.findList().stream()
         .filter(r -> r.get("field") != null && clazz.isAssignableFrom(r.get("field").getClass()))

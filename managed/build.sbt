@@ -119,6 +119,7 @@ lazy val root = (project in file("."))
   })
 
 scalaVersion := "2.12.10"
+javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 // These are needed to prevent (reduce possibility?) or incremental compilation infinite loop issue:
@@ -136,7 +137,8 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
+  "com.google.inject"            % "guice"                % "5.1.0",
+  "com.google.inject.extensions" % "guice-assistedinject" % "5.1.0",
   "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.9",
@@ -188,7 +190,7 @@ libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-kms" % "2.4.4",
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.4.0",
   "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
-  "org.projectlombok" % "lombok" % "1.18.20",
+  "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
   "io.kamon" %% "kamon-bundle" % "2.5.9",
   "io.kamon" %% "kamon-prometheus" % "2.5.9",
@@ -445,7 +447,7 @@ runPlatform := {
 
 libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b1"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.51-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b27"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b28"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -460,7 +462,7 @@ dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 // SSO functionality only works on the older version of nimbusds.
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
-dependencyOverrides += "org.reflections" % "reflections" % "0.9.12"
+dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
 dependencyOverrides += "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2"
 dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0"
 
