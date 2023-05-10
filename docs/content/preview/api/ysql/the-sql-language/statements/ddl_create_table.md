@@ -132,7 +132,7 @@ For colocated databases, specify `false` to opt this table out of colocation. Th
 
 Use this option for large tables that need to be scaled out. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for details on when colocated tables are beneficial.
 
-Note that `COLOCATION = true` has no effect if the database that this table is part of is not colocated as colocation today is supported only at the database level.
+Note that `COLOCATION = true` has no effect if the database that this table is part of is not colocated, as currently colocation is supported only at the database level.
 
 ### Storage parameters
 
