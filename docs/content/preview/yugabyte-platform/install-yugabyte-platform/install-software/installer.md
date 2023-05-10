@@ -98,7 +98,9 @@ Respond with `n` or `no` to create the configuration file using default configur
 
 By default, YBA Installer installs YBA in `/opt/yugabyte` and creates a Linux user `yugabyte` to run YBA processes.
 
-To change these and other default values, edit the `yba-ctl.yml` file, and then re-run the `yba-ctl` command. You can change configuration options post-install using the [reconfigure](#reconfigure) command. For a list of options, refer to [Configuration options](#configuration-options).
+To change these and other default values, edit the `yba-ctl.yml` file, and then re-run the `yba-ctl` command. For a list of options, refer to [Configuration options](#configuration-options).
+
+You can change some configuration options post-installation using the [reconfigure](#reconfigure) command. 
 
 ## Install YBA using YBA Installer
 
@@ -184,7 +186,7 @@ To reconfigure an installation, edit the `/opt/yba-ctl/yba-ctl.yml` configuratio
 $ sudo yba-ctl reconfigure
 ```
 
-Note that some settings can't be reconfigured, such as the install root, service username, or if you brought your own PostgreSQL.
+For a list of options, refer to [Configuration options](#configuration-options). Note that some settings can't be reconfigured, such as the install root, service username, or the PostgreSQL version.
 
 ### Service management
 
