@@ -82,6 +82,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_type_util.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -8172,11 +8173,19 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
       auto ltm = entry.second->LockForRead();
       if (!ltm->started_deleting()) {
         for (const auto &col : ltm->schema().columns()) {
-          if (col.type().main() == DataType::USER_DEFINED_TYPE &&
-              col.type().udtype_info().id() == tp->id()) {
+          const Status tp_is_not_used = IterateAndDoForUDT(
+              col.type(),
+              [&tp](const QLTypePB::UDTypeInfo& udtype_info) -> Status {
+                return udtype_info.id() == tp->id()
+                    ? STATUS(QLError, Substitute("Used type $0 id $1", tp->name(), tp->id()))
+                    : Status::OK();
+              });
+
+          if (!tp_is_not_used.ok()) {
             Status s = STATUS(QLError,
                 Substitute("Cannot delete type '$0.$1'. It is used in column $2 of table $3",
                     ns->name(), tp->name(), col.name(), ltm->name()));
+            LOG_WITH_FUNC(WARNING) << s << ": " << tp_is_not_used;
             return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
           }
         }
