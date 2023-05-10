@@ -6672,14 +6672,14 @@
           "minimum" : 1,
           "type" : "integer"
         },
-        "hot_shard_minimal_reads" : {
-          "description" : "Perf advisor hot shard minimal reads",
+        "hot_shard_min_node_reads" : {
+          "description" : "Perf advisor hot shard minimal node reads",
           "format" : "int32",
           "minimum" : 1,
           "type" : "integer"
         },
-        "hot_shard_minimal_writes" : {
-          "description" : "Perf advisor hot shard minimal writes",
+        "hot_shard_min_node_writes" : {
+          "description" : "Perf advisor hot shard minimal node writes",
           "format" : "int32",
           "minimum" : 1,
           "type" : "integer"
