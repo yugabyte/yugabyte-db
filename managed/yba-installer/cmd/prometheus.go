@@ -19,6 +19,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/runner"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
 )
 
@@ -48,14 +49,19 @@ type Prometheus struct {
 	name    string
 	version string
 	prometheusDirectories
+	runStep
 }
 
 // NewPrometheus creates a new prometheus service struct.
-func NewPrometheus(version string) Prometheus {
+func NewPrometheus(version string, run runStep) Prometheus {
+	if run == nil {
+		run = runner.New("prometheus")
+	}
 	return Prometheus{
 		name:                  "prometheus",
 		version:               version,
 		prometheusDirectories: newPrometheusDirectories(),
+		runStep:               run,
 	}
 }
 
@@ -80,12 +86,21 @@ func (prom Prometheus) Name() string {
 // Install the prometheus service.
 func (prom Prometheus) Install() error {
 	log.Info("Starting Prometheus install")
-	config.GenerateTemplate(prom)
-	prom.moveAndExtractPrometheusPackage()
-	if err := prom.createDataDirs(); err != nil {
+	prom.StartSection("prometheus install")
+	defer prom.EndSection()
+
+	prom.RunStep(func() error {
+		config.GenerateTemplate(prom)
+		return nil
+	})
+
+	if err := prom.RunStep(prom.moveAndExtractPrometheusPackage); err != nil {
 		return err
 	}
-	if err := prom.createPrometheusSymlinks(); err != nil {
+	if err := prom.RunStep(prom.createDataDirs); err != nil {
+		return err
+	}
+	if err := prom.RunStep(prom.createPrometheusSymlinks); err != nil {
 		return err
 	}
 
@@ -94,15 +109,20 @@ func (prom Prometheus) Install() error {
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
 		promDir := common.GetSoftwareRoot() + "/prometheus"
-		if err := common.Chown(promDir, userName, userName, true); err != nil {
+		chownClosure := func() error {
+			return common.Chown(promDir, userName, userName, true)
+		}
+		if err := prom.RunStep(chownClosure); err != nil {
 			log.Error("failed to change ownership of " + promDir + ": " + err.Error())
 			return err
 		}
 	} else {
-		prom.CreateCronJob()
+		if err := prom.RunStep(prom.CreateCronJob); err != nil {
+			return err
+		}
 	}
 
-	if err := prom.Start(); err != nil {
+	if err := prom.RunStep(prom.Start); err != nil {
 		return err
 	}
 	log.Info("Finishing Prometheus install")
@@ -261,7 +281,7 @@ func (prom Prometheus) Upgrade() error {
 	return prom.Start()
 }
 
-func (prom Prometheus) moveAndExtractPrometheusPackage() {
+func (prom Prometheus) moveAndExtractPrometheusPackage() error {
 
 	srcPath := fmt.Sprintf(
 		"%s/third-party/prometheus-%s.linux-amd64.tar.gz", common.GetInstallerSoftwareDir(),
@@ -287,7 +307,7 @@ func (prom Prometheus) moveAndExtractPrometheusPackage() {
 		}
 		log.Debug(dstPath + " successfully extracted.")
 	}
-
+	return nil
 }
 
 func (prom Prometheus) createDataDirs() error {
@@ -403,7 +423,7 @@ func (prom Prometheus) Status() (common.Status, error) {
 }
 
 // CreateCronJob creates the cron job for managing prometheus with cron script in non-root.
-func (prom Prometheus) CreateCronJob() {
+func (prom Prometheus) CreateCronJob() error {
 	bashCmd := fmt.Sprintf(
 		"(crontab -l 2>/dev/null; echo \"@reboot %s %s %s %s %s %s %s %s %s \") | sort - | uniq - | "+
 			"crontab - ",
@@ -418,4 +438,5 @@ func (prom Prometheus) CreateCronJob() {
 		prom.version,
 	)
 	shell.Run("bash", "-c", bashCmd)
+	return nil
 }
