@@ -130,7 +130,7 @@ Replace <directory> with the directory you used when creating the YugabyteDB CDC
 
 ### Step 5: Pull Events From Azure EventHubs
 
-You have several options to move data from Azure Event Hubs to a Synapse workspace. An option using Azure Synapse Pipelines in a Spark Notebook is described below.
+You have several options to move data from Azure Event Hubs to a Synapse workspace. An option using Azure Synapse Pipelines in a Spark Notebook is described in the following section.
 
 #### Use Azure Synapse Pipelines with Event Hubs
 
