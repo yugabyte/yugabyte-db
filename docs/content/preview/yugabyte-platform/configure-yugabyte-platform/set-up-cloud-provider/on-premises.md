@@ -99,11 +99,25 @@ To create an on-premises provider:
 
 Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
 
+### Regions
+
+To add regions for the provider, do the following:
+
+1. Click **Add Region**.
+
+1. Enter a name for the region.
+
+1. Select the region location.
+
+1. To add a zone, click **Add Zone** and enter a name for the zone.
+
+1. Click **Add Region**.
+
 ### SSH Key Pairs
 
 In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
 
-If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually provision nodes](#manually-provision-nodes).
+If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Provision nodes manually](#provision-nodes-manually).
 
 In the **SSH Port** field, provide the port number of SSH client connections.
 
@@ -134,37 +148,33 @@ Use the **Node Exporter Port** field to specify the port number for the node exp
 - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
 - Select **Don't set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
-### Configure hardware for YugabyteDB nodes
+## Configure hardware for YugabyteDB nodes
 
-Complete the **Instance Types** fields, as per the following illustration, to provide node hardware configuration (CPU, memory, and volume information):
+After the provider has been created, you can configure the hardware for the configuration by navigating to **Configs > Infrastructure > On-Premises Datacenters**, selecting the On Prem Config you created, and choosing **Instances**. This displays the configured instance types and instances for the selected provider.
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-2.png)
+### Add instance types
 
-- Use the **Machine Type** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
-- Use the **Num Cores** field to define the number of cores to be assigned to a node.
-- Use the **Mem Size GB** field to define the memory allocation of a node.
-- Use the **Vol Size GB** field to define the disk volume of a node.
-- Use the **Mount Paths** field to define a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
+To add an instance type, do the following:
 
-### Define regions and zones
+1. Click **Add Instance Type**.
 
-Complete the **Regions and Zones** fields, as per the following illustration, to provide the location of YugabyteDB nodes:
+1. Complete the **Add Instance Type** dialog fields, as follows:
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
+    - Use the **Machine Type** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
+    - Use the **Number of Cores** field to define the number of cores to be assigned to a node.
+    - Use the **Memory Size (GB)** field to define the memory allocation of a node.
+    - Use the **Volume Size (GB)** field to define the disk volume of a node.
+    - Use the **Mount Paths** field to define a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
 
-YugabyteDB Anywhere will use these values during the universe creation.
+1. Click **Add Instance Type**.
 
-## Add YugabyteDB nodes
+### Add YugabyteDB nodes
 
-After finishing the provider configuration, click **Manage Instances** to provision as many nodes as your application requires.
+For each node you want to add, click **Add Instances** to add a YugabyteDB node. For each region, select the zone and instance type. You can use DNS names or IP addresses when adding instances (instance ID is an optional user-defined identifier).
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-4.png)
+Click **Add** to add additional nodes in the region.
 
-For each node you want to add, click **Add Instances** to add a YugabyteDB node. You can use DNS names or IP addresses when adding instances (instance ID is an optional user-defined identifier).
-
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-5.png)
-
-Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` g-flag enabled.
+Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` flag enabled.
 
 ### Provision nodes manually
 
@@ -889,7 +899,7 @@ The following is the node agent registration command:
 node-agent node register --api-token <api_token>
 ```
 
-If you need to overwrite any previously configured values, you can use the following parameters within the registration command:
+If you need to overwrite any previously configured values, you can use the following parameters in the registration command:
 
 - `--node_ip` represents the node IP address.
 - `--url` represents the YugabyteDB Anywhere address.
@@ -929,7 +939,7 @@ Even though the node agent installation, configuration, and registration are suf
 
 #### Preflight check
 
-Once the node agent is installed, configured, and connected to YugabyteDB Anywhere, you can perform a series of preflight checks without sudo privileges by using the following command:
+After the node agent is installed, configured, and connected to YugabyteDB Anywhere, you can perform a series of preflight checks without sudo privileges by using the following command:
 
 ```sh
 node-agent node preflight-check
