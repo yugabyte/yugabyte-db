@@ -494,18 +494,20 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
   // Scan docdb for the static and non-static columns of the row using the hashed / primary key.
   if (hashed_doc_key_) {
     DocQLScanSpec spec(doc_read_context_->schema, *hashed_doc_key_, request_.query_id());
-    DocRowwiseIterator iterator(
+    auto iterator = DocRowwiseIterator(
         *static_projection, *doc_read_context_, txn_op_context_,
-        data.doc_write_batch->doc_db(), data.deadline, data.read_time);
+        data.doc_write_batch->doc_db(), data.deadline, data.read_time,
+        data.doc_write_batch->pending_op());
     RETURN_NOT_OK(iterator.Init(spec));
     RETURN_NOT_OK(iterator.FetchNext(table_row));
     data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
   }
   if (pk_doc_key_) {
     DocQLScanSpec spec(doc_read_context_->schema, *pk_doc_key_, request_.query_id());
-    DocRowwiseIterator iterator(
+    auto iterator = DocRowwiseIterator(
         *non_static_projection, *doc_read_context_, txn_op_context_,
-        data.doc_write_batch->doc_db(), data.deadline, data.read_time);
+        data.doc_write_batch->doc_db(), data.deadline, data.read_time,
+        data.doc_write_batch->pending_op());
     RETURN_NOT_OK(iterator.Init(spec));
     if (VERIFY_RESULT(iterator.FetchNext(table_row))) {
       // If there are indexes to update, check if liveness column exists for update/delete because
@@ -661,13 +663,14 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, ReadHybridTime read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
   DocQLScanSpec spec(doc_read_context_->schema, *pk_doc_key_, request_.query_id(), true);
-  DocRowwiseIterator iterator(
+  auto iterator = DocRowwiseIterator(
       *unique_index_key_projection_,
       *doc_read_context_,
       txn_op_context_,
       data.doc_write_batch->doc_db(),
       data.deadline,
-      read_time);
+      read_time,
+      data.doc_write_batch->pending_op());
   RETURN_NOT_OK(iterator.Init(spec));
 
   // It is a duplicate value if the index key exists already and the index value (corresponding to
@@ -1223,9 +1226,9 @@ Status QLWriteOperation::ApplyDelete(
                        include_static_columns_in_scan);
 
     // Create iterator.
-    DocRowwiseIterator iterator(
-        projection, *doc_read_context_, txn_op_context_,
-        data.doc_write_batch->doc_db(), data.deadline, data.read_time);
+    auto iterator = DocRowwiseIterator(
+        projection, *doc_read_context_, txn_op_context_, data.doc_write_batch->doc_db(),
+        data.deadline, data.read_time, data.doc_write_batch->pending_op());
     RETURN_NOT_OK(iterator.Init(spec));
 
     // Iterate through rows and delete those that match the condition.
@@ -1701,6 +1704,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
                                 const DocReadContext& doc_read_context,
+                                std::reference_wrapper<const ScopedRWOperation> pending_op,
                                 QLResultSet* resultset,
                                 HybridTime* restart_read_ht) {
   auto se = ScopeExit([resultset] {
@@ -1746,7 +1750,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
       request_, read_time, schema, read_static_columns, &spec, &static_row_spec));
   RETURN_NOT_OK(ql_storage.GetIterator(
       request_, full_projection, doc_read_context, txn_op_context_, deadline, read_time,
-      *spec, &iter));
+      *spec, pending_op, &iter));
   VTRACE(1, "Initialized iterator");
 
   QLTableRow static_row;
@@ -1761,7 +1765,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
     std::unique_ptr<YQLRowwiseIteratorIf> static_row_iter;
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_, static_projection, doc_read_context, txn_op_context_, deadline,
-        read_time, *static_row_spec, &static_row_iter));
+        read_time, *static_row_spec, pending_op, &static_row_iter));
     RETURN_NOT_OK(static_row_iter->FetchNext(&static_row));
   }
 

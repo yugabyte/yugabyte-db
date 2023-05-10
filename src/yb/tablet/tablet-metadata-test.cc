@@ -98,7 +98,7 @@ TEST_F(TestRaftGroupMetadata, TestLoadFromSuperBlock) {
 
   // Shut down the tablet.
   harness_->tablet()->StartShutdown();
-  harness_->tablet()->CompleteShutdown(DisableFlushOnShutdown::kFalse);
+  harness_->tablet()->CompleteShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse);
 
   RaftGroupMetadata* meta = harness_->tablet()->metadata();
 
