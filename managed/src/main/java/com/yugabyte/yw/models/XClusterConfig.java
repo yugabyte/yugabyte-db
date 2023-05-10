@@ -12,7 +12,7 @@ import com.google.common.collect.ImmutableBiMap;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlUpdate;
@@ -863,12 +863,12 @@ public class XClusterConfig extends Model {
 
     // Auto orphanRemoval is disabled for the children tables. Manually delete the orphan tables.
     SqlUpdate orphanRemovalSqlQuery =
-        Ebean.createSqlUpdate("DELETE FROM xcluster_table_config WHERE config_uuid = :uuid");
+        DB.sqlUpdate("DELETE FROM xcluster_table_config WHERE config_uuid = :uuid");
     Set<XClusterTableConfig> allTableConfigs =
         this.getTableDetails(true /* includeTxnTableIfExists */);
     if (!allTableConfigs.isEmpty()) {
       orphanRemovalSqlQuery =
-          Ebean.createSqlUpdate(
+          DB.sqlUpdate(
               "DELETE FROM xcluster_table_config WHERE config_uuid = :uuid "
                   + "AND NOT ( table_id IN (:nonOrphanTableIds) )");
       orphanRemovalSqlQuery.setParameter(
