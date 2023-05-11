@@ -58,13 +58,15 @@ Use YBA Installer to install YBA on a host. YBA Installer performs preflight che
 
 ### Download YBA Installer
 
-Download and extract the YBA Installer by entering the following commands:
+<!--Download and extract the YBA Installer by entering the following commands:
 
 ```sh
 $ wget YBA_installer_url/YBA_installer_full-2.17.3.0-b123-centos-x86_64.tar.gz
 $ tar -xf YBA_installer_full-2.17.3.0-b123-centos-x86_64.tar.gz
 $ cd YBA_installer_full-2.17.3.0-b123/
 ```
+-->
+YBA Installer is currently available via Early Access. To obtain the installation bundle, contact {{% support-platform %}}.
 
 This bundle provides everything needed, except a [license](#provide-a-license), to complete a fresh install of YBA:
 
