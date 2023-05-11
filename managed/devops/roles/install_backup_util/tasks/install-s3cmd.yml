@@ -49,11 +49,11 @@
         remote_src: "{{ is_remote }}"
 
     - set_fact:
-        python_dateutil_package_path: "/usr/local/python-dateutil-2.8.1"
+        python_dateutil_package_path: "/usr/local/python-dateutil-2.8.2"
 
     - name: s3cmd | Copy and unarchive dateutil from {{ package_path }}
       unarchive:
-        src: "{{ package_path }}/python-dateutil-2.8.1.tar.gz"
+        src: "{{ package_path }}/python-dateutil-2.8.2.tar.gz"
         dest: "/usr/local"
         creates: "{{ python_dateutil_package_path }}"
         remote_src: "{{ is_remote }}"
