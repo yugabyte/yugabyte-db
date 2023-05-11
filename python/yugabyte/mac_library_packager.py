@@ -99,8 +99,6 @@ class MacLibraryPackager:
             for executable in glob_results:
                 shutil.copy(executable, dst_bin_dir)
 
-        src_lib_dir = os.path.join(src, 'lib')
-
         extra_postgres_libs_dir_glob = os.path.join(
             get_thirdparty_dir(), 'installed', '*', 'lib')
         extra_postgres_libs = [

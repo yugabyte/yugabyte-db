@@ -50,7 +50,8 @@ from typing import Optional
 
 from time import strftime, localtime
 
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'python'))
+# Go from "${YB_SRC_ROOT}/python/yugabyte/gen_version_info.py? to "${YB_SRC_ROOT}/python".
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 
 from yugabyte.common_util import get_yb_src_root_from_build_root  # noqa
@@ -88,7 +89,7 @@ def main() -> int:
         level=logging.INFO,
         format="[" + os.path.basename(__file__) + "] %(asctime)s %(levelname)s: %(message)s")
 
-    parser = argparse.ArgumentParser(usage="usage: %prog <output_path>")
+    parser = argparse.ArgumentParser(usage="usage: gen_version_info.py <output_path>")
     parser.add_argument("--build-type", help="Set build type", type=str)
     parser.add_argument("--git-hash", help="Set git hash", type=str)
     parser.add_argument("output_path", help="Output file to be generated.", type=str)
