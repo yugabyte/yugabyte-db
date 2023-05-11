@@ -73,7 +73,7 @@ public class TestPgMultiTouchCacheUsage extends BasePgSQLTest {
       }
       String line = null;
       while ((line = br.readLine()) != null) {
-        if (line.contains("rocksdb_block_cache_multi_touch_hit")) {
+        if (line.contains("rocksdb_block_cache_multi_touch_hit{")) {
           String inp[] = line.split(" ");
           String x = inp[inp.length - 2].trim();
           int val = Integer.parseInt(x);
