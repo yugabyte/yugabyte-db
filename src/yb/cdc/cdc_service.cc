@@ -1989,6 +1989,7 @@ void CDCServiceImpl::UpdateCDCMetrics() {
   options.columns = std::vector<string>{
       master::kCdcTabletId, master::kCdcStreamId, master::kCdcLastReplicationTime,
       master::kCdcData};
+  const int kCdcLastReplicationTimeIndex = 2;
   bool failed = false;
   options.error_handler = [&failed](const Status& status) {
     YB_LOG_EVERY_N_SECS(WARNING, 30) << "Scan of table " << kCdcStateTableName.table_name()
@@ -2014,15 +2015,16 @@ void CDCServiceImpl::UpdateCDCMetrics() {
     }
     StreamMetadata& record = **get_stream_metadata;
 
+    bool is_leader = (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY);
     ProducerTabletInfo tablet_info = {"" /* universe_uuid */, stream_id, tablet_id};
     tablets_in_cdc_state_table.insert(tablet_info);
-    auto tablet_metric_row = GetCDCTabletMetrics(tablet_info, tablet_peer, record.source_type);
-    if (!tablet_metric_row) {
-      continue;
-    }
 
     if (record.source_type == CDCSDK) {
-      auto tablet_metric = std::static_pointer_cast<CDCSDKTabletMetrics>(tablet_metric_row);
+      auto tablet_metric = std::static_pointer_cast<CDCSDKTabletMetrics>(
+          GetCDCTabletMetrics(tablet_info, tablet_peer, record.source_type));
+      if (!tablet_metric) {
+        continue;
+      }
       // Update the expiry time of for the tablet_id and stream_id combination.
       if (!row.column(master::kCdcDataIdx).IsNull()) {
         auto active_time = CheckedStoInt<int64_t>(
@@ -2044,11 +2046,11 @@ void CDCServiceImpl::UpdateCDCMetrics() {
         }
       }
 
-      if (tablet_peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
+      if (!is_leader) {
         tablet_metric->cdcsdk_sent_lag_micros->set_value(0);
       } else {
         auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
-        const auto& timestamp_ql_value = row.column(master::kCdcCheckpointIdx);
+        const auto& timestamp_ql_value = row.column(kCdcLastReplicationTimeIndex);
         auto cdc_state_last_replication_time_micros =
             !timestamp_ql_value.IsNull() ? timestamp_ql_value.timestamp_value().ToInt64() : 0;
         auto last_sent_micros = tablet_metric->cdcsdk_last_sent_physicaltime->value();
@@ -2057,16 +2059,27 @@ void CDCServiceImpl::UpdateCDCMetrics() {
             tablet_metric->cdcsdk_sent_lag_micros);
       }
     } else {
-      auto tablet_metric = std::static_pointer_cast<CDCTabletMetrics>(tablet_metric_row);
-      if (tablet_peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
-        // Set lag to 0 because we're not the leader for this tablet anymore, which means another
-        // peer is responsible for tracking this tablet's lag.
-        tablet_metric->async_replication_sent_lag_micros->set_value(0);
-        tablet_metric->async_replication_committed_lag_micros->set_value(0);
+      // xCluster metrics.
+      // Only create the metric if we are the leader.
+      auto tablet_metric = std::static_pointer_cast<CDCTabletMetrics>(GetCDCTabletMetrics(
+          tablet_info, tablet_peer, record.source_type, CreateCDCMetricsEntity{is_leader}));
+      // If we aren't the leader and have already wiped the metric, can exit early.
+      if (!tablet_metric) {
+        continue;
+      }
+
+      if (!is_leader) {
+        // Set all tablet level metrics to 0 since we're not the leader anymore.
+        // For certain metrics, such as last_*_physicaltime this leads to us using cdc_state
+        // checkpoint values the next time to become leader.
+        tablet_metric->ClearMetrics();
+        // Also remove this metric metadata so it can be removed by metrics gc.
+        RemoveCDCTabletMetrics(tablet_info, tablet_peer);
+        continue;
       } else {
         // Get the physical time of the last committed record on producer.
         auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
-        const auto& timestamp_ql_value = row.column(master::kCdcCheckpointIdx);
+        const auto& timestamp_ql_value = row.column(kCdcLastReplicationTimeIndex);
         auto cdc_state_last_replication_time_micros =
             !timestamp_ql_value.IsNull() ? timestamp_ql_value.timestamp_value().ToInt64() : 0;
         auto last_sent_micros = tablet_metric->last_read_physicaltime->value();
@@ -2079,7 +2092,7 @@ void CDCServiceImpl::UpdateCDCMetrics() {
             tablet_metric->async_replication_committed_lag_micros);
 
         // Time elapsed since last GetChanges, or since stream creation if no GetChanges received.
-        // If no GetChanges received and creation time unitialized, do not update the metric.
+        // If no GetChanges received and creation time uninitialized, do not update the metric.
         auto last_getchanges_time = tablet_metric->last_getchanges_time->value();
         if (last_getchanges_time || cdc_state_last_replication_time_micros) {
           last_getchanges_time = last_getchanges_time == 0 ? cdc_state_last_replication_time_micros
@@ -2126,8 +2139,7 @@ void CDCServiceImpl::UpdateCDCMetrics() {
         tablet_metric->cdcsdk_expiry_time_ms->set_value(0);
       } else {
         auto tablet_metric = std::static_pointer_cast<CDCTabletMetrics>(tablet_metric_row);
-        tablet_metric->async_replication_sent_lag_micros->set_value(0);
-        tablet_metric->async_replication_committed_lag_micros->set_value(0);
+        tablet_metric->ClearMetrics();
       }
       RemoveCDCTabletMetrics(checkpoint.producer_tablet_info, tablet_peer);
     }
@@ -4326,6 +4338,9 @@ void CDCServiceImpl::RemoveCDCTabletMetrics(
   }
 
   const std::string key = GetCDCMetricsKey(producer.stream_id);
+
+  // Removing the metadata still leaves the metric_entity in metric_registry_, but that will be
+  // cleaned up as part of RetireOldMetrics(), as the metric_registry_ will be the only ref left.
   tablet->RemoveAdditionalMetadata(key);
 }
 
