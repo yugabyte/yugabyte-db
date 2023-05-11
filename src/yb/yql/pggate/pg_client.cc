@@ -443,7 +443,7 @@ class PgClient::Impl {
       data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
 
       proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
-        ProcessPerformResponse(data.get(), data->controller.response());
+        ProcessPerformResponse(data.get(), data->controller.CheckedResponse());
       });
     }
   }
