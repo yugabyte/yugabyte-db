@@ -13,7 +13,8 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 
-#include <boost/optional/optional_io.hpp>
+#include <algorithm>
+#include <limits>
 
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_value.h"
@@ -24,7 +25,6 @@
 #include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/dockv/value_type.h"
 
-#include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 namespace yb {
@@ -47,8 +47,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     bool is_forward_scan,
     const size_t prefix_length)
     : PgsqlScanSpec(
-          schema, is_forward_scan, query_id, /* range_bounds = */ nullptr, prefix_length,
-          /* where_expr = */ nullptr),
+          schema, is_forward_scan, query_id, /* range_bounds = */ nullptr, prefix_length),
       hashed_components_(nullptr),
       range_components_(nullptr),
       options_groups_(schema.num_dockey_components()),
@@ -94,7 +93,6 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
         hash_code,
     const boost::optional<int32_t>
         max_hash_code,
-    const PgsqlExpressionPB* where_expr,
     const DocKey& start_doc_key,
     bool is_forward_scan,
     const DocKey& lower_doc_key,
@@ -103,7 +101,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     : PgsqlScanSpec(
           schema, is_forward_scan, query_id,
           condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
-          prefix_length, where_expr),
+          prefix_length),
       hashed_components_(&hashed_components.get()),
       range_components_(&range_components.get()),
       options_groups_(schema.num_dockey_components()),
@@ -112,10 +110,6 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(lower_doc_key.Encode()),
       upper_doc_key_(upper_doc_key.Encode()) {
-  if (where_expr_) {
-    // Should never get here until WHERE clause is supported.
-    LOG(FATAL) << "DEVELOPERS: Add support for condition (where clause)";
-  }
 
   if (!hashed_components_->empty() && schema.num_hash_key_columns() > 0) {
     options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());

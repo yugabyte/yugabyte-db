@@ -1291,16 +1291,15 @@ class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
                                       ToPostgresKeyType(key_type),
                                       TableSplitOptions(key_type)));
     RETURN_NOT_OK(conn->Execute("CREATE TABLE ref_t (k INT,"
-                                "                    fk_1 INT REFERENCES t2(k),"
+                                "                    fk_1 INT REFERENCES t1(k),"
                                 "                    fk_2 INT REFERENCES t2(k))"));
     constexpr int kNumRows = 100;
     RETURN_NOT_OK(conn->ExecuteFormat(
         "INSERT INTO t1 SELECT s FROM generate_series(1, $0) AS s", kNumRows));
     RETURN_NOT_OK(conn->ExecuteFormat(
         "INSERT INTO t2 SELECT s FROM generate_series(1, $0) AS s", kNumRows));
-    RETURN_NOT_OK(conn->ExecuteFormat(
-        "INSERT INTO ref_t SELECT s, s, s FROM generate_series(1, $0) AS s", kNumRows));
-    return Status::OK();
+    return conn->ExecuteFormat(
+        "INSERT INTO ref_t SELECT s, s, s FROM generate_series(1, $0) AS s", kNumRows);
   }
 
  private:

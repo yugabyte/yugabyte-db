@@ -557,7 +557,7 @@ QLScanSpec::QLScanSpec(
       condition_(condition),
       if_condition_(if_condition),
       executor_(std::move(executor)) {
-  if (executor_ == nullptr) {
+  if (!executor_) {
     executor_ = std::make_shared<QLExprExecutor>();
   }
 }
@@ -584,22 +584,11 @@ PgsqlScanSpec::PgsqlScanSpec(
     const Schema& schema,
     bool is_forward_scan,
     rocksdb::QueryId query_id,
-    std::unique_ptr<const QLScanRange>
-        range_bounds,
-    size_t prefix_length,
-    const PgsqlExpressionPB* where_expr,
-    QLExprExecutor::SharedPtr executor)
+    std::unique_ptr<const QLScanRange> range_bounds,
+    size_t prefix_length)
     : YQLScanSpec(
           YQL_CLIENT_PGSQL, schema, is_forward_scan, query_id, std::move(range_bounds),
-          prefix_length),
-      where_expr_(where_expr),
-      executor_(executor) {
-  if (executor_ == nullptr) {
-    executor_ = std::make_shared<QLExprExecutor>();
-  }
-}
-
-PgsqlScanSpec::~PgsqlScanSpec() {
+          prefix_length) {
 }
 
 }  // namespace yb::qlexpr
