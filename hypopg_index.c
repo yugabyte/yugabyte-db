@@ -1436,8 +1436,7 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 	hypoIndex  *entry = NULL;
 	ListCell   *lc;
 	List	   *context;
-	int			keyno,
-				cpt = 0;
+	int			keyno;
 
 	foreach(lc, hypoIndexes)
 	{
@@ -1508,8 +1507,6 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 
 			keycoltype = exprType(indexkey);
 			keycolcollation = exprCollation(indexkey);
-
-			cpt++;
 		}
 
 		/* Add collation, if not default for column */
