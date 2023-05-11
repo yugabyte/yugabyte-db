@@ -56,6 +56,7 @@ Where
 - `*` means all columns of the table will be retrieved.
 - `LIMIT` clause sets the maximum number of results (rows) to be returned.
 - `OFFSET` clause sets the number of rows to be skipped before returning results.
+- `ALLOW FILTERING` is provided for syntax compatibility with Cassandra. You can always filter on all columns.
 
 ### `ORDER BY` clause
 
@@ -73,12 +74,6 @@ Where
   - Only `=`, `!=`, `IN` and `NOT IN` operators can be used for conditions on partition columns.
   - Only operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `IN` and `NOT IN` can be used for conditions on clustering and regular columns.
   - Only `IN` operator can be used for conditions on tuples of clustering columns.
-
-### `ALLOW FILTERING` option
-
-- By default, YCQL only allows select queries on columns that are part of the primary key.
-- The `ALLOW FILTERING` option enables filtering on columns that are not part of the primary key.
-- This can result in partition scan or full table scan, thus, the performance of the query can be unpredictable.
 
 ### `IF` clause
 
@@ -211,10 +206,10 @@ ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id 
              1 |           2 | Accounting |          Jane
 ```
 
-### Select with condition on a regular column, using WHERE clause and ALLOW FILTERING options
+### Select with condition on a regular column, using WHERE clause
 
 ```sql
-ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John' ALLOW FILTERING;
+ycqlsh:example> SELECT * FROM employees WHERE employee_name = 'John';
 ```
 
 ```output
