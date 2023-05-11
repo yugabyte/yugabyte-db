@@ -67,9 +67,9 @@ type: docs
 
 </ul>
 
-Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration. Create an Amazon Web Services (AWS) provider configuration if your target cloud is AWS.
 
-A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+A provider configuration describes your cloud environment (such as its security group, regions and availability zones, NTP server, certificates that may be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
 When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
 
@@ -77,15 +77,14 @@ When deploying a universe, YugabyteDB Anywhere uses the provider configuration s
   - the service account
   - specified regions and availability zones (this can be a subset of those specified in the provider configuration)
   - a Linux image
-  - network connectivity to YugabyteDB Anywhere via the specified VPC
 
-- Provision those VMs with YugabyteDB, relying on connectivity from YugabyteDB Anywhere to each VM via SSH (using the specified security groups).
+- Provision those VMs with YugabyteDB software
 
-Create an Amazon Web Services (AWS) provider configuration if your target cloud is AWS.
+Note: YugabyteDB Anywhere needs network connectivity to the VMs (via VPCs), security groups for the provisioning step above, and for subsequent management, as described in [Cloud prerequisites](../../../install-yugabyte-platform/prepare-environment/aws/).
 
 ## Prerequisites
 
-- An AWS Service Account with sufficient privileges is highly recommended. This account must have permissions to create VMs, and access to the VPC and security groups described below. Required input: Access Key ID and Secret Access Key for the AWS Service Account.
+- An AWS Service Account with sufficient privileges. This account must have permissions to create VMs, and access to the VPC and security groups described below. Required input: Access Key ID and Secret Access Key for the AWS Service Account.
 - An AWS VPC for each region. Required input: for each region, a VPC ID.
 - AWS Security Groups must exist to allow network connectivity so that YugabyteDB Anywhere can create AWS VMs when deploying a universe. Required input: for each region, a Security Group ID.
 
@@ -110,6 +109,8 @@ To delete the provider, click **Actions** and choose **Delete Configuration**. Y
 To create an AWS provider:
 
 1. Click **Create Config** to open the **Create AWS Provider Configuration** page.
+
+    ![Create AWS provider](/images/yb-platform/config/yba-aws-config-create.png)
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 

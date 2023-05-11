@@ -65,21 +65,20 @@ type: docs
 
 </ul>
 
-Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration. Create a Microsoft Azure provider configuration if your target cloud is Azure.
 
-A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+A provider configuration describes your cloud environment (its resource group, regions and availability zones, NTP server, certificates that may be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
 When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
 
 - Create VMs on Azure using the following:
-  - the service account
+  - the resource group
   - specified regions and availability zones (this can be a subset of those specified in the provider configuration)
   - a Linux image
-  - network connectivity to YugabyteDB Anywhere via the specified VPC
 
-- Provision those VMs with YugabyteDB, relying on connectivity from YugabyteDB Anywhere to each VM via SSH (using the specified security groups).
+- Provision those VMs with YugabyteDB software
 
-Create a Microsoft Azure provider configuration if your target cloud is Azure.
+Note: YugabyteDB Anywhere needs network connectivity to the VMs, resource group for the provisioning step above, and for subsequent management, as described in [Cloud prerequisites](../../../install-yugabyte-platform/prepare-environment/azure/).
 
 ## Prerequisites
 
@@ -112,6 +111,8 @@ To delete the provider, click **Actions** and choose **Delete Configuration**. Y
 To create an Azure provider:
 
 1. Click **Create Config** to open the **Create Azure Provider Configuration** page.
+
+    ![Create Azure provider](/images/yb-platform/config/yba-azure-config-create.png)
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 

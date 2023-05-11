@@ -68,7 +68,7 @@ type: docs
 
 Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
 
-A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+A provider configuration describes your Kubernetes environment. The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
 ## Prerequisites
 
@@ -206,6 +206,8 @@ To delete the provider, click **Actions** and choose **Delete Configuration**. Y
 To create a Kubernetes provider:
 
 1. Click **Create Config** to open the **Create Kubernetes Provider Configuration** page.
+
+    ![Create Kubernetes provider](/images/yb-platform/config/yba-kub-config-create.png)
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 

@@ -67,7 +67,9 @@ type: docs
 
 Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
 
-A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+A provider configuration describes your cloud environment (such as its regions and availability zones, NTP server, certificates that may be used to SSH to VMs, whether YugabyteDB database software will be manually installed by the user or auto-provisioned by YugabyteDB Anywhere, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+
+With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must be manually create and add them to the free pool of the on-premises provider. Only after VM instances are added can YugabyteDB Anywhere auto-provision the YugabyteDB database software and create universes from these database nodes.
 
 ## Configure the on-premises provider
 
@@ -88,6 +90,8 @@ To delete the provider, click **Actions** and choose **Delete Configuration**. Y
 To create an on-premises provider:
 
 1. Click **Create Config** to open the **OnPrem Provider Configuration** page.
+
+    ![Create On-Premises provider](/images/yb-platform/config/yba-onp-config-create.png)
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
