@@ -75,8 +75,6 @@ LIBRARY_PATH_RE = re.compile('^(.*[.]so)(?:$|[.].*$)')
 LIBRARY_CATEGORIES_NO_LINUXBREW = ['system', 'yb', 'yb-thirdparty', 'postgres']
 LIBRARY_CATEGORIES = LIBRARY_CATEGORIES_NO_LINUXBREW + ['linuxbrew']
 
-EXTENSIONS_TO_SKIP_FOR_RPATH = ('.h', '.sql', '.example')
-
 
 # This is an alternative to global variables, bundling a few commonly used things.
 DistributionContext = collections.namedtuple(
@@ -84,6 +82,15 @@ DistributionContext = collections.namedtuple(
         ['build_dir',
          'dest_dir',
          'verbose_mode'])
+
+
+def should_manipulate_rpath_of(file_path: str) -> bool:
+    return not os.path.islink(file_path) and (
+        os.access(file_path, os.X_OK) or file_path.endswith('.so')
+    ) and not (
+        # This directory has a few executable files that we should not manipulate.
+        os.path.dirname(file_path).endswith('/pgxs/config')
+    )
 
 
 @total_ordering
@@ -214,8 +221,12 @@ class LibraryPackager:
     libraries to find all libraries that need to be packaged with the product.
     """
 
+    # Build directory of YugabyteDB. We take files from here.
     build_dir: str
+
+    # Destination directory to install the libraries to, organized into subdirectories by type.
     dest_dir: str
+
     seed_executable_patterns: List[str]
     installed_dyn_linked_binaries: List[str]
     main_dest_bin_dir: str
@@ -259,14 +270,24 @@ class LibraryPackager:
         ]
 
     @staticmethod
-    def set_rpath(dest_root_dir: str, file_path: str) -> None:
+    def set_or_remove_rpath(dest_root_dir: str, file_path: str) -> None:
+        if not should_manipulate_rpath_of(file_path):
+            return
+
+        if not os.access(file_path, os.W_OK):
+            # Make sure we can write to the file. This may be necessary for e.g. files copied from
+            # Linuxbrew or third-party dependencies.
+            subprocess.check_call(['chmod', 'u+w', file_path])
+
         if using_linuxbrew():
+            # In Linuxbrew mode, we will set the rp
+            remove_rpath(file_path)
             return
-        if file_path.endswith(EXTENSIONS_TO_SKIP_FOR_RPATH):
-            return
+
         file_abs_path = os.path.abspath(file_path)
         new_rpath = ':'.join(LibraryPackager.get_relative_rpath_items(
                     dest_root_dir, os.path.dirname(file_abs_path)))
+        logging.info("Setting rpath on file %s to %s", file_path, new_rpath)
         set_rpath(file_path, new_rpath)
 
     def install_dyn_linked_binary(self, src_path: str, dest_dir: str) -> str:
@@ -275,7 +296,7 @@ class LibraryPackager:
             raise RuntimeError("Not a directory: '{}'".format(dest_dir))
         shutil.copy(src_path, dest_dir)
         installed_binary_path = os.path.join(dest_dir, os.path.basename(src_path))
-        LibraryPackager.set_rpath(self.dest_dir, installed_binary_path)
+        LibraryPackager.set_or_remove_rpath(self.dest_dir, installed_binary_path)
         self.installed_dyn_linked_binaries.append(installed_binary_path)
         return installed_binary_path
 
@@ -346,6 +367,25 @@ class LibraryPackager:
     def join_binary_names_for_bash(binary_names: List[str]) -> str:
         return ' '.join(['"{}"'.format(name) for name in binary_names])
 
+    def get_all_postgres_lib_deps(self) -> List[Dependency]:
+        deps: List[Dependency] = []
+        for root, dirs, files in os.walk(os.path.join(self.context.build_dir, 'postgres', 'lib')):
+            for file_name in files:
+                if file_name.endswith('.so') and not os.path.islink(file_name):
+                    file_path = os.path.join(root, file_name)
+                    deps += self.find_elf_dependencies(file_path)
+        return deps
+
+    def get_postgres_lib_rel_paths_to_patch(self) -> List[str]:
+        rel_paths: List[str] = []
+        postgres_lib_dir = os.path.join(self.context.build_dir, 'postgres', 'lib')
+        for root, dirs, files in os.walk(postgres_lib_dir):
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
+                if file_name.endswith('.so') and not os.path.islink(file_name):
+                    rel_paths.append(os.path.relpath(file_path, postgres_lib_dir))
+        return rel_paths
+
     def package_binaries(self) -> None:
         """
         The main entry point to this class. Arranges binaries (executables and shared libraries),
@@ -364,7 +404,8 @@ class LibraryPackager:
         mkdir_p(self.postgres_dest_bin_dir)
 
         main_elf_names_to_patch = []
-        postgres_elf_names_to_patch = []
+        postgres_executable_names_to_patch = []
+        postgres_lib_rel_paths_to_patch = self.get_postgres_lib_rel_paths_to_patch()
 
         glob_results_seen: Set[str] = set()
         processing_queue: Queue[str] = Queue()
@@ -423,12 +464,14 @@ class LibraryPackager:
                 self.install_dyn_linked_binary(executable, dest_bin_dir)
                 executable_basename = os.path.basename(executable)
                 if self.is_postgres_binary(executable):
-                    postgres_elf_names_to_patch.append(executable_basename)
+                    postgres_executable_names_to_patch.append(executable_basename)
                 else:
                     main_elf_names_to_patch.append(executable_basename)
             else:
                 # This is probably a script.
                 shutil.copy(executable, dest_bin_dir)
+
+        all_deps += self.get_all_postgres_lib_deps()
 
         if using_linuxbrew():
             # Not using the install_dyn_linked_binary method for copying patchelf and ld.so as we
@@ -524,9 +567,6 @@ class LibraryPackager:
         for installed_binary in self.installed_dyn_linked_binaries:
             # Sometimes files that we copy from other locations are not even writable by user!
             subprocess.check_call(['chmod', 'u+w', installed_binary])
-            if using_linuxbrew():
-                # Remove rpath (we will set it appropriately in post_install.sh).
-                remove_rpath(installed_binary)
 
         post_install_path = os.path.join(self.main_dest_bin_dir, 'post_install.sh')
 
@@ -589,7 +629,8 @@ class LibraryPackager:
             ]
             for macro_var_name, list_of_binary_names in [
                 ("main_elf_names_to_patch", main_elf_names_to_patch),
-                ("postgres_elf_names_to_patch", postgres_elf_names_to_patch),
+                ("postgres_executable_names_to_patch", postgres_executable_names_to_patch),
+                ("postgres_lib_rel_paths_to_patch", postgres_lib_rel_paths_to_patch),
             ]:
                 replacements.append(
                     (macro_var_name, self.join_binary_names_for_bash(list_of_binary_names)))
@@ -613,9 +654,22 @@ class LibraryPackager:
         be one intermediate packaging directory, and we should only have one pass to set rpath
         on all executables and dynamic libraries.
         """
-        if using_linuxbrew():
-            return
+        is_linuxbrew = using_linuxbrew()
+        num_removed_rpath = 0
+
         for root, dirs, files in os.walk(os.path.join(build_target, 'postgres')):
             for file_name in files:
                 file_path = os.path.join(root, file_name)
-                LibraryPackager.set_rpath(build_target, file_path)
+                if not should_manipulate_rpath_of(file_path):
+                    continue
+
+                if is_linuxbrew:
+                    # For a Linuxbrew-based package, we will set rpath in post_install.sh, so
+                    # we should remove it here.
+                    remove_rpath(file_path)
+                    num_removed_rpath += 1
+                else:
+                    LibraryPackager.set_or_remove_rpath(build_target, file_path)
+
+        if num_removed_rpath > 0:
+            logging.info("Removed rpath from %d files in %s", num_removed_rpath, build_target)

@@ -334,7 +334,7 @@ def main() -> None:
 
     tmp_dir = create_temp_dir(keep_tmp_dir=args.keep_tmp_dir)
 
-    yb_distribution_dir = os.path.join(tmp_dir, 'yb_distribution')
+    library_packager_dest_dir = os.path.join(tmp_dir, 'library_packager_output')
 
     os.chdir(YB_SRC_ROOT)
 
@@ -377,7 +377,7 @@ def main() -> None:
     build_target_dir = args.build_target
     if build_target_dir is None:
         # Use a temporary directory.
-        build_target_dir = os.path.join(tmp_dir, 'tmp_yb_distribution')
+        build_target_dir = os.path.join(tmp_dir, 'final_yb_distribution')
 
     release_util = ReleaseUtil(
         build_type=build_type,
@@ -391,12 +391,12 @@ def main() -> None:
     library_packager = create_library_packager(
         build_root=build_root,
         seed_executable_patterns=release_util.get_seed_executable_patterns(),
-        dest_dir=yb_distribution_dir,
+        dest_dir=library_packager_dest_dir,
         verbose_mode=args.verbose)
 
     library_packager.package_binaries()
 
-    release_util.update_manifest(yb_distribution_dir)
+    release_util.update_manifest(library_packager_dest_dir)
 
     logging.info("Generating release distribution")
 
