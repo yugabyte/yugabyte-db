@@ -320,7 +320,7 @@ public class PlacementInfoUtil {
       // decreased and a later increase will not cause such request.
       checkResizePossible =
           ResizeNodeParams.checkResizeIsPossible(
-              oldCluster.userIntent, cluster.userIntent, universe, false);
+              placementUuid, oldCluster.userIntent, cluster.userIntent, universe, false);
       isSamePlacementInRequest =
           isSamePlacement(oldCluster.placementInfo, cluster.placementInfo)
               && oldCluster.userIntent.numNodes == cluster.userIntent.numNodes;

@@ -6597,6 +6597,13 @@
           "description" : "True if this node is a YSQL server",
           "type" : "boolean"
         },
+        "lastVolumeUpdateTime" : {
+          "description" : "Store last volume update time",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "machineImage" : {
           "description" : "Machine image name",
           "type" : "string"
@@ -6767,6 +6774,13 @@
           "type" : "boolean"
         },
         "kubernetesOverrides" : {
+          "type" : "string"
+        },
+        "lastVolumeUpdateTime" : {
+          "description" : "Store last volume update time",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
           "type" : "string"
         },
         "machineImage" : {

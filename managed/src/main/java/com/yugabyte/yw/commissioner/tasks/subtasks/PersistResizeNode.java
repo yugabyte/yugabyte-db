@@ -11,8 +11,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Date;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -65,19 +69,39 @@ public class PersistResizeNode extends UniverseTaskBase {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
               for (Cluster cluster : getClustersToUpdate(universeDetails)) {
+                Set<NodeDetails> nodesInCluster =
+                    universe.getUniverseDetails().getNodesInCluster(cluster.uuid);
+
                 UserIntent userIntent = cluster.userIntent;
                 userIntent.instanceType = taskParams().instanceType;
                 if (taskParams().masterInstanceType != null) {
                   userIntent.masterInstanceType = taskParams().masterInstanceType;
                 }
+                Date now = new Date();
+                DeviceInfo oldDeviceInfo = userIntent.deviceInfo.clone();
                 if (taskParams().volumeSize != null) {
                   userIntent.deviceInfo.volumeSize = taskParams().volumeSize;
+                }
+                if (!Objects.equals(userIntent.deviceInfo, oldDeviceInfo)) {
+                  nodesInCluster.stream()
+                      .filter(n -> n.isTserver)
+                      .forEach(node -> node.lastVolumeUpdateTime = now);
+                }
+                DeviceInfo oldMasterDeviceInfo = null;
+                if (userIntent.masterDeviceInfo != null) {
+                  oldMasterDeviceInfo = userIntent.masterDeviceInfo.clone();
                 }
                 if (taskParams().masterVolumeSize != null) {
                   userIntent.masterDeviceInfo.volumeSize = taskParams().masterVolumeSize;
                 }
-                for (NodeDetails nodeDetails :
-                    universe.getUniverseDetails().getNodesInCluster(cluster.uuid)) {
+                if (oldMasterDeviceInfo != null
+                    && !Objects.equals(oldMasterDeviceInfo, userIntent.masterDeviceInfo)) {
+                  nodesInCluster.stream()
+                      .filter(n -> n.isMaster)
+                      .forEach(node -> node.lastVolumeUpdateTime = now);
+                }
+
+                for (NodeDetails nodeDetails : nodesInCluster) {
                   nodeDetails.disksAreMountedByUUID = true;
                 }
               }

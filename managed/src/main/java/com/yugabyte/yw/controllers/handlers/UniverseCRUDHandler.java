@@ -177,7 +177,7 @@ public class UniverseCRUDHandler {
 
     boolean smartResizePossible =
         ResizeNodeParams.checkResizeIsPossible(
-            currentCluster.userIntent, cluster.userIntent, universe, true);
+            cluster.uuid, currentCluster.userIntent, cluster.userIntent, universe, true);
 
     for (NodeDetails node : nodesInCluster) {
       if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {

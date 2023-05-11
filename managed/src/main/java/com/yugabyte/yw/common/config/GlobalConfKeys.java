@@ -824,4 +824,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " or use value from backend.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> awsDiskResizeCooldownHours =
+      new ConfKeyInfo<>(
+          "yb.aws.disk_resize_cooldown_hours",
+          ScopeType.GLOBAL,
+          "Cooldown after disk resize in aws (in hours)",
+          "Cooldown after disk resize in aws (in hours)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
