@@ -1,5 +1,5 @@
 ---
-title: YB-Master Manual Start
+title: YB-Master manual start
 headerTitle: Start YB-Masters
 linkTitle: 3. Start YB-Masters
 description: How to manually start the YB-Masters Server service for your YugabyteDB database cluster.

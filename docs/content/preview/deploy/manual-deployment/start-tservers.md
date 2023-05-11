@@ -1,5 +1,5 @@
 ---
-title: YB-TServer Manual Start
+title: YB-TServer manual start
 headerTitle: Start YB-TServers
 linkTitle: 4. Start YB-TServers
 description: How to manually start the YB-TServers when deploying YugabyteDB database in a single region or data center.

@@ -1,5 +1,5 @@
 ---
-title: Verify Manual Deployment
+title: Verify manual deployment
 headerTitle: Verify deployment
 linkTitle: 5. Verify deployment
 description: How to verify the manual deployment of the YugabyteDB database cluster.
