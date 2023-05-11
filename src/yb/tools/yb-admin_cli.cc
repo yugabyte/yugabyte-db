@@ -623,10 +623,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
 
   Register(
       "list_tablets",
-      " <keyspace_type>.<keyspace_name> (keyspace_type is ysql or ycql) "
-      "<table> "
-      "[<max_tablets>] (default 10, set "
-      "0 for max) [JSON] [include_followers]",
+      " <table> [<max_tablets>] (default 10, set 0 for max) [JSON] [include_followers]",
       [client](const CLIArguments& args) -> Status {
         std::pair<std::optional<int>, EnumBitSet<ListTabletsFlags>> arguments;
         const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
