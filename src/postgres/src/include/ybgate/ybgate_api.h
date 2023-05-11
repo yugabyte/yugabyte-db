@@ -57,10 +57,9 @@ typedef MemoryContext YbgMemoryContext;
 // Memory Context
 //-----------------------------------------------------------------------------
 
-YbgStatus YbgGetCurrentMemoryContext(YbgMemoryContext *memctx);
+YbgMemoryContext YbgGetCurrentMemoryContext();
 
-YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
-									 YbgMemoryContext *oldctx);
+YbgMemoryContext YbgSetCurrentMemoryContext(YbgMemoryContext memctx);
 
 YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
 								 const char *name,

@@ -128,7 +128,7 @@ YsqlTransactionDdl::GetPgCatalogTableScanIterator(const PgTableReadData& read_da
   const dockv::KeyEntryValues empty_key_components;
   docdb::DocPgsqlScanSpec spec(
       read_data.schema(), rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-      &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+      &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
   RETURN_NOT_OK(iter->Init(spec));
   return iter;
 }

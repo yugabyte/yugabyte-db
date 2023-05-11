@@ -13,11 +13,14 @@
 
 #pragma once
 
-#include <boost/optional.hpp>
+#include <functional>
+#include <memory>
 
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/docdb/ql_storage_interface.h"
+
+#include "yb/util/status.h"
 
 namespace yb {
 namespace docdb {
