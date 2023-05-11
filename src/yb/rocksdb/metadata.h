@@ -90,6 +90,8 @@ class UserFrontier {
   // Should return value that will be passed to iterator replacer.
   virtual Slice Filter() const = 0;
 
+  virtual void ResetFilter() = 0;
+
   // Returns true if this frontier dominates another frontier, i.e. if we update this frontier
   // with the values from the other one in the direction specified by update_type, nothing will
   // change. This is used to check invariants.

@@ -990,6 +990,22 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
+  bool TEST_ContainsHybridTimeFilter() {
+    RocksDBPatcherHelper helper(&version_set_);
+    bool contains_filter = false;
+    helper.IterateFiles([&contains_filter](
+        int level, const rocksdb::FileMetaData& file) {
+      if (!file.largest.user_frontier) {
+        return;
+      }
+      auto& consensus_frontier = down_cast<ConsensusFrontier&>(*file.largest.user_frontier);
+      if (consensus_frontier.hybrid_time_filter().is_valid()) {
+        contains_filter = true;
+      }
+    });
+    return contains_filter;
+  }
+
  private:
   const rocksdb::InternalKeyComparator comparator_{rocksdb::BytewiseComparator()};
   rocksdb::WriteBuffer write_buffer_{1_KB};
@@ -1023,6 +1039,10 @@ Status RocksDBPatcher::ModifyFlushedFrontier(const ConsensusFrontier& frontier) 
 
 Status RocksDBPatcher::UpdateFileSizes() {
   return impl_->UpdateFileSizes();
+}
+
+bool RocksDBPatcher::TEST_ContainsHybridTimeFilter() {
+  return impl_->TEST_ContainsHybridTimeFilter();
 }
 
 Status ForceRocksDBCompact(rocksdb::DB* db,
