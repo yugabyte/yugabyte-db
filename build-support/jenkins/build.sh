@@ -571,7 +571,7 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       # for the GCC fastdebug build requires locale setup inside the Docker image.
       grep -Eq "AlmaLinux 8[.]" /etc/os-release &&
       using_linuxbrew &&
-      $YB_COMPILER_TYPE == clang*
+      [[ $YB_COMPILER_TYPE == clang* ]]
     ); then
     log "Doing a quick sanity-check of the release package using Docker."
 
@@ -617,7 +617,16 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
                        select * from t;"
       '
   else
-    log "Not doing a quick sanity-check of the release package. OS: ${OSTYPE}."
+    log "Not doing a quick sanity-check of the release package. Details:"
+    log "  OS type: ${OSTYPE}"
+    log "  YB_COMPILER_TYPE: ${YB_COMPILER_TYPE}"
+    if using_linuxbrew; then
+      log "  Using Linuxbrew."
+    else
+      log "  Not using Linuxbrew."
+    fi
+    log "  Contents of /etc/os-release:"
+    cat /etc/os-release >&2
   fi
 else
   log "Skipping creating distribution package. Build type: $build_type, OSTYPE: ${OSTYPE}," \
