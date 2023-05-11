@@ -64,14 +64,14 @@ The YugabyteDB source connector also supports AVRO serialization with schema reg
 
   {{% tab header="JSON" lang="json" %}}
 
-To use the JSON Schema serialization, you can use the [KafkaJsonSchemaSerializer](). After downloading and including the required `JAR` files in the Kafka-Connect environment, you can directly conigure the CDC source and sink connectors to use this converter.
+To use the JSON Schema serialization, you can use the [KafkaJsonSerializer](https://mvnrepository.com/artifact/io.confluent/kafka-json-serializer) and equivalent deserializer. After downloading and including the required `JAR` file in the Kafka-Connect environment, you can directly conigure the CDC source and sink connectors to use this converter.
 
 **For source connectors:**
 
 ```json
 {
   ...
-  "value.serializer":"io.confluent.kafka.serializers.json.KafkaJsonSchemaSerializer",
+  "value.serializer":"io.confluent.kafka.serializers.KafkaJsonSerializer",
   ...
 }
 ```
@@ -81,7 +81,7 @@ To use the JSON Schema serialization, you can use the [KafkaJsonSchemaSerializer
 ```json
 {
   ...
-  "value.deserializer":"io.confluent.kafka.serializers.json.KafkaJsonSchemaDeserializer",
+  "value.deserializer":"io.confluent.kafka.serializers.KafkaJsonDeserializer",
   ...
 }
 ```
