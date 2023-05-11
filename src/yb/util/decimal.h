@@ -148,6 +148,8 @@ class Decimal {
 
   Status DecodeFromComparable(const Slice& string);
 
+  Status DecodeFromComparable(Slice* slice);
+
   // Encode the decimal by using to Cassandra serialization format, as described above.
   std::string EncodeToSerializedBigDecimal(bool* is_out_of_range) const;
 

@@ -76,11 +76,6 @@ dockv::KeyEntryValues InitKeyColumnPrimitiveValues(
       //
       // Use regular executor for now.
       LOG(FATAL) << "Expression instead of value";
-      qlexpr::QLExprExecutor executor;
-      qlexpr::QLExprResult expr_result;
-      auto s = executor.EvalExpr(column_value.ToGoogleProtobuf(), nullptr, expr_result.Writer());
-
-      result.push_back(dockv::KeyEntryValue::FromQLValuePB(expr_result.Value(), sorting_type));
     }
     ++column_idx;
   }
