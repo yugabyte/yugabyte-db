@@ -697,13 +697,6 @@
     showSection = true
 
 [[stable]]
-  name = "Integrations"
-  weight = 11
-  url = "/preview/integrations/"
-  [stable.params]
-    showSection = true
-
-[[stable]]
   name = "Reference"
   weight = 12
   identifier = "reference"
@@ -891,13 +884,6 @@
     showSection = true
 
 [["v2.16"]]
-  name = "Integrations"
-  weight = 11
-  url = "/preview/integrations/"
-  ["v2.16".params]
-    showSection = true
-
-[["v2.16"]]
   name = "Reference"
   weight = 12
   identifier = "reference"
@@ -1035,13 +1021,6 @@
   weight = 9
   identifier = "benchmark"
   url = "/v2.14/benchmark/"
-  ["v2.14".params]
-    showSection = true
-
-[["v2.14"]]
-  name = "Integrations"
-  weight = 11
-  url = "/preview/integrations/"
   ["v2.14".params]
     showSection = true
 
@@ -1208,13 +1187,6 @@
   weight = 9
   identifier = "benchmark"
   url = "/v2.12/benchmark/"
-  ["v2.12".params]
-    showSection = true
-
-[["v2.12"]]
-  name = "Integrations"
-  weight = 11
-  url = "/preview/integrations/"
   ["v2.12".params]
     showSection = true
 
@@ -1403,13 +1375,6 @@
   weight = 9
   identifier = "benchmark"
   url = "/v2.8/benchmark/"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
-  name = "Integrations"
-  weight = 11
-  url = "/preview/integrations/"
   ["v2.8".params]
     showSection = true
 
