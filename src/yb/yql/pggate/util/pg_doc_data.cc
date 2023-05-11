@@ -134,19 +134,7 @@ void PgDocData::LoadCache(const Slice& cache, int64_t *total_row_count, Slice *c
   *cursor = cache;
 
   // Read the number row_count in this set.
-  int64_t this_count;
-  size_t read_size = ReadNumber(cursor, &this_count);
-  *total_row_count = this_count;
-  cursor->remove_prefix(read_size);
-}
-
-PgWireDataHeader PgDocData::ReadDataHeader(Slice *cursor) {
-  // Read for NULL value.
-  uint8_t header_data;
-  size_t read_size = ReadNumber(cursor, &header_data);
-  cursor->remove_prefix(read_size);
-
-  return PgWireDataHeader(header_data);
+  *total_row_count = ReadNumber<int64_t>(cursor);
 }
 
 }  // namespace pggate

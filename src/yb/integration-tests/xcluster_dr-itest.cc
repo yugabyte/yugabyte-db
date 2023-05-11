@@ -33,6 +33,8 @@
 #include "yb/client/snapshot_test_util.h"
 #include "yb/util/file_util.h"
 
+DECLARE_bool(TEST_enable_replicate_transaction_status_table);
+
 using std::string;
 using namespace std::chrono_literals;
 
@@ -137,6 +139,7 @@ class XClusterDRTest : public XClusterYsqlTestBase {
 
   // Setup replication with bootstrap, set STANDBY role and wait for safe time.
   Status SetupReplication(std::vector<string> bootstrap_ids) {
+    FLAGS_TEST_enable_replicate_transaction_status_table = true;
     RETURN_NOT_OK(SetupUniverseReplication(
         source_cluster_->mini_cluster_.get(), target_cluster_->mini_cluster_.get(), target_client_,
         kUniverseId, source_tables_for_bootstrap_, bootstrap_ids,

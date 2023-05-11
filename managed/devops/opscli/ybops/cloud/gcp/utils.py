@@ -663,7 +663,25 @@ class GoogleCloudAdmin():
                                                         zone=zone,
                                                         instance=instance,
                                                         body=body).execute()
-        return self.waiter.wait(operation, zone=zone)
+        output = self.waiter.wait(operation, zone=zone)
+        response = self.compute.instances().get(project=self.project,
+                                                zone=zone,
+                                                instance=instance).execute()
+        for disk in response.get("disks"):
+            if disk.get("source") != body.get("source"):
+                continue
+            device_name = disk.get("deviceName")
+            logging.info("Setting disk auto delete for {} attached to {}"
+                         .format(device_name, instance))
+            # Even if this fails, volumes are already tagged for cleanup.
+            operation = self.compute.instances().setDiskAutoDelete(project=self.project,
+                                                                   zone=zone,
+                                                                   instance=instance,
+                                                                   deviceName=device_name,
+                                                                   autoDelete=True).execute()
+            self.waiter.wait(operation, zone=zone)
+            break
+        return output
 
     def unmount_disk(self, zone, instance, name):
         logging.info("Detaching disk {} from instance {}".format(name, instance))

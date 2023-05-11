@@ -50,7 +50,7 @@ func Run(checkList []Check, skipChecks ...string) *checks.MappedResults {
 			if result.Status == checks.StatusWarning {
 				log.Warn(check.Name() + " raised a warning: " + result.Error.Error())
 			} else {
-				log.Info("preflight " + check.Name() + " failed: " + result.Error.Error())
+				log.Error("preflight " + check.Name() + " failed: " + result.Error.Error())
 			}
 		}
 	}

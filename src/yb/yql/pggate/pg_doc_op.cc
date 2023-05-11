@@ -18,7 +18,6 @@
 #include <utility>
 
 #include "yb/common/row_mark.h"
-#include "yb/common/ybc_util.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
@@ -34,6 +33,7 @@
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 using std::string;
 
@@ -131,22 +131,14 @@ int64_t PgDocResult::NextRowOrder() {
   return current_row_order_ != row_orders_.end() ? *current_row_order_ : -1;
 }
 
-Status PgDocResult::WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *pg_tuple,
+Status PgDocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple *pg_tuple,
                                  int64_t *row_order) {
-  int attr_num = 0;
-  for (const PgExpr *target : targets) {
-    if (!target->is_colref() && !target->is_aggregate()) {
-      return STATUS(InternalError,
-                    "Unexpected expression, only column refs or aggregates supported here");
-    }
-    if (target->opcode() == PgColumnRef::Opcode::PG_EXPR_COLREF) {
-      attr_num = static_cast<const PgColumnRef *>(target)->attr_num();
+  for (auto* target : targets) {
+    if (PgDocData::ReadHeaderIsNull(&row_iterator_)) {
+      target->SetNull(pg_tuple);
     } else {
-      attr_num++;
+      target->SetValue(&row_iterator_, pg_tuple);
     }
-
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    target->TranslateData(&row_iterator_, header, attr_num - 1, pg_tuple);
   }
 
   *row_order = current_row_order_ != row_orders_.end() ? *current_row_order_++ : -1;
@@ -160,12 +152,10 @@ Status PgDocResult::ProcessSystemColumns() {
   syscol_processed_ = true;
 
   for (int i = 0; i < row_count_; i++) {
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "System column ybctid cannot be NULL");
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "System column ybctid cannot be NULL");
 
-    int64_t data_size;
-    size_t read_size = PgDocData::ReadNumber(&row_iterator_, &data_size);
-    row_iterator_.remove_prefix(read_size);
+    auto data_size = PgDocData::ReadNumber<int64_t>(&row_iterator_);
 
     ybctids_.emplace_back(row_iterator_.data(), data_size);
     row_iterator_.remove_prefix(data_size);
@@ -181,17 +171,13 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
   // ybctids.
   for (int i = 0; i < row_count_; i++) {
     // Read index column
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "Reservoir index cannot be NULL");
-    int32_t index;
-    size_t read_size = PgDocData::ReadNumber(&row_iterator_, &index);
-    row_iterator_.remove_prefix(read_size);
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "Reservoir index cannot be NULL");
+    auto index = PgDocData::ReadNumber<int32_t>(&row_iterator_);
     // Read ybctid column
-    header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "System column ybctid cannot be NULL");
-    int64_t data_size;
-    read_size = PgDocData::ReadNumber(&row_iterator_, &data_size);
-    row_iterator_.remove_prefix(read_size);
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "System column ybctid cannot be NULL");
+    auto data_size = PgDocData::ReadNumber<int64_t>(&row_iterator_);
 
     // Copy ybctid data to the reservoir
     reservoir[index].assign(reinterpret_cast<const char *>(row_iterator_.data()), data_size);

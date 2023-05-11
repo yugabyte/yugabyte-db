@@ -88,11 +88,11 @@ public class PerfAdvisorSettingsFormData {
   @Min(1)
   private Integer hotShardIntervalMins;
 
-  @ApiModelProperty(value = "Perf advisor hot shard minimal writes")
+  @ApiModelProperty(value = "Perf advisor hot shard minimal node writes")
   @Min(1)
-  private Integer hotShardMinimalWrites;
+  private Integer hotShardMinNodeWrites;
 
-  @ApiModelProperty(value = "Perf advisor hot shard minimal reads")
+  @ApiModelProperty(value = "Perf advisor hot shard minimal node reads")
   @Min(1)
-  private Integer hotShardMinimalReads;
+  private Integer hotShardMinNodeReads;
 }

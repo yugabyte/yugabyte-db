@@ -32,7 +32,6 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
-#include "yb/common/ybc_util.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"

@@ -32,6 +32,13 @@ scrape_configs:
    static_configs:
      - targets: ['localhost:9000']
 
+ - job_name: 'node-agent'
+   scrape_timeout: 10s
+   metrics_path: "/metrics"
+   file_sd_configs:
+     - files:
+       - '/opt/yugabyte/prometheus/targets/node-agent.*.json'
+
  - job_name: "node"
    file_sd_configs:
      - files:

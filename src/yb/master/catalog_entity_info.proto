@@ -484,6 +484,7 @@ message SysCDCStreamEntryPB {
   repeated CDCStreamOptionsPB options = 2;
   optional State state = 3 [default = ACTIVE];
   optional string namespace_id = 4;
+  optional bool transactional = 5; // [default = false]
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for snapshots entries.
@@ -588,7 +589,7 @@ message SysUniverseReplicationEntryPB {
   map<string, SchemaVersionMappingEntryPB> schema_version_mappings = 10;
 
   // Set when consistent transactions are enabled for a replication group.
-  optional bool transactional = 11;
+  optional bool transactional = 11; // [default = false]
 }
 
 message XClusterSafeTimePB {

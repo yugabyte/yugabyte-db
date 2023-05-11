@@ -3,6 +3,8 @@
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Names;
+import com.nimbusds.oauth2.sdk.ParseException;
+import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudModules;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
@@ -210,7 +212,7 @@ public class Module extends AbstractModule {
       oidcConfiguration.setClientId(config.getString("yb.security.clientID"));
       oidcConfiguration.setSecret(config.getString("yb.security.secret"));
       oidcConfiguration.setScope(config.getString("yb.security.oidcScope"));
-      oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI"));
+      setProviderMetadata(config, oidcConfiguration);
       oidcConfiguration.setMaxClockSkew(3600);
       oidcConfiguration.setResponseType("code");
       return new OidcClient<>(oidcConfiguration);
@@ -218,6 +220,26 @@ public class Module extends AbstractModule {
       log.warn("Client with empty OIDC configuration because yb.security.type={}", securityType);
       // todo: fail fast instead of relying on log?
       return new OidcClient<>();
+    }
+  }
+
+  private void setProviderMetadata(Config config, OidcConfiguration oidcConfiguration) {
+    String providerMetadata = config.getString("yb.security.oidcProviderMetadata");
+    if (providerMetadata.isEmpty()) {
+      String discoveryURI = config.getString("yb.security.discoveryURI");
+      if (discoveryURI.isEmpty()) {
+        log.error("OIDC setup error: Both discoveryURL and provider metadata is empty");
+        // TODO(sbapat) throw. Though rest of the method is written to fail silently so do not
+        //  want to change that in this diff.
+      } else {
+        oidcConfiguration.setDiscoveryURI(discoveryURI);
+      }
+    } else {
+      try {
+        oidcConfiguration.setProviderMetadata(OIDCProviderMetadata.parse(providerMetadata));
+      } catch (ParseException e) {
+        log.error("Provider metadata invalid", e);
+      }
     }
   }
 

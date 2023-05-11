@@ -15,11 +15,10 @@
 
 #pragma once
 
-#include "yb/common/ybc-internal.h"
-#include "yb/common/ybc_util.h"
-
 #include "yb/util/status_fwd.h"
 
+#include "yb/yql/pggate/util/ybc-internal.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {

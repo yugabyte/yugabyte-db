@@ -144,7 +144,7 @@ To obtain a list of available hosts, you can connect to any cluster node and use
 Delimit the addresses using commas, as follows:
 
 ```sh
-jdbc://yugabytedb://hostname1:port,hostname2:port,hostname3:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+jdbc:yugabytedb://hostname1:port,hostname2:port,hostname3:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
     topology-keys=cloud.region.zone1,cloud.region.zone2
 ```
 

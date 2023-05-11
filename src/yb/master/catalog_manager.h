@@ -59,9 +59,11 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cdc_split_driver.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.fwd.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
@@ -75,7 +77,6 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
-#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
@@ -1034,6 +1035,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Get the parent table id for a colocated table. The table parameter must be colocated and
   // not satisfy IsColocationParentTableId.
   Result<TableId> GetParentTableIdForColocatedTable(const scoped_refptr<TableInfo>& table);
+  Result<TableId> GetParentTableIdForColocatedTableUnlocked(
+      const scoped_refptr<TableInfo>& table) REQUIRES_SHARED(mutex_);
 
   Result<std::optional<cdc::ConsumerRegistryPB>> GetConsumerRegistry();
   Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
@@ -1128,6 +1131,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Create a new CDC stream with the specified attributes.
   Status CreateCDCStream(
       const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status CreateNewCDCStream(
+      const CreateCDCStreamRequestPB& req, const std::string& id_type_option_value,
+      CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc);
+  Status AddTableIdToCDCStream(const CreateCDCStreamRequestPB& req) EXCLUDES(mutex_);
 
   // Get the Table schema from system catalog table.
   Status GetTableSchemaFromSysCatalog(
@@ -2324,9 +2332,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     Partitions partitions;
     PartitionToIdMap new_tablets_map;
     // Mapping: Old tablet ID -> New tablet ID.
-    google::protobuf::RepeatedPtrField<IdPairPB>* tablet_id_map = nullptr;
-
-    ImportSnapshotMetaResponsePB_TableMetaPB* table_meta = nullptr;
+    std::optional<ImportSnapshotMetaResponsePB::TableMetaPB> table_meta = std::nullopt;
   };
   typedef std::unordered_map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
 
@@ -2352,18 +2358,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status ImportSnapshotPreprocess(
       const SnapshotInfoPB& snapshot_pb,
-      ImportSnapshotMetaResponsePB* resp,
       NamespaceMap* namespace_map,
       UDTypeMap* type_map,
       ExternalTableSnapshotDataMap* tables_data);
   Status ImportSnapshotProcessUDTypes(
       const SnapshotInfoPB& snapshot_pb,
-      ImportSnapshotMetaResponsePB* resp,
       UDTypeMap* type_map,
       const NamespaceMap& namespace_map);
   Status ImportSnapshotCreateIndexes(
       const SnapshotInfoPB& snapshot_pb,
-      ImportSnapshotMetaResponsePB* resp,
       const NamespaceMap& namespace_map,
       const UDTypeMap& type_map,
       ExternalTableSnapshotDataMap* tables_data);
@@ -2375,7 +2378,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       CoarseTimePoint deadline);
   Status ImportSnapshotProcessTablets(
       const SnapshotInfoPB& snapshot_pb,
-      ImportSnapshotMetaResponsePB* resp,
       ExternalTableSnapshotDataMap* tables_data);
   void DeleteNewUDtype(
       const UDTypeId& udt_id, const std::unordered_set<UDTypeId>& type_ids_to_delete);

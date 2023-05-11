@@ -45,6 +45,7 @@ DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_bool(parallelize_bootstrap_producer);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(TEST_enable_replicate_transaction_status_table);
 
 namespace yb {
 namespace tools {
@@ -858,6 +859,7 @@ TEST_F(XClusterAdminCliTest, SetupTransactionalReplication) {
 }
 
 TEST_F(XClusterAdminCliTest, DisallowAddTransactionTablet) {
+  FLAGS_TEST_enable_replicate_transaction_status_table = true;
   // Create an identical table on the producer.
   client::TableHandle producer_table;
   client::kv_table_test::CreateTable(

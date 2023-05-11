@@ -91,6 +91,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<String> oidcProviderMetadata =
+      new ConfKeyInfo<>(
+          "yb.security.oidcProviderMetadata",
+          ScopeType.GLOBAL,
+          "Provider Metadata from discoveryURI",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
   public static final ConfKeyInfo<String> oidcScope =
       new ConfKeyInfo<>(
           "yb.security.oidcScope",
@@ -635,14 +643,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Regex pattern used to find Yugabyte DB helm .tar.gz files",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> enableTaskAndFailedRequestDetailedLogging =
-      new ConfKeyInfo<>(
-          "yb.logging.enable_task_failed_request_logs",
-          ScopeType.GLOBAL,
-          "Enables extra logging",
-          "Enables extra logging for task params and request body",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> fixDatabaseFullPaths =
       new ConfKeyInfo<>(
           "yb.fixPaths",

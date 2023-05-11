@@ -40,7 +40,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
 
   {{< sections/bottom-image-box
     title="Configure"
-    description="Configure YugabyteDB Anywhere to deploy YugabyteDB on various cloud providers."
+    description="Configure YugabyteDB Anywhere for deploying universes on various cloud providers."
     buttonText="Learn more"
     buttonUrl="configure-yugabyte-platform/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"

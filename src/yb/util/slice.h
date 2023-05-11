@@ -317,7 +317,7 @@ inline bool operator!=(const Slice& x, const Slice& y) {
 }
 
 inline std::ostream& operator<<(std::ostream& o, const Slice& s) {
-  return o << s.ToDebugString(16); // should be enough for anyone...
+  return o << s.ToDebugString(32); // should be enough for anyone...
 }
 
 inline int Slice::compare(const Slice& b) const {

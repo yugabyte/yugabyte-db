@@ -62,7 +62,7 @@ var installCmd = &cobra.Command{
 			log.Info("Completed installing component " + name)
 		}
 		if err := ybaCtl.Install(); err != nil {
-			log.Fatal("failed to install yba-ctl")
+			log.Fatal("failed to install yba-ctl: " + err.Error())
 		}
 		state := ybactlstate.New()
 		if err := ybactlstate.StoreState(state); err != nil {

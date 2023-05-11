@@ -113,11 +113,9 @@ message GetLockStatusRequestPB {
 
   optional fixed64 propagated_hybrid_time = 3;
 
-  // If specified, only read the locks associated with this txn_id.
-  // Otherwise read locks from all the transactions id.
-  optional bytes transaction_id = 4;
-
-  optional uint32 subtransaction_id = 5;
+  // If specified, only read the locks associated with these txn_id(s).
+  // Otherwise read locks from all the transaction ids.
+  repeated bytes transaction_ids = 4;
 }
 
 message GetLockStatusResponsePB {

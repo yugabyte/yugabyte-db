@@ -60,7 +60,9 @@ func (r diskAvailCheck) Execute() Result {
 	// walk up the dir path until we find a dir that exists
 	validParentDir, err := common.GetValidParent(baseDir)
 	if err != nil {
-		log.Fatal("No valid parent dir for install dir " + baseDir)
+		res.Error = fmt.Errorf("No valid parent dir for install dir " + baseDir)
+		res.Status = StatusCritical
+		return res
 	}
 	var stat unix.Statfs_t
 	err = unix.Statfs(validParentDir, &stat)
@@ -80,7 +82,7 @@ func (r diskAvailCheck) Execute() Result {
 	if bytesAvail < minDiskReq {
 		res.Error = fmt.Errorf(
 			"Availabile disk space on volume %s is less than minimum required %s",
-			humanize.Bytes(bytesAvail), humanize.Bytes(minDiskReq))
+			humanize.IBytes(bytesAvail), humanize.IBytes(minDiskReq))
 		res.Status = StatusCritical
 		return res
 	}

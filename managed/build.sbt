@@ -328,7 +328,7 @@ lazy val moveYbcPackage = getBoolEnvVar(moveYbcPackageEnvName)
 
 versionGenerate := {
   val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
-  val status = Process("../build-support/gen_version_info.py --build-type=" + buildType + " " +
+  val status = Process("../python/yugabyte/gen_version_info.py --build-type=" + buildType + " " +
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
@@ -445,7 +445,7 @@ runPlatform := {
 
 libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b26"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.51-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b25"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b27"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

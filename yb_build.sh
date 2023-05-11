@@ -822,7 +822,7 @@ use_packaged_targets() {
   done < <(
     activate_virtualenv &>/dev/null
     set_pythonpath
-    "$YB_SRC_ROOT"/build-support/list_packaged_targets.py "${optional_components_args[@]}"
+    "$YB_SCRIPT_PATH_LIST_PACKAGED_TARGETS" "${optional_components_args[@]}"
   )
   if [[ ${#packaged_targets[@]} -eq 0 ]]; then
     fatal "Failed to identify the set of targets to build for the release package"

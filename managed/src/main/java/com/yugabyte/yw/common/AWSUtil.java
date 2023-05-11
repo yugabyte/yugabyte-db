@@ -190,6 +190,9 @@ public class AWSUtil implements CloudUtil {
       AWSCredentialsProvider creds = new AWSStaticCredentialsProvider(credentials);
       s3ClientBuilder.withCredentials(creds);
     }
+    if (s3Data.isPathStyleAccess) {
+      s3ClientBuilder.withPathStyleAccessEnabled(true);
+    }
     s3ClientBuilder.withForceGlobalBucketAccessEnabled(true);
     String endpoint = s3Data.awsHostBase;
     String region = getClientRegion(s3Data.fallbackRegion);

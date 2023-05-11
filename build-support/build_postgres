@@ -28,4 +28,4 @@ activate_virtualenv
 set_sanitizer_runtime_options
 
 set_pythonpath
-"$YB_SRC_ROOT"/python/yb/build_postgres.py "$@"
+python3 "$YB_SCRIPT_PATH_BUILD_POSTGRES" "$@"

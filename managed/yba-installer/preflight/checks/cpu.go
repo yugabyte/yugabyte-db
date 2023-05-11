@@ -37,6 +37,7 @@ func (c cpuCheck) Execute() Result {
 		Check:  c.name,
 		Status: StatusPassed,
 	}
+	log.Debug(fmt.Sprintf("Found %d CPUs. Minimum is %d", runtime.NumCPU(), defaultMinCPUs))
 	if runtime.NumCPU() < defaultMinCPUs {
 		err := fmt.Errorf("System currently has %v CPU but requires %v CPUs.",
 			runtime.NumCPU(), defaultMinCPUs)

@@ -831,7 +831,8 @@ static int _exprcol_cmp(const void *a, const void *b, void *cxt)
  * BatchedExpr(f1(o_var1, o_var2...), f2(o_var1, o_var2...)...)
  * where the LHS is sorted ascendingly by attribute number.
  */
-static List *yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
+static List*
+yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 {
 	if (list_length(b_exprs) <= 1)
 	{
@@ -872,6 +873,12 @@ static List *yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_
 		/* If there wasn't a single clause relevant to avail_relids, continue. */
 		if (len == 0)
 			continue;
+		
+		if (len == 1)
+		{
+			zipped_exprs = lappend(zipped_exprs, exprcols[0]);
+			continue;
+		}
 
 		if (should_sort)
 		{
@@ -937,15 +944,16 @@ yb_get_actual_batched_clauses(PlannerInfo *root,
 										Path * inner_path)
 {
 	Assert(bms_num_members(inner_path->parent->relids) == 1);
+	List *non_batched_quals = NIL;
 	List *batched_quals = NIL;
 	ListCell *lc;
 	foreach(lc, restrictinfo_list)
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
 		RestrictInfo *tmp_batched =
-			get_batched_restrictinfo(rinfo,
-											 root->yb_cur_batched_relids,
-											 inner_path->parent->relids);
+			yb_get_batched_restrictinfo(rinfo,
+											 	 root->yb_cur_batched_relids,
+												 inner_path->parent->relids);
 
 		if (tmp_batched)
 		{
@@ -956,8 +964,13 @@ yb_get_actual_batched_clauses(PlannerInfo *root,
 
 			batched_quals = lappend(batched_quals, op);
 		}
+		else
+		{
+			non_batched_quals = lappend(non_batched_quals, rinfo->clause);
+		}
 	}
-	return yb_zip_batched_exprs(root, batched_quals, false);
+	List *zipped_batched = yb_zip_batched_exprs(root, batched_quals, false);
+	return list_concat(zipped_batched, non_batched_quals);
 }
 
 /*
@@ -4893,14 +4906,14 @@ create_nestloop_plan(PlannerInfo *root,
 			}
 
 			if (rinfo->can_join &&
-				OidIsValid(rinfo->hashjoinoperator) &&
-				can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
+				 OidIsValid(rinfo->hashjoinoperator) &&
+				 yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
 			{
 				/* if nlhash can process this */
 				Assert(is_opclause(rinfo->clause));
 				RestrictInfo *batched_rinfo =
-					get_batched_restrictinfo(rinfo,batched_outerrelids,
-											 inner_relids);
+					yb_get_batched_restrictinfo(rinfo,batched_outerrelids,
+											 			 inner_relids);
 
 				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
 			}
@@ -5596,9 +5609,8 @@ yb_get_fixed_batched_indexquals(PlannerInfo *root, IndexPath *index_path)
 		{
 			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lcc);
 			RestrictInfo *tmp_batched =
-				get_batched_restrictinfo(rinfo,
-									root->yb_cur_batched_relids,
-									index_path->indexinfo->rel->relids);
+				yb_get_batched_restrictinfo(rinfo, root->yb_cur_batched_relids,
+													 index_path->indexinfo->rel->relids);
 
 			if (tmp_batched)
 			{
@@ -5662,9 +5674,8 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path)
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lcc);
 		RestrictInfo *tmp_batched =
-			get_batched_restrictinfo(rinfo,
-									 root->yb_cur_batched_relids,
-									 index_path->indexinfo->rel->relids);
+			yb_get_batched_restrictinfo(rinfo, root->yb_cur_batched_relids,
+									 			 index_path->indexinfo->rel->relids);
 		/*
 		 * YB: We should have already processed this qual in
 		 * get_fixed_batched_indexquals.

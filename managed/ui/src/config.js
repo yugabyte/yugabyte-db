@@ -39,6 +39,12 @@ export const PROVIDER_TYPES = [
   { code: 'other', name: 'Other', label: 'Custom Datacenter' }
 ];
 
+// The following region array is used in the old kubernetes provider form.
+// Please also add any new K8s regions and zones to:
+// src/components/configRedesign/providerRedesign/providerRegionsData.ts
+// so that the new kubernetes provider UI stays in sync.
+// The old provider UI and its related components/constants/types will be removed once
+// it is no longer used as a fallback option.
 export const REGION_METADATA = [
   { code: 'us-west-1', name: 'US West (N. California)', latitude: 37, longitude: -121 },
   { code: 'us-west-2', name: 'US West (Oregon)', latitude: 44, longitude: -121 },

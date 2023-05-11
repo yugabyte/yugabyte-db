@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: the-sql-language
     parent: api-ysql
-    weight: 100
+    weight: 10
 aliases:
   - /preview/api/ysql/with-clause/
 type: indexpage
