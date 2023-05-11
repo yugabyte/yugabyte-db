@@ -19,14 +19,17 @@
 #include <string>
 #include <vector>
 
-#include "yb/qlexpr/ql_expr.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/scan_choices.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
-#include "yb/qlexpr/doc_scanspec_util.h"
-#include "yb/docdb/docdb_compaction_context.h"
 #include "yb/dockv/expiration.h"
-#include "yb/docdb/scan_choices.h"
+#include "yb/dockv/pg_row.h"
+
+#include "yb/qlexpr/doc_scanspec_util.h"
+#include "yb/qlexpr/ql_expr.h"
+
 #include "yb/tablet/tablet_metrics.h"
 
 #include "yb/util/debug-util.h"
@@ -57,6 +60,28 @@ DEFINE_RUNTIME_bool(
 namespace yb::docdb {
 
 using dockv::DocKey;
+
+namespace {
+
+Status StoreValue(
+    const dockv::ProjectedColumn& column, size_t col_idx, dockv::DocKeyDecoder* decoder,
+    qlexpr::QLTableRow* row) {
+  dockv::KeyEntryValue key_entry_value;
+  RETURN_NOT_OK(decoder->DecodeKeyEntryValue(&key_entry_value));
+  key_entry_value.ToQLValuePB(column.type, &row->AllocColumn(column.id).value);
+  return Status::OK();
+}
+
+Status StoreValue(
+    const dockv::ProjectedColumn& column, size_t col_idx, dockv::DocKeyDecoder* decoder,
+    dockv::PgTableRow* row) {
+  if (!row) {
+    return decoder->DecodeKeyEntryValue();
+  }
+  return row->DecodeKey(col_idx, decoder->mutable_input());
+}
+
+} // namespace
 
 DocRowwiseIteratorBase::DocRowwiseIteratorBase(
     const dockv::ReaderProjection& projection,
@@ -328,8 +353,19 @@ Status DocRowwiseIteratorBase::InitIterKey(const Slice& key, bool full_row) {
   return Status::OK();
 }
 
-Status DocRowwiseIteratorBase::CopyKeyColumnsToQLTableRow(
+Status DocRowwiseIteratorBase::CopyKeyColumnsToRow(
     const dockv::ReaderProjection& projection, qlexpr::QLTableRow* row) {
+  return DoCopyKeyColumnsToRow(projection, row);
+}
+
+Status DocRowwiseIteratorBase::CopyKeyColumnsToRow(
+    const dockv::ReaderProjection& projection, dockv::PgTableRow* row) {
+  return DoCopyKeyColumnsToRow(projection, row);
+}
+
+template <class Row>
+Status DocRowwiseIteratorBase::DoCopyKeyColumnsToRow(
+    const dockv::ReaderProjection& projection, Row* row) {
   if (projection.num_key_columns == 0) {
     return Status::OK();
   }
@@ -350,15 +386,15 @@ Status DocRowwiseIteratorBase::CopyKeyColumnsToQLTableRow(
   // Populate the key column values from the doc key. The key column values in doc key were
   // written in the same order as in the table schema (see DocKeyFromQLKey). If the range columns
   // are present, read them also.
-  auto projected_column = projection.columns.begin();
+  const auto projected_key_begin = projection.columns.begin();
+  auto projected_column = projected_key_begin;
   const auto projected_key_end = projected_column + projection.num_key_columns;
   dockv::KeyEntryValue key_entry_value;
   if (schema.num_hash_key_columns()) {
     for (size_t schema_idx = 0; schema_idx != schema.num_hash_key_columns(); ++schema_idx) {
       if (projected_column->id == schema.column_id(schema_idx)) {
-        RETURN_NOT_OK(decoder.DecodeKeyEntryValue(&key_entry_value));
-        key_entry_value.ToQLValuePB(
-            projected_column->type, &row->AllocColumn(projected_column->id).value);
+        RETURN_NOT_OK(StoreValue(
+            *projected_column, projected_column - projected_key_begin, &decoder, row));
         if (++projected_column == projected_key_end) {
           return Status::OK();
         }
@@ -376,9 +412,8 @@ Status DocRowwiseIteratorBase::CopyKeyColumnsToQLTableRow(
   for (size_t schema_idx = schema.num_hash_key_columns(); schema_idx != schema.num_key_columns();
        ++schema_idx) {
     if (projected_column->id == schema.column_id(schema_idx)) {
-      RETURN_NOT_OK(decoder.DecodeKeyEntryValue(&key_entry_value));
-      key_entry_value.ToQLValuePB(
-          projected_column->type, &row->AllocColumn(projected_column->id).value);
+      RETURN_NOT_OK(StoreValue(
+          *projected_column, projected_column - projected_key_begin, &decoder, row));
       if (++projected_column == projected_key_end) {
         return Status::OK();
       }

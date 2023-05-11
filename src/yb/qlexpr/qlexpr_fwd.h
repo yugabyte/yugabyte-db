@@ -31,7 +31,12 @@ class YQLScanSpec;
 struct IndexColumn;
 struct QLTableColumn;
 
+template <class Val>
+class ExprResultWriter;
+
 using QLExprExecutorPtr = std::shared_ptr<QLExprExecutor>;
+using LWExprResultWriter = ExprResultWriter<LWQLValuePB>;
+using QLExprResultWriter = ExprResultWriter<QLValuePB>;
 
 enum class QLNameOption : int8_t;
 

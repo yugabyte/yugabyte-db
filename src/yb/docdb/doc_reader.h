@@ -37,8 +37,6 @@
 namespace yb {
 namespace docdb {
 
-YB_STRONGLY_TYPED_BOOL(IsFlatDoc);
-
 class IntentAwareIterator;
 
 YB_DEFINE_ENUM(DocReaderResult, (kNotFound)(kFoundAndFinished)(kFoundNotFinished));
@@ -109,6 +107,7 @@ class DocDBTableReader {
   // result shouldn't be nullptr and will be filled with the same number of primitives as number of
   // columns passed to ctor in projection and in the same order.
   Result<DocReaderResult> GetFlat(const Slice& root_doc_key, qlexpr::QLTableRow* result);
+  Result<DocReaderResult> GetFlat(const Slice& root_doc_key, dockv::PgTableRow* result);
 
  private:
   // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info
@@ -119,6 +118,7 @@ class DocDBTableReader {
   class GetHelperBase;
 
   class GetHelper;
+  template <class ResultType>
   class FlatGetHelper;
   class PackedRowData;
 
