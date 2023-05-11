@@ -644,4 +644,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "for the configurable part of the path (like storage or releases path)",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> awsDiskResizeCooldownHours =
+      new ConfKeyInfo<>(
+          "yb.aws.disk_resize_cooldown_hours",
+          ScopeType.GLOBAL,
+          "Cooldown after disk resize in aws (in hours)",
+          "Cooldown after disk resize in aws (in hours)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
