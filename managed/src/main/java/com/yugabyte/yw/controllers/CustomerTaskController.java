@@ -276,6 +276,7 @@ public class CustomerTaskController extends AuthenticatedController {
 
     AbstractTaskParams taskParams = null;
     switch (taskType) {
+      case CreateKubernetesUniverse:
       case CreateUniverse:
       case EditUniverse:
       case ReadOnlyClusterCreate:
