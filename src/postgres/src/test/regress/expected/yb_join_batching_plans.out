@@ -169,7 +169,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM 
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: (b <= 15)
          ->  Index Scan using p1_pkey on p1 t1
-               Index Cond: ((b <= 10) AND (a = ANY (ARRAY[t2.b, $1, $2, ..., $1023])))
+               Index Cond: ((a = ANY (ARRAY[t2.b, $1, $2, ..., $1023])) AND (b <= 10))
    ->  Index Scan using p3_pkey on p3 t3
          Index Cond: (a = ANY (ARRAY[t1.a, $1025, $1026, ..., $2047]))
 (10 rows)
