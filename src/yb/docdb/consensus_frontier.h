@@ -61,6 +61,10 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   void FromOpIdPBDeprecated(const OpIdPB& pb) override;
   Slice Filter() const override;
 
+  void ResetFilter() override {
+    hybrid_time_filter_ = HybridTime::kInvalid;
+  }
+
   const OpId& op_id() const { return op_id_; }
   void set_op_id(const OpId& value) { op_id_ = value; }
 
