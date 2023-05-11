@@ -943,7 +943,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   } else {
     iter->Init(read_data.table_info->table_type);
@@ -1198,7 +1198,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1310,7 +1310,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1353,7 +1353,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1402,7 +1402,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+        boost::none /* hash_code */, boost::none /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1466,8 +1466,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        nullptr /* cond */, boost::none /* hash_code */, boost::none /* max_hash_code */,
-        nullptr /* where */);
+        nullptr /* cond */, boost::none /* hash_code */, boost::none /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1522,7 +1521,7 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+        boost::none /* hash_code */, boost::none /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1738,7 +1737,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+        boost::none /* hash_code */, boost::none /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1847,7 +1846,7 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, nullptr,
-        boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+        boost::none /* hash_code */, boost::none /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 

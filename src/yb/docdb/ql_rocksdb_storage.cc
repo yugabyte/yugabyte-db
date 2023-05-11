@@ -13,6 +13,10 @@
 
 #include "yb/docdb/ql_rocksdb_storage.h"
 
+#include <utility>
+
+#include <boost/optional/optional.hpp>
+
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 
@@ -26,10 +30,7 @@
 
 #include "yb/util/result.h"
 
-using std::vector;
-
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::DocKey;
 
@@ -162,7 +163,6 @@ Status QLRocksDBStorage::GetIterator(
         nullptr /* condition */,
         boost::none /* hash_code */,
         boost::none /* max_hash_code */,
-        nullptr /* where_expr */,
         lower_doc_key,
         true /* is_forward_scan */,
         lower_doc_key,
@@ -251,7 +251,6 @@ Status QLRocksDBStorage::GetIterator(
         request.hash_code(),
         request.has_max_hash_code() ? boost::make_optional<int32_t>(request.max_hash_code())
                                     : boost::none,
-        nullptr /* where_expr */,
         start_doc_key,
         request.is_forward_scan(),
         lower_doc_key,
@@ -263,5 +262,4 @@ Status QLRocksDBStorage::GetIterator(
   return Status::OK();
 }
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

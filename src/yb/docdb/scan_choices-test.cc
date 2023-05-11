@@ -196,7 +196,7 @@ void ScanChoicesTest::InitializeScanChoicesInstance(const Schema &schema, PgsqlC
   dockv::KeyEntryValues empty_components;
   DocPgsqlScanSpec spec(
       schema, rocksdb::kDefaultQueryId, empty_components, empty_components, &cond,
-      boost::none, boost::none, nullptr, DocKey(), true);
+      boost::none, boost::none, DocKey(), true);
   const auto &lower_bound = spec.LowerBound();
   EXPECT_OK(lower_bound);
   const auto &upper_bound = spec.UpperBound();

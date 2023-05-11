@@ -550,7 +550,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
   boost::optional<int32_t> empty_hash_code;
   DocPgsqlScanSpec spec(
       test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-      empty_hash_code, empty_hash_code, nullptr);
+      empty_hash_code, empty_hash_code);
 
   CreateIteratorAndValidate(
       test_schema, ReadHybridTime::FromMicros(2000), spec,
@@ -601,7 +601,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
   static const DocKey default_doc_key;
   DocPgsqlScanSpec spec(
       test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-      empty_hash_code, empty_hash_code, nullptr, default_doc_key, /* is_forward_scan */ false);
+      empty_hash_code, empty_hash_code, default_doc_key, /* is_forward_scan */ false);
 
   CreateIteratorAndValidate(
       test_schema, ReadHybridTime::FromMicros(2000), spec,
