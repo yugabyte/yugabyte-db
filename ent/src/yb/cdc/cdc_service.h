@@ -269,8 +269,10 @@ class CDCServiceImpl : public CDCServiceIf {
                                        rpc::RpcContext* context,
                                        const std::shared_ptr<tablet::TabletPeer>& peer);
 
-  Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
-  Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
+  Result<client::internal::RemoteTabletPtr> GetRemoteTablet(
+      const TabletId& tablet_id, const bool use_cace = true);
+  Result<client::internal::RemoteTabletServer*> GetLeaderTServer(
+      const TabletId& tablet_id, const bool use_cache = true);
   Status GetTServers(const TabletId& tablet_id,
                              std::vector<client::internal::RemoteTabletServer*>* servers);
 

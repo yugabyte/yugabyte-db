@@ -1095,26 +1095,34 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
 
   // Case-1 The connected tserver does not contain the requested tablet_id.
   // Case-2 The connected tserver does not contain the tablet LEADER.
-  if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
+  if ((!tablet_peer || IsTabletPeerLeader(tablet_peer)) && req.serve_as_proxy()) {
     // Get tablet LEADER.
-    auto result = GetLeaderTServer(req.tablet_id());
+    auto result = GetLeaderTServer(req.tablet_id(), false /* use_cache */);
     RETURN_NOT_OK_SET_CODE(result, CDCError(CDCErrorPB::NOT_LEADER));
     auto ts_leader = *result;
     auto cdc_proxy = GetCDCServiceProxy(ts_leader);
 
+    SetCDCCheckpointRequestPB new_req;
+    new_req.CopyFrom(req);
+    new_req.set_serve_as_proxy(false);
+
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms));
     SetCDCCheckpointResponsePB resp;
+    if (tablet_peer) {
+      VLOG(2) << "Current tablet_peer: " << tablet_peer->permanent_uuid()
+              << "is not a LEADER for tablet_id: " << req.tablet_id()
+              << " so handovering to the actual LEADER.";
+    } else {
+      VLOG(2) << "Current TServer doesn not host tablet_id: " << req.tablet_id()
+              << " so handovering to the actual LEADER.";
+    }
 
-    VLOG(2) << "Current tablet_peer: " << tablet_peer->permanent_uuid()
-            << "is not a LEADER for tablet_id: " << req.tablet_id()
-            << " so handovering to the actual LEADER.";
     RETURN_NOT_OK_SET_CODE(
-        cdc_proxy->SetCDCCheckpoint(req, &resp, &rpc), CDCError(CDCErrorPB::INTERNAL_ERROR));
+        cdc_proxy->SetCDCCheckpoint(new_req, &resp, &rpc), CDCError(CDCErrorPB::INTERNAL_ERROR));
     return resp;
-  } else if (!s.ok()) {
-     VLOG(2) << "Current LEADER is not ready to serve tablet_id: "
-              << req.tablet_id();
+  } else if (!s.ok() || IsTabletPeerLeader(tablet_peer)) {
+    VLOG(2) << "Current LEADER is not ready to serve tablet_id: " << req.tablet_id();
     RETURN_NOT_OK_SET_CODE(s, CDCError(CDCErrorPB::LEADER_NOT_READY));
   }
 
@@ -2481,7 +2489,7 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
   }
 
   Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
-      const TabletId& tablet_id) {
+      const TabletId& tablet_id, const bool use_cache) {
     std::promise<Result<client::internal::RemoteTabletPtr>> tablet_lookup_promise;
     auto future = tablet_lookup_promise.get_future();
     auto callback = [&tablet_lookup_promise](
@@ -2498,8 +2506,9 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
         master::IncludeInactive::kTrue,
         CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
         callback,
-        GetAtomicFlag(&FLAGS_enable_cdc_client_tablet_caching) ? client::UseCache::kTrue
-                                                               : client::UseCache::kFalse);
+        GetAtomicFlag(&FLAGS_enable_cdc_client_tablet_caching) && use_cache
+            ? client::UseCache::kTrue
+            : client::UseCache::kFalse);
     future.wait();
 
     auto duration = CoarseMonoClock::Now() - start;
@@ -2511,8 +2520,9 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
     return remote_tablet;
   }
 
-  Result<RemoteTabletServer *> CDCServiceImpl::GetLeaderTServer(const TabletId& tablet_id) {
-    auto result = VERIFY_RESULT(GetRemoteTablet(tablet_id));
+  Result<RemoteTabletServer*> CDCServiceImpl::GetLeaderTServer(
+      const TabletId& tablet_id, const bool use_cache) {
+    auto result = VERIFY_RESULT(GetRemoteTablet(tablet_id, use_cache));
 
     auto ts = result->LeaderTServer();
     if (ts == nullptr) {
@@ -2594,7 +2604,7 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
                                                GetCheckpointResponsePB* resp,
                                                RpcContext* context,
                                                const std::shared_ptr<tablet::TabletPeer>& peer) {
-    auto result = GetLeaderTServer(req->tablet_id());
+    auto result = GetLeaderTServer(req->tablet_id(), false /* use_cache */);
     RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
         CDCErrorPB::TABLET_NOT_FOUND, *context);
 
@@ -2614,8 +2624,13 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
     auto cdc_proxy = GetCDCServiceProxy(ts_leader);
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms));
+
+    GetCheckpointRequestPB new_req;
+    new_req.CopyFrom(*req);
+    new_req.set_serve_as_proxy(false);
+
     // TODO(NIC): Change to GetCheckpointAsync like CDCPoller::DoPoll.
-    auto status = cdc_proxy->GetCheckpoint(*req, resp, &rpc);
+    auto status = cdc_proxy->GetCheckpoint(new_req, resp, &rpc);
     RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, *context);
     context->RespondSuccess();
   }
@@ -2641,10 +2656,13 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
     std::shared_ptr<tablet::TabletPeer> tablet_peer;
     Status s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
 
-    if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
-      // Forward GetChanges() to tablet leader. This happens often in Kubernetes setups.
+    if ((s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) && req->serve_as_proxy()) {
+      // Forward GetCheckpoint() to tablet leader. This happens often in Kubernetes setups.
       TabletLeaderGetCheckpoint(req, resp, &context, tablet_peer);
       return;
+    } else if (!s.ok() || IsTabletPeerLeader(tablet_peer)) {
+      VLOG(2) << "Current LEADER is not ready to serve tablet_id: " << req->tablet_id();
+      RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::LEADER_NOT_READY, context);
     }
 
     // Check that requested tablet_id is part of the CDC stream.

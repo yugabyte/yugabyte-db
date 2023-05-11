@@ -394,6 +394,8 @@ message GetChangesResponsePB {
 message GetCheckpointRequestPB {
   optional bytes stream_id = 1;
   optional bytes tablet_id = 2;
+  // Whether the caller knows the tablet address or needs to use us as a proxy.
+  optional bool serve_as_proxy = 3 [default = true];
 }
 
 message GetCheckpointResponsePB {
@@ -464,6 +466,8 @@ message SetCDCCheckpointRequestPB {
   optional bytes tablet_id = 4;
   optional bool initial_checkpoint = 5 [default = false];
   optional bool bootstrap = 6 [default = false];
+  // Whether the caller knows the tablet address or needs to use us as a proxy.
+  optional bool serve_as_proxy = 7 [default = true];
 }
 
 message SetCDCCheckpointResponsePB {
