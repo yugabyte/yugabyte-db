@@ -185,14 +185,14 @@ config_value = '<Text Literal>' ;
 (* 'ALTER' 'SEQUENCE' *)
 alter_sequence = 'ALTER' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name alter_sequence_options ;
 
-alter_sequence_options = [ 'AS' seq_data_type ]
-                           [ 'INCREMENT' [ 'BY' ] int_literal ]
-                           [ 'MINVALUE' int_literal | 'NO' 'MINVALUE' ]
-                           [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]
-                           [ 'START' [ 'WITH' ] int_literal ]
-                           [ 'RESTART' [ [ 'WITH' ] int_literal ] ]
-                           [ 'CACHE' cache ]
-                           [ [ 'NO' ] 'CYCLE' ]
+alter_sequence_options = [ 'AS' seq_data_type ]  \
+                           [ 'INCREMENT' [ 'BY' ] int_literal ]  \
+                           [ 'MINVALUE' int_literal | 'NO' 'MINVALUE' ]  \
+                           [ 'MAXVALUE' maxvalue | 'NO' 'MAXVALUE' ]  \
+                           [ 'START' [ 'WITH' ] int_literal ]  \
+                           [ 'RESTART' [ [ 'WITH' ] int_literal ] ]  \
+                           [ 'CACHE' cache ]  \
+                           [ [ 'NO' ] 'CYCLE' ]  \
                            [ 'OWNED BY' table_name.table_column | 'NONE' ] ;
 
 seq_data_type = ( 'smallint' | 'integer' | 'bigint' ) ;
