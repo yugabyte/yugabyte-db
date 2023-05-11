@@ -12,8 +12,21 @@
       "initialRelease": "2022-12-08"
     },
     {
-      "series": "v2.16",
+      "series": "v2.18",
       "alias": "stable",
+      "display": "v2.18 (STS)",
+      "version": "2.18.0.0",
+      "versionShort": "2.18.0",
+      "appVersion": "2.18.0.0-b63",
+      "isStable": true,
+      "isLTS": false,
+      "isSTS": true,
+      "initialRelease": "2022-05-11",
+      "endOfMaintenance": "2024-01-11",
+      "endOfLife": "2025-07-11"
+    },
+    {
+      "series": "v2.16",
       "display": "v2.16 (STS)",
       "version": "2.16.4.0",
       "versionShort": "2.16.4",

@@ -7,11 +7,11 @@ menu:
   stable:
     identifier: yb-docker-ctl
     parent: admin
-    weight: 2420
+    weight: 100
 type: docs
 ---
 
-The `yb-docker-ctl` utility provides a command line interface (CLI), or shell, for administering a local Docker-based cluster for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.
+The `yb-docker-ctl` utility provides a basic command line interface (CLI), or shell, for administering a local Docker-based cluster for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.
 
 {{% note title="macOS Monterey" %}}
 

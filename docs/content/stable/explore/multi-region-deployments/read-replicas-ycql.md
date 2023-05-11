@@ -1,8 +1,8 @@
 ---
-title: Read replicas
+title: Read replicas and follower reads in YugabyteDB YCQL
 headerTitle: Read replicas
 linkTitle: Read replicas
-description: Read replicas
+description: Explore read replicas in YugabyteDB using YCQL
 headContent: Replicate data asynchronously to one or more read replica clusters
 menu:
   stable:
@@ -34,7 +34,7 @@ type: docs
 YugabyteDB supports the following types of reads:
 
 - [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
-- Observer reads that use read replicas. The latter obtain their data via [xCluster replication](../asynchronous-replication-ycql/) which allows for the read workload to be offloaded from the primary cluster. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads.
+- Observer reads that use read replicas. The latter obtain their data via [xCluster replication](../asynchronous-replication-ysql/) which allows for the read workload to be offloaded from the primary cluster. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads.
 
 A data center (also known as a [universe](../../../architecture/concepts/universe/#universe-vs-cluster)) can have one primary cluster and several read replica clusters.
 

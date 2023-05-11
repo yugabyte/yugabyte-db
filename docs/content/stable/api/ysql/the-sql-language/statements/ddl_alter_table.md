@@ -150,7 +150,7 @@ This is the result:
  frog | frog-child-c
 ```
 
-The `\d children` metacommand shows that it has a foreign key that's a dependent object on the column `b` in the `parents` table:
+The `\d children` meta-command shows that it has a foreign key that's a dependent object on the column `b` in the `parents` table:
 
 ```output
 Indexes:

@@ -8,9 +8,9 @@ image: /images/section_icons/api/ycql.png
 headcontent:
 menu:
   stable:
-    identifier: api-cassandra
     parent: api
-    weight: 3000
+    identifier: api-cassandra
+    weight: 10
     params:
       classes: separator
 type: indexpage
