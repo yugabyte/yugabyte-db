@@ -1,7 +1,7 @@
 ---
 title: Prepare the OpenShift environment
-headerTitle: Prepare the OpenShift environment
-linkTitle: Prepare the environment
+headerTitle: Cloud prerequisites - OpenShift
+linkTitle: Cloud prerequisites
 description: Prepare the OpenShift environment for YugabyteDB Anywhere
 menu:
   preview_yugabyte-platform:
@@ -57,7 +57,7 @@ type: docs
 
 </ul>
 
-<br>To prepare the environment for OpenShift, you start by provisioning the OpenShift cluster.
+To prepare the environment for OpenShift, you start by provisioning the OpenShift cluster.
 
 The recommended OpenShift Container Platform (OCP) version is 4.6, with backward compatibility assumed but not guaranteed.
 

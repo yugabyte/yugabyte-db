@@ -1,7 +1,7 @@
 ---
 title: Prepare the Azure cloud environment
-headerTitle: Prepare the Azure cloud environment
-linkTitle: Prepare the environment
+headerTitle: Cloud prerequisites - Azure
+linkTitle: Cloud prerequisites
 description: Prepare the Azure environment for YugabyteDB Anywhere.
 menu:
   preview_yugabyte-platform:
