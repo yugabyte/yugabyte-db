@@ -428,6 +428,24 @@ Status MiniCluster::AddTServerToBlacklist(const MiniTabletServer& ts) {
   return Status::OK();
 }
 
+Status MiniCluster::AddTServerToLeaderBlacklist(const MiniTabletServer& ts) {
+  const auto* master = VERIFY_RESULT(GetLeaderMiniMaster());
+
+  RETURN_NOT_OK(
+      ChangeClusterConfig(&master->catalog_manager(), [&ts](SysClusterConfigEntryPB* config) {
+        // Add tserver to blacklist.
+        HostPortPB* blacklist_host_pb = config->mutable_leader_blacklist()->mutable_hosts()->Add();
+        blacklist_host_pb->set_host(ts.bound_rpc_addr().address().to_string());
+        blacklist_host_pb->set_port(ts.bound_rpc_addr().port());
+      }));
+
+  LOG(INFO) << "TServer " << ts.server()->permanent_uuid() << " at "
+            << ts.bound_rpc_addr().address().to_string() << ":" << ts.bound_rpc_addr().port()
+            << " was added to the leader blacklist";
+
+  return Status::OK();
+}
+
 Status MiniCluster::ClearBlacklist() {
   const auto* master = VERIFY_RESULT(GetLeaderMiniMaster());
 
