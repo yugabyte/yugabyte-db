@@ -33,6 +33,7 @@ set(DOCKV_SRCS
     expiration.cc
     intent.cc
     key_bytes.cc
+    pg_row.cc
     packed_row.cc
     partial_row.cc
     partition.cc
@@ -44,7 +45,7 @@ set(DOCKV_SRCS
     value.cc
     )
 
-set(DOCKV_DEPS yb_common yb_util dockv_proto)
+set(DOCKV_DEPS dockv_proto yb_common yb_pggate_util yb_util)
 
 ADD_YB_LIBRARY(yb_dockv
         SRCS ${DOCKV_SRCS}

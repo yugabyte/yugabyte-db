@@ -34,14 +34,26 @@ class WriteBuffer {
   explicit WriteBuffer(size_t block_size, ScopedTrackedConsumption* consumption = nullptr)
       : block_size_(block_size), consumption_(consumption) {}
 
-  void Append(const char* data, const char* end);
+  void PushBack(char value);
 
-  void Append(const char* data, size_t length) {
-    Append(data, data + length);
+  void AppendWithPrefix(char prefix, const char* data, size_t len);
+
+  void AppendWithPrefix(char prefix, const char* data, const char* end) {
+    AppendWithPrefix(prefix, data, end - data);
+  }
+
+  void AppendWithPrefix(char prefix, const Slice& slice) {
+    AppendWithPrefix(prefix, slice.cdata(), slice.size());
+  }
+
+  void Append(const char* data, size_t length);
+
+  void Append(const char* data, const char* end) {
+    Append(data, end - data);
   }
 
   void Append(const Slice& slice) {
-    Append(slice.cdata(), slice.cend());
+    Append(slice.cdata(), slice.size());
   }
 
   Status Write(const WriteBufferPos& pos, const char* data, const char* end);
@@ -51,7 +63,7 @@ class WriteBuffer {
   }
 
   Status Write(const WriteBufferPos& pos, const Slice& slice) {
-    return Write(pos, slice.cdata(), slice.cend());
+    return Write(pos, slice.cdata(), slice.size());
   }
 
   void AddBlock(const RefCntBuffer& buffer, size_t skip);
@@ -96,10 +108,11 @@ class WriteBuffer {
   }
 
  private:
-  const char* CopyToLastBlock(const char* data, const char* end);
   void ShrinkLastBlock();
   template <class Out>
   void DoAppendTo(Out* out) const;
+  void AppendToNewBlock(const char* data, size_t len);
+  void AppendWithPrefixToNewBlock(char prefix, const char* data, size_t len_with_prefix);
 
   class Block {
    public:

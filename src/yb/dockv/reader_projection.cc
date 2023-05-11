@@ -61,4 +61,13 @@ void ReaderProjection::CompleteInit(ColumnId first_non_key_column) {
   });
 }
 
+size_t ReaderProjection::ColumnIdxById(ColumnId column_id) const {
+  auto begin = columns.begin();
+  auto end = columns.end();
+  auto it = std::lower_bound(begin, end, column_id, [](const ProjectedColumn& lhs, ColumnId rhs) {
+    return lhs.id < rhs;
+  });
+  return it != end && it->id == column_id ? it - begin : kNotFoundIndex;
+}
+
 }  // namespace yb::dockv

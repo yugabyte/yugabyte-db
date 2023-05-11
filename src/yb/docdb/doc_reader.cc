@@ -18,32 +18,32 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"
+#include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/qlexpr/ql_expr.h"
+
 #include "yb/util/fast_varint.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
-
-
 
 namespace yb {
 namespace docdb {
@@ -404,6 +404,81 @@ Result<bool> TryDecodeValueOnly(
   return true;
 }
 
+class DocDbToQLTableRowConverter {
+ public:
+  DocDbToQLTableRowConverter(qlexpr::QLTableRow* row, ColumnId column)
+      : row_(row), column_(column) {}
+
+  void Clear() {
+    if (!row_) {
+      return;
+    }
+    row_->MarkTombstoned(column_);
+  }
+
+  Status Decode(const Slice& value_slice, const QLTypePtr& ql_type) {
+    if (!row_) {
+      return Status::OK();
+    }
+    if (ql_type) {
+      return dockv::PrimitiveValue::DecodeToQLValuePB(
+          value_slice, ql_type, &row_->AllocColumn(column_).value);
+    }
+
+    row_->MarkTombstoned(column_);
+    return Status::OK();
+  }
+
+ private:
+  qlexpr::QLTableRow* row_;
+  ColumnId column_;
+};
+
+inline auto MakeConverter(qlexpr::QLTableRow* row, size_t, ColumnId column) {
+  return DocDbToQLTableRowConverter(row, column);
+}
+
+class DocDbToPgTableRowConverter {
+ public:
+  DocDbToPgTableRowConverter(dockv::PgTableRow* row, size_t column_index)
+      : row_(row), column_index_(column_index) {}
+
+  void Clear() {
+    if (!row_) {
+      return;
+    }
+    row_->Clear(column_index_);
+  }
+
+  Status Decode(const Slice& value_slice, const QLTypePtr& ql_type) {
+    if (!row_) {
+      return Status::OK();
+    }
+    return row_->DecodeValue(column_index_, value_slice);
+  }
+
+ private:
+  dockv::PgTableRow* row_;
+  size_t column_index_;
+};
+
+inline auto MakeConverter(dockv::PgTableRow* row, size_t column_index, ColumnId) {
+  return DocDbToPgTableRowConverter(row, column_index);
+}
+
+template <class Converter> requires (!std::is_pointer_v<Converter>)
+Result<bool> TryDecodeValueOnly(
+    const Slice& value_slice, const QLTypePtr& ql_type, Converter converter) {
+  if (dockv::DecodeValueEntryType(value_slice) == ValueEntryType::kTombstone) {
+    converter.Clear();
+    return false;
+  }
+  if (ql_type) {
+    RETURN_NOT_OK(converter.Decode(value_slice, ql_type));
+  }
+  return true;
+}
+
 DocReaderResult FoundResult(bool iter_valid) {
   return iter_valid ? DocReaderResult::kFoundNotFinished : DocReaderResult::kFoundAndFinished;
 }
@@ -604,13 +679,17 @@ class DocDBTableReader::GetHelperBase {
   template <class GetValueAddressFunc>
   Result<bool> DoDecodePackedColumn(
       const Expiration& parent_exp, GetValueAddressFunc get_value_address) {
-    DVLOG_WITH_PREFIX_AND_FUNC(4)
-        << "Expiration: " << AsString(parent_exp);
     auto value = reader_.packed_row_->GetPackedColumnValue(column_index_);
     if (value.empty()) {
       return false;
     }
     auto& projected_column = *current_column_;
+
+    DVLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Expiration: " << AsString(parent_exp) << ", index: " << column_index_ << ", column: "
+        << projected_column.ToString() << ", value: " << value.ToDebugHexString() << ", offset: "
+        << current_column_ - &reader_.projection_->columns[0];
+
     if (ysql) {
       // Remove buggy intent_doc_ht from start of the column. See #16650 for details.
       if (value.TryConsumeByte(dockv::KeyEntryTypeAsChar::kHybridTime)) {
@@ -699,6 +778,13 @@ class DocDBTableReader::GetHelperBase {
       const Slice& value_slice, QLValuePB* out) {
     return TryDecodeValueOnly(
         value_slice, current_column_->type, out);
+  }
+
+  template <class Converter> requires (!std::is_pointer_v<Converter>)
+  Result<bool> TryDecodeValue(
+      UserTimeMicros timestamp, const LazyDocHybridTime& write_time, const Expiration& expiration,
+      const Slice& value_slice, Converter converter) {
+    return TryDecodeValueOnly(value_slice, current_column_->type, converter);
   }
 
   bool IsObsolete(const Expiration& expiration) {
@@ -920,13 +1006,14 @@ class DocDBTableReader::GetHelper :
 // It is more performant than DocDBTableReader::GetHelper, but can't handle the general case of
 // nested documents that is possible in YCQL.
 // Used for YSQL if FLAGS_ysql_use_flat_doc_reader is true.
+template <class ResultType>
 class DocDBTableReader::FlatGetHelper :
     public DocDBTableReader::GetHelperBase</* is_flat_doc= */ true, /* ysql= */ true> {
  public:
   using Base = DocDBTableReader::GetHelperBase</* is_flat_doc= */ true, /* ysql= */ true>;
 
   FlatGetHelper(
-      DocDBTableReader* reader, const Slice& root_doc_key, qlexpr::QLTableRow* result)
+      DocDBTableReader* reader, const Slice& root_doc_key, ResultType* result)
       : Base(reader, root_doc_key), result_(result) {
     row_expiration_ = reader_.table_expiration_;
     root_key_entry_ = &row_key_;
@@ -956,7 +1043,7 @@ class DocDBTableReader::FlatGetHelper :
       return false;
     }
 
-    auto* column_value = check_exist_only ? nullptr : GetValueAddress();
+    auto dest = GetValueConverter(check_exist_only ? nullptr : result_);
 
     if (TtlCheckRequired()) {
       auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
@@ -976,11 +1063,11 @@ class DocDBTableReader::FlatGetHelper :
 
       if (VERIFY_RESULT(TryDecodeValue(
               control_fields.timestamp, lazy_write_time, column_expiration, value_slice,
-              column_value))) {
+              dest))) {
         found_ = true;
       }
     } else {
-      if (VERIFY_RESULT(TryDecodeValueOnly(value_slice, current_column_->type, column_value))) {
+      if (VERIFY_RESULT(TryDecodeValueOnly(value_slice, current_column_->type, dest))) {
         found_ = true;
       }
     }
@@ -989,22 +1076,22 @@ class DocDBTableReader::FlatGetHelper :
   }
 
   void NoValueForColumnIndex() override {
-    if (result_) {
-      result_->MarkTombstoned(current_column_->id);
-    }
+    GetValueConverter(result_).Clear();
   }
 
   Result<bool> DecodePackedColumn() override {
     return DoDecodePackedColumn(row_expiration_, [this] {
-      return GetValueAddress();
+      return GetValueConverter(result_);
     });
   }
 
-  QLValuePB* GetValueAddress() {
+  auto GetValueConverter(ResultType* result) {
     if (column_index_ == kLivenessColumnIndex) {
-      return nullptr;
+      result = nullptr;
     }
-    return &result_->AllocColumn(current_column_->id).value;
+
+    return MakeConverter(
+        result, reader_.projection_->num_key_columns + column_index_, current_column_->id);
   }
 
   Status SetRootValue(ValueEntryType row_value_type, const Slice& row_value) override {
@@ -1016,7 +1103,7 @@ class DocDBTableReader::FlatGetHelper :
   }
 
   // Owned by the DocDBTableReader::FlatGetHelper user.
-  qlexpr::QLTableRow* result_;
+  ResultType* result_;
 
   dockv::KeyBytes row_key_;
   LazyDocHybridTime row_write_time_;
@@ -1030,7 +1117,13 @@ Result<DocReaderResult> DocDBTableReader::Get(const Slice& root_doc_key, SubDocu
 
 Result<DocReaderResult> DocDBTableReader::GetFlat(
     const Slice& root_doc_key, qlexpr::QLTableRow* result) {
-  FlatGetHelper helper(this, root_doc_key, result);
+  FlatGetHelper<qlexpr::QLTableRow> helper(this, root_doc_key, result);
+  return helper.Run();
+}
+
+Result<DocReaderResult> DocDBTableReader::GetFlat(
+    const Slice& root_doc_key, dockv::PgTableRow* result) {
+  FlatGetHelper<dockv::PgTableRow> helper(this, root_doc_key, result);
   return helper.Run();
 }
 

@@ -180,6 +180,10 @@ class ByteBuffer {
     return Slice(ptr(), size_);
   }
 
+  const uint8_t* data() const {
+    return pointer_cast<const uint8_t*>(ptr());
+  }
+
   uint8_t* mutable_data() {
     return pointer_cast<uint8_t*>(ptr());
   }
