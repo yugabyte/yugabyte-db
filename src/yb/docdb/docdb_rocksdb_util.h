@@ -174,6 +174,10 @@ class RocksDBPatcher {
   // Like all other methods in this class it updates manifest file.
   Status UpdateFileSizes();
 
+  // Returns true if at least one sst file contains a valid hybrid time filter
+  // in its largest frontier.
+  bool TEST_ContainsHybridTimeFilter();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
