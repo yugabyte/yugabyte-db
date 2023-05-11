@@ -234,6 +234,11 @@ void RunningTransaction::SendStatusRequest(
     int64_t serial_no, const RunningTransactionPtr& shared_self) {
   TRACE_FUNC();
   VTRACE(1, yb::ToString(metadata_.transaction_id));
+  auto* client = context_.participant_context_.client_future().get();
+  if (!client) {
+    LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << metadata_;
+    return;
+  }
   tserver::GetTransactionStatusRequestPB req;
   req.set_tablet_id(metadata_.status_tablet);
   req.add_transaction_id()->assign(
@@ -243,7 +248,7 @@ void RunningTransaction::SendStatusRequest(
       client::GetTransactionStatus(
           TransactionRpcDeadline(),
           nullptr /* tablet */,
-          context_.participant_context_.client_future().get(),
+          client,
           &req,
           std::bind(&RunningTransaction::StatusReceived, this, _1, _2, serial_no, shared_self)),
       &get_status_handle_);
