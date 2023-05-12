@@ -266,10 +266,8 @@ export const AWSProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = (options?: { isExistingRegion: boolean }) => {
-    setRegionOperation(
-      options?.isExistingRegion ? RegionOperation.EDIT_EXISTING : RegionOperation.EDIT_NEW
-    );
+  const showEditRegionFormModal = (regionOperation: RegionOperation) => {
+    setRegionOperation(regionOperation);
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -468,6 +466,7 @@ export const AWSProviderEditForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={isProviderInUse}
               />
               {!!formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -638,6 +637,7 @@ export const AWSProviderEditForm = ({
         <ConfigureRegionModal
           configuredRegions={regions}
           isEditProvider={true}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}

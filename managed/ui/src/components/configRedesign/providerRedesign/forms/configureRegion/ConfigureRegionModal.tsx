@@ -24,7 +24,7 @@ import {
   YBReactSelectField
 } from '../../components/YBReactSelect/YBReactSelectField';
 import { getRegionlabel, getRegionOptions, getZoneOptions } from './utils';
-import { generateLowerCaseAlphanumericId } from '../utils';
+import { generateLowerCaseAlphanumericId, getIsRegionFormDisabled } from '../utils';
 
 interface ConfigureRegionModalProps extends YBModalProps {
   configuredRegions: CloudVendorRegionField[];
@@ -33,6 +33,7 @@ interface ConfigureRegionModalProps extends YBModalProps {
   providerCode: ProviderCode;
   regionOperation: RegionOperation;
   isEditProvider: boolean;
+  isProviderFormDisabled: boolean;
 
   ybImageType?: YBImageType;
   regionSelection?: CloudVendorRegionField;
@@ -76,6 +77,7 @@ const useStyles = makeStyles((theme) => ({
 export const ConfigureRegionModal = ({
   configuredRegions,
   isEditProvider,
+  isProviderFormDisabled,
   onClose,
   onRegionSubmit,
   providerCode,
@@ -193,17 +195,25 @@ export const ConfigureRegionModal = ({
     }
   };
 
+  const isFormDisabled = isProviderFormDisabled || getIsRegionFormDisabled(formMethods.formState);
   return (
     <FormProvider {...formMethods}>
       <YBModal
         title={`${RegionOperationLabel[regionOperation]} Region`}
         titleIcon={<i className={clsx('fa fa-plus', classes.titleIcon)} />}
-        submitLabel={`${RegionOperationLabel[regionOperation]} Region`}
+        submitLabel={
+          regionOperation !== RegionOperation.VIEW
+            ? `${RegionOperationLabel[regionOperation]} Region`
+            : undefined
+        }
         cancelLabel="Cancel"
         onSubmit={formMethods.handleSubmit(onSubmit)}
         onClose={onClose}
         submitTestId="ConfigureRegionModal-SubmitButton"
         cancelTestId="ConfigureRegionModal-CancelButton"
+        buttonProps={{
+          primary: { disabled: isFormDisabled }
+        }}
         {...modalProps}
       >
         {shouldExposeField.regionData && (
@@ -214,6 +224,7 @@ export const ConfigureRegionModal = ({
               name="regionData"
               options={regionOptions}
               onChange={onRegionChange}
+              isDisabled={isFormDisabled}
             />
           </div>
         )}
@@ -224,6 +235,7 @@ export const ConfigureRegionModal = ({
               control={formMethods.control}
               name="vnet"
               placeholder="Enter..."
+              disabled={isFormDisabled}
               fullWidth
             />
           </div>
@@ -235,6 +247,7 @@ export const ConfigureRegionModal = ({
               control={formMethods.control}
               name="securityGroupId"
               placeholder="Enter..."
+              disabled={isFormDisabled}
               fullWidth
             />
           </div>
@@ -247,8 +260,9 @@ export const ConfigureRegionModal = ({
               name="ybImage"
               placeholder="Enter..."
               disabled={
-                providerCode === ProviderCode.AWS &&
-                regionOperation === RegionOperation.EDIT_EXISTING
+                isFormDisabled ||
+                (providerCode === ProviderCode.AWS &&
+                  regionOperation === RegionOperation.EDIT_EXISTING)
               }
               fullWidth
             />
@@ -261,6 +275,7 @@ export const ConfigureRegionModal = ({
               control={formMethods.control}
               name="sharedSubnet"
               placeholder="Enter..."
+              disabled={isFormDisabled}
               fullWidth
             />
           </div>
@@ -270,7 +285,7 @@ export const ConfigureRegionModal = ({
             <ConfigureAvailabilityZoneField
               className={classes.manageAvailabilityZoneField}
               zoneCodeOptions={selectedRegion?.value?.zoneOptions}
-              isSubmitting={formMethods.formState.isSubmitting}
+              isFormDisabled={isFormDisabled}
             />
             {formMethods.formState.errors.zones?.message && (
               <FormHelperText error={true}>

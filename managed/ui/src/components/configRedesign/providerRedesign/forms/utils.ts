@@ -130,3 +130,7 @@ export const getIsFormDisabled = <TFieldValues extends FieldValues>(
   isProviderInUse ||
   formState.isValidating ||
   formState.isSubmitting;
+
+export const getIsRegionFormDisabled = <TFieldValues extends FieldValues>(
+  formState: FormState<TFieldValues>
+) => formState.isSubmitting;
