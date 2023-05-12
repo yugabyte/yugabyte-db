@@ -24,6 +24,7 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flags.h"
@@ -988,6 +989,13 @@ Status PgSupervisor::ReloadConfig() {
 }
 
 Status PgSupervisor::UpdateAndReloadConfig() {
+  // See GHI #16055. TSAN detects that Start() and UpdateAndReloadConfig each acquire M0 and M1 in
+  // inverse order which may run into a deadlock. However, Start() is always called first and will
+  // acquire M0 and M1 before it registers the callback UpdateAndReloadConfig() and will never
+  // be called again. Thus the deadlock called out by TSAN is not possible. Silence TSAN warnings
+  // from this function to prevent spurious failures.
+  debug::ScopedTSANIgnoreSync ignore_sync;
+  debug::ScopedTSANIgnoreReadsAndWrites ignore_reads_and_writes;
   std::lock_guard<std::mutex> lock(mtx_);
   if (pg_wrapper_) {
     return pg_wrapper_->UpdateAndReloadConfig();
