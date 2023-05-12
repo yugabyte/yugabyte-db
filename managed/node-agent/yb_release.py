@@ -101,6 +101,10 @@ try:
 
                     thirdparty_folder = "/opt/third-party/"
                     for file in os.listdir(thirdparty_folder):
+                        # Skip Packaging alertmanager with NodeAgent.
+                        # TODO: Make a list of packages that are actually needed.
+                        if "alertmanager" in file:
+                            continue
                         filepath = os.path.join(thirdparty_folder, file)
                         if os.path.isfile(filepath):
                             repackaged_tarfile.add(filepath,
