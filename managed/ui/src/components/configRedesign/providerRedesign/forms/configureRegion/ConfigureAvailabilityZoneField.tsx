@@ -17,7 +17,7 @@ import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelect
 import { CloudVendorAvailabilityZoneMutation } from '../../types';
 
 interface ConfigureAvailabilityZoneFieldProps {
-  isSubmitting: boolean;
+  isFormDisabled: boolean;
   zoneCodeOptions: string[] | undefined;
   className?: string;
 }
@@ -48,7 +48,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const ConfigureAvailabilityZoneField = ({
-  isSubmitting,
+  isFormDisabled,
   zoneCodeOptions,
   className
 }: ConfigureAvailabilityZoneFieldProps) => {
@@ -74,7 +74,7 @@ export const ConfigureAvailabilityZoneField = ({
         btnType="button"
         onClick={addZoneField}
         disabled={
-          isSubmitting || zoneCodeOptions === undefined || fields.length >= zoneCodeOptions.length
+          isFormDisabled || zoneCodeOptions === undefined || fields.length >= zoneCodeOptions.length
         }
         data-testid="ConfigureAvailabilityZonField-AddZoneButton"
       />
@@ -86,11 +86,13 @@ export const ConfigureAvailabilityZoneField = ({
               name={`zones.${index}.code`}
               options={selectZoneCodeOptions}
               placeholder="Zone"
+              isDisabled={isFormDisabled}
             />
             <YBInputField
               control={control}
               name={`zones.${index}.subnet`}
               placeholder="Subnet"
+              disabled={isFormDisabled}
               fullWidth
             />
             <YBButton
@@ -98,6 +100,7 @@ export const ConfigureAvailabilityZoneField = ({
               btnIcon="fa fa-trash-o"
               btnType="button"
               onClick={() => remove(index)}
+              disabled={isFormDisabled}
             />
           </div>
         ))}
