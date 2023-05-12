@@ -43,7 +43,7 @@ The YB-Master continuously monitors tablets and decides when to split a particul
 * The IOPS on each tablet
 * The CPU used on each tablet
 
-Currently, the YB-Master configuration parameter `tablet_split_size_threshold_bytes` is propagated to all YB-TServers by piggybacking it with the heartbeat responses. The YB-TServers in turn report a list of tablets whose sizes exceed the `tablet_split_size_threshold_bytes` parameter.
+Currently, the YB-Master configuration parameter `tablet_split_low_phase_size_threshold_bytes` or `tablet_split_high_phase_size_threshold_byte` is propagated to all YB-TServers by piggybacking it with the heartbeat responses. The YB-TServers in turn report a list of tablets whose sizes exceed the `tablet_split_low_phase_size_threshold_bytes` or `tablet_split_high_phase_size_threshold_byte` parameter.
 
 Based on the heartbeats from all the YB-TServers, the YB-Master picks the set of tablets that need to be split. At this point, the split can be initiated.
 
