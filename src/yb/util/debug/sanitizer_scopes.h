@@ -54,5 +54,20 @@ class ScopedTSANIgnoreReadsAndWrites {
   DISALLOW_COPY_AND_ASSIGN(ScopedTSANIgnoreReadsAndWrites);
 };
 
+// Scope guard which instructs TSAN to ignore all synchronization events
+// on the current thread as long as it is alive. These may be safely
+// nested.
+class ScopedTSANIgnoreSync {
+ public:
+  ScopedTSANIgnoreSync() {
+    ANNOTATE_IGNORE_SYNC_BEGIN();
+  }
+  ~ScopedTSANIgnoreSync() {
+    ANNOTATE_IGNORE_SYNC_END();
+  }
+ private:
+  DISALLOW_COPY_AND_ASSIGN(ScopedTSANIgnoreSync);
+};
+
 } // namespace debug
 } // namespace yb
