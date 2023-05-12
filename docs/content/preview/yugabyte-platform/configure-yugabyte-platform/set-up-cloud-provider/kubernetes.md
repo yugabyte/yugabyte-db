@@ -278,7 +278,7 @@ The following overrides are available:
       app: "yb-master"
       ports:
         ui: "7000"
-  
+
     - name: "yb-tserver-service"
       type: "LoadBalancer"
       annotations:
@@ -365,24 +365,24 @@ The following overrides are available:
               values:
               - "yb-tserver"
           topologyKey: kubernetes.io/hostname
-  
+
   # Required to esure that the Kubernetes FQDNs are used for
   # internal communication between the nodes and node-to-node
   # TLS certificates are validated correctly
-  
+
   gflags:
     master:
       use_private_ip: cloud
     tserver:
       use_private_ip: cloud
-  
+
   serviceEndpoints:
     - name: "yb-master-ui"
       type: LoadBalancer
       app: "yb-master"
       ports:
         http-ui: "7000"
-  
+
     - name: "yb-tserver-service"
       type: NodePort
       externalTrafficPolicy: "Local"
@@ -412,25 +412,25 @@ The following overrides are available:
   ```yml
   ## Consider the node has the following taint:
   ## kubectl taint nodes node1 dedicated=experimental:NoSchedule-
-  
+
   master:
     tolerations:
     - key: dedicated
       operator: Equal
       value: experimental
       effect: NoSchedule
-  
+
   tserver:
     tolerations: []
   ```
 
   Tolerations work in combination with taints: `Taints` are applied on nodes and `Tolerations` are applied to pods. Taints and tolerations ensure that pods do not schedule onto inappropriate nodes. You need to set `nodeSelector` to schedule YugabyteDB pods onto specific nodes, and then use taints and tolerations to prevent other pods from getting scheduled on the dedicated nodes, if required. For more information, see [toleration](../../../install-yugabyte-platform/install-software/kubernetes/#toleration) and [Toleration API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#toleration-v1-core).
 
-- Overrides to use `nodeSelector` to schedule YB-Master and YB-TServer pods on dedicated nodes: 
+- Overrides to use `nodeSelector` to schedule YB-Master and YB-TServer pods on dedicated nodes:
 
   ```yml
   ## To schedule a pod on a node that has a topology.kubernetes.io/zone=asia-south2-a label
-  
+
   nodeSelector:
     topology.kubernetes.io/zone: asia-south2-a
   ```
@@ -441,7 +441,7 @@ The following overrides are available:
 
   ```yml
   ## To prevent scheduling of multiple master pods on single kubernetes node
-  
+
   master:
     affinity:
       podAntiAffinity:
@@ -453,7 +453,7 @@ The following overrides are available:
               values:
               - "yb-master"
           topologyKey: kubernetes.io/hostname
-  
+
   tserver:
     affinity: {}
   ```
@@ -466,7 +466,7 @@ The following overrides are available:
   master:
     podAnnotations:
       application: "yugabytedb"
-  
+
   tserver:
     podAnnotations: {}
   ```
@@ -481,7 +481,7 @@ The following overrides are available:
       environment: production
       app: yugabytedb
       prometheus.io/scrape: true
-  
+
   tserver:
     podLabels: {}
   ```
@@ -495,10 +495,10 @@ The following overrides are available:
   preflight:
     ## Set to true to skip disk IO check, DNS address resolution, port bind checks
     skipAll: false
-  
+
     ## Set to true to skip port bind checks
     skipBind: false
-  
+
     ## Set to true to skip ulimit verification
     ## SkipAll has higher priority
     skipUlimit: false
@@ -512,14 +512,15 @@ The following overrides are available:
 
 If you plan to create multi-region YugabyteDB universes, you can set up [Multi-Cluster Services](https://git.k8s.io/enhancements/keps/sig-multicluster/1645-multi-cluster-services-api) (MCS) across your Kubernetes clusters. This section covers implementation specific details for setting up MCS on various cloud providers and service mesh tools.
 
-{{< warning title="YugabyteDB Anywhere support for MCS is in beta" >}}
+{{< warning title="YugabyteDB Anywhere support for MCS is in Early Access" >}}
 
 The Kubernetes MCS API is currently in alpha, though there are various implementations of MCS which are [considered to be stable](https://github.com/kubernetes-sigs/mcs-api/issues/17#issuecomment-1309073682). To know more, see [API versioning](https://kubernetes.io/docs/reference/using-api/#api-versioning) in the Kubernetes documentation.
 
-MCS support in YugabyteDB Anywhere is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Keep in mind following caveats:
+MCS support in YugabyteDB Anywhere is currently in [Early Access](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Keep in mind following caveats:
 
 - Universe metrics may not display correct metrics for all the pods.
 - xCluster replication needs an additional manual step to work on OpenShift MCS.
+- {{% support-platform %}} assistance is needed for upgrades.
 
 {{< /warning >}}
 
@@ -534,7 +535,7 @@ To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](htt
 Red Hat OpenShift Container Platform uses the Advanced Cluster Management for Kubernetes (RHACM) and its Submariner add-on to enable MCS. At a very high level this involves following steps:
 
 1. Create a management cluster and install RHACM on it. For details, see [Installing Red Hat Advanced Cluster Management for Kubernetes](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.7/html/install/installing) in the Red Hat documentation.
-1. Provision the OpenShift clusters which will be connected together.  
+1. Provision the OpenShift clusters which will be connected together.
    Ensure that the CIDRs mentioned in the cluster configuration file at `networking.clusterNetwork`, `networking.serviceNetwork`, and `networking.machineNetwork` are non-overlapping across the multiple clusters. You can find more details about these options in provider-specific sections under the [OpenShift Container Platform installation overview](https://docs.openshift.com/container-platform/4.11/installing/index.html) (look for sections named "Installing a cluster on [provider name] with customizations").
 1. Import the clusters into RHACM as a cluster set, and install the Submariner add-on on them. For more information, see [Configuring Submariner](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.7/html/add-ons/add-ons-overview#configuring-submariner).
 1. Note down the cluster names from the cluster set, as these will be used during the cloud provider setup in YugabyteDB Anywhere.
@@ -602,7 +603,7 @@ Follow the instructions in [Configure the OpenShift cloud provider](../openshift
 
 For example, if your cluster name is `yb-asia-south1`, then the values will be as follows:
 
-- **Pod Address Template**  
+- **Pod Address Template**
   `{pod_name}.yb-asia-south1.{service_name}.{namespace}.svc.{cluster_domain}`
 - **Overrides**
 
