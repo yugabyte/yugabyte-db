@@ -13,6 +13,7 @@ import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
+import com.amazonaws.services.ec2.model.DeleteKeyPairRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesResult;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsRequest;
@@ -779,5 +780,25 @@ public class AWSCloudImpl implements CloudAPI {
     AWSCloudInfo cloudInfo = provider.getDetails().getCloudInfo().getAws();
     return !StringUtils.isEmpty(cloudInfo.awsAccessKeyID)
         && !StringUtils.isEmpty(cloudInfo.awsAccessKeySecret);
+  }
+
+  public void deleteKeyPair(Provider provider, Region region, String keyPairName) {
+    List<Region> regions = new ArrayList<Region>();
+    regions.add(region);
+    if (regions.size() == 0) {
+      regions = provider.getRegions();
+    }
+
+    try {
+      for (Region r : regions) {
+        AmazonEC2 ec2Client = getEC2Client(provider, r.getCode());
+        DeleteKeyPairRequest request = new DeleteKeyPairRequest().withKeyName(keyPairName);
+        ec2Client.deleteKeyPair(request);
+      }
+    } catch (AmazonServiceException e) {
+      LOG.error("Access Key deletion failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Access Key deletion failed: " + e.getMessage());
+    }
   }
 }
