@@ -313,7 +313,14 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   rpc::RpcController rpc;
   ASSERT_NOK(GetChangesWithRetries(cdc_proxy.get(), change_req, &change_resp));
   ASSERT_TRUE(change_resp.has_error());
-  ASSERT_TRUE(StatusFromPB(change_resp.error().status()).IsNotFound());
+  const auto status = StatusFromPB(change_resp.error().status());
+  // Depending on if the parent tablet has been inputted into every cdc_service's tablet_checkpoint_
+  // map, we may either return NotFound (pass all CheckTabletValidForStream checks, but then can't
+  // find tablet) or TabletSplit (from failing CheckTabletValidForStream on some tserver since the
+  // tablet can't be found).
+  // Either of these statuses is fine and means that this tablet no longer exists and was deleted.
+  LOG(INFO) << "GetChanges status: " << status;
+  ASSERT_TRUE(status.IsNotFound() || status.IsTabletSplit());
 }
 
 // For testing xCluster setups. Since most test utility functions expect there to be only one
