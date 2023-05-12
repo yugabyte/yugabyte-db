@@ -1,4 +1,4 @@
-# Auto Flags
+# AutoFlags
 
 AutoFlags are gFlags with two hard-coded values: Initial and Target (instead of the regular gFlag Default). AutoFlags have two states: promoted and not-promoted. An AutoFlag is set to its Initial value in the not-promoted state and to its Target value in the promoted state.
 
