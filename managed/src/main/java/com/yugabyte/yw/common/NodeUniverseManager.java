@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -20,6 +21,11 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -32,10 +38,13 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
+@Slf4j
 @Singleton
 public class NodeUniverseManager extends DevopsBase {
   private static final ShellProcessContext DEFAULT_CONTEXT =
@@ -51,6 +60,7 @@ public class NodeUniverseManager extends DevopsBase {
   @Inject ImageBundleUtil imageBundleUtil;
   @Inject NodeAgentClient nodeAgentClient;
   @Inject NodeAgentPoller nodeAgentPoller;
+  @Inject RuntimeConfGetter confGetter;
 
   @Override
   protected String getCommandType() {
@@ -73,28 +83,96 @@ public class NodeUniverseManager extends DevopsBase {
     }
   }
 
+  public String getLocalTmpDir() {
+    String localTmpDir = confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath);
+    if (localTmpDir == null || localTmpDir.isEmpty()) {
+      localTmpDir = "/tmp";
+    }
+    return localTmpDir;
+  }
+
+  public String getRemoteTmpDir(NodeDetails node, Universe universe) {
+    String remoteTmpDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    if (remoteTmpDir == null || remoteTmpDir.isEmpty()) {
+      remoteTmpDir = "/tmp";
+    }
+    return remoteTmpDir;
+  }
+
+  public String createTempFileWithSourceFiles(List<String> sourceNodeFiles) {
+    String tempFilePath =
+        getLocalTmpDir() + "/" + UUID.randomUUID().toString() + "-source-files.txt";
+    try {
+      Files.createFile(Paths.get(tempFilePath));
+    } catch (IOException e) {
+      log.error("Error creating file: " + e.getMessage());
+      return null;
+    }
+
+    try (PrintWriter out = new PrintWriter(new FileWriter(tempFilePath))) {
+      for (String value : sourceNodeFiles) {
+        out.println(value);
+        log.info(value);
+      }
+      log.info("Above values written to file.");
+    } catch (IOException e) {
+      log.error("Error writing to file: " + e.getMessage());
+      return null;
+    }
+    return tempFilePath;
+  }
+
   public ShellResponse downloadNodeFile(
       NodeDetails node,
       Universe universe,
       String ybHomeDir,
-      String sourceNodeFile,
+      List<String> sourceNodeFiles,
       String targetLocalFile) {
     universeLock.acquireLock(universe.getUniverseUUID());
+    String filesListFilePath = "";
     try {
       List<String> actionArgs = new ArrayList<>();
       // yb_home_dir denotes a custom starting directory for the remote file. (Eg: ~/, /mnt/d0,
       // etc.)
       actionArgs.add("--yb_home_dir");
       actionArgs.add(ybHomeDir);
-      actionArgs.add("--source_node_files");
-      actionArgs.add(sourceNodeFile);
+
+      filesListFilePath = createTempFileWithSourceFiles(sourceNodeFiles);
+      if (filesListFilePath == null) {
+        throw new RuntimeException(
+            "Could not create temp file while downloading node file for universe "
+                + universe.getUniverseUUID().toString());
+      }
+      actionArgs.add("--source_node_files_path");
+      actionArgs.add(filesListFilePath);
+
       actionArgs.add("--target_local_file");
       actionArgs.add(targetLocalFile);
       return executeNodeAction(
           UniverseNodeAction.DOWNLOAD_FILE, universe, node, actionArgs, DEFAULT_CONTEXT);
     } finally {
+      FileUtils.deleteQuietly(new File(filesListFilePath));
       universeLock.releaseLock(universe.getUniverseUUID());
     }
+  }
+
+  public ShellResponse copyFileFromNode(
+      NodeDetails node, Universe universe, String remoteFile, String localFile) {
+    return copyFileFromNode(node, universe, remoteFile, localFile, DEFAULT_CONTEXT);
+  }
+
+  public ShellResponse copyFileFromNode(
+      NodeDetails node,
+      Universe universe,
+      String remoteFile,
+      String localFile,
+      ShellProcessContext context) {
+    List<String> actionArgs = new ArrayList<>();
+    actionArgs.add("--remote_file");
+    actionArgs.add(remoteFile);
+    actionArgs.add("--local_file");
+    actionArgs.add(localFile);
+    return executeNodeAction(UniverseNodeAction.COPY_FILE, universe, node, actionArgs, context);
   }
 
   public ShellResponse uploadFileToNode(
@@ -450,17 +528,40 @@ public class NodeUniverseManager extends DevopsBase {
    */
   public List<Path> getNodeFilePaths(
       NodeDetails node, Universe universe, String remoteDirPath, int maxDepth, String fileType) {
-    List<String> command = new ArrayList<>();
-    command.add("find");
-    command.add(remoteDirPath);
-    command.add("-maxdepth");
-    command.add(String.valueOf(maxDepth));
-    command.add("-type");
-    command.add(fileType);
+    String localTempFilePath =
+        getLocalTmpDir() + "/" + UUID.randomUUID().toString() + "-source-files-unfiltered.txt";
+    String remoteTempFilePath =
+        getRemoteTmpDir(node, universe)
+            + "/"
+            + UUID.randomUUID().toString()
+            + "-source-files-unfiltered.txt";
 
-    ShellResponse shellOutput = runCommand(node, universe, command);
-    List<String> nodeFilePathStrings =
-        Arrays.asList(shellOutput.extractRunCommandOutput().trim().split("\n", 0));
+    List<String> findCommandParams = new ArrayList<>();
+    findCommandParams.add("find_paths_in_dir");
+    findCommandParams.add(remoteDirPath);
+    findCommandParams.add(String.valueOf(maxDepth));
+    findCommandParams.add(fileType);
+    findCommandParams.add(remoteTempFilePath);
+
+    ShellResponse shellOutput = runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams);
+    // Download the files list.
+    copyFileFromNode(node, universe, remoteTempFilePath, localTempFilePath);
+
+    // Delete file from remote server after copying to local.
+    List<String> removeCommand = new ArrayList<>();
+    removeCommand.add("rm");
+    removeCommand.add(remoteTempFilePath);
+    shellOutput = runCommand(node, universe, removeCommand);
+
+    // Populate the text file into array.
+    List<String> nodeFilePathStrings = Arrays.asList();
+    try {
+      nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
+    } catch (IOException e) {
+      e.printStackTrace();
+    } finally {
+      FileUtils.deleteQuietly(new File(localTempFilePath));
+    }
     return nodeFilePathStrings.stream().map(Paths::get).collect(Collectors.toList());
   }
 
@@ -469,6 +570,7 @@ public class NodeUniverseManager extends DevopsBase {
     RUN_SCRIPT,
     DOWNLOAD_LOGS,
     DOWNLOAD_FILE,
+    COPY_FILE,
     UPLOAD_FILE,
     TEST_DIRECTORY
   }

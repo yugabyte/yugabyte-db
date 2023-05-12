@@ -159,8 +159,8 @@ def add_download_file_subparser(subparsers, command, parent):
     parser.add_argument('--yb_home_dir', type=str,
                         help='Home directory for YB',
                         default='/home/yugabyte/')
-    parser.add_argument('--source_node_files', type=str,
-                        help='Source files to download (separated by ;)',
+    parser.add_argument('--source_node_files_path', type=str,
+                        help='File containing source files to download (separated by new line)',
                         required=True)
     parser.add_argument('--target_local_file', type=str,
                         help='Target file to save source to',
@@ -170,10 +170,12 @@ def add_download_file_subparser(subparsers, command, parent):
 def download_file_node(args, client):
     # Name is irrelevant as long as it doesn't already exist
     tar_file_name = args.node_name + "-" + str(uuid.uuid4()) + ".tar.gz"
+    target_node_files_path = args.source_node_files_path
 
-    # "node_utils.sh/create_tar_file" file takes parameters [home_dir, tar_file_name, file_names...]
-    cmd = args.source_node_files.split(";")
-    cmd = [file_name for file_name in cmd if file_name.strip() != ""]
+    # "node_utils.sh/create_tar_file" file takes parameters:
+    # [home_dir, tar_file_name, file_list_text_path]
+    cmd = [args.source_node_files_path]
+    client.put_file(args.source_node_files_path, target_node_files_path)
     cmd.insert(0, tar_file_name)
     cmd.insert(0, args.yb_home_dir)
 
@@ -186,7 +188,7 @@ def download_file_node(args, client):
 
     check_file_exists_output = int(file_exists)
     if check_file_exists_output:
-        rm_cmd = ['rm', tar_file_name]
+        rm_cmd = ['rm', tar_file_name, target_node_files_path]
         client.fetch_file(tar_file_name, args.target_local_file)
         client.exec_command(rm_cmd)
 
@@ -195,10 +197,12 @@ def download_file_k8s(args, client):
     # TO DO: Test if k8s works properly!
     # Name is irrelevant as long as it doesn't already exist
     tar_file_name = args.node_name + "-" + str(uuid.uuid4()) + ".tar.gz"
+    target_node_files_path = args.source_node_files_path
 
-    # "node_utils.sh/create_tar_file" file takes parameters [home_dir, tar_file_name, file_names...]
-    cmd = args.source_node_files.split(";")
-    cmd = [file_name for file_name in cmd if file_name.strip() != ""]
+    # "node_utils.sh/create_tar_file" file takes parameters:
+    # [home_dir, tar_file_name, file_list_text_path]
+    cmd = [args.source_node_files_path]
+    client.put_file(args.source_node_files_path, target_node_files_path)
     cmd.insert(0, tar_file_name)
     cmd.insert(0, args.yb_home_dir)
 
@@ -211,7 +215,7 @@ def download_file_k8s(args, client):
         client.exec_script("./bin/node_utils.sh", ["check_file_exists", tar_file_name]).strip())
     if check_file_exists_output:
         client.get_file(tar_file_name, args.target_local_file)
-        client.exec_command(['rm', tar_file_name])
+        client.exec_command(['rm', tar_file_name, target_node_files_path])
 
 
 def handle_download_file(args, client):
@@ -219,6 +223,37 @@ def handle_download_file(args, client):
         download_file_node(args, client)
     else:
         download_file_k8s(args, client)
+
+
+def add_copy_file_subparser(subparsers, command, parent):
+    parser = subparsers.add_parser(command, help='copy file from remote to local',
+                                   parents=[parent])
+    parser.add_argument('--remote_file', type=str,
+                        help='Source file path',
+                        required=True)
+    parser.add_argument('--local_file', type=str,
+                        help='Target file path',
+                        required=True)
+
+
+def copy_file_ssh(args, client):
+    client.fetch_file(args.remote_file, args.local_file)
+
+
+def copy_file_k8s(args, client):
+    client.get_file(args.remote_file, args.local_file)
+
+
+def handle_copy_file(args, client):
+    logging.info("args here {}".format(args))
+    local_path = Path(args.local_file)
+    cmd = ['mkdir', '-p', str(local_path.parent.absolute())]
+    client.exec_command(cmd)
+
+    if args.node_type == 'ssh' or args.node_type == 'rpc':
+        copy_file_ssh(args, client)
+    else:
+        copy_file_k8s(args, client)
 
 
 def add_upload_file_subparser(subparsers, command, parent):
@@ -269,6 +304,7 @@ actions = {
     'run_script': ActionHandler(handle_run_script, add_run_script_subparser),
     'download_logs': ActionHandler(handle_download_logs, add_download_logs_subparser),
     'download_file': ActionHandler(handle_download_file, add_download_file_subparser),
+    'copy_file': ActionHandler(handle_copy_file, add_copy_file_subparser),
     'upload_file': ActionHandler(handle_upload_file, add_upload_file_subparser),
     'test_directory': ActionHandler(handle_test_directory, add_test_directory_subparser)
 }
