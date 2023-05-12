@@ -212,7 +212,7 @@ bool FullCompactionManager::ShouldCompactBasedOnStats(const TabletId& tablet_id)
   return true;
 }
 
-bool FullCompactionManager::CompactedTooRecently(const TabletPeerPtr peer, const HybridTime& now) {
+bool FullCompactionManager::CompactedTooRecently(const TabletPeerPtr& peer, const HybridTime& now) {
   // Check that we haven't compacted too recently.
   const auto min_compaction_wait =
       ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_min_wait_between_seconds);
@@ -318,7 +318,8 @@ void FullCompactionManager::ResetFrequencyAndJitterIfNeeded(
   }
 }
 
-HybridTime FullCompactionManager::DetermineNextCompactTime(TabletPeerPtr peer, HybridTime now) {
+HybridTime FullCompactionManager::DetermineNextCompactTime(
+    const TabletPeerPtr& peer, HybridTime now) {
   // First, see if we've pre-calculated a next compaction time for this tablet. If not, it will
   // need to be calculated based on the last full compaction time.
   const auto tablet_id = peer->tablet_id();
@@ -414,7 +415,7 @@ KeyStatistics KeyStatsSlidingWindow::current_stats() const {
   // To calculate statistics, expected_intervals_ needs to be greater than 0
   // and the key_stats_window_ deque needs (expected_intervals_ + 1) values.
   if (expected_intervals_ == 0 || key_stats_window_.size() <= expected_intervals_) {
-    return KeyStatistics{0, 0};
+    return KeyStatistics{ 0, 0 };
   }
   return { key_stats_window_.back().total - key_stats_window_.front().total,
       key_stats_window_.back().obsolete_cutoff - key_stats_window_.front().obsolete_cutoff };
