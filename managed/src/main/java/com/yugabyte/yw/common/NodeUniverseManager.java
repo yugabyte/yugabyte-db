@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -43,6 +45,8 @@ public class NodeUniverseManager extends DevopsBase {
   public static final String NODE_UTILS_SCRIPT = "bin/node_utils.sh";
 
   private final KeyLock<UUID> universeLock = new KeyLock<>();
+
+  @Inject NodeAgentPoller nodeAgentPoller;
 
   @Override
   protected String getCommandType() {
@@ -303,8 +307,12 @@ public class NodeUniverseManager extends DevopsBase {
       Optional<NodeAgent> optional =
           getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
       if (optional.isPresent()) {
+        NodeAgent nodeAgent = optional.get();
         commandArgs.add("rpc");
-        NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs, redactedVals);
+        if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+          nodeAgent.refresh();
+        }
+        NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
       } else {
         commandArgs.add("ssh");
         String sshPort = String.valueOf(providerDetails.sshPort);
