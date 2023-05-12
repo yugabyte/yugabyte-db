@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.controllers.JWTVerifier;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
@@ -52,7 +53,6 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.commons.compress.utils.IOUtils;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.WildcardFileFilter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -516,7 +516,7 @@ public class NodeAgentManager {
           "Deleting current cert dir {} for node agent {}",
           currentCertDirPath,
           nodeAgent.getUuid());
-      FileUtils.deleteDirectory(currentCertDirPath.toFile());
+      FileData.deleteFiles(currentCertDirPath.toString(), true);
     } catch (Exception e) {
       // Ignore error.
       log.warn("Error deleting old cert directory {}", currentCertDirPath, e);
