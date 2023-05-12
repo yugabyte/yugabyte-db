@@ -111,6 +111,10 @@ class FullCompactionManager {
 
   void Shutdown();
 
+  // Checks whether the tablet peer should be fully compacted based on its recent
+  // docdb key access statistics.
+  bool ShouldCompactBasedOnStats(const TabletId& tablet_id);
+
   MonoDelta compaction_frequency() const { return compaction_frequency_; }
 
   MonoDelta max_jitter() const { return max_jitter_; }
@@ -127,13 +131,24 @@ class FullCompactionManager {
     return compact_time;
   }
 
-  // Compaction frequency and max jitter should only be set by the constructor or reset for
-  // testing purposes.
+  // Allows compaction frequencies with a lower time granularity than an hour (e.g. seconds).
   void TEST_DoScheduleFullCompactionsWithManualValues(
       MonoDelta compaction_frequency, int jitter_factor);
 
+  // Allows check interval to be manually set without enabling the background task.
+  // Used to set intervals for statistics windows.
   void TEST_SetCheckIntervalSec(int32_t check_interval_sec) {
     check_interval_sec_ = check_interval_sec;
+  }
+
+  KeyStatistics TEST_CurrentWindowStats(const TabletId tablet_id) {
+    auto window_iter = tablet_stats_window_.find(tablet_id);
+    // If we don't have any stats collected, then return 0 for all statistics.
+    if (window_iter == tablet_stats_window_.end()) {
+      return KeyStatistics{ 0, 0 };
+    }
+
+    return window_iter->second.current_stats();
   }
 
   // Checks whether the key is in tablet_stats_window_.
@@ -162,11 +177,7 @@ class FullCompactionManager {
 
   // Checks whether the tablet peer has been compacted too recently to be fully compacted
   // again (based on the auto_compact_min_wait_between_seconds flag).
-  bool CompactedTooRecently(const tablet::TabletPeerPtr peer, const HybridTime& now);
-
-  // Checks whether the tablet peer should be fully compacted based on its recent
-  // docdb key access statistics.
-  bool ShouldCompactBasedOnStats(const TabletId& tablet_id);
+  bool CompactedTooRecently(const tablet::TabletPeerPtr& peer, const HybridTime& now);
 
   // Iterates through all peers, determining the next compaction time for each peer
   // eligible for scheduled full compactions. Returns a list of peers that are currently
@@ -178,7 +189,7 @@ class FullCompactionManager {
   // be from the in-memory map of next compaction times (next_compact_time_per_tablet_)
   // if able. If one is not available, then a new next compaction time will be calculated
   // and stored in the in-memory map.
-  HybridTime DetermineNextCompactTime(tablet::TabletPeerPtr peer, HybridTime now);
+  HybridTime DetermineNextCompactTime(const tablet::TabletPeerPtr& peer, HybridTime now);
 
   // Calculates the next compaction time based on the last compaction time and jitter.
   // If the tablet has no last compaction time, then a compaction will be scheduled
