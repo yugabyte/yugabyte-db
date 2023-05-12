@@ -57,7 +57,7 @@ Other kinds of objects may be created in separate commands after the schema is c
 - Create a schema.
 
 ```plpgsql
-yugabyte=# CREATE SCHEMA IF NOT EXIST branch;
+yugabyte=# CREATE SCHEMA IF NOT EXISTS branch;
 ```
 
 - Create a schema for a user.
@@ -71,17 +71,6 @@ yugabyte=# CREATE SCHEMA AUTHORIZATION john;
 
 ```plpgsql
 yugabyte=# CREATE SCHEMA branch AUTHORIZATION john;
-```
-
-- Create a schema and an object within that schema.
-
-```plpgsql
-yugabyte=# CREATE SCHEMA branch
-               CREATE TABLE dept(
-                   dept_id INT NOT NULL,
-                   dept_name TEXT NOT NULL,
-                   PRIMARY KEY (dept_id)
-               );
 ```
 
 ## See also
