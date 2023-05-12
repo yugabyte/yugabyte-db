@@ -102,10 +102,6 @@ func (r *Runner) Complete() {
 	r.Completed = true
 }
 
-func (r Runner) failEarly(id string) bool {
-	return false
-}
-
 func (r Runner) fmtErrPrefix(id string) string {
 	if r.section != "" {
 		return fmt.Sprintf("%s:%s-%s", r.Name, r.section, id)
