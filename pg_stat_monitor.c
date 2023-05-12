@@ -1590,7 +1590,7 @@ static void
 pgsm_add_to_list(pgsmEntry * entry, char *query_text, int query_len)
 {
 	/* Switch to pgsm memory context */
-	MemoryContext oldctx = MemoryContextSwitchTo(pgsm_get_ss()->pgsm_mem_cxt);
+	MemoryContext oldctx = MemoryContextSwitchTo(GetPgsmMemoryContext());
 
 	entry->query_text.query_pointer = pnstrdup(query_text, query_len);
 	lentries = lappend(lentries, entry);
@@ -1645,7 +1645,8 @@ static void
 pgsm_cleanup_callback(void *arg)
 {
 	/* Reset the memory context holding the list */
-	MemoryContextReset(pgsm_get_ss()->pgsm_mem_cxt);
+	MemoryContextReset(GetPgsmMemoryContext());
+
 	lentries = NIL;
 	callback_setup = false;
 }
@@ -1666,7 +1667,7 @@ pgsm_create_hash_entry(uint64 bucket_id, uint64 queryid, PlanInfo * plan_info)
 	char	   *username = NULL;
 
 	/* Create an entry in the pgsm memory context */
-	oldctx = MemoryContextSwitchTo(pgsm_get_ss()->pgsm_mem_cxt);
+	oldctx = MemoryContextSwitchTo(GetPgsmMemoryContext());
 	entry = palloc0(sizeof(pgsmEntry));
 
 	/*

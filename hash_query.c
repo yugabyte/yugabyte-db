@@ -23,6 +23,9 @@ static PGSM_HASH_TABLE_HANDLE pgsm_create_bucket_hash(pgsmSharedState * pgsm, ds
 static Size pgsm_get_shared_area_size(void);
 static void InitializeSharedState(pgsmSharedState * pgsm);
 
+#define PGSM_BUCKET_INFO_SIZE	(sizeof(TimestampTz) * pgsm_max_buckets)
+#define PGSM_SHARED_STATE_SIZE	(sizeof(pgsmSharedState) + PGSM_BUCKET_INFO_SIZE)
+
 #if USE_DYNAMIC_HASH
 /* parameter for the shared hash */
 static dshash_parameters dsh_params = {
@@ -56,7 +59,7 @@ pgsm_query_area_size(void)
 Size
 pgsm_ShmemSize(void)
 {
-	Size		sz = MAXALIGN(sizeof(pgsmSharedState));
+	Size		sz = MAXALIGN(PGSM_SHARED_STATE_SIZE);
 
 	sz = add_size(sz, MAX_QUERY_BUF);
 #if USE_DYNAMIC_HASH
@@ -114,7 +117,7 @@ pgsm_startup(void)
 		SpinLockInit(&pgsm->mutex);
 		InitializeSharedState(pgsm);
 		/* the allocation of pgsmSharedState itself */
-		p += MAXALIGN(sizeof(pgsmSharedState));
+		p += MAXALIGN(PGSM_SHARED_STATE_SIZE);
 		pgsm->raw_dsa_area = p;
 		dsa = dsa_create_in_place(pgsm->raw_dsa_area,
 								  pgsm_query_area_size(),
@@ -138,6 +141,10 @@ pgsm_startup(void)
 		 * references.
 		 */
 		dsa_detach(dsa);
+
+	    pgsmStateLocal.pgsm_mem_cxt = AllocSetContextCreate(TopMemoryContext,
+                                                            "pg_stat_monitor local store",
+                                                            ALLOCSET_DEFAULT_SIZES);
 	}
 
 #ifdef BENCHMARK
@@ -158,10 +165,6 @@ InitializeSharedState(pgsmSharedState * pgsm)
 {
 	pg_atomic_init_u64(&pgsm->current_wbucket, 0);
 	pg_atomic_init_u64(&pgsm->prev_bucket_sec, 0);
-	memset(&pgsm->bucket_entry, 0, MAX_BUCKETS * sizeof(uint64));
-	pgsm->pgsm_mem_cxt = AllocSetContextCreate(TopMemoryContext,
-											   "pg_stat_monitor local store",
-											   ALLOCSET_DEFAULT_SIZES);
 }
 
 
@@ -235,6 +238,11 @@ pgsm_attach_shmem(void)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+MemoryContext GetPgsmMemoryContext(void)
+{
+	return pgsmStateLocal.pgsm_mem_cxt;
+}
+
 dsa_area *
 get_dsa_area_for_query_text(void)
 {
@@ -290,7 +298,6 @@ hash_entry_alloc(pgsmSharedState * pgsm, pgsmHashKey * key, int encoding)
 		elog(DEBUG1, "[pg_stat_monitor] hash_entry_alloc: OUT OF MEMORY.");
 	else if (!found)
 	{
-		pgsm->bucket_entry[pg_atomic_read_u64(&pgsm->current_wbucket)]++;
 		/* New entry, initialize it */
 		/* reset the statistics */
 		memset(&entry->counters, 0, sizeof(Counters));
