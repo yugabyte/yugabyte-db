@@ -113,6 +113,7 @@ Status PrometheusWriter::WriteSingleEntry(
     MetricEntity::AttributeMap new_attr = attr;
     new_attr.erase("table_id");
     new_attr.erase("table_name");
+    new_attr.erase("table_type");
     new_attr.erase("namespace_name");
     AddAggregatedEntry("", new_attr, name, value, aggregation_function);
     break;

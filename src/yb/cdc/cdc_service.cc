@@ -4298,6 +4298,7 @@ std::shared_ptr<void> CDCServiceImpl::GetCDCTabletMetrics(
       attrs["table_id"] = raft_group_metadata->table_id();
       attrs["namespace_name"] = raft_group_metadata->namespace_name();
       attrs["table_name"] = raft_group_metadata->table_name();
+      attrs["table_type"] = TableType_Name(raft_group_metadata->table_type());
       attrs["stream_id"] = producer.stream_id;
     }
 

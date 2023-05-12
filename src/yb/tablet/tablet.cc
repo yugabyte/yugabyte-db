@@ -476,6 +476,7 @@ Tablet::Tablet(const TabletInitData& data)
     // TODO(KUDU-745): table_id is apparently not set in the metadata.
     attrs["table_id"] = metadata_->table_id();
     attrs["table_name"] = metadata_->table_name();
+    attrs["table_type"] = TableType_Name(metadata_->table_type());
     attrs["namespace_name"] = metadata_->namespace_name();
     table_metrics_entity_ =
         METRIC_ENTITY_table.Instantiate(data.metric_registry, metadata_->table_id(), attrs);
