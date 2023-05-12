@@ -5660,6 +5660,10 @@
           "format" : "int64",
           "type" : "integer"
         },
+        "streamId" : {
+          "description" : "Stream id",
+          "type" : "string"
+        },
         "tableId" : {
           "description" : "Table id",
           "type" : "string"
