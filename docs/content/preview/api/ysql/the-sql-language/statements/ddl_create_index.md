@@ -161,12 +161,12 @@ For range-sharded indexes, you can use the `SPLIT AT VALUES` clause to set split
 
 ```plpgsql
 CREATE TABLE tbl(
-  a int,
-  b int,
-  primary key(a asc, b desc);
+  a INT,
+  b INT,
+  PRIMARY KEY(a ASC, b DESC);
 );
 
-CREATE INDEX idx1 ON tbl(b asc, a desc) SPLIT AT VALUES((100), (200), (200, 5));
+CREATE INDEX idx1 ON tbl(b ASC, a DESC) SPLIT AT VALUES((100), (200), (200, 5));
 ```
 
 In the example above, there are three split points, so four tablets will be created for the index:
