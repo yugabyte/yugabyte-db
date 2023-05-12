@@ -18,7 +18,7 @@ import {
 } from './constants';
 import { api } from '../../redesign/helpers/api';
 import { getUniverseStatus } from '../universes/helpers/universeHelpers';
-import {UnavailableUniverseStates, YBTableRelationType} from '../../redesign/helpers/constants';
+import { UnavailableUniverseStates, YBTableRelationType } from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
 
@@ -29,7 +29,7 @@ import {
   XClusterTable,
   XClusterTableDetails
 } from './XClusterTypes';
-import {TableType, Universe, YBTable} from '../../redesign/helpers/dtos';
+import { TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
 
@@ -147,20 +147,22 @@ export const CurrentReplicationLag = ({
 // TODO: Rename, refactor and pull into separate file
 export const CurrentTableReplicationLag = ({
   tableUUID,
+  streamId,
   queryEnabled,
   nodePrefix,
   sourceUniverseUUID,
   xClusterConfigStatus
 }: {
   tableUUID: string;
+  streamId: string;
   queryEnabled: boolean;
   nodePrefix: string | undefined;
   sourceUniverseUUID: string | undefined;
   xClusterConfigStatus: XClusterConfigStatus;
 }) => {
   const tableLagQuery = useQuery(
-    ['xcluster-metric', nodePrefix, tableUUID, 'metric'],
-    () => queryLagMetricsForTable(tableUUID, nodePrefix),
+    ['xcluster-metric', nodePrefix, tableUUID, streamId, 'metric'],
+    () => queryLagMetricsForTable(streamId, tableUUID, nodePrefix),
     {
       enabled: queryEnabled
     }
@@ -432,12 +434,12 @@ export const augmentTablesWithXClusterDetails = (
   if (txnTableDetails) {
     const { tableId: txnTableId, ...txnTable } = txnTableDetails;
     tables.push({
-      isIndexTable:false,
-      keySpace: "system",
-      pgSchemaName: "",
+      isIndexTable: false,
+      keySpace: 'system',
+      pgSchemaName: '',
       relationType: YBTableRelationType.SYSTEM_TABLE_RELATION,
       sizeBytes: -1,
-      tableName: "transactions",
+      tableName: 'transactions',
       tableType: TableType.TRANSACTION_STATUS_TABLE_TYPE,
       tableUUID: txnTableId,
       ...txnTable
