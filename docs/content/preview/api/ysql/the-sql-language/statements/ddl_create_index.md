@@ -169,7 +169,7 @@ CREATE TABLE tbl(
 CREATE INDEX idx1 ON tbl(b asc, a desc) SPLIT AT VALUES((100), (200), (200, 5));
 ```
 
-In the example above, there are three split points and so four tablets will be created for the index:
+In the example above, there are three split points, so four tablets will be created for the index:
 
 - tablet 1: `b=<lowest>, a=<lowest>` to `b=100, a=<lowest>`
 - tablet 2: `b=100, a=<lowest>` to `b=200, a=<lowest>`
