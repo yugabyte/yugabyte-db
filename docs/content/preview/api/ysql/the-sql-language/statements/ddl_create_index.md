@@ -176,7 +176,6 @@ In the example above, there are three split points, so four tablets will be crea
 - tablet 3: `b=200, a=<lowest>` to `b=200, a=5`
 - tablet 4: `b=200, a=5` to `b=<highest>, a=<highest>`
 
-
 ## Examples
 
 ### Unique index with HASH column ordering
