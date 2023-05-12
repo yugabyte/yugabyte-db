@@ -27,6 +27,7 @@ import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -552,6 +553,9 @@ public class CertificateInfo extends Model {
   public static void delete(UUID certUUID, UUID customerUUID) {
     CertificateInfo certificate = CertificateInfo.getOrBadRequest(certUUID, customerUUID);
     if (!certificate.getInUse()) {
+      // Delete the certs from FS & DB.
+      File certDirectory = new File(certificate.getCertificate()).getParentFile();
+      FileData.deleteFiles(certDirectory.getAbsolutePath(), true);
       if (certificate.delete()) {
         LOG.info("Successfully deleted the certificate: " + certUUID);
       } else {
