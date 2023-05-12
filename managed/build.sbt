@@ -149,7 +149,7 @@ libraryDependencies ++= Seq(
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "2.0",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
-  "org.springframework.security" % "spring-security-core" % "5.8.1",
+  "org.springframework.security" % "spring-security-core" % "5.8.3",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.129",
@@ -203,7 +203,7 @@ libraryDependencies ++= Seq(
   "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
   // Prod dependency temporary as we use HSQLDB as a dummy perf_advisor DB for YBM scenario
   // Remove once YBM starts using real PG DB.
-  "org.hsqldb" % "hsqldb" % "2.3.4",
+  "org.hsqldb" % "hsqldb" % "2.7.1",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
