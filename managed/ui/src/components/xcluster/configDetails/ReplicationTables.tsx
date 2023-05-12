@@ -158,6 +158,7 @@ export function ReplicationTables({ xClusterConfig }: props) {
             dataFormat={(cell: XClusterTableStatus, row: XClusterTable) => (
               <XClusterTableStatusLabel
                 status={cell}
+                streamId={row.streamId}
                 tableUUID={row.tableUUID}
                 nodePrefix={sourceUniverse.universeDetails.nodePrefix}
                 universeUUID={sourceUniverse.universeUUID}
@@ -167,9 +168,10 @@ export function ReplicationTables({ xClusterConfig }: props) {
             Status
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataFormat={(_cell, row) => (
+            dataFormat={(_cell, row: XClusterTable) => (
               <span className="lag-text">
                 <CurrentTableReplicationLag
+                  streamId={row.streamId}
                   tableUUID={row.tableUUID}
                   nodePrefix={sourceUniverse.universeDetails.nodePrefix}
                   queryEnabled={isActiveTab}

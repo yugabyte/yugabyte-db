@@ -294,6 +294,9 @@ public class MetricQueryHelper {
     if (StringUtils.isNotEmpty(metricQueryParams.getTableId())) {
       filterJson.put("table_id", metricQueryParams.getTableId());
     }
+    if (StringUtils.isNotEmpty(metricQueryParams.getStreamId())) {
+      filterJson.put("stream_id", metricQueryParams.getStreamId() + "|");
+    }
     if (metricQueryParams.getXClusterConfigUuid() != null) {
       XClusterConfig xClusterConfig =
           XClusterConfig.getOrBadRequest(metricQueryParams.getXClusterConfigUuid());
