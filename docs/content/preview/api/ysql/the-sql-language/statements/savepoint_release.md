@@ -55,7 +55,7 @@ RELEASE [ SAVEPOINT ] name
 The name of the savepoint you wish to release.
 
 {{<note title="Other savepoints may be released">}}
-Releasing a savepoint also releases any savepoints created between the one you're releasing and the release command.
+When you release a savepoint, all savepoints that were created after it was created are also released.
 {{</note>}}
 
 
