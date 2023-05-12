@@ -33,7 +33,7 @@ You can install YugabyteDB Anywhere on the following Linux distributions:
 
 - CentOS (default)
 - Ubuntu 18 and 20, via Replicated
-- Other [requirements for installation by Replicated](https://docs.replicated.com/enterprise/installing-general-requirements).
+Refer also to the other [requirements for installation via Replicated](https://docs.replicated.com/enterprise/installing-general-requirements).
 
 ## Hardware requirements
 
