@@ -1205,7 +1205,8 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
  * Unfortunately, this means that we have to special case certain SAOP
  * processing logic to check for this RowExpr case.
  * For now, these cases are generated for batched nested loop joins in
- * zip_batched_exprs() in restrictinfo.c during indexscan plan node generation.
+ * yb_zip_batched_exprs() in restrictinfo.c during indexscan
+ * plan node generation.
  * 
  *
  * 5. NullTest ("indexkey IS NULL/IS NOT NULL").  We just fill in the

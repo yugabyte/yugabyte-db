@@ -407,7 +407,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM 
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: (b <= 15)
          ->  Index Scan using p1_pkey on p1 t1
-               Index Cond: ((b <= 10) AND (a = ANY (ARRAY[t2.b, $1, $2])))
+               Index Cond: ((a = ANY (ARRAY[t2.b, $1, $2])) AND (b <= 10))
    ->  Index Scan using p3_pkey on p3 t3
          Index Cond: (a = ANY (ARRAY[t1.a, $4, $5]))
 (10 rows)
@@ -613,6 +613,42 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 (1 row)
 
 DROP TABLE int2type;
+CREATE TABLE q1(a int);
+CREATE TABLE q2(a int);
+CREATE TABLE q3(a int primary key);
+-- We shouldn't be producing dangerous plans that have join clauses
+-- that involve more than one rel on a side. Leading hint should not be
+-- respected here.
+-- See issue #17150
+/*+Set(enable_mergejoin false) Set(enable_hashjoin false) Set(enable_material false) Leading((q1 (q2 q3)))*/explain (costs off) select * from q1, q2, q3 where q3.a = q2.a + q1.a;
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((q2.a + q1.a) = q3.a)
+   ->  Nested Loop
+         ->  Seq Scan on q1
+         ->  Seq Scan on q2
+   ->  Index Scan using q3_pkey on q3
+         Index Cond: (a = ANY (ARRAY[(q2.a + q1.a), ($1 + $4), ($2 + $5)]))
+(7 rows)
+
+-- This join is not dangerous as the clause q3.a = q2.a + q1.a
+-- will actually receive a cross product of q1 and q2 here.
+/*+Set(enable_mergejoin false) Set(enable_hashjoin false) Set(enable_material false) Leading(((q1 q2) q3))*/explain (costs off) select * from q1, q2, q3 where q3.a = q2.a + q1.a;
+                                 QUERY PLAN                            
+----------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((q2.a + q1.a) = q3.a)
+   ->  Nested Loop
+         ->  Seq Scan on q1
+         ->  Seq Scan on q2
+   ->  Index Scan using q3_pkey on q3
+         Index Cond: (a = ANY (ARRAY[(q2.a + q1.a), ($1 + $4), ($2 + $5)]))
+(7 rows)
+
+DROP TABLE q1;
+DROP TABLE q2;
+DROP TABLE q3;
 set yb_bnl_batch_size to 10;
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
                                   QUERY PLAN
@@ -913,9 +949,47 @@ create index q3_range on q3(a asc);
                Index Cond: ((c1 = ANY (ARRAY[q2.c1, $1, $2])) AND (c2 = ANY (ARRAY[q3.a, $4, $5])))
 (8 rows)
 
+explain (costs off) SELECT * FROM q1, q2 where pg_backend_pid() >= 0 and q1.c1 = q2.c1;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Result
+   One-Time Filter: (pg_backend_pid() >= 0)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (q1.c1 = q2.c1)
+         ->  Index Scan using q1_pkey on q1
+         ->  Index Scan using q2_pkey on q2
+               Index Cond: (c1 = ANY (ARRAY[q1.c1, $1, $2]))
+(7 rows)
+
 DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
+create table q1(a int, b int);
+create table q2(a int, b int);
+create index on q2(b, a);
+insert into q1 values (1,2), (1,4), (6,7), (2,0), (10,24), (4,2);
+insert into q2 values (2,1), (6,6), (2,4), (0,2), (1,2), (2,2), (4,2);
+/*+Leading((q1 q2))*/ explain (costs off) select * from q1,q2 where q1.a = q2.a and q1.b = q2.b order by q1.a;
+                                           QUERY PLAN
+------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: q1.a
+   ->  YB Batched Nested Loop Join
+         Join Filter: ((q1.a = q2.a) AND (q1.b = q2.b))
+         ->  Seq Scan on q1
+         ->  Index Only Scan using q2_b_a_idx on q2
+               Index Cond: (ROW(b, a) = ANY (ARRAY[ROW(q1.b, q1.a), ROW($1, $4), ROW($2, $5)]))
+(7 rows)
+
+/*+Leading((q1 q2))*/ select * from q1,q2 where q1.a = q2.a and q1.b = q2.b order by q1.a;
+ a | b | a | b 
+---+---+---+---
+ 1 | 2 | 1 | 2
+ 4 | 2 | 4 | 2
+(2 rows)
+
+drop table q1;
+drop table q2;
 create table g1(h int, r int, primary key(h hash, r asc));
 create table g2(h int, r int, primary key(h hash, r asc));
 create table main(h1 int, h2 int, r1 int, r2 int, primary key((h1,h2) hash, r1 asc, r2 asc));
@@ -932,7 +1006,7 @@ insert into g2 values (2,4), (6,8);
          Join Filter: ((g2.h = main.h2) AND (g2.r = main.r1))
          ->  Seq Scan on g2
          ->  Index Scan using main_pkey on main
-               Index Cond: ((ROW(h2, r1) = ANY (ARRAY[ROW(g2.h, g2.r), ROW($7, $10), ROW($8, $11)])) AND (ROW(h1, r2) = ANY (ARRAY[ROW(g1.h, g1.r), ROW($1, $4), ROW($2, $5)])))
+               Index Cond: ((ROW(h2, r1) = ANY (ARRAY[ROW(g2.h, g2.r), ROW($1, $4), ROW($2, $5)])) AND (ROW(h1, r2) = ANY (ARRAY[ROW(g1.h, g1.r), ROW($7, $10), ROW($8, $11)])))
 (8 rows)
 
 /*+Leading((g1 (g2 main))) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) Set(enable_seqscan on)*/ select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
@@ -947,86 +1021,6 @@ insert into g2 values (2,4), (6,8);
 drop table g1;
 drop table g2;
 drop table main;
-/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan on) Set(enable_material off) Leading((q3 (q2 q1)))*/EXPLAIN (COSTS OFF) SELECT c.column_name, c.is_nullable = 'YES', c.udt_name, c.character_maximum_length, c.numeric_precision,
-	c.numeric_precision_radix, c.numeric_scale, c.datetime_precision, 8 * typlen, c.column_default, pd.description,
-	c.identity_increment
-	FROM information_schema.columns AS c
-	JOIN pg_type AS pgt ON c.udt_name = pgt.typname
-	LEFT JOIN pg_catalog.pg_description as pd ON pd.objsubid = c.ordinal_position AND pd.objoid = (
-	  SELECT oid FROM pg_catalog.pg_class
-	  WHERE relname = c.table_name AND relnamespace = (
-	    SELECT oid FROM pg_catalog.pg_namespace
-	    WHERE nspname = c.table_schema
-	    )
-	  )
-	where table_catalog = 'yugabyte' AND table_schema = 'clusters' AND table_name = 'clusters';
-                                                                                                                                                            QUERY PLAN                                                                                                                                                             
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Result
-   One-Time Filter: (((current_database())::information_schema.sql_identifier)::text = 'yugabyte'::text)
-   ->  YB Batched Nested Loop Join
-         Join Filter: (((COALESCE(bt.typname, t.typname))::information_schema.sql_identifier)::name = pgt.typname)
-         ->  YB Batched Nested Loop Left Join
-               Join Filter: ((pd.objsubid = ((a.attnum)::information_schema.cardinal_number)::integer) AND (pd.objoid = (SubPlan 2)))
-               ->  YB Batched Nested Loop Left Join
-                     Join Filter: (a.attcollation = co.oid)
-                     ->  YB Batched Nested Loop Left Join
-                           Join Filter: ((dep.refobjid = c.oid) AND (dep.refobjsubid = a.attnum))
-                           ->  YB Batched Nested Loop Join
-                                 Join Filter: (t.typnamespace = nt.oid)
-                                 ->  Nested Loop
-                                       ->  YB Batched Nested Loop Left Join
-                                             Join Filter: ((a.attrelid = ad.adrelid) AND (a.attnum = ad.adnum))
-                                             ->  Nested Loop Left Join
-                                                   Join Filter: (t.typtype = 'd'::"char")
-                                                   ->  YB Batched Nested Loop Join
-                                                         Join Filter: (a.atttypid = t.oid)
-                                                         ->  Nested Loop
-                                                               ->  Index Scan using pg_attribute_relid_attnum_index on pg_attribute a
-                                                                     Index Cond: (attnum > 0)
-                                                                     Remote Filter: (NOT attisdropped)
-                                                               ->  Index Scan using pg_class_oid_index on pg_class c
-                                                                     Index Cond: (oid = a.attrelid)
-                                                                     Filter: ((relkind = ANY ('{r,v,f,p}'::"char"[])) AND (pg_has_role(relowner, 'USAGE'::text) OR has_column_privilege(oid, a.attnum, 'SELECT, INSERT, UPDATE, REFERENCES'::text)) AND (((relname)::information_schema.sql_identifier)::text = 'clusters'::text))
-                                                         ->  Index Scan using pg_type_oid_index on pg_type t
-                                                               Index Cond: (oid = ANY (ARRAY[a.atttypid, $6, $7]))
-                                                   ->  YB Batched Nested Loop Join
-                                                         Join Filter: (bt.typnamespace = nbt.oid)
-                                                         ->  Index Scan using pg_type_oid_index on pg_type bt
-                                                               Index Cond: (t.typbasetype = oid)
-                                                         ->  Index Scan using pg_namespace_oid_index on pg_namespace nbt
-                                                               Index Cond: (oid = ANY (ARRAY[bt.typnamespace, $10, $11]))
-                                             ->  Index Scan using pg_attrdef_adrelid_adnum_index on pg_attrdef ad
-                                                   Index Cond: (ROW(adrelid, adnum) = ANY (ARRAY[ROW(a.attrelid, a.attnum), ROW($13, $16), ROW($14, $17)]))
-                                       ->  Index Scan using pg_namespace_oid_index on pg_namespace nc
-                                             Index Cond: (oid = c.relnamespace)
-                                             Filter: ((NOT pg_is_other_temp_schema(oid)) AND (((nspname)::information_schema.sql_identifier)::text = 'clusters'::text))
-                                 ->  Index Scan using pg_namespace_oid_index on pg_namespace nt
-                                       Index Cond: (oid = ANY (ARRAY[t.typnamespace, $20, $21]))
-                           ->  YB Batched Nested Loop Join
-                                 Join Filter: (dep.objid = seq.seqrelid)
-                                 ->  Index Scan using pg_depend_reference_index on pg_depend dep
-                                       Index Cond: ((refclassid = '1259'::oid) AND (ROW(refobjid, refobjsubid) = ANY (ARRAY[ROW(c.oid, (a.attnum)::integer), ROW($23, ($26)::integer), ROW($24, ($27)::integer)])))
-                                       Remote Filter: ((classid = '1259'::oid) AND (deptype = 'i'::"char"))
-                                 ->  Index Scan using pg_sequence_seqrelid_index on pg_sequence seq
-                                       Index Cond: (seqrelid = ANY (ARRAY[dep.objid, $29, $30]))
-                     ->  Nested Loop
-                           ->  Index Scan using pg_collation_oid_index on pg_collation co
-                                 Index Cond: (oid = ANY (ARRAY[a.attcollation, $32, $33]))
-                           ->  Index Scan using pg_namespace_oid_index on pg_namespace nco
-                                 Filter: ((nspname <> 'pg_catalog'::name) OR (co.collname <> 'default'::name))
-               ->  Index Scan using pg_description_o_c_o_index on pg_description pd
-                     Index Cond: (objoid = ANY (ARRAY[(SubPlan 2), (SubPlan 2), (SubPlan 2)]))
-                     SubPlan 2
-                       ->  Index Scan using pg_class_relname_nsp_index on pg_class
-                             Index Cond: ((relname = ((c.relname)::information_schema.sql_identifier)::name) AND (relnamespace = $1))
-                             InitPlan 1 (returns $1)
-                               ->  Index Scan using pg_namespace_nspname_index on pg_namespace
-                                     Index Cond: (nspname = ((nc.nspname)::information_schema.sql_identifier)::name)
-         ->  Index Scan using pg_type_typname_nsp_index on pg_type pgt
-               Index Cond: (typname = ANY (ARRAY[((COALESCE(bt.typname, t.typname))::information_schema.sql_identifier)::name, ((COALESCE($43, $46))::information_schema.sql_identifier)::name, ((COALESCE($44, $47))::information_schema.sql_identifier)::name]))
-(63 rows)
-
 create table oidtable(a oid, primary key(a asc));
 create table int4table(a int4, primary key(a asc));
 insert into oidtable select i from generate_series(1,20) i where i % 2 = 0;
