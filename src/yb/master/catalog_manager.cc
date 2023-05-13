@@ -4504,10 +4504,6 @@ Status CatalogManager::AddTransactionStatusTablet(
     table = VERIFY_RESULT(FindTableByIdUnlocked(req->table_id()));
     write_lock = table->LockForWrite();
 
-    SCHECK(
-        !IsXClusterEnabledUnlocked(*table), NotSupported,
-        "Cannot add transaction status tablet to transaction table under xCluster replication");
-
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
 
