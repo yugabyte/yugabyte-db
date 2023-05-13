@@ -60,10 +60,9 @@ If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used
 
 {{<note title="Tables always have a primary key">}}
 
-Unlike PostgreSQL that uses heap-oriented tables, YugabyteDB uses index-organized tables, that is, the full row is stored together
-with the primary key (see [DocDB Persistence](../../../../../architecture/docdb/persistence/)). 
-
-When a primary key is not defined, YugabyteDB will use an internal `ybrowid` value as the primary key. In this case, the table will be sharded on `ybrowid HASH`.
+PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. 
+But YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb/persistence/))—so a table isn't viable without a primary key. 
+Therefore, if you don't specify a primary key at table-creation time, YugabyteDB will use the internal `ybrowid` column as `PRIMARY KEY` and the table will be sharded on `ybrowid HASH`.
 
 {{</note>}}
 
