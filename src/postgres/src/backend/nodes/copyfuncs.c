@@ -5243,6 +5243,15 @@ _copyYbExprParamDesc(const YbExprParamDesc *from)
 	return newnode;
 }
 
+static YbBatchedExpr *
+_copyYbBatchedExpr(const YbBatchedExpr *from)
+{
+	YbBatchedExpr *newnode = makeNode(YbBatchedExpr);
+	COPY_NODE_FIELD(orig_expr);
+
+	return newnode;
+}
+
 /*
  * copyObjectImpl -- implementation of copyObject(); see nodes/nodes.h
  *
@@ -6223,6 +6232,10 @@ copyObjectImpl(const void *from)
 
 		case T_YbExprParamDesc:
 			retval = _copyYbExprParamDesc(from);
+			break;
+		
+		case T_YbBatchedExpr:
+			retval = _copyYbBatchedExpr(from);
 			break;
 
 		default:

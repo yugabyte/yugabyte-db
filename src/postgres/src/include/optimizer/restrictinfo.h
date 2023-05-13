@@ -35,10 +35,10 @@ extern bool restriction_is_or_clause(RestrictInfo *restrictinfo);
 extern bool restriction_is_securely_promotable(RestrictInfo *restrictinfo,
 											   RelOptInfo *rel);
 
-extern bool can_batch_rinfo(RestrictInfo *rinfo,
+extern bool yb_can_batch_rinfo(RestrictInfo *rinfo,
 					 		Relids outer_batched_relids,
 					 		Relids inner_relids);
-extern RestrictInfo *get_batched_restrictinfo(RestrictInfo *rinfo,
+extern RestrictInfo *yb_get_batched_restrictinfo(RestrictInfo *rinfo,
 											  Relids outer_batched_relids,
 											  Relids inner_relids);
 extern List *get_actual_clauses(List *restrictinfo_list);
@@ -52,14 +52,5 @@ extern bool join_clause_is_movable_to(RestrictInfo *rinfo, RelOptInfo *baserel);
 extern bool join_clause_is_movable_into(RestrictInfo *rinfo,
 										Relids currentrelids,
 										Relids current_and_outer);
-
-/* 
- * Utility function to carry out the functionality of get_actual_clauses but
- * with consideration for batched relation ids. Extracted batched clauses 
- * should be zipped up into smaller clauses and added to the returned list.
- */
-extern List * yb_get_actual_batched_clauses(PlannerInfo *root,
-											List *restrictinfo_list,
-											Path *inner_path);
 
 #endif							/* RESTRICTINFO_H */

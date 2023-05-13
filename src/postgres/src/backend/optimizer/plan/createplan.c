@@ -22,6 +22,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "foreign/fdwapi.h"
@@ -872,6 +873,173 @@ build_path_tlist(PlannerInfo *root, Path *path)
 		resno++;
 	}
 	return tlist;
+}
+
+
+/* Simple var comparison function. */
+static int _exprcol_cmp(const void *a, const void *b, void *cxt)
+{
+	int a_int = ((Var *) get_leftop(*((const Expr**) a)))->varattno;
+	int b_int = ((Var *) get_leftop(*((const Expr**) b)))->varattno;
+
+	return a_int - b_int;
+}
+
+/*
+ * Takes a list of batched clauses (those with clauses of the form
+ * var1 = BatchedExpr(f(o_var1, o_var2...)))) and zips them up to form
+ * multiple batched clauses of the form
+ * (var1, var2 ...) =
+ * BatchedExpr(f1(o_var1, o_var2...), f2(o_var1, o_var2...)...)
+ * where the LHS is sorted ascendingly by attribute number.
+ */
+static List*
+yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
+{
+	return NULL;
+#ifdef YB_TODO
+	/* YB_TODO(neil)
+	 * - Commenting out for a quick rebase to master.
+	 * - Need to translate some code to Pg15 API.
+	 */
+	if (list_length(b_exprs) <= 1)
+	{
+		return b_exprs;
+	}
+
+	List *zipped_exprs = NIL;
+	ListCell *lcc;
+	Relids cumulative_rels = NULL;
+	foreach(lcc, root->yb_availBatchedRelids)
+	{
+		Relids avail_relids = (Relids) lfirst(lcc);
+
+		/* Check to make sure we haven't already seen these rels. */
+		if (bms_is_subset(avail_relids, cumulative_rels))
+			continue;
+
+		Assert(!bms_overlap(avail_relids, cumulative_rels));
+
+		cumulative_rels = bms_add_members(cumulative_rels, avail_relids);
+
+		Expr **exprcols =
+			palloc(sizeof(Expr*) * list_length(b_exprs));
+
+		int len = 0;
+		ListCell *lc;
+		foreach(lc, b_exprs)
+		{
+			Expr *b_expr = (Expr *) lfirst(lc);
+			Relids req_relids = pull_varnos(get_rightop(b_expr));
+			if (bms_overlap(req_relids, avail_relids))
+			{
+				exprcols[len] = b_expr;
+				len++;
+			}
+		}
+
+		/* If there wasn't a single clause relevant to avail_relids, continue. */
+		if (len == 0)
+			continue;
+		
+		if (len == 1)
+		{
+			zipped_exprs = lappend(zipped_exprs, exprcols[0]);
+			continue;
+		}
+
+		if (should_sort)
+		{
+			/* Sort based on index column. */
+			qsort_arg(exprcols, len, sizeof(OpExpr*),
+					_exprcol_cmp, NULL);
+		}
+
+		/*
+		 * v1 = BatchedExpr(f1(o)) AND v2 = BatchedExpr(f2(o))
+		 * becomes ROW(v1, v2) = BatchedExpr(ROW(f1(o),f2(o)))
+		 */
+
+		RowExpr *leftop = makeNode(RowExpr);
+		RowExpr *rightop = makeNode(RowExpr);
+
+		Oid opresulttype = -1;
+		bool opretset = false;
+		Oid opcolloid = -1;
+		Oid inputcollid = -1;
+
+		for (int i = 0; i < len; i++)
+		{
+			Expr *b_expr = (Expr *) exprcols[i];
+			OpExpr *opexpr = (OpExpr *) b_expr;
+			opresulttype = opexpr->opresulttype;
+			opretset = opexpr->opretset;
+			opcolloid = opexpr->opcollid;
+			inputcollid = opexpr->inputcollid;
+
+			Expr *left_expr = (Expr *) get_leftop(b_expr);
+			leftop->args = lappend(leftop->args, left_expr);
+
+			Expr *right_expr =
+				(Expr *) ((YbBatchedExpr *) get_rightop(b_expr))->orig_expr;
+			rightop->args = lappend(rightop->args, right_expr);
+		}
+
+		pfree(exprcols);
+
+		leftop->colnames = NIL;
+		leftop->row_format = COERCE_EXPLICIT_CALL;
+		leftop->row_typeid = RECORDOID;
+
+		rightop->colnames = NIL;
+		rightop->row_format = COERCE_EXPLICIT_CALL;
+		rightop->row_typeid = RECORDOID;
+
+		YbBatchedExpr *right_batched_expr = makeNode(YbBatchedExpr);
+		right_batched_expr->orig_expr = (Expr*) rightop;
+		Expr *zipped = (Expr*) make_opclause(RECORD_EQ_OP, opresulttype, opretset,
+									(Expr*) leftop, (Expr*) right_batched_expr,
+									opcolloid, inputcollid);
+		zipped_exprs = lappend(zipped_exprs, zipped);
+	}
+
+	return zipped_exprs;
+#endif
+}
+
+static List *
+yb_get_actual_batched_clauses(PlannerInfo *root,
+										List *restrictinfo_list,
+										Path * inner_path)
+{
+	Assert(bms_num_members(inner_path->parent->relids) == 1);
+	List *non_batched_quals = NIL;
+	List *batched_quals = NIL;
+	ListCell *lc;
+	foreach(lc, restrictinfo_list)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+		RestrictInfo *tmp_batched =
+			yb_get_batched_restrictinfo(rinfo,
+											 	 root->yb_cur_batched_relids,
+												 inner_path->parent->relids);
+
+		if (tmp_batched)
+		{
+			OpExpr *op = (OpExpr *) tmp_batched->clause;
+
+			if (list_member_ptr(batched_quals, op))
+				continue;
+
+			batched_quals = lappend(batched_quals, op);
+		}
+		else
+		{
+			non_batched_quals = lappend(non_batched_quals, rinfo->clause);
+		}
+	}
+	List *zipped_batched = yb_zip_batched_exprs(root, batched_quals, false);
+	return list_concat(zipped_batched, non_batched_quals);
 }
 
 /*
@@ -5395,14 +5563,14 @@ create_nestloop_plan(PlannerInfo *root,
 			}
 
 			if (rinfo->can_join &&
-				OidIsValid(rinfo->hashjoinoperator) &&
-				can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
+				 OidIsValid(rinfo->hashjoinoperator) &&
+				 yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
 			{
 				/* if nlhash can process this */
 				Assert(is_opclause(rinfo->clause));
 				RestrictInfo *batched_rinfo =
-					get_batched_restrictinfo(rinfo,batched_outerrelids,
-											 inner_relids);
+					yb_get_batched_restrictinfo(rinfo,batched_outerrelids,
+											 			 inner_relids);
 
 				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
 			}
@@ -6112,6 +6280,49 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 								   (void *) root);
 }
 
+
+static List *
+yb_get_fixed_batched_indexquals(PlannerInfo *root, IndexPath *index_path)
+{
+	return NULL;
+#ifdef YB_TODO
+	/* YB_TODO(neil)
+	 * - Commenting out for a quick rebase to master.
+	 * - Need to translate some code to Pg15 API.
+	 */
+	List *batched_quals = NIL;
+	if (!bms_is_empty(root->yb_cur_batched_relids))
+	{
+		ListCell *lcc;
+		ListCell *lci;
+		
+		forboth(lcc, index_path->indexquals, lci, index_path->indexqualcols)
+		{
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lcc);
+			RestrictInfo *tmp_batched =
+				yb_get_batched_restrictinfo(rinfo, root->yb_cur_batched_relids,
+													 index_path->indexinfo->rel->relids);
+
+			if (tmp_batched)
+			{
+				int indexcol = lfirst_int(lci);
+				OpExpr *op = (OpExpr *) tmp_batched->clause;
+
+				if (list_member_ptr(batched_quals, op))
+					continue;
+
+				op = copyObject(op);
+				linitial(op->args) = fix_indexqual_operand(linitial(op->args),
+													index_path->indexinfo,
+													indexcol);
+				batched_quals = lappend(batched_quals, op);
+			}
+		}
+	}
+	return batched_quals;
+#endif
+}
+
 /*
  * fix_indexqual_references
  *	  Adjust indexqual clauses to the form the executor's indexqual
@@ -6141,11 +6352,137 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 	IndexOptInfo *index = index_path->indexinfo;
 	List	   *stripped_indexquals;
 	List	   *fixed_indexquals;
-	ListCell   *lc;
-	ListCell   *lci;
-	List *batched_rinfos = NIL;
+	ListCell   *lcc,
+			   *lci;
 
 	fixed_indexquals = NIL;
+
+	List *batched_quals = yb_get_fixed_batched_indexquals(root, index_path);
+	batched_quals = yb_zip_batched_exprs(root, batched_quals, true);
+
+	foreach(lcc, batched_quals)
+	{
+		Expr *clause = (Expr *) lfirst(lcc);
+		Node *fixed_clause = replace_nestloop_params(root, (Node *) clause);
+		fixed_indexquals = lappend(fixed_indexquals, fixed_clause);
+	}
+
+	forboth(lcc, index_path->indexquals, lci, index_path->indexqualcols)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lcc);
+		RestrictInfo *tmp_batched =
+			yb_get_batched_restrictinfo(rinfo, root->yb_cur_batched_relids,
+									 			 index_path->indexinfo->rel->relids);
+		/*
+		 * YB: We should have already processed this qual in
+		 * get_fixed_batched_indexquals.
+		 */
+		if (tmp_batched)
+			continue;
+
+		int			indexcol = lfirst_int(lci);
+		Node	   *clause;
+
+		/*
+		 * Replace any outer-relation variables with nestloop params.
+		 *
+		 * This also makes a copy of the clause, so it's safe to modify it
+		 * in-place below.
+		 */
+		clause = replace_nestloop_params(root, (Node *) rinfo->clause);
+
+		if (IsA(clause, OpExpr))
+		{
+			OpExpr	   *op = (OpExpr *) clause;
+
+			if (list_length(op->args) != 2)
+				elog(ERROR, "indexqual clause is not binary opclause");
+
+			/*
+			 * Check to see if the indexkey is on the right; if so, commute
+			 * the clause.  The indexkey should be the side that refers to
+			 * (only) the base relation.
+			 */
+			if (!bms_equal(rinfo->left_relids, index->rel->relids))
+				CommuteOpExpr(op);
+
+			/*
+			 * Now replace the indexkey expression with an index Var.
+			 */
+			linitial(op->args) = fix_indexqual_operand(linitial(op->args),
+													   index,
+													   indexcol);
+		}
+		else if (IsA(clause, RowCompareExpr))
+		{
+			RowCompareExpr *rc = (RowCompareExpr *) clause;
+			Expr	   *newrc;
+			List	   *indexcolnos;
+			bool		var_on_left;
+			ListCell   *lca,
+					   *lcai;
+
+			/*
+			 * Re-discover which index columns are used in the rowcompare.
+			 */
+			newrc = adjust_rowcompare_for_index(rc,
+												index,
+												indexcol,
+												&indexcolnos,
+												&var_on_left);
+
+			/*
+			 * Trouble if adjust_rowcompare_for_index thought the
+			 * RowCompareExpr didn't match the index as-is; the clause should
+			 * have gone through that routine already.
+			 */
+			if (newrc != (Expr *) rc)
+				elog(ERROR, "inconsistent results from adjust_rowcompare_for_index");
+
+			/*
+			 * Check to see if the indexkey is on the right; if so, commute
+			 * the clause.
+			 */
+			if (!var_on_left)
+				CommuteRowCompareExpr(rc);
+
+			/*
+			 * Now replace the indexkey expressions with index Vars.
+			 */
+			Assert(list_length(rc->largs) == list_length(indexcolnos));
+			forboth(lca, rc->largs, lcai, indexcolnos)
+			{
+				lfirst(lca) = fix_indexqual_operand(lfirst(lca),
+													index,
+													lfirst_int(lcai));
+			}
+		}
+		else if (IsA(clause, ScalarArrayOpExpr))
+		{
+			ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
+
+			/* Never need to commute... */
+
+			/* Replace the indexkey expression with an index Var. */
+			linitial(saop->args) = fix_indexqual_operand(linitial(saop->args),
+														 index,
+														 indexcol);
+		}
+		else if (IsA(clause, NullTest))
+		{
+			NullTest   *nt = (NullTest *) clause;
+
+			/* Replace the indexkey expression with an index Var. */
+			nt->arg = (Expr *) fix_indexqual_operand((Node *) nt->arg,
+													 index,
+													 indexcol);
+		}
+		else
+			elog(ERROR, "unsupported indexqual type: %d",
+				 (int) nodeTag(clause));
+
+		fixed_indexquals = lappend(fixed_indexquals, clause);
+	}
 
 	/* YB_TODO(Tanuj@yugabyte)
 	 * - Need to track Tanuj's work on this function and rework. His code needs reimplementation to

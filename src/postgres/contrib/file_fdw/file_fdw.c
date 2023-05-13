@@ -1115,7 +1115,7 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 	List	   *options;
 	CopyFromState cstate;
 	ErrorContextCallback errcallback;
-	MemoryContext oldcontext = GetCurrentMemoryContext;
+	MemoryContext oldcontext = GetCurrentMemoryContext();
 	MemoryContext tupcontext;
 
 	Assert(onerel);

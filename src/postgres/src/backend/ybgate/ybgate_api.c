@@ -65,27 +65,14 @@ YbgStatus YbgInit()
 //-----------------------------------------------------------------------------
 
 
-YbgStatus YbgGetCurrentMemoryContext(YbgMemoryContext *memctx)
+YbgMemoryContext YbgGetCurrentMemoryContext()
 {
-	PG_SETUP_ERROR_REPORTING();
-
-	*memctx = GetThreadLocalCurrentMemoryContext();
-
-	PG_STATUS_OK();
+	return GetThreadLocalCurrentMemoryContext();
 }
 
-YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
-									 YbgMemoryContext *oldctx)
+YbgMemoryContext YbgSetCurrentMemoryContext(YbgMemoryContext memctx)
 {
-	PG_SETUP_ERROR_REPORTING();
-
-	YbgMemoryContext prev = SetThreadLocalCurrentMemoryContext(memctx);
-	if (oldctx != NULL)
-	{
-		*oldctx = prev;
-	}
-
-	PG_STATUS_OK();
+	return SetThreadLocalCurrentMemoryContext(memctx);
 }
 
 YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,

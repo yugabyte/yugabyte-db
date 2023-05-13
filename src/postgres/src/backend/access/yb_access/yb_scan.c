@@ -278,7 +278,7 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 	}
 
 	YBCPgExpr lhs =
-		YBCNewTupleExpr(ybScan->handle, &type_attrs, n_attnum_values, 
+		YBCNewTupleExpr(ybScan->handle, &type_attrs, n_attnum_values,
 						ybc_elems_exprs);
 
 	TupleDesc tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
@@ -301,7 +301,7 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 				YBEncodingCollation(ybScan->handle, attnum[j],
 									ybc_get_attcollation(bind_desc, attnum[j]));
 			ybc_elems_exprs[j] =
-				YBCNewConstant(ybScan->handle, atttypid, attcollation, 
+				YBCNewConstant(ybScan->handle, atttypid, attcollation,
 							   datum_values[j], is_null[j]);
 		}
 
@@ -746,7 +746,7 @@ YbIsEmptyResultCondition(int nkeys, ScanKey keys[])
 	for (int i = 0; i < nkeys; i++)
 	{
 		ScanKey key = keys[i];
-		
+
 		if (!((key->sk_flags & SK_ROW_MEMBER) && YbIsRowHeader(keys[i - 1])) ||
 			key->sk_strategy == BTEqualStrategyNumber)
 		{
@@ -1112,7 +1112,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 				* first column then we have to adjust the bounds on this
 				* column.
 				*/
-			if(!is_column_specified || 
+			if(!is_column_specified ||
 				(asc != is_direction_asc && !is_point_scan))
 			{
 				col_values[j] = NULL;
@@ -1205,7 +1205,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 		colids = palloc(sizeof(Oid) * subkey_count);
 		arrayval =
 			DatumGetArrayTypeP((ybScan->keys[i+1])->sk_argument);
-		
+
 		for(size_t j = 0; j < subkey_count; j++)
 		{
 			attnos[j] = ybScan->keys[i + j + 1]->sk_attno;
@@ -1222,7 +1222,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	/* We could cache this data, but not clear it's worth it */
 	get_typlenbyvalalign(ARR_ELEMTYPE(arrayval), &elmlen,
 							&elmbyval, &elmalign);
-	
+
 	deconstruct_array(arrayval,
 					  ARR_ELEMTYPE(arrayval),
 					  elmlen, elmbyval, elmalign,
@@ -1232,7 +1232,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	/*
 	 * Compress out any null elements.  We can ignore them since we assume
 	 * all btree operators are strict.
-	 * Also remove elements that are too large or too small. 
+	 * Also remove elements that are too large or too small.
 	 * eg. WHERE element = INT_MAX + k, where k is positive and element
 	 * is of integer type.
 	 */
@@ -1252,8 +1252,8 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 			continue;
 
 		/* Skip any rows that have NULLs in them. */
-		/* 
-		 * TODO: record_eq considers NULL record elements to 
+		/*
+		 * TODO: record_eq considers NULL record elements to
 		 * be equal. However, the only way we receive IN filters
 		 * with tuples is through
 		 * compound batched nested loop joins where NULL
@@ -1667,7 +1667,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 				else if (YbIsSearchArray(key))
 				{
 					bool bail_out = false;
-					bool is_bound = 
+					bool is_bound =
 						YbBindSearchArray(ybScan, scan_plan,
 										  i, is_column_bound,
 									  	  &bail_out);
@@ -2358,6 +2358,25 @@ ybc_keys_match(HeapTuple tup, YbScanDesc ybScan, bool *recheck)
 	return true;
 }
 
+static bool is_index_functional(Relation index)
+{
+	if (!index->rd_indexprs)
+		return false;
+
+	ListCell   *indexpr_item;
+
+	foreach(indexpr_item, index->rd_indexprs)
+	{
+		Expr    *indexvar = (Expr *) lfirst(indexpr_item);
+		if (IsA(indexvar, FuncExpr))
+		{
+			return true;
+		}
+
+	}
+	return false;
+}
+
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 {
 	HeapTuple   tup      = NULL;
@@ -2365,12 +2384,17 @@ HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *r
 	if (ybScan->quit_scan)
 		return NULL;
 
-	/* In case of yb_hash_code pushdown tuple must be rechecked */
+	/* In case of yb_hash_code pushdown tuple must be rechecked. */
 	bool tuple_recheck_required = (ybScan->nhash_keys > 0);
+
+	/* If the index is on a function, we need to recheck. */
+	if (ybScan->index)
+		tuple_recheck_required |= is_index_functional(ybScan->index);
+
 	/*
-	* YB Scan may not be able to push down the scan key condition so we may
-	* need additional filtering here.
-	*/
+	 * YB Scan may not be able to push down the scan key condition so we may
+	 * need additional filtering here.
+	 */
 	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, is_forward_scan)))
 	{
 		if (tuple_recheck_required)
@@ -2397,7 +2421,7 @@ IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool 
 	if (ybScan->quit_scan)
 		return NULL;
 
-	/* 
+	/*
 	 * If we have a yb_hash_code pushdown or not all conditions were
 	 * bound tuple must be rechecked.
 	 */
