@@ -52,6 +52,7 @@ The following commands are available:
 * [remote_bootstrap](#remote-bootstrap)
 * [set_flag](#set-flag)
 * [status](#status)
+* [refresh_flags](#refresh_flags)
 
 ##### are_tablets_running
 
@@ -257,6 +258,19 @@ yb-ts-cli [ --server_address=<host>:<port> ] status
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 For an example, see [Return the status of a tablet server](#return-the-status-of-a-tablet-server)
+
+##### refresh_flags
+
+Refresh flags that are loaded from the configuration file. Works on both yb-tserver (port 7100) & yb-master (port 9100) process. No parameters needed. 
+Each process needs to have this command issued, e.g. issuing this on one TServer won't update the GFlags on the other TServers.
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
+```
+
+* *host*:*port*: The *host* and *port* of the yb-tablet/yb-master server. Default is `localhost:9100`.
 
 ## Flags
 
