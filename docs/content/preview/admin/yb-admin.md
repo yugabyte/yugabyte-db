@@ -1793,6 +1793,47 @@ yb-admin \
 * *replication_name*: The name of the replication to be enabled or disabled.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
+#### get_xcluster_safe_time
+
+Reports the skew in xCluster Safe time between the laggiest tablet and the most caught up tablet. 
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <target_master_addresses> \
+    get_xcluster_safe_time \
+    [include_lag_and_skew] 
+```
+
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *include_lag_and_skew*: Set `include_lag_and_skew` option to show `safe_time_lag_sec` and `safe_time_skew_sec`, otherwise these are hidden by default.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    get_xcluster_safe_time
+```
+```output
+{
+    "namespace_id": "000033f1000030008000000000000000",
+    "namespace_name": "yugabyte",
+    "safe_time": "2023-04-14 18:34:18.429430",
+    "safe_time_epoch": "1681522458429430",
+    "safe_time_lag_sec": "15.66",
+    "safe_time_skew_sec": "14.95"
+}
+```
+
+* *namespace_id*: Id of the stream.
+* *namespace_name*: Name of the stream.
+* *safe_time*: Safe time in timestamp format.
+* *safe_time_epoch*: The `epoch` of the safe time.
+* *safe_time_lag_sec*: Safe time lag is computed as `(current time - current safe time)`.
+* *safe_time_skew_sec*: Safe time skew is computed as `(safe time of most caught up tablet - safe time of laggiest tablet)`.
+
 #### list_cdc_streams
 
 Lists the CDC streams for the specified YB-Master servers.
