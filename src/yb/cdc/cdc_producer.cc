@@ -60,9 +60,6 @@ DEFINE_test_flag(bool, xcluster_simulate_have_more_records, false,
 DEFINE_test_flag(bool, xcluster_skip_meta_ops, false,
                  "Whether GetChanges should skip processing meta operations ");
 
-DEFINE_test_flag(bool, enable_replicate_transaction_status_table, false,
-    "Enable replication of transaction status table. This is only used in tests.");
-
 DEFINE_RUNTIME_uint32(xcluster_consistent_wal_safe_time_frequency_ms, 250,
                       "Frequency in milliseconds at which apply safe time is computed.");
 
@@ -568,8 +565,7 @@ Status GetChangesForXCluster(
   auto now = MonoTime::Now();
   auto* txn_participant = tablet->transaction_participant();
   // Check if both the table and stream are transactional.
-  bool transactional = (txn_participant != nullptr) && stream_metadata->transactional &&
-                       !FLAGS_TEST_enable_replicate_transaction_status_table;
+  bool transactional = (txn_participant != nullptr) && stream_metadata->transactional;
 
   // In order to provide a transactionally consistent WAL, we need to perform the below steps:
   // If last_apply_safe_time is kInvalid

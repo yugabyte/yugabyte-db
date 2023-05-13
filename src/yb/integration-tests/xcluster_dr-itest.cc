@@ -33,8 +33,6 @@
 #include "yb/client/snapshot_test_util.h"
 #include "yb/util/file_util.h"
 
-DECLARE_bool(TEST_enable_replicate_transaction_status_table);
-
 using std::string;
 using namespace std::chrono_literals;
 
@@ -68,11 +66,6 @@ class XClusterDRTest : public XClusterYsqlTestBase {
     });
 
     producer_cluster_future.get();
-
-    client::YBTableName tran_table_name(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
-    ASSERT_OK(producer_client()->OpenTable(tran_table_name, &producer_tran_table_));
-    ASSERT_OK(consumer_client()->OpenTable(tran_table_name, &consumer_tran_table_));
 
     producer_snapshot_util_.SetProxy(&producer_client()->proxy_cache());
     producer_snapshot_util_.SetCluster(producer_cluster());
@@ -117,7 +110,7 @@ class XClusterDRTest : public XClusterYsqlTestBase {
 
   void SetReplicationDirection(ReplicationDirection replication_direction) {
     if (replication_direction == ReplicationDirection::ProducerToConsumer) {
-      source_tables_for_bootstrap_ = {producer_table_, producer_tran_table_};
+      source_tables_for_bootstrap_ = {producer_table_};
       source_table_ = &producer_table_;
       source_cluster_ = &producer_cluster_;
       source_snapshot_util_ = &producer_snapshot_util_;
@@ -125,7 +118,7 @@ class XClusterDRTest : public XClusterYsqlTestBase {
       target_cluster_ = &consumer_cluster_;
       target_snapshot_util_ = &consumer_snapshot_util_;
     } else {
-      source_tables_for_bootstrap_ = {consumer_table_, consumer_tran_table_};
+      source_tables_for_bootstrap_ = {consumer_table_};
       source_table_ = &consumer_table_;
       source_cluster_ = &consumer_cluster_;
       source_snapshot_util_ = &consumer_snapshot_util_;
@@ -139,7 +132,6 @@ class XClusterDRTest : public XClusterYsqlTestBase {
 
   // Setup replication with bootstrap, set STANDBY role and wait for safe time.
   Status SetupReplication(std::vector<string> bootstrap_ids) {
-    FLAGS_TEST_enable_replicate_transaction_status_table = true;
     RETURN_NOT_OK(SetupUniverseReplication(
         source_cluster_->mini_cluster_.get(), target_cluster_->mini_cluster_.get(), target_client_,
         kUniverseId, source_tables_for_bootstrap_, bootstrap_ids,
@@ -224,7 +216,7 @@ class XClusterDRTest : public XClusterYsqlTestBase {
   }
 
  protected:
-  client::YBTablePtr producer_table_, producer_tran_table_, consumer_table_, consumer_tran_table_;
+  client::YBTablePtr producer_table_, consumer_table_;
   client::SnapshotTestUtil producer_snapshot_util_, consumer_snapshot_util_;
 
   std::vector<std::shared_ptr<client::YBTable>> source_tables_for_bootstrap_;

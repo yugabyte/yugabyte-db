@@ -104,9 +104,6 @@ DEFINE_RUNTIME_int32(cdc_parent_tablet_deletion_task_retry_secs, 30,
 DEFINE_test_flag(bool, hang_wait_replication_drain, false,
     "Used in tests to temporarily block WaitForReplicationDrain.");
 
-DEFINE_test_flag(bool, fail_setup_system_universe_replication, false,
-    "Cause the setup of system universe replication to fail.");
-
 DEFINE_test_flag(bool, exit_unfinished_deleting, false,
     "Whether to exit part way through the deleting universe process.");
 
@@ -118,8 +115,6 @@ DECLARE_int32(master_rpc_timeout_ms);
 
 DEFINE_test_flag(bool, xcluster_fail_table_create_during_bootstrap, false,
     "Fail the table or index creation during xcluster bootstrap stage.");
-
-DECLARE_bool(TEST_enable_replicate_transaction_status_table);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -2358,8 +2353,7 @@ Status CatalogManager::ValidateTableAndCreateCdcStreams(
     const std::shared_ptr<client::YBTableInfo>& producer_info,
     const std::unordered_map<TableId, std::string>& producer_bootstrap_ids) {
   auto l = universe->LockForWrite();
-  if (producer_info->table_name.namespace_name() == master::kSystemNamespaceName &&
-      PREDICT_FALSE(FLAGS_TEST_fail_setup_system_universe_replication)) {
+  if (producer_info->table_name.namespace_name() == master::kSystemNamespaceName) {
     auto status = STATUS(IllegalState, "Cannot replicate system tables.");
     MarkUniverseReplicationFailed(status, &l, universe);
     return status;
@@ -2378,11 +2372,8 @@ Status CatalogManager::ValidateTableAndCreateCdcStreams(
       NotFound,
       Format("Bootstrap id not found for table $0", producer_info->table_name.ToString()));
 
-  if (producer_info->table_name.namespace_name() != master::kSystemNamespaceName ||
-      producer_bootstrap_ids.contains(producer_info->table_id)) {
-    RETURN_NOT_OK(
-        IsBootstrapRequiredOnProducer(universe, producer_info->table_id, producer_bootstrap_ids));
-  }
+  RETURN_NOT_OK(
+      IsBootstrapRequiredOnProducer(universe, producer_info->table_id, producer_bootstrap_ids));
 
   SchemaVersion producer_schema_version = producer_info->schema.version();
   SchemaVersion consumer_schema_version = consumer_schema.version();
@@ -3023,12 +3014,6 @@ Status CatalogManager::InitXClusterConsumer(
   auto cluster_config = ClusterConfig();
   auto l = cluster_config->LockForWrite();
   auto* consumer_registry = l.mutable_data()->pb.mutable_consumer_registry();
-  std::string transaction_status_table_id;
-  auto transaction_status_table_result = GetGlobalTransactionStatusTable();
-  WARN_NOT_OK(transaction_status_table_result, "Could not open transaction status table");
-  if (transaction_status_table_result) {
-    transaction_status_table_id = (*transaction_status_table_result)->id();
-  }
   auto transactional = universe_l->pb.transactional();
   if (!cdc::IsAlterReplicationUniverseId(universe->id())) {
     consumer_registry->set_transactional(transactional);
@@ -3066,14 +3051,6 @@ Status CatalogManager::InitXClusterConsumer(
     }
 
     (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
-    if (stream_info.consumer_table_id == transaction_status_table_id) {
-      RSTATUS_DCHECK(
-          transactional && FLAGS_TEST_enable_replicate_transaction_status_table, InvalidArgument,
-          "Transaction status table replication is not allowed.");
-      // The replication group includes the transaction status table, enable consistent
-      // transactions.
-      consumer_registry->set_enable_replicate_transaction_status_table(true);
-    }
   }
 
   // Log the Network topology of the Producer Cluster
