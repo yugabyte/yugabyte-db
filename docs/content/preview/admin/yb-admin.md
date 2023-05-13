@@ -1793,6 +1793,43 @@ yb-admin \
 * *replication_name*: The name of the replication to be enabled or disabled.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
+#### wait_for_replication_drain
+
+Verify when the Producer & Consumer are in sync for a given list of stream_ids at a given timestamp. 
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <target_master_addresses> \
+    wait_for_replication_drain \
+    <comma_separated_list_of_stream_ids> [<timestamp> | minus <interval>]
+```
+
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *comma_separated_list_of_stream_ids*: Comma separate list of stream ids.
+* *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the master API.
+* *minus <interval>*: The `minus <interval>` is the same format as in <a href="{{< relref "../explore/cluster-management/point-in-time-recovery-ycql.md" >}}">PITR documentation</a>, or see `yb-admin restore_snapshot_schedule` command).
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    wait_for_replication_drain 000033f1000030008000000000000000,200033f1000030008000000000000002 minus 1m
+```
+
+If all streams are caught-up, the API prints `All replications are caught-up.` to the console.  
+Otherwise, it prints the non-caught-up streams in the following format:
+```
+Found undrained replications:
+- Under Stream <stream_id>:
+  - Tablet: <tablet_id>
+  - Tablet: <tablet_id>
+  // ......
+// ......
+```
+
 #### list_cdc_streams
 
 Lists the CDC streams for the specified YB-Master servers.
