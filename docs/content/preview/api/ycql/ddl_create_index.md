@@ -82,7 +82,11 @@ index_predicate ::= where_expression
 
 Where
 
-- `index_name`, `table_name`, and `column_name` are identifiers. `table_name` may be qualified with a keyspace name. `index_name` cannot be qualified with a keyspace name because an index must be created in the table's keyspace.
+- `index_name`, `table_name`, `property_name`, and `column_name` are identifiers. 
+- `table_name` may be qualified with a keyspace name. 
+- `index_name` cannot be qualified with a keyspace name because an index must be created in the table's keyspace.
+- `property_literal` is a literal of either [boolean](../type_bool), [text](../type_text), or [map](../type_collection) data type.
+
 
 ## Semantics
 
@@ -105,6 +109,13 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 - Clustering key is optional and defines an ordering for index rows within a partition.
 - Default ordering is ascending (`ASC`) but can be set for each clustering column as ascending or descending using the `CLUSTERING ORDER BY` property.
 - Any primary key column of the table not indexed explicitly in `index_columns` is added as a clustering column to the index implicitly. This is necessary so that the whole primary key of the table is indexed.
+
+### *index_properties*
+
+- The `CLUSTERING ORDER BY` property can be used to set the ordering for each clustering column individually (default is `ASC`).
+- The `TABLETS = <num>` property specifies the number of tablets to be used for the specified YCQL index. Setting this property overrides the value from the [`--yb_num_shards_per_tserver`](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) option. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
+- Use the `AND` operator to use multiple table properties.
+
 
 ### INCLUDED COLUMNS
 
@@ -339,6 +350,19 @@ ycqlsh:example> SELECT * FROM emp;
 ------+----------+-----------+---------
  1002 |    Smith |     Jason | jasmith
  1001 |    Smith |      John |  jsmith
+```
+
+### Create an index specifying the number of tablets
+
+You can use the `CREATE INDEX` statement with the `WITH tablets = <num>` clause to specify the number of tablets for an index. This is useful to scale the index up or down based on requirements. 
+For example, for smaller or partial indexes, it may be wasteful to have a large number of shards (tablets). In that case, you can use this to reduce the number of tablets created for the index. 
+Similarly, for a very large index, you can use this statement to presplit the index into a large number of shards to get improved performance.
+
+Note that YugabyteDB, by default, presplits an index in `yb_num_shards_per_tserver * num_of_tserver` shards. This clause can be used to override that setting on per-index basis.
+
+```sql
+ycqlsh:example> CREATE TABLE tracking (id int PRIMARY KEY, a TEXT) WITH transactions = { 'enabled' : true };
+ycqlsh:example> CREATE INDEX my_indx ON tracking(a) WITH tablets = 10;
 ```
 
 ## See also
