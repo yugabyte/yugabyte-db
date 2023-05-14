@@ -113,6 +113,14 @@ DECLARE_string(tmp_dir);
   BOOST_PP_CAT(DEFINE_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
   _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPg, pg)
 
+#define DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(type, name, default_value, description) \
+  DEFINE_NON_RUNTIME_PG_FLAG(type, name, default_value, description); \
+  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_RUNTIME_PG_PREVIEW_FLAG(type, name, default_value, description) \
+  DEFINE_RUNTIME_PG_FLAG(type, name, default_value, description); \
+  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPreview, preview)
+
 #define DEFINE_RUNTIME_AUTO_PG_FLAG(type, name, flag_class, initial_val, target_val, description) \
   BOOST_PP_CAT(DEFINE_RUNTIME_AUTO_, type)(ysql_##name, flag_class, initial_val, target_val, \
                                            description); \
