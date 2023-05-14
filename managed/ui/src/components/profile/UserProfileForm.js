@@ -4,13 +4,14 @@ import React, { Component } from 'react';
 import Cookies from 'js-cookie';
 import { isEqual } from 'lodash';
 import { Col, Row } from 'react-bootstrap';
+import { FormHelperText } from '@material-ui/core';
 import { YBButton, YBFormInput, YBFormSelect } from '../common/forms/fields';
 import { Field, Form, Formik } from 'formik';
 import { showOrRedirect } from '../../utils/LayoutUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox';
 import { YBCopyButton } from '../common/descriptors';
 import * as Yup from 'yup';
-import { isNonEmptyArray } from '../../utils/ObjectUtils';
+import { isNonEmptyArray, isNonEmptyString } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
 
 import moment from 'moment';
@@ -87,9 +88,9 @@ export default class UserProfileForm extends Component {
       confirmPassword: '',
       timezone: currentUser.data.timezone
         ? {
-          value: currentUser.data.timezone,
-          label: this.formatTimezoneLabel(currentUser.data.timezone)
-        }
+            value: currentUser.data.timezone,
+            label: this.formatTimezoneLabel(currentUser.data.timezone)
+          }
         : defaultTimezoneOption
     };
     const timezoneOptions = [defaultTimezoneOption];
@@ -107,11 +108,11 @@ export default class UserProfileForm extends Component {
       email: isLDAPUser
         ? Yup.string().required('Enter Email or Username')
         : Yup.string()
-          .matches(
-            /(^admin$)|(^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$)/i,
-            'This is not a valid email or value'
-          )
-          .required('Enter email'),
+            .matches(
+              /(^admin$)|(^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$)/i,
+              'This is not a valid email or value'
+            )
+            .required('Enter email'),
 
       code: Yup.string()
         .required('Enter Environment name')
@@ -262,6 +263,17 @@ export default class UserProfileForm extends Component {
                       />
                     </FlexShrink>
                   </FlexContainer>
+                  {isNonEmptyString(apiToken.data || customer.data.apiToken) && (
+                    <FlexShrink className="api-token-warning">
+                      <FormHelperText className="warning-color">
+                        <i className="fa fa-warning" />
+                        <span>
+                          {<b>{'Note! '}</b>}
+                          {'Save the token in a safe place as it’s only temporarily visible.'}
+                        </span>
+                      </FormHelperText>
+                    </FlexShrink>
+                  )}
                   <Field
                     name="customerId"
                     readOnly={true}

@@ -287,6 +287,19 @@ dd {
   }
 }
 
+.api-token-warning {
+  margin-bottom: 5px;
+
+  span {
+    margin-left: 5px;
+  }
+
+  .warning-color {
+    margin-top: 0;
+    color: colors.$YB_WARNING_ICON_COLOR;
+  }
+}
+
 .api-token-component {
   position: relative;
 
