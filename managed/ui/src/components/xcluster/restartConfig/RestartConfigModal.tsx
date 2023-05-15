@@ -216,6 +216,7 @@ export const RestartConfigModal = ({
       render={(formikProps: FormikProps<RestartXClusterConfigFormValues>) => {
         // workaround for outdated version of Formik to access form methods outside of <Formik>
         formik.current = formikProps;
+        formik.current.values.parallelThreads = 8;
         switch (currentStep) {
           case FormStep.SELECT_TABLES: {
             // Casting because FormikValues and FormikError have different types.
