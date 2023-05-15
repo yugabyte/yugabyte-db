@@ -667,25 +667,6 @@ public class CommonUtils {
     return isAnnotatedWith(clazz.getSuperclass(), annotationClass);
   }
 
-  /**
-   * Prints the stack for called function
-   *
-   * @return printable string of stack information.
-   */
-  public static String getStackTraceHere() {
-    String rVal;
-    rVal = "***Stack trace Here****:\n";
-    StackTraceElement[] elements = Thread.currentThread().getStackTrace();
-    int depth = elements.length;
-    if (depth > 10) depth = 10; // limit stack trace length
-    for (int i = 2; i < depth; i++) {
-      StackTraceElement s = elements[i];
-      rVal += "\tat " + s.getClassName() + "." + s.getMethodName();
-      rVal += "(" + s.getFileName() + ":" + s.getLineNumber() + ")\n";
-    }
-    return rVal;
-  }
-
   public static NodeDetails getARandomLiveTServer(Universe universe) {
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
@@ -718,16 +699,16 @@ public class CommonUtils {
    */
   public static String extractJsonisedSqlResponse(ShellResponse shellResponse) {
     String data = null;
-    if (shellResponse.message != null && !shellResponse.message.isEmpty()) {
-      Scanner scanner = new Scanner(shellResponse.message);
-      int i = 0;
-      while (scanner.hasNextLine()) {
-        data = scanner.nextLine();
-        if (i++ == 3) {
-          break;
+    if (StringUtils.isNotBlank(shellResponse.message)) {
+      try (Scanner scanner = new Scanner(shellResponse.message)) {
+        int i = 0;
+        while (scanner.hasNextLine()) {
+          data = scanner.nextLine();
+          if (i++ == 3) {
+            break;
+          }
         }
       }
-      scanner.close();
     }
     return data;
   }

@@ -6,8 +6,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentClient.NodeAgentUpgradeParam;
 import com.yugabyte.yw.common.NodeAgentManager;
@@ -35,16 +33,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -62,7 +57,8 @@ public class NodeAgentPoller {
   private static final Duration POLLER_INITIAL_DELAY = Duration.ofMinutes(1);
   private static final String LIVE_POLLER_POOL_NAME = "node_agent.live_node_poller";
   private static final String DEAD_POLLER_POOL_NAME = "node_agent.dead_node_poller";
-  private static final int MAX_FAILED_CONN_COUNT = 100;
+  private static final String UPGRADER_POOL_NAME = "node_agent.upgrader";
+  private static final int MAX_FAILED_CONN_COUNT = 50;
 
   private static final String NODE_AGENT_VERSION_MISMATCH_NAME = "yba_nodeagent_version_mismatch";
   private static final Gauge NODE_AGENT_VERSION_MISMATCH_GAUGE =
@@ -70,7 +66,6 @@ public class NodeAgentPoller {
           .labelNames(KnownAlertLabels.NODE_AGENT_UUID.labelName())
           .register(CollectorRegistry.defaultRegistry);
 
-  private final ConfigHelper configHelper;
   private final RuntimeConfGetter confGetter;
   private final PlatformExecutorFactory platformExecutorFactory;
   private final PlatformScheduler platformScheduler;
@@ -84,25 +79,29 @@ public class NodeAgentPoller {
   private ExecutorService livePollerExecutor;
   // Poller with less threads allowing more queuing.
   private ExecutorService deadPollerExecutor;
-  // Tracks the current number of active upgrades.
-  private Semaphore activeUpgrades;
+  // Upgrade pool to not starve poller pools.
+  private ExecutorService upgradeExecutor;
 
   @Inject
   public NodeAgentPoller(
-      ConfigHelper configHelper,
       RuntimeConfGetter confGetter,
       PlatformExecutorFactory platformExecutorFactory,
       PlatformScheduler platformScheduler,
       NodeAgentManager nodeAgentManager,
       NodeAgentClient nodeAgentClient,
       SwamperHelper swamperHelper) {
-    this.configHelper = configHelper;
     this.confGetter = confGetter;
     this.platformExecutorFactory = platformExecutorFactory;
     this.platformScheduler = platformScheduler;
     this.nodeAgentManager = nodeAgentManager;
     this.nodeAgentClient = nodeAgentClient;
     this.swamperHelper = swamperHelper;
+  }
+
+  enum PollerTaskState {
+    IDLE,
+    SCHEDULED,
+    RUNNING,
   }
 
   @Builder
@@ -117,59 +116,44 @@ public class NodeAgentPoller {
   @VisibleForTesting
   class PollerTask implements Runnable {
     private final PollerTaskParam param;
-    private final AtomicReference<Future<?>> future = new AtomicReference<>();
-    private final AtomicInteger lastFailedCount = new AtomicInteger();
-    private final AtomicBoolean isUpgradeTokenAcquired = new AtomicBoolean();
-
+    private final AtomicReference<PollerTaskState> stateRef = new AtomicReference<>();
+    private volatile int lastFailedCount;
+    // Future for the upgrade task.
+    private volatile Future<?> future;
     // Prometheus swamper target file status.
     private boolean isTargetFileWritten = false;
 
-    PollerTask(PollerTaskParam param) {
+    private PollerTask(PollerTaskParam param) {
       this.param = param;
+      this.stateRef.set(PollerTaskState.IDLE);
     }
 
     PollerTaskParam getParam() {
       return param;
     }
 
+    @VisibleForTesting
+    void setState(PollerTaskState state) {
+      stateRef.set(state);
+    }
+
     private void schedule(ExecutorService pollerExecutor) {
-      try {
-        future.set(pollerExecutor.submit(this));
-      } catch (RejectedExecutionException e) {
-        log.error("Failed to schedule poller task for {}", param.getNodeAgentUuid());
+      if (stateRef.compareAndSet(PollerTaskState.IDLE, PollerTaskState.SCHEDULED)) {
+        try {
+          pollerExecutor.submit(this);
+        } catch (RejectedExecutionException e) {
+          stateRef.set(PollerTaskState.IDLE);
+          log.error("Failed to schedule poller task for {}", param.getNodeAgentUuid());
+        }
       }
     }
 
     private boolean isSchedulable() {
-      return future.get() == null;
+      return stateRef.get() == PollerTaskState.IDLE;
     }
 
     private boolean isNodeAgentAlive() {
-      return lastFailedCount.get() < MAX_FAILED_CONN_COUNT;
-    }
-
-    private boolean acquireUpgradeToken() {
-      if (isUpgradeTokenAcquired.get()) {
-        log.info("Node agent {} is already being upgraded", param.getNodeAgentUuid());
-        return true;
-      }
-      if (activeUpgrades.tryAcquire()) {
-        log.info("Upgrading node agent {}", param.getNodeAgentUuid());
-        isUpgradeTokenAcquired.set(true);
-        return true;
-      }
-      log.info(
-          "Postponing node agent {} upgrade as max parallel upgrades has reached",
-          param.getNodeAgentUuid());
-      isUpgradeTokenAcquired.set(false);
-      return false;
-    }
-
-    private void releaseUpgradeToken() {
-      if (isUpgradeTokenAcquired.get()) {
-        activeUpgrades.release();
-        isUpgradeTokenAcquired.set(false);
-      }
+      return lastFailedCount < MAX_FAILED_CONN_COUNT;
     }
 
     private boolean checkVersion(NodeAgent nodeAgent) {
@@ -182,14 +166,31 @@ public class NodeAgentPoller {
       return versionMatched;
     }
 
+    @VisibleForTesting
+    void waitForUpgrade() {
+      Future<?> curr = future;
+      if (curr != null) {
+        try {
+          curr.get();
+        } catch (InterruptedException e) {
+          throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+          throw new RuntimeException(e.getCause());
+        }
+      }
+    }
+
     @Override
     public void run() {
-      try {
-        NodeAgent.maybeGet(param.getNodeAgentUuid()).ifPresent(n -> poll(n));
-      } catch (Exception e) {
-        log.error("Error in polling for node {} - {}", param.getNodeAgentUuid(), e.getMessage(), e);
-      } finally {
-        future.set(null);
+      if (stateRef.compareAndSet(PollerTaskState.SCHEDULED, PollerTaskState.RUNNING)) {
+        try {
+          NodeAgent.maybeGet(param.getNodeAgentUuid()).ifPresent(n -> poll(n));
+        } catch (Exception e) {
+          log.error(
+              "Error in polling for node {} - {}", param.getNodeAgentUuid(), e.getMessage(), e);
+        } finally {
+          stateRef.set(PollerTaskState.IDLE);
+        }
       }
     }
 
@@ -203,15 +204,14 @@ public class NodeAgentPoller {
       try {
         nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
       } catch (RuntimeException e) {
-        // Release on connection error if it was already acquired.
-        releaseUpgradeToken();
-        int count =
-            lastFailedCount.updateAndGet(val -> val >= MAX_FAILED_CONN_COUNT ? val : val + 1);
-        if (count % 10 == 0) {
+        if (lastFailedCount < MAX_FAILED_CONN_COUNT) {
+          lastFailedCount++;
+        }
+        if (lastFailedCount % 10 == 0) {
           log.warn(
               "Node agent {} has not been responding for count {}- {}",
               nodeAgent.getUuid(),
-              count,
+              lastFailedCount,
               e.getMessage());
         }
         Instant expiryDate =
@@ -232,77 +232,90 @@ public class NodeAgentPoller {
         }
         return;
       }
+      nodeAgent.heartbeat();
       boolean wasDead = !isNodeAgentAlive();
-      lastFailedCount.set(0);
+      lastFailedCount = 0;
       if (wasDead) {
         // Return to schedule on the live executor.
         return;
       }
       switch (nodeAgent.getState()) {
         case READY:
-          {
-            if (versionMatched) {
-              nodeAgent.heartbeat();
-              return;
-            }
-            if (!acquireUpgradeToken()) {
-              return;
-            }
-            nodeAgent.saveState(State.UPGRADE);
-            // Fall-thru to complete in single cycle.
+          if (versionMatched) {
+            return;
           }
+          // Fall-thru to complete in single cycle.
         case UPGRADE:
-          {
-            if (!acquireUpgradeToken()) {
-              return;
-            }
-            log.info("Initiating upgrade for node agent {}", nodeAgent.getUuid());
-            InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, null);
-            // Upload the installer files including new cert and key to the remote node agent.
-            uploadInstallerFiles(nodeAgent, installerFiles);
-            NodeAgentUpgradeParam upgradeParam =
-                NodeAgentUpgradeParam.builder()
-                    .certDir(installerFiles.getCertDir())
-                    .packagePath(installerFiles.getPackagePath())
-                    .build();
-            // Set up the config and symlink on the remote node agent.
-            nodeAgentClient.startUpgrade(nodeAgent, upgradeParam);
-            // Point the node agent to the new cert and key locally.
-            // At this point, the node agent is still with old cert and key.
-            // So, this client has to trust both old and new certs.
-            // The new key should also work on node agent.
-            nodeAgentManager.replaceCerts(nodeAgent);
-            nodeAgent.saveState(State.UPGRADED);
-            // Fall-thru to complete in single cycle.
-          }
         case UPGRADED:
-          {
-            if (!acquireUpgradeToken()) {
-              return;
+          if (future == null) {
+            try {
+              log.info("Submitting upgrade task for node agent {}", nodeAgent.getUuid());
+              // Submit to upgrade pool to not starve poller.
+              future =
+                  upgradeExecutor.submit(
+                      () -> {
+                        try {
+                          upgradeNodeAgent(nodeAgent.getUuid());
+                        } finally {
+                          future = null;
+                        }
+                      });
+            } catch (RejectedExecutionException e) {
+              log.warn(
+                  "Upgrade for node agent {} cannot be scheduled at the moment - {}",
+                  nodeAgent.getUuid(),
+                  e.getMessage());
             }
-            log.info("Finalizing upgrade for node agent {}", nodeAgent.getUuid());
-            // Inform the node agent to restart and load the new cert and key on restart.
-            String nodeAgentHome = nodeAgentClient.finalizeUpgrade(nodeAgent);
-            PingResponse pingResponse =
-                nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofMinutes(2));
-            ServerInfo serverInfo = pingResponse.getServerInfo();
-            if (serverInfo.getRestartNeeded()) {
-              log.info("Server restart is needed for node agent {}", nodeAgent.getUuid());
-            } else {
-              // If the node has restarted and loaded the new cert and key,
-              // delete the local merged certs.
-              nodeAgentManager.postUpgrade(nodeAgent);
-              nodeAgent.setHome(nodeAgentHome);
-              nodeAgent.setVersion(serverInfo.getVersion());
-              nodeAgent.saveState(State.READY);
-              releaseUpgradeToken();
-              log.info("Node agent {} has been upgraded successfully", nodeAgent.getUuid());
-              // Release the node agent is already upgraded.
-            }
-            break;
           }
+          break;
         default:
           log.trace("Unhandled state: {}", nodeAgent.getState());
+      }
+    }
+
+    // This handles upgrade for the given node agent.
+    private void upgradeNodeAgent(UUID nodeAgentUuid) {
+      NodeAgent nodeAgent = NodeAgent.getOrBadRequest(nodeAgentUuid);
+      if (nodeAgent.getState() == State.READY) {
+        nodeAgent.saveState(State.UPGRADE);
+      }
+      if (nodeAgent.getState() == State.UPGRADE) {
+        log.info("Initiating upgrade for node agent {}", nodeAgent.getUuid());
+        InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, null);
+        // Upload the installer files including new cert and key to the remote node agent.
+        uploadInstallerFiles(nodeAgent, installerFiles);
+        NodeAgentUpgradeParam upgradeParam =
+            NodeAgentUpgradeParam.builder()
+                .certDir(installerFiles.getCertDir())
+                .packagePath(installerFiles.getPackagePath())
+                .build();
+        // Set up the config and symlink on the remote node agent.
+        nodeAgentClient.startUpgrade(nodeAgent, upgradeParam);
+        // Point the node agent to the new cert and key locally.
+        // At this point, the node agent is still with old cert and key.
+        // So, this client has to trust both old and new certs.
+        // The new key should also work on node agent.
+        nodeAgentManager.replaceCerts(nodeAgent);
+        nodeAgent.saveState(State.UPGRADED);
+      }
+      if (nodeAgent.getState() == State.UPGRADED) {
+        log.info("Finalizing upgrade for node agent {}", nodeAgent.getUuid());
+        // Inform the node agent to restart and load the new cert and key on restart.
+        String nodeAgentHome = nodeAgentClient.finalizeUpgrade(nodeAgent);
+        PingResponse pingResponse =
+            nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofMinutes(2));
+        ServerInfo serverInfo = pingResponse.getServerInfo();
+        if (serverInfo.getRestartNeeded()) {
+          log.info("Server restart is needed for node agent {}", nodeAgent.getUuid());
+        } else {
+          // If the node has restarted and loaded the new cert and key,
+          // delete the local merged certs.
+          nodeAgentManager.postUpgrade(nodeAgent);
+          nodeAgent.setHome(nodeAgentHome);
+          nodeAgent.setVersion(serverInfo.getVersion());
+          nodeAgent.saveState(State.READY);
+          log.info("Node agent {} has been upgraded successfully", nodeAgent.getUuid());
+        }
       }
     }
   }
@@ -320,13 +333,8 @@ public class NodeAgentPoller {
           String.format(
               "%s must be greater than 0", GlobalConfKeys.nodeAgentPollerInterval.getKey()));
     }
-    Integer maxParallelUpgrades =
-        confGetter.getGlobalConf(GlobalConfKeys.maxParallelNodeAgentUpgrades);
-    if (maxParallelUpgrades == null || maxParallelUpgrades < 1) {
-      throw new IllegalArgumentException(
-          String.format(
-              "%s must be greater than 0", GlobalConfKeys.maxParallelNodeAgentUpgrades.getKey()));
-    }
+    // Sync once on startup because the in-memory tracker can lose some UUIDs on restart.
+    syncNodeAgentTargetJsons();
     livePollerExecutor =
         platformExecutorFactory.createExecutor(
             LIVE_POLLER_POOL_NAME,
@@ -335,13 +343,21 @@ public class NodeAgentPoller {
         platformExecutorFactory.createExecutor(
             DEAD_POLLER_POOL_NAME,
             new ThreadFactoryBuilder().setNameFormat("NodeAgentDeadPoller-%d").build());
-    activeUpgrades = new Semaphore(maxParallelUpgrades);
+    upgradeExecutor =
+        platformExecutorFactory.createExecutor(
+            UPGRADER_POOL_NAME,
+            new ThreadFactoryBuilder().setNameFormat("NodeAgentUpgrader-%d").build());
     log.info("Scheduling poller service");
     platformScheduler.schedule(
         NodeAgentHandler.class.getSimpleName() + "Poller",
         POLLER_INITIAL_DELAY,
         pollerInterval,
         this::pollerService);
+  }
+
+  @VisibleForTesting
+  void setUpgradeExecutor(ExecutorService upgradeExecutor) {
+    this.upgradeExecutor = upgradeExecutor;
   }
 
   private void uploadInstallerFiles(NodeAgent nodeAgent, InstallerFiles installerFiles) {
@@ -370,6 +386,14 @@ public class NodeAgentPoller {
             });
   }
 
+  void syncNodeAgentTargetJsons() {
+    Set<UUID> nodeUuids =
+        NodeAgent.getAll().stream().map(NodeAgent::getUuid).collect(Collectors.toSet());
+    swamperHelper.getTargetNodeAgentUuids().stream()
+        .filter(uuid -> !nodeUuids.contains(uuid))
+        .forEach(uuid -> swamperHelper.removeNodeAgentTargetJson(uuid));
+  }
+
   /**
    * This method is run in interval. Some node agents may not be responding at the moment. Once they
    * come up, they may recover from their states and change to LIVE. Then, they are notified to
@@ -379,9 +403,7 @@ public class NodeAgentPoller {
   void pollerService() {
     try {
       Duration duration = confGetter.getGlobalConf(GlobalConfKeys.deadNodeAgentRetention);
-      String softwareVersion =
-          Objects.requireNonNull(
-              (String) configHelper.getConfig(ConfigType.SoftwareVersion).get("version"));
+      String softwareVersion = nodeAgentManager.getSoftwareVersion();
       Set<UUID> nodeUuids = new HashSet<>();
       NodeAgent.getAll().stream()
           .filter(n -> n.getState() != State.REGISTERING)
@@ -403,7 +425,10 @@ public class NodeAgentPoller {
       while (iter.hasNext()) {
         Entry<UUID, PollerTask> entry = iter.next();
         if (!nodeUuids.contains(entry.getKey())) {
-          entry.getValue().releaseUpgradeToken();
+          Future<?> future = entry.getValue().future;
+          if (future != null) {
+            future.cancel(true);
+          }
           swamperHelper.removeNodeAgentTargetJson(entry.getKey());
           iter.remove();
         }
