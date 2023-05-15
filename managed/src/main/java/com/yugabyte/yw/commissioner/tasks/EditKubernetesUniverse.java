@@ -222,6 +222,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
 
     boolean instanceTypeChanged = false;
+    // TODO Support overriden instance types
     if (!curIntent.instanceType.equals(newIntent.instanceType)) {
       List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
       // If the instance type changed from dev/xsmall to anything else,
