@@ -1,8 +1,9 @@
 ---
 title: Install YugabyteDB Anywhere for Airgapped environments
-headerTitle: Install YugabyteDB Anywhere - Airgapped
+headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software in your on-premises, airgapped environment.
+headContent: Install YBA software using Replicated in an airgapped environment
 menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform
