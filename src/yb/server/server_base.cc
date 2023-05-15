@@ -84,6 +84,7 @@
 #include "yb/util/timestamp.h"
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
+#include "yb/util/tcmalloc_util.h"
 
 DEFINE_UNKNOWN_int32(num_reactor_threads, -1,
              "Number of libev reactor threads to start. If -1, the value is automatically set.");
@@ -141,7 +142,7 @@ struct CommonMemTrackers {
   std::vector<MemTrackerPtr> trackers;
 
   ~CommonMemTrackers() {
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
     // Prevent root mem tracker from accessing common mem trackers.
     auto root = MemTracker::GetRootTracker();
     root->SetPollChildrenConsumptionFunctors(nullptr);
@@ -162,10 +163,10 @@ std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
   return MemTracker::CreateTracker(id_str);
 }
 
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
 void RegisterTCMallocTracker(const char* name, const char* prop) {
   common_mem_trackers->trackers.push_back(MemTracker::CreateTracker(
-      -1, "TCMalloc "s + name, std::bind(&MemTracker::GetTCMallocProperty, prop)));
+      -1, "TCMalloc "s + name, std::bind(&::yb::GetTCMallocProperty, prop)));
 }
 #endif
 
@@ -182,13 +183,13 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       stop_metrics_logging_latch_(1) {
   mem_tracker_->SetMetricEntity(metric_entity_);
 
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
   // When mem tracker for first server is created we register mem trackers that report tc malloc
   // status.
   if (mem_tracker_->id() == kServerMemTrackerName) {
     common_mem_trackers = std::make_unique<CommonMemTrackers>();
 
-#if defined(YB_GOOGLE_TCMALLOC)
+#if YB_GOOGLE_TCMALLOC
     RegisterTCMallocTracker("Sum of CPU Cache Freelists", "tcmalloc.cpu_free");
     RegisterTCMallocTracker("Central Cache Freelist", "tcmalloc.central_cache_free");
     RegisterTCMallocTracker("Transfer Cache Freelist", "tcmalloc.transfer_cache_free");
@@ -198,7 +199,7 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
     RegisterTCMallocTracker("Sum of Thread Cache Freelists", "tcmalloc.thread_cache_free_bytes");
     RegisterTCMallocTracker("Central Cache Freelist", "tcmalloc.central_cache_free_bytes");
     RegisterTCMallocTracker("Transfer Cache Freelist", "tcmalloc.transfer_cache_free_bytes");
-#endif
+#endif  // YB_GOOGLE_TCMALLOC
     RegisterTCMallocTracker("PageHeap Freelist (Mapped)", "tcmalloc.pageheap_free_bytes");
     RegisterTCMallocTracker("PageHeap Freelist (Unmapped)", "tcmalloc.pageheap_unmapped_bytes");
 
@@ -209,7 +210,7 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
           }
         });
   }
-#endif
+#endif  // YB_TCMALLOC_ENABLED
 
   if (clock) {
     clock_ = clock;

@@ -12,9 +12,9 @@
 
 #pragma once
 
-#ifdef YB_GOOGLE_TCMALLOC
+#if YB_GOOGLE_TCMALLOC
 #include <tcmalloc/malloc_extension.h>
-#endif
+#endif // YB_GOOGLE_TCMALLOC
 
 #include <cstdint>
 #include <string>
@@ -28,7 +28,7 @@ DECLARE_bool(enable_process_lifetime_heap_profiling);
 
 namespace yb {
 
-#ifdef YB_GOOGLE_TCMALLOC
+#if YB_GOOGLE_TCMALLOC
 
 struct SampleInfo {
   int64_t bytes;

@@ -13,7 +13,7 @@
 #include "yb/server/pprof-path-handlers_util.h"
 
 #include <glog/logging.h>
-#ifdef YB_GOOGLE_TCMALLOC
+#if YB_GOOGLE_TCMALLOC
 #include <tcmalloc/malloc_extension.h>
 #endif
 
@@ -40,7 +40,7 @@ bool Symbolize(void *pc, char *out, int out_size);
 
 namespace yb {
 
-#ifdef YB_GOOGLE_TCMALLOC
+#if YB_GOOGLE_TCMALLOC
 
 tcmalloc::Profile GetAllocationProfile(int seconds, int64_t sample_freq_bytes) {
   auto prev_sample_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
