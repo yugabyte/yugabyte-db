@@ -17,9 +17,13 @@ YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) ma
 
 The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
-Using yugabyted, you can create single-node clusters. To create multi-node clusters, you would need to use the `--join` flag in the `start` command.
+Using yugabyted, you can create single-node clusters. To create multi-node clusters, you would need to use the `--join` flag in the `start` command. VM / node restart will require re-joining.
 
-Note that yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly. Refer to [Deploy YugabyteDB](../../../deploy).
+{{<note title="Not recommended for production">}}
+Note that yugabyted is not recommended for production deployments. 
+For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly. 
+Refer to [Deploy YugabyteDB](../../../deploy).
+{{</note>}}
 
 ## Syntax
 
