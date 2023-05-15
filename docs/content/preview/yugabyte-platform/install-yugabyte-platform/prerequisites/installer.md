@@ -47,9 +47,15 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
 
 You can install YugabyteDB Anywhere using YBA Installer on the following Linux distributions:
 
-- CentOS (default)
-- RHEL 7 and later
-- Ubuntu 18 and 20
+- CentOS 7
+- Alma Linux 8
+- Alma Linux 9
+- Ubuntu 18
+- Ubuntu 20
+- RedHat Enterprise Linux 7
+- RedHat Enterprise Linux 8
+
+YugabyteDB Anywhere may also work on other Linux distributions; contact your YugabyteDB support representative if you need added support.
 
 ## Software requirements
 
