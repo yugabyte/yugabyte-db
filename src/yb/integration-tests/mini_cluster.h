@@ -151,6 +151,7 @@ class MiniCluster : public MiniClusterBase {
   Status AddTabletServer();
 
   Status AddTServerToBlacklist(const tserver::MiniTabletServer& ts);
+  Status AddTServerToLeaderBlacklist(const tserver::MiniTabletServer& ts);
   Status ClearBlacklist();
 
   // If this cluster is configured for a single non-distributed
