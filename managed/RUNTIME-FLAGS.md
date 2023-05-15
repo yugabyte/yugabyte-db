@@ -137,4 +137,4 @@
 | "Minimum Incremental backup schedule frequency" | "yb.backup.minIncrementalScheduleFrequencyInSecs" | "UNIVERSE" | "Minimum Incremental backup schedule frequency in seconds" | "Long" |
 | "Universe logs regex pattern" | "yb.support_bundle.universe_logs_regex_pattern" | "UNIVERSE" | "Universe logs regex pattern in support bundle" | "String" |
 | "Postgres logs regex pattern" | "yb.support_bundle.postgres_logs_regex_pattern" | "UNIVERSE" | "Postgres logs regex pattern in support bundle" | "String" |
-| "YSQL Upgrade Timeout in seconds" | "yb.upgrade.ysql_upgrade_timeout_sec" | "UNIVERSE" | "Timeout in seconds in between each attempt during YSQL upgrade" | "Integer" |
+| "YSQL Upgrade Timeout in seconds" | "yb.upgrade.ysql_upgrade_timeout_sec" | "UNIVERSE" | "Controls the yb-client admin operation timeout when performing the runUpgradeYSQL subtask rpc calls." | "Integer" |
