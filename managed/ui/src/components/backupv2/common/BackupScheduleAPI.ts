@@ -20,13 +20,14 @@ type Schedule_List_Reponse = {
   totalCount: number;
 };
 
-export const getScheduledBackupList = (pageno: number) => {
+export const getScheduledBackupList = (pageno: number, universeUUID: string) => {
   const cUUID = localStorage.getItem('customerId');
   const records_to_fetch = 500;
   const params = {
     direction: 'ASC',
     filter: {
-      taskTypes: ['BackupUniverse', 'MultiTableBackup', 'CreateBackup']
+      taskTypes: ['BackupUniverse', 'MultiTableBackup', 'CreateBackup'],
+      universeUUIDList: [universeUUID]
     },
     limit: records_to_fetch,
     offset: pageno * records_to_fetch,
