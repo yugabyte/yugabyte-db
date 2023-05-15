@@ -44,6 +44,11 @@ To enable pg_hint_plan, run the following command:
 yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
 
+{{<note title="Enable pg_hint_plan for all sessions">}}
+You can enable `pg_hint_plan` for all sessions by setting it in the [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) YB-TServer flag.
+{{</note>}}
+
+
 ### Turn on debug output
 
 To view the specific hints that pg_hint_plan uses and forwards to the query planner, turn on debug output. This is helpful for situations where syntactical errors or wrong hint names are present in hint phrases. To view these debug prints, run the following commands:
