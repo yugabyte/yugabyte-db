@@ -6,6 +6,7 @@ alter_table_action ::= ADD [ COLUMN ] column_name data_type
                        | RENAME TO table_name
                        | DROP [ COLUMN ] column_name 
                          [ RESTRICT | CASCADE ]
+                       | alter_column_type
                        | ADD alter_table_constraint
                        | DROP CONSTRAINT constraint_name 
                          [ RESTRICT | CASCADE ]
@@ -39,4 +40,8 @@ alter_column_constraint ::= [ CONSTRAINT constraint_name ]
                               | INITIALLY IMMEDIATE ]
 
 table_expr ::= [ ONLY ] table_name [ * ]
+
+alter_column_type ::= ALTER [ COLUMN ] column_name [ SET DATA ] TYPE 
+                      data_type [ COLLATE collation ] 
+                      [ USING expression ]
 ```

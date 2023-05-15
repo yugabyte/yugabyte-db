@@ -35,10 +35,10 @@ Use the `ALTER TABLE` statement to change the definition of a table.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr.grammar.md" %}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr,alter_column_type.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr.diagram.md" %}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr,alter_column_type.diagram.md" %}}
   </div>
 </div>
 
@@ -197,6 +197,49 @@ It quietly succeeds. Now `\d children` shows that the foreign key constraint `ch
 #### ADD [*alter_table_constraint*](#constraints)
 
 Add the specified constraint to the table.
+
+#### [*alter_column_type*]
+
+Change the type of an existing column. Depending if data on disk is required to be changed, different semantics apply.
+
+Indexes and simple table constraints involving the column will be automatically converted to use the new column type by reparsing the originally supplied expression. 
+
+The optional `COLLATE` clause specifies a collation for the new column; if omitted, the collation is the default for the new column type. 
+
+The optional `USING` clause specifies how to compute the new column value from the old; if omitted, the default conversion is the same as an assignment cast from old data type to new. 
+
+A `USING` clause must be provided if there is no implicit or assignment cast from old to new type.
+
+##### Online alter type
+ 
+If the change doesn't require data on disk to change, these semantics apply:
+
+- The action is online and concurrent DMLs to the table can go through.
+
+Example:
+
+```sql
+CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
+ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51);
+```
+
+##### Offline alter type
+
+If the change requires data on disk to change, these semantics apply:
+
+- This action is offline, so concurrent DMLs should not be performed while an alter column type operation is happening.
+- The action creates an entirely new table under the hood, and concurrent DMLs won’t be reflected in the new table which can lead to correctness issues.
+- This action is not compatible with: partitioned tables, tables with rules, tables with CDC streams and tables with foreign key columns.
+- If the operation fails, it is possible that the existing table is renamed in DocDB. This leads to no functional issues, but may reflect in the YB admin panel.
+- If the operation fails, a new dangling table can continue to exist if DDL atomicity is not enabled.
+
+Example:
+
+```sql
+CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
+ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(40);
+ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING a::BIGINT;
+```
 
 #### DROP CONSTRAINT *constraint_name* [ RESTRICT | CASCADE ]
 
