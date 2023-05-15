@@ -108,19 +108,15 @@ You can change some configuration options post-installation using the [reconfigu
 
 YBA Installer requires a valid license before installing. To obtain a license, contact {{% support-platform %}}.
 
-The license can be provided to YBA Installer in one of two ways:
+Provide the license to YBA Installer by running the `license` command as follows:
 
-- Run the `license` command before running `install`. This command can also be used to update to a new license if needed.
+```sh
+$ sudo ./yba-ctl license add -l /path/to/license
+```
 
-    ```sh
-    $ sudo ./yba-ctl license add -l /path/to/license
-    ```
+You can use this command to update to a new license if needed.
 
-- As part of the `install` command:
-
-    ```sh
-    $ sudo ./yba-ctl install -l /path/to/license
-    ```
+You can also provide a license when running the `install` command. Refer to [Install the software](#install-the-software).
 
 ### Run preflight checks
 
@@ -158,6 +154,12 @@ To perform an install, run the `install` command. Once started, an install can t
 
 ```sh
 $ sudo ./yba-ctl install
+```
+
+You can also provide a license when running the `install` command by using the `-l` flag:
+
+```sh
+$ sudo ./yba-ctl install -l /path/to/license
 ```
 
 ```output
