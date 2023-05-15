@@ -140,9 +140,9 @@ $ sudo ./yba-ctl preflight
 10 postgres               Pass
 ```
 
-Some checks can be ignored, such as CPU or memory. Others, such as having a license and python installed, are hard requirements, and YugabyteDB Anywhere can't work until these checks pass. All checks should pass for a production installation.
+Some checks, such as CPU or memory, can be skipped, though this is not recommended for a production installation. Others, such as having a license and python installed, are hard requirements, and YugabyteDB Anywhere can't work until these checks pass. All checks should pass for a production installation.
 
-If a check is failing and you want to skip it, you can pass `–skip_preflight <name>[,<name2>]`.
+If you are installing YBA for testing and evaluation and you want to skip a check that is failing, you can pass `–skip_preflight <name>[,<name2>]`. For example:
 
 ```sh
 $ sudo ./yba-ctl preflight --skip_preflight cpu
