@@ -1,9 +1,10 @@
 ---
 title: Install YugabyteDB Anywhere software - Installer
-headerTitle: Install YugabyteDB Anywhere - YBA Installer
+headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software using YBA Installer
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+headContent: Install YBA software using YBA Installer
+earlyAccess: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform
