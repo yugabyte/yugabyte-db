@@ -2077,13 +2077,9 @@ SELECT agtype_to_bool(agtype_in('false'));
  f
 (1 row)
 
-SELECT agtype_to_bool(agtype_in('1'));
- agtype_to_bool 
-----------------
- t
-(1 row)
-
 -- These should all fail
+SELECT agtype_to_bool(agtype_in('1'));
+ERROR:  cannot cast agtype integer to type boolean
 SELECT agtype_to_bool(agtype_in('null'));
 ERROR:  cannot cast agtype null to type boolean
 SELECT agtype_to_bool(agtype_in('1.0'));

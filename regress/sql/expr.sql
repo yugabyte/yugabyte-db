@@ -393,6 +393,66 @@ SELECT * FROM cypher('expr', $$
 RETURN false XOR false
 $$) AS r(result boolean);
 
+SELECT * FROM cypher('expr', $$
+RETURN false OR 1::bool    
+$$) AS (result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN false AND NOT 1::bool
+$$) AS (result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN NOT 1::bool::int::bool    
+$$) AS (result boolean);
+
+-- Invalid operands for AND, OR, NOT, XOR
+SELECT * FROM cypher('expr', $$
+RETURN 1 AND true
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN true AND 0
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN false OR 1
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN 0 OR true 
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN NOT 1    
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN true XOR 0
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN 1 XOR 0
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN NOT ((1 OR 0) AND (0 OR 1))
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN 1.0 AND true
+$$) AS (result agtype);
+
+SELECT * FROM cypher('expr', $$
+RETURN false OR 'string'
+$$) AS (result agtype);
+
+SELECT * FROM cypher('expr', $$
+RETURN false XOR 1::numeric
+$$) AS (result agtype);
+
+SELECT * FROM cypher('expr', $$
+RETURN false OR 1::bool::int    
+$$) AS (result boolean);
 --
 -- Test indirection transform logic for object.property, object["property"],
 -- and array[element]
@@ -522,13 +582,6 @@ SELECT * FROM cypher('type_coercion', $$
 	RETURN true
 $$) AS (i int);
 
---
--- Coerce to Postgres bool/boolean type
---
-SELECT * FROM cypher('type_coercion', $$
-    RETURN 1
-$$) AS (i bool);
-
 --Invalid String Format
 SELECT * FROM cypher('type_coercion', $$
 	RETURN '1.0'
@@ -552,6 +605,10 @@ $$) AS (i bigint);
 SELECT * FROM cypher('type_coercion', $$
 	RETURN [1]
 $$) AS (i bigint);
+
+SELECT * FROM cypher('type_coercion', $$
+    RETURN 1
+$$) AS (i bool);
 
 SELECT * FROM cypher('type_coercion', $$CREATE ()-[:edge]->()$$) AS (result agtype);
 SELECT * FROM cypher('type_coercion', $$

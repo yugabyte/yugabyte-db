@@ -62,7 +62,7 @@
 #define FUNC_AGTYPE_TYPECAST_INT "agtype_typecast_int"
 #define FUNC_AGTYPE_TYPECAST_PG_FLOAT8 "agtype_to_float8"
 #define FUNC_AGTYPE_TYPECAST_PG_BIGINT "agtype_to_int8"
-#define FUNC_AGTYPE_TYPECAST_BOOL "agtype_to_bool"
+#define FUNC_AGTYPE_TYPECAST_BOOL "agtype_typecast_bool"
 
 static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
                                            Node *expr);

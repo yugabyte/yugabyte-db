@@ -898,6 +898,79 @@ $$) AS r(result boolean);
  f
 (1 row)
 
+SELECT * FROM cypher('expr', $$
+RETURN false OR 1::bool    
+$$) AS (result boolean);
+ result 
+--------
+ t
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN false AND NOT 1::bool
+$$) AS (result boolean);
+ result 
+--------
+ f
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN NOT 1::bool::int::bool    
+$$) AS (result boolean);
+ result 
+--------
+ f
+(1 row)
+
+-- Invalid operands for AND, OR, NOT, XOR
+SELECT * FROM cypher('expr', $$
+RETURN 1 AND true
+$$) AS r(result boolean);
+ERROR:  cannot cast agtype integer to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN true AND 0
+$$) AS r(result boolean);
+ERROR:  cannot cast agtype integer to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN false OR 1
+$$) AS r(result boolean);
+ERROR:  cannot cast agtype integer to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN 0 OR true 
+$$) AS r(result boolean);
+ERROR:  cannot cast agtype integer to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN NOT 1    
+$$) AS r(result boolean);
+ERROR:  cannot cast agtype integer to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN true XOR 0
+$$) AS r(result boolean);
+ERROR:  cannot cast agtype integer to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN 1 XOR 0
+$$) AS r(result boolean);
+ERROR:  cannot cast agtype integer to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN NOT ((1 OR 0) AND (0 OR 1))
+$$) AS r(result boolean);
+ERROR:  cannot cast agtype integer to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN 1.0 AND true
+$$) AS (result agtype);
+ERROR:  cannot cast agtype float to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN false OR 'string'
+$$) AS (result agtype);
+ERROR:  cannot cast agtype string to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN false XOR 1::numeric
+$$) AS (result agtype);
+ERROR:  cannot cast agtype numeric to type boolean
+SELECT * FROM cypher('expr', $$
+RETURN false OR 1::bool::int    
+$$) AS (result boolean);
+ERROR:  cannot cast agtype integer to type boolean
 --
 -- Test indirection transform logic for object.property, object["property"],
 -- and array[element]
@@ -1155,17 +1228,6 @@ $$) AS (i int);
  1
 (1 row)
 
---
--- Coerce to Postgres bool/boolean type
---
-SELECT * FROM cypher('type_coercion', $$
-    RETURN 1
-$$) AS (i bool);
- i 
----
- t
-(1 row)
-
 --Invalid String Format
 SELECT * FROM cypher('type_coercion', $$
 	RETURN '1.0'
@@ -1189,6 +1251,10 @@ SELECT * FROM cypher('type_coercion', $$
 	RETURN [1]
 $$) AS (i bigint);
 ERROR:  cannot cast agtype array to type int
+SELECT * FROM cypher('type_coercion', $$
+    RETURN 1
+$$) AS (i bool);
+ERROR:  cannot cast agtype integer to type boolean
 SELECT * FROM cypher('type_coercion', $$CREATE ()-[:edge]->()$$) AS (result agtype);
  result 
 --------
@@ -1393,15 +1459,15 @@ $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
 RETURN 1.23::bool
 $$) AS r(result agtype);
-ERROR:  cannot cast agtype float to type boolean
+ERROR:  typecast expression must be an integer or a boolean
 SELECT * FROM cypher('expr', $$
 RETURN ''::bool
 $$) AS r(result agtype);
-ERROR:  cannot cast agtype string to type boolean
+ERROR:  typecast expression must be an integer or a boolean
 SELECT * FROM cypher('expr', $$
 RETURN 'falze'::bool
 $$) AS r(result agtype);
-ERROR:  cannot cast agtype string to type boolean
+ERROR:  typecast expression must be an integer or a boolean
 -- Test from an agtype value to an agtype numeric
 --
 SELECT * FROM cypher('expr', $$

@@ -2575,7 +2575,7 @@ Datum agtype_to_bool(PG_FUNCTION_ARGS)
     agtype_value agtv;
 
     if (!agtype_extract_scalar(&agtype_in->root, &agtv) ||
-        (agtv.type != AGTV_BOOL && agtv.type != AGTV_INTEGER))
+        agtv.type != AGTV_BOOL)
     {
         cannot_cast_agtype_value(agtv.type, "boolean");
     }
@@ -4101,6 +4101,68 @@ Datum agtype_typecast_int(PG_FUNCTION_ARGS)
     /* set the result type and return our result */
     result_value.type = AGTV_INTEGER;
     result_value.val.int_value = DatumGetInt64(d);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&result_value));
+}
+
+PG_FUNCTION_INFO_V1(agtype_typecast_bool);
+/*
+ * Execute function to typecast an agtype to an agtype bool
+ */
+Datum agtype_typecast_bool(PG_FUNCTION_ARGS)
+{
+    agtype *arg_agt;
+    agtype_value *arg_value;
+    agtype_value result_value;
+    Datum d;
+
+    /* get the agtype equivalence of any convertable input type */
+    arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
+
+    /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
+    if (arg_agt == NULL)
+    {    
+        PG_RETURN_NULL();
+    }
+
+    /* check that we have a scalar value */
+    if (!AGT_ROOT_IS_SCALAR(arg_agt))
+    {    
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("typecast argument must be a scalar value")));
+    }
+
+    /* get the arg parameter */
+    arg_value = get_ith_agtype_value_from_container(&arg_agt->root, 0);
+
+    /* check for agtype null */
+    if (arg_value->type == AGTV_NULL)
+    {    
+        PG_RETURN_NULL();
+    }
+
+    /* the input type drives the casting */
+    switch(arg_value->type)
+    {
+    case AGTV_BOOL:
+        PG_RETURN_POINTER(agtype_value_to_agtype(arg_value));
+        break;
+    case AGTV_INTEGER:
+        d = DirectFunctionCall1(int4_bool,
+                                Int64GetDatum(arg_value->val.int_value));
+        break;
+    /* what was given doesn't cast to a bool */
+    default:
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("typecast expression must be an integer or a boolean")));
+        break;
+    }
+
+    /* set the result type and return our result */
+    result_value.type = AGTV_BOOL;
+    result_value.val.boolean = DatumGetBool(d);
 
     PG_RETURN_POINTER(agtype_value_to_agtype(&result_value));
 }

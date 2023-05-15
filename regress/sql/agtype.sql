@@ -523,8 +523,8 @@ SELECT agtype_in('true') < '1::numeric';
 --
 SELECT agtype_to_bool(agtype_in('true'));
 SELECT agtype_to_bool(agtype_in('false'));
-SELECT agtype_to_bool(agtype_in('1'));
 -- These should all fail
+SELECT agtype_to_bool(agtype_in('1'));
 SELECT agtype_to_bool(agtype_in('null'));
 SELECT agtype_to_bool(agtype_in('1.0'));
 SELECT agtype_to_bool(agtype_in('"string"'));
