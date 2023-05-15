@@ -633,6 +633,28 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Check whether YSQL has finished upgrading.
+   * @param hp the host and port of the tserver.
+   * @param useSingleConnection whether or not to use a single connection.
+   * @return a deferred object containing whether or not YSQL has completed upgrading.
+   */
+  public Deferred<UpgradeYsqlResponse> upgradeYsql(
+      HostAndPort hp,
+      boolean useSingleConnection) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+
+    UpgradeYsqlRequest rpc = new UpgradeYsqlRequest(useSingleConnection);
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    Deferred<UpgradeYsqlResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
    * Check if the server is ready to serve requests.
    * @param hp host port of the server.
    * @param isTserver true if host/port is for tserver, else its master.
