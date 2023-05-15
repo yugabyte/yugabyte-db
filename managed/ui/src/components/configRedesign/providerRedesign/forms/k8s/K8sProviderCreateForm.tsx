@@ -116,7 +116,10 @@ export const K8sProviderCreateForm = ({
     }
   );
 
-  if (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle) {
+  if (
+    enableSuggestedConfigFeature &&
+    (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)
+  ) {
     return <YBLoading />;
   }
 
