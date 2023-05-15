@@ -38,6 +38,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -323,8 +324,7 @@ public class AZUtil implements CloudUtil {
             .filter(
                 permission ->
                     permission != ExtraPermissionToValidate.READ
-                        && permission != ExtraPermissionToValidate.LIST
-                        && permission != ExtraPermissionToValidate.DELETE)
+                        && permission != ExtraPermissionToValidate.LIST)
             .findAny();
 
     if (unsupportedPermission.isPresent()) {
@@ -346,16 +346,14 @@ public class AZUtil implements CloudUtil {
       validateListBlobs(blobContainerClient, fileName);
     }
 
-    if (permissions.contains(ExtraPermissionToValidate.DELETE)) {
-      validateDelete(blobContainerClient, fileName);
-    }
+    validateDelete(blobContainerClient, fileName);
   }
 
   /**
    * Validates create permissions on an azure sas token and location, apart from read, list or
    * delete permissions if specified.
    */
-  public void validateTokenAndLocation(
+  private void validateTokenAndLocation(
       String sasToken, String location, List<ExtraPermissionToValidate> permissions) {
     BlobContainerClient blobContainerClient = createBlobContainerClient(sasToken, location);
     validateOnBlobContainerClient(blobContainerClient, permissions);
@@ -376,10 +374,19 @@ public class AZUtil implements CloudUtil {
 
   /** Checks if the given fileName blob's existence can be verified via the list operation. */
   private void validateListBlobs(BlobContainerClient blobContainerClient, String fileName) {
-    if (!containsBlobWithName(blobContainerClient, fileName)) {
+    if (!listContainsBlobWithName(blobContainerClient, fileName)) {
       throw new PlatformServiceException(
           EXPECTATION_FAILED, "Created blob with name \"" + fileName + "\" not found in list.");
     }
+  }
+
+  private boolean listContainsBlobWithName(
+      BlobContainerClient blobContainerClient, String fileName) {
+    Optional<BlobItem> blobItem =
+        StreamSupport.stream(blobContainerClient.listBlobs().spliterator(), true)
+            .filter(b -> b.getName().equals(fileName))
+            .findAny();
+    return blobItem.isPresent();
   }
 
   private boolean containsBlobWithName(BlobContainerClient blobContainerClient, String fileName) {
