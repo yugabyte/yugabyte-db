@@ -201,13 +201,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           "Creating task for disk size change from {} to {}",
           curIntent.deviceInfo.volumeSize,
           newIntent.deviceInfo.volumeSize);
-      createResizeDiskTask(
-          universe.name,
-          curPlacement,
-          masterAddresses,
-          newIntent,
-          isReadOnlyCluster,
-          newNamingStyle);
+      createResizeDiskTask(curPlacement, masterAddresses, newIntent, isReadOnlyCluster);
     }
 
     boolean instanceTypeChanged = false;
