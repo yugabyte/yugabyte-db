@@ -586,6 +586,9 @@ message SysUniverseReplicationEntryPB {
 
   // Mapping from Producer Table ID to Producer->Consumer schema version mappings
   map<string, SchemaVersionMappingEntryPB> schema_version_mappings = 10;
+
+  // Set when consistent transactions are enabled for a replication group.
+  optional bool transactional = 11;
 }
 
 message XClusterSafeTimePB {

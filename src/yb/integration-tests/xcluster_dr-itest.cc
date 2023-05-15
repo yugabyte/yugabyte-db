@@ -33,8 +33,6 @@
 #include "yb/client/snapshot_test_util.h"
 #include "yb/util/file_util.h"
 
-DECLARE_bool(enable_replicate_transaction_status_table);
-
 using std::string;
 using namespace std::chrono_literals;
 
@@ -55,7 +53,6 @@ class XClusterDRTest : public XClusterYsqlTestBase {
  public:
   void SetUp() override {
     YB_SKIP_TEST_IN_TSAN();
-    FLAGS_enable_replicate_transaction_status_table = true;
 
     super::SetUp();
     MiniClusterOptions opts;
@@ -142,7 +139,8 @@ class XClusterDRTest : public XClusterYsqlTestBase {
   Status SetupReplication(std::vector<string> bootstrap_ids) {
     RETURN_NOT_OK(SetupUniverseReplication(
         source_cluster_->mini_cluster_.get(), target_cluster_->mini_cluster_.get(), target_client_,
-        kUniverseId, source_tables_for_bootstrap_, true /*leader_only*/, bootstrap_ids));
+        kUniverseId, source_tables_for_bootstrap_, bootstrap_ids,
+        {LeaderOnly::kTrue, Transactional::kTrue}));
 
     master::GetUniverseReplicationResponsePB resp;
     RETURN_NOT_OK(VerifyUniverseReplication(
