@@ -43,11 +43,11 @@
 
 #include "yb/server/pprof-path-handlers.h"
 
-#if defined(YB_TCMALLOC_ENABLED) && defined(YB_GPERFTOOLS_TCMALLOC)
+#if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>
 #include <gperftools/malloc_extension.h>
 #include <gperftools/profiler.h>
-#endif
+#endif  // YB_GPERFTOOLS_TCMALLOC
 
 #include <fstream>
 #include <string>
@@ -68,6 +68,7 @@
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/tcmalloc_impl_util.h"
 
 DECLARE_bool(enable_process_lifetime_heap_profiling);
 DECLARE_string(heap_profile_path);
@@ -110,13 +111,37 @@ static void PprofCmdLineHandler(const Webserver::WebRequest& req,
 static void PprofHeapHandler(const Webserver::WebRequest& req,
                               Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#if !defined(YB_TCMALLOC_ENABLED)
+#if !YB_TCMALLOC_ENABLED
   (*output) << "Heap profiling is only available if tcmalloc is enabled.";
-#else
+  return;
+#endif
+
+#if YB_TCMALLOC_ENABLED
   int seconds = ParseLeadingInt32Value(
       FindWithDefault(req.parsed_args, "seconds", ""), PPROF_DEFAULT_SAMPLE_SECS);
+#endif
 
-#if defined(YB_GPERFTOOLS_TCMALLOC)
+#if YB_GOOGLE_TCMALLOC
+  // Whether to only report allocations that do not have a corresponding deallocation.
+  bool only_growth = ParseLeadingBoolValue(
+      FindWithDefault(req.parsed_args, "only_growth", ""), false);
+
+  // Set the sample frequency to this value for the duration of the sample.
+  int64_t sample_freq_bytes = ParseLeadingInt64Value(
+      FindWithDefault(req.parsed_args, "sample_freq_bytes", ""), 4_KB);
+  LOG(INFO) << "Starting a heap profile:"
+            << " seconds=" << seconds
+            << " only_growth=" << only_growth
+            << " sample_freq_bytes=" << sample_freq_bytes;
+
+  const string title = only_growth ? "In use profile" : "Allocation profile";
+
+  auto profile = GetAllocationProfile(seconds, sample_freq_bytes);
+  auto samples = AggregateAndSortProfile(profile, only_growth);
+  GenerateTable(output, samples, title, 1000 /* max_call_stacks*/);
+#endif  // YB_GOOGLE_TCMALLOC
+
+#if YB_GPERFTOOLS_TCMALLOC
   LOG(INFO) << "Starting a heap profile:"
             << " seconds=" << seconds
             << " path prefix=" << FLAGS_heap_profile_path;
@@ -136,33 +161,13 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
   HeapProfilerStop();
   (*output) << profile;
   delete profile;
-#elif defined(YB_GOOGLE_TCMALLOC)
-  // Whether to only report allocations that do not have a corresponding deallocation.
-  bool only_growth = ParseLeadingBoolValue(
-      FindWithDefault(req.parsed_args, "only_growth", ""), false);
-  // Set the sample frequency to this value for the duration of the sample.
-  int64_t sample_freq_bytes = ParseLeadingInt64Value(
-      FindWithDefault(req.parsed_args, "sample_freq_bytes", ""), 4_KB);
-  LOG(INFO) << "Starting a heap profile:"
-            << " seconds=" << seconds
-            << " only_growth=" << only_growth
-            << " sample_freq_bytes=" << sample_freq_bytes;
-
-  const string title = only_growth ? "In use profile" : "Allocation profile";
-
-  auto profile = GetAllocationProfile(seconds, sample_freq_bytes);
-  auto samples = AggregateAndSortProfile(profile, only_growth);
-  GenerateTable(output, samples, title, 1000 /* max_call_stacks*/);
-#endif // defined(YB_GPERFTOOLS_TCMALLOC)
-#endif // defined(YB_TCMALLOC_ENABLED)
+#endif  // YB_GPERFTOOLS_TCMALLOC
 }
 
 static void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
                                      Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#if !defined(YB_GOOGLE_TCMALLOC)
-  (*output) << "Heap snapshot is only available with google tcmalloc.";
-#else
+#if YB_GOOGLE_TCMALLOC
   if (!FLAGS_enable_process_lifetime_heap_profiling) {
     (*output) << "FLAGS_enable_process_lifetime_heap_profiling must be set to true to for heap "
               << "snapshot to work.";
@@ -174,7 +179,9 @@ static void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
   auto profile = GetHeapSnapshot(peak_heap);
   auto samples = AggregateAndSortProfile(profile, false /* only_growth */);
   GenerateTable(output, samples, title, 1000 /* max_call_stacks */);
-#endif
+#else
+  (*output) << "Heap snapshot is only available with Google tcmalloc.";
+#endif  // YB_GOOGLE_TCMALLOC
 }
 
 // pprof asks for the url /pprof/profile?seconds=XX to get cpu-profiling information.
@@ -183,9 +190,7 @@ static void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
 static void PprofCpuProfileHandler(const Webserver::WebRequest& req,
                                   Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#if !defined(YB_GPERFTOOLS_TCMALLOC)
-  (*output) << "CPU profiling is not available without gperftools tcmalloc.";
-#else
+#if YB_GPERFTOOLS_TCMALLOC
   string secs_str = FindWithDefault(req.parsed_args, "seconds", "");
   int32_t seconds = ParseLeadingInt32Value(secs_str.c_str(), PPROF_DEFAULT_SAMPLE_SECS);
   // Build a temporary file name that is hopefully unique.
@@ -205,7 +210,9 @@ static void PprofCpuProfileHandler(const Webserver::WebRequest& req,
   }
   (*output) << prof_file.rdbuf();
   prof_file.close();
-#endif
+#else
+  (*output) << "CPU profiling is only available with gperftools tcmalloc.";
+#endif  // YB_GPERFTOOLS_TCMALLOC
 }
 
 // pprof asks for the url /pprof/growth to get heap-profiling delta (growth) information.
@@ -213,13 +220,13 @@ static void PprofCpuProfileHandler(const Webserver::WebRequest& req,
 // MallocExtension::instance()->GetHeapGrowthStacks(&output);
 static void PprofGrowthHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#if !defined(YB_GPERFTOOLS_TCMALLOC)
-  (*output) << "Growth profiling is only available with gperftools tcmalloc.";
-#else
+#if YB_GPERFTOOLS_TCMALLOC
   string heap_growth_stack;
   MallocExtension::instance()->GetHeapGrowthStacks(&heap_growth_stack);
   (*output) << heap_growth_stack;
-#endif
+#else
+  (*output) << "Growth profiling is only available with gperftools tcmalloc.";
+#endif  // YB_GPERFTOOLS_TCMALLOC
 }
 
 // Lock contention profiling
@@ -313,13 +320,15 @@ void AddPprofPathHandlers(Webserver* webserver) {
   // https://gperftools.googlecode.com/svn/trunk/doc/pprof_remote_servers.html
   webserver->RegisterPathHandler("/pprof/cmdline", "", PprofCmdLineHandler, false /* is_styled */,
       false /* is_on_nav_bar */);
-  #ifdef YB_GOOGLE_TCMALLOC
-  webserver->RegisterPathHandler("/pprof/heap", "", PprofHeapHandler, true /* is_styled */,
+
+#if YB_GOOGLE_TCMALLOC
+  bool is_pprof_heap_styled = true;
+#else
+  bool is_pprof_heap_styled = false;
+#endif  // YB_GOOGLE_TCMALLOC
+  webserver->RegisterPathHandler("/pprof/heap", "", PprofHeapHandler, is_pprof_heap_styled,
       false /* is_on_nav_bar */);
-  #else
-  webserver->RegisterPathHandler("/pprof/heap", "", PprofHeapHandler, false /* is_styled */,
-      false /* is_on_nav_bar */);
-  #endif
+
   webserver->RegisterPathHandler("/pprof/growth", "", PprofGrowthHandler, false /* is_styled */,
       false /* is_on_nav_bar */);
   webserver->RegisterPathHandler("/pprof/profile", "", PprofCpuProfileHandler,

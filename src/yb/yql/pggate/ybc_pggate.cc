@@ -278,6 +278,7 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
   } else {
     pgapi = new pggate::PgApiImpl(PgApiContext(), data_type_table, count, pg_callbacks);
   }
+
   VLOG(1) << "PgGate open";
 }
 
@@ -360,21 +361,13 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
 }
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-#if defined(YB_TCMALLOC_ENABLED)
-  *consumption = yb::MemTracker::GetTCMallocCurrentAllocatedBytes();
-#else
-  *consumption = 0;
-#endif
+  *consumption = GetTCMallocCurrentAllocatedBytes();
   return YBCStatusOK();
 }
 
 YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
-#ifdef YB_TCMALLOC_ENABLED
-    *consumption = pgapi ? pgapi->GetRootMemTracker().consumption() : 0;
-#else
-    *consumption = 0;
-#endif
-    return YBCStatusOK();
+  *consumption = GetTCMallocActualHeapSizeBytes();
+  return YBCStatusOK();
 }
 
 bool YBCTryMemConsume(int64_t bytes) {
@@ -395,13 +388,15 @@ bool YBCTryMemRelease(int64_t bytes) {
 
 YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
   memset(desc, 0x0, sizeof(YbTcmallocStats));
-#ifdef YB_TCMALLOC_ENABLED
-  using mt = yb::MemTracker;
-  desc->total_physical_bytes = mt::GetTCMallocPhysicalBytesUsed();
-  desc->heap_size_bytes = mt::GetTCMallocCurrentHeapSizeBytes();
-  desc->current_allocated_bytes = mt::GetTCMallocCurrentAllocatedBytes();
-  desc->pageheap_free_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_free_bytes");
-  desc->pageheap_unmapped_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_unmapped_bytes");
+#if YB_TCMALLOC_ENABLED
+  desc->total_physical_bytes = GetTCMallocPhysicalBytesUsed();
+
+  // This excludes unmapped pages for both Google TCMalloc and GPerfTools TCMalloc.
+  desc->heap_size_bytes = GetTCMallocCurrentHeapSizeBytes();
+
+  desc->current_allocated_bytes = GetTCMallocCurrentAllocatedBytes();
+  desc->pageheap_free_bytes = GetTCMallocPageHeapFreeBytes();
+  desc->pageheap_unmapped_bytes = GetTCMallocPageHeapUnmappedBytes();
 #endif
   return YBCStatusOK();
 }

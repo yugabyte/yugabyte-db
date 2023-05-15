@@ -421,5 +421,4 @@ Result<EnumType> ParseEnumInsensitive(const std::string& str) {
   return ParseEnumInsensitive<EnumType>(str.c_str());
 }
 
-
 }  // namespace yb
