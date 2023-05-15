@@ -45,10 +45,6 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
       taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
       preTaskActions();
 
-      UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      Integer newDiskSize = taskParams().getPrimaryCluster().userIntent.deviceInfo.volumeSize;
-      // String newDiskSizeGi = String.format("%dGi", newDiskSize);
-      userIntent.deviceInfo.volumeSize = newDiskSize;
       // String softwareVersion = userIntent.ybSoftwareVersion;
       // primary and readonly clusters disk resize
       for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
@@ -77,12 +73,10 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
             taskParams().useNewHelmNamingStyle,
             universe.isYbcEnabled(),
             universe.getUniverseDetails().getYbcSoftwareVersion());
-      }
 
-      // persist the changes to the universe
-      createPersistResizeNodeTask(
-          userIntent.instanceType,
-          taskParams().getPrimaryCluster().userIntent.deviceInfo.volumeSize);
+        // persist the changes to the universe
+        createPersistResizeNodeTask(cluster.userIntent, cluster.uuid);
+      }
 
       // Marks update of this universe as a success only if all the tasks before it
       // succeeded.

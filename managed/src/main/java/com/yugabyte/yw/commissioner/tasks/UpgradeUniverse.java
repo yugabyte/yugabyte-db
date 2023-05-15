@@ -131,7 +131,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
         // Instance Type
         // Make sure the instance type exists.
-        String newInstanceTypeCode = taskParams().getPrimaryCluster().userIntent.instanceType;
+        String newInstanceTypeCode =
+            taskParams().getPrimaryCluster().userIntent.getBaseInstanceType();
         String provider = primIntent.provider;
 
         List<InstanceType> instanceTypes =
@@ -409,7 +410,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     params.nodeName = node.nodeName;
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.azUuid = node.azUuid;
-    params.instanceType = taskParams().getPrimaryCluster().userIntent.instanceType;
+    params.instanceType = taskParams().getPrimaryCluster().userIntent.getInstanceTypeForNode(node);
 
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);
@@ -550,7 +551,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         createUpdateDiskSizeTasks(nodes).setSubTaskGroupType(SubTaskGroupType.ResizingDisk);
 
         // Persist changes in the universe
-        createPersistResizeNodeTask(currInstanceType, newDiskSize)
+        createPersistResizeNodeTask(
+                taskParams().getPrimaryCluster().userIntent, taskParams().getPrimaryCluster().uuid)
             .setSubTaskGroupType(SubTaskGroupType.ResizingDisk);
       } else {
         log.info(
@@ -643,7 +645,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Persist changes in the universe
-      createPersistResizeNodeTask(newInstanceType)
+      createPersistResizeNodeTask(
+              taskParams().getPrimaryCluster().userIntent, taskParams().getPrimaryCluster().uuid)
           .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
     }
   }
