@@ -90,8 +90,14 @@ public class ScheduleTask extends Model {
         .findList()
         .stream()
         .filter(
-            (task) ->
-                TaskInfo.getOrBadRequest(task.getTaskUUID()).getTaskState().equals(State.Success))
+            (task) -> {
+              Optional<TaskInfo> taskInfo = TaskInfo.maybeGet(task.getTaskUUID());
+              if (taskInfo.isPresent()) {
+                return taskInfo.get().getTaskState().equals(State.Success);
+              } else {
+                return false;
+              }
+            })
         .findFirst();
   }
 
