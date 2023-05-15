@@ -56,7 +56,7 @@ YbPgMemTracker PgMemTracker = {0};
 static Size
 YbSnapshotMemory()
 {
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
 	int64_t cur_tc_actual_sz = 0;
 	YBCGetPgggateCurrentAllocatedBytes(&cur_tc_actual_sz);
 	return cur_tc_actual_sz;
@@ -85,7 +85,7 @@ YbPgMemUpdateMax()
 static void
 YbPgMemUpdateCur()
 {
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
 	YbGetActualHeapSizeBytes(&PgMemTracker.backend_cur_allocated_mem_bytes);
 	yb_pgstat_report_allocated_mem_bytes();
 #endif
