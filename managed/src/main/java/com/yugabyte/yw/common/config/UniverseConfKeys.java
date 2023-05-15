@@ -649,7 +649,8 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.upgrade.ysql_upgrade_timeout_sec",
           ScopeType.UNIVERSE,
           "YSQL Upgrade Timeout in seconds",
-          "Timeout in seconds in between each attempt during YSQL upgrade",
+          "Controls the yb-client admin operation timeout when performing the runUpgradeYSQL "
+              + "subtask rpc calls.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }
