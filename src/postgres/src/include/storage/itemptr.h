@@ -168,9 +168,9 @@ typedef ItemPointerData *ItemPointer;
 ( \
 	AssertMacro(PointerIsValid(toPointer)), \
 	AssertMacro(PointerIsValid(fromPointer)), \
-	*(toPointer) = *(fromPointer), \
-	YbItemPointerCopy(fromPointer, toPointer) \
-)
+	*(toPointer) = *(fromPointer) \
+);\
+COPY_YBITEM((fromPointer)->yb_item, (toPointer)->yb_item)
 
 /*
  * ItemPointerSetInvalid

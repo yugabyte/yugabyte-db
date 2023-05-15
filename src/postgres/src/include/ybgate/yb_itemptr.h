@@ -41,16 +41,11 @@ typedef struct YbItemPointerData
 
 typedef YbItemPointerData *YbItemPointer;
 
-extern void YbItemPointerDataCopy(YbItemPointerData ybFrom, YbItemPointerData ybTo);
-
 #define YbItemPointerYbctid(itemPointer) \
 	((itemPointer)->yb_item.ybctid)
 
 #define YbItemPointerSetInvalid(itemPointer) \
 	((itemPointer)->yb_item.ybctid = (Datum)0)
-
-#define YbItemPointerCopy(from, to) \
-	YbItemPointerDataCopy((from)->yb_item, (to)->yb_item)
 
 /* Heap tuple keeps data in t_self */
 #define HEAPTUPLE_YBITEM(htup) ((htup)->t_self.yb_item)
@@ -58,7 +53,7 @@ extern void YbItemPointerDataCopy(YbItemPointerData ybFrom, YbItemPointerData yb
 #define HEAPTUPLE_YBCTID(htup) ((htup)->t_self.yb_item.ybctid)
 
 #define HEAPTUPLE_COPY_YBITEM(fromHtup, toHtup)			\
-	YbItemPointerCopy(&(fromHtup)->t_self, &(toHtup)->t_self)
+	COPY_YBITEM(HEAPTUPLE_YBITEM(fromHtup), HEAPTUPLE_YBITEM(toHtup))
 
 /* Index tuple keeps data in t_tid */
 #define INDEXTUPLE_YBITEM(itup) ((itup)->t_tid.yb_item)
@@ -66,7 +61,7 @@ extern void YbItemPointerDataCopy(YbItemPointerData ybFrom, YbItemPointerData yb
 #define INDEXTUPLE_YBCTID(itup) ((itup)->t_tid.yb_item.ybctid)
 
 #define INDEXTUPLE_COPY_YBITEM(fromItup, toItup)			\
-	YbItemPointerCopy(&(fromItup)->t_tid, &(toItup)->t_tid)
+	COPY_YBITEM(INDEXTUPLE_YBITEM(fromItup), INDEXTUPLE_YBITEM(toItup))
 
 /* TupleTableSlot keeps data in tts_tid */
 #define TABLETUPLE_YBITEM(tslot) ((tslot)->tts_tid.yb_item)
@@ -74,6 +69,22 @@ extern void YbItemPointerDataCopy(YbItemPointerData ybFrom, YbItemPointerData yb
 #define TABLETUPLE_YBCTID(tslot) ((tslot)->tts_tid.yb_item.ybctid)
 
 #define TABLETUPLE_COPY_YBITEM(fromTslot, toTslot)			\
-	YbItemPointerCopy(&(fromTslot)->tts_tid, &(toTslot)->tts_tid)
+  COPY_YBITEM(TABLETUPLE_YBITEM(fromTslot), TABLETUPLE_YBITEM(toTslot))
+
+/* Copy YbItemPointerData from a source to destination */
+#define COPY_YBITEM(src, dest) COPY_YBCTID(src.ybctid, dest.ybctid)
+
+/* Copy ybctid from a source to destination */
+#define COPY_YBCTID(src, dest)                            			\
+	do {                                                            \
+		if (IsYugaByteEnabled()) {                                  \
+			dest = (src == 0) ? 0 :                                 \
+				PointerGetDatum(cstring_to_text_with_len(VARDATA_ANY(src), \
+														 VARSIZE_ANY_EXHDR(src))); \
+		} else {                                                    \
+			dest = 0;                                               \
+		}                                                           \
+	} while (false)
+
 
 #endif /* YB_ITEMPTR_H */

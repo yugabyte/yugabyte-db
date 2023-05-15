@@ -198,7 +198,10 @@ index_insert(Relation indexRelation,
 			 bool yb_shared_insert)
 {
 	RELATION_CHECKS;
-	CHECK_REL_PROCEDURE(aminsert);
+	if (IsYugaByteEnabled() && IsYBRelation(indexRelation))
+		CHECK_REL_PROCEDURE(yb_aminsert);
+	else
+		CHECK_REL_PROCEDURE(aminsert);
 
 	if (!(indexRelation->rd_indam->ampredlocks))
 		CheckForSerializableConflictIn(indexRelation,
@@ -211,20 +214,16 @@ index_insert(Relation indexRelation,
 	 */
 	if (IsYugaByteEnabled() && IsYBRelation(indexRelation))
 	{
-		CHECK_REL_PROCEDURE(yb_aminsert);
 		return indexRelation->rd_indam->yb_aminsert(indexRelation, values, isnull,
 													heap_t_ctid, heapRelation,
 													checkUnique, indexInfo,
 													yb_shared_insert);
 	}
-	else
-	{
-		CHECK_REL_PROCEDURE(aminsert);
-		return indexRelation->rd_indam->aminsert(indexRelation, values, isnull,
-												 heap_t_ctid, heapRelation,
-												 checkUnique, indexUnchanged,
-												 indexInfo);
-	}
+
+	return indexRelation->rd_indam->aminsert(indexRelation, values, isnull,
+												heap_t_ctid, heapRelation,
+												checkUnique, indexUnchanged,
+												indexInfo);
 }
 
 /* ----------------

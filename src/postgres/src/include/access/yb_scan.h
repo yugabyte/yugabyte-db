@@ -245,7 +245,7 @@ extern bool YbFetchTableSlot(Relation relation, ItemPointer tid, TupleTableSlot 
  * Fetch a single row for given ybctid into a heap-tuple.
  * This API is needed for reading data from a catalog (system table).
  */
-extern bool YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple tuple);
+extern bool YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple* tuple);
 
 /*
  * ANALYZE support: sampling of table data

@@ -3035,6 +3035,7 @@ YbFetchTableSlot(Relation relation, ItemPointer tid,  TupleTableSlot *slot)
 		{
 			TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
 		}
+		/* YB_TODO: Why are we not setting values and nulls. */
 	}
 
 	/* Free up memory and return data */
@@ -3045,7 +3046,7 @@ YbFetchTableSlot(Relation relation, ItemPointer tid,  TupleTableSlot *slot)
 }
 
 bool
-YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple tuple)
+YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple* tuple)
 {
 	bool has_data = false;
 	YBCPgStatement ybc_stmt;
@@ -3066,7 +3067,7 @@ YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple tuple)
 	/* Write into the given tuple */
 	if (has_data)
 	{
-		tuple = heap_form_tuple(tupdesc, values, nulls);
+		*tuple = heap_form_tuple(tupdesc, values, nulls);
 #ifdef YB_TODO
 		/* YB_TODO(neil@yugabyte)
 		 * - OID is now a regular column.
@@ -3077,10 +3078,10 @@ YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple tuple)
 			HeapTupleSetOid(tuple, syscols.oid);
 		}
 #endif
-		tuple->t_tableOid = RelationGetRelid(relation);
+		(*tuple)->t_tableOid = RelationGetRelid(relation);
 		if (syscols.ybctid != NULL)
 		{
-			HEAPTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybctid);
+			HEAPTUPLE_YBCTID(*tuple) = PointerGetDatum(syscols.ybctid);
 		}
 	}
 
@@ -3376,19 +3377,19 @@ ybFetchNext(YBCPgStatement handle,
 		slot->tts_nvalid = tupdesc->natts;
 		slot->tts_flags &= ~TTS_FLAG_EMPTY; /* Not empty */
 		TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
+#ifdef YB_TODO
+		/* OID is now a regular column */
 		if (syscols.oid != InvalidOid)
 		{
 			MemoryContext oldcontext = MemoryContextSwitchTo(slot->tts_mcxt);
 			HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
-#ifdef YB_TODO
-			/* OID is now a regular column */
 			HeapTupleSetOid(tuple, syscols.oid);
-#endif
 			tuple->t_tableOid = relid;
 			HEAPTUPLE_YBCTID(tuple) = TABLETUPLE_YBCTID(slot);
 			slot = ExecStoreHeapTuple(tuple, slot, true);
 			MemoryContextSwitchTo(oldcontext);
 		}
+#endif
 	}
 
 	return slot;

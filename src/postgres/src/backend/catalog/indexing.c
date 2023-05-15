@@ -325,6 +325,11 @@ CatalogTupleCheckConstraints(Relation heapRel, HeapTuple tup)
 void
 CatalogTupleInsert(Relation heapRel, HeapTuple tup)
 {
+	if (IsYugaByteEnabled())
+	{
+		return YBCatalogTupleInsert(heapRel, tup, false);
+	}
+
 	CatalogIndexState indstate;
 
 	CatalogTupleCheckConstraints(heapRel, tup);
@@ -348,13 +353,9 @@ CatalogTupleInsert(Relation heapRel, HeapTuple tup)
 void
 YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 {
-
-	if (!IsYugaByteEnabled())
-	{
-		return CatalogTupleInsert(heapRel, tup);
-	}
-
 	CatalogIndexState indstate;
+
+	CatalogTupleCheckConstraints(heapRel, tup);
 
 	/* YB_TODO(neil & sushant@yugabyte)
 	 * Work out a solution for the OID situation in catalog insert.
@@ -554,8 +555,7 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 		{
 			if (YbItemPointerYbctid(otid))
 			{
-				HeapTuple oldtup = NULL;
-				YbFetchHeapTuple(heapRel, otid, oldtup);
+				YbFetchHeapTuple(heapRel, otid, &oldtup);
 				CatalogIndexDelete(indstate, oldtup);
 			}
 			else
@@ -603,8 +603,7 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 		{
 			if (YbItemPointerYbctid(otid))
 			{
-				HeapTuple oldtup = NULL;
-				YbFetchHeapTuple(heapRel, otid, oldtup);
+				YbFetchHeapTuple(heapRel, otid, &oldtup);
 				CatalogIndexDelete(indstate, oldtup);
 			}
 			else

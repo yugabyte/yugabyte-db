@@ -39,7 +39,7 @@ enum class PgSystemAttrNum : int {
                                 // (where null == null). For each index row will be set to:
                                 //  - the base table ctid when one or more indexed cols are null
                                 //  - to null otherwise (all indexed cols are non-null).
-  kObjectId             = -103, // YB_TODO(arpan): remove it, added it temporarily for consistency
+  kObjectId             = -104, // YB_TODO(arpan): remove it, added it temporarily for consistency
                                 // with sysattr.h.
 };
 

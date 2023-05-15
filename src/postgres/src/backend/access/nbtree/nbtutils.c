@@ -31,6 +31,8 @@
 #include "utils/rel.h"
 #include "utils/typcache.h"
 
+/* Yugabyte includes */
+#include "utils/builtins.h"
 
 typedef struct BTSortArrayContext
 {

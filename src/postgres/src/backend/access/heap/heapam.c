@@ -71,9 +71,11 @@
 #include "utils/snapmgr.h"
 #include "utils/spccache.h"
 
+/* Yugabyte includes */
 #include "pg_yb_utils.h"
 #include "executor/ybcModifyTable.h"
 #include "access/yb_scan.h"
+#include "utils/builtins.h"
 
 static HeapTuple heap_prepare_insert(Relation relation, HeapTuple tup,
 									 TransactionId xid, CommandId cid, int options);
@@ -4337,6 +4339,12 @@ heap_lock_tuple(Relation relation, HeapTuple tuple,
 	tuple->t_data = (HeapTupleHeader) PageGetItem(page, lp);
 	tuple->t_len = ItemIdGetLength(lp);
 	tuple->t_tableOid = RelationGetRelid(relation);
+
+	/*
+	 * This will only be used for non-YB tuples (e.g. Temp tables) so we just
+	 * need to set the ybctid to 0 (NULL) here.
+	 */
+	HEAPTUPLE_YBCTID(tuple) = (Datum) 0;
 
 l3:
 	result = HeapTupleSatisfiesUpdate(tuple, cid, *buffer);

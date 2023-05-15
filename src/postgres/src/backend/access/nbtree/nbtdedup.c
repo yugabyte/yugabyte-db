@@ -20,6 +20,9 @@
 #include "miscadmin.h"
 #include "utils/rel.h"
 
+/* Yugabyte includes */
+#include "utils/builtins.h"
+
 static void _bt_bottomupdel_finish_pending(Page page, BTDedupState state,
 										   TM_IndexDeleteOp *delstate);
 static bool _bt_do_singleval(Relation rel, Page page, BTDedupState state,

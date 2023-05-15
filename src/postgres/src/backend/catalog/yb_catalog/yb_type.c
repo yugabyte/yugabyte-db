@@ -105,7 +105,10 @@ YbDataTypeFromOidMod(int attnum, Oid type_id)
 			case SelfItemPointerAttributeNumber: /* ctid */
 				type_id = TIDOID;
 				break;
+			#ifdef YB_TODO
+			/* OID is a regular column PG15 onwards. */
 			case ObjectIdAttributeNumber: /* oid */
+			#endif
 			case TableOidAttributeNumber: /* tableoid */
 				type_id = OIDOID;
 				break;

@@ -1650,12 +1650,6 @@ rewriteValuesRTEToNulls(Query *parsetree, RangeTblEntry *rte)
 }
 
 /*
- * NEIL NEIL NEIL
- * Code for rewriteTargetListUD() has been rewritten by Postgres.
- * Yugabyte needs to modify new code.
- */
-
-/*
  * matchLocks -
  *	  match the list of locks and returns the matching rules
  */

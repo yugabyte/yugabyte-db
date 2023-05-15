@@ -24,7 +24,7 @@
 #define MaxTransactionIdAttributeNumber			(-4)
 #define MaxCommandIdAttributeNumber				(-5)
 #define TableOidAttributeNumber					(-6)
-#define FirstLowInvalidHeapAttributeNumber		(-7)
+#define FirstLowInvalidHeapAttributeNumber 		(-7)
 
 #define YBTupleIdAttributeNumber				(-7)
 #define YBFirstLowInvalidAttributeNumber		(-8)
@@ -44,7 +44,7 @@
  * Previously, OID is a column in Postgres structure with value (-2).
  * Temporarily use (-103) as this column is removed from Postgres.
  */
-#define ObjectIdAttributeNumber					(-103)
-#define YBSystemFirstLowInvalidAttributeNumber	(-104)
+#define YBSystemFirstLowInvalidAttributeNumber	(-103)
 
+#define ObjectIdAttributeNumber					(-104)
 #endif							/* SYSATTR_H */

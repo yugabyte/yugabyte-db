@@ -610,9 +610,9 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 			/* Shouldn't be trying to remove a live transaction here */
 			Assert(!TransactionIdIsValid(ProcGlobal->xids[myoff]));
 		}
+		Assert(!TransactionIdIsValid(ProcGlobal->xids[myoff]));
 	}
 
-	Assert(!TransactionIdIsValid(ProcGlobal->xids[myoff]));
 	Assert(ProcGlobal->subxidStates[myoff].count == 0);
 	Assert(ProcGlobal->subxidStates[myoff].overflowed == false);
 
