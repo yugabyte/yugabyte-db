@@ -323,6 +323,7 @@ export const AddTableModal = ({
         }
         // workaround for outdated version of Formik to access form methods outside of <Formik>
         formik.current = formikProps;
+        formik.current.values.parallelThreads = 8;
 
         switch (currentStep) {
           case FormStep.SELECT_TABLES: {
