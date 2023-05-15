@@ -1033,7 +1033,7 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
-## PostgreSQL logging options
+## PostgreSQL options
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters using the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag.
 
@@ -1041,7 +1041,7 @@ For information on available PostgreSQL server configuration parameters, refer t
 
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions.
 
-### log_line_prefix
+##### log_line_prefix
 
 YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
 
@@ -1054,7 +1054,7 @@ YugabyteDB supports the following additional options for the `log_line_prefix` p
 
 For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
 
-### suppress_nonpg_logs (boolean)
+##### suppress_nonpg_logs (boolean)
 
 When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file in the `tserver/logs` directory.
 
