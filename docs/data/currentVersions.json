@@ -17,13 +17,13 @@
       "display": "v2.18 (STS)",
       "version": "2.18.0.0",
       "versionShort": "2.18.0",
-      "appVersion": "2.18.0.0-b63",
+      "appVersion": "2.18.0.0-b65",
       "isStable": true,
       "isLTS": false,
       "isSTS": true,
-      "initialRelease": "2022-05-11",
-      "endOfMaintenance": "2024-01-11",
-      "endOfLife": "2025-07-11"
+      "initialRelease": "2022-05-15",
+      "endOfMaintenance": "2024-01-15",
+      "endOfLife": "2025-07-15"
     },
     {
       "series": "v2.16",
