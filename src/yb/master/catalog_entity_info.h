@@ -660,12 +660,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
 
-  // Transition table from PREPARING to RUNNING state if all its tablets are RUNNING.
+  // Check if all tablets of the table are in RUNNING state.
   // new_running_tablets is the new set of tablets that are being transitioned to RUNNING state
-  // (dirty copy is modified) and yet to be persisted. Returns true if the table state has
-  // changed.
-  bool TransitionTableFromPreparingToRunning(
-      const std::unordered_map<TabletId, const TabletInfo::WriteLock*>& new_running_tablets);
+  // (dirty copy is modified) and yet to be persisted.
+  bool AreAllTabletsRunning(const std::set<TabletId>& new_running_tablets = {});
 
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
@@ -728,14 +726,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   google::protobuf::RepeatedField<int> GetHostedStatefulServices() const;
 
   bool AttachedYCQLIndexDeletionInProgress(const TableId& index_table_id) const;
-
-  bool SetBootstrappingXClusterReplication(bool val) {
-    return bootstrapping_xcluster_replication_.exchange(val, std::memory_order_acq_rel);
-  }
-
-  bool GetBootstrappingXClusterReplication() const {
-    return bootstrapping_xcluster_replication_.load(std::memory_order_acquire);
-  }
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;
