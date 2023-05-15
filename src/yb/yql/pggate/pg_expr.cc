@@ -305,8 +305,10 @@ class PgSysColumnRefFactory {
     switch (attr_num) {
       case PgSystemAttrNum::kSelfItemPointer:
         return PgColumn([](auto* syscols) { return &syscols->ctid; });
+      // YB_TODO: Oid is a regualr column PG15 onwards.
       case PgSystemAttrNum::kObjectId:
-        return PgColumn([](auto* syscols) { return &syscols->oid; });
+        // return PgColumn([](auto* syscols) { return &syscols->oid; });
+        break;
       case PgSystemAttrNum::kMinTransactionId:
         return PgColumn([](auto* syscols) { return &syscols->xmin; });
       case PgSystemAttrNum::kMinCommandId:

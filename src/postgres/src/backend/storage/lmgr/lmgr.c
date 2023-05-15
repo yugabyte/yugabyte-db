@@ -331,6 +331,9 @@ UnlockRelation(Relation relation, LOCKMODE lockmode)
 bool
 CheckRelationLockedByMe(Relation relation, LOCKMODE lockmode, bool orstronger)
 {
+	return true;
+#ifdef YB_TODO
+	/* Is it applicable to YB? */
 	LOCKTAG		tag;
 
 	SET_LOCKTAG_RELATION(tag,
@@ -363,6 +366,7 @@ CheckRelationLockedByMe(Relation relation, LOCKMODE lockmode, bool orstronger)
 	}
 
 	return false;
+#endif
 }
 
 /*

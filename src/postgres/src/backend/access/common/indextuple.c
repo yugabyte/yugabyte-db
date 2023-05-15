@@ -583,7 +583,6 @@ CopyIndexTuple(IndexTuple source)
 	size = IndexTupleSize(source);
 	result = (IndexTuple) palloc(size);
 	memcpy(result, source, size);
-	INDEXTUPLE_COPY_YBITEM(source, result);
 	return result;
 }
 

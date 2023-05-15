@@ -1788,7 +1788,10 @@ typedef struct YbIndexProcessorState {
 	Oid relid;
 	Relation relation;
 	List *result;
+	#ifdef YB_TODO
+	/* YB_TODO: No longer needed? */
 	Oid	oidIndex;
+	#endif
 	Oid	pkeyIndex;
 	Oid	candidateIndex;
 } YbIndexProcessorState;
@@ -1808,12 +1811,6 @@ YbIsIndexProcessingRequired(const YbIndexProcessorState *state)
 static bool
 YbApplyIndex(YbIndexProcessorState *state, HeapTuple htup)
 {
-	return false;
-#ifdef YB_TODO
-	/* YB_TODO(neil) Postgres 15 don't have special OID insertion. Fix the following when activate
-	 * this function call.
-	 *	state->result = insert_ordered_oid(state->result, index->indexrelid);
-	 */
 	Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
 
 	if (!YbIsIndexProcessingStarted(state) || state->relid != index->indrelid)
@@ -1823,9 +1820,11 @@ YbApplyIndex(YbIndexProcessorState *state, HeapTuple htup)
 
 	/* Further code is copy-paste from the RelationGetIndexList function */
 
-	/* Add index's OID to result list in the proper order */
-	state->result = insert_ordered_oid(state->result, index->indexrelid);
+	/* add index's OID to result list */
+	state->result = lappend_oid(state->result, index->indexrelid);
 
+#ifdef YB_TODO
+	/* YB_TODO: No longer needed? */
 	/*
 	 * indclass cannot be referenced directly through the C struct,
 	 * because it comes after the variable-width indkey field.  Must
@@ -1836,23 +1835,27 @@ YbApplyIndex(YbIndexProcessorState *state, HeapTuple htup)
 		htup, Anum_pg_index_indclass, GetPgIndexDescriptor(), &isnull);
 	Assert(!isnull);
 	oidvector *indclass = (oidvector *) DatumGetPointer(indclassDatum);
+#endif
 
 	/*
 	 * Invalid, non-unique, non-immediate or predicate indexes aren't
 	 * interesting for either oid indexes or replication identity indexes,
 	 * so don't check them.
 	 */
-	if (!IndexIsValid(index) || !index->indisunique ||
+	if (!index->indisvalid || !index->indisunique ||
 		!index->indimmediate ||
 		!heap_attisnull(htup, Anum_pg_index_indpred, NULL))
 		return true;
 
+#ifdef YB_TODO
+	/* YB_TODO: No longer needed? */
 	/* Check to see if is a usable btree index on OID */
 	if (index->indnatts == 1 &&
 		index->indkey.values[0] == ObjectIdAttributeNumber &&
 		(indclass->values[0] == OID_BTREE_OPS_OID ||
 		 indclass->values[0] == OID_LSM_OPS_OID))
 		state->oidIndex = index->indexrelid;
+#endif
 
 	/* remember primary key index if any */
 	if (index->indisprimary)
@@ -1863,7 +1866,6 @@ YbApplyIndex(YbIndexProcessorState *state, HeapTuple htup)
 		state->candidateIndex = index->indexrelid;
 
 	return true;
-#endif
 }
 
 static void

@@ -12,6 +12,21 @@
  * in any error message about one of them, so don't do that.  Also, you
  * cannot write a semicolon immediately followed by an empty line in a
  * string literal (including a function body!) or a multiline comment.
+ *
+ * Portions Copyright (c) YugabyteDB, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you
+ * may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied.  See the License for the specific language governing
+ * permissions and limitations under the License.
+
  */
 
 CREATE VIEW pg_roles AS
@@ -648,9 +663,6 @@ GRANT SELECT ON pg_backend_memory_contexts TO pg_read_all_stats;
 REVOKE EXECUTE ON FUNCTION pg_get_backend_memory_contexts() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION pg_get_backend_memory_contexts() TO pg_read_all_stats;
 
-CREATE VIEW pg_backend_memory_contexts AS
-    SELECT * FROM pg_get_backend_memory_contexts();
-
 -- Statistics views
 
 CREATE VIEW pg_stat_all_tables AS
@@ -866,10 +878,15 @@ CREATE VIEW pg_stat_activity AS
             s.backend_xmin,
             S.query_id,
             S.query,
-            S.backend_type
+            S.backend_type,
+            yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version,
+            yb_pg_stat_get_backend_allocated_mem_bytes(B.beid) AS allocated_mem_bytes,
+            yb_pg_stat_get_backend_rss_mem_bytes(B.beid) AS rss_mem_bytes
     FROM pg_stat_get_activity(NULL) AS S
         LEFT JOIN pg_database AS D ON (S.datid = D.oid)
-        LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid);
+        LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid)
+        LEFT JOIN (pg_stat_get_backend_idset() beid CROSS JOIN
+                   pg_stat_get_backend_pid(beid) pid) B ON B.pid = S.pid;
 
 CREATE VIEW pg_stat_replication AS
     SELECT
@@ -1196,6 +1213,8 @@ CREATE VIEW pg_stat_progress_cluster AS
     FROM pg_stat_get_progress_info('CLUSTER') AS S
         LEFT JOIN pg_database D ON S.datid = D.oid;
 
+-- YB_TODO(Fizaa): Verify if the below schema is correct. This is the latest schema as of PG15.2
+-- but it differs from what YB had.
 CREATE VIEW pg_stat_progress_create_index AS
     SELECT
         S.pid AS pid, S.datid AS datid, D.datname AS datname,
@@ -1260,25 +1279,10 @@ CREATE VIEW pg_stat_progress_copy AS
                       WHEN 3 THEN 'PIPE'
                       WHEN 4 THEN 'CALLBACK'
                       END AS "type",
-        S.param1 AS bytes_processed,
-        S.param2 AS bytes_total,
-        S.param3 AS tuples_processed,
-        S.param4 AS tuples_excluded
-    FROM pg_stat_get_progress_info('COPY') AS S
-        LEFT JOIN pg_database D ON S.datid = D.oid;
-
-CREATE VIEW pg_stat_progress_copy AS
-    SELECT
-        S.pid AS pid, S.datid AS datid, D.datname AS datname,
-        S.relid AS relid,
-        CASE S.param5 WHEN 1 THEN 'COPY FROM'
-                      WHEN 2 THEN 'COPY TO'
-                      END AS command,
-        CASE S.param6 WHEN 1 THEN 'FILE'
-                      WHEN 2 THEN 'PROGRAM'
-                      WHEN 3 THEN 'PIPE'
-                      WHEN 4 THEN 'CALLBACK'
-                      END AS "type",
+        CASE S.param7 WHEN 0 THEN 'IN PROGRESS'
+                      WHEN 1 THEN 'ERROR'
+                      WHEN 2 THEN 'SUCCESS'
+                      END AS yb_status,
         S.param1 AS bytes_processed,
         S.param2 AS bytes_total,
         S.param3 AS tuples_processed,

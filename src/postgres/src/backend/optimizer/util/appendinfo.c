@@ -26,6 +26,8 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* Yugabyte includes */
+#include "pg_yb_utils.h"
 
 typedef struct
 {
@@ -864,7 +866,29 @@ add_row_identity_columns(PlannerInfo *root, Index rtindex,
 
 	Assert(commandType == CMD_UPDATE || commandType == CMD_DELETE || commandType == CMD_MERGE);
 
-	if (commandType == CMD_MERGE ||
+	if (IsYBRelation(target_relation))
+	{
+		/*
+		 * If there are secondary indices on the target table, or if we have a
+		 * row-level trigger corresponding to the operations, then also return
+		 * the whole row.
+		 */
+		if (YBRelHasOldRowTriggers(target_relation, commandType) ||
+			YBRelHasSecondaryIndices(target_relation))
+		{
+			var = makeWholeRowVar(target_rte, rtindex, 0, false);
+			add_row_identity_var(root, var, rtindex, "wholerow");
+		}
+
+		/*
+		 * Emit ybctid so that executor can find the row to update or delete
+		 * from YugaByte tables.
+		 */
+		var = makeVar(rtindex, YBTupleIdAttributeNumber, BYTEAOID, -1,
+					  InvalidOid, 0);
+		add_row_identity_var(root, var, rtindex, "ybctid");
+	}
+	else if (commandType == CMD_MERGE ||
 		relkind == RELKIND_RELATION ||
 		relkind == RELKIND_MATVIEW ||
 		relkind == RELKIND_PARTITIONED_TABLE)

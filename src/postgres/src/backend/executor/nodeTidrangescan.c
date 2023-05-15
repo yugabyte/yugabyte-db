@@ -24,6 +24,9 @@
 #include "storage/bufmgr.h"
 #include "utils/rel.h"
 
+/* Yugabyte includes */
+#include "utils/builtins.h"
+
 
 #define IsCTIDVar(node)  \
 	((node) != NULL && \

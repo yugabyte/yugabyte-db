@@ -164,9 +164,13 @@ static char *conf_file;
 static char *dictionary_file;
 static char *info_schema_file;
 static char *features_file;
+#ifdef YB_TODO
+/* Not applicable in YB */
 static char *system_constraints_file;
+#endif
 static char *system_functions_file;
 static char *system_views_file;
+static char *yb_system_views_file;
 static bool success = false;
 static bool made_new_pgdata = false;
 static bool found_existing_pgdata = false;
@@ -2663,13 +2667,14 @@ setup_data_file_paths(void)
 	set_input(&dictionary_file, "snowball_create.sql");
 	set_input(&info_schema_file, "information_schema.sql");
 	set_input(&features_file, "sql_features.txt");
+	#ifdef YB_TODO
+	/* Not applicable in YB */
 	set_input(&system_constraints_file, "system_constraints.sql");
+	#endif
 	set_input(&system_functions_file, "system_functions.sql");
 
-	if (IsYugaByteGlobalClusterInitdb())
-		set_input(&system_views_file, "yb_system_views.sql");
-	else
-		set_input(&system_views_file, "system_views.sql");
+	set_input(&system_views_file, "system_views.sql");
+	set_input(&yb_system_views_file, "yb_system_views.sql");
 
 	if (show_setting || debug)
 	{
@@ -2695,9 +2700,14 @@ setup_data_file_paths(void)
 	check_input(dictionary_file);
 	check_input(info_schema_file);
 	check_input(features_file);
+	#ifdef YB_TODO
+	/* Not applicable in YB */
 	check_input(system_constraints_file);
+	#endif
 	check_input(system_functions_file);
 	check_input(system_views_file);
+	if (IsYugaByteGlobalClusterInitdb())
+		check_input(yb_system_views_file);
 }
 
 
@@ -3001,7 +3011,10 @@ initialize_data_directory(void)
 
 	setup_auth(cmdfd);
 
+	#ifdef YB_TODO
+	/* Not applicable in YB */
 	setup_run_file(cmdfd, system_constraints_file);
+	#endif
 
 	setup_run_file(cmdfd, system_functions_file);
 
@@ -3013,6 +3026,9 @@ initialize_data_directory(void)
 	 */
 
 	setup_run_file(cmdfd, system_views_file);
+
+	if (IsYugaByteGlobalClusterInitdb())
+		setup_run_file(cmdfd, yb_system_views_file);
 
 	/* Do not support copy in YB yet */
 	if (!IsYugaByteGlobalClusterInitdb())

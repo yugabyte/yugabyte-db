@@ -255,7 +255,10 @@ ybcGetForeignPlan(PlannerInfo *root,
 				case TableOidAttributeNumber:
 					/* Nothing to do in YugaByte: Postgres will handle this. */
 					break;
+				#ifdef YB_TODO
+					/* OID is a regular column PG15 onwards. */
 				case ObjectIdAttributeNumber:
+				#endif
 				case YBTupleIdAttributeNumber:
 				default: /* Regular column: attrNum > 0*/
 				{
