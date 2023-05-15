@@ -88,8 +88,10 @@ import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListMastersResponse;
+import org.yb.client.UpgradeYsqlResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
@@ -225,6 +227,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
                     SysClusterConfigEntryPB.newBuilder().setVersion(defaultUniverse.getVersion());
                 return new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
               });
+      UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
+      when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(mockUpgradeYsqlResponse);
+      IsInitDbDoneResponse mockIsInitDbDoneResponse =
+          new IsInitDbDoneResponse(1000, "", true, true, null, null);
+      when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
     } catch (Exception ignored) {
       fail();
     }
