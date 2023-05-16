@@ -1024,7 +1024,8 @@ Use of this flag can potentially result in expiration of live data. Use at your 
 ## PostgreSQL options
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters using the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag.
-You can also modify PostgreSQL options for the current session using the `SET` statement like below: 
+
+You can also modify PostgreSQL options for the current session using the `SET` statement as follows: 
 
 ```sql
 SET temp_file_limit=-1;
