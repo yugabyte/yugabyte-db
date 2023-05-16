@@ -208,6 +208,7 @@ export interface UniverseDetails {
   userAZSelected: boolean;
   enableYbc: boolean;
   updateOptions: string[];
+  useSpotInstance: boolean;
 }
 
 export type UniverseConfigure = Partial<UniverseDetails>;
