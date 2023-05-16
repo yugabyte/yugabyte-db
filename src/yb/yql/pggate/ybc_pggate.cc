@@ -90,6 +90,10 @@ DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
             "If true, YB catalog preloads additional tables upon "
             "connection creation and cache refresh.");
 
+DEFINE_NON_RUNTIME_bool(ysql_disable_per_tuple_memory_context_in_update_relattrs, false,
+            "If true, disable the use of per-tuple memory context in YB catalog "
+            "and relcache preloading.");
+
 namespace yb {
 namespace pggate {
 
@@ -1363,7 +1367,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_colocate_database_by_default        = &FLAGS_ysql_colocate_database_by_default,
       .ysql_ddl_rollback_enabled                = &FLAGS_ysql_ddl_rollback_enabled,
       .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
-      .ysql_enable_profile                      = &FLAGS_ysql_enable_profile
+      .ysql_enable_profile                      = &FLAGS_ysql_enable_profile,
+      .ysql_disable_per_tuple_memory_context_in_update_relattrs =
+          &FLAGS_ysql_disable_per_tuple_memory_context_in_update_relattrs
   };
   return &accessor;
 }

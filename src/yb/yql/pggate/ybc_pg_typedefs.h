@@ -352,6 +352,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_ddl_rollback_enabled;
   const bool*     ysql_enable_read_request_caching;
   const bool*     ysql_enable_profile;
+  const bool*     ysql_disable_per_tuple_memory_context_in_update_relattrs;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
