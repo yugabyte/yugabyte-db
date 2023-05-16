@@ -2910,8 +2910,8 @@ Oid ybc_get_attcollation(TupleDesc desc, AttrNumber attnum)
 }
 
 void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
-						  Selectivity *selectivity, Cost *startup_cost,
-						  Cost *total_cost)
+							Selectivity *selectivity, Cost *startup_cost,
+							Cost *total_cost)
 {
 	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
 	bool		isprimary = index->rd_index->indisprimary;

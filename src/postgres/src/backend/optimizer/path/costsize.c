@@ -2379,9 +2379,7 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 	{
 		bool is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
 		if (is_batched)
-			yb_batch_size =
-				yb_bnl_batch_size > outer_path_rows ?
-					outer_path_rows : yb_bnl_batch_size;
+			yb_batch_size = yb_bnl_batch_size;
 	}
 
 	/*
@@ -2392,12 +2390,12 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 	 */
 	startup_cost += outer_path->startup_cost + inner_path->startup_cost;
 	run_cost += outer_path->total_cost - outer_path->startup_cost;
-	if (outer_path_rows > 1)
-		run_cost += (outer_path_rows - 1) * inner_rescan_start_cost
+	if (outer_path_rows > yb_batch_size)
+		run_cost += (outer_path_rows - yb_batch_size) * inner_rescan_start_cost
 			/ yb_batch_size;
 
 	inner_run_cost = inner_path->total_cost - inner_path->startup_cost;
-	inner_rescan_run_cost = (inner_rescan_total_cost - inner_rescan_start_cost) / yb_batch_size;
+	inner_rescan_run_cost = (inner_rescan_total_cost - inner_rescan_start_cost);
 
 	if (jointype == JOIN_SEMI || jointype == JOIN_ANTI ||
 		extra->inner_unique)
@@ -2417,9 +2415,15 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 	else
 	{
 		/* Normal case; we'll scan whole input rel for each outer row */
+		/*
+		 * In the case of a BNL, yb_batch_size would be whatever the batch
+		 * batch size of outer tuples we are working with. We effectively
+		 * rescan the inner path for each outer tuple batch.
+		 */
 		run_cost += inner_run_cost;
-		if (outer_path_rows > 1)
-			run_cost += (outer_path_rows - 1) * inner_rescan_run_cost;
+		if (outer_path_rows > yb_batch_size)
+			run_cost += ((outer_path_rows - yb_batch_size) / yb_batch_size) *
+				inner_rescan_run_cost;
 	}
 
 	/* CPU costs left for later */
@@ -2465,6 +2469,14 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		path->path.rows = path->path.param_info->ppi_rows;
 	else
 		path->path.rows = path->path.parent->rows;
+
+	int yb_batch_size = 1;
+	if (IsYugaByteEnabled())
+	{
+		bool is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
+		if (is_batched)
+			yb_batch_size = yb_bnl_batch_size;
+	}
 
 	/* For partial paths, scale row estimate. */
 	if (path->path.parallel_workers > 0)
@@ -2515,7 +2527,13 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		 * Compute number of tuples processed (not number emitted!).  First,
 		 * account for successfully-matched outer rows.
 		 */
-		ntuples = outer_matched_rows * inner_path_rows * inner_scan_frac;
+		 /*
+		  * YB: Note that in the case of BNL, the inner_path_rows gives us the
+		  * number of rows returned by the inner side per BATCH of outer tuples.
+		  * We correct for such cases by dividing by yb_batch_size.
+		  */
+		ntuples = (outer_matched_rows / yb_batch_size)
+			* inner_path_rows * inner_scan_frac;
 
 		/*
 		 * Now we need to estimate the actual costs of scanning the inner
@@ -2543,8 +2561,10 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 * inner_rescan_run_cost for additional ones.
 			 */
 			run_cost += inner_run_cost * inner_scan_frac;
-			if (outer_matched_rows > 1)
-				run_cost += (outer_matched_rows - 1) * inner_rescan_run_cost * inner_scan_frac;
+			if (outer_matched_rows > yb_batch_size)
+				run_cost +=
+					((outer_matched_rows - yb_batch_size) / yb_batch_size) *
+						inner_rescan_run_cost * inner_scan_frac;
 
 			/*
 			 * Add the cost of inner-scan executions for unmatched outer rows.
@@ -2552,8 +2572,15 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 * of a nonempty scan.  We consider that these are all rescans,
 			 * since we used inner_run_cost once already.
 			 */
-			run_cost += outer_unmatched_rows *
-				inner_rescan_run_cost / inner_path_rows;
+
+			 /*
+			  * YB: We assume that when we are using batched nested loop joins,
+			  * the chances of us coming up with an non-matching batch are
+			  * negligible.
+			  */
+			if (yb_batch_size == 1)
+				run_cost += outer_unmatched_rows *
+					inner_rescan_run_cost / inner_path_rows;
 
 			/*
 			 * We won't be evaluating any quals at all for unmatched rows, so
@@ -2576,22 +2603,26 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 */
 
 			/* First, count all unmatched join tuples as being processed */
-			ntuples += outer_unmatched_rows * inner_path_rows;
+			ntuples += (outer_unmatched_rows / yb_batch_size) * inner_path_rows;
 
 			/* Now add the forced full scan, and decrement appropriate count */
 			run_cost += inner_run_cost;
-			if (outer_unmatched_rows >= 1)
-				outer_unmatched_rows -= 1;
+			if (outer_unmatched_rows >= yb_batch_size)
+				outer_unmatched_rows -= yb_batch_size;
 			else
-				outer_matched_rows -= 1;
+				outer_matched_rows -=
+					outer_matched_rows < yb_batch_size ?
+						outer_matched_rows : yb_batch_size;
 
 			/* Add inner run cost for additional outer tuples having matches */
 			if (outer_matched_rows > 0)
-				run_cost += outer_matched_rows * inner_rescan_run_cost * inner_scan_frac;
+				run_cost += (outer_matched_rows / yb_batch_size) *
+					inner_rescan_run_cost * inner_scan_frac ;
 
 			/* Add inner run cost for additional unmatched outer tuples */
 			if (outer_unmatched_rows > 0)
-				run_cost += outer_unmatched_rows * inner_rescan_run_cost;
+				run_cost += (outer_unmatched_rows / yb_batch_size) *
+					inner_rescan_run_cost;
 		}
 	}
 	else
@@ -2599,7 +2630,7 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		/* Normal-case source costs were included in preliminary estimate */
 
 		/* Compute number of tuples processed (not number emitted!) */
-		ntuples = outer_path_rows * inner_path_rows;
+		ntuples = (outer_path_rows / yb_batch_size) * inner_path_rows;
 	}
 
 	/* CPU costs */
@@ -4212,8 +4243,26 @@ has_indexed_join_quals(NestPath *joinpath)
 	bool		found_one;
 	ListCell   *lc;
 
+	bool yb_is_batched =
+		yb_is_outer_inner_batched(joinpath->outerjoinpath, innerpath);
+	List *unbatched_restrictinfos = NIL;
+
+	if (yb_is_batched)
+	{
+		foreach(lc, joinpath->joinrestrictinfo)
+		{
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+			if (!yb_can_batch_rinfo(rinfo, joinpath->outerjoinpath->parent->relids,
+										   innerpath->parent->relids))
+			{
+				unbatched_restrictinfos = lappend(unbatched_restrictinfos, rinfo);
+			}
+		}
+	}
+
 	/* If join still has quals to evaluate, it's not fast */
-	if (joinpath->joinrestrictinfo != NIL)
+	if (joinpath->joinrestrictinfo != NIL &&
+		 (!yb_is_batched || unbatched_restrictinfos != NIL))
 		return false;
 	/* Nor if the inner path isn't parameterized at all */
 	if (innerpath->param_info == NULL)
