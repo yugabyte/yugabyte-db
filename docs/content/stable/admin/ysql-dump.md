@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: ysql-dump
     parent: admin
-    weight: 2467
+    weight: 70
 type: docs
 ---
 
@@ -16,7 +16,7 @@ type: docs
 
 `ysql_dump` only dumps a single database. To backup global objects that are common to all databases in a cluster, such as roles, use [`ysql_dumpall`](../ysql-dumpall/).
 
-Dumps are output in plain-text, SQL script files. Script dumps are plain-text files containing the SQL statements required to reconstruct the database to the state it was in at the time it was saved. To restore from such a script, import it using the [`ysqlsh \i`](../ysqlsh/#-i-filename-include-filename) command. Script files can be used to reconstruct the database even on other machines and other architectures; with some modifications, even on other SQL database products.
+Dumps are output in plain-text, SQL script files. Script dumps are plain-text files containing the SQL statements required to reconstruct the database to the state it was in at the time it was saved. To restore from such a script, import it using the [`ysqlsh \i`](../ysqlsh-meta-commands/#-i-filename-include-filename) meta-command. Script files can be used to reconstruct the database even on other machines and other architectures; with some modifications, even on other SQL database products.
 
 While running `ysql_dump`, you should examine the output for any warnings (printed on standard error), especially in light of the limitations listed below.
 

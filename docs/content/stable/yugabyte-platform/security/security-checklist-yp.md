@@ -1,5 +1,5 @@
 ---
-title: Security checklist
+title: Security checklist for YugabyteDB Anywhere
 headerTitle: Security checklist
 linkTitle: Security checklist
 description: Security measures that can be implemented to protect your YugabyteDB Anywhere and YugabyteDB universes.

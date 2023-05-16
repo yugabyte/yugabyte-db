@@ -46,7 +46,7 @@ You can back up the YugabyteDB Anywhere server as follows:
 - Copy the YugabyteDB Anywhere backup script `yb_platform_backup.sh` from the `yugabyte-db` repository to your local workstation using the following wget command:
 
   ```sh
-  wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/{{< yb-version version="stable" format="short" >}}/managed/devops/bin/yb_platform_backup.sh
+  wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh
   ```
 
 - Verify that the computer performing the backup operation can access the YugabyteDB Anywhere Kubernetes pod instance by executing the following command:
@@ -87,7 +87,7 @@ To restore the YugabyteDB Anywhere content from your saved backup, perform the f
 - Copy the YugabyteDB Anywhere backup `script yb_platform_backup.sh` from the `yugabyte-db` repository to your local workstation using the following wget command:
 
     ```sh
-    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/{{< yb-version version="stable" format="short" >}}/managed/devops/bin/yb_platform_backup.sh
+    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh
     ```
 
 - Execute the following command to verify that the computer performing the backup operation can access the YugabyteDB Anywhere Kubernetes pod instance:

@@ -24,12 +24,12 @@ type: docs
 
 ## Overview
 
-sysbench is a popular tool for benchmarking databases like PostgreSQL and MySQL, as well as system capabilities like CPU, memory, and I/O. Follow the steps below to run Sysbench against YugabyteDB.
+sysbench is a popular tool for benchmarking databases like PostgreSQL and MySQL, as well as system capabilities like CPU, memory, and I/O.
 
-The [YugabyteDB version of sysbench](https://github.com/yugabyte/sysbench) is forked from the [official](https://github.com/akopytov/sysbench) version with a few modifications to better reflect YugabyteDB's distributed nature.
+The [YugabyteDB version of sysbench](https://github.com/yugabyte/sysbench) is forked from the [official version](https://github.com/akopytov/sysbench) with a few modifications to better reflect YugabyteDB's distributed nature.
 
 {{< note title="Note" >}}
-To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/)
+To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/).
 {{< /note >}}
 
 ## Running the benchmark
@@ -45,9 +45,7 @@ $ cd sysbench
 $ ./autogen.sh && ./configure --with-pgsql && make -j && sudo make install
 ```
 
-{{< note title="Note" >}}
-The above steps will install the sysbench utility in '/usr/local/bin'
-{{< /note >}}
+This installs the sysbench utility in `/usr/local/bin`.
 
 Make sure you have the [YSQL shell](../../admin/ysqlsh/) `ysqlsh` exported to the `PATH` variable.
 
@@ -71,7 +69,9 @@ Run the `run_sysbench.sh` shell script to load the data and run the various work
 ./run_sysbench.sh --ip <ip>
 ```
 
-This script runs all the 8 workloads using 64 threads with the number of tables as 10 and the table size as 100k. If you want to run the benchmark with a different count of tables and tablesize:
+This script runs all the 8 workloads using 64 threads with the number of tables as 10 and the table size as 100k.
+
+If you want to run the benchmark with a different count of tables and tablesize, do the following:
 
 ```sh
 ./run_sysbench.sh --ip <ip> --numtables <number of tables> --tablesize <number of rows in each table>

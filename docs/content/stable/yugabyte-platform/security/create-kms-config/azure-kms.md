@@ -38,7 +38,9 @@ type: docs
   </li>
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of Microsoft Azure Key Vault.
+Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
+
+Encryption at rest in YugabyteDB Anywhere supports the use of Microsoft [Azure Key Vault](https://learn.microsoft.com/en-us/azure/key-vault/).
 
 Conceptually, Azure Key Vault consists of a key vault containing one or more keys, with each key capable of having multiple versions.
 
@@ -54,6 +56,10 @@ If you are planning to use an existing cryptographic key with the same name, it 
 - The expiration date should be disabled.
 - Permitted operations should have at least WRAP_KEY and UNWRAP_KEY.
 - The key rotation policy should not be defined in order to avoid automatic rotation.
+
+Note that YugabyteDB Anywhere does not manage the key vault and deleting the KMS configuration does not delete the key vault, master key, or key versions on Azure Key Vault.
+
+## Create a KMS configuration
 
 You can create a KMS configuration that uses Azure Key Vault, as follows:
 
@@ -80,5 +86,3 @@ You can create a KMS configuration that uses Azure Key Vault, as follows:
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
 1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
-
-Note that YugabyteDB Anywhere does not manage the key vault and deleting the KMS configuration does not delete the key vault, master key, or key versions on Azure Key Vault.
