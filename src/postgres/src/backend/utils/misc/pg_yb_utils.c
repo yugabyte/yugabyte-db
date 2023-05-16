@@ -633,6 +633,7 @@ YBInitPostgresBackend(
 		 * TODO: do we really need to DB name / username here?
 		 */
 		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name));
+		YBCSetTimeout(StatementTimeout, NULL);
 	}
 }
 
