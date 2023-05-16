@@ -21,8 +21,7 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 
-DEFINE_test_flag(
-    bool, xcluster_fail_table_create_during_bootstrap, false,
+DEFINE_test_flag(bool, xcluster_fail_table_create_during_bootstrap, false,
     "Fail the table or index creation during xcluster bootstrap stage.");
 
 #define FAIL_TASK_AND_RETURN_IF(cond, status) \

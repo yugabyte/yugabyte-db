@@ -116,9 +116,6 @@ DEFINE_test_flag(bool, exit_unfinished_merging, false,
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 
-DEFINE_test_flag(bool, xcluster_fail_table_create_during_bootstrap, false,
-    "Fail the table or index creation during xcluster bootstrap stage.");
-
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
 
