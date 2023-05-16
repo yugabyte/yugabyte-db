@@ -13,7 +13,8 @@ readonly logfile="/tmp/yugabyted-test-runner-$( date +%Y-%m-%dT%H_%M_%S ).log"
 python_interpreter=python
 yb_latest_version="$(curl --silent "https://api.github.com/repos/yugabyte/yugabyte-db/tags" \
   | jq '.[].name' | head -1)"
-yb_full_version=$(curl --silent https://registry.hub.docker.com/v1/repositories/yugabytedb/yugabyte/tags | egrep -o "${yb_latest_version:2:-1}-b[0-9]+")
+yb_full_version=$(curl --silent https://hub.docker.com/v2/namespaces/yugabytedb/repositories\
+/yugabyte/tags | egrep -o "${yb_latest_version:2:-1}-b[0-9]+")
 docker_image="yugabytedb/yugabyte:latest"
 testsuite="basic"
 yugabyted=
