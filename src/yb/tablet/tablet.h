@@ -778,6 +778,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::string LogPrefix() const;
 
+  docdb::ExternalTxnIntentsState* GetExternalTxnIntentsState() const {
+    return external_txn_intents_state_.get();
+  }
  private:
   friend class Iterator;
   friend class TabletPeerTest;
