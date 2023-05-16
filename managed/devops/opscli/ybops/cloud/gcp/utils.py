@@ -900,6 +900,15 @@ class GoogleCloudAdmin():
             results.append(result)
         return results
 
+    def get_image_disk_size(self, machine_image):
+        tokens = machine_image.split("/")
+        image_project = self.project
+        image_project_idx = tokens.index("projects")
+        if image_project_idx >= 0:
+            image_project = tokens[image_project_idx + 1]
+        image = self.get_image(tokens[-1], image_project)
+        return image["diskSizeGb"]
+
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_spot_instance, can_ip_forward, machine_image, num_volumes, volume_type,
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
@@ -918,7 +927,11 @@ class GoogleCloudAdmin():
         boot_disk_init_params["sourceImage"] = machine_image
         if boot_disk_size_gb is not None:
             # Default: 10GB
-            boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
+            min_disk_size = self.get_image_disk_size(machine_image)
+            disk_size = min_disk_size if min_disk_size \
+                and int(min_disk_size) > int(boot_disk_size_gb) \
+                else boot_disk_size_gb
+            boot_disk_init_params["diskSizeGb"] = disk_size
         # Create boot disk backed by a zonal persistent SSD
         boot_disk_init_params["diskType"] = "zones/{}/diskTypes/pd-ssd".format(zone)
         boot_disk_json["initializeParams"] = boot_disk_init_params
