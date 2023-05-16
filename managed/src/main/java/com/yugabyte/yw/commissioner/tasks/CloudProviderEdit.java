@@ -99,6 +99,7 @@ public class CloudProviderEdit extends CloudTaskBase {
       provider = Provider.getOrBadRequest(taskParams().providerUUID);
       provider.setUsabilityState(Provider.UsabilityState.READY);
       provider.save();
+      cloudProviderHelper.updatePrometheusConfig(provider);
     } catch (RuntimeException e) {
       log.error("Received exception during edit", e);
       Provider p = Provider.getOrBadRequest(taskParams().providerUUID);
