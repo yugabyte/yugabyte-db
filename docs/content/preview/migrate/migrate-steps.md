@@ -308,6 +308,10 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
         –-has-header
 ```
 
+Refer to [import data file](../reference/yb-voyager-cli/#import-data-file) for details about the arguments.
+
+#### Import data file from AWS S3
+
 Import data file also allows you to load directly from your data files stored on AWS S3. The S3 bucket URI can be provided to the `data-dir` flag as follows:
 
 ```sh
@@ -315,7 +319,7 @@ yb-voyager import data file .... \
         --data-dir s3://voyager-data
 ```
 
-Refer to [import data file](../reference/yb-voyager-cli/#import-data-file) for additional details to set up your bucket with yb-voyager.
+Refer to [import data file](../reference/yb-voyager-cli/#import-data-file) for additional details to set up your S3 bucket with yb-voyager.
 
 ### Import indexes and triggers
 
