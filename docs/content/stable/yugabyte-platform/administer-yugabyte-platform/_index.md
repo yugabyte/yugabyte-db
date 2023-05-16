@@ -51,4 +51,16 @@ type: indexpage
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="manage-runtime-config/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <div class="title">Manage runtime configuration settings</div>
+      </div>
+      <div class="body">
+        Manage your YB Anywhere universe by setting scopes for runtime configuration keys.
+      </div>
+    </a>
+  </div>
+
 </div>

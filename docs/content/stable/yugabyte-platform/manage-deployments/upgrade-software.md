@@ -35,7 +35,7 @@ Before starting the upgrade:
 
 When imported, the release is added to the **Releases** list shown in the following illustration:
 
-![Releases](/images/yp/releases-list.png)
+![Releases](/images/yp/releases-list.png)<br>
 
 To delete or disable a release, click its corresponding **Actions**.
 

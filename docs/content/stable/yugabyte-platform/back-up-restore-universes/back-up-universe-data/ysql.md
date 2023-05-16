@@ -1,5 +1,5 @@
 ---
-title: Back up data universe YSQL data
+title: Back up universe YSQL data
 headerTitle: Back up universe YSQL data
 linkTitle: Back up universe data
 description: Use YugabyteDB Anywhere to back up data in YSQL tables.
@@ -31,7 +31,7 @@ type: docs
 
 You can use YugabyteDB Anywhere to back up your YugabyteDB universe YSQL data. This includes actions such as deleting and restoring the backup, as well as restoring and copying the database location.
 
-If you are using YBA version 2.16 or later to manage universes using database version 2.16 or later, you can additionally create [incremental backups](#create-incremental-backups) and [configure backup performance parameters](#configure-backup-performance-parameters).
+If you are using YBA version 2.16 or later to manage universes with YugabyteDB version 2.16 or later, you can additionally create [incremental backups](#create-incremental-backups) and [configure backup performance parameters](#configure-backup-performance-parameters).
 
 For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql/).
 
@@ -57,11 +57,15 @@ The **Backups** page allows you to create new backups that start immediately, as
 
 If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file, containing key references, is also backed up. To allow YugabyteDB Anywhere to back up your data with the user authentication enabled, follow the instructions provided in [Edit configuration flags](../../../manage-deployments/edit-config-flags) to add the `ysql_enable_auth=true` and `ysql_hba_conf_csv="local all all trust"` YB-TServer flags.
 
+<!--
+
 {{< note title="Note" >}}
 
 Versions of YugabyteDB Anywhere prior to 2.11.2.0 do not support backups of YSQL databases that use `enum` types. To mitigate the issue, it is recommended that you use the `ysql_dump` utility in combination with the `/COPY` action as a workaround.
 
 {{< /note >}}
+
+-->
 
 <!-- The preceding note should say 2.11.2.0. Careful with search and replace on version numbers! -->
 
@@ -77,9 +81,7 @@ To access a list of all backups from all universes, including the deleted univer
 
 ## Create incremental backups
 
-You can use **Backup Details** to add an incremental backup (YBA version 2.16 or later for universes with YugabyteDB version 2.16 or later only).
-
-You can also create incremental backups using YB-Controller on Kubernetes universes (YBA version 2.17 or later for universes with YugabyteDB version 2.17 or later only).
+You can use **Backup Details** to add an incremental backup (YBA version 2.16 or later and YugabyteDB version 2.16 or later only).
 
 Incremental backups are taken on top of a complete backup. To reduce the length of time spent on each backup, only SST files that are new to YugabyteDB and not present in the previous backups are incrementally backed up. For example, in most cases, for incremental backups occurring every hour, the 1-hour delta would be significantly smaller compared to the complete backup. The restore happens until the point of the defined increment.
 

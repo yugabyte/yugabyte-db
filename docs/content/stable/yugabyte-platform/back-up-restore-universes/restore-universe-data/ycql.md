@@ -41,13 +41,13 @@ You can restore YugabyteDB universe YCQL data from a backup as follows:
 
     ![Restore backup](/images/yp/restore-entire-backup-ycql.png)
 
-4. Complete the fields of the **Restore Backup** dialog shown in the following illustration:
+    Complete the fields of the **Restore Backup** dialog shown in the following illustration:
 
     ![Restore backup - YCQL](/images/yp/restore-universe-data-ycql-1.png)
 
     - Select the name of the universe to which you want to restore the backup.
 
-    - Optionally and depending on your cloud provider, if you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the universe keys referenced in the metadata file can be retrieved. If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the key registry on the restore universe with the required universe keys. The universe data files are restored normally afterwards.
+    - Optionally and depending on your cloud provider, if you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the master keys referenced in the metadata file can be retrieved. If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the universe key registry on the restored universe with the required master keys. The universe data files are restored normally afterwards.
 
     - Optionally, specify the number of parallel threads that are allowed to run. This can be any number between `1` and `100`.
 
@@ -58,6 +58,10 @@ You can restore YugabyteDB universe YCQL data from a backup as follows:
       ![Restore backup - YCQL](/images/yp/restore-universe-data-ycql-2.png)
 
       The restore begins immediately. When finished, a completed **Restore Backup** task appears under **Tasks > Task History**.
+
+4. If your backup includes incremental backups, you can either restore the complete backup, as per step 3, or restore a part of an incremental backup chain by selecting an increment from the list in the **Backup Details** view and clicking its **Restore to this point**.
+
+    During the restore, only successful complete and incremental backups are used, whereas failed backups are discarded.
 
 5. To confirm that the restore succeeded, select the **Tables** tab to compare the original table with the table to which you restored.
 

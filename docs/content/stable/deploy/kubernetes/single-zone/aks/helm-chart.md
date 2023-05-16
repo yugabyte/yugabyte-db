@@ -22,7 +22,7 @@ type: docs
   </li>
   <li >
     <a href="../statefulset-yaml/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       StatefulSet YAML
     </a>
   </li>

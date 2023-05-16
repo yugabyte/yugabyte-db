@@ -76,13 +76,21 @@ $ make install
 
 ## C\#
 
+### Npgsql YugabyteDB Smart Driver
+
+The YugabyteDB Npgsql Smart Driver is a .NET driver for YSQL built on the PostgreSQL Npgsql driver, with features that eliminate the need for external load balancers.
+
+For information on the YugabyteDB Npgsql Smart Driver and its load balancing features, see [YugabyteDB Npgsql Smart Driver](../../../reference/drivers/csharp/yb-npgsql-reference/).
+
+For building a sample C# application with the YugabyteDB Npgsql driver, see [Connect an application](../../../drivers-orms/csharp/ysql/).
+
 ### Npgsql
 
 [Npgsql](https://www.npgsql.org/) is an open source ADO.NET Data Provider for PostgreSQL that enables C# applications to connect and interact with PostgreSQL databases. Npgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details on Npgsql, refer to the [Npgsql documentation](https://www.npgsql.org/doc/).
 
-For a tutorial on building a sample C# application with Npgsql, see [Connect an application](../../../drivers-orms/csharp/postgres-npgsql/).
+For building a sample C# application with Npgsql, see [Connect an application](../../../drivers-orms/csharp/postgres-npgsql/).
 
 #### Install the driver
 
@@ -111,6 +119,14 @@ connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoadin
 {{< /warning >}}
 
 ## Go
+
+### YugabyteDB PGX Smart Driver
+
+The YugabyteDB PGX smart driver is a distributed Go driver for YSQL based on jackc/pgx, with a additional connection load balancing features.
+
+For information on the YugabyteDB PGX smart driver and its load balancing features, see [YugabyteDB PGX smart driver](../../../reference/drivers/go/yb-pgx-reference/).
+
+For building a sample Go application with the YugabyteDB PGX driver, see [Connect an application](../../../drivers-orms/go/yb-pgx/).
 
 ### Go PostgreSQL driver (pq)
 
@@ -160,6 +176,14 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 ## Node.js
 
+### YugabyteDB node-postgres Smart Driver
+
+The YugabyteDB node-postgres Smart Driver is a distributed Node.js driver for YSQL built on the PostgreSQL node-postgres driver, with features that eliminate the need for external load balancers.
+
+For information on the YugabyteDB node-postgres Smart Driver and its load balancing features, see [YugabyteDB node-postgres Smart Driver](../../../reference/drivers/nodejs/yugabyte-pg-reference/).
+
+For building a sample node.js application with the YugabyteDB node-postgres driver, see [Connect an application](../../../drivers-orms/nodejs/yugabyte-node-driver/).
+
 ### node-postgres
 
 [node-postgres](https://node-postgres.com/) is a collection of Node.js modules for interacting with PostgreSQL databases. node-postgres optionally uses [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
@@ -197,6 +221,14 @@ Ubuntu users can install the driver using the `sudo apt-get install php-pgsql` c
 CentOS users can install the driver using the `sudo yum install php-pgsql` command.
 
 ## Python
+
+### YugabyteDB Psycopg2 Smart Driver
+
+The YugabyteDB Psycopg2 Smart Driver is a distributed Node.js driver for YSQL built on the PostgreSQL Psycopg2 driver, with features that eliminate the need for external load balancers.
+
+For information on the YugabyteDB Psycopg2 Smart Driver and its load balancing features, see [YugabyteDB Psycopg2 Smart Driver](../../../reference/drivers/python/yugabyte-psycopg2-reference/).
+
+For building a sample Python application with the YugabyteDB Psycopg2 driver, see [Connect an application](../../../drivers-orms/python/yugabyte-psycopg2/).
 
 ### psycopg2
 
