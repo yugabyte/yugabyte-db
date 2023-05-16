@@ -3,9 +3,9 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.CustomerTask.TargetType;
-import static io.ebean.Ebean.beginTransaction;
-import static io.ebean.Ebean.commitTransaction;
-import static io.ebean.Ebean.endTransaction;
+import static io.ebean.DB.beginTransaction;
+import static io.ebean.DB.commitTransaction;
+import static io.ebean.DB.endTransaction;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -24,7 +24,7 @@ import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -290,7 +290,7 @@ public class CustomerTaskManager {
               + "(ti.task_state='Aborted' AND ti.details->>'errorString' = 'Platform shutdown'"
               + " AND ct.completion_time IS NULL))";
       // TODO use Finder.
-      Ebean.createSqlQuery(query)
+      DB.sqlQuery(query)
           .findList()
           .forEach(
               row -> {

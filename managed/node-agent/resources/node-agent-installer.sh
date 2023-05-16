@@ -321,6 +321,10 @@ main() {
       NODE_AGENT_CONFIG_ARGS+=(--api_token "$API_TOKEN" --url "$PLATFORM_URL" \
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
     else
+      if [ -z "$CUSTOMER_ID" ]; then
+        echo "Customer ID is required."
+        exit 1
+      fi
       if [ -z "$NODE_IP" ]; then
         echo "Node IP is required."
         exit 1
@@ -345,8 +349,9 @@ main() {
         show_usage >&2
         exit 1
       fi
-      NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --cert_dir "$CERT_DIR" \
-      --node_ip "$NODE_IP" --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
+      NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
+      --cert_dir "$CERT_DIR" --node_ip "$NODE_IP" --node_port "$NODE_PORT" \
+      "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
     fi
     node_agent_dir_setup
     extract_package
@@ -484,7 +489,7 @@ main
 if [ "$?" -eq 0 ] && [ "$COMMAND" = "install" ]; then
   if [ "$SUDO_ACCESS" = "false" ]; then
     echo "You can install a systemd service on linux machines\
- by running $INSTALLER_NAME -c install_service (Requires sudo access)."
+ by running $INSTALLER_NAME -c install_service --user yugabyte (Requires sudo access)."
   else
      install_systemd_service
   fi

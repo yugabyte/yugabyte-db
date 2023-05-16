@@ -12,6 +12,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -41,6 +42,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +55,7 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.time.DateUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -227,10 +230,66 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertEquals(
         expected,
         ResizeNodeParams.checkResizeIsPossible(
+            UUID.randomUUID(),
             currentIntent,
             targetIntent,
             defaultUniverse,
-            mockBaseTaskDependencies.getRuntimeConfigFactory(),
+            mockBaseTaskDependencies.getConfGetter(),
+            true));
+  }
+
+  @Test
+  public void testAwsBackToBackResizeNode() {
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent targetIntent = primaryCluster.userIntent.clone();
+    targetIntent.deviceInfo.volumeSize += 1;
+    UniverseDefinitionTaskParams.UserIntent targetIntentJustType =
+        primaryCluster.userIntent.clone();
+    targetIntentJustType.instanceType = NEW_INSTANCE_TYPE;
+    UUID primaryUUID = primaryCluster.uuid;
+    assertTrue(
+        ResizeNodeParams.checkResizeIsPossible(
+            primaryUUID,
+            primaryCluster.userIntent,
+            targetIntent,
+            defaultUniverse,
+            mockBaseTaskDependencies.getConfGetter(),
+            true));
+    RuntimeConfigEntry.upsertGlobal("yb.aws.disk_resize_cooldown_hours", "3");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            univ -> {
+              Date date = DateUtils.addHours(new Date(), -2);
+              univ.getNodes().forEach(node -> node.lastVolumeUpdateTime = date);
+            });
+    assertFalse(
+        ResizeNodeParams.checkResizeIsPossible(
+            primaryUUID,
+            primaryCluster.userIntent,
+            targetIntent,
+            defaultUniverse,
+            mockBaseTaskDependencies.getConfGetter(),
+            true));
+    // Just changing instance type is available, even within cooldown window.
+    assertTrue(
+        ResizeNodeParams.checkResizeIsPossible(
+            primaryUUID,
+            primaryCluster.userIntent,
+            targetIntentJustType,
+            defaultUniverse,
+            mockBaseTaskDependencies.getConfGetter(),
+            true));
+    // Changing window size.
+    RuntimeConfigEntry.upsertGlobal("yb.aws.disk_resize_cooldown_hours", "1");
+    assertTrue(
+        ResizeNodeParams.checkResizeIsPossible(
+            primaryUUID,
+            primaryCluster.userIntent,
+            targetIntent,
+            defaultUniverse,
+            mockBaseTaskDependencies.getConfGetter(),
             true));
   }
 
@@ -281,10 +340,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertEquals(
         expected,
         ResizeNodeParams.checkResizeIsPossible(
+            UUID.randomUUID(),
             currentIntent,
             targetIntent,
             defaultUniverse,
-            mockBaseTaskDependencies.getRuntimeConfigFactory(),
+            mockBaseTaskDependencies.getConfGetter(),
             true));
   }
 
@@ -771,6 +831,18 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertSubtasks(subTasks, 0, 0, counts.getSecond());
     assertDedicatedIntent(
         DEFAULT_INSTANCE_TYPE, DEFAULT_VOLUME_SIZE, DEFAULT_INSTANCE_TYPE, NEW_VOLUME_SIZE);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    universe
+        .getUniverseDetails()
+        .getNodesInCluster(universe.getUniverseDetails().getPrimaryCluster().uuid)
+        .forEach(
+            node -> {
+              if (node.isMaster) {
+                assertNotNull(node.lastVolumeUpdateTime);
+              } else {
+                assertNull(node.lastVolumeUpdateTime);
+              }
+            });
   }
 
   @Test
@@ -970,6 +1042,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       boolean changeInstance,
       boolean primaryChanged,
       boolean readonlyChanged) {
+    // false false means changing throughput or/and iops
+    boolean lastVolumeUpdateTimeChanged = increaseVolume || (!increaseVolume && !changeInstance);
     int volumeSize = increaseVolume ? NEW_VOLUME_SIZE : DEFAULT_VOLUME_SIZE;
     String instanceType = changeInstance ? NEW_INSTANCE_TYPE : DEFAULT_INSTANCE_TYPE;
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -981,6 +1055,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       assertEquals(instanceType, newIntent.instanceType);
       for (NodeDetails nodeDetails : universe.getNodesInCluster(primaryCluster.uuid)) {
         assertEquals(instanceType, nodeDetails.cloudInfo.instance_type);
+        if (lastVolumeUpdateTimeChanged) {
+          assertNotNull(nodeDetails.lastVolumeUpdateTime);
+        } else {
+          assertNull(nodeDetails.lastVolumeUpdateTime);
+        }
       }
     }
     if (!universe.getUniverseDetails().getReadOnlyClusters().isEmpty()) {
@@ -992,12 +1071,18 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         assertEquals(instanceType, readonlyIntent.instanceType);
         for (NodeDetails nodeDetails : universe.getNodesInCluster(readonlyCluster.uuid)) {
           assertEquals(instanceType, nodeDetails.cloudInfo.instance_type);
+          if (lastVolumeUpdateTimeChanged) {
+            assertNotNull(nodeDetails.lastVolumeUpdateTime);
+          } else {
+            assertNull(nodeDetails.lastVolumeUpdateTime);
+          }
         }
       } else {
         assertEquals(DEFAULT_VOLUME_SIZE, readonlyIntent.deviceInfo.volumeSize.intValue());
         assertEquals(DEFAULT_INSTANCE_TYPE, readonlyIntent.instanceType);
         for (NodeDetails nodeDetails : universe.getNodesInCluster(readonlyCluster.uuid)) {
           assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
+          assertNull(nodeDetails.lastVolumeUpdateTime);
         }
       }
     }

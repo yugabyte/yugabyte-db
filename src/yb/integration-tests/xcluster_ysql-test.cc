@@ -799,8 +799,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, ConsistentTransactions) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-// TODO(mlillibridge): Temporarily disabled until #14308 is finished
-TEST_F(XClusterYSqlTestConsistentTransactionsTest, DISABLED_TransactionWithSavepointsOpt) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsOpt) {
   // Test that SAVEPOINTs work correctly with xCluster replication.
   // Case I: skipping optimization pathway (see next test).
 
@@ -839,8 +838,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, DISABLED_TransactionWithSavep
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-// TODO(mlillibridge): Temporarily disabled until #14308 is finished
-TEST_F(XClusterYSqlTestConsistentTransactionsTest, DISABLED_TransactionWithSavepointsNoOpt) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsNoOpt) {
   // Test that SAVEPOINTs work correctly with xCluster replication.
   // Case II: using optimization pathway (see below).
 
@@ -1414,6 +1412,23 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplication) {
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithYbAdmin) {
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 3, 1));
+  auto producer_table = tables[0];
+  const string kProducerClusterId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  ASSERT_OK(CallAdmin(
+      consumer_cluster(),
+      "setup_universe_replication",
+      kProducerClusterId,
+      producer_cluster()->GetMasterAddresses(),
+      producer_table->id(),
+      "transactional"));
+
+  ASSERT_OK(CallAdmin(consumer_cluster(), "change_xcluster_role", "STANDBY"));
+  ASSERT_OK(CallAdmin(consumer_cluster(), "delete_universe_replication", kProducerClusterId));
 }
 
 void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(

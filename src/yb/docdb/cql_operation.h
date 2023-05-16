@@ -21,6 +21,8 @@
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/intent_aware_iterator.h"
 
+#include "yb/util/operation_counter.h"
+
 namespace yb {
 namespace docdb {
 
@@ -223,6 +225,7 @@ class QLReadOperation : public DocExprExecutor {
                  CoarseTimePoint deadline,
                  const ReadHybridTime& read_time,
                  const DocReadContext& doc_read_context,
+                 std::reference_wrapper<const ScopedRWOperation> pending_op,
                  qlexpr::QLResultSet* result_set,
                  HybridTime* restart_read_ht);
 

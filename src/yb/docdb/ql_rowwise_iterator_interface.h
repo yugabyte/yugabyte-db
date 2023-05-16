@@ -46,6 +46,8 @@ class YQLRowwiseIteratorIf {
     return DoFetchNext(table_row, projection, static_row, static_projection);
   }
 
+  virtual Result<bool> PgFetchNext(dockv::PgTableRow* table_row) = 0;
+
   // If restart is required returns restart hybrid time, based on iterated records.
   // Otherwise returns invalid hybrid time.
   virtual Result<HybridTime> RestartReadHt() = 0;

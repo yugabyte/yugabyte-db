@@ -14,6 +14,7 @@ import sys
 import re
 import distro  # type: ignore
 
+from sys_detection import is_macos
 from subprocess import call, check_output
 from xml.dom import minidom
 from yugabyte.command_util import run_program, mkdir_p, copy_deep
@@ -129,8 +130,13 @@ class ReleaseUtil:
         return self.release_manifest
 
     def get_seed_executable_patterns(self) -> List[str]:
-        return cast(List[str], self.release_manifest['bin']) + \
-               cast(List[str], self.release_manifest['extra_seed_executables'])
+        seed_executables = cast(List[str], self.release_manifest['bin'])
+        if is_macos():
+            # This replicates the solution that made the macOS build work prior to D25109.
+            # This may have unintended side effects of copying Postgres libraries to the "bin"
+            # directory. A proper solution will be implemented in a future diff.
+            seed_executables.append('$BUILD_ROOT/postgres/lib/*.so')
+        return seed_executables
 
     def expand_value(self, old_value: str) -> str:
         """

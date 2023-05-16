@@ -558,14 +558,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Retention duration for a dead node agent before deletion",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> maxParallelNodeAgentUpgrades =
-      new ConfKeyInfo<>(
-          "yb.node_agent.max_parallel_upgrades",
-          ScopeType.GLOBAL,
-          "Max Parallel Node Agent Upgrades",
-          "Maximum number of parallel node agent upgrades",
-          ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> backwardCompatibleDate =
       new ConfKeyInfo<>(
           "yb.api.backward_compatible_date",
@@ -651,5 +643,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "When enabled YBA will try to replace all filepaths in the database with updated values "
               + "for the configurable part of the path (like storage or releases path)",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> awsDiskResizeCooldownHours =
+      new ConfKeyInfo<>(
+          "yb.aws.disk_resize_cooldown_hours",
+          ScopeType.GLOBAL,
+          "Cooldown after disk resize in aws (in hours)",
+          "Cooldown after disk resize in aws (in hours)",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

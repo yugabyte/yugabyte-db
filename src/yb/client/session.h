@@ -24,6 +24,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/opid.h"
 
 namespace yb {
 
@@ -234,6 +235,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   void SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source);
 
+  void SetLeaderTerm(int64_t leader_term) { batcher_config_.leader_term = leader_term; }
+
   struct BatcherConfig {
     std::weak_ptr<YBSession> session;
     client::YBClient* client;
@@ -242,6 +245,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
     bool allow_local_calls_in_curr_thread = true;
     bool force_consistent_read = false;
     RejectionScoreSourcePtr rejection_score_source;
+    int64_t leader_term = OpId::kUnknownTerm;
 
     ConsistentReadPoint* read_point() const;
   };

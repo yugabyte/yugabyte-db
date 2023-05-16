@@ -22,8 +22,8 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
-import io.ebean.Ebean;
-import io.ebean.EbeanServer;
+import io.ebean.DB;
+import io.ebean.Database;
 import org.junit.Before;
 import org.junit.Test;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -35,7 +35,7 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
   private static final String KEY = "/api/customers/%s/runtime_config/%s/key/%s";
   private String authToken;
   private Customer customer;
-  private EbeanServer localEBeanServer;
+  private Database localEBeanServer;
   private FakeApi fakeApi;
   private PlatformInstanceClientFactory platformInstanceClientFactory;
 
@@ -78,7 +78,7 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer, Role.SuperAdmin);
     authToken = user.createAuthToken();
-    localEBeanServer = Ebean.getDefaultServer();
+    localEBeanServer = DB.getDefault();
     fakeApi = new FakeApi(app, localEBeanServer);
     platformInstanceClientFactory = app.injector().instanceOf(PlatformInstanceClientFactory.class);
   }

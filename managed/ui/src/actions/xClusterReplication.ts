@@ -170,6 +170,7 @@ export function queryLagMetricsForUniverse(
 }
 
 export function queryLagMetricsForTable(
+  streamId: string,
   tableId: string,
   nodePrefix: string | undefined,
   start = moment().utc().subtract('1', 'hour').format('X'),
@@ -178,6 +179,7 @@ export function queryLagMetricsForTable(
   const DEFAULT_GRAPH_FILTER = {
     start,
     end,
+    streamId,
     tableId,
     nodePrefix,
     metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC]

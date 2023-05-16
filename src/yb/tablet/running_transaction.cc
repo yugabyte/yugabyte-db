@@ -62,6 +62,9 @@ RunningTransaction::RunningTransaction(TransactionMetadata metadata,
 }
 
 RunningTransaction::~RunningTransaction() {
+  if (WasAborted()) {
+    context_.NotifyAbortedTransactionDecrement(id());
+  }
   context_.rpcs_.Abort({&get_status_handle_, &abort_handle_});
 }
 
@@ -91,7 +94,7 @@ void RunningTransaction::Aborted() {
 
   if (last_known_status_ != TransactionStatus::ABORTED) {
     last_known_status_ = TransactionStatus::ABORTED;
-    context_.NotifyAborted(id());
+    context_.NotifyAbortedTransactionIncrement(id());
   }
   last_known_status_hybrid_time_ = HybridTime::kMax;
 }
@@ -234,6 +237,11 @@ void RunningTransaction::SendStatusRequest(
     int64_t serial_no, const RunningTransactionPtr& shared_self) {
   TRACE_FUNC();
   VTRACE(1, yb::ToString(metadata_.transaction_id));
+  auto* client = context_.participant_context_.client_future().get();
+  if (!client) {
+    LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << metadata_;
+    return;
+  }
   tserver::GetTransactionStatusRequestPB req;
   req.set_tablet_id(metadata_.status_tablet);
   req.add_transaction_id()->assign(
@@ -243,7 +251,7 @@ void RunningTransaction::SendStatusRequest(
       client::GetTransactionStatus(
           TransactionRpcDeadline(),
           nullptr /* tablet */,
-          context_.participant_context_.client_future().get(),
+          client,
           &req,
           std::bind(&RunningTransaction::StatusReceived, this, _1, _2, serial_no, shared_self)),
       &get_status_handle_);
@@ -359,7 +367,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
     auto did_abort_txn = UpdateStatus(
         transaction_status, time_of_status, coordinator_safe_time, aborted_subtxn_set);
     if (did_abort_txn) {
-      context_.NotifyAborted(id());
+      context_.NotifyAbortedTransactionIncrement(id());
       context_.EnqueueRemoveUnlocked(id(), RemoveReason::kStatusReceived, &min_running_notifier);
     }
 
@@ -492,7 +500,7 @@ void RunningTransaction::AbortReceived(const Status& status,
       auto coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time());
       if (UpdateStatus(
           result->status, result->status_time, coordinator_safe_time, result->aborted_subtxn_set)) {
-        context_.NotifyAborted(id());
+        context_.NotifyAbortedTransactionIncrement(id());
         context_.EnqueueRemoveUnlocked(id(), RemoveReason::kAbortReceived, &min_running_notifier);
       }
     }

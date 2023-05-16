@@ -307,6 +307,15 @@ class YBClient::Data {
                        CoarseTimePoint deadline,
                        StatusCallback callback);
 
+  Status BootstrapProducer(
+      YBClient* client,
+      const YQLDatabase& db_type,
+      const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName>& pg_schema_names,
+      const std::vector<TableName>& table_names,
+      CoarseTimePoint deadline,
+      BootstrapProducerCallback callback);
+
   void GetCDCDBStreamInfo(YBClient *client,
     const std::string &db_stream_id,
     std::shared_ptr<std::vector<std::pair<std::string, std::string>>> db_stream_info,

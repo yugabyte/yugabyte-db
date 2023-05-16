@@ -7,8 +7,10 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.NodeAgentForm;
+import com.yugabyte.yw.forms.NodeAgentResp;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
@@ -17,9 +19,15 @@ import io.ebean.annotation.Transactional;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.AllArgsConstructor;
@@ -27,6 +35,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.threeten.bp.Duration;
 import play.mvc.Http;
 import play.mvc.Http.Status;
 
@@ -34,6 +43,7 @@ import play.mvc.Http.Status;
 @Singleton
 public class NodeAgentHandler {
   private static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
+  private static final Duration NODE_AGENT_HEARTBEAT_TIMEOUT = Duration.ofMinutes(5);
 
   private final NodeAgentManager nodeAgentManager;
   private final NodeAgentClient nodeAgentClient;
@@ -94,8 +104,25 @@ public class NodeAgentHandler {
    * @param nodeAgentIp optional node agent IP.
    * @return the node agent.
    */
-  public Collection<NodeAgent> list(UUID customerUuid, String nodeAgentIp) {
-    return NodeAgent.list(customerUuid, nodeAgentIp);
+  public Collection<NodeAgentResp> list(UUID customerUuid, String nodeAgentIp) {
+    Map<String, String> labels = new HashMap<>();
+    if (StringUtils.isNotBlank(nodeAgentIp)) {
+      labels.put("host", nodeAgentIp);
+    }
+    Date startTime =
+        Date.from(Instant.now().minusSeconds(NODE_AGENT_HEARTBEAT_TIMEOUT.getSeconds()));
+    String ybaVersion = nodeAgentManager.getSoftwareVersion();
+    List<NodeAgentResp> nodeAgentRespList =
+        NodeAgent.list(customerUuid, nodeAgentIp).stream()
+            .map(n -> new NodeAgentResp(n))
+            .peek(
+                n -> {
+                  n.setReachable(n.getNodeAgent().getUpdatedAt().after(startTime));
+                  n.setVersionMatched(
+                      Util.compareYbVersions(ybaVersion, n.getNodeAgent().getVersion(), true) == 0);
+                })
+            .collect(Collectors.toList());
+    return nodeAgentRespList;
   }
 
   /**
@@ -105,8 +132,18 @@ public class NodeAgentHandler {
    * @param nodeAgentUuid node agent UUID.
    * @return the node agent.
    */
-  public NodeAgent get(UUID customerUuid, UUID nodeAgentUuid) {
-    return NodeAgent.getOrBadRequest(customerUuid, nodeAgentUuid);
+  public NodeAgentResp get(UUID customerUuid, UUID nodeAgentUuid) {
+    NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, nodeAgentUuid);
+    NodeAgentResp nodeAgentResp = new NodeAgentResp(nodeAgent);
+    Map<String, String> labels = new HashMap<>();
+    labels.put("uuid", nodeAgentUuid.toString());
+    Date startTime =
+        Date.from(Instant.now().minusSeconds(NODE_AGENT_HEARTBEAT_TIMEOUT.getSeconds()));
+    nodeAgentResp.setReachable(nodeAgent.getUpdatedAt().after(startTime));
+    nodeAgentResp.setVersionMatched(
+        Util.compareYbVersions(nodeAgentManager.getSoftwareVersion(), nodeAgent.getVersion(), true)
+            == 0);
+    return nodeAgentResp;
   }
 
   /**

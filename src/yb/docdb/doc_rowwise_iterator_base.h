@@ -47,7 +47,16 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
       const DocDB& doc_db,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      RWOperationCounter* pending_op_counter = nullptr);
+      std::reference_wrapper<const ScopedRWOperation> pending_op);
+
+  DocRowwiseIteratorBase(
+      const dockv::ReaderProjection& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      const DocDB& doc_db,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      ScopedRWOperation&& pending_op);
 
   DocRowwiseIteratorBase(
       const dockv::ReaderProjection& projection,
@@ -56,7 +65,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
       const DocDB& doc_db,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      RWOperationCounter* pending_op_counter = nullptr);
+      ScopedRWOperation&& pending_op);
 
   ~DocRowwiseIteratorBase() override;
 
@@ -105,8 +114,11 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Status InitIterKey(const Slice& key, bool full_row);
 
   // Parse the row_key_ and copy key required key columns to row.
-  Status CopyKeyColumnsToQLTableRow(
-      const dockv::ReaderProjection& projection, qlexpr::QLTableRow* row);
+  Status CopyKeyColumnsToRow(const dockv::ReaderProjection& projection, qlexpr::QLTableRow* row);
+  Status CopyKeyColumnsToRow(const dockv::ReaderProjection& projection, dockv::PgTableRow* row);
+
+  template <class Row>
+  Status DoCopyKeyColumnsToRow(const dockv::ReaderProjection& projection, Row* row);
 
   Result<DocHybridTime> GetTableTombstoneTime(const Slice& root_doc_key) const {
     return docdb::GetTableTombstoneTime(
@@ -151,7 +163,8 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   // We keep the "pending operation" counter incremented for the lifetime of this iterator so that
   // RocksDB does not get destroyed while the iterator is still in use.
-  ScopedRWOperation pending_op_;
+  ScopedRWOperation pending_op_holder_;
+  const ScopedRWOperation& pending_op_ref_;
 
   // Indicates whether we've already finished iterating.
   bool done_ = false;

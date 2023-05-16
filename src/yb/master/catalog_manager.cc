@@ -82,6 +82,7 @@
 #include "yb/common/constants.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_type_util.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
@@ -138,6 +139,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/xcluster/add_table_to_xcluster_task.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
@@ -223,6 +225,11 @@ TAG_FLAG(tablet_creation_timeout_ms, advanced);
 
 DEFINE_test_flag(bool, disable_tablet_deletion, false,
                  "Whether catalog manager should disable tablet deletion.");
+
+DEFINE_test_flag(bool, get_ysql_catalog_version_from_sys_catalog, false,
+                 "Whether catalog manager should get the ysql catalog version "
+                 "from the sys_catalog.");
+
 
 // TODO: should this be a test flag?
 DEFINE_RUNTIME_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
@@ -1200,137 +1207,137 @@ Status CatalogManager::VisitSysCatalog(int64_t term, SysCatalogLoadingState* sta
     LOG_WITH_PREFIX(WARNING) << "Long wait on leader_lock_: " << yb::ToString(finish - start);
   }
 
-  LOG_WITH_PREFIX(INFO)
-      << __func__ << ": Acquire catalog manager lock_ before loading sys catalog.";
-  LockGuard lock(mutex_);
-  VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
+  // Exclusive mutex_ scope.
+  {
+    LOG_WITH_PREFIX(INFO) << __func__
+                          << ": Acquire catalog manager lock_ before loading sys catalog.";
+    LockGuard lock(mutex_);
+    VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
 
-  // Abort any outstanding tasks. All TableInfos are orphaned below, so
-  // it's important to end their tasks now; otherwise Shutdown() will
-  // destroy master state used by these tasks.
-  AbortAndWaitForAllTasksUnlocked();
+    // Abort any outstanding tasks. All TableInfos are orphaned below, so
+    // it's important to end their tasks now; otherwise Shutdown() will
+    // destroy master state used by these tasks.
+    AbortAndWaitForAllTasksUnlocked();
 
-  // Clear internal maps and run data loaders.
-  RETURN_NOT_OK(RunLoaders(term, state));
+    // Clear internal maps and run data loaders.
+    RETURN_NOT_OK(RunLoaders(term, state));
 
-  // Prepare various default system configurations.
-  RETURN_NOT_OK(PrepareDefaultSysConfig(term));
+    // Prepare various default system configurations.
+    RETURN_NOT_OK(PrepareDefaultSysConfig(term));
 
-  if (FLAGS_enable_ysql && !FLAGS_initial_sys_catalog_snapshot_path.empty() &&
-      !FLAGS_create_initial_sys_catalog_snapshot) {
-    if (!master_->fs_manager()->initdb_done_set_after_sys_catalog_restore()) {
-      // Since this field is not set, this means that is an existing cluster created without D19510.
-      // So skip restoring sys catalog.
-      LOG_WITH_PREFIX(INFO)
-          << "This is an existing cluster, not initializing from a sys catalog snapshot.";
-    } else {
-      // This is a cluster created with D19510, so check the value of initdb_done.
-      Result<bool> dir_exists =
-          Env::Default()->DoesDirectoryExist(FLAGS_initial_sys_catalog_snapshot_path);
-      if (dir_exists.ok() && *dir_exists) {
-        bool initdb_was_already_done = false;
-        {
-          auto l = ysql_catalog_config_->LockForRead();
-          initdb_was_already_done = l->pb.ysql_catalog_config().initdb_done();
-        }
-        if (initdb_was_already_done) {
-          LOG_WITH_PREFIX(INFO)
-              << "initdb has been run before, no need to restore sys catalog from "
-              << "the initial snapshot";
-        } else {
-          LOG_WITH_PREFIX(INFO) << "Restoring snapshot in sys catalog";
-          Status restore_status = RestoreInitialSysCatalogSnapshot(
-              FLAGS_initial_sys_catalog_snapshot_path,
-              sys_catalog_->tablet_peer().get(),
-              term);
-          if (!restore_status.ok()) {
-            LOG_WITH_PREFIX(ERROR) << "Failed restoring snapshot in sys catalog";
-            return restore_status;
-          }
-
-          LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
-          cluster_config_.reset();
-          RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
-
-          LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
-          xcluster_config_.reset();
-          RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
-
-          LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
-          RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
-          // TODO(asrivastava): Can we get rid of this Reset() by calling RunLoaders just once
-          // instead of calling it here and above?
-          state->Reset();
-          RETURN_NOT_OK(RunLoaders(term, state));
-        }
+    if (FLAGS_enable_ysql && !FLAGS_initial_sys_catalog_snapshot_path.empty() &&
+        !FLAGS_create_initial_sys_catalog_snapshot) {
+      if (!master_->fs_manager()->initdb_done_set_after_sys_catalog_restore()) {
+        // Since this field is not set, this means that is an existing cluster created without
+        // D19510. So skip restoring sys catalog.
+        LOG_WITH_PREFIX(INFO)
+            << "This is an existing cluster, not initializing from a sys catalog snapshot.";
       } else {
-        LOG_WITH_PREFIX(WARNING)
-            << "Initial sys catalog snapshot directory does not exist: "
-            << FLAGS_initial_sys_catalog_snapshot_path
-            << (dir_exists.ok() ? "" : ", status: " + dir_exists.status().ToString());
+        // This is a cluster created with D19510, so check the value of initdb_done.
+        Result<bool> dir_exists =
+            Env::Default()->DoesDirectoryExist(FLAGS_initial_sys_catalog_snapshot_path);
+        if (dir_exists.ok() && *dir_exists) {
+          bool initdb_was_already_done = false;
+          {
+            auto l = ysql_catalog_config_->LockForRead();
+            initdb_was_already_done = l->pb.ysql_catalog_config().initdb_done();
+          }
+          if (initdb_was_already_done) {
+            LOG_WITH_PREFIX(INFO)
+                << "initdb has been run before, no need to restore sys catalog from "
+                << "the initial snapshot";
+          } else {
+            LOG_WITH_PREFIX(INFO) << "Restoring snapshot in sys catalog";
+            Status restore_status = RestoreInitialSysCatalogSnapshot(
+                FLAGS_initial_sys_catalog_snapshot_path, sys_catalog_->tablet_peer().get(), term);
+            if (!restore_status.ok()) {
+              LOG_WITH_PREFIX(ERROR) << "Failed restoring snapshot in sys catalog";
+              return restore_status;
+            }
+
+            LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
+            cluster_config_.reset();
+            RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
+
+            LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
+            xcluster_config_.reset();
+            RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
+
+            LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
+            RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
+            // TODO(asrivastava): Can we get rid of this Reset() by calling RunLoaders just once
+            // instead of calling it here and above?
+            state->Reset();
+            RETURN_NOT_OK(RunLoaders(term, state));
+          }
+        } else {
+          LOG_WITH_PREFIX(WARNING)
+              << "Initial sys catalog snapshot directory does not exist: "
+              << FLAGS_initial_sys_catalog_snapshot_path
+              << (dir_exists.ok() ? "" : ", status: " + dir_exists.status().ToString());
+        }
       }
     }
-  }
 
-  // Create the system namespaces (created only if they don't already exist).
-  RETURN_NOT_OK(PrepareDefaultNamespaces(term));
+    // Create the system namespaces (created only if they don't already exist).
+    RETURN_NOT_OK(PrepareDefaultNamespaces(term));
 
-  // Create the system tables (created only if they don't already exist).
-  RETURN_NOT_OK(PrepareSystemTables(term));
+    // Create the system tables (created only if they don't already exist).
+    RETURN_NOT_OK(PrepareSystemTables(term));
 
-  // Create the default cassandra (created only if they don't already exist).
-  RETURN_NOT_OK(permissions_manager_->PrepareDefaultRoles(term));
+    // Create the default cassandra (created only if they don't already exist).
+    RETURN_NOT_OK(permissions_manager_->PrepareDefaultRoles(term));
 
-  // If this is the first time we start up, we have no config information as default. We write an
-  // empty version 0.
-  RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
+    // If this is the first time we start up, we have no config information as default. We write an
+    // empty version 0.
+    RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
-  RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
+    RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
 
-  permissions_manager_->BuildRecursiveRoles();
+    permissions_manager_->BuildRecursiveRoles();
 
-  if (FLAGS_enable_ysql) {
-    // Number of TS to wait for before creating the txn table.
-    auto wait_ts_count = std::max(FLAGS_txn_table_wait_min_ts_count, FLAGS_replication_factor);
+    if (FLAGS_enable_ysql) {
+      // Number of TS to wait for before creating the txn table.
+      auto wait_ts_count = std::max(FLAGS_txn_table_wait_min_ts_count, FLAGS_replication_factor);
 
-    LOG_WITH_PREFIX(INFO)
-        << "YSQL is enabled, will create the transaction status table when "
-        << wait_ts_count << " tablet servers are online";
-    master_->ts_manager()->SetTSCountCallback(wait_ts_count, [this, wait_ts_count] {
-      LOG_WITH_PREFIX(INFO)
-          << wait_ts_count
-          << " tablet servers registered, creating the transaction status table";
-      // Retry table creation until it succeedes. It might fail initially because placement UUID
-      // of live replicas is set through an RPC from YugaWare, and we won't be able to calculate
-      // the number of primary (non-read-replica) tablet servers until that happens.
-      while (true) {
-        const auto s = CreateGlobalTransactionStatusTableIfNeeded(/* rpc */ nullptr);
-        if (s.ok()) {
-          break;
+      LOG_WITH_PREFIX(INFO) << "YSQL is enabled, will create the transaction status table when "
+                            << wait_ts_count << " tablet servers are online";
+      master_->ts_manager()->SetTSCountCallback(wait_ts_count, [this, wait_ts_count] {
+        LOG_WITH_PREFIX(INFO)
+            << wait_ts_count << " tablet servers registered, creating the transaction status table";
+        // Retry table creation until it succeedes. It might fail initially because placement UUID
+        // of live replicas is set through an RPC from YugaWare, and we won't be able to calculate
+        // the number of primary (non-read-replica) tablet servers until that happens.
+        while (true) {
+          const auto s = CreateGlobalTransactionStatusTableIfNeeded(/* rpc */ nullptr);
+          if (s.ok()) {
+            break;
+          }
+          LOG_WITH_PREFIX(WARNING) << "Failed creating transaction status table, waiting: " << s;
+          if (s.IsShutdownInProgress()) {
+            return;
+          }
+          auto role = Role();
+          if (role != PeerRole::LEADER) {
+            LOG_WITH_PREFIX(WARNING)
+                << "Cancel creating transaction because of role: " << PeerRole_Name(role);
+            return;
+          }
+          SleepFor(MonoDelta::FromSeconds(1));
         }
-        LOG_WITH_PREFIX(WARNING) << "Failed creating transaction status table, waiting: " << s;
-        if (s.IsShutdownInProgress()) {
-          return;
-        }
-        auto role = Role();
-        if (role != PeerRole::LEADER) {
-          LOG_WITH_PREFIX(WARNING)
-              << "Cancel creating transaction because of role: " << PeerRole_Name(role);
-          return;
-        }
-        SleepFor(MonoDelta::FromSeconds(1));
-      }
-      LOG_WITH_PREFIX(INFO) << "Finished creating transaction status table asynchronously";
-    });
-  }
+        LOG_WITH_PREFIX(INFO) << "Finished creating transaction status table asynchronously";
+      });
+    }
 
-  if (!VERIFY_RESULT(StartRunningInitDbIfNeeded(term))) {
-    // If we are not running initdb, this is an existing cluster, and we need to check whether we
-    // need to do a one-time migration to make YSQL system catalog tables transactional.
-    RETURN_NOT_OK(MakeYsqlSysCatalogTablesTransactional(
-        tables_->GetAllTables(), sys_catalog_.get(), ysql_catalog_config_.get(),
-        term));
-  }
+    if (!VERIFY_RESULT(StartRunningInitDbIfNeeded(term))) {
+      // If we are not running initdb, this is an existing cluster, and we need to check whether we
+      // need to do a one-time migration to make YSQL system catalog tables transactional.
+      RETURN_NOT_OK(MakeYsqlSysCatalogTablesTransactional(
+          tables_->GetAllTables(), sys_catalog_.get(), ysql_catalog_config_.get(), term));
+    }
+  }  // Exclusive mutex_ scope.
+
+  ScheduleAddTableToXClusterTaskForAllTables();
 
   return Status::OK();
 }
@@ -3411,9 +3418,16 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
                                             GetYsqlCatalogConfigResponsePB* resp,
                                             rpc::RpcContext* rpc) {
   VLOG(1) << "GetYsqlCatalogConfig request: " << req->ShortDebugString();
+  if (PREDICT_FALSE(FLAGS_TEST_get_ysql_catalog_version_from_sys_catalog)) {
+    uint64_t catalog_version;
+    uint64_t last_breaking_version;
+    RETURN_NOT_OK(GetYsqlCatalogVersion(&catalog_version, &last_breaking_version));
+    resp->set_version(catalog_version);
+    return Status::OK();
+  }
+
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForRead();
   resp->set_version(l->pb.ysql_catalog_config().version());
-
   return Status::OK();
 }
 
@@ -4503,10 +4517,6 @@ Status CatalogManager::AddTransactionStatusTablet(
     table = VERIFY_RESULT(FindTableByIdUnlocked(req->table_id()));
     write_lock = table->LockForWrite();
 
-    SCHECK(
-        !IsXClusterEnabledUnlocked(*table), NotSupported,
-        "Cannot add transaction status tablet to transaction table under xCluster replication");
-
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
 
@@ -4943,8 +4953,6 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
         table->name() == kMetricsSnapshotsTableName)) {
     RETURN_FALSE_IF(!VERIFY_RESULT(IsMetricsSnapshotsTableCreated()));
   }
-
-  RETURN_FALSE_IF(VERIFY_RESULT(ScheduleBootstrapForXclusterIfNeeded(table, pb)));
 
   return true;
 }
@@ -7897,33 +7905,34 @@ Status CatalogManager::ProcessTabletReportBatch(
     ReportedTablets::iterator end,
     TabletReportUpdatesPB* full_report_update,
     std::vector<RetryingTSRpcTaskPtr>* rpcs) {
-  // First Pass. Iterate in TabletId Order to discover all Table locks we'll need. Even though
-  // read locks are sufficient here, take write locks since we'll be writing to the tablet while
-  // holding this.
-  // Need to acquire both types of locks in Id order to prevent deadlock.
+  // First Pass. Iterate in TabletId Order to discover all Table locks we'll need.
+
+  // Maps a table ID to its corresponding TableInfo.
+  std::map<TableId, TableInfoPtr> table_info_map;
+
   std::map<TableId, TableInfo::WriteLock> table_write_locks;
-  for (auto it = begin; it != end; ++it) {
-    auto& lock = table_write_locks[it->info->table()->id()];
-    if (!lock.locked()) {
-      lock = it->info->table()->LockForWrite();
-    }
+  for (auto reported_tablet = begin; reported_tablet != end; ++reported_tablet) {
+    auto table = reported_tablet->info->table();
+    table_info_map[table->id()] = table;
     // Acquire locks for all colocated tables reported
     // in sorted order of table ids (We use a map).
-    for (const auto& id_to_info : it->tables) {
-      auto& lock = table_write_locks[id_to_info.first];
-      if (!lock.locked()) {
-        lock = id_to_info.second->LockForWrite();
-      }
+    for (const auto& [table_id, table_info] : reported_tablet->tables) {
+      table_info_map[table_info->id()] = table_info;
     }
   }
 
-  map<TabletId, TabletInfo::WriteLock> tablet_write_locks; // used for unlock.
-  // Second Pass.  Process each tablet. This may not be in the order that the tablets
+  // Need to acquire locks in Id order to prevent deadlock.
+  for (auto& [table_id, table] : table_info_map) {
+    table_write_locks[table_id] = table->LockForWrite();
+  }
+
+  map<TabletId, TabletInfo::WriteLock> tablet_write_locks;
+  // Second Pass.
+  // Process each tablet. The list is sorted by ID. This may not be in the order that the tablets
   // appear in 'full_report', but that has no bearing on correctness.
-  vector<TabletInfo*> mutated_tablets; // refcount protected by 'tablet_infos'
-  std::unordered_map<TableInfo*, std::unordered_map<TabletId, const TabletInfo::WriteLock*>>
-      new_running_tablets;
-  vector<TableInfo*> mutated_tables; // refcount protected by 'table_infos'
+  vector<TabletInfo*> mutated_tablets; // refcount protected by ReportedTablet::info
+  std::unordered_map<TableId, std::set<TabletId>> new_running_tablets;
+  vector<TableInfo*> mutated_tables;  // refcount protected by 'table_info_map'
   for (auto it = begin; it != end; ++it) {
     const auto& tablet_id = it->tablet_id;
     const TabletInfoPtr& tablet = it->info;
@@ -8043,7 +8052,7 @@ Status CatalogManager::ProcessTabletReportBatch(
         // Done here and not on a per-mutation basis to avoid duplicate entries.
         mutated_tablets.push_back(tablet.get());
         if (!tablet_was_running && tablet_lock->is_running()) {
-          new_running_tablets[table.get()][tablet->id()] = &tablet_lock;
+          new_running_tablets[table->id()].insert(tablet->id());
         }
       }
     } else if (is_incremental &&
@@ -8056,9 +8065,10 @@ Status CatalogManager::ProcessTabletReportBatch(
   } // Finished one round of batch processing.
 
   // Update the table state if all its tablets are now running.
-  for (const auto& [table, tablets] : new_running_tablets) {
-    if (table->TransitionTableFromPreparingToRunning(tablets)) {
-      mutated_tables.push_back(table);
+  for (auto& [table_id, tablets] : new_running_tablets) {
+    auto& table_info = table_info_map[table_id];
+    if (VERIFY_RESULT(HandleNewRunningTabletsForTable(table_info, tablets))) {
+      mutated_tables.push_back(table_info.get());
     }
   }
 
@@ -9631,11 +9641,19 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
       auto ltm = table->LockForRead();
       if (!ltm->started_deleting()) {
         for (const auto &col : ltm->schema().columns()) {
-          if (col.type().main() == DataType::USER_DEFINED_TYPE &&
-              col.type().udtype_info().id() == tp->id()) {
+          const Status tp_is_not_used = IterateAndDoForUDT(
+              col.type(),
+              [&tp](const QLTypePB::UDTypeInfo& udtype_info) -> Status {
+                return udtype_info.id() == tp->id()
+                    ? STATUS(QLError, Substitute("Used type $0 id $1", tp->name(), tp->id()))
+                    : Status::OK();
+              });
+
+          if (!tp_is_not_used.ok()) {
             Status s = STATUS(QLError,
                 Substitute("Cannot delete type '$0.$1'. It is used in column $2 of table $3",
                     ns->name(), tp->name(), col.name(), ltm->name()));
+            LOG_WITH_FUNC(WARNING) << s << ": " << tp_is_not_used;
             return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
           }
         }
@@ -12400,7 +12418,7 @@ scoped_refptr<TableInfo> CatalogManager::NewTableInfo(TableId id, bool colocated
   return make_scoped_refptr<TableInfo>(id, colocated, tasks_tracker_);
 }
 
-Status CatalogManager::ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) {
+Status CatalogManager::ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) {
   Status s = async_task_pool_->SubmitFunc([task]() {
       WARN_NOT_OK(task->Run(), "Failed task");
   });
@@ -13269,6 +13287,82 @@ void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
   auto l = (*tablet_res)->LockForWrite();
   WARN_NOT_OK(sys_catalog_->ForceUpsert(leader_ready_term(), *tablet_res),
       "Failed to upsert migrated colocated tablet into sys catalog.");
+}
+
+bool CatalogManager::ScheduleAddTableToXClusterTaskIfNeeded(
+    TableInfoPtr table_info, const SysTablesEntryPB& pb) {
+  if (!ShouldAddTableToXClusterReplication(*table_info, pb)) {
+    return false;
+  }
+
+  DCHECK(!table_info->HasTasks(server::MonitoredTaskType::kAddTableToXClusterReplication));
+  VLOG(1) << "Scheduling AddTableToXClusterTask for " << table_info->id();
+  auto call = std::make_shared<AddTableToXClusterTask>(this, table_info);
+  table_info->AddTask(call);
+  // Task will be removed from table_info if the scheduling fails.
+  auto s = ScheduleTask(call);
+  if (!s.ok()) {
+    table_info->SetCreateTableErrorStatus(s);
+    LOG(WARNING) << "Failed to start AddTableToXClusterTask: " << s;
+  }
+
+  return true;
+}
+
+Result<bool> CatalogManager::HandleNewRunningTabletsForTable(
+    TableInfoPtr table_info, const std::set<TabletId>& new_running_tablets) {
+  auto* mutable_table_info = table_info->mutable_metadata()->mutable_dirty();
+  if (!mutable_table_info->IsPreparing() ||
+      !table_info->AreAllTabletsRunning(new_running_tablets)) {
+    return false;
+  }
+
+  if (ScheduleAddTableToXClusterTaskIfNeeded(table_info, mutable_table_info->pb)) {
+    return false;
+  }
+
+  mutable_table_info->pb.set_state(SysTablesEntryPB::RUNNING);
+  return true;
+}
+
+Status CatalogManager::PromoteTableToRunningState(TableInfoPtr table_info) {
+  auto l = table_info->LockForWrite();
+  SCHECK(
+      l.mutable_data()->IsPreparing(), IllegalState,
+      "Table $0 should be in PREPARING state. Current state: $2", table_info->ToString(),
+      l.mutable_data()->pb.state());
+
+  l.mutable_data()->pb.set_state(SysTablesEntryPB::RUNNING);
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Upsert(leader_ready_term(), table_info.get()),
+      "Promote table to RUNNING state");
+
+  l.Commit();
+  return Status::OK();
+}
+
+void CatalogManager::ScheduleAddTableToXClusterTaskForAllTables() {
+  std::vector<TableId> table_ids;
+  {
+    SharedLock lock(mutex_);
+    table_ids.reserve(tables_->Size());
+    for (const auto& table_info : tables_->GetAllTables()) {
+      table_ids.push_back(table_info->id());
+    }
+  }
+
+  for (auto& table_id : table_ids) {
+    auto table_info_result = FindTableById(table_id);
+    if (!table_info_result) {
+      LOG(WARNING) << "Failed to find table " << table_id << " to schedule AddTableToXClusterTask";
+      continue;
+    }
+    auto& table_info = *table_info_result;
+    auto l = table_info->LockForRead();
+    if (l->IsPreparing() && table_info->AreAllTabletsRunning()) {
+      ScheduleAddTableToXClusterTaskIfNeeded(table_info, l->pb);
+    }
+  }
 }
 
 }  // namespace master

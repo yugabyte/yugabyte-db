@@ -5,6 +5,7 @@ package com.yugabyte.yw.models.configs;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
@@ -125,6 +126,7 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
   public BlobContainerClient createBlobContainerClient(
       String azUrl, String azSasToken, String container) {
     if (refuseKeys) {
+      when(blobStorageException.getMessage()).thenReturn("Invalid SAS token!");
       throw blobStorageException;
     }
     return blobContainerClient;

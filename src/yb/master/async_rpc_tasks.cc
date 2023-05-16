@@ -136,19 +136,18 @@ Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
 // Constructor. The 'async_task_throttler' parameter is optional and may be null if the task does
 // not throttle.
 RetryingTSRpcTask::RetryingTSRpcTask(
-    Master *master,
+    Master* master,
     ThreadPool* callback_pool,
-    std::unique_ptr<TSPicker> replica_picker,
+    std::unique_ptr<TSPicker>
+        replica_picker,
     const scoped_refptr<TableInfo>& table,
     AsyncTaskThrottlerBase* async_task_throttler)
-  : master_(master),
-    callback_pool_(callback_pool),
-    replica_picker_(std::move(replica_picker)),
-    table_(table),
-    async_task_throttler_(async_task_throttler),
-    start_ts_(MonoTime::Now()),
-    deadline_(start_ts_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms) {
-}
+    : master_(master),
+      callback_pool_(callback_pool),
+      replica_picker_(std::move(replica_picker)),
+      table_(table),
+      async_task_throttler_(async_task_throttler),
+      deadline_(start_timestamp_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms) {}
 
 RetryingTSRpcTask::~RetryingTSRpcTask() {
   auto state = state_.load(std::memory_order_acquire);
@@ -482,14 +481,15 @@ void RetryingTSRpcTask::UnregisterAsyncTask() {
   // Retain a reference to the object, in case RemoveTask would have removed the last one.
   auto self = shared_from_this();
   std::unique_lock<decltype(unregister_mutex_)> lock(unregister_mutex_);
-  UpdateMetrics(master_->GetMetric(type_name(), Master::TaskMetric, description()), start_ts_,
-                type_name(), "task metric");
+  UpdateMetrics(
+      master_->GetMetric(type_name(), Master::TaskMetric, description()), start_timestamp_,
+      type_name(), "task metric");
 
   auto s = state();
   if (!IsStateTerminal(s)) {
     LOG_WITH_PREFIX(FATAL) << "Invalid task state " << s;
   }
-  end_ts_ = MonoTime::Now();
+  completion_timestamp_ = MonoTime::Now();
   if (table_ != nullptr && table_->RemoveTask(self)) {
     // We don't delete table while it have running tasks, so should check whether it was last task,
     // even it is not delete table task.
@@ -614,7 +614,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get(),
                            /* async_task_throttler */ nullptr),
     tablet_id_(tablet->tablet_id()) {
-  deadline_ = start_ts_;
+  deadline_ = start_timestamp_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
 
   auto table_lock = tablet->table()->LockForRead();
@@ -688,7 +688,7 @@ AsyncStartElection::AsyncStartElection(Master *master,
   : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get(),
                            /* async_task_throttler */ nullptr),
     tablet_id_(tablet->tablet_id()) {
-  deadline_ = start_ts_;
+  deadline_ = start_timestamp_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
 
   req_.set_dest_uuid(permanent_uuid_);
@@ -1365,21 +1365,13 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     return;
   }
 
-  auto l = table_->LockForWrite();
-  auto tablet_l = tablet_->LockForWrite();
-  std::unordered_map<TabletId, const TabletInfo::WriteLock*> tablet_locks = {
-      {tablet_->id(), &tablet_l}};
-  if (table_->TransitionTableFromPreparingToRunning(tablet_locks)) {
-    VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
-    Status s = master_->catalog_manager()->sys_catalog()->Upsert(
-        master_->catalog_manager()->leader_ready_term(), table_);
-    if (!s.ok()) {
-      LOG(WARNING) << "Error updating table " << table_->ToString() << ": " << s;
-      TransitionToFailedState(MonitoredTaskState::kRunning, s);
-      return;
-    }
-    tablet_l.Unlock();
-    l.Commit();
+  DCHECK(table_->AreAllTabletsRunning());
+  VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
+  Status s = master_->catalog_manager()->PromoteTableToRunningState(table_);
+  if (!s.ok()) {
+    LOG(WARNING) << "Error updating table " << table_->ToString() << ": " << s;
+    TransitionToFailedState(MonitoredTaskState::kRunning, s);
+    return;
   }
 
   TransitionToCompleteState();

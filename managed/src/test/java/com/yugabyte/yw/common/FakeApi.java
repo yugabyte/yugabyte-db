@@ -18,8 +18,8 @@ import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
-import io.ebean.Ebean;
-import io.ebean.EbeanServer;
+import io.ebean.Database;
+import io.ebean.MockHelper;
 import java.util.List;
 import play.Application;
 import play.libs.Files;
@@ -30,7 +30,7 @@ import play.test.Helpers;
 public class FakeApi {
   private final String authToken;
   private final Application app;
-  private final EbeanServer appEBeanServer;
+  private final Database appEBeanServer;
 
   private static String getAuthToken() {
     Customer customer = Customer.find.query().where().eq("code", "tc").findOne();
@@ -43,7 +43,7 @@ public class FakeApi {
     return user.createAuthToken();
   }
 
-  public FakeApi(Application app, EbeanServer remoteEBenServer) {
+  public FakeApi(Application app, Database remoteEBenServer) {
     this.app = app;
     this.appEBeanServer = remoteEBenServer;
     authToken = getAuthToken();
@@ -60,12 +60,12 @@ public class FakeApi {
   }
 
   public Result route(Http.RequestBuilder request) {
-    EbeanServer currentDefaultServer = Ebean.getDefaultServer();
+    Database currentDefaultServer = null;
     try {
-      Ebean.register(appEBeanServer, true);
+      currentDefaultServer = MockHelper.mock(appEBeanServer, true);
       return Helpers.route(app, request);
     } finally {
-      Ebean.register(currentDefaultServer, true);
+      MockHelper.mock(currentDefaultServer, true);
     }
   }
 

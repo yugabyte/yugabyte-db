@@ -30,6 +30,8 @@ class KeyBytes;
 class KeyEntryValue;
 class Partition;
 class PartitionSchema;
+class PgTableRow;
+class PgValue;
 class PrimitiveValue;
 class RowPacker;
 class SchemaPacking;

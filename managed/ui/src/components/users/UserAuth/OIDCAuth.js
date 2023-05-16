@@ -124,6 +124,7 @@ export const OIDCAuth = (props) => {
         value: true
       });
       setSSO(true);
+      fetchRunTimeConfigs();
       toast.success(`OIDC authentication is enabled`, TOAST_OPTIONS);
     }
   };
@@ -140,6 +141,7 @@ export const OIDCAuth = (props) => {
       value: 'false'
     });
     setSSO(false);
+    fetchRunTimeConfigs();
     toast.warn(`OIDC authentication is disabled`, TOAST_OPTIONS);
   };
 
@@ -189,7 +191,7 @@ export const OIDCAuth = (props) => {
             resetForm(values);
           }}
         >
-          {({ handleSubmit, isSubmitting, errors, dirty, values }) => {
+          {({ handleSubmit, isSubmitting, dirty }) => {
             const isDisabled = !oidcEnabled && showToggle;
             const isSaveDisabled = !dirty;
 

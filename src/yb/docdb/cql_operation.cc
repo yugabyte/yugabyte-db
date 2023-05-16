@@ -78,6 +78,9 @@ constexpr bool kYcqlPackedRowEnabled = true;
 DEFINE_RUNTIME_bool(ycql_enable_packed_row, kYcqlPackedRowEnabled,
                     "Whether packed row is enabled for YCQL.");
 
+DEFINE_RUNTIME_bool(ycql_jsonb_use_member_cache, true,
+                    "Whether we use member cache during jsonb processing in YCQL.");
+
 DEFINE_UNKNOWN_uint64(
     ycql_packed_row_size_limit, 0,
     "Packed row size limit for YCQL in bytes. 0 to make this equal to SSTable block size.");
@@ -204,13 +207,20 @@ bool JoinNonStaticRow(
   return join_successful;
 }
 
+typedef rapidjson::SizeType RapidJsonMemberIndex;
+typedef std::unordered_map<uintptr_t, std::unordered_map<std::string, RapidJsonMemberIndex>>
+    RapidJsonMemberCache;
+
+uintptr_t MemberCacheValueHash(rapidjson::Value* p) { return reinterpret_cast<uintptr_t>(p); }
+
 Status FindMemberForIndex(const QLColumnValuePB& column_value,
                           int index,
                           rapidjson::Value* document,
                           rapidjson::Value::MemberIterator* memberit,
                           rapidjson::Value::ValueIterator* valueit,
                           bool* last_elem_object,
-                          IsInsert is_insert) {
+                          IsInsert is_insert,
+                          RapidJsonMemberCache* member_cache) {
   *last_elem_object = false;
 
   int64_t array_index;
@@ -239,8 +249,38 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
 
     *last_elem_object = true;
 
-    const auto& member = column_value.json_args(index).operand().value().string_value().c_str();
-    *memberit = document->FindMember(member);
+    const auto& member = column_value.json_args(index).operand().value().string_value();
+    *memberit = document->MemberEnd();
+
+    if (FLAGS_ycql_jsonb_use_member_cache) {
+      auto node_itr = member_cache->find(MemberCacheValueHash(document));
+      if (node_itr != member_cache->end()) {
+        // Find the member from the cache.
+        auto member_itr = node_itr->second.find(member);
+        if (member_itr != node_itr->second.end()) {
+          LOG_IF(DFATAL, member_itr->second >= document->MemberCount())
+              << "Invalid index in the member cache";
+          *memberit = document->MemberBegin() + member_itr->second;
+        }
+      } else {
+        // Fetch and cache all the members of the document.
+        std::unordered_map<std::string, RapidJsonMemberIndex> members;
+        RapidJsonMemberIndex member_idx = 0;
+        for (auto m = document->MemberBegin(); m != document->MemberEnd(); m++, member_idx++) {
+          auto curr_member_name = m->name.GetString();
+          if (curr_member_name == member) {
+            LOG_IF(DFATAL, !(*memberit == document->MemberEnd()))
+                << "Duplicate member found in the json object";
+            *memberit = m;
+          }
+          members[curr_member_name] = member_idx;
+        }
+        (*member_cache)[MemberCacheValueHash(document)] = std::move(members);
+      }
+    } else {
+      *memberit = document->FindMember(member.c_str());
+    }
+
     if (memberit->operator==(document->MemberEnd())) {
       return STATUS_SUBSTITUTE(QLError, "Could not find member: ", member);
     }
@@ -454,18 +494,20 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
   // Scan docdb for the static and non-static columns of the row using the hashed / primary key.
   if (hashed_doc_key_) {
     DocQLScanSpec spec(doc_read_context_->schema, *hashed_doc_key_, request_.query_id());
-    DocRowwiseIterator iterator(
+    auto iterator = DocRowwiseIterator(
         *static_projection, *doc_read_context_, txn_op_context_,
-        data.doc_write_batch->doc_db(), data.deadline, data.read_time);
+        data.doc_write_batch->doc_db(), data.deadline, data.read_time,
+        data.doc_write_batch->pending_op());
     RETURN_NOT_OK(iterator.Init(spec));
     RETURN_NOT_OK(iterator.FetchNext(table_row));
     data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
   }
   if (pk_doc_key_) {
     DocQLScanSpec spec(doc_read_context_->schema, *pk_doc_key_, request_.query_id());
-    DocRowwiseIterator iterator(
+    auto iterator = DocRowwiseIterator(
         *non_static_projection, *doc_read_context_, txn_op_context_,
-        data.doc_write_batch->doc_db(), data.deadline, data.read_time);
+        data.doc_write_batch->doc_db(), data.deadline, data.read_time,
+        data.doc_write_batch->pending_op());
     RETURN_NOT_OK(iterator.Init(spec));
     if (VERIFY_RESULT(iterator.FetchNext(table_row))) {
       // If there are indexes to update, check if liveness column exists for update/delete because
@@ -621,13 +663,14 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, ReadHybridTime read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
   DocQLScanSpec spec(doc_read_context_->schema, *pk_doc_key_, request_.query_id(), true);
-  DocRowwiseIterator iterator(
+  auto iterator = DocRowwiseIterator(
       *unique_index_key_projection_,
       *doc_read_context_,
       txn_op_context_,
       data.doc_write_batch->doc_db(),
       data.deadline,
-      read_time);
+      read_time,
+      data.doc_write_batch->pending_op());
   RETURN_NOT_OK(iterator.Init(spec));
 
   // It is a duplicate value if the index key exists already and the index value (corresponding to
@@ -692,6 +735,7 @@ Status QLWriteOperation::ApplyForJsonOperators(
   using common::Jsonb;
   rapidjson::Document document;
   QLValue qlv;
+  RapidJsonMemberCache member_cache;
   bool read_needed = true;
   for (const auto& column_value_ptr : col_map.find(col_id)->second) {
     const auto& column_value = *column_value_ptr;
@@ -731,11 +775,11 @@ Status QLWriteOperation::ApplyForJsonOperators(
 
     int i = 0;
     auto status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
-        &last_elem_object, is_insert);
+        &last_elem_object, is_insert, &member_cache);
     for (i = 1; i < column_value.json_args_size() && status.ok(); i++) {
       node = (last_elem_object) ? &(memberit->value) : &(*valueit);
       status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
-          &last_elem_object, is_insert);
+          &last_elem_object, is_insert, &member_cache);
     }
 
     bool update_missing = false;
@@ -751,7 +795,11 @@ Status QLWriteOperation::ApplyForJsonOperators(
         auto val = column_value.json_args(i - 1).operand().value().string_value();
         rapidjson::Value v(
             val.c_str(), narrow_cast<rapidjson::SizeType>(val.size()), document.GetAllocator());
+        // Add the member and update the cache if enabled.
         node->AddMember(v, rhs_doc, document.GetAllocator());
+        if (FLAGS_ycql_jsonb_use_member_cache) {
+          member_cache[MemberCacheValueHash(node)][val] = node->MemberCount() - 1;
+        }
       } else {
         RETURN_NOT_OK(status);
       }
@@ -1178,9 +1226,9 @@ Status QLWriteOperation::ApplyDelete(
                        include_static_columns_in_scan);
 
     // Create iterator.
-    DocRowwiseIterator iterator(
-        projection, *doc_read_context_, txn_op_context_,
-        data.doc_write_batch->doc_db(), data.deadline, data.read_time);
+    auto iterator = DocRowwiseIterator(
+        projection, *doc_read_context_, txn_op_context_, data.doc_write_batch->doc_db(),
+        data.deadline, data.read_time, data.doc_write_batch->pending_op());
     RETURN_NOT_OK(iterator.Init(spec));
 
     // Iterate through rows and delete those that match the condition.
@@ -1656,6 +1704,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
                                 const DocReadContext& doc_read_context,
+                                std::reference_wrapper<const ScopedRWOperation> pending_op,
                                 QLResultSet* resultset,
                                 HybridTime* restart_read_ht) {
   auto se = ScopeExit([resultset] {
@@ -1701,7 +1750,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
       request_, read_time, schema, read_static_columns, &spec, &static_row_spec));
   RETURN_NOT_OK(ql_storage.GetIterator(
       request_, full_projection, doc_read_context, txn_op_context_, deadline, read_time,
-      *spec, &iter));
+      *spec, pending_op, &iter));
   VTRACE(1, "Initialized iterator");
 
   QLTableRow static_row;
@@ -1716,7 +1765,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
     std::unique_ptr<YQLRowwiseIteratorIf> static_row_iter;
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_, static_projection, doc_read_context, txn_op_context_, deadline,
-        read_time, *static_row_spec, &static_row_iter));
+        read_time, *static_row_spec, pending_op, &static_row_iter));
     RETURN_NOT_OK(static_row_iter->FetchNext(&static_row));
   }
 

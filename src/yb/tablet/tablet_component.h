@@ -41,7 +41,7 @@ class TabletComponent {
 
  protected:
   TabletScopedRWOperationPauses StartShutdownRocksDBs(
-      DisableFlushOnShutdown disable_flush_on_shutdown);
+      DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
   std::vector<std::string> CompleteShutdownRocksDBs(
       const TabletScopedRWOperationPauses& ops_pauses);
@@ -54,7 +54,7 @@ class TabletComponent {
 
   RaftGroupMetadata& metadata() const;
 
-  RWOperationCounter& pending_op_counter() const;
+  RWOperationCounter& pending_op_counter_blocking_rocksdb_shutdown_start() const;
 
   rocksdb::DB& regular_db() const;
 

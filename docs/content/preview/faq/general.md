@@ -1,8 +1,8 @@
 ---
-title: FAQs about YugabyteDB
+title: YugabyteDB FAQS
 headerTitle: General FAQ
 linkTitle: General FAQ
-description: Answers to commonly asked questions about YugabyteDB.
+description: YugabyteDB FAQ — How does YugabyteDB work? When is YugabyteDB database a good fit? What APIs does YugabyteDB support? And other frequently asked questions.
 aliases:
   - /preview/faq/product/
   - /preview/introduction/overview/
@@ -184,7 +184,7 @@ Examples: Amazon Aurora, Google Cloud Spanner, CockroachDB, TiDB
 
 - None
 
-Learn more: [What is Distributed SQL?](https://www.yugabyte.com/blog/what-is-distributed-sql/)
+Learn more: [What is Distributed SQL?](https://www.yugabyte.com/tech/distributed-sql/)
 
 #### Monolithic SQL
 

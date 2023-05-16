@@ -105,7 +105,7 @@ class XClusterOutputClient : public XClusterOutputClientIf {
       const cdc::XClusterSchemaVersionMap& schema_version_map,
       const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) override;
 
-  Status ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
+  Status ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> resp) override;
 
   void Shutdown() override {
     DCHECK(!shutdown_);
@@ -140,7 +140,7 @@ class XClusterOutputClient : public XClusterOutputClientIf {
 
   void SetLastCompatibleConsumerSchemaVersionUnlocked(uint32_t schema_version) REQUIRES(lock_);
 
-  // Process all records in xcluster_resp_copy_ starting from the start index. If we find a ddl
+  // Process all records in get_changes_resp_ starting from the start index. If we find a ddl
   // record, then we process the current changes first, wait for those to complete, then process
   // the ddl + other changes after.
   Status ProcessChangesStartingFromIndex(int start);
@@ -246,7 +246,7 @@ class XClusterOutputClient : public XClusterOutputClientIf {
   ColocationId colocation_id_  GUARDED_BY(lock_) = 0;
 
   // This will cache the response to an ApplyChanges() request.
-  cdc::GetChangesResponsePB xcluster_resp_copy_;
+  std::shared_ptr<cdc::GetChangesResponsePB> get_changes_resp_;
 
   // Store the result of the lookup for all the tablets.
   yb::Result<std::vector<scoped_refptr<yb::client::internal::RemoteTablet>>> all_tablets_result_;
@@ -308,7 +308,7 @@ void XClusterOutputClient::UpdateSchemaVersionMappings(
   }
 }
 
-Status XClusterOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_resp) {
+Status XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> poller_resp) {
   // ApplyChanges is called in a single threaded manner.
   // For all the changes in GetChangesResponsePB, we first fan out and find the tablet for
   // every record key.
@@ -317,7 +317,6 @@ Status XClusterOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* polle
   // then either poll for next set of changes (in case of successful application) or will try to
   // re-apply.
   DCHECK(poller_resp->has_checkpoint());
-  xcluster_resp_copy_.Clear();
 
   // Init class variables that threads will use.
   {
@@ -332,8 +331,10 @@ Status XClusterOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* polle
     ResetWriteInterface(&write_strategy_);
   }
 
+  get_changes_resp_ = std::move(poller_resp);
+
   // Ensure we have records.
-  if (poller_resp->records_size() == 0) {
+  if (get_changes_resp_->records_size() == 0) {
     HandleResponse();
     return Status::OK();
   }
@@ -344,7 +345,6 @@ Status XClusterOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* polle
         local_client_->client->OpenTable(consumer_tablet_info_.table_id, &table_));
   }
 
-  xcluster_resp_copy_ = *poller_resp;
   timeout_ms_ = MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms);
   // Using this future as a barrier to get all the tablets before processing.  Ordered iteration
   // matters: we need to ensure that each record is handled sequentially.
@@ -358,11 +358,11 @@ Status XClusterOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* polle
 
 Status XClusterOutputClient::ProcessChangesStartingFromIndex(int start) {
   bool processed_write_record = false;
-  auto records_size = xcluster_resp_copy_.records_size();
+  auto records_size = get_changes_resp_->records_size();
   for (int i = start; i < records_size; i++) {
     // All KV-pairs within a single CDC record will be for the same row.
     // key(0).key() will contain the hash code for that row. We use this to lookup the tablet.
-    const auto& record = xcluster_resp_copy_.records(i);
+    const auto& record = get_changes_resp_->records(i);
 
     if (IsValidMetaOp(record)) {
       if (processed_write_record) {
@@ -1013,6 +1013,7 @@ void XClusterOutputClient::HandleError(const Status& s) {
 XClusterOutputClientResponse XClusterOutputClient::PrepareResponse() {
   XClusterOutputClientResponse response;
   response.status = error_status_;
+  response.get_changes_response = std::move(get_changes_resp_);
   if (response.status.ok()) {
     response.last_applied_op_id = op_id_;
     response.processed_record_count = processed_record_count_;

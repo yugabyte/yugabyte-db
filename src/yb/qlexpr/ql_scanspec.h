@@ -16,6 +16,10 @@
 #pragma once
 
 #include <map>
+#include <memory>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include <boost/functional/hash.hpp>
 #include <boost/optional/optional.hpp>
@@ -284,25 +288,12 @@ class QLScanSpec : public YQLScanSpec {
 //--------------------------------------------------------------------------------------------------
 class PgsqlScanSpec : public YQLScanSpec {
  public:
-  typedef std::unique_ptr<PgsqlScanSpec> UniPtr;
-
   PgsqlScanSpec(
       const Schema& schema,
       bool is_forward_scan,
       rocksdb::QueryId query_id,
-      std::unique_ptr<const QLScanRange>
-          range_bounds,
-      size_t prefix_length,
-      const PgsqlExpressionPB* where_expr,
-      QLExprExecutorPtr executor = nullptr);
-
-  virtual ~PgsqlScanSpec();
-
-  const PgsqlExpressionPB* where_expr() { return where_expr_; }
-
- protected:
-  const PgsqlExpressionPB* where_expr_;
-  QLExprExecutorPtr executor_;
+      std::unique_ptr<const QLScanRange> range_bounds,
+      size_t prefix_length);
 };
 
 }  // namespace yb::qlexpr

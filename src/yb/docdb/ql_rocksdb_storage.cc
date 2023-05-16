@@ -13,6 +13,10 @@
 
 #include "yb/docdb/ql_rocksdb_storage.h"
 
+#include <utility>
+
+#include <boost/optional/optional.hpp>
+
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 
@@ -26,10 +30,7 @@
 
 #include "yb/util/result.h"
 
-using std::vector;
-
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::DocKey;
 
@@ -47,9 +48,10 @@ Status QLRocksDBStorage::GetIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const qlexpr::QLScanSpec& spec,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     std::unique_ptr<YQLRowwiseIteratorIf> *iter) const {
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time);
+      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time, pending_op);
   RETURN_NOT_OK(doc_iter->Init(spec));
   *iter = std::move(doc_iter);
   return Status::OK();
@@ -114,11 +116,12 @@ Status QLRocksDBStorage::CreateIterator(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     YQLRowwiseIteratorIf::UniPtr* iter,
     const docdb::DocDBStatistics* statistics) const {
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time,
-      nullptr /* pending_op_counter */, statistics);
+      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time, pending_op,
+      statistics);
   *iter = std::move(doc_iter);
   return Status::OK();
 }
@@ -142,6 +145,7 @@ Status QLRocksDBStorage::GetIterator(
     const ReadHybridTime& read_time,
     const QLValuePB& min_ybctid,
     const QLValuePB& max_ybctid,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     YQLRowwiseIteratorIf::UniPtr* iter,
     const docdb::DocDBStatistics* statistics) const {
   DocKey lower_doc_key(doc_read_context.get().schema);
@@ -152,7 +156,7 @@ Status QLRocksDBStorage::GetIterator(
   upper_doc_key.AddRangeComponent(dockv::KeyEntryValue(dockv::KeyEntryType::kHighest));
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time,
-      nullptr /* pending_op_counter */, statistics);
+      pending_op, statistics);
 
   dockv::KeyEntryValues empty_vec;
   RETURN_NOT_OK(doc_iter->Init(
@@ -162,7 +166,6 @@ Status QLRocksDBStorage::GetIterator(
         nullptr /* condition */,
         boost::none /* hash_code */,
         boost::none /* max_hash_code */,
-        nullptr /* where_expr */,
         lower_doc_key,
         true /* is_forward_scan */,
         lower_doc_key,
@@ -179,6 +182,7 @@ Status QLRocksDBStorage::GetIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const DocKey& start_doc_key,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     YQLRowwiseIteratorIf::UniPtr* iter,
     const docdb::DocDBStatistics* statistics) const {
   const auto& schema = doc_read_context.get().schema;
@@ -190,8 +194,8 @@ Status QLRocksDBStorage::GetIterator(
       request.range_column_values(), schema, schema.num_hash_key_columns()));
 
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time,
-      /*pending_op_counter=*/nullptr, statistics);
+      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time, pending_op,
+      statistics);
 
   if (range_components.size() == schema.num_range_key_columns() &&
       hashed_components.size() == schema.num_hash_key_columns()) {
@@ -251,7 +255,6 @@ Status QLRocksDBStorage::GetIterator(
         request.hash_code(),
         request.has_max_hash_code() ? boost::make_optional<int32_t>(request.max_hash_code())
                                     : boost::none,
-        nullptr /* where_expr */,
         start_doc_key,
         request.is_forward_scan(),
         lower_doc_key,
@@ -263,5 +266,4 @@ Status QLRocksDBStorage::GetIterator(
   return Status::OK();
 }
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb
