@@ -499,6 +499,12 @@ extern bool yb_enable_base_scans_cost_model;
  */
 extern int yb_wait_for_backends_catalog_version_timeout;
 
+/*
+ * If true, we will always prefer batched nested loop join plans over nested
+ * loop join plans.
+ */
+extern bool yb_prefer_bnl;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
