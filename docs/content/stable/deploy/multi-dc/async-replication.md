@@ -55,7 +55,7 @@ After you created the required tables, you can set up unidirectional replication
     ```sh
     ./bin/yb-admin \
       -master_addresses <target_universe_master_addresses> \
-      setup_universe_replication <source_universe_uuid> \
+      setup_universe_replication <source_universe_UUID>_<replication_stream_name> \
         <source_universe_master_addresses> \
         <table_id>,[<table_id>..]
     ```
@@ -65,7 +65,7 @@ After you created the required tables, you can set up unidirectional replication
     ```sh
     ./bin/yb-admin \
       -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-      setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 \
+      setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3_xClusterSetup1 \
         127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
     ```
@@ -167,7 +167,7 @@ Consider the following example:
 ```sh
 ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
   -certs_dir_name /home/yugabyte/yugabyte-tls-config \
-  setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 \
+  setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3_xClusterSetup1 \
   127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
   000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
 ```
@@ -191,7 +191,7 @@ When universes use different certificates, you need to store the certificates fo
     ```sh
     ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
       -certs_dir_name /home/yugabyte/yugabyte-tls-config \
-      setup_universe_replication 00000000-1111-2222-3333-444444444444 \
+      setup_universe_replication 00000000-1111-2222-3333-444444444444_xClusterSetup1 \
       127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
       000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
     ```
