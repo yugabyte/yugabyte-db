@@ -1658,6 +1658,12 @@ YBUpdateRelationsAttributes(bool sys_relations_update_required)
 	SysScanDesc scandesc = systable_beginscan(
 	    pg_attribute_desc, AttributeRelationId, false /* indexOk */, NULL, 0, NULL);
 	YbAttrProcessorState state = {0};
+	MemoryContext per_tuple_memory_context =
+		(*YBCGetGFlags()->ysql_disable_per_tuple_memory_context_in_update_relattrs) ?
+		NULL : AllocSetContextCreate(GetCurrentMemoryContext(),
+									 "PerTupleContext", ALLOCSET_DEFAULT_SIZES);
+	if (per_tuple_memory_context)
+		MemoryContextSwitchTo(per_tuple_memory_context);
 	HeapTuple pg_attribute_tuple;
 	while (HeapTupleIsValid(pg_attribute_tuple = systable_getnext(scandesc)))
 	{
@@ -1667,8 +1673,15 @@ YBUpdateRelationsAttributes(bool sys_relations_update_required)
 			YbStartNewProcessing(
 			    &state, sys_relations_update_required, pg_attribute_desc, pg_attribute_tuple);
 		}
+		if (per_tuple_memory_context)
+			MemoryContextReset(per_tuple_memory_context);
 	}
 	YbCompleteProcessing(&state);
+	if (per_tuple_memory_context)
+	{
+		MemoryContextSwitchTo(per_tuple_memory_context->parent);
+		MemoryContextDelete(per_tuple_memory_context);
+	}
 	systable_endscan(scandesc);
 	heap_close(pg_attribute_desc, AccessShareLock);
 }

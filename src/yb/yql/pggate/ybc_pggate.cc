@@ -74,6 +74,12 @@ DEFINE_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 TAG_FLAG(ysql_enable_profile, advanced);
 TAG_FLAG(ysql_enable_profile, hidden);
 
+DEFINE_bool(ysql_disable_per_tuple_memory_context_in_update_relattrs, false,
+            "If true, disable the use of per-tuple memory context in YB catalog "
+            "and relcache preloading.");
+TAG_FLAG(ysql_disable_per_tuple_memory_context_in_update_relattrs, advanced);
+TAG_FLAG(ysql_disable_per_tuple_memory_context_in_update_relattrs, hidden);
+
 namespace yb {
 namespace pggate {
 
@@ -1149,7 +1155,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
-      .ysql_enable_profile                     = &FLAGS_ysql_enable_profile
+      .ysql_enable_profile                     = &FLAGS_ysql_enable_profile,
+      .ysql_disable_per_tuple_memory_context_in_update_relattrs =
+          &FLAGS_ysql_disable_per_tuple_memory_context_in_update_relattrs
   };
   return &accessor;
 }
