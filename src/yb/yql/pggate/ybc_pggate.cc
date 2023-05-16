@@ -95,6 +95,9 @@ DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
 DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
             "If true, disable global impact ddl statements in per database catalog "
             "version mode.");
+DEFINE_NON_RUNTIME_bool(ysql_disable_per_tuple_memory_context_in_update_relattrs, false,
+            "If true, disable the use of per-tuple memory context in YB catalog "
+            "and relcache preloading.");
 
 namespace yb {
 namespace pggate {
@@ -1395,7 +1398,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
       .ysql_enable_profile                      = &FLAGS_ysql_enable_profile,
       .ysql_disable_global_impact_ddl_statements =
-          &FLAGS_ysql_disable_global_impact_ddl_statements
+          &FLAGS_ysql_disable_global_impact_ddl_statements,
+      .ysql_disable_per_tuple_memory_context_in_update_relattrs =
+          &FLAGS_ysql_disable_per_tuple_memory_context_in_update_relattrs
   };
   return &accessor;
 }
