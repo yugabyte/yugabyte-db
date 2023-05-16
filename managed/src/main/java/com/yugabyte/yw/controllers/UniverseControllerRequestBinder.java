@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -80,10 +81,12 @@ public class UniverseControllerRequestBinder {
           JsonNode masterGFlagsNode = null;
           JsonNode tserverGFlagsNode = null;
           JsonNode instanceTagsNode = null;
+          JsonNode specificGFlags = null;
           if (userIntent != null) {
             masterGFlagsNode = userIntent.remove("masterGFlags");
             tserverGFlagsNode = userIntent.remove("tserverGFlags");
             instanceTagsNode = userIntent.remove("instanceTags");
+            specificGFlags = userIntent.remove("specificGFlags");
           }
           UniverseDefinitionTaskParams.Cluster currentCluster;
           if (clusterJson.has("uuid")) {
@@ -126,6 +129,9 @@ public class UniverseControllerRequestBinder {
           checkAndAddMapField(
               tserverGFlagsNode, gflags -> cluster.userIntent.tserverGFlags = gflags);
           checkAndAddMapField(instanceTagsNode, tags -> cluster.userIntent.instanceTags = tags);
+          if (specificGFlags != null) {
+            cluster.userIntent.specificGFlags = Json.fromJson(specificGFlags, SpecificGFlags.class);
+          }
           clusters.add(cluster);
         }
       }
