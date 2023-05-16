@@ -145,6 +145,8 @@ class CQLProcessor : public ql::QLProcessor {
   MonoTime parse_begin_;
   MonoTime execute_begin_;
 
+  ql::CQLMessage::QueryId prep_stmt_query_id_;
+
   // Statement executed callback.
   ql::StatementExecutedCallback statement_executed_cb_;
 

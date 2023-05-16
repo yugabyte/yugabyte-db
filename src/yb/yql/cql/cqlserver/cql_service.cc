@@ -455,5 +455,44 @@ void CQLServiceImpl::GetPreparedStatementMetrics(
   }
 }
 
+void CQLServiceImpl::UpdateCounters(const ql::CQLMessage::QueryId& query_id, double execute_time) {
+  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  auto itr = prepared_stmts_map_.find(query_id);
+  if(itr == prepared_stmts_map_.end()) {
+    return;
+  }
+  if(!itr->second->counters) {
+    itr->second->counters = std::make_shared<ql::Counters>();
+  }
+  if(itr->second->counters->query.empty()) {
+    itr->second->counters->query = itr->second->text();
+  }
+  UpdateCountersUnlocked(execute_time, itr->second->counters);
+}
+
+void CQLServiceImpl::UpdateCountersUnlocked(
+    double execute_time, std::shared_ptr<ql::Counters> counters) {
+  execute_time *= 1000;  // Converting execute time to milliseconds
+  counters->calls += 1;
+  counters->total_time += execute_time;
+  if (counters->calls == 1) {
+    counters->min_time = execute_time;
+    counters->max_time = execute_time;
+    counters->mean_time = execute_time;
+  } else {
+    double old_mean = counters->mean_time;
+    counters->mean_time += (execute_time - old_mean) / counters->calls;
+
+    counters->sum_var_time += (execute_time - old_mean) * (execute_time - counters->mean_time);
+
+    if (counters->max_time < execute_time) {
+      counters->max_time = execute_time;
+    }
+    if (counters->min_time > execute_time) {
+      counters->min_time = execute_time;
+    }
+  }
+}
+
 }  // namespace cqlserver
 }  // namespace yb

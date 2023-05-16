@@ -64,6 +64,8 @@ class CQLStatement : public ql::Statement {
   // Return the query id of a statement.
   static ql::CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& query);
 
+  std::shared_ptr<ql::Counters> counters;
+
  private:
   // Position of the statement in the LRU.
   mutable CQLStatementListPos pos_;

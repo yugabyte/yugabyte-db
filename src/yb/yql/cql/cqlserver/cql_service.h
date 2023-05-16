@@ -123,6 +123,10 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Get the list of prepared statements and metrics in an inmemory vector.
   void GetPreparedStatementMetrics(std::vector<std::shared_ptr<StatementMetrics>>* metrics);
 
+  void UpdateCounters(const ql::CQLMessage::QueryId& query_id, double execute_time);
+
+  void UpdateCountersUnlocked(double execute_time, std::shared_ptr<ql::Counters> counters);
+
  private:
   constexpr static int kRpcTimeoutSec = 5;
 
