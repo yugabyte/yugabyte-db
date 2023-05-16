@@ -631,6 +631,41 @@ TEST_F(TestRpc, TestServerShutsDown) {
   }
 }
 
+TEST_F(TestRpc, TestSendingReceivingMemTrackers) {
+  // Set up server.
+  HostPort server_addr;
+  StartTestServerWithGeneratedCode(&server_addr);
+
+  // Set up client.
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
+  Proxy p(client_messenger.get(), server_addr);
+
+  RpcController controller;
+  rpc_test::EchoRequestPB req;
+  req.set_data(std::string(1_MB, 'X'));
+  rpc_test::EchoResponsePB resp;
+  ASSERT_OK(p.SyncRequest(
+      CalculatorServiceMethods::EchoMethod(), /* method_metrics= */ nullptr, req, &resp,
+      &controller));
+  auto root_mem_tracker = MemTracker::GetRootTracker();
+
+  auto call_tracker = root_mem_tracker->FindChild("Call");
+  // Call tracker tracks input data, searialized PB and sidecars etc. Since we have two copies of
+  // the data, we are checking that the peak consumption is greater than 2 times of request input
+  // and 16K for other metadata.
+  ASSERT_LE(call_tracker->peak_consumption(), 1_MB * 2 + 16_KB);
+  ASSERT_GT(call_tracker->peak_consumption(), 1_MB * 2);
+
+  auto read_buffer_tracker = root_mem_tracker->FindChild("Read Buffer");
+  auto inbound_buffer_tracker = read_buffer_tracker->FindChild("Inbound RPC");
+  auto sending_tracker = inbound_buffer_tracker->FindChild("Sending");
+
+  // Make sure that sending buffer is only tracking the output buffer and additional metadata
+  // (16_KB)
+  ASSERT_LE(sending_tracker->peak_consumption(), 1_MB + 16_KB);
+  ASSERT_GT(sending_tracker->peak_consumption(), 1_MB);
+}
+
 Result<MetricPtr> GetMetric(
     const MetricEntityPtr& metric_entity, const MetricPrototype& prototype) {
   const auto& metric_map = metric_entity->UnsafeMetricsMapForTests();
