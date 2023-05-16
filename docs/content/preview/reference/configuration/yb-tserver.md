@@ -1023,17 +1023,43 @@ Use of this flag can potentially result in expiration of live data. Use at your 
 
 ## PostgreSQL options
 
-YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters using the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag.
+YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters on several levels:
 
-You can also modify PostgreSQL options for the current session using the `SET` statement as follows: 
+1. Using the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag.
+
+2. Setting the option per-database:
+
+```sql
+ALTER DATABASE database_name SET temp_file_limit=-1;
+```
+
+3. Setting the option per-role:
+
+```sql
+ALTER ROLE yugabyte SET temp_file_limit=-1;
+```
+
+4. Setting the option for the current session:
 
 ```sql
 SET temp_file_limit=-1;
+--- alternative way
+SET SESSION temp_file_limit=-1;
+```
+
+If `SET` is issued within a transaction that is later aborted, the effects of the SET command are rolled back when the transaction is rolled back. 
+
+If the surrounding transaction commits, the effects will persist for the whole session.
+
+5. Set the option for the current transaction:
+
+```sql
+SET LOCAL temp_file_limit=-1;
 ```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions.
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
 
 ##### log_line_prefix
 
