@@ -84,7 +84,6 @@ Status TableMutationCountSender::DoSendMutationCounts() {
   }
 
   stateful_service::IncreaseMutationCountersRequestPB req;
-  stateful_service::IncreaseMutationCountersResponsePB resp;
 
   for (const auto& [table_id, mutation_count] : mutation_counts) {
     auto table_mutation_count = req.add_table_mutation_counts();
@@ -92,19 +91,19 @@ Status TableMutationCountSender::DoSendMutationCounts() {
     table_mutation_count->set_mutation_count(mutation_count);
   }
 
-  const auto status = client_->IncreaseMutationCounters(
-      CoarseMonoClock::Now() + FLAGS_yb_client_admin_operation_timeout_sec * 1s, req, &resp);
-  if (!status.ok()) {
+  const auto result =
+      client_->IncreaseMutationCounters(req, FLAGS_yb_client_admin_operation_timeout_sec * 1s);
+  if (!result) {
     // It is possible that cluster-level mutation counters were updated but the response failed for
     // some other reason. In this case, unless we are certain that the cluster-level mutation
     // counters weren't updated, we avoid retrying to avoid double counting (i.e., we prefer
     // avoiding over-aggresive auto ANALYZE).
-    if (status.IsTryAgain()) {
+    if (result.status().IsTryAgain()) {
       for (const auto& [table_id, mutation_count] : mutation_counts) {
         server_.GetPgNodeLevelMutationCounter().Increase(table_id, mutation_count);
       }
     }
-    return status;
+    return result.status();
   }
 
   // TODO: Handle per-table errors. Same as above, retry later if we are certain that the
