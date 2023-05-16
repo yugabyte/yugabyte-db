@@ -28,7 +28,7 @@ type: docs
 
 </ul>
 
-YugabyteDB Anywhere installations include configuration settings, certificates and keys, as well as other components required for creating and managing YugabyteDB universes.
+<br>YugabyteDB Anywhere installations include configuration settings, certificates and keys, as well as other components required for creating and managing YugabyteDB universes.
 
 You can use the YugabyteDB Anywhere `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
 
@@ -43,7 +43,7 @@ To back up the YugabyteDB Anywhere server, perform the following:
 - Copy the YugabyteDB Anywhere backup script `yb_platform_backup.sh` from the `yugabyte-db` repository using the following `wget` command:
 
     ```sh
-    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/{{< yb-version version="stable" format="short" >}}/managed/devops/bin/yb_platform_backup.sh
+    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh
     ```
 
 - Run the `yb_platform_backup.sh` script using the `backup` command, as follows:
@@ -52,11 +52,11 @@ To back up the YugabyteDB Anywhere server, perform the following:
     ./yb_platform_backup.sh create --output <output_path> [--data_dir <data_dir>] [--exclude_prometheus]
     ```
 
-    *create* runs the backup of the YugabyteDB Anywhere server.
+    *create* runs the backup of the YugabyteDB Anywhere server.<br>
 
-    *output_path* specifies the location for the `.tar` output file.
+    *output_path* specifies the location for the `.tar` output file.<br>
 
-    *data_dir* is optional. It specifies the data directory to be backed up. Default is `/opt/yugabyte`.
+    *data_dir* is optional. It specifies the data directory to be backed up. Default is `/opt/yugabyte`.<br>
 
     *--exclude_prometheus* is optional. It excludes Prometheus metrics from the backup.
 
@@ -71,7 +71,7 @@ To restore the YugabyteDB Anywhere content from your saved backup, perform the f
 - Copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
 
     ```sh
-    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/{{< yb-version version="stable" format="short" >}}/managed/devops/bin/yb_platform_backup.sh
+    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh
     ```
 
 - Copy the backup `.tar` file from your storage location.
@@ -82,9 +82,9 @@ To restore the YugabyteDB Anywhere content from your saved backup, perform the f
     ./yb_platform_backup.sh restore --input <input_path> [--destination <destination>]
     ```
 
-    *restore* restores the YugabyteDB Anywhere content.
+    *restore* restores the YugabyteDB Anywhere content.<br>
 
-    *input_path* is the path to the input `.tar` file.
+    *input_path* is the path to the input `.tar` file.<br>
 
     *destination* is optional. It specifies the output location for data. Default is `/opt/yugabyte`.
 

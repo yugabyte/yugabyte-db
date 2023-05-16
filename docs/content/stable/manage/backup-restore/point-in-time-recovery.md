@@ -223,12 +223,6 @@ xCluster does not replicate any commands related to PITR. If you have two cluste
 
 Tracking issue: [10820](https://github.com/yugabyte/yugabyte-db/issues/10820)
 
-### Tablegroups
-
-Using PITR with [tablegroups](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-tablegroups.md) is not currently supported. If you attempt to create a PITR schedule within a cluster with tablegroups, you'll get an error. Attempting to create a tablegroup if a schedule exists on _any of the databases_ will also produce an error.
-
-Tracking issue: [11924](https://github.com/yugabyte/yugabyte-db/issues/11924)
-
 ### Global objects
 
 PITR doesn't support global objects, such as [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/), roles, and permissions, because they're not currently backed up by the distributed snapshots. If you alter or drop a global object, then try to restore to a point in time before the change, the object will _not_ be restored.

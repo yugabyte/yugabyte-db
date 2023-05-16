@@ -2,6 +2,7 @@
 title: SQL scripts for analyzing the COVIDcast data
 linkTitle: SQL scripts
 headerTitle: SQL scripts for performing linear regression analysis on the COVIDcast data
+description: SQL scripts for performing linear regression analysis on COVIDcast data
 image: /images/section_icons/api/ysql.png
 menu:
   stable:
