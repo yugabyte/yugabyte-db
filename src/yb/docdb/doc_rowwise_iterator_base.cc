@@ -90,13 +90,31 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter)
+    std::reference_wrapper<const ScopedRWOperation> pending_op)
     : doc_read_context_(doc_read_context),
       txn_op_context_(txn_op_context),
       deadline_(deadline),
       read_time_(read_time),
       doc_db_(doc_db),
-      pending_op_(pending_op_counter),
+      pending_op_ref_(pending_op),
+      projection_(projection) {
+}
+
+DocRowwiseIteratorBase::DocRowwiseIteratorBase(
+    const dockv::ReaderProjection& projection,
+    std::reference_wrapper<const DocReadContext> doc_read_context,
+    const TransactionOperationContext& txn_op_context,
+    const DocDB& doc_db,
+    CoarseTimePoint deadline,
+    const ReadHybridTime& read_time,
+    ScopedRWOperation&& pending_op)
+    : doc_read_context_(doc_read_context),
+      txn_op_context_(txn_op_context),
+      deadline_(deadline),
+      read_time_(read_time),
+      doc_db_(doc_db),
+      pending_op_holder_(std::move(pending_op)),
+      pending_op_ref_(pending_op_holder_),
       projection_(projection) {
 }
 
@@ -107,14 +125,15 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter)
+    ScopedRWOperation&& pending_op)
     : doc_read_context_holder_(std::move(doc_read_context)),
       doc_read_context_(*doc_read_context_holder_),
       txn_op_context_(txn_op_context),
       deadline_(deadline),
       read_time_(read_time),
       doc_db_(doc_db),
-      pending_op_(pending_op_counter),
+      pending_op_holder_(std::move(pending_op)),
+      pending_op_ref_(pending_op_holder_),
       projection_(projection) {
 }
 

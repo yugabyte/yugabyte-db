@@ -222,8 +222,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 class BackfillTableJob : public server::MonitoredTask {
  public:
   explicit BackfillTableJob(std::shared_ptr<BackfillTable> backfill_table)
-      : start_timestamp_(MonoTime::Now()),
-        backfill_table_(backfill_table),
+      : backfill_table_(backfill_table),
         requested_index_names_(backfill_table_->requested_index_names()) {}
 
   server::MonitoredTaskType type() const override {
@@ -232,17 +231,7 @@ class BackfillTableJob : public server::MonitoredTask {
 
   std::string type_name() const override { return "Backfill Table"; }
 
-  MonoTime start_timestamp() const override { return start_timestamp_; }
-
-  MonoTime completion_timestamp() const override {
-    return completion_timestamp_;
-  }
-
   std::string description() const override;
-
-  server::MonitoredTaskState state() const override {
-    return state_.load(std::memory_order_acquire);
-  }
 
   void SetState(server::MonitoredTaskState new_state);
 
@@ -251,8 +240,6 @@ class BackfillTableJob : public server::MonitoredTask {
   void MarkDone();
 
  private:
-  MonoTime start_timestamp_, completion_timestamp_;
-  std::atomic<server::MonitoredTaskState> state_{server::MonitoredTaskState::kWaiting};
   std::shared_ptr<BackfillTable> backfill_table_;
   const std::string requested_index_names_;
 };

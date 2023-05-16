@@ -27,6 +27,7 @@
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
+#include "yb/util/operation_counter.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/write_buffer.h"
 
@@ -167,6 +168,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                          bool is_explicit_request_read_time,
                          const DocReadContext& doc_read_context,
                          const DocReadContext* index_doc_read_context,
+                         std::reference_wrapper<const ScopedRWOperation> pending_op,
                          WriteBuffer* result_buffer,
                          HybridTime* restart_read_ht,
                          const DocDBStatistics* statistics = nullptr);
@@ -183,6 +185,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
                                const DocReadContext* index_doc_read_context,
+                               std::reference_wrapper<const ScopedRWOperation> pending_op,
                                WriteBuffer* result_buffer,
                                HybridTime* restart_read_ht,
                                bool* has_paging_state,
@@ -193,6 +196,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                     CoarseTimePoint deadline,
                                     const ReadHybridTime& read_time,
                                     const DocReadContext& doc_read_context,
+                                    std::reference_wrapper<const ScopedRWOperation> pending_op,
                                     WriteBuffer* result_buffer,
                                     HybridTime* restart_read_ht,
                                     const DocDBStatistics* statistics);
@@ -202,6 +206,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                const ReadHybridTime& read_time,
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
+                               std::reference_wrapper<const ScopedRWOperation> pending_op,
                                WriteBuffer* result_buffer,
                                HybridTime* restart_read_ht,
                                bool* has_paging_state,

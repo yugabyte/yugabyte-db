@@ -437,7 +437,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   // Because we changed the tablet state, we need to re-report the tablet to the master.
   mark_dirty_clbk_.Run(context);
 
-  return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);
+  return tablet_->EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause */ nullptr);
 }
 
 consensus::RaftConfigPB TabletPeer::RaftConfig() const {
@@ -488,7 +488,8 @@ bool TabletPeer::StartShutdown() {
   return true;
 }
 
-void TabletPeer::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) {
+void TabletPeer::CompleteShutdown(
+    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
   auto* strand = strand_.get();
   if (strand) {
     strand->Shutdown();
@@ -513,7 +514,7 @@ void TabletPeer::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdo
   VLOG_WITH_PREFIX(1) << "Shut down!";
 
   if (tablet_) {
-    tablet_->CompleteShutdown(disable_flush_on_shutdown);
+    tablet_->CompleteShutdown(disable_flush_on_shutdown, abort_ops);
   }
 
   tablet_obj_state_.store(TabletObjectState::kDestroyed, std::memory_order_release);
@@ -578,7 +579,7 @@ Status TabletPeer::Shutdown(
   }
 
   if (is_shutdown_initiated) {
-    CompleteShutdown(disable_flush_on_shutdown);
+    CompleteShutdown(disable_flush_on_shutdown, AbortOps(should_abort_active_txns));
   } else {
     WaitUntilShutdown();
   }
@@ -698,8 +699,8 @@ Status TabletPeer::SubmitUpdateTransaction(
     auto tablet = VERIFY_RESULT(shared_tablet_safe());
     operation->SetTablet(tablet);
   }
-  auto scoped_read_operation =
-      VERIFY_RESULT(operation->tablet_safe())->CreateNonAbortableScopedRWOperation();
+  auto scoped_read_operation = VERIFY_RESULT(operation->tablet_safe())
+                                   ->CreateScopedRWOperationBlockingRocksDbShutdownStart();
   if (!scoped_read_operation.ok()) {
     auto status = MoveStatus(scoped_read_operation);
     operation->CompleteWithStatus(status);

@@ -100,6 +100,7 @@ Status UpdatePackedRow(const Slice& key,
 
 Status CombineExternalIntents(
     const tablet::TransactionStatePB& transaction_state,
+    SubTransactionId subtransaction_id,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
     docdb::KeyValuePairPB* out,
     const cdc::XClusterSchemaVersionMap& schema_versions_map) {
@@ -164,7 +165,7 @@ Status CombineExternalIntents(
   auto status_tablet = VERIFY_RESULT(Uuid::FromHexString(transaction_state.tablets()[0]));
 
   Provider provider(status_tablet, &pairs, schema_versions_map, out);
-  docdb::CombineExternalIntents(txn_id, &provider);
+  docdb::CombineExternalIntents(txn_id, subtransaction_id, &provider);
   return provider.GetOutcome();
 }
 
@@ -181,6 +182,9 @@ Status AddRecord(
     }
     auto* apply_txn = write_batch->mutable_apply_external_transactions()->Add();
     apply_txn->set_transaction_id(record.transaction_state().transaction_id());
+    auto aborted_subtransactions =
+        VERIFY_RESULT(SubtxnSet::FromPB(record.transaction_state().aborted().set()));
+    aborted_subtransactions.ToPB(apply_txn->mutable_aborted_subtransactions()->mutable_set());
     apply_txn->set_commit_hybrid_time(record.transaction_state().commit_hybrid_time());
     return Status::OK();
   }
@@ -190,6 +194,7 @@ Status AddRecord(
     auto* write_pair = write_batch->mutable_write_pairs()->Add();
     return CombineExternalIntents(
         record.transaction_state(),
+        record.has_subtransaction_id() ? record.subtransaction_id() : kMinSubTransactionId,
         record.changes(),
         write_pair,
         process_record_info.schema_versions_map);

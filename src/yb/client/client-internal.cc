@@ -1660,6 +1660,107 @@ void DeleteCDCStreamRpc::ProcessResponse(const Status& status) {
   user_cb_.Run(status);
 }
 
+class BootstrapProducerRpc
+    : public ClientMasterRpc<BootstrapProducerRequestPB, BootstrapProducerResponsePB> {
+ public:
+  BootstrapProducerRpc(
+      YBClient* client, BootstrapProducerCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {}
+
+  Status Init(
+      const YQLDatabase& db_type,
+      const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName>& pg_schema_names,
+      const std::vector<TableName>& table_names) {
+    SCHECK(!namespace_name.empty(), InvalidArgument, "Table namespace name is empty");
+    SCHECK(!table_names.empty(), InvalidArgument, "Table names is empty");
+    table_names_ = table_names;
+    tables_count_ = table_names.size();
+
+    if (db_type == YQL_DATABASE_PGSQL) {
+      SCHECK_EQ(
+          pg_schema_names.size(), tables_count_, InvalidArgument,
+          "Number of tables and PG schemas must match");
+    } else {
+      SCHECK(pg_schema_names.empty(), InvalidArgument, "PG Schema only applies to PG databases");
+    }
+
+    req_.set_db_type(db_type);
+    req_.set_namespace_name(namespace_name);
+    for (size_t i = 0; i < tables_count_; i++) {
+      SCHECK(!table_names[i].empty(), InvalidArgument, "Table name is empty");
+      req_.add_table_name(table_names[i]);
+      if (db_type == YQL_DATABASE_PGSQL) {
+        SCHECK(
+            !pg_schema_names[i].empty(), InvalidArgument, "Table schema name at index $0 is empty",
+            i);
+        req_.add_pg_schema_name(pg_schema_names[i]);
+      }
+    }
+
+    return Status::OK();
+  }
+
+  string ToString() const override {
+    return Format(
+        "BootstrapProducerRpc(table_names: $0, num_attempts: $1)", yb::ToString(table_names_),
+        num_attempts());
+  }
+
+  virtual ~BootstrapProducerRpc() {}
+
+ private:
+  void CallRemoteMethod() override {
+    master_replication_proxy()->BootstrapProducerAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&BootstrapProducerRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+      user_cb_(status);
+      return;
+    }
+
+    auto result = ProcessResponseInternal();
+    if (!result) {
+      LOG(WARNING) << ToString() << " failed: " << result.status().ToString();
+    }
+
+    user_cb_(std::move(result));
+  }
+
+  BootstrapProducerResult ProcessResponseInternal() {
+    if (resp_.has_error()) {
+      return StatusFromPB(resp_.error().status());
+    }
+
+    SCHECK_EQ(
+        resp_.table_ids_size(), narrow_cast<int>(tables_count_), IllegalState,
+        "Unexpected number of results received");
+    std::vector<std::string> producer_table_ids{resp_.table_ids().begin(), resp_.table_ids().end()};
+
+    SCHECK_EQ(
+        resp_.bootstrap_ids_size(), narrow_cast<int>(tables_count_), IllegalState,
+        Format("Expected $0 results, received: $1", tables_count_, resp_.bootstrap_ids_size()));
+    std::vector<std::string> bootstrap_ids{
+        resp_.bootstrap_ids().begin(), resp_.bootstrap_ids().end()};
+
+    HybridTime bootstrap_time = HybridTime::kInvalid;
+    if (resp_.has_bootstrap_time()) {
+      bootstrap_time = HybridTime(resp_.bootstrap_time());
+    }
+
+    return std::make_tuple(std::move(producer_table_ids), std::move(bootstrap_ids), bootstrap_time);
+  }
+
+ private:
+  BootstrapProducerCallback user_cb_;
+  std::vector<TableName> table_names_;
+  size_t tables_count_ = 0;
+};
+
 class GetCDCDBStreamInfoRpc : public ClientMasterRpc<GetCDCDBStreamInfoRequestPB,
                                                      GetCDCDBStreamInfoResponsePB> {
  public:
@@ -2110,6 +2211,22 @@ void YBClient::Data::DeleteCDCStream(YBClient* client,
                                      StatusCallback callback) {
   auto rpc = StartRpc<internal::DeleteCDCStreamRpc>(
       client, callback, stream_id, deadline);
+}
+
+Status YBClient::Data::BootstrapProducer(
+    YBClient* client,
+    const YQLDatabase& db_type,
+    const NamespaceName& namespace_name,
+    const std::vector<PgSchemaName>& pg_schema_names,
+    const std::vector<TableName>& table_names,
+    CoarseTimePoint deadline,
+    BootstrapProducerCallback callback) {
+  auto rpc =
+      std::make_shared<internal::BootstrapProducerRpc>(client, std::move(callback), deadline);
+  RETURN_NOT_OK(rpc->Init(db_type, namespace_name, pg_schema_names, table_names));
+  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+
+  return Status::OK();
 }
 
 void YBClient::Data::GetCDCDBStreamInfo(

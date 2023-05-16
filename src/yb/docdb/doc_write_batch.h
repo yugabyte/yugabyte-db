@@ -31,6 +31,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/util/operation_counter.h"
 
 namespace yb {
 namespace docdb {
@@ -158,6 +159,7 @@ class DocWriteBatch {
  public:
   explicit DocWriteBatch(const DocDB& doc_db,
                          InitMarkerBehavior init_marker_behavior,
+                         std::reference_wrapper<const ScopedRWOperation> pending_op,
                          std::atomic<int64_t>* monotonic_counter = nullptr);
 
   // Custom write_id could specified. Such write_id should be previously allocated with
@@ -273,6 +275,8 @@ class DocWriteBatch {
 
   const DocDB& doc_db() { return doc_db_; }
 
+  std::reference_wrapper<const ScopedRWOperation> pending_op() { return pending_op_; }
+
   boost::optional<DocWriteBatchCache::Entry> LookupCache(
       const dockv::KeyBytes& encoded_key_prefix) {
     return cache_.Get(encoded_key_prefix);
@@ -350,6 +354,7 @@ class DocWriteBatch {
 
   DocDB doc_db_;
   InitMarkerBehavior init_marker_behavior_;
+  std::reference_wrapper<const ScopedRWOperation> pending_op_;
   DocReadContextPtr doc_read_context_;
   std::atomic<int64_t>* monotonic_counter_;
 

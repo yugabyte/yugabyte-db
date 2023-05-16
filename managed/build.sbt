@@ -94,6 +94,7 @@ lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
+lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
@@ -311,8 +312,11 @@ externalResolvers := {
 (Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
 
 (Compile / compilePlatform) := {
-  ((Compile / compile) dependsOn buildModules).value
-  buildVenv.value
+  (Compile / compile).value
+  Def.sequential(
+      buildVenv,
+      releaseModulesLocally
+    ).value
   buildUI.value
   versionGenerate.value
 }
@@ -355,15 +359,15 @@ buildUI := {
   status
 }
 
-buildModules := {
+releaseModulesLocally := {
   ybLog("Building modules...")
-  val status = Process("mvn install -DskipTests=true", baseDirectory.value / "parent-module").!
+  val status = Process("mvn install -DskipTests=true -P releaseLocally", baseDirectory.value / "parent-module").!
   status
 }
 
 buildDependentArtifacts := {
   ybLog("Building dependencies...")
-  val status = Process("mvn install -DskipTests=true -DplatformDependenciesOnly=true", baseDirectory.value / "parent-module").!
+  val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
   status
 }
 
@@ -380,7 +384,7 @@ cleanUI := {
 }
 
 cleanModules := {
-  ybLog("Cleaning Node Agent...")
+  ybLog("Cleaning modules...")
   val status = Process("mvn clean", baseDirectory.value / "parent-module").!
   status
 }
@@ -446,7 +450,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b1"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.51-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.52-SNAPSHOT"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b28"
 
 libraryDependencies ++= Seq(

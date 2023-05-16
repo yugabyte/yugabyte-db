@@ -28,7 +28,7 @@ To use `pg_hint_plan` effectively, you need thorough knowledge of how your appli
 
 ## Configure pg_hint_plan
 
-pg_hint_plan is pre-configured, and enabled by default. The following parameters control pg_hint_plan:
+pg_hint_plan is pre-configured, and enabled by default. The following YSQL parameters control pg_hint_plan:
 
 | Option | Description | Default |
 | :----- | :---------- | :------ |

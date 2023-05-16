@@ -2,6 +2,6 @@
 create_matview ::= CREATE MATERIALIZED VIEW [ IF NOT EXISTS ]  
                    matview_name [ ( column_name [ , ... ] ) ]  
                    [ WITH ( storage_parameters ) ]  
-                   [ TABLESPACE tablespace ]  AS query 
+                   [ TABLESPACE tablespace ]  AS subquery 
                    [ WITH [ NO ] DATA ]
 ```

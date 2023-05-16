@@ -19,8 +19,6 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/client/yb_table_name.h"
-
 #include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 

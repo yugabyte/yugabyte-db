@@ -20,7 +20,6 @@
     group: "{{ user_name }}"
   tags:
     - ybc-install
-    - yb-prebuilt-ami
 
 - name: Install | Create symlink to ybc package folder
   file:
@@ -32,7 +31,6 @@
     state: link
   tags:
     - ybc-install
-    - yb-prebuilt-ami
 
 - block:
   - set_fact:
@@ -47,7 +45,6 @@
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
     tags:
-      - yb-prebuilt-ami
       - ybc-install
 
   - name: Setup | Symlink {{ yb_process_type }} logs directory
@@ -60,7 +57,6 @@
       state: link
       force: yes
     tags:
-      - yb-prebuilt-ami
       - ybc-install
 
   - name: Remove existing ybc conf file
@@ -109,7 +105,6 @@
       - cloud_type != "onprem"
   when: not systemd_option
   tags:
-    - yb-prebuilt-ami
     - ybc-install
 
 - block:

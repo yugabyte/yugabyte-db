@@ -63,6 +63,7 @@ Status YQLVirtualTable::GetIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const qlexpr::QLScanSpec& spec,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const {
   // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
   // not change.

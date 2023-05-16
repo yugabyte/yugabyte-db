@@ -27,7 +27,7 @@ type: docs
 
   <li >
     <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
-      <i class="icon-azure" aria-hidden="true"></i>&nbsp;
+      <i class="icon-azure" aria-hidden="true"></i>
       Azure Key Vault
     </a>
   </li>
@@ -41,7 +41,9 @@ type: docs
 
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
+Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
+
+Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
 
 The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
 
@@ -53,13 +55,15 @@ The AWS user associated with a KMS configuration requires the following minimum 
 - `kms:UpdateAlias`
 - `kms:TagResource`
 
-You can create a KMS configuration that uses AWS KMS as follows:
+## Create a KMS configuration
+
+You can create a KMS configuration that uses AWS KMS, as follows:
 
 1. Use the YugabyteDB Anywhere UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
 
-2. Click **Create New Config**.
+1. Click **Create New Config**.
 
-3. Enter the following configuration details in the form:
+1. Enter the following configuration details in the form:
 
     - **Configuration Name** — Enter a meaningful name for your configuration.
     - **KMS Provider** — Select **AWS KMS**.
@@ -70,37 +74,37 @@ You can create a KMS configuration that uses AWS KMS as follows:
     - **Customer Master Key ID** — Enter the identifier for the CMK. If an identifier is not entered, a CMK ID will be auto-generated.
     - **AWS KMS Endpoint** — Specify the KMS endpoint to ensure that the encryption traffic is routed across your internal links without crossing into an external network.
 
-4. Optionally, click **Upload CMK Policy** to select a custom policy file. The following is the default policy:
+1. Optionally, click **Upload CMK Policy** to select a custom policy file. The following is the default policy:
 
     ```json
-        {
-            "Version": "2012-10-17",
-            "Id": "key-default-1",
-            "Statement": [
-                {
-                    "Sid": "Enable IAM User Permissions",
-                    "Effect": "Allow",
-                    "Principal": {
-                        "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:root"
-                    },
-                    "Action": "kms:*",
-                    "Resource": "*"
-                },
-                {
-                    "Sid": "Allow access for Key Administrators",
-                    "Effect": "Allow",
-                    "Principal": {
-                        "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:[user|role]{1}/[<USER_NAME>|<ROLE_NAME>]{1}"
-                    },
-                    "Action": "kms:*",
-                    "Resource": "*"
-                }
-            ]
-        }
+      {
+          "Version": "2012-10-17",
+          "Id": "key-default-1",
+          "Statement": [
+              {
+                  "Sid": "Enable IAM User Permissions",
+                  "Effect": "Allow",
+                  "Principal": {
+                      "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:root"
+                  },
+                  "Action": "kms:*",
+                  "Resource": "*"
+              },
+              {
+                  "Sid": "Allow access for Key Administrators",
+                  "Effect": "Allow",
+                  "Principal": {
+                      "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:[user|role]{1}/[<USER_NAME>|<ROLE_NAME>]{1}"
+                  },
+                  "Action": "kms:*",
+                  "Resource": "*"
+              }
+          ]
+      }
     ```
 
-5. Click **Save**.
+1. Click **Save**.
 
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
-6. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.

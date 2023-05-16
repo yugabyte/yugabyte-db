@@ -176,7 +176,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   Status SetDB(
       const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
-      RWOperationCounter* pending_op_counter);
+      RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start);
 
   Status CheckAborted(const TransactionId& id);
 

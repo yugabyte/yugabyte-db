@@ -59,10 +59,11 @@ class TransactionLoader::Executor {
  public:
   explicit Executor(
       TransactionLoader* loader,
-      RWOperationCounter* pending_op_counter)
-      : loader_(*loader), scoped_pending_operation_(pending_op_counter) {
-    metric_transaction_load_attempts_ = METRIC_transaction_load_attempts.Instantiate(
-        loader_.entity_);
+      RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start)
+      : loader_(*loader),
+        scoped_pending_operation_(pending_op_counter_blocking_rocksdb_shutdown_start) {
+    metric_transaction_load_attempts_ =
+        METRIC_transaction_load_attempts.Instantiate(loader_.entity_);
   }
 
   bool Start(const docdb::DocDB& db) {
@@ -361,8 +362,10 @@ TransactionLoader::TransactionLoader(
 TransactionLoader::~TransactionLoader() {
 }
 
-void TransactionLoader::Start(RWOperationCounter* pending_op_counter, const docdb::DocDB& db) {
-  executor_ = std::make_unique<Executor>(this, pending_op_counter);
+void TransactionLoader::Start(
+    RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start,
+    const docdb::DocDB& db) {
+  executor_ = std::make_unique<Executor>(this, pending_op_counter_blocking_rocksdb_shutdown_start);
   if (!executor_->Start(db)) {
     executor_ = nullptr;
   }

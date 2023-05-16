@@ -69,8 +69,11 @@ Status SystemTablet::HandleQLReadRequest(CoarseTimePoint deadline,
                                          tablet::QLReadRequestResult* result,
                                          WriteBuffer* rows_data) {
   DCHECK(!transaction_metadata.has_transaction_id());
+  // Passing empty ScopedRWOperation because we don't have underlying RocksDB here.
+  auto pending_op = ScopedRWOperation();
   return tablet::AbstractTablet::HandleQLReadRequest(
-      deadline, read_time, ql_read_request, TransactionOperationContext(), result, rows_data);
+      deadline, read_time, ql_read_request, TransactionOperationContext(), pending_op, result,
+      rows_data);
 }
 
 Status SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
