@@ -46,7 +46,6 @@ using EnumLabelCache = std::unordered_map<NamespaceName, EnumOidLabelMap>;
 
 using CompositeAttsMap = std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>;
 using CompositeTypeCache = std::unordered_map<NamespaceName, CompositeAttsMap>;
-YB_DEFINE_ENUM(RefreshStreamMapOption, (kNone)(kAlways)(kIfInitiatedState));
 
 struct SchemaDetails {
   SchemaVersion schema_version;
@@ -56,66 +55,7 @@ struct SchemaDetails {
 // the current 'running' schema.
 using SchemaDetailsMap = std::map<TableId, SchemaDetails>;
 
-struct StreamMetadata {
-  NamespaceId ns_id;
-  std::mutex table_ids_mutex_;
-  std::vector<TableId> table_ids GUARDED_BY(table_ids_mutex_);
-  CDCRecordType record_type;
-  CDCRecordFormat record_format;
-  CDCRequestSource source_type;
-  CDCCheckpointType checkpoint_type;
-  std::atomic<master::SysCDCStreamEntryPB_State> state;
-  StreamModeTransactional transactional = StreamModeTransactional::kFalse;
-
-  std::mutex load_mutex_;
-  bool loaded_ GUARDED_BY(load_mutex_) = false;
-
-  struct StreamTabletMetadata {
-    std::mutex mutex_;
-    int64_t apply_safe_time_checkpoint_op_id_ GUARDED_BY(mutex_) = 0;
-    HybridTime last_apply_safe_time_ GUARDED_BY(mutex_);
-    MonoTime last_apply_safe_time_update_time_ GUARDED_BY(mutex_);
-    // TODO(hari): #16774 Move last_readable_index and last sent opid here, and use it to make
-    // UpdateCDCTabletMetrics run asynchronously.
-  };
-
-  StreamMetadata() = default;
-
-  StreamMetadata(
-      NamespaceId ns_id,
-      std::vector<TableId> table_ids,
-      CDCRecordType record_type,
-      CDCRecordFormat record_format,
-      CDCRequestSource source_type,
-      CDCCheckpointType checkpoint_type,
-      StreamModeTransactional transactional)
-      : ns_id(std::move(ns_id)),
-        table_ids((std::move(table_ids))),
-        record_type(record_type),
-        record_format(record_format),
-        source_type(source_type),
-        checkpoint_type(checkpoint_type),
-        transactional(transactional),
-        loaded_(true) {}
-
-  void Clear() REQUIRES(load_mutex_, table_ids_mutex_) {
-    loaded_ = false;
-    table_ids.clear();
-
-    {
-      std::lock_guard l_tablet_meta(tablet_metadata_map_mutex_);
-      tablet_metadata_map_.clear();
-    }
-  }
-
-  std::shared_ptr<StreamTabletMetadata> GetTabletMetadata(const TabletId& tablet_id)
-      EXCLUDES(tablet_metadata_map_mutex_);
-
- private:
-  std::shared_mutex tablet_metadata_map_mutex_;
-  std::unordered_map<TableId, std::shared_ptr<StreamTabletMetadata>> tablet_metadata_map_
-      GUARDED_BY(tablet_metadata_map_mutex_);
-};
+class StreamMetadata;
 
 Status GetChangesForCDCSDK(
     const CDCStreamId& stream_id,

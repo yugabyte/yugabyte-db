@@ -53,6 +53,7 @@ constexpr uint32_t kInvalidSchemaVersion = std::numeric_limits<uint32_t>::max();
 typedef std::pair<uint32_t, uint32_t> SchemaVersionMapping;
 
 YB_STRONGLY_TYPED_BOOL(StreamModeTransactional);
+YB_DEFINE_ENUM(RefreshStreamMapOption, (kNone)(kAlways)(kIfInitiatedState));
 
 struct ConsumerTabletInfo {
   std::string tablet_id;
