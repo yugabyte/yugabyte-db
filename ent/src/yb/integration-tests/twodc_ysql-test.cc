@@ -44,6 +44,8 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/docdb/docdb.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -529,6 +531,16 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
   }
 
+  void VerifyExternalTxnIntentsStateEmpty() {
+    tserver::TSTabletManager::TabletPtrs tablet_ptrs;
+    for (auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
+      mini_tserver->server()->tablet_manager()->GetTabletPeers(&tablet_ptrs);
+      for (auto& tablet : tablet_ptrs) {
+        ASSERT_EQ(0, tablet->GetExternalTxnIntentsState()->EntryCount());
+      }
+    }
+  }
+
   Status TruncateTable(Cluster* cluster,
                        std::vector<string> table_ids) {
     RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
@@ -568,6 +580,8 @@ TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeries) {
   ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
 
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  VerifyExternalTxnIntentsStateEmpty();
 }
 
 TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeriesMultipleTransactions) {
@@ -592,6 +606,8 @@ TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeriesMultipleTransact
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table->id());
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  VerifyExternalTxnIntentsStateEmpty();
 }
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {

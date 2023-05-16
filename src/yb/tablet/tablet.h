@@ -766,6 +766,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   const Schema* unique_index_key_schema() const {
     return unique_index_key_schema_.get();
   }
+  docdb::ExternalTxnIntentsState* GetExternalTxnIntentsState() const {
+    return external_txn_intents_state_.get();
+  }
 
  private:
   friend class Iterator;
