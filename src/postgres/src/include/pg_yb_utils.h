@@ -483,7 +483,6 @@ extern int yb_wait_for_backends_catalog_version_timeout;
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
-extern int *YBCStatementTimeoutPtr;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
