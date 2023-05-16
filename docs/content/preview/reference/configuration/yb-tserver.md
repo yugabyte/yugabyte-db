@@ -1039,6 +1039,8 @@ ALTER DATABASE database_name SET temp_file_limit=-1;
 ALTER ROLE yugabyte SET temp_file_limit=-1;
 ```
 
+When setting the GUC variable at the role or database level, you have to open a new session for the changes to take effect.
+
 4. Setting the option for the current session:
 
 ```sql
