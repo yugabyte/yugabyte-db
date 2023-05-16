@@ -678,10 +678,11 @@ const getTableIdentifier = (table: YBTable): string =>
 
 /**
  * A table is eligible for replication if all of the following holds true:
- * - there exists another table with same keyspace, table name, and schema name
- *   in target universe
- * - the table is NOT part of another existing xCluster config between the same universes
- *   in the same direction
+ * - There exists another table with same keyspace, table name, and schema name
+ *   in target universe OR the user is selecting tables for a new xCluster config (YBA will do a backup/restore
+ *   to handle it during xCluster config creation).
+ * - The table is NOT part of another existing xCluster config between the same universes
+ *   in the same direction.
  */
 function getXClusterTableEligibilityDetails(
   sourceTable: YBTable,
@@ -689,11 +690,15 @@ function getXClusterTableEligibilityDetails(
   sharedXClusterConfigs: XClusterConfig[],
   currentXClusterConfigUUID?: string
 ): EligibilityDetails {
-  const targetUniverseTableIds = new Set(
-    targetUniverseTables.map((table) => getTableIdentifier(table))
-  );
-  if (!targetUniverseTableIds.has(getTableIdentifier(sourceTable))) {
-    return { status: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+  if (currentXClusterConfigUUID) {
+    // Adding a table to an existing xCluster config requires that there exists another table
+    // with same keyspace, table name, and schema name on the target universe.
+    const targetUniverseTableIds = new Set(
+      targetUniverseTables.map((table) => getTableIdentifier(table))
+    );
+    if (!targetUniverseTableIds.has(getTableIdentifier(sourceTable))) {
+      return { status: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+    }
   }
 
   for (const xClusterConfig of sharedXClusterConfigs) {
