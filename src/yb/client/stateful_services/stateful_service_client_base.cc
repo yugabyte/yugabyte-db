@@ -21,6 +21,7 @@
 #include "yb/client/client-internal.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 DECLARE_bool(TEST_running_test);
 DECLARE_string(certs_dir);
@@ -121,8 +122,15 @@ Status StatefulServiceClientBase::InvokeRpcSync(
     std::function<Status(rpc::ProxyBase*, rpc::RpcController*)>
         rpc_func) {
   CoarseBackoffWaiter waiter(deadline, 1s /* max_wait */, 100ms /* base_delay */);
+
+#ifndef NDEBUG
+  uint64 attempts = 0;
+#endif
   bool first_run = true;
   while (true) {
+#ifndef NDEBUG
+    ++attempts;
+#endif
     if (!first_run) {
       SCHECK(
           waiter.Wait(), TimedOut, "RPC call to $0 timed out after $1 attempt(s)", service_name_,
@@ -162,8 +170,17 @@ Status StatefulServiceClientBase::InvokeRpcSync(
       }
     }
 
+    TEST_SYNC_POINT_CALLBACK("StatefulServiceClientBase::InvokeRpcSync", &attempts);
     return status;
   }
+}
+
+Status StatefulServiceClientBase::InvokeRpcSync(
+    const MonoDelta& timeout,
+    std::function<rpc::ProxyBase*(rpc::ProxyCache*, const HostPort&)> make_proxy,
+    std::function<Status(rpc::ProxyBase*, rpc::RpcController*)> rpc_func) {
+return InvokeRpcSync(
+    CoarseMonoClock::Now() + timeout, std::move(make_proxy), std::move(rpc_func));
 }
 
 void StatefulServiceClientBase::ResetServiceLocation() {

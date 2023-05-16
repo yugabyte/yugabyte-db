@@ -569,6 +569,10 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
   VLOG(3) << "Created batch for " << data.tablet->tablet_id() << ":\n"
           << req_.ShortDebugString();
 
+  if (batcher_->GetLeaderTerm() != OpId::kUnknownTerm) {
+    req_.set_leader_term(batcher_->GetLeaderTerm());
+  }
+
   const auto& client_id = batcher_->client_id();
   if (!client_id.IsNil() && FLAGS_detect_duplicates_for_retryable_requests) {
     auto temp = client_id.ToUInt64Pair();

@@ -49,6 +49,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
+#include "yb/util/opid.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
@@ -149,11 +150,13 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // Create a new batcher associated with the given session.
   //
   // Creates a weak_ptr to 'session'.
-  Batcher(YBClient* client,
-          const YBSessionPtr& session,
-          YBTransactionPtr transaction,
-          ConsistentReadPoint* read_point,
-          bool force_consistent_read);
+  Batcher(
+      YBClient* client,
+      const YBSessionPtr& session,
+      YBTransactionPtr transaction,
+      ConsistentReadPoint* read_point,
+      bool force_consistent_read,
+      int64_t leader_term_);
   ~Batcher();
 
   // Set the timeout for this batcher.
@@ -246,6 +249,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   CollectedErrors GetAndClearPendingErrors();
 
   std::string LogPrefix() const;
+
+  int64_t GetLeaderTerm() const { return leader_term_; }
 
   // This is a status error string used when there are multiple errors that need to be fetched
   // from the error collector.
@@ -348,6 +353,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // At destruction of the batcher, all request ids in the set will be removed from the client
   // running requests.
   std::set<RetryableRequestId> retryable_request_ids_;
+
+  const int64_t leader_term_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };
