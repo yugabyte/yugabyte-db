@@ -101,7 +101,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
 
     // Send create restore to yb-controller
     try {
-      if (taskId == null) {
+      if (StringUtils.isBlank(taskId)) {
         taskId =
             ybcBackupUtil.getYbcTaskID(
                     taskParams().prefixUUID,
