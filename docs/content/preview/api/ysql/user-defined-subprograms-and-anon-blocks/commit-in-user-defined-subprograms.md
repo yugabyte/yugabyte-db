@@ -8,14 +8,13 @@ menu:
     identifier: commit-in-user-defined-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 5
-aliases:
 type: docs
 ---
 
 This section states the restrictions that govern the use of "commit" and other transaction control statements in user-defined subprograms (and, by extension, in anonymous blocks). It then makes a practical recommendation always to invoke a user-defined subprogram using _single statement automatic transaction mode_. See these two sections:
 
 - [Semantics of issuing non-transaction-control SQL statements during an ongoing transaction](../../txn-model-for-top-level-sql/#semantics-of-issuing-non-transaction-control-sql-statements-during-an-ongoing-transaction)
-- [Semantics of issuing non-transaction-control SQL statements when no transaction is ongoing](../../txn-model-for-top-level-sql/#semantics-of-issuing-non-transaction-control-sql-statements-when-no-transaction-is-ongoing).)
+- [Semantics of issuing non-transaction-control SQL statements when no transaction is ongoing](../../txn-model-for-top-level-sql/#semantics-of-issuing-non-transaction-control-sql-statements-when-no-transaction-is-ongoing)
 
 Finally, it demonstrates all of the restrictions with code examples.
 
