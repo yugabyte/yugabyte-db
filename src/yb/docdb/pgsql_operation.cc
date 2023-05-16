@@ -1254,7 +1254,6 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(
     bool* has_paging_state,
     const DocDBStatistics* statistics) {
   *has_paging_state = false;
-  size_t scanned_rows = 0;
   PgsqlSamplingStatePB sampling_state = request_.sampling_state();
   // Requested total number of rows to collect
   int targrows = sampling_state.targrows();
@@ -1289,7 +1288,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(
   bool scan_time_exceeded = false;
   CoarseTimePoint stop_scan = deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
   while (VERIFY_RESULT(table_iter_->FetchNext(nullptr))) {
-    scanned_rows++;
+    samplerows++;
     if (numrows < targrows) {
       // Select first targrows of the table. If first partition(s) have less than that, next
       // partition starts to continue populating it's reservoir starting from the numrows' position:
@@ -1325,8 +1324,6 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(
       break;
     }
   }
-  // Count live rows we have scanned TODO how to count dead rows?
-  samplerows += scanned_rows;
 
   // Return collected tuples from the reservoir.
   // Tuples are returned as (index, ybctid) pairs, where index is in [0..targrows-1] range.
