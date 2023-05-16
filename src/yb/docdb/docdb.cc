@@ -457,9 +457,24 @@ IntraTxnWriteId ExternalTxnIntentsState::GetWriteIdAndIncrement(const Transactio
   return map_[txn_id]++;
 }
 
-void ExternalTxnIntentsState::EraseEntry(const TransactionId& txn_id) {
+void ExternalTxnIntentsState::EraseEntries(
+    const ExternalTxnApplyState& apply_external_transactions) {
   std::lock_guard<decltype(mutex_)> lock(mutex_);
-  map_.erase(txn_id);
+  for (const auto& apply : apply_external_transactions) {
+    map_.erase(apply.first);
+  }
+}
+
+void ExternalTxnIntentsState::EraseEntries(const TransactionIdSet& transactions) {
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  for (const auto& transaction : transactions) {
+    map_.erase(transaction);
+  }
+}
+
+size_t ExternalTxnIntentsState::EntryCount() {
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  return map_.size();
 }
 
 bool AddExternalPairToWriteBatch(
@@ -500,9 +515,6 @@ bool AddExternalPairToWriteBatch(
         it->second.commit_ht,
         it->second.aborted_subtransactions,
         key_value, regular_write_batch, &it->second.write_id));
-    if (external_txns_intents_state) {
-      external_txns_intents_state->EraseEntry(txn_id);
-    }
     return false;
   }
 
@@ -560,6 +572,11 @@ bool PrepareExternalWriteBatch(
     has_non_external_kvs = AddExternalPairToWriteBatch(
         write_pair, hybrid_time, &apply_external_transactions, regular_write_batch,
         intents_write_batch, external_txns_intents_state) || has_non_external_kvs;
+  }
+
+  // Cleanup the txn, write_id map for transactions which are being applied as part of this batch.
+  if (external_txns_intents_state) {
+    external_txns_intents_state->EraseEntries(apply_external_transactions);
   }
   return has_non_external_kvs;
 }
