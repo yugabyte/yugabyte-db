@@ -671,8 +671,8 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   /**
-   * Retrieves the platform namespace by running {@code hostname -f} to get the FQDN. Splits the
-   * FQDN output on "." to get the namespace at index 2.
+   * Retrieves the platform namespace using the FQDN. Splits the FQDN output on "." to get the
+   * namespace at index 2.
    *
    * <pre>
    * Example FQDN = {@code "yb-yugaware-0.yb-yugaware.yb-platform.svc.cluster.local"}
@@ -683,19 +683,43 @@ public class ShellKubernetesManager extends KubernetesManager {
    */
   @Override
   public String getPlatformNamespace() {
-    List<String> commandList = new ArrayList<>(Arrays.asList("hostname", "-f"));
-    ShellResponse response = execCommand(null, commandList);
-    String hostNameFqdn = response.message;
-    String[] fqdnParts = hostNameFqdn.split("\\.");
-    if (fqdnParts.length < 3) {
-      log.debug(String.format("Output of 'hostname -f' is '%s'.", hostNameFqdn));
-      return null;
-    }
-    String platformNamespace = fqdnParts[2];
+    String platformNamespace = getPlatformFQDNPart(2);
     if (!verifyNamespace(platformNamespace)) {
       return null;
     }
     return platformNamespace;
+  }
+
+  /**
+   * Retrieves the platform pod name using the FQDN. Splits the FQDN output on "." to get the pod
+   * name at index 0.
+   *
+   * <pre>
+   * Example FQDN = {@code "yb-yugaware-0.yb-yugaware.yb-platform.svc.cluster.local"}
+   * Example pod name = {@code "yb-yugaware-0"}
+   * </pre>
+   *
+   * @return the platform pod name.
+   */
+  @Override
+  public String getPlatformPodName() {
+    return getPlatformFQDNPart(0);
+  }
+
+  /**
+   * Finds the FQDN of platform pod using {@code hostname -f}. Returns the value at the given index
+   * by splitting the FQDN on "."
+   */
+  private String getPlatformFQDNPart(int idx) {
+    List<String> commandList = new ArrayList<>(Arrays.asList("hostname", "-f"));
+    ShellResponse response = execCommand(null, commandList);
+    String hostNameFqdn = response.message;
+    String[] fqdnParts = hostNameFqdn.split("\\.");
+    if (fqdnParts.length < idx + 1) {
+      log.debug(String.format("Output of 'hostname -f' is '%s'.", hostNameFqdn));
+      return null;
+    }
+    return fqdnParts[idx];
   }
 
   /**
