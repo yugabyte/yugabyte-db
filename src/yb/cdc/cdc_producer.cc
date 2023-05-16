@@ -12,6 +12,7 @@
 
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_common_util.h"
+#include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/session.h"
@@ -43,7 +44,6 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/gutil/map-util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -74,26 +74,6 @@ using consensus::ReplicateMsgPtr;
 using consensus::ReplicateMsgs;
 using dockv::PrimitiveValue;
 using tablet::TransactionParticipant;
-
-std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletMetadata(
-    const TabletId& tablet_id) {
-  {
-    std::shared_lock l(tablet_metadata_map_mutex_);
-    auto metadata = FindPtrOrNull(tablet_metadata_map_, tablet_id);
-    if (metadata) {
-      return metadata;
-    }
-  }
-
-  std::lock_guard l(tablet_metadata_map_mutex_);
-  auto metadata = FindPtrOrNull(tablet_metadata_map_, tablet_id);
-  if (!metadata) {
-    metadata = std::make_shared<StreamTabletMetadata>();
-    EmplaceOrDie(&tablet_metadata_map_, tablet_id, metadata);
-  }
-
-  return metadata;
-}
 
 void AddColumnToMap(const ColumnSchema& col_schema,
                     const dockv::KeyEntryValue& col,
@@ -372,7 +352,7 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
       dockv::SubDocKey decoded_key;
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
 
-      if (metadata.record_format == CDCRecordFormat::WAL) {
+      if (metadata.GetRecordFormat() == CDCRecordFormat::WAL) {
         // For xCluster, populate serialized data from WAL, to avoid unnecessary deserializing on
         // producer and re-serializing on consumer.
         auto kv_pair = record->add_key();
@@ -419,7 +399,7 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
     prev_key = primary_key;
     DCHECK(record);
 
-    if (metadata.record_format == CDCRecordFormat::WAL) {
+    if (metadata.GetRecordFormat() == CDCRecordFormat::WAL) {
       auto kv_pair = record->add_changes();
       kv_pair->set_key(write_pair.key().ToBuffer());
       kv_pair->mutable_value()->set_binary_value(write_pair.value().ToBuffer());
@@ -579,7 +559,7 @@ Status GetChangesForXCluster(
   auto now = MonoTime::Now();
   auto* txn_participant = tablet->transaction_participant();
   // Check if both the table and stream are transactional.
-  bool transactional = (txn_participant != nullptr) && stream_metadata->transactional;
+  bool transactional = (txn_participant != nullptr) && stream_metadata->IsTransactional();
 
   // In order to provide a transactionally consistent WAL, we need to perform the below steps:
   // If last_apply_safe_time is kInvalid
