@@ -230,11 +230,12 @@ void InboundCall::Clear() {
   }
   serialized_request_.clear();
   request_data_.Reset();
-  request_data_memory_usage_.store(0, std::memory_order_release);
 }
 
+// Overrides OutboundData::DynamicMemoryUsage() to track response buffer memory.
+// TODO: remove the trace() usage from OutboundData/Sending mem-tracker to call tracker.
 size_t InboundCall::DynamicMemoryUsage() const {
-  return request_data_memory_usage_.load(std::memory_order_acquire) + DynamicMemoryUsageOf(trace());
+  return DynamicMemoryUsageOf(trace());
 }
 
 void InboundCall::InboundCallTask::Run() {
