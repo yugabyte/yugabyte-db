@@ -1,8 +1,9 @@
 ---
 title: Install YugabyteDB Anywhere software - OpenShift
-headerTitle: Install YugabyteDB Anywhere - OpenShift
+headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software in your OpenShift environment
+headContent: Install YBA software in an OpenShift environment
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform

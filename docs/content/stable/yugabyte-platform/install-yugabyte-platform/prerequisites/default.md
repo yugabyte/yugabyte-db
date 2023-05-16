@@ -44,11 +44,15 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
 
 ## Supported Linux distributions
 
-You can install YugabyteDB Anywhere on the following Linux distributions:
+YugabyteDB Anywhere is supported on all Linux distributions that Replicated supports. This includes, but is not limited to the following:
 
-- CentOS (default)
-- Ubuntu 18 and 20
-- Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/).
+- CentOS 7
+- Alma Linux 8
+- Alma Linux 9
+- Ubuntu 18
+- Ubuntu 20
+- RedHat Enterprise Linux 7
+- RedHat Enterprise Linux 8
 
 ## Hardware requirements
 
