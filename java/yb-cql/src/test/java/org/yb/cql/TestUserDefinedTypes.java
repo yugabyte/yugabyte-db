@@ -801,14 +801,22 @@ public class TestUserDefinedTypes extends BaseCQLTest {
       //--------------------------------------------------------------------------------------------
       // Test dropping types.
 
-      // udt4 is referenced in 'k frozen<set<frozen<udt4>>>'.
-      runInvalidStmt("DROP TYPE udt4", "is used in column k of table " + tableName3);
-      // udt2 is referenced in 'k frozen<set<frozen<udt4>>>', udt4='frozen<list<frozen<udt2>>>'.
-      runInvalidStmt("DROP TYPE udt2", "is used in column k of table " + tableName3);
+      // udt4 is referenced in tableName & tableName2 & tableName3. Possible errors:
+      // tableName : It is used in column u4 of table test_coll_with_nested_udts
+      // tableName2: It is used in column u4 of table test_coll_with_nested_udts_pk
+      // tableName3: It is used in column k of table test_coll_with_nested_udts_coll
+      runInvalidStmt("DROP TYPE udt4", "is used in column");
+      // udt2 is referenced in tableName & tableName2 & tableName3. Possible errors:
+      // tableName : It is used in column u2 of table test_coll_with_nested_udts
+      // tableName2: It is used in column u4 of table test_coll_with_nested_udts_pk
+      // tableName3: It is used in column k of table test_coll_with_nested_udts_coll
+      runInvalidStmt("DROP TYPE udt2", "is used in column");
       session.execute("DROP TABLE " + tableName3);
 
-      // udt4 is referenced in 'u4 frozen<udt4> PRIMARY KEY'.
-      runInvalidStmt("DROP TYPE udt4", "is used in column u4 of table " + tableName2);
+      // udt4 is referenced in tableName & tableName2. Possible errors:
+      // tableName : It is used in column u4 of table test_coll_with_nested_udts
+      // tableName2: It is used in column u4 of table test_coll_with_nested_udts_pk
+      runInvalidStmt("DROP TYPE udt4", "is used in column u4 of table " + tableName);
       session.execute("DROP TABLE " + tableName2);
 
       // Types cannot be dropped while they are used in a table.
