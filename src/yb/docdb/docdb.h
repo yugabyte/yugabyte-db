@@ -140,10 +140,11 @@ Status AssembleDocWriteBatch(
 
 struct ExternalTxnApplyStateData {
   HybridTime commit_ht;
+  SubtxnSet aborted_subtransactions;
   IntraTxnWriteId write_id = 0;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(commit_ht, write_id);
+    return YB_STRUCT_TO_STRING(commit_ht, aborted_subtransactions, write_id);
   }
 };
 
@@ -315,6 +316,7 @@ class ExternalIntentsProvider {
 // Combine external intents into single key value pair.
 void CombineExternalIntents(
     const TransactionId& txn_id,
+    SubTransactionId subtransaction_id,
     ExternalIntentsProvider* provider);
 
 }  // namespace docdb

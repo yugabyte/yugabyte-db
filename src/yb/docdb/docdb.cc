@@ -320,6 +320,7 @@ Status NotEnoughBytes(size_t present, size_t required, const Slice& full) {
 
 Status PrepareApplyExternalIntentsBatch(
     HybridTime commit_ht,
+    const SubtxnSet& aborted_subtransactions,
     const Slice& original_input_value,
     rocksdb::WriteBatch* regular_batch,
     IntraTxnWriteId* write_id) {
@@ -328,7 +329,24 @@ Status PrepareApplyExternalIntentsBatch(
   RETURN_NOT_OK(input_value.consume_byte(KeyEntryTypeAsChar::kUuid));
   RETURN_NOT_OK(Uuid::FromSlice(input_value.Prefix(kUuidSize)));
   input_value.remove_prefix(kUuidSize);
-  RETURN_NOT_OK(input_value.consume_byte(KeyEntryTypeAsChar::kExternalIntents));
+  char header_byte = input_value.consume_byte();
+  if (header_byte != KeyEntryTypeAsChar::kExternalIntents &&
+      header_byte != KeyEntryTypeAsChar::kSubTransactionId) {
+    return STATUS_FORMAT(
+        Corruption, "Wrong first byte, expected $0 or $1 but found $2",
+        static_cast<int>(KeyEntryTypeAsChar::kExternalIntents),
+        static_cast<int>(KeyEntryTypeAsChar::kSubTransactionId), header_byte);
+  }
+  SubTransactionId subtransaction_id = kMinSubTransactionId;
+  if (header_byte == KeyEntryTypeAsChar::kSubTransactionId) {
+    subtransaction_id = Load<SubTransactionId, BigEndian>(input_value.data());
+    input_value.remove_prefix(sizeof(SubTransactionId));
+    RETURN_NOT_OK(input_value.consume_byte(KeyEntryTypeAsChar::kExternalIntents));
+  }
+  if (aborted_subtransactions.Test(subtransaction_id)) {
+    // Skip applying provisional writes that belong to subtransactions that got aborted.
+    return Status::OK();
+  }
   for (;;) {
     auto key_size = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&input_value));
     if (key_size == 0) {
@@ -379,16 +397,16 @@ Status PrepareApplyExternalIntents(
       /* user_key_for_filter= */ boost::none,
       rocksdb::kDefaultQueryId, /* read_filter= */ nullptr, &key_upperbound_slice);
 
-  for (auto& apply : *apply_external_transactions) {
+  for (auto& [transaction_id, apply_data] : *apply_external_transactions) {
     key_prefix.Clear();
     key_prefix.AppendKeyEntryType(KeyEntryType::kExternalTransactionId);
-    key_prefix.AppendRawBytes(apply.first.AsSlice());
+    key_prefix.AppendRawBytes(transaction_id.AsSlice());
 
     key_upperbound = key_prefix;
     key_upperbound.AppendKeyEntryType(KeyEntryType::kMaxByte);
     key_upperbound_slice = key_upperbound.AsSlice();
 
-    IntraTxnWriteId& write_id = apply.second.write_id;
+    IntraTxnWriteId& write_id = apply_data.write_id;
 
     iter.Seek(key_prefix);
     while (iter.Valid()) {
@@ -400,7 +418,8 @@ Status PrepareApplyExternalIntents(
 
       if (regular_batch) {
         RETURN_NOT_OK(PrepareApplyExternalIntentsBatch(
-            apply.second.commit_ht, iter.value(), regular_batch, &write_id));
+            apply_data.commit_ht, apply_data.aborted_subtransactions, iter.value(),
+            regular_batch, &write_id));
       }
       if (intents_batch) {
         intents_batch->SingleDelete(input_key);
@@ -419,10 +438,12 @@ ExternalTxnApplyState ProcessApplyExternalTransactions(const LWKeyValueWriteBatc
   for (const auto& apply : put_batch.apply_external_transactions()) {
     auto txn_id = CHECK_RESULT(FullyDecodeTransactionId(apply.transaction_id()));
     auto commit_ht = HybridTime(apply.commit_hybrid_time());
+    auto aborted = CHECK_RESULT(SubtxnSet::FromPB(apply.aborted_subtransactions().set()));
     result.emplace(
         txn_id,
         ExternalTxnApplyStateData{
-          .commit_ht = commit_ht
+            .commit_ht = commit_ht,
+            .aborted_subtransactions = aborted,
         });
   }
 
@@ -476,7 +497,9 @@ bool AddExternalPairToWriteBatch(
   if (it != apply_external_transactions->end()) {
     // The same write operation could contain external intents and instruct us to apply them.
     CHECK_OK(PrepareApplyExternalIntentsBatch(
-        it->second.commit_ht, key_value, regular_write_batch, &it->second.write_id));
+        it->second.commit_ht,
+        it->second.aborted_subtransactions,
+        key_value, regular_write_batch, &it->second.write_id));
     if (external_txns_intents_state) {
       external_txns_intents_state->EraseEntry(txn_id);
     }
@@ -876,10 +899,13 @@ std::string ApplyTransactionState::ToString() const {
 
 void CombineExternalIntents(
     const TransactionId& txn_id,
+    SubTransactionId subtransaction_id,
     ExternalIntentsProvider* provider) {
   // External intents are stored in the following format:
-  // key: kExternalTransactionId, txn_id
-  // value: size(intent1_key), intent1_key, size(intent1_value), intent1_value, size(intent2_key)...
+  //   key:   kExternalTransactionId, txn_id
+  //   value: kUuid involved_tablet [kSubTransactionId subtransaction_ID]
+  //          kExternalIntents size(intent1_key), intent1_key, size(intent1_value), intent1_value,
+  //          size(intent2_key)...  0
   // where size is encoded as varint.
 
   docdb::KeyBytes buffer;
@@ -889,6 +915,10 @@ void CombineExternalIntents(
   buffer.Clear();
   buffer.AppendKeyEntryType(KeyEntryType::kUuid);
   buffer.AppendRawBytes(provider->InvolvedTablet().AsSlice());
+  if (subtransaction_id != kMinSubTransactionId) {
+    buffer.AppendKeyEntryType(KeyEntryType::kSubTransactionId);
+    buffer.AppendUInt32(subtransaction_id);
+  }
   buffer.AppendKeyEntryType(KeyEntryType::kExternalIntents);
   while (auto key_value = provider->Next()) {
     buffer.AppendUInt64AsVarInt(key_value->first.size());

@@ -141,10 +141,10 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
   }
 
   if (GetKeyType(key, StorageDbType::kIntents) == KeyType::kExternalIntents) {
-    // The first byte of the key is a special kExternalIntents char, so this is an external intent
-    // of the old data format. See https://phabricator.dev.yugabyte.com/D18669 for a description of
-    // the old vs new format for external intents. First, strip off the external intent byte from
-    // the key, and then check whether to keep the intent.
+    // The first byte of the key is a special kExternalTransactionId char, so this is an external
+    // intent of the old data format. See https://phabricator.dev.yugabyte.com/D18669 for a
+    // description of the old vs new format for external intents. First, strip off the external
+    // intent byte from the key, and then check whether to keep the intent.
     auto filter_decision_result = FilterExternalIntent(key);
     // With the old format, the write path bypasses the txn participant, so just return the result
     // without adding to transactions_to_cleanup_.

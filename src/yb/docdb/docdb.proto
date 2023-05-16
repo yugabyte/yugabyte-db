@@ -30,6 +30,7 @@ message KeyValuePairPB {
 
 message ApplyExternalTransactionPB {
   optional bytes transaction_id = 1;
+  optional SubtxnSetPB aborted_subtransactions = 3;
   optional fixed64 commit_hybrid_time = 2;
 }
 

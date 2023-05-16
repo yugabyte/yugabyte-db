@@ -132,8 +132,8 @@ const std::string kParentMemTrackerId = "transactions";
 
 std::string TransactionApplyData::ToString() const {
   return YB_STRUCT_TO_STRING(
-      leader_term, transaction_id, op_id, commit_ht, log_ht, sealed, status_tablet, apply_state,
-      is_external);
+      leader_term, transaction_id, aborted, op_id, commit_ht, log_ht, sealed, status_tablet,
+      apply_state, is_external);
 }
 
 class TransactionParticipant::Impl

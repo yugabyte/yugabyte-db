@@ -250,6 +250,10 @@ message CDCRecordPB {
 
   // If operation type is a CHANGE_METADATA_OP, then include the tablet payload for it.
   optional tablet.ChangeMetadataRequestPB change_metadata_request = 11;
+
+  // For intents, what subtransaction, if any, they are part of.
+  // Omitted in cases where the subtransaction ID is kMinSubTransactionId.
+  optional uint32 subtransaction_id = 12;
 }
 
 // CDCSDK: Column information used in case of DDL, as part of schema info
