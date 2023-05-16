@@ -579,18 +579,6 @@ Default: `-1` (disables logging statement durations)
 
 Specifies the lowest YSQL message level to log.
 
-##### --temp_file_limit
-
-Specifies the amount of disk space used for temp files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
-
-Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
-
-You can remove the limit (set the size to unlimited) using `SET temp_file_limit=-1`.
-
-Valid values are `-1` (unlimited), `integer` (in kilobytes), `xMB` (in megabytes), and `xGB` (in gigabytes).
-
-Default: `1GB`
-
 ### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):
@@ -1033,15 +1021,20 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
-## PostgreSQL logging options
+## PostgreSQL options
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters using the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag.
+You can also modify PostgreSQL options for the current session using the `SET` statement like below: 
+
+```sql
+SET temp_file_limit=-1;
+```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions.
 
-### log_line_prefix
+##### log_line_prefix
 
 YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
 
@@ -1054,11 +1047,33 @@ YugabyteDB supports the following additional options for the `log_line_prefix` p
 
 For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
 
-### suppress_nonpg_logs (boolean)
+##### suppress_nonpg_logs (boolean)
 
 When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file in the `tserver/logs` directory.
 
 Default: `off`
+
+##### --temp_file_limit
+
+Specifies the amount of disk space used for temp files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
+
+Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
+
+You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
+
+Valid values are `-1` (unlimited), `integer` (in kilobytes), `xMB` (in megabytes), and `xGB` (in gigabytes).
+
+Default: `1GB`
+
+##### --yb_enable_upsert_mode
+
+When set to `true`, speed up YSQL bulk loads by skipping the lookup of any keys being inserted, thereby, enabling faster inserts.
+
+- Secondary indexes may be corrupted because old values will not be removed 
+- Foreign key integrity should be maintained just like a normal INSERT
+- Batching is disabled if the table contains non-FK trigger as per the following [commit #7c428da](https://github.com/yugabyte/yugabyte-db/commit/7c428da49ce9009df8faf9788c53c9c71cb7178b).
+
+Default: `false`
 
 ## Admin UI
 
