@@ -102,7 +102,8 @@ set(CDC_SRCS
   cdc_metrics.cc
   cdc_producer.cc
   cdcsdk_producer.cc
-  cdc_rpc.cc)
+  cdc_rpc.cc
+  xrepl_stream_metadata.cc)
 
 ADD_YB_LIBRARY(
     cdc
