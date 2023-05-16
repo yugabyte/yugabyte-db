@@ -34,7 +34,7 @@ Learn the basic steps required for connecting to the YugabyteDB database using L
 composer create-project --prefer-dist laravel/laravel yb-laravel-example
 ```
 
-Note: Review the [prerequisites](../../orms/php/ysql-laravel//#prerequisites) for working with a Laravel project.
+Note: Review the [prerequisites](../../orms/php/ysql-laravel/#prerequisites) for working with a Laravel project.
 
 ### Step 2: Configure the datasource in Laravel project
 

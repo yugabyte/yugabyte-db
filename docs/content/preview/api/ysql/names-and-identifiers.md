@@ -8,7 +8,6 @@ menu:
     identifier: names-and-identifiers
     parent: api-ysql
     weight: 30
-aliases:
 type: docs
 ---
 
@@ -29,6 +28,7 @@ Here's the query result:
  1 | 17
  2 | 42
 ```
+
 Query the catalog to list some facts about the just-created table:
 
 ```plpgsql
