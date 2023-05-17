@@ -96,6 +96,12 @@ Or, if you are running macOS Monterey, use the following command:
                       --master_webserver_port=9999
 ```
 
+To check the status of a running single-node universe, run the following command:
+
+```sh
+./bin/yugabyted status
+```
+
 For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
 
   {{% /tab %}}
@@ -145,6 +151,12 @@ After starting the yugabyted processes on all the nodes, configure the data plac
 ```
 
 This command can be executed on any node where you already started YugabyteDB.
+
+To check the status of a running multi-node universe, run the following command:
+
+```sh
+./bin/yugabyted status --base_dir=/tmp/ybd1
+```
 
   {{% /tab %}}
 
