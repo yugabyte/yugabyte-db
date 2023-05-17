@@ -14,6 +14,7 @@
 #define ENT_SRC_YB_MASTER_CATALOG_MANAGER_H
 
 #include "../../../../src/yb/master/catalog_manager.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/cdc/cdc_service.proxy.h"
@@ -366,9 +367,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     Partitions partitions;
     PartitionToIdMap new_tablets_map;
     // Mapping: Old tablet ID -> New tablet ID.
-    google::protobuf::RepeatedPtrField<IdPairPB>* tablet_id_map = nullptr;
-
-    ImportSnapshotMetaResponsePB_TableMetaPB* table_meta = nullptr;
+    std::optional<ImportSnapshotMetaResponsePB::TableMetaPB> table_meta = std::nullopt;
   };
   typedef std::map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
 
@@ -393,16 +392,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   typedef std::map<UDTypeId, ExternalUDTypeSnapshotData> UDTypeMap;
 
   Status ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_pb,
-                                  ImportSnapshotMetaResponsePB* resp,
                                   NamespaceMap* namespace_map,
                                   UDTypeMap* type_map,
                                   ExternalTableSnapshotDataMap* tables_data);
   Status ImportSnapshotProcessUDTypes(const SnapshotInfoPB& snapshot_pb,
-                                      ImportSnapshotMetaResponsePB* resp,
                                       UDTypeMap* type_map,
                                       const NamespaceMap& namespace_map);
   Status ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapshot_pb,
-                                     ImportSnapshotMetaResponsePB* resp,
                                      const NamespaceMap& namespace_map,
                                      const UDTypeMap& type_map,
                                      ExternalTableSnapshotDataMap* tables_data);
@@ -412,8 +408,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                               ExternalTableSnapshotDataMap* tables_data,
                                               CoarseTimePoint deadline);
   Status ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
-                                              ImportSnapshotMetaResponsePB* resp,
-                                              ExternalTableSnapshotDataMap* tables_data);
+                                      ExternalTableSnapshotDataMap* tables_data);
   void DeleteNewUDtype(const UDTypeId& udt_id,
                        const std::unordered_set<UDTypeId>& type_ids_to_delete);
   void DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
