@@ -59,9 +59,11 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cdc_split_driver.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.fwd.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
@@ -2325,9 +2327,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     Partitions partitions;
     PartitionToIdMap new_tablets_map;
     // Mapping: Old tablet ID -> New tablet ID.
-    google::protobuf::RepeatedPtrField<IdPairPB>* tablet_id_map = nullptr;
-
-    ImportSnapshotMetaResponsePB_TableMetaPB* table_meta = nullptr;
+    std::optional<ImportSnapshotMetaResponsePB::TableMetaPB> table_meta = std::nullopt;
   };
   typedef std::unordered_map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
 
@@ -2353,18 +2353,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status ImportSnapshotPreprocess(
       const SnapshotInfoPB& snapshot_pb,
-      ImportSnapshotMetaResponsePB* resp,
       NamespaceMap* namespace_map,
       UDTypeMap* type_map,
       ExternalTableSnapshotDataMap* tables_data);
   Status ImportSnapshotProcessUDTypes(
       const SnapshotInfoPB& snapshot_pb,
-      ImportSnapshotMetaResponsePB* resp,
       UDTypeMap* type_map,
       const NamespaceMap& namespace_map);
   Status ImportSnapshotCreateIndexes(
       const SnapshotInfoPB& snapshot_pb,
-      ImportSnapshotMetaResponsePB* resp,
       const NamespaceMap& namespace_map,
       const UDTypeMap& type_map,
       ExternalTableSnapshotDataMap* tables_data);
@@ -2376,7 +2373,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       CoarseTimePoint deadline);
   Status ImportSnapshotProcessTablets(
       const SnapshotInfoPB& snapshot_pb,
-      ImportSnapshotMetaResponsePB* resp,
       ExternalTableSnapshotDataMap* tables_data);
   void DeleteNewUDtype(
       const UDTypeId& udt_id, const std::unordered_set<UDTypeId>& type_ids_to_delete);
