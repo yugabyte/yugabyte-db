@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.gax.paging.Page;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
@@ -20,10 +21,14 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.channels.Channels;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,6 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
+import play.libs.Json;
 
 @Singleton
 @Slf4j
@@ -43,9 +49,14 @@ public class GCPUtil implements CloudUtil {
   public static final String GCS_CREDENTIALS_JSON_FIELDNAME = "GCS_CREDENTIALS_JSON";
   private static final String GS_PROTOCOL_PREFIX = "gs://";
   private static final String HTTPS_PROTOCOL_PREFIX = "https://storage.googleapis.com/";
+  private static final String PRICING_JSON_URL =
+      "https://cloudpricingcalculator.appspot.com/static/data/pricelist.json";
 
   public static final String YBC_GOOGLE_APPLICATION_CREDENTIALS_FIELDNAME =
       "GOOGLE_APPLICATION_CREDENTIALS";
+
+  private static JsonNode PRICE_JSON = null;
+  private static final String IMAGE_PREFIX = "CP-COMPUTEENGINE-VMIMAGE-";
 
   public static String[] getSplitLocationValue(String location) {
     int prefixLength =
@@ -266,5 +277,37 @@ public class GCPUtil implements CloudUtil {
           .forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
     }
     return regionLocationsMap;
+  }
+
+  public static Double getGcpSpotPrice(String region, String instanceType) {
+    instanceType = IMAGE_PREFIX + instanceType + "-preemptible";
+    instanceType = instanceType.toUpperCase();
+
+    try {
+      // Fetch prices only once
+      if (PRICE_JSON == null) {
+        URL url = new URL(PRICING_JSON_URL);
+        HttpURLConnection con = (HttpURLConnection) url.openConnection();
+        con.setRequestMethod("GET");
+        con.connect();
+        BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+        String inputLine;
+        StringBuffer content = new StringBuffer();
+        while ((inputLine = in.readLine()) != null) {
+          content.append(inputLine);
+        }
+        in.close();
+        JsonNode response = Json.mapper().readTree(content.toString());
+        PRICE_JSON = response.get("gcp_price_list");
+      }
+      JsonNode prices = PRICE_JSON.findValue(instanceType);
+      Double spotPrice = prices.findValue(region).asDouble();
+      log.info(
+          "GCP spot price for instance {} in region {} is {}", instanceType, region, spotPrice);
+      return spotPrice;
+    } catch (Exception e) {
+      log.error("Fetch gcp spot prices failed with error {}", e.getMessage());
+    }
+    return Double.NaN;
   }
 }
