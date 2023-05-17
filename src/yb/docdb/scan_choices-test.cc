@@ -34,52 +34,30 @@ using dockv::DocKey;
 using dockv::KeyEntryValue;
 
 const Schema test_range_schema(
-    {ColumnSchema(
-         "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
+    {ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
      // Non-key columns
-     ColumnSchema("payload", DataType::INT32, true)},
-    {10_ColId, 11_ColId, 12_ColId}, 2);
+     ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+    {10_ColId, 11_ColId, 12_ColId});
 
 const Schema test_range_schema_3col(
-    {ColumnSchema(
-         "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r3", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
+    {ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("r3", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
      // Non-key columns
-     ColumnSchema("payload", DataType::INT32, true)},
-    {10_ColId, 11_ColId, 12_ColId, 13_ColId}, 3);
+     ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+    {10_ColId, 11_ColId, 12_ColId, 13_ColId});
 
 const Schema test_range_schema_6col(
-    {ColumnSchema(
-         "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r3", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r4", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r5", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r6", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kDescending),
+    {ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("r3", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("r4", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("r5", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("r6", DataType::INT32, ColumnKind::RANGE_DESC_NULL_FIRST),
      // Non-key columns
-     ColumnSchema("payload", DataType::INT32, true)},
-    {10_ColId, 11_ColId, 12_ColId, 13_ColId, 14_ColId, 15_ColId, 16_ColId}, 6);
+     ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+    {10_ColId, 11_ColId, 12_ColId, 13_ColId, 14_ColId, 15_ColId, 16_ColId});
 
 class TestCondition {
  public:
@@ -95,7 +73,7 @@ class ScanChoicesTest : public YBTest {
  protected:
   void AssertChoicesEqual(const std::vector<OptionRange> &lhs, const std::vector<OptionRange> &rhs);
   void SetupCondition(PgsqlConditionPB *cond_ptr, const std::vector<TestCondition> &conds);
-  void InitializeScanChoicesInstance(const Schema &schema, PgsqlConditionPB &cond);
+  void InitializeScanChoicesInstance(const Schema& schema, const PgsqlConditionPB& cond);
 
   bool IsScanChoicesFinished();
   void AdjustForRangeConstraints();
@@ -191,7 +169,8 @@ void ScanChoicesTest::SetupCondition(
 }
 
 // Initializes an instance of ScanChoices in choices_
-void ScanChoicesTest::InitializeScanChoicesInstance(const Schema &schema, PgsqlConditionPB &cond) {
+void ScanChoicesTest::InitializeScanChoicesInstance(
+    const Schema& schema, const PgsqlConditionPB& cond) {
   current_schema_ = &schema;
   dockv::KeyEntryValues empty_components;
   DocPgsqlScanSpec spec(

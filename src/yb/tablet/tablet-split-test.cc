@@ -44,9 +44,8 @@ namespace tablet {
 
 class TabletSplitTest : public YBTabletTest {
  public:
-  TabletSplitTest() : YBTabletTest(Schema({ ColumnSchema("key", INT32, false, true),
-                                            ColumnSchema("val", STRING) },
-                                          1)) {}
+  TabletSplitTest() : YBTabletTest(Schema({ ColumnSchema("key", INT32, ColumnKind::HASH),
+                                            ColumnSchema("val", STRING) })) {}
 
   void SetUp() override {
     FLAGS_db_write_buffer_size = 1_MB;

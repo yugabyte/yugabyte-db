@@ -96,17 +96,6 @@ TEST(ClientUnitTest, TestSchemaBuilder_WrongHashKeyOrder) {
   ASSERT_EQ(expected_status, b.Build(&s).ToString(/* no file/line */ false));
 }
 
-TEST(ClientUnitTest, TestSchemaBuilder_PrimaryKeyOnColumnAndSet) {
-  YBSchema s;
-  YBSchemaBuilder b;
-  b.AddColumn("a")->Type(INT32)->PrimaryKey();
-  b.AddColumn("b")->Type(INT32);
-  b.SetPrimaryKey({ "a", "b" });
-  ASSERT_EQ("Invalid argument: Primary key specified by both "
-            "SetPrimaryKey() and on a specific column: a",
-            b.Build(&s).ToString(/* no file/line */ false));
-}
-
 TEST(ClientUnitTest, TestSchemaBuilder_SingleKey_GoodSchema) {
   YBSchema s;
   YBSchemaBuilder b;
@@ -114,40 +103,6 @@ TEST(ClientUnitTest, TestSchemaBuilder_SingleKey_GoodSchema) {
   b.AddColumn("b")->Type(INT32);
   b.AddColumn("c")->Type(INT32)->NotNull();
   ASSERT_EQ("OK", b.Build(&s).ToString());
-}
-
-TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_GoodSchema) {
-  YBSchema s;
-  YBSchemaBuilder b;
-  b.AddColumn("a")->Type(INT32)->NotNull();
-  b.AddColumn("b")->Type(INT32)->NotNull();
-  b.SetPrimaryKey({ "a", "b" });
-  ASSERT_EQ("OK", b.Build(&s).ToString());
-
-  auto key_columns = s.GetPrimaryKeyColumnIndexes();
-  ASSERT_EQ(vector<size_t>({ 0, 1 }), key_columns);
-}
-
-TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_KeyNotFirst) {
-  YBSchema s;
-  YBSchemaBuilder b;
-  b.AddColumn("x")->Type(INT32)->NotNull();
-  b.AddColumn("a")->Type(INT32)->NotNull();
-  b.AddColumn("b")->Type(INT32)->NotNull();
-  b.SetPrimaryKey({ "a", "b" });
-  ASSERT_EQ("Invalid argument: Primary key columns must be listed "
-            "first in the schema: a",
-            b.Build(&s).ToString(/* no file/line */ false));
-}
-
-TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_BadColumnName) {
-  YBSchema s;
-  YBSchemaBuilder b;
-  b.AddColumn("a")->Type(INT32)->NotNull();
-  b.AddColumn("b")->Type(INT32)->NotNull();
-  b.SetPrimaryKey({ "foo" });
-  ASSERT_EQ("Invalid argument: Primary key column not defined: foo",
-            b.Build(&s).ToString(/* no file/line */ false));
 }
 
 } // namespace client

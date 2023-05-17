@@ -1995,12 +1995,11 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
     // Ignore 'nullable' attribute - due to difference in implementation
     // of PgCreateTable::AddColumn() and PgAlterTable::AddColumn().
-    struct CompareColumnsExceptNullable {
-      bool operator ()(const ColumnSchema& a, const ColumnSchema& b) {
-        return ColumnSchema::CompHashKey(a, b) && ColumnSchema::CompSortingType(a, b) &&
-            ColumnSchema::CompTypeInfo(a, b) && ColumnSchema::CompName(a, b);
-      }
-    } comparator;
+    auto comparator = [](const ColumnSchema& a, const ColumnSchema& b) {
+      return ColumnSchema::CompKind(a, b) &&
+             ColumnSchema::CompTypeInfo(a, b) &&
+             ColumnSchema::CompName(a, b);
+    };
     // Schema::Equals() compares only column names & types. It does not compare the column ids.
     if (!persisted_schema.Equals(schema, comparator)
         || persisted_schema.column_ids().size() != column_ids.size()) {

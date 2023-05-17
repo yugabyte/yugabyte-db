@@ -17,26 +17,28 @@
 #include <string>
 #include <variant>
 
-#include "yb/docdb/doc_rowwise_iterator_base.h"
-#include "yb/docdb/doc_reader.h"
-#include "yb/rocksdb/db.h"
-
 #include "yb/common/hybrid_time.h"
-#include "yb/qlexpr/ql_scanspec.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_read_context.h"
+#include "yb/docdb/doc_reader.h"
+#include "yb/docdb/doc_rowwise_iterator_base.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
 
-#include "yb/util/status_fwd.h"
+#include "yb/qlexpr/ql_scanspec.h"
+
+#include "yb/rocksdb/db.h"
+
 #include "yb/util/operation_counter.h"
-#include "yb/docdb/doc_read_context.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace docdb {

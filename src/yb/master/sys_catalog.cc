@@ -268,7 +268,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId));
 
   // Verify that the schema is the current one
-  if (!metadata->schema()->Equals(doc_read_context_->schema)) {
+  if (!metadata->schema()->Equals(doc_read_context_->schema())) {
     // TODO: In this case we probably should execute the migration step.
     return(STATUS(Corruption, "Unexpected schema", metadata->schema()->ToString()));
   }
@@ -632,7 +632,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   tablet_peer()->RegisterMaintenanceOps(master_->maintenance_manager());
 
-  if (!tablet->schema()->Equals(doc_read_context_->schema)) {
+  if (!tablet->schema()->Equals(doc_read_context_->schema())) {
     return STATUS(Corruption, "Unexpected schema", tablet->schema()->ToString());
   }
   RETURN_NOT_OK(mem_manager_->Init());
@@ -756,7 +756,7 @@ Status SysCatalogTable::GetTableSchema(
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
   ReadHybridTime read_time = read_hybrid_time ? read_hybrid_time : ReadHybridTime::Max();
-  const Schema& schema = doc_read_context_->schema;
+  const Schema& schema = doc_read_context_->schema();
   dockv::ReaderProjection projection(schema);
   auto doc_iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
       projection, read_time, /* table_id= */ "", CoarseTimePoint::max(),
@@ -839,8 +839,9 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   auto start = CoarseMonoClock::Now();
 
   uint64_t count = 0;
-  RETURN_NOT_OK(EnumerateSysCatalog(tablet.get(), doc_read_context_->schema, visitor->entry_type(),
-                                    [visitor, &count](const Slice& id, const Slice& data) {
+  RETURN_NOT_OK(
+      EnumerateSysCatalog(tablet.get(), doc_read_context_->schema(), visitor->entry_type(),
+      [visitor, &count](const Slice& id, const Slice& data) {
     ++count;
     return visitor->Visit(id, data);
   }));
@@ -1679,7 +1680,7 @@ Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id, int64_t te
 }
 
 const Schema& SysCatalogTable::schema() {
-  return doc_read_context_->schema;
+  return doc_read_context_->schema();
 }
 
 const docdb::DocReadContext& SysCatalogTable::doc_read_context() {
@@ -1690,7 +1691,7 @@ Status SysCatalogTable::FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEnt
   auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
   return EnumerateSysCatalog(
-      tablet.get(), doc_read_context_->schema, SysRowEntryType::DDL_LOG_ENTRY,
+      tablet.get(), doc_read_context_->schema(), SysRowEntryType::DDL_LOG_ENTRY,
       [entries](const Slice& id, const Slice& data) -> Status {
     *entries->Add() = VERIFY_RESULT(pb_util::ParseFromSlice<DdlLogEntryPB>(data));
     return Status::OK();

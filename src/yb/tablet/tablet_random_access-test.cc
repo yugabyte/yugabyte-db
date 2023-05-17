@@ -106,7 +106,8 @@ class TestRandomAccess : public YBTabletTest {
  public:
   TestRandomAccess()
     : YBTabletTest(
-        Schema({ ColumnSchema("key", INT32, false, true), ColumnSchema("val", INT32, true) }, 1)) {
+        Schema({ ColumnSchema("key", INT32, ColumnKind::HASH),
+                 ColumnSchema("val", INT32, ColumnKind::VALUE, Nullable::kTrue) })) {
     OverrideFlagForSlowTests("keyspace_size", "30000");
     OverrideFlagForSlowTests("runtime_seconds", "10");
     OverrideFlagForSlowTests("sleep_between_background_ops_ms", "1000");

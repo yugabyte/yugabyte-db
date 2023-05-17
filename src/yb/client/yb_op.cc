@@ -887,7 +887,7 @@ std::vector<ColumnSchema> YBqlReadOp::MakeColumnSchemasFromRequest() const {
 }
 
 Result<qlexpr::QLRowBlock> YBqlReadOp::MakeRowBlock() const {
-  Schema schema(MakeColumnSchemasFromRequest(), 0);
+  Schema schema(MakeColumnSchemasFromRequest());
   qlexpr::QLRowBlock result(schema);
   auto data = rows_data_.AsSlice();
   if (!data.empty()) {
