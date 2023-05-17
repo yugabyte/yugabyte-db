@@ -153,13 +153,13 @@ class DocOperationTest : public DocDBTestBase {
   }
 
   Schema CreateSchema() override {
-    ColumnSchema hash_column_schema("k", INT32, false, true);
-    ColumnSchema column1_schema("c1", INT32, false, false);
-    ColumnSchema column2_schema("c2", INT32, false, false);
-    ColumnSchema column3_schema("c3", INT32, false, false);
-    const vector<ColumnSchema> columns({hash_column_schema, column1_schema, column2_schema,
-                                           column3_schema});
-    return Schema(columns, CreateColumnIds(columns.size()), 1);
+    ColumnSchema hash_column_schema("k", INT32, ColumnKind::HASH);
+    ColumnSchema column1_schema("c1", INT32);
+    ColumnSchema column2_schema("c2", INT32);
+    ColumnSchema column3_schema("c3", INT32);
+    const vector<ColumnSchema> columns({
+        hash_column_schema, column1_schema, column2_schema, column3_schema});
+    return Schema(columns, CreateColumnIds(columns.size()));
   }
 
   void AddPrimaryKeyColumn(yb::QLWriteRequestPB* ql_writereq_pb, int32_t value) {
@@ -500,8 +500,8 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
   builder.set_next_column_id(ColumnId(0));
   ASSERT_OK(builder.AddHashKeyColumn("k", INT32));
   ASSERT_OK(builder.AddKeyColumn("r", INT32));
-  ASSERT_OK(builder.AddColumn(ColumnSchema("s", INT32, false, false, true), false));
-  ASSERT_OK(builder.AddColumn(ColumnSchema("v", INT32), false));
+  ASSERT_OK(builder.AddColumn(ColumnSchema("s", INT32, ColumnKind::VALUE, Nullable::kTrue)));
+  ASSERT_OK(builder.AddColumn(ColumnSchema("v", INT32)));
   auto schema = builder.Build();
 
   // Write rows with the same partition key but different range key
@@ -817,12 +817,11 @@ class DocOperationScanTest : public DocOperationTest {
   }
 
   Schema CreateSchema() override {
-    ColumnSchema hash_column("k", INT32, false, true);
-    ColumnSchema range_column(
-        "r", INT32, false, false, false, false, 1, range_column_sorting_type_);
-    ColumnSchema value_column("v", INT32, false, false);
+    ColumnSchema hash_column("k", INT32, ColumnKind::HASH);
+    ColumnSchema range_column("r", INT32, SortingTypeToColumnKind(range_column_sorting_type_));
+    ColumnSchema value_column("v", INT32);
     auto columns = { hash_column, range_column, value_column };
-    return Schema(columns, CreateColumnIds(columns.size()), 2);
+    return Schema(columns, CreateColumnIds(columns.size()));
   }
 
   void InsertRows(const size_t num_rows_per_key,
@@ -857,7 +856,7 @@ class DocOperationScanTest : public DocOperationTest {
         auto row_values = { row_data.k, row_data.r, row_data.v };
         LOG(INFO) << "Writing row: " << AsString(row_values) << ", ht: " << ht;
         WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
-                   doc_read_context().schema,
+                   doc_read_context().schema(),
                    row_values,
                    1000,
                    ht,
@@ -931,9 +930,9 @@ class DocOperationScanTest : public DocOperationTest {
             std::reverse(expected_rows.begin(), expected_rows.end());
           }
           DocQLScanSpec ql_scan_spec(
-              doc_read_context().schema, kFixedHashCode, kFixedHashCode, hashed_components,
+              doc_read_context().schema(), kFixedHashCode, kFixedHashCode, hashed_components,
               &condition, nullptr /* if_ req */, rocksdb::kDefaultQueryId, is_forward_scan);
-          dockv::ReaderProjection projection(doc_read_context().schema);
+          dockv::ReaderProjection projection(doc_read_context().schema());
           auto pending_op = ScopedRWOperation::TEST_Create();
           DocRowwiseIterator ql_iter(
               projection, doc_read_context(), txn_op_context, doc_db(),
@@ -973,7 +972,7 @@ class DocOperationScanTest : public DocOperationTest {
 
   void SetSortingType(SortingType value) {
     range_column_sorting_type_ = value;
-    CHECK_EQ(doc_read_context().schema.column(1).sorting_type(), value);
+    CHECK_EQ(doc_read_context().schema().column(1).sorting_type(), value);
   }
 
   constexpr static int32_t kNumKeys = 20;

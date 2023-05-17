@@ -2413,19 +2413,19 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 
   auto yql_table_name = YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "yqlrangepartitionedtable");
 
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::STRING)->NotNull();
-  schemaBuilder.AddColumn("value")->Type(yb::INT64)->NotNull();
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("key")->PrimaryKey()->Type(yb::STRING)->NotNull();
+  schema_builder.AddColumn("value")->Type(yb::INT64)->NotNull();
   // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
-  schemaBuilder.SetSchemaName(kPgsqlSchemaName);
+  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
   EXPECT_OK(client_->CreateNamespaceIfNotExists(kPgsqlKeyspaceName,
                                                 YQLDatabase::YQL_DATABASE_PGSQL,
                                                 "" /* creator_role_name */,
                                                 kPgsqlKeyspaceID));
   // Create a PGSQL table using range partition.
-  EXPECT_OK(schemaBuilder.Build(&schema));
+  EXPECT_OK(schema_builder.Build(&schema));
   Status s = table_creator->table_name(pgsql_table_name)
       .table_id(kPgsqlTableId)
       .schema(&schema)
@@ -2905,14 +2905,14 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
       /* txn =*/ nullptr,
       /* colocated =*/ true));
 
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::INT64);
-  schemaBuilder.AddColumn("value")->Type(yb::INT64);
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("key")->PrimaryKey()->Type(yb::INT64);
+  schema_builder.AddColumn("value")->Type(yb::INT64);
   // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
-  schemaBuilder.SetSchemaName(kPgsqlSchemaName);
+  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
-  ASSERT_OK(schemaBuilder.Build(&schema));
+  ASSERT_OK(schema_builder.Build(&schema));
 
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   std::vector<YBTableName> table_names;

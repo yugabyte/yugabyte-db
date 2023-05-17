@@ -90,7 +90,7 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
     const ReadHybridTime& read_time,
     std::reference_wrapper<const ScopedRWOperation> pending_op)
     : doc_read_context_(doc_read_context),
-      schema_(&doc_read_context_.schema),
+      schema_(&doc_read_context_.schema()),
       txn_op_context_(txn_op_context),
       deadline_(deadline),
       read_time_(read_time),
@@ -108,7 +108,7 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
     const ReadHybridTime& read_time,
     ScopedRWOperation&& pending_op)
     : doc_read_context_(doc_read_context),
-      schema_(&doc_read_context_.schema),
+      schema_(&doc_read_context_.schema()),
       txn_op_context_(txn_op_context),
       deadline_(deadline),
       read_time_(read_time),
@@ -128,7 +128,7 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
     ScopedRWOperation&& pending_op)
     : doc_read_context_holder_(std::move(doc_read_context)),
       doc_read_context_(*doc_read_context_holder_),
-      schema_(&doc_read_context_.schema),
+      schema_(&doc_read_context_.schema()),
       txn_op_context_(txn_op_context),
       deadline_(deadline),
       read_time_(read_time),
@@ -333,6 +333,10 @@ Status DocRowwiseIteratorBase::AssignHasNextStatus(const Status& status) {
   return status;
 }
 
+Slice DocRowwiseIteratorBase::shared_key_prefix() const {
+  return doc_read_context_.shared_key_prefix();
+}
+
 Status DocRowwiseIteratorBase::InitIterKey(const Slice& key, bool full_row) {
   iter_key_.Reset(key);
   VLOG_WITH_FUNC(4) << " Current iter_key_ is " << iter_key_ << ", full_row: " << full_row;
@@ -400,13 +404,14 @@ Status DocRowwiseIteratorBase::DoCopyKeyColumnsToRow(
   // In the release mode we just skip key prefix encoded len, in debug mode we decode this prefix,
   // and check that number of decoded bytes matches key prefix encoded len.
 #ifdef NDEBUG
-  dockv::DocKeyDecoder decoder(row_key_.WithoutPrefix(schema.key_prefix_encoded_len()));
+  dockv::DocKeyDecoder decoder(row_key_.WithoutPrefix(doc_read_context_.key_prefix_encoded_len()));
 #else
   dockv::DocKeyDecoder decoder(row_key_);
   RETURN_NOT_OK(decoder.DecodeCotableId());
   RETURN_NOT_OK(decoder.DecodeColocationId());
   RETURN_NOT_OK(decoder.DecodeHashCode());
-  CHECK_EQ(schema.key_prefix_encoded_len(), decoder.left_input().data() - row_key_.data());
+  CHECK_EQ(doc_read_context_.key_prefix_encoded_len(),
+           decoder.left_input().data() - row_key_.data());
 #endif
 
   // Populate the key column values from the doc key. The key column values in doc key were

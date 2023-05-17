@@ -210,12 +210,12 @@ void CreateTable(
 void BuildSchema(Partitioning partitioning, Schema* schema) {
   switch (partitioning) {
     case Partitioning::kHash:
-      *schema = Schema({ ColumnSchema(kKeyColumn, INT32, false, true),
-                         ColumnSchema(kValueColumn, INT32) }, 1);
+      *schema = Schema({ ColumnSchema(kKeyColumn, INT32, ColumnKind::HASH),
+                         ColumnSchema(kValueColumn, INT32) });
       return;
     case Partitioning::kRange:
-      *schema = Schema({ ColumnSchema(kKeyColumn, INT32),
-                         ColumnSchema(kValueColumn, INT32) }, 1);
+      *schema = Schema({ ColumnSchema(kKeyColumn, INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+                         ColumnSchema(kValueColumn, INT32) });
       return;
   }
   FATAL_INVALID_ENUM_VALUE(Partitioning, partitioning);
