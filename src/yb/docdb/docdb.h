@@ -38,6 +38,7 @@
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/util/memory/arena_list.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -132,6 +133,7 @@ Status AssembleDocWriteBatch(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     LWKeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
@@ -140,10 +142,11 @@ Status AssembleDocWriteBatch(
 
 struct ExternalTxnApplyStateData {
   HybridTime commit_ht;
+  SubtxnSet aborted_subtransactions;
   IntraTxnWriteId write_id = 0;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(commit_ht, write_id);
+    return YB_STRUCT_TO_STRING(commit_ht, aborted_subtransactions, write_id);
   }
 };
 
@@ -152,7 +155,12 @@ using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>
 class ExternalTxnIntentsState {
  public:
   IntraTxnWriteId GetWriteIdAndIncrement(const TransactionId& txn_id);
-  void EraseEntry(const TransactionId& txn_id);
+  // Used by PrepareExternalWriteBatch when applying external transactions.
+  void EraseEntries(const ExternalTxnApplyState& apply_external_transaction);
+  // Used by DocDBCompactionFilterIntents when cleaning up aborted external txns.
+  void EraseEntries(const TransactionIdSet& transactions);
+  size_t EntryCount();
+
  private:
   std::mutex mutex_;
   std::unordered_map<TransactionId, IntraTxnWriteId, TransactionIdHash> map_;
@@ -286,6 +294,7 @@ class ExternalIntentsProvider {
 // Combine external intents into single key value pair.
 void CombineExternalIntents(
     const TransactionId& txn_id,
+    SubTransactionId subtransaction_id,
     ExternalIntentsProvider* provider);
 
 }  // namespace docdb

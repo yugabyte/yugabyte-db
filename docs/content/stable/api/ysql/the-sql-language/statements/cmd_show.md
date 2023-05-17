@@ -46,7 +46,7 @@ The parameter values in YSQL can be set and typically take effect the same way a
 
 However, configurations related to write ahead log, vacuuming, or replication, may not apply to Yugabyte. Instead related configuration can be set using yb-tserver (or yb-master) [configuration flags](../../../../../reference/configuration/yb-tserver/#configuration-flags).
 
-### *configuration_parameter*
+### *run_time_parameter*
 
 Specify the name of the parameter to be displayed.
 

@@ -63,6 +63,7 @@ You will need the IP addresses of the nodes in the cluster for the next step.
 ## Configure DB connection parameters (optional)
 
 Workload configuration like IP addresses of the nodes, number of warehouses and number of loader threads can be controlled by command line arguments.
+
 Other options like username, password, port, etc. can be changed using the configuration file at `config/workload_all.xml`, if needed.
 
 ```xml

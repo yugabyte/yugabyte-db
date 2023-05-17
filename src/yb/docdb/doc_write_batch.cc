@@ -83,9 +83,11 @@ struct DocWriteBatch::LazyIterator {
 
 DocWriteBatch::DocWriteBatch(const DocDB& doc_db,
                              InitMarkerBehavior init_marker_behavior,
+                             std::reference_wrapper<const ScopedRWOperation> pending_op,
                              std::atomic<int64_t>* monotonic_counter)
     : doc_db_(doc_db),
       init_marker_behavior_(init_marker_behavior),
+      pending_op_(pending_op),
       monotonic_counter_(monotonic_counter) {}
 
 Status DocWriteBatch::SeekToKeyPrefix(LazyIterator* iter, HasAncestor has_ancestor) {

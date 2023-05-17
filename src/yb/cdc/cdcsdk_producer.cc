@@ -223,17 +223,19 @@ Status PopulateBeforeImage(
     const Schema& schema, const SchemaVersion schema_version, const ColocationId& colocation_id) {
   auto tablet = tablet_peer->shared_tablet();
   auto docdb = tablet->doc_db();
+  auto pending_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
 
   const auto log_prefix = tablet->LogPrefix();
   docdb::DocReadContext doc_read_context(log_prefix, tablet->table_type(), schema, schema_version);
   dockv::ReaderProjection projection(schema);
-  docdb::DocRowwiseIterator iter(
+  auto iter = docdb::DocRowwiseIterator(
       projection,
       colocation_id == kColocationIdNotSet
           ? *tablet->GetDocReadContext()
           : *(VERIFY_RESULT(tablet_peer->tablet_metadata()->GetTableInfo("", colocation_id))
                   ->doc_read_context),
-      TransactionOperationContext(), docdb, CoarseTimePoint::max() /* deadline */, read_time);
+      TransactionOperationContext(), docdb, CoarseTimePoint::max() /* deadline */, read_time,
+      pending_op);
 
   const dockv::DocKey& doc_key = decoded_primary_key.doc_key();
   docdb::DocQLScanSpec spec(schema, doc_key, rocksdb::kDefaultQueryId);

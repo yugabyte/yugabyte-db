@@ -156,6 +156,11 @@ typedef std::function<void(const Result<internal::RemoteTabletPtr>&)> LookupTabl
 typedef std::function<void(const Result<std::vector<internal::RemoteTabletPtr>>&)>
         LookupTabletRangeCallback;
 typedef std::function<void(const Result<CDCStreamId>&)> CreateCDCStreamCallback;
+typedef Result<std::tuple<
+    std::vector<TableId> /* table_ids */, std::vector<std::string> /* bootstrap_ids */,
+    HybridTime /* bootstrap_time */>>
+    BootstrapProducerResult;
+typedef std::function<void(BootstrapProducerResult)> BootstrapProducerCallback;
 class AsyncClientInitialiser;
 
 } // namespace client

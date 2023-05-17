@@ -122,6 +122,7 @@ set(MASTER_SRCS
   ts_manager.cc
   universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
+  xcluster/add_table_to_xcluster_task.cc
   xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_safe_time_service.cc
   xrepl_catalog_manager.cc

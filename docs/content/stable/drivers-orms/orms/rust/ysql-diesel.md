@@ -65,7 +65,7 @@ DATABASE_URL=postgres://<username>:<password>@<host>:<port>/<database>
 
 The default values are valid for a local YugabyteDB installation. If you are using a different configuration, change these values in the URL as required.
 
-From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell using:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
 
 ```sh
 $ ./bin/ysqlsh

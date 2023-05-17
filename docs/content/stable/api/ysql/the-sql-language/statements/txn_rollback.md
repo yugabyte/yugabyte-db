@@ -59,4 +59,5 @@ Add optional keyword — has no effect.
 ## See also
 
 - [`BEGIN`](../txn_begin/)
+- [`START TRANSACTION`](../txn_start/)
 - [`COMMIT`](../txn_commit)

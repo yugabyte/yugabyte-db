@@ -31,7 +31,6 @@ To understand which standard SQL features we support, refer to the following tab
 | `JSON`, `JSONB` | ✓ | [JSON data types](../../../api/ysql/datatypes/type_json/) |
 | `MONEY` | ✓ | [Money data types](../../../api/ysql/datatypes/type_money/) |
 | `SERIAL`, `SMALLSERIAL`, `BIGSERIAL`| ✓ | [Serial data types](../../../api/ysql/datatypes/type_serial/) |
-| `SET`| ✗ | |
 | `SMALLINT, INT, INTEGER, BIGINT` | ✓ | [Integers](../../../api/ysql/datatypes/type_numeric/#integers) |
 | `INT4RANGE`, `INT8RANGE`, `NUMRANGE`, `TSRANGE`, `TSTZRANGE`, `DATERANGE` | ✓ | [Range data types](../../../api/ysql/datatypes/type_range/) |
 | `UUID` | ✓ | [UUID data type](../../../api/ysql/datatypes/type_uuid/) |
@@ -43,17 +42,20 @@ To understand which standard SQL features we support, refer to the following tab
 
 | Operation | Supported | Documentation |
 | :-------- | :-------: | :------------ |
-| Altering tables | ✓ | [ALTER TABLE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/) |
+| Altering tables | ✓ (Partial) | [ALTER TABLE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/) |
 | Altering databases | ✓ | [ALTER DATABASE](../../../api/ysql/the-sql-language/statements/ddl_alter_db/) |
-| Altering columns | ✗ | |
-| Altering a column's data type | ✗ | |
+| Altering a column's name | ✓ | |
+| Altering a column's default value | ✓ | |
+| Altering a column's data type | ✓ (Partial) | |
 | Adding columns | ✓ | [ADD COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#add-column-column-name-data-type-constraint-constraints) |
 | Removing columns | ✓ | [DROP COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#drop-column-column-name-restrict-cascade) |
 | Adding constraints | ✓ | [ADD CONSTRAINT](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#add-alter-table-constraint-constraints) |
 | Removing constraints | ✓ | [DROP CONSTRAINT](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#drop-constraint-constraint-name-restrict-cascade) |
 | Altering indexes | ✗ | |
 | Adding indexes | ✓ | [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/) |
-| Removing indexes | ✗ | |
+| Removing indexes | ✓ | |
+| Adding a primary key | ✓ | |
+| Dropping a primary key | ✓ | |
 | Altering a primary key | ✗ | |
 | Adding user-defined schemas | ✓ |  [CREATE SCHEMA](../../../api/ysql/the-sql-language/statements/ddl_create_schema/) |
 | Removing user-defined schemas | ✗ | |
@@ -68,8 +70,8 @@ To understand which standard SQL features we support, refer to the following tab
 | Not Null | ✓ | [Not Null constraint](../../indexes-constraints/other-constraints/#not-null-constraint) |
 | Primary Key | ✓ | [Primary keys](../../indexes-constraints/primary-key-ysql/) |
 | Foreign Key | ✓ | [Foreign keys](../../indexes-constraints/foreign-key-ysql/) |
-| Default Value | ✗ | |
-| Deferrable Foreign Key constraints | ✓ | |
+| Default Value | ✓ (Partial)| |
+| Deferrable Foreign Key constraints | ✓ (Partial) | |
 | Deferrable Primary Key and Unique constraints | ✗ | |
 | Exclusion constraints| ✗ | |
 
@@ -83,12 +85,9 @@ To understand which standard SQL features we support, refer to the following tab
 | Expression indexes | ✓ | [Expression indexes](../../indexes-constraints/expression-index-ysql/) |
 | Multi-column indexes | ✓  | |
 | Covering indexes | ✓  | [Covering indexes](../../indexes-constraints/covering-index-ysql/) |
-| Prefix indexes | ✗ | Implement using [Expression indexes](../../indexes-constraints/expression-index-ysql/) |
-| Spatial indexes | ✗  | |
-| Multiple indexes per query | ✗ | |
-| Full-text indexes | ✗ | |
 | GiST indexes | ✗ | |
 | BRIN indexes | ✗ | |
+| B-tree indexes | ✓ | B-tree index is treated as an LSM index. |
 
 ### Transactions
 
@@ -100,6 +99,7 @@ To understand which standard SQL features we support, refer to the following tab
 | `ROLLBACK` | ✓ | [ROLLBACK](../../../api/ysql/the-sql-language/statements/txn_rollback/) |
 | `SAVEPOINT` | ✓ |  [SAVEPOINT](../../../api/ysql/the-sql-language/statements/savepoint_create/) |
 | `ROLLBACK TO SAVEPOINT` | ✓ |  [ROLLBACK TO SAVEPOINT](../../../api/ysql/the-sql-language/statements/savepoint_rollback/) |
+| `PREPARE TRANSACTION (XA)` | ✗ |
 
 ### Roles and Permissions
 
@@ -109,7 +109,9 @@ To understand which standard SQL features we support, refer to the following tab
 | Roles | ✓ | [Manage users and roles](../../../secure/authorization/create-roles/) |
 | Object ownership | ✓ | |
 | Privileges | ✓ | [Grant privileges](../../../secure/authorization/ysql-grant-permissions/) |
-| Default privileges | ✗ | |
+| Default privileges | ✓ | |
+| Row level security | ✓ | |
+| Column level security | ✓ | |
 
 ### Queries
 

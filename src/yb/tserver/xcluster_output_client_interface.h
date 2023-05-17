@@ -34,6 +34,7 @@ struct XClusterOutputClientResponse {
   OpIdPB last_applied_op_id;
   uint32_t processed_record_count;
   uint32_t wait_for_version{0};
+  std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response;
 };
 
 class XClusterOutputClientIf : public std::enable_shared_from_this<XClusterOutputClientIf> {
@@ -49,7 +50,7 @@ class XClusterOutputClientIf : public std::enable_shared_from_this<XClusterOutpu
       const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) = 0;
 
   // Async call for applying changes.
-  virtual Status ApplyChanges(const cdc::GetChangesResponsePB* resp) = 0;
+  virtual Status ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> resp) = 0;
 };
 
 }  // namespace yb

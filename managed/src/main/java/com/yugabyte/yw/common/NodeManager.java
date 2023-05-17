@@ -19,6 +19,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
@@ -140,6 +141,8 @@ public class NodeManager extends DevopsBase {
   @Inject ReleaseManager releaseManager;
 
   @Inject ImageBundleUtil imageBundleUtil;
+
+  @Inject NodeAgentPoller nodeAgentPoller;
 
   @Override
   protected String getCommandType() {
@@ -1335,6 +1338,9 @@ public class NodeManager extends DevopsBase {
           .maybeGetNodeAgent(instanceData.ip, provider)
           .ifPresent(
               nodeAgent -> {
+                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+                  nodeAgent.refresh();
+                }
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
                 NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
@@ -1451,6 +1457,9 @@ public class NodeManager extends DevopsBase {
           .maybeGetNodeAgent(nodeIp, provider)
           .ifPresent(
               nodeAgent -> {
+                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+                  nodeAgent.refresh();
+                }
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
                 if (getNodeAgentClient().isAnsibleOffloadingEnabled(nodeAgent, provider)) {

@@ -1,7 +1,8 @@
 ---
-title: Python Drivers
+title: PostgreSQL Psycopg2 Driver
+headerTitle: Python Drivers
 linkTitle: Python Drivers
-description: Python Drivers for YSQL
+description: PostgreSQL Psycopg2 Python Driver for YSQL
 headcontent: Python Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:

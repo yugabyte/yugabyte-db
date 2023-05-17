@@ -69,6 +69,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/shared_lock.h"
@@ -83,11 +84,11 @@ using std::string;
 
 using namespace std::literals; // NOLINT
 
+DECLARE_string(compression_type);
 DECLARE_uint64(initial_seqno);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_string(time_source);
-DECLARE_int32(TEST_delay_execute_async_ms);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_lease_revocation);
 DECLARE_bool(rocksdb_disable_compactions);
@@ -96,25 +97,28 @@ DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int64(global_memstore_size_mb_max);
-DECLARE_bool(TEST_allow_stop_writes);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(transaction_table_num_tablets_per_tserver);
-DECLARE_int32(TEST_tablet_inject_latency_on_apply_write_txn_ms);
-DECLARE_bool(TEST_log_cache_skip_eviction);
 DECLARE_uint64(sst_files_hard_limit);
 DECLARE_uint64(sst_files_soft_limit);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
-DECLARE_int32(TEST_preparer_batch_inject_latency_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
-DECLARE_int32(TEST_backfill_sabotage_frequency);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
-DECLARE_string(compression_type);
 DECLARE_bool(ycql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row);
+
+DECLARE_bool(TEST_allow_stop_writes);
+DECLARE_int32(TEST_backfill_sabotage_frequency);
+DECLARE_int32(TEST_delay_execute_async_ms);
+DECLARE_bool(TEST_log_cache_skip_eviction);
+DECLARE_int32(TEST_preparer_batch_inject_latency_ms);
+DECLARE_int32(TEST_tablet_inject_latency_on_apply_write_txn_ms);
+DECLARE_int32(TEST_fetch_next_delay_ms);
+DECLARE_string(TEST_fetch_next_delay_column);
 
 namespace yb {
 namespace client {
@@ -504,6 +508,54 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
       Status s = master_proxy.IsCreateTableDone(req, resp, &rpc);
       return s.ok() && !resp->has_error();
     }, MonoDelta::FromSeconds(30), "Table Creation");
+  }
+
+  // Make sure long reads are aborted by operation.
+  void TestLongReadAbort(std::function<Status()> operation) {
+    constexpr auto kNumRows = 100;
+
+    ASSERT_NO_FATALS(
+        CreateTable(kTable1Name, &table1_, /* num_tablets = */ 1, /* transactional = */ true));
+    LOG(INFO) << "Created table";
+
+    ASSERT_NO_FATALS(FillTable(0, kNumRows, table1_));
+    LOG(INFO) << "Inserted " << kNumRows << " rows";
+
+    std::vector<std::shared_ptr<tablet::Tablet>> shared_tablets;
+    {
+      for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+        shared_tablets.push_back(peer->shared_tablet());
+      }
+    }
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fetch_next_delay_ms) = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fetch_next_delay_column) = "int_val";
+
+    std::thread counter([this]{
+      auto session = CreateSession();
+
+      const auto start_time = CoarseMonoClock::now();
+
+      // Use high enough timeout to test aborting reads.
+      const auto rows_count_result =
+          CountRows(session, table1_, kNumRows * FLAGS_TEST_fetch_next_delay_ms * 1ms * 10);
+      LOG(INFO) << "Rows count result: " << rows_count_result;
+      // Request should be aborted during tablet shutdown.
+      ASSERT_FALSE(rows_count_result.ok());
+
+      const auto time_elapsed = CoarseMonoClock::now() - start_time;
+      // Abort should be fast.
+      ASSERT_LE(time_elapsed, 1s * kTimeMultiplier);
+    });
+
+    // Wait for test table scan start. It could be delayed, because FLAGS_TEST_fetch_next_delay_ms
+    // impacts master perf as well.
+    RegexWaiterLogSink log_waiter(R"#(.*Delaying read for.*int_val.*)#");
+    ASSERT_OK(log_waiter.WaitFor(30s));
+
+    ASSERT_OK(operation());
+
+    counter.join();
   }
 
   void TestDeletePartialKey(int num_range_keys_in_delete);
@@ -1844,6 +1896,22 @@ TEST_F_EX(QLTabletTest, CorruptData, QLTabletRf1Test) {
   const auto rows_count_result = CountRows(session, table1_);
   LOG(INFO) << "Rows count result: " << rows_count_result;
   ASSERT_FALSE(rows_count_result.ok());
+}
+
+// Make sure long reads are aborted by table drop.
+TEST_F_EX(QLTabletTest, DeleteTableDuringLongRead, QLTabletRf1Test) {
+  TestLongReadAbort([&]{
+    return client_->DeleteTable(
+        table1_.table()->id(), /* wait = */ true, /* txn = */ nullptr,
+        CoarseMonoClock::now() + 1s * kTimeMultiplier);
+  });
+}
+
+// Make sure long reads are aborted by table truncate.
+TEST_F_EX(QLTabletTest, TruncateTableDuringLongRead, QLTabletRf1Test) {
+  TestLongReadAbort([&]{
+    return client_->TruncateTable(table1_.table()->id(), /* wait = */ true);
+  });
 }
 
 } // namespace client

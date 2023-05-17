@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: with-clause
     parent: the-sql-language
-    weight: 200
+    weight: 300
 type: indexpage
 showRightNav: true
 ---

@@ -8,7 +8,6 @@ menu:
     identifier: txn-model-for-top-level-sql
     parent: api-ysql
     weight: 20
-aliases:
 type: docs
 ---
 

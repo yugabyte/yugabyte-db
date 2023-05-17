@@ -36,10 +36,10 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -117,6 +117,7 @@ public class NodeAgentPoller {
   class PollerTask implements Runnable {
     private final PollerTaskParam param;
     private final AtomicReference<PollerTaskState> stateRef = new AtomicReference<>();
+    private final AtomicBoolean isUpgrading = new AtomicBoolean();
     private volatile int lastFailedCount;
     // Future for the upgrade task.
     private volatile Future<?> future;
@@ -167,17 +168,31 @@ public class NodeAgentPoller {
     }
 
     @VisibleForTesting
-    void waitForUpgrade() {
-      Future<?> curr = future;
-      if (curr != null) {
+    synchronized void waitForUpgrade() {
+      while (isUpgrading.get()) {
         try {
-          curr.get();
+          log.info("Waiting for ongoing upgrade on node agent {}", param.getNodeAgentUuid());
+          wait();
         } catch (InterruptedException e) {
           throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-          throw new RuntimeException(e.getCause());
         }
       }
+    }
+
+    private synchronized void cancelUpgrade() {
+      if (isUpgrading.get()) {
+        Future<?> f = future;
+        if (f != null) {
+          f.cancel(true);
+        }
+        notifyAfterUpgrade();
+      }
+    }
+
+    private synchronized void notifyAfterUpgrade() {
+      isUpgrading.set(false);
+      future = null;
+      notifyAll();
     }
 
     @Override
@@ -247,25 +262,31 @@ public class NodeAgentPoller {
           // Fall-thru to complete in single cycle.
         case UPGRADE:
         case UPGRADED:
-          if (future == null) {
-            try {
-              log.info("Submitting upgrade task for node agent {}", nodeAgent.getUuid());
-              // Submit to upgrade pool to not starve poller.
-              future =
-                  upgradeExecutor.submit(
-                      () -> {
-                        try {
-                          upgradeNodeAgent(nodeAgent.getUuid());
-                        } finally {
-                          future = null;
-                        }
-                      });
-            } catch (RejectedExecutionException e) {
-              log.warn(
-                  "Upgrade for node agent {} cannot be scheduled at the moment - {}",
-                  nodeAgent.getUuid(),
-                  e.getMessage());
-            }
+          if (!isUpgrading.compareAndSet(false, true)) {
+            log.info("Node agent {} is being upgraded", nodeAgent.getUuid());
+            return;
+          }
+          // In a rare case, the node could have just been upgraded. It is ok because the node agent
+          // state is refreshed after this exclusive access to check the state again before the
+          // upgrade, preventing double upgrade.
+          try {
+            log.info("Submitting upgrade task for node agent {}", nodeAgent.getUuid());
+            // Submit to upgrade pool to not starve poller.
+            future =
+                upgradeExecutor.submit(
+                    () -> {
+                      try {
+                        upgradeNodeAgent(nodeAgent);
+                      } finally {
+                        notifyAfterUpgrade();
+                      }
+                    });
+          } catch (Exception e) {
+            notifyAfterUpgrade();
+            log.warn(
+                "Upgrade for node agent {} cannot be scheduled at the moment - {}",
+                nodeAgent.getUuid(),
+                e.getMessage());
           }
           break;
         default:
@@ -274,9 +295,15 @@ public class NodeAgentPoller {
     }
 
     // This handles upgrade for the given node agent.
-    private void upgradeNodeAgent(UUID nodeAgentUuid) {
-      NodeAgent nodeAgent = NodeAgent.getOrBadRequest(nodeAgentUuid);
+    private void upgradeNodeAgent(NodeAgent nodeAgent) {
+      nodeAgent.refresh();
       if (nodeAgent.getState() == State.READY) {
+        if (checkVersion(nodeAgent)) {
+          log.info(
+              "Skipping upgrade task for node agent {} because of same version",
+              nodeAgent.getUuid());
+          return;
+        }
         nodeAgent.saveState(State.UPGRADE);
       }
       if (nodeAgent.getState() == State.UPGRADE) {
@@ -295,8 +322,9 @@ public class NodeAgentPoller {
         // At this point, the node agent is still with old cert and key.
         // So, this client has to trust both old and new certs.
         // The new key should also work on node agent.
+        // Update the state atomically with the cert update.
+        nodeAgent.setState(State.UPGRADED);
         nodeAgentManager.replaceCerts(nodeAgent);
-        nodeAgent.saveState(State.UPGRADED);
       }
       if (nodeAgent.getState() == State.UPGRADED) {
         log.info("Finalizing upgrade for node agent {}", nodeAgent.getUuid());
@@ -394,6 +422,19 @@ public class NodeAgentPoller {
         .forEach(uuid -> swamperHelper.removeNodeAgentTargetJson(uuid));
   }
 
+  private PollerTask getOrCreatePollerTask(
+      UUID nodeAgentUuid, Duration lifetime, String softwareVersion) {
+    return pollerTasks.computeIfAbsent(
+        nodeAgentUuid,
+        k ->
+            createPollerTask(
+                PollerTaskParam.builder()
+                    .nodeAgentUuid(nodeAgentUuid)
+                    .softwareVersion(softwareVersion)
+                    .lifetime(lifetime)
+                    .build()));
+  }
+
   /**
    * This method is run in interval. Some node agents may not be responding at the moment. Once they
    * come up, they may recover from their states and change to LIVE. Then, they are notified to
@@ -402,33 +443,20 @@ public class NodeAgentPoller {
   @VisibleForTesting
   void pollerService() {
     try {
-      Duration duration = confGetter.getGlobalConf(GlobalConfKeys.deadNodeAgentRetention);
+      Duration lifetime = confGetter.getGlobalConf(GlobalConfKeys.deadNodeAgentRetention);
       String softwareVersion = nodeAgentManager.getSoftwareVersion();
       Set<UUID> nodeUuids = new HashSet<>();
       NodeAgent.getAll().stream()
           .filter(n -> n.getState() != State.REGISTERING)
           .peek(n -> nodeUuids.add(n.getUuid()))
-          .map(
-              n ->
-                  pollerTasks.computeIfAbsent(
-                      n.getUuid(),
-                      k ->
-                          createPollerTask(
-                              PollerTaskParam.builder()
-                                  .nodeAgentUuid(n.getUuid())
-                                  .softwareVersion(softwareVersion)
-                                  .lifetime(duration)
-                                  .build())))
+          .map(n -> getOrCreatePollerTask(n.getUuid(), lifetime, softwareVersion))
           .filter(PollerTask::isSchedulable)
           .forEach(p -> p.schedule(p.isNodeAgentAlive() ? livePollerExecutor : deadPollerExecutor));
       Iterator<Entry<UUID, PollerTask>> iter = pollerTasks.entrySet().iterator();
       while (iter.hasNext()) {
         Entry<UUID, PollerTask> entry = iter.next();
         if (!nodeUuids.contains(entry.getKey())) {
-          Future<?> future = entry.getValue().future;
-          if (future != null) {
-            future.cancel(true);
-          }
+          entry.getValue().cancelUpgrade();
           swamperHelper.removeNodeAgentTargetJson(entry.getKey());
           iter.remove();
         }
@@ -436,5 +464,51 @@ public class NodeAgentPoller {
     } catch (Exception e) {
       log.error("Error in pollerService - " + e.getMessage(), e);
     }
+  }
+
+  /**
+   * Upgrades the given node agent forcefully if there is no running scheduled upgrade. If a
+   * scheduled upgrade is running, it waits for the upgrade to finish.
+   *
+   * @param nodeAgentUuid the given node agent UUID.
+   * @param skipOnUnreachable skip upgrade if server is unreachable.
+   * @return true if there was an upgrade else false.
+   */
+  public boolean upgradeNodeAgent(UUID nodeAgentUuid, boolean skipOnUnreachable) {
+    NodeAgent nodeAgent = NodeAgent.getOrBadRequest(nodeAgentUuid);
+    Duration lifetime = confGetter.getGlobalConf(GlobalConfKeys.deadNodeAgentRetention);
+    String softwareVersion = nodeAgentManager.getSoftwareVersion();
+    PollerTask pollerTask = getOrCreatePollerTask(nodeAgentUuid, lifetime, softwareVersion);
+    if (pollerTask.checkVersion(nodeAgent)) {
+      log.debug(
+          "Node agent {} is already on the latest version {}",
+          nodeAgentUuid,
+          nodeAgent.getVersion());
+      return false;
+    }
+    try {
+      nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
+    } catch (RuntimeException e) {
+      if (skipOnUnreachable) {
+        return false;
+      }
+      throw e;
+    }
+    if (!pollerTask.isUpgrading.compareAndSet(false, true)) {
+      pollerTask.waitForUpgrade();
+    } else {
+      try {
+        log.info("Starting explicit upgrade on node agent {}", nodeAgentUuid);
+        pollerTask.upgradeNodeAgent(nodeAgent);
+      } finally {
+        pollerTask.notifyAfterUpgrade();
+      }
+    }
+    nodeAgent.refresh();
+    if (!pollerTask.checkVersion(nodeAgent)) {
+      throw new RuntimeException(
+          String.format("Node agent %s is different after an upgrade", nodeAgent.getUuid()));
+    }
+    return true;
   }
 }

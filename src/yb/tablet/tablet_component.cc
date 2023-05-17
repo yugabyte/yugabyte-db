@@ -22,8 +22,8 @@ namespace yb {
 namespace tablet {
 
 TabletScopedRWOperationPauses TabletComponent::StartShutdownRocksDBs(
-    DisableFlushOnShutdown disable_flush_on_shutdown) {
-  return tablet_.StartShutdownRocksDBs(disable_flush_on_shutdown);
+    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
+  return tablet_.StartShutdownRocksDBs(disable_flush_on_shutdown, abort_ops);
 }
 
 std::vector<std::string> TabletComponent::CompleteShutdownRocksDBs(
@@ -47,8 +47,8 @@ RaftGroupMetadata& TabletComponent::metadata() const {
   return *tablet_.metadata();
 }
 
-RWOperationCounter& TabletComponent::pending_op_counter() const {
-  return tablet_.pending_non_abortable_op_counter_;
+RWOperationCounter& TabletComponent::pending_op_counter_blocking_rocksdb_shutdown_start() const {
+  return tablet_.pending_op_counter_blocking_rocksdb_shutdown_start_;
 }
 
 rocksdb::DB& TabletComponent::regular_db() const {

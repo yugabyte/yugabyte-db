@@ -167,7 +167,7 @@ void RestorationState::PrepareOperations(
 
 std::optional<SysSnapshotEntryPB::State> RestorationState::GetTerminalStateForStatus(
     const Status& status) {
-  if (status.IsAborted() ||
+  if (status.IsAborted() || status.IsNotFound() ||
       tserver::TabletServerError(status) == tserver::TabletServerErrorPB::INVALID_SNAPSHOT) {
     return SysSnapshotEntryPB::FAILED;
   }
