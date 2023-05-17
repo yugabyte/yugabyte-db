@@ -344,12 +344,6 @@ Status XClusterOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* polle
         local_client_->client->OpenTable(consumer_tablet_info_.table_id, &table_));
   }
 
-  if (PREDICT_FALSE(FLAGS_TEST_xcluster_disable_replication_transaction_status_table) &&
-      table_->table_type() == client::YBTableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    HANDLE_ERROR_AND_RETURN_IF_NOT_OK(
-        STATUS(TryAgain, "Failing ApplyChanges for transaction status table for test"));
-  }
-
   xcluster_resp_copy_ = *poller_resp;
   timeout_ms_ = MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms);
   // Using this future as a barrier to get all the tablets before processing.  Ordered iteration
