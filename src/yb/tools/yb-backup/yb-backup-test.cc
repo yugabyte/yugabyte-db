@@ -905,8 +905,9 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRestoreSnapshotWithDelete
   // Step 3
   auto table1_id = ASSERT_RESULT(client_->ListTables(table_name))[0].table_id();
   auto table2_id = ASSERT_RESULT(client_->ListTables(table_name2))[0].table_id();
+  std::vector<TableId> table_ids = {table1_id, table2_id};
   LOG(INFO) << "Create snapshot";
-  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot({table1_id, table2_id}));
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_ids));
   // Step 4
   LOG(INFO) << Format("Drop Table: $0", table_name);
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
