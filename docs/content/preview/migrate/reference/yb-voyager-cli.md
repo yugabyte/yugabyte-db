@@ -336,7 +336,7 @@ The valid *arguments* for import data file are described in the following table:
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
-| [--data-dir](#data-dir) <path> | Path to the directory/S3 prefixed bucket URI containing the data files to import. |
+| [--data-dir](#data-dir) <path> | Path to the directory or S3-prefixed URI of the bucket containing the data files to import. |
 | [--delimiter](#delimiter) | Default: comma (,); can be changed to '\t' (tab), pipe(\|), or any other character. |
 | [--disable-pb](#disable-pb) | Hide progress bars. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
