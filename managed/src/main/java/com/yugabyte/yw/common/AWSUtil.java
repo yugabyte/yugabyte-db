@@ -16,6 +16,11 @@ import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
 import com.amazonaws.regions.DefaultAwsRegionProviderChain;
+import com.amazonaws.services.ec2.AmazonEC2;
+import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
+import com.amazonaws.services.ec2.model.DescribeSpotPriceHistoryRequest;
+import com.amazonaws.services.ec2.model.DescribeSpotPriceHistoryResult;
+import com.amazonaws.services.ec2.model.SpotPrice;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
@@ -34,6 +39,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 import java.io.InputStream;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -503,5 +509,23 @@ public class AWSUtil implements CloudUtil {
       s3Data.regionLocations.stream().forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
     }
     return regionLocationsMap;
+  }
+
+  public static Double getAwsSpotPrice(String zone, String instanceType) {
+    AmazonEC2 ec2Client = AmazonEC2ClientBuilder.defaultClient();
+    DescribeSpotPriceHistoryRequest request =
+        new DescribeSpotPriceHistoryRequest()
+            .withAvailabilityZone(zone)
+            .withInstanceTypes(instanceType)
+            .withProductDescriptions("Linux/UNIX")
+            .withStartTime(new Date())
+            .withEndTime(new Date());
+
+    DescribeSpotPriceHistoryResult result = ec2Client.describeSpotPriceHistory(request);
+    List<SpotPrice> prices = result.getSpotPriceHistory();
+    log.info(
+        "Current aws spot price for instance type {} in zone {} = {}", instanceType, zone, prices);
+    Double spotPrice = Double.parseDouble(prices.get(0).getSpotPrice());
+    return spotPrice;
   }
 }
