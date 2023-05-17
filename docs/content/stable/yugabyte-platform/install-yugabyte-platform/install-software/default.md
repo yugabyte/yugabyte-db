@@ -1,8 +1,9 @@
 ---
 title: Install YugabyteDB Anywhere
-headerTitle: Install YugabyteDB Anywhere - Replicated
+headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install the YugabyteDB Anywhere software.
+headContent: Install YBA software using Replicated and Docker containers
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform
