@@ -120,7 +120,7 @@ lazy val root = (project in file("."))
   })
 
 scalaVersion := "2.12.10"
-javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
+javacOptions ++= Seq("-source", "17", "-target", "17")
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 // These are needed to prevent (reduce possibility?) or incremental compilation infinite loop issue:
@@ -213,8 +213,8 @@ libraryDependencies ++= Seq(
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
-  "org.mockito" % "mockito-core" % "2.13.0" % Test,
-  "org.mockito" % "mockito-inline" % "3.8.0" % Test,
+  "org.mockito" % "mockito-core" % "5.3.1" % Test,
+  "org.mockito" % "mockito-inline" % "5.2.0" % Test,
   "org.mindrot" % "jbcrypt" % "0.4" % Test,
   "com.h2database" % "h2" % "2.1.212" % Test,
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
