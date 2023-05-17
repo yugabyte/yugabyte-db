@@ -102,8 +102,10 @@ public enum PlatformMetrics {
       "Flag, indicating that private access key's permission is unchanged", Unit.STATUS),
   UNIVERSE_NODE_PROVISIONED_IOPS("Provisioned IOPS for the node disk", Unit.COUNT, false),
   UNIVERSE_NODE_PROVISIONED_THROUGHPUT(
-      "Provisioned throughput for the node disk", Unit.COUNT, false);
-
+      "Provisioned throughput for the node disk", Unit.COUNT, false),
+  // Used for k8s universes only.
+  CONTAINER_RESOURCE_REQUESTS_CPU_CORES(
+      "Requested number of CPU cores for the db process", Unit.COUNT, false);
   private final String help;
   private final Unit unit;
   private final Set<MetricSourceState> validForSourceStates;

@@ -41,7 +41,10 @@ public enum KnownAlertLabels {
   MESSAGE,
   MAINTENANCE_WINDOW_UUIDS,
   ALERT_EXPRESSION,
-  NODE_AGENT_UUID;
+  NODE_AGENT_UUID,
+  NAMESPACE,
+  POD_NAME,
+  CONTAINER_NAME;
 
   public String labelName() {
     return name().toLowerCase();
