@@ -8,6 +8,7 @@ import { SchemaSuggestion } from './advisor/SchemaSuggestion';
 import { QueryLoadSkew } from './advisor/QueryLoadSkew';
 import { ConnectionSkew } from './advisor/ConnectionSkew';
 import { CpuSkew } from './advisor/CpuSkew';
+import { HotShard } from './advisor/HotShard';
 import { CustomRecommendations } from './advisor/CustomRecommendation';
 import {
   RecommendationType,
@@ -94,11 +95,16 @@ const getRecommendation = (type: RecommendationType, summary: ReactNode | string
     };
     return <CpuSkew data={cpuSkewData} summary={summary} />;
   }
-  if (
-    type === RecommendationType.CPU_USAGE ||
-    type === RecommendationType.HOT_SHARD ||
-    type === RecommendationType.REJECTED_CONNECTIONS
-  ) {
+  if (type === RecommendationType.HOT_SHARD) {
+    const hotShardData = {
+      suggestion: data.suggestion,
+      maxNodeName: data.recommendationInfo.node_with_hot_shard,
+      maxNodeValue: data.recommendationInfo.hot_shard_node_operation_count ?? 0,
+      otherNodesAvgValue: data.recommendationInfo.avg_query_count_of_other_nodes ?? 0
+    };
+    return <HotShard data={hotShardData} summary={summary} />;
+  }
+  if (type === RecommendationType.CPU_USAGE || type === RecommendationType.REJECTED_CONNECTIONS) {
     return <CustomRecommendations summary={summary} suggestion={data.suggestion} type={type} />;
   }
   return null;
