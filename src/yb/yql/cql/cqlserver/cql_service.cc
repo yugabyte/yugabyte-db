@@ -161,9 +161,11 @@ client::YBClient* CQLServiceImpl::client() const {
   if (client && !is_metadata_initialized_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> l(metadata_init_mutex_);
     if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
+      auto meta_data_cache_mem_tracker =
+          MemTracker::FindOrCreateTracker(0, "CQL Metadata cache", server_->mem_tracker());
       // Create and save the metadata cache object.
-      metadata_cache_ = std::make_shared<YBMetaDataCache>(client,
-                                                          FLAGS_use_cassandra_authentication);
+      metadata_cache_ = std::make_shared<YBMetaDataCache>(
+          client, FLAGS_use_cassandra_authentication, meta_data_cache_mem_tracker);
       is_metadata_initialized_.store(true, std::memory_order_release);
     }
   }

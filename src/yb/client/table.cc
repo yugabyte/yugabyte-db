@@ -22,6 +22,7 @@
 #include "yb/master/master_client.pb.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
@@ -309,6 +310,13 @@ void YBTable::FetchPartitions(
 
         callback(partitions);
       });
+}
+
+size_t YBTable::DynamicMemoryUsage() const {
+  // Below presumes that every PK size is less than default string size of 22 bytes (i.e.
+  // kStdStringInternalCapacity).
+  return sizeof(*this) + info_->DynamicMemoryUsage() +
+         (GetPartitionCount() * kStdStringInternalCapacity);
 }
 
 //--------------------------------------------------------------------------------------------------

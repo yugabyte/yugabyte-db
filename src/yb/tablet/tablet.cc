@@ -627,9 +627,12 @@ void Tablet::ResetYBMetaDataCache() {
 }
 
 void Tablet::CreateNewYBMetaDataCache() {
-  std::atomic_store_explicit(&metadata_cache_,
-      std::make_shared<client::YBMetaDataCache>(client_future_.get(),
-                                                false /* Update permissions cache */),
+  auto meta_data_cache_mem_tracker =
+      MemTracker::FindOrCreateTracker(0, "Metadata cache", mem_tracker());
+  std::atomic_store_explicit(
+      &metadata_cache_,
+      std::make_shared<client::YBMetaDataCache>(
+          client_future_.get(), false /* Update permissions cache */, meta_data_cache_mem_tracker),
       std::memory_order_release);
 }
 
