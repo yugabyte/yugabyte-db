@@ -22,6 +22,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 
 DECLARE_string(vmodule);
@@ -50,9 +51,9 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
   void SetUp() override {
     YB_SKIP_TEST_IN_TSAN();
     XClusterYsqlTestBase::SetUp();
-    ASSERT_OK(SET_FLAG(vmodule, "backfill_index*=0,xrepl*=0,xcluster*=0"));
+    ASSERT_OK(SET_FLAG(vmodule, "backfill_index*=4,xrepl*=4,xcluster*=4,add_table*=4,catalog*=4"));
 
-    FLAGS_TEST_user_ddl_operation_timeout_sec = 30 * kTimeMultiplier;
+    FLAGS_TEST_user_ddl_operation_timeout_sec = NonTsanVsTsan(60, 90);
 
     ASSERT_OK(Initialize(3 /* replication_factor */));
 
@@ -282,6 +283,44 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(ValidateRows());
 }
+
+#ifndef NDEBUG
+TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
+  ASSERT_OK(producer_conn_->Execute(kCreateIndexStmt));
+
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"AddTableToXClusterTask::RunInternal::BeforeBootstrap",
+        "MasterFailoverRetryAddTableToXcluster::BeforeStepDown"}});
+
+  SyncPoint::GetInstance()->SetCallBack(
+      "AddTableToXClusterTask::RunInternal::BeforeBootstrap",
+      [](void* stuck_add_table_to_xcluster) {
+        *(reinterpret_cast<bool*>(stuck_add_table_to_xcluster)) = true;
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto test_thread_holder = TestThreadHolder();
+  Status status;
+  test_thread_holder.AddThread([this, &status]() {
+    // Create index on consumer.
+    status = consumer_conn_->Execute(kCreateIndexStmt);
+  });
+
+  // Wait for the task to start and get stuck.
+  TEST_SYNC_POINT("MasterFailoverRetryAddTableToXcluster::BeforeStepDown");
+  SyncPoint::GetInstance()->ClearAllCallBacks();
+
+  auto master_leader = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+
+  ASSERT_OK(StepDown(
+      master_leader->tablet_peer(), std::string() /* new_leader_uuid */, ForceStepDown::kTrue));
+
+  test_thread_holder.JoinAll();
+  ASSERT_OK(status);
+
+  ASSERT_OK(ValidateRows());
+}
+#endif
 
 // TODO(Hari): #16758 Test collocated table
 

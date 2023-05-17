@@ -1,12 +1,12 @@
 ```output.ebnf
-create_sequence ::= CREATE SEQUENCE [ IF NOT EXISTS ] sequence_name 
-                    sequence_options
+create_sequence ::= CREATE [ TEMPORARY | TEMP ] SEQUENCE 
+                    [ IF NOT EXISTS ] sequence_name sequence_options
 
 sequence_name ::= qualified_name
 
-sequence_options ::= [ INCREMENT [ BY ] increment ] 
-                     [ MINVALUE minvalue | NO MINVALUE ] 
-                     [ MAXVALUE maxvalue | NO MAXVALUE ] 
-                     [ START [ WITH ] start ] [ CACHE cache ] 
-                     [ [ NO ] CYCLE ]
+sequence_options ::= [ INCREMENT [ BY ] int_literal ] 
+                     [ MINVALUE int_literal | NO MINVALUE ] 
+                     [ MAXVALUE int_literal | NO MAXVALUE ] 
+                     [ START [ WITH ] int_literal ] 
+                     [ CACHE positive_int_literal ] [ [ NO ] CYCLE ]
 ```

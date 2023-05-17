@@ -25,7 +25,7 @@
         },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
-          "enum" : [ "EXISTING", "NEW" ],
+          "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
           "readOnly" : true,
           "type" : "string"
         }
@@ -1508,7 +1508,7 @@
         },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
-          "enum" : [ "EXISTING", "NEW" ],
+          "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
           "readOnly" : true,
           "type" : "string"
         }
@@ -4367,7 +4367,7 @@
         },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
-          "enum" : [ "EXISTING", "NEW" ],
+          "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
           "readOnly" : true,
           "type" : "string"
         },

@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `RESET` statement to restore the value of a run-time parameter to the default value. `RESET` maps to `SET configuration_parameter TO DEFAULT`.
+Use the `RESET` statement to restore the value of a run-time parameter to the default value. `RESET` is an alternative spelling for `SET run_time_parameter TO DEFAULT`.
 
 ## Syntax
 
@@ -42,13 +42,7 @@ Use the `RESET` statement to restore the value of a run-time parameter to the de
 
 ## Semantics
 
-{{< note title="Note" >}}
-
-Although the values of a parameter can be set, displayed, and reset, the effect of these parameters are not yet supported in Yugabyte. The factory settings or default behaviors will be used for the moment.
-
-{{< /note >}}
-
-### *configuration_parameter*
+### *run_time_parameter*
 
 Specify the name of a mutable run-time parameter.
 

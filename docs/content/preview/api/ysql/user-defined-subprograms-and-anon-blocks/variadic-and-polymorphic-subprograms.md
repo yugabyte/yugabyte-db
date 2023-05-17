@@ -8,7 +8,6 @@ menu:
     identifier: variadic-and-polymorphic-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 50
-aliases:
 type: docs
 ---
 

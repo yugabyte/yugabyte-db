@@ -116,7 +116,7 @@ class PickLeaderReplica : public TSPicker {
 //
 // The target tablet server is refreshed before each RPC by consulting the provided
 // TSPicker implementation.
-class RetryingTSRpcTask : public server::MonitoredTask {
+class RetryingTSRpcTask : public server::RunnableMonitoredTask {
  public:
   RetryingTSRpcTask(Master *master,
                     ThreadPool* callback_pool,
@@ -127,18 +127,12 @@ class RetryingTSRpcTask : public server::MonitoredTask {
   ~RetryingTSRpcTask();
 
   // Send the subclass RPC request.
-  Status Run();
+  Status Run() override;
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
   server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override;
 
-  server::MonitoredTaskState state() const override {
-    return state_.load(std::memory_order_acquire);
-  }
-
-  MonoTime start_timestamp() const override { return start_ts_; }
-  MonoTime completion_timestamp() const override { return end_ts_; }
   const scoped_refptr<TableInfo>& table() const { return table_ ; }
 
  protected:
@@ -217,9 +211,7 @@ class RetryingTSRpcTask : public server::MonitoredTask {
                      const std::string& metric_name,
                      const std::string& metric_type);
 
-  MonoTime start_ts_;
   MonoTime attempt_start_ts_;
-  MonoTime end_ts_;
   MonoTime deadline_;
 
   int attempt_ = 0;
@@ -269,9 +261,6 @@ class RetryingTSRpcTask : public server::MonitoredTask {
 
   virtual int num_max_retries();
   virtual int max_delay_ms();
-
-  // Use state() and MarkX() accessors.
-  std::atomic<server::MonitoredTaskState> state_{server::MonitoredTaskState::kWaiting};
 };
 
 // RetryingTSRpcTask subclass which always retries the same tablet server,
@@ -571,10 +560,6 @@ class AsyncChangeConfigTask : public CommonInfoForRaftTask {
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid)
       : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
-
-  server::MonitoredTaskType type() const override {
-    return server::MonitoredTaskType::kChangeConfig;
-  }
 
   std::string type_name() const override { return "ChangeConfig"; }
 

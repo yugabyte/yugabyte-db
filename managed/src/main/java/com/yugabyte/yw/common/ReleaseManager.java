@@ -590,7 +590,8 @@ public class ReleaseManager {
     } catch (Exception e) {
       throw new RuntimeException(
           String.format(
-              "Could not download the helm charts for version %s : %s", version, e.getMessage()));
+              "Could not download the helm charts for version %s : %s", version, e.getMessage()),
+          e);
     }
   }
 

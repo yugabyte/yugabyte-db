@@ -189,8 +189,9 @@ BulkLoadTask::BulkLoadTask(vector<pair<TabletId, string>> rows,
 }
 
 void BulkLoadTask::Run() {
+  auto dummy_pending_op = ScopedRWOperation();
   DocWriteBatch doc_write_batch(docdb::DocDB::FromRegularUnbounded(db_fixture_->rocksdb()),
-                                InitMarkerBehavior::kOptional);
+                                InitMarkerBehavior::kOptional, dummy_pending_op);
 
   for (const auto &entry : rows_) {
     const string &row = entry.second;

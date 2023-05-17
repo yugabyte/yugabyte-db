@@ -42,9 +42,7 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 ## Semantics
 
-When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index.
-In most cases, this uses an online schema migration.
-The following table explains some differences between creating an index online and not online.
+When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index. In most cases, this uses an online schema migration. The following table explains some differences between creating an index online and not online.
 
 | Condition | Online | Not online |
 | :-------- | :----- | :--------- |
@@ -96,8 +94,8 @@ Indicates not to recurse creating indexes on partitions, if the table is partiti
 
 ### *access_method_name*
 
-The name of the index access method.
-By default, `lsm` is used for YugabyteDB tables and `btree` is used otherwise (for example, temporary tables).
+The name of the index access method. By default, `lsm` is used for YugabyteDB tables and `btree` is used otherwise (for example, temporary tables).
+
 [GIN indexes](../../../../../explore/indexes-constraints/gin/) can be created in YugabyteDB by using the `ybgin` access method.
 
 ### INCLUDE clause
@@ -111,6 +109,7 @@ Specify the name of the [tablespace](../../../../../explore/ysql-language-featur
 ### WHERE clause
 
 A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause.
+
 It can be used to exclude NULL or common values from the index, or include just the rows of interest.
 
 This speeds up any writes to the table because rows containing the common column values don't need to be indexed.
@@ -119,13 +118,13 @@ It also reduces the size of the index, thereby improving the speed for read quer
 
 #### *name*
 
- Specify the name of the index to be created.
+Specify the name of the index to be created.
 
 #### *table_name*
 
 Specify the name of the table to be indexed.
 
-### *index_elem*
+#### *index_elem*
 
 #### *column_name*
 
@@ -236,7 +235,7 @@ lsm, for table "public.products"
 
 ### Create an index specifying the number of tablets
 
-To specify the number of tablets for an index, you can use the `CREATE INDEX` statement with the [`SPLIT INTO`](#split-into) clause.
+To specify the number of tablets for an index, you can use the `CREATE INDEX` statement with the [SPLIT INTO](#split-into) clause.
 
 ```plpgsql
 CREATE TABLE employees (id int PRIMARY KEY, first_name TEXT, last_name TEXT) SPLIT INTO 10 TABLETS;

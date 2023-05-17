@@ -233,15 +233,18 @@ DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
              "pool is used to run full compactions on tablets, either on a shceduled basis "
               "or after they have been split and still contain irrelevant data from the tablet "
               "they were sourced from.");
-DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_queue_size, 200,
+DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_queue_size, 500,
              "The maximum number of tasks that can be held in the pool for "
              "full_compaction_pool_. This pool is used to run full compactions on tablets "
              "on a scheduled basis or after they have been split and still contain irrelevant data "
              "from the tablet they were sourced from.");
 
 DEFINE_NON_RUNTIME_int32(scheduled_full_compaction_check_interval_min, 15,
-             "The interval at which the scheduled full compaction task checks for tablets "
-             "eligible for compaction, in minutes. 0 indicates that the background task "
+             "DEPRECATED. Use auto_compact_check_interval_sec.");
+
+DEFINE_NON_RUNTIME_int32(auto_compact_check_interval_sec, 60,
+             "The interval at which the full compaction task checks for tablets "
+             "eligible for compaction, in seconds. 0 indicates that the background task "
              "is fully disabled.");
 
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
@@ -474,7 +477,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       server_->metric_entity(),
       [this](){ return GetTabletPeers(); });
 
-  full_compaction_manager_ = std::make_unique<FullCompactionManager>(this);
+  full_compaction_manager_ = std::make_unique<FullCompactionManager>(
+      this, FLAGS_auto_compact_check_interval_sec);
 
   tablet_options_.priority_thread_pool_metrics =
       std::make_shared<rocksdb::RocksDBPriorityThreadPoolMetrics>(
@@ -580,14 +584,13 @@ Status TSTabletManager::Init() {
   }
 
   // Background task initiation.
-  const int32_t compaction_check_interval_min =
-      FLAGS_scheduled_full_compaction_check_interval_min;
-  if (compaction_check_interval_min > 0) {
+  const auto compaction_check_interval_sec = full_compaction_manager_->check_interval_sec();
+  if (compaction_check_interval_sec > 0) {
     scheduled_full_compaction_bg_task_.reset(
         new BackgroundTask(std::function<void()>([this]() {
             full_compaction_manager_->ScheduleFullCompactions(); }),
-        "tablet manager", "scheduled full compactions",
-        MonoDelta::FromMinutes(compaction_check_interval_min).ToChronoMilliseconds()));
+        "tablet manager", "full compaction manager",
+        MonoDelta::FromSeconds(compaction_check_interval_sec).ToChronoMilliseconds()));
     RETURN_NOT_OK(scheduled_full_compaction_bg_task_->Init());
   }
 
@@ -1786,7 +1789,7 @@ void TSTabletManager::StartShutdown() {
 
 void TSTabletManager::CompleteShutdown() {
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
-    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse);
+    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
   }
 
   // Shut down the apply pool.
@@ -2893,7 +2896,7 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
   }
   // If shutdown was initiated by someone else we should not wait for shutdown to complete.
   if (tablet_peer && tablet_peer->StartShutdown()) {
-    tablet_peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse);
+    tablet_peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
   }
   tserver::LogAndTombstone(meta, msg, uuid, status, ts_tablet_manager);
   return status;

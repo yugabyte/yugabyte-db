@@ -117,18 +117,20 @@ const auto kGeneralErrorStatus = STATUS(IOError, Batcher::kErrorReachingOutToTSe
 // locks are non-reentrant).
 // ------------------------------------------------------------
 
-Batcher::Batcher(YBClient* client,
-                 const YBSessionPtr& session,
-                 YBTransactionPtr transaction,
-                 ConsistentReadPoint* read_point,
-                 bool force_consistent_read)
-  : client_(client),
-    weak_session_(session),
-    async_rpc_metrics_(session->async_rpc_metrics()),
-    transaction_(std::move(transaction)),
-    read_point_(read_point),
-    force_consistent_read_(force_consistent_read) {
-}
+Batcher::Batcher(
+    YBClient* client,
+    const YBSessionPtr& session,
+    YBTransactionPtr transaction,
+    ConsistentReadPoint* read_point,
+    bool force_consistent_read,
+    int64_t leader_term)
+    : client_(client),
+      weak_session_(session),
+      async_rpc_metrics_(session->async_rpc_metrics()),
+      transaction_(std::move(transaction)),
+      read_point_(read_point),
+      force_consistent_read_(force_consistent_read),
+      leader_term_(leader_term) {}
 
 Batcher::~Batcher() {
   LOG_IF_WITH_PREFIX(DFATAL, outstanding_rpcs_ != 0)
@@ -554,8 +556,8 @@ void Batcher::ExecuteOperations(Initial initial) {
     // Allow local calls for last group only.
     const auto allow_local_calls =
         allow_local_calls_in_curr_thread_ && (&group == &ops_info_.groups.back());
-    rpcs.push_back(CreateRpc(
-        self, group.begin->tablet.get(), group, allow_local_calls, need_consistent_read));
+    rpcs.push_back(
+        CreateRpc(self, group.begin->tablet.get(), group, allow_local_calls, need_consistent_read));
   }
 
   outstanding_rpcs_.store(rpcs.size());
@@ -615,12 +617,12 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   // levels the read algorithm would differ.
   const auto op_group = (*group.begin).yb_op->group();
   AsyncRpcData data {
-    .batcher = self,
-    .tablet = tablet,
-    .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
-    .need_consistent_read = need_consistent_read,
-    .ops = InFlightOps(group.begin, group.end),
-    .need_metadata = group.need_metadata
+      .batcher = self,
+      .tablet = tablet,
+      .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
+      .need_consistent_read = need_consistent_read,
+      .ops = InFlightOps(group.begin, group.end),
+      .need_metadata = group.need_metadata
   };
 
   switch (op_group) {

@@ -119,7 +119,6 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   std::atomic<SchemaVersion> last_compatible_consumer_schema_version_;
 
   Status status_ GUARDED_BY(data_mutex_);
-  std::shared_ptr<cdc::GetChangesResponsePB> resp_ GUARDED_BY(data_mutex_);
 
   std::shared_ptr<XClusterOutputClientIf> output_client_;
   std::shared_ptr<XClusterClient> producer_client_;

@@ -15,7 +15,7 @@ import { YBButton } from '../../../../common/forms/fields';
 import { YBInputField } from '../../../../../redesign/components';
 
 interface ConfigureAvailabilityZoneFieldProps {
-  isSubmitting: boolean;
+  isFormDisabled: boolean;
   className?: string;
 }
 
@@ -47,7 +47,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const ConfigureOnPremAvailabilityZoneField = ({
-  isSubmitting,
+  isFormDisabled,
   className
 }: ConfigureAvailabilityZoneFieldProps) => {
   const classes = useStyles();
@@ -69,12 +69,14 @@ export const ConfigureOnPremAvailabilityZoneField = ({
                 control={control}
                 name={`zones.${index}.code`}
                 placeholder="Enter..."
+                disabled={isFormDisabled}
                 fullWidth
               />
               <YBButton
                 className={classes.removeZoneButton}
                 btnIcon="fa fa-trash-o"
                 onClick={() => remove(index)}
+                disabled={isFormDisabled}
               />
             </Box>
           </div>
@@ -86,7 +88,7 @@ export const ConfigureOnPremAvailabilityZoneField = ({
           btnClass="btn btn-default"
           btnType="button"
           onClick={addZoneField}
-          disabled={isSubmitting}
+          disabled={isFormDisabled}
         />
       </div>
     </div>

@@ -77,6 +77,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   private final Set<TaskType> RETRYABLE_TASKS =
       ImmutableSet.of(
+          TaskType.CreateKubernetesUniverse,
+          TaskType.DestroyKubernetesUniverse,
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
           TaskType.ReadOnlyClusterCreate,

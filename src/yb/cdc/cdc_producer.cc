@@ -60,11 +60,11 @@ DEFINE_test_flag(bool, xcluster_simulate_have_more_records, false,
 DEFINE_test_flag(bool, xcluster_skip_meta_ops, false,
                  "Whether GetChanges should skip processing meta operations ");
 
-DEFINE_test_flag(bool, enable_replicate_transaction_status_table, false,
-    "Enable replication of transaction status table. This is only used in tests.");
-
 DEFINE_RUNTIME_uint32(xcluster_consistent_wal_safe_time_frequency_ms, 250,
                       "Frequency in milliseconds at which apply safe time is computed.");
+
+DEFINE_RUNTIME_AUTO_bool(xcluster_enable_subtxn_abort_propagation, kExternal, false, true,
+    "Enable including information about which subtransactions aborted in CDC changes");
 
 namespace yb {
 namespace cdc {
@@ -399,8 +399,8 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
       record->set_time(msg->hybrid_time());
       if (batch.has_transaction()) {
         if (!replicate_intents) {
-          auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
-              batch.transaction().transaction_id()));
+          auto txn_id =
+              VERIFY_RESULT(FullyDecodeTransactionId(batch.transaction().transaction_id()));
           // If we're not replicating intents, set record time using the transaction map.
           RETURN_NOT_OK(SetRecordTime(txn_id, txn_map, record));
         } else {
@@ -409,6 +409,10 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
           transaction_state->add_tablets(tablet_peer->tablet_id());
           transaction_state->set_external_status_tablet_id(
               batch.transaction().status_tablet().ToBuffer());
+          if (GetAtomicFlag(&FLAGS_xcluster_enable_subtxn_abort_propagation) &&
+              batch.subtransaction().has_subtransaction_id()) {
+            record->set_subtransaction_id(batch.subtransaction().subtransaction_id());
+          }
         }
       }
     }
@@ -472,6 +476,11 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
     case TransactionStatus::APPLYING: {
       record->set_operation(CDCRecordPB::APPLY);
       txn_state->set_commit_hybrid_time(transaction_state.commit_hybrid_time());
+      if (GetAtomicFlag(&FLAGS_xcluster_enable_subtxn_abort_propagation)) {
+        auto aborted_subtransactions =
+            VERIFY_RESULT(SubtxnSet::FromPB(transaction_state.aborted().set()));
+        aborted_subtransactions.ToPB(txn_state->mutable_aborted()->mutable_set());
+      }
       auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
       tablet->metadata()->partition()->ToPB(record->mutable_partition());
       break;
@@ -483,7 +492,8 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
       }
       break;
     }
-    case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
+    case TransactionStatus::PENDING:
+      FALLTHROUGH_INTENDED;
     // If transaction status tablet log is GCed, or we bootstrap it is possible that that first
     // record we see for the transaction is the PENDING record. This can be treated as a CREATED
     // record which is idempotent.
@@ -492,8 +502,9 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
       break;
     }
     default: {
-      return STATUS(IllegalState, Format("Processing unexpected op type $0",
-                                          msg->transaction_state().status()));
+      return STATUS(
+          IllegalState,
+          Format("Processing unexpected op type $0", msg->transaction_state().status()));
     }
   }
   return Status::OK();
@@ -568,8 +579,7 @@ Status GetChangesForXCluster(
   auto now = MonoTime::Now();
   auto* txn_participant = tablet->transaction_participant();
   // Check if both the table and stream are transactional.
-  bool transactional = (txn_participant != nullptr) && stream_metadata->transactional &&
-                       !FLAGS_TEST_enable_replicate_transaction_status_table;
+  bool transactional = (txn_participant != nullptr) && stream_metadata->transactional;
 
   // In order to provide a transactionally consistent WAL, we need to perform the below steps:
   // If last_apply_safe_time is kInvalid

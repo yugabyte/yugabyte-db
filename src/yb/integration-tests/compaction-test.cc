@@ -92,6 +92,7 @@ DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
+DECLARE_int32(auto_compact_check_interval_sec);
 DECLARE_bool(TEST_pause_before_full_compaction);
 DECLARE_bool(TEST_disable_adding_last_compaction_to_tablet_metadata);
 DECLARE_int32(full_compaction_pool_max_queue_size);
@@ -177,6 +178,7 @@ class CompactionTest : public YBTest {
     // Disable scheduled compactions by default so we don't have surprise compactions.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_jitter_factor_percentage) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_check_interval_sec) = 0;
 
     // Start cluster.
     MiniClusterOptions opts;
@@ -658,6 +660,7 @@ class ScheduledFullCompactionsTest : public CompactionTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_full_compaction_pool_max_queue_size) = kQueueSize;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_full_compaction_pool_max_threads)
         = kPoolMaxThreads;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_check_interval_sec) = 900;
 
     CompactionTest::SetUp();
 

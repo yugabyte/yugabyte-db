@@ -336,13 +336,15 @@ class WriteQueryCompletionCallback {
       WriteResponsePB* response,
       tablet::WriteQuery* query,
       const server::ClockPtr& clock,
-      bool trace = false)
+      bool trace,
+      bool leader_term_set_in_request)
       : tablet_peer_(std::move(tablet_peer)),
         context_(std::move(context)),
         response_(response),
         query_(query),
         clock_(clock),
         include_trace_(trace),
+        leader_term_set_in_request_(leader_term_set_in_request),
         trace_(include_trace_ ? Trace::CurrentTrace() : nullptr) {}
 
   void operator()(Status status) const {
@@ -358,6 +360,12 @@ class WriteQueryCompletionCallback {
     TRACE("Write completing with status $0", yb::ToString(status));
 
     if (!status.ok()) {
+      if (leader_term_set_in_request_ && status.IsAborted() &&
+          status.message().Contains("Operation submitted in term")) {
+        // Return a permanent error since term is set the request.
+        status = STATUS_FORMAT(InvalidArgument, "Leader term changed");
+      }
+
       LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status;
       if (include_trace_ && trace_) {
         response_->set_trace_buffer(trace_->DumpToString(true));
@@ -398,6 +406,7 @@ class WriteQueryCompletionCallback {
   tablet::WriteQuery* const query_;
   server::ClockPtr clock_;
   const bool include_trace_;
+  const bool leader_term_set_in_request_;
   scoped_refptr<Trace> trace_;
 };
 
@@ -1996,8 +2005,12 @@ Status TabletServiceImpl::PerformWrite(
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(*context));
 
+  const auto leader_term = req->has_leader_term() && req->leader_term() != OpId::kUnknownTerm
+                               ? req->leader_term()
+                               : tablet.leader_term;
+
   auto query = std::make_unique<tablet::WriteQuery>(
-      tablet.leader_term, context_ptr->GetClientDeadline(), tablet.peer.get(), tablet.tablet,
+      leader_term, context_ptr->GetClientDeadline(), tablet.peer.get(), tablet.tablet,
       context_ptr.get(), resp);
   query->set_client_request(*req);
 
@@ -2010,7 +2023,8 @@ Status TabletServiceImpl::PerformWrite(
   }
 
   query->set_callback(WriteQueryCompletionCallback(
-      tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace()));
+      tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace(),
+      req->has_leader_term()));
 
   query->AdjustYsqlQueryTransactionality(req->pgsql_write_batch_size());
 
@@ -2543,7 +2557,7 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 namespace {
 
 Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
-  auto scoped_read_operation = tablet->CreateNonAbortableScopedRWOperation();
+  auto scoped_read_operation = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
   const shared_ptr<Schema> schema = tablet->metadata()->schema();
