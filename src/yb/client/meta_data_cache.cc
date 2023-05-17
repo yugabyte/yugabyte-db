@@ -73,8 +73,9 @@ Status GenerateUnauthorizedError(const std::string& canonical_resource,
 
 } // namespace
 
-YBMetaDataCache::YBMetaDataCache(client::YBClient* client,
-                                 bool create_roles_permissions_cache) : client_(client)  {
+YBMetaDataCache::YBMetaDataCache(
+    client::YBClient* client, bool create_roles_permissions_cache, const MemTrackerPtr& mem_tracker)
+    : client_(client), mem_tracker_(mem_tracker) {
   if (create_roles_permissions_cache) {
     permissions_cache_ = std::make_shared<client::internal::PermissionsCache>(client);
   } else {
@@ -179,6 +180,12 @@ Status YBMetaDataCache::FetchTableDetailsInCache(const std::shared_ptr<YBMetaDat
     entry->fetch_status_ = CacheEntryFetchStatus::FETCHED;
     entry->fetch_wait_cv_.notify_all();
     success = true;
+    if (mem_tracker_) {
+      entry->consumption_ = ScopedTrackedConsumption(
+          mem_tracker_, entry->table_->DynamicMemoryUsage() + sizeof(entry));
+      VLOG(1) << "Consumption for table " << entry->table_->name().ToString() << " is "
+              << entry->consumption_.consumption() << ", memtrackerid: " << mem_tracker_->id();
+    }
   }
 
   {
