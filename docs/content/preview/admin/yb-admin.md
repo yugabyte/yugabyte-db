@@ -29,7 +29,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *init_master_addrs*: Allows specifying a single master from which the rest of the masters are discovered.
+* *init_master_addrs*: Allows specifying a single YB-Master address from which the rest of the YB-Masters are discovered.
 * *timeout_ms*: The RPC timeout, in milliseconds. Default value is `60000`. A value of `0` means don't wait; `-1` means wait indefinitely.
 * *certs_dir_name*: The directory with certificates to use for secure server connections. Default value is `""`.
 
