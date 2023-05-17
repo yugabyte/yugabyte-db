@@ -11,7 +11,7 @@ import './styles.scss';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const Plotly = require('plotly.js/lib/index-basic.js');
 
-export const CpuSkew: FC<PerfRecommendationProps> = ({ data, summary }) => {
+export const HotShard: FC<PerfRecommendationProps> = ({ data, summary }) => {
   const { t } = useTranslation();
   const previousData = usePrevious(data);
   const maxNodeConnections = {
@@ -54,7 +54,7 @@ export const CpuSkew: FC<PerfRecommendationProps> = ({ data, summary }) => {
         },
         hovermode: 'closest'
       };
-      Plotly.newPlot('cpuSkewGraph', chartData, layout, { displayModeBar: false });
+      Plotly.newPlot('hotShardGraph', chartData, layout, { displayModeBar: false });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -72,18 +72,15 @@ export const CpuSkew: FC<PerfRecommendationProps> = ({ data, summary }) => {
               target="_blank"
               rel="noopener noreferrer"
               className="learnRecommendationSuggestions"
-              href={EXTERNAL_LINKS.CPU_SKEW_AND_USAGE}
+              href={EXTERNAL_LINKS.HOT_SHARD}
             >
               {t('clusterDetail.performance.advisor.LearnHow')}
             </a>
           </span>
         </div>
       </div>
-      <span className="queryText">
-        {' '}
-        {t('clusterDetail.performance.chartTitle.CpuUsagePercentage')}
-      </span>
-      <div id="cpuSkewGraph"></div>
+      <span className="queryText">{t('clusterDetail.performance.chartTitle.HotShardCount')}</span>
+      <div id="hotShardGraph"></div>
     </div>
   );
 };
