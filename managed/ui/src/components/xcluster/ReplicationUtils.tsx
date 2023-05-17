@@ -132,6 +132,10 @@ export const CurrentReplicationLag = ({
   const formattedLag = formatLagMetric(maxNodeLag);
   const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
 
+  if (maxNodeLag === undefined) {
+    return <span className="replication-lag-value warning">{formattedLag}</span>;
+  }
+
   return (
     <span
       className={`replication-lag-value ${
@@ -206,6 +210,10 @@ export const CurrentTableReplicationLag = ({
   const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
   const formattedLag = formatLagMetric(maxNodeLag);
   const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
+
+  if (maxNodeLag === undefined) {
+    return <span className="replication-lag-value warning">{formattedLag}</span>;
+  }
 
   return (
     <span
