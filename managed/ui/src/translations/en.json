@@ -325,6 +325,7 @@
         },
         "chartTitle": {
           "CpuUsagePercentage": "CPU Usage (Percentage)",
+          "HotShardCount": "Hot Shard Count",
           "Connections": "Connections",
           "Queries": "Queries"
         }
