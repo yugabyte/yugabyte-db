@@ -114,7 +114,7 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 
 - The `CLUSTERING ORDER BY` property can be used to set the ordering for each clustering column individually (default is `ASC`).
 - The `TABLETS = <num>` property specifies the number of tablets to be used for the specified YCQL index. Setting this property overrides the value from the [`--yb_num_shards_per_tserver`](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) option. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
-- Use the `AND` operator to use multiple table properties.
+- Use the `AND` operator to use multiple index properties.
 
 
 ### INCLUDED COLUMNS
