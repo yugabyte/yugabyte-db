@@ -269,9 +269,6 @@ class UniverseDetail extends Component {
       onPremSkipProvisioning = onPremKey?.keyInfo.skipProvisioning;
     }
 
-    const isTopKMetricsEnabled =
-      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.metrics.ui.topk.enable')
-        ?.value === 'true';
     const isPerfAdvisorEnabled =
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.ui.feature_flags.perf_advisor')
         ?.value === 'true';
@@ -358,7 +355,6 @@ class UniverseDetail extends Component {
               updateAvailable={updateAvailable}
               showSoftwareUpgradesModal={showSoftwareUpgradesModal}
               tabRef={this.ybTabPanel}
-              isTopKMetricsEnabled={isTopKMetricsEnabled}
             />
           </Tab.Pane>
         ),
@@ -402,7 +398,6 @@ class UniverseDetail extends Component {
             <div className="universe-detail-content-container">
               <CustomerMetricsPanel
                 customer={customer}
-                isTopKMetricsEnabled={isTopKMetricsEnabled}
                 origin={'universe'}
                 width={width}
                 nodePrefixes={nodePrefixes}
