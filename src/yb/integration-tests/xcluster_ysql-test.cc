@@ -1325,6 +1325,23 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplication) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
+TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithYbAdmin) {
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 3, 1));
+  auto producer_table = tables[0];
+  const string kProducerClusterId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  ASSERT_OK(CallAdmin(
+      consumer_cluster(),
+      "setup_universe_replication",
+      kProducerClusterId,
+      producer_cluster()->GetMasterAddresses(),
+      producer_table->id(),
+      "transactional"));
+
+  ASSERT_OK(CallAdmin(consumer_cluster(), "change_xcluster_role", "STANDBY"));
+  ASSERT_OK(CallAdmin(consumer_cluster(), "delete_universe_replication", kProducerClusterId));
+}
+
 void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
     std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
     uint32_t num_tablet_servers, bool range_partitioned) {

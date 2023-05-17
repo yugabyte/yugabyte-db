@@ -149,6 +149,10 @@ DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
     "after which PITR restore can be performed.");
 TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
+DEFINE_RUNTIME_bool(
+    allow_ycql_transactional_xcluster, false,
+    "Determines if xCluster transactional replication on YCQL tables is allowed.");
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -3030,8 +3034,17 @@ Status CatalogManager::GetUDTypeMetadata(
 
 Status CatalogManager::ValidateTableSchema(
     const std::shared_ptr<client::YBTableInfo>& info,
-    const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
+    const SetupReplicationInfo& setup_info,
     GetTableSchemaResponsePB* resp) {
+  bool is_ysql_table = info->table_type == client::YBTableType::PGSQL_TABLE_TYPE;
+  if (setup_info.transactional && !GetAtomicFlag(&FLAGS_allow_ycql_transactional_xcluster) &&
+      !is_ysql_table) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Transactional replication is not supported for non-YSQL tables: $0",
+        info->table_name.ToString());
+  }
+
   // Get corresponding table schema on local universe.
   GetTableSchemaRequestPB req;
 
@@ -3053,7 +3066,6 @@ Status CatalogManager::ValidateTableSchema(
          Substitute("Error while listing table: $0", status.ToString()));
 
   const auto& source_schema = client::internal::GetSchema(info->schema);
-  bool is_ysql_table = info->table_type == client::YBTableType::PGSQL_TABLE_TYPE;
   for (const auto& t : list_resp.tables()) {
     // Check that table name and namespace both match.
     if (t.name() != info->table_name.table_name() ||

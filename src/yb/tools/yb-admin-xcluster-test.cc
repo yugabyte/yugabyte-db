@@ -42,9 +42,10 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
-DECLARE_int64(rpc_throttle_threshold_bytes);
-DECLARE_bool(parallelize_bootstrap_producer);
+DECLARE_bool(allow_ycql_transactional_xcluster);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(parallelize_bootstrap_producer);
+DECLARE_int64(rpc_throttle_threshold_bytes);
 
 namespace yb {
 namespace tools {
@@ -840,24 +841,30 @@ TEST_F(XClusterAdminCliTest, SetupTransactionalReplicationFailure) {
       "random_flag"));
 }
 
-TEST_F(XClusterAdminCliTest, SetupTransactionalReplication) {
+TEST_F(XClusterAdminCliTest, SetupTransactionalReplicationWithYCQLTable) {
   client::TableHandle producer_table;
   client::kv_table_test::CreateTable(
       Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
 
-  ASSERT_OK(RunAdminToolCommand(
+  string error_msg;
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(
+      &error_msg,
       "setup_universe_replication",
       kProducerClusterId,
       producer_cluster_->GetMasterAddresses(),
       producer_table->id(),
       "transactional"));
 
-  ASSERT_OK(RunAdminToolCommand("change_xcluster_role", "STANDBY"));
-
-  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+  ASSERT_TRUE(
+      error_msg.find("Transactional replication is not supported for non-YSQL tables") !=
+      string::npos);
 }
 
 TEST_F(XClusterAdminCliTest, DisallowAddTransactionTablet) {
+  // We normally disable setting up transactional replication for CQL tables because the
+  // implementation isn't quite complete yet.  It's fine to use it in tests, however.
+  FLAGS_allow_ycql_transactional_xcluster = true;
+
   // Create an identical table on the producer.
   client::TableHandle producer_table;
   client::kv_table_test::CreateTable(

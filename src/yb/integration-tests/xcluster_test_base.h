@@ -33,9 +33,10 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+DECLARE_bool(TEST_check_broadcast_address);
+DECLARE_bool(allow_ycql_transactional_xcluster);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
-DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
@@ -92,6 +93,11 @@ class XClusterTestBase : public YBTest {
     HybridTime::TEST_SetPrettyToString(true);
 
     YBTest::SetUp();
+
+    // We normally disable setting up transactional replication for CQL tables because the
+    // implementation isn't quite complete yet.  It's fine to use it in tests, however.
+    FLAGS_allow_ycql_transactional_xcluster = true;
+
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
     FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
     FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
