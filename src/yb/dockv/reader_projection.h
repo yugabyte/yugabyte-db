@@ -33,7 +33,7 @@ inline ColumnId GetColumnId(const PB& pb) {
 struct ProjectedColumn {
   ColumnId id;
   KeyEntryValue subkey; // id converted to KeyEntryValue
-  QLTypePtr type;
+  DataType data_type;
 
   std::string ToString() const;
 };

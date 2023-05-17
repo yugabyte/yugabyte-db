@@ -43,36 +43,9 @@ using qlexpr::QLTableRow;
 
 //--------------------------------------------------------------------------------------------------
 
-DocExprExecutor::DocExprExecutor() {}
+DocExprExecutor::DocExprExecutor() = default;
 
-DocExprExecutor::~DocExprExecutor() {}
-
-Status DocExprExecutor::EvalColumnRef(ColumnIdRep col_id,
-                                      const QLTableRow* table_row,
-                                      qlexpr::QLExprResultWriter result_writer) {
-  // Return NULL value if row is not provided.
-  if (table_row == nullptr) {
-    result_writer.SetNull();
-    return Status::OK();
-  }
-
-  // Read value from given row.
-  if (col_id >= 0) {
-    return table_row->ReadColumn(col_id, result_writer);
-  }
-
-  // Read key of the given row.
-  if (col_id == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-    return GetTupleId(&result_writer.NewValue());
-  }
-
-  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column ID: $0", col_id);
-}
-
-Status DocExprExecutor::GetTupleId(QLValuePB *result) const {
-  SetNull(result);
-  return Status::OK();
-}
+DocExprExecutor::~DocExprExecutor() = default;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -201,7 +174,7 @@ Status DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
 }
 
 Status DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
-                                   const QLTableRow& table_row,
+                                   const dockv::PgTableRow& table_row,
                                    QLValuePB *result,
                                    const Schema *schema) {
   bfpg::TSOpcode tsopcode = static_cast<bfpg::TSOpcode>(tscall.opcode());
@@ -344,9 +317,9 @@ Status DocExprExecutor::EvalSum(const Val& val, Val *aggr_sum) {
   return Status::OK();
 }
 
-template <class Expr, class Val, class Extractor>
+template <class Expr, class Row, class Val, class Extractor>
 Status DocExprExecutor::EvalSumInt(
-    const Expr& operand, const QLTableRow& table_row, Val *aggr_sum,
+    const Expr& operand, const Row& table_row, Val *aggr_sum,
     const Extractor& extractor) {
   qlexpr::ExprResult<Val> arg_result(aggr_sum);
   RETURN_NOT_OK(EvalExpr(operand, table_row, arg_result.Writer()));
@@ -365,9 +338,9 @@ Status DocExprExecutor::EvalSumInt(
   return Status::OK();
 }
 
-template <class Expr, class Val, class Extractor, class Setter>
+template <class Expr, class Row, class Val, class Extractor, class Setter>
 Status DocExprExecutor::EvalSumReal(
-    const Expr& operand, const QLTableRow& table_row, Val *aggr_sum,
+    const Expr& operand, const Row& table_row, Val *aggr_sum,
     const Extractor& extractor, const Setter& setter) {
   qlexpr::ExprResult<Val> arg_result(aggr_sum);
   RETURN_NOT_OK(EvalExpr(operand, table_row, arg_result.Writer()));

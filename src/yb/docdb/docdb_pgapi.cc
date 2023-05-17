@@ -15,17 +15,22 @@
 #include "yb/docdb/docdb_pgapi.h"
 
 #include "yb/common/pg_types.h"
-#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/schema.h"
 
+#include "yb/dockv/pg_row.h"
+
 #include "yb/gutil/singleton.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/pg_value.h"
+
+#include "yb/qlexpr/ql_expr.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_value.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
-#include "yb/util/result.h"
-#include "yb/util/logging.h"
 #include "ybgate/ybgate_status.h"
 
 // This file comes from this directory:
@@ -35,9 +40,9 @@
 
 using std::string;
 
-using yb::pggate::PgValueFromPB;
-
 namespace yb::docdb {
+
+using pggate::PgValueToDatum;
 
 #define SET_ELEM_LEN_BYVAL_ALIGN(elemlen, elembyval, elemalign) \
   do { \
@@ -164,26 +169,25 @@ Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
   return Status::OK();
 }
 
-// Wrapper for PgValueFromPB to safely call from the YbGate.
-// The PgValueFromPB function was initially designed to be used in the PgGate where it converts
+// Wrapper for PgValueToDatum to safely call from the YbGate.
+// The PgValueToDatum function was initially designed to be used in the PgGate where it converts
 // values coming from DocDB into Postgres format. The PgGate runs within Postgres where exception
 // handling is available. YbGate runs within DocDB, so it requires PG_SETUP_ERROR_REPORTING macro.
 // The PG_SETUP_ERROR_REPORTING requires the surrounding function to return YbgStatus,
 // hence the wrapper.
-YbgStatus YbgValueFromPB(const YBCPgTypeEntity *type_entity,
-                         YBCPgTypeAttrs type_attrs,
-                         const QLValuePB& ql_value,
-                         uint64_t* datum,
-                         bool *is_null) {
+YbgStatus PgValueToDatumHelper(const YBCPgTypeEntity *type_entity,
+                               YBCPgTypeAttrs type_attrs,
+                               const dockv::PgValue& value,
+                               uint64_t* datum) {
   PG_SETUP_ERROR_REPORTING();
-  Status s = PgValueFromPB(type_entity, type_attrs, ql_value, datum, is_null);
+  Status s = PgValueToDatum(type_entity, type_attrs, value, datum);
   if (!s.ok()) {
     return YbgStatusCreateError(s.message().cdata(), __FILE__, __LINE__);
   }
   PG_STATUS_OK();
 }
 
-Status DocPgPrepareExprCtx(const qlexpr::QLTableRow& table_row,
+Status DocPgPrepareExprCtx(const dockv::PgTableRow& table_row,
                            const std::map<int, const DocPgVarRef>& var_map,
                            YbgExprContext expr_ctx) {
   PG_RETURN_NOT_OK(YbgExprContextReset(expr_ctx));
@@ -191,14 +195,13 @@ Status DocPgPrepareExprCtx(const qlexpr::QLTableRow& table_row,
   for (auto it = var_map.begin(); it != var_map.end(); it++) {
     const int& attno = it->first;
     const DocPgVarRef& arg_ref = it->second;
-    const QLValuePB* val = table_row.GetColumn(arg_ref.var_colid);
-    bool is_null = false;
+    auto val = table_row.GetValueByColumnId(arg_ref.var_colid);
     uint64_t datum = 0;
-    PG_RETURN_NOT_OK(YbgValueFromPB(arg_ref.var_type,
-                                    arg_ref.var_type_attrs,
-                                    *val,
-                                    &datum,
-                                    &is_null));
+    const bool is_null = !val;
+    if (!is_null) {
+      PG_RETURN_NOT_OK(PgValueToDatumHelper(
+          arg_ref.var_type, arg_ref.var_type_attrs, *val, &datum));
+    }
     VLOG(1) << "Adding value for attno " << attno;
     PG_RETURN_NOT_OK(YbgExprContextAddColValue(expr_ctx, attno, datum, is_null));
   }

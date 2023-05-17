@@ -27,7 +27,7 @@ namespace yb {
 namespace pggate {
 
 // decode collation encoded string
-void DecodeCollationEncodedString(const char** text, int64_t* text_len);
+Slice DecodeCollationEncodedString(Slice input);
 
 class PgColumn;
 class PgDml;
