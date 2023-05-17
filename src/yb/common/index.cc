@@ -23,6 +23,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/compare_util.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/result.h"
 
 using std::vector;
@@ -260,6 +261,16 @@ bool IndexInfo::TEST_Equals(const IndexInfo& lhs, const IndexInfo& rhs) {
   return lhs.ToString() == rhs.ToString();
 }
 
+size_t IndexInfo::DynamicMemoryUsage() const {
+  size_t size = sizeof(this);
+  size += columns_.capacity() * sizeof(IndexColumn);
+  size += (indexed_hash_column_ids_.capacity() + indexed_range_column_ids_.capacity()) *
+          sizeof(ColumnId);
+  size += DynamicMemoryUsageOf(backfill_error_message_);
+  size += covered_column_ids_.size() * sizeof(ColumnId);
+  return size;
+}
+
 IndexMap::IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {
   FromPB(indexes);
 }
@@ -292,6 +303,14 @@ bool IndexMap::TEST_Equals(const IndexMap& lhs, const IndexMap& rhs) {
   return util::MapsEqual(static_cast<const MapType&>(lhs),
                          static_cast<const MapType&>(rhs),
                          &IndexInfo::TEST_Equals);
+}
+
+size_t IndexMap::DynamicMemoryUsage() const {
+  size_t size = 0;
+  for (const auto& index_pair : *this) {
+    size += DynamicMemoryUsageOf(index_pair.first) + index_pair.second.DynamicMemoryUsage();
+  }
+  return size;
 }
 
 }  // namespace yb

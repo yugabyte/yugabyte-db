@@ -76,6 +76,8 @@ inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
 
 #elif (__GNUC__ >= 9)
 
+constexpr const auto kStdStringInternalCapacity = 25;
+
 inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
   const auto capacity = value.capacity();
   if (capacity == 0) {
