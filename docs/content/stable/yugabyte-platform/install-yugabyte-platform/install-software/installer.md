@@ -1,9 +1,10 @@
 ---
 title: Install YugabyteDB Anywhere software - Installer
-headerTitle: Install YugabyteDB Anywhere - YBA Installer
+headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software using YBA Installer
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+headContent: Install YBA software using YBA Installer
+earlyAccess: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -58,15 +59,13 @@ Use YBA Installer to install YBA on a host. YBA Installer performs preflight che
 
 ### Download YBA Installer
 
-<!--Download and extract the YBA Installer by entering the following commands:
+Download and extract the YBA Installer by entering the following commands:
 
 ```sh
-$ wget YBA_installer_url/YBA_installer_full-2.17.3.0-b123-centos-x86_64.tar.gz
-$ tar -xf YBA_installer_full-2.17.3.0-b123-centos-x86_64.tar.gz
-$ cd YBA_installer_full-2.17.3.0-b123/
+$ wget http://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+$ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+$ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
 ```
--->
-YBA Installer is currently available via Early Access. To obtain the installation bundle, contact {{% support-platform %}}.
 
 This bundle provides everything needed, except a [license](#provide-a-license), to complete a fresh install of YBA:
 
@@ -110,19 +109,15 @@ You can change some configuration options post-installation using the [reconfigu
 
 YBA Installer requires a valid license before installing. To obtain a license, contact {{% support-platform %}}.
 
-The license can be provided to YBA Installer in one of two ways:
+Provide the license to YBA Installer by running the `license` command as follows:
 
-- Run the `license` command before running `install`. This command can also be used to update to a new license if needed.
+```sh
+$ sudo ./yba-ctl license add -l /path/to/license
+```
 
-    ```sh
-    $ sudo ./yba-ctl license add -l /path/to/license
-    ```
+You can use this command to update to a new license if needed.
 
-- As part of the `install` command:
-
-    ```sh
-    $ sudo ./yba-ctl install -l /path/to/license
-    ```
+You can also provide a license when running the `install` command. Refer to [Install the software](#install-the-software).
 
 ### Run preflight checks
 
@@ -146,9 +141,9 @@ $ sudo ./yba-ctl preflight
 10 postgres               Pass
 ```
 
-Some checks can be ignored, such as CPU or memory. Others, such as having a license and python installed, are hard requirements, and YugabyteDB Anywhere can't work until these checks pass. All checks should pass for a production installation.
+Some checks, such as CPU or memory, can be skipped, though this is not recommended for a production installation. Others, such as having a license and python installed, are hard requirements, and YugabyteDB Anywhere can't work until these checks pass. All checks should pass for a production installation.
 
-If a check is failing and you want to skip it, you can pass `–skip_preflight <name>[,<name2>]`.
+If you are installing YBA for testing and evaluation and you want to skip a check that is failing, you can pass `–skip_preflight <name>[,<name2>]`. For example:
 
 ```sh
 $ sudo ./yba-ctl preflight --skip_preflight cpu
@@ -160,6 +155,12 @@ To perform an install, run the `install` command. Once started, an install can t
 
 ```sh
 $ sudo ./yba-ctl install
+```
+
+You can also provide a license when running the `install` command by using the `-l` flag:
+
+```sh
+$ sudo ./yba-ctl install -l /path/to/license
 ```
 
 ```output
