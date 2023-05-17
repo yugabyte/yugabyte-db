@@ -3,50 +3,44 @@
 package com.yugabyte.yw.common.password;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
-import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
-import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import java.util.List;
-import java.util.stream.Collectors;
+import com.yugabyte.yw.common.audit.AuditService;
 import javax.inject.Singleton;
 
 @Singleton
 public class RedactingService {
-  public static final String SECRET_REPLACEMENT = "REDACTED";
-  private static final List<String> SECRET_PATHS =
-      ImmutableList.of(
-          "$..ysqlPassword",
-          "$..ycqlPassword",
-          "$..ycqlNewPassword",
-          "$..ysqlNewPassword",
-          "$..ycqlCurrentPassword",
-          "$..ysqlCurrentPassword",
-          "$..sshPrivateKeyContent");
-  public static final List<JsonPath> SECRET_JSON_PATHS =
-      SECRET_PATHS.stream().map(JsonPath::compile).collect(Collectors.toList());
-
-  private static final Configuration JSONPATH_CONFIG =
-      Configuration.builder()
-          .jsonProvider(new JacksonJsonNodeJsonProvider())
-          .mappingProvider(new JacksonMappingProvider())
-          .build();
 
   public static JsonNode filterSecretFields(JsonNode input) {
     if (input == null) {
       return null;
     }
-    DocumentContext context = JsonPath.parse(input.deepCopy(), JSONPATH_CONFIG);
-    SECRET_JSON_PATHS.forEach(path -> context.set(path, SECRET_REPLACEMENT));
+
+    DocumentContext context = JsonPath.parse(input.deepCopy(), AuditService.JSONPATH_CONFIG);
+    AuditService.SECRET_JSON_PATHS.forEach(
+        path -> {
+          JsonNode contents = context.read(path);
+          if (contents.isArray()) {
+            for (JsonNode content : contents) {
+              if (content.asText().contains("*")) {
+                // If already masked, we will avoid redacting the string, as for some
+                // values(masked by model itself) client expects them to be masked not redacted.
+                // Case: Return in API response unmasked.
+                continue;
+              } else {
+                context.set(path, AuditService.SECRET_REPLACEMENT);
+              }
+            }
+          }
+        });
+
     return context.json();
   }
 
   public static String redactString(String input) {
     String length = ((Integer) input.length()).toString();
     String regex = "(.)" + "{" + length + "}";
-    String output = input.replaceAll(regex, SECRET_REPLACEMENT);
+    String output = input.replaceAll(regex, AuditService.SECRET_REPLACEMENT);
     return output;
   }
 }
