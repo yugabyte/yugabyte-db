@@ -21,7 +21,7 @@
       "isStable": true,
       "isLTS": false,
       "isSTS": true,
-      "initialRelease": "2022-05-16",
+      "initialRelease": "2023-05-16",
       "endOfMaintenance": "2024-01-16",
       "endOfLife": "2025-07-16"
     },
