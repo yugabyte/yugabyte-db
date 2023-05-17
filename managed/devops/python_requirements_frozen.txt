@@ -1,5 +1,5 @@
 adal==1.2.7
-ansible==2.9.19
+ansible==4.2.0
 ansible-vault==2.1.0
 awscli==1.19.73
 azure-common==1.1.25
