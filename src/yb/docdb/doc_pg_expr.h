@@ -64,7 +64,7 @@ class DocPgExprExecutor {
   // converted to DocDB values and written into the next element of the results vector. This is a
   // caller's responsibility to track target expressions added to the executor.
   Result<bool> Exec(
-      const qlexpr::QLTableRow& row, std::vector<qlexpr::QLExprResult>* results = nullptr);
+      const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results = nullptr);
 
  private:
   explicit DocPgExprExecutor(std::unique_ptr<State> state);
