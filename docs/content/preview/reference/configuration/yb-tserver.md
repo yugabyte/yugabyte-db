@@ -1023,7 +1023,7 @@ Use of this flag can potentially result in expiration of live data. Use at your 
 
 ## PostgreSQL options
 
-YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters on several levels:
+YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters on several levels by: 
 
 1. Using the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag.
 
