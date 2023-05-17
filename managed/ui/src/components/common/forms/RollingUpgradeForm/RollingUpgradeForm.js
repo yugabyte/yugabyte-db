@@ -27,6 +27,8 @@ import { FlexShrink, FlexContainer } from '../../flexbox/YBFlexBox';
 import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
 import { sortVersion } from '../../../releases';
 import { HelmOverridesModal } from '../../../universes/UniverseForm/HelmOverrides';
+import { YBBanner, YBBannerVariant } from '../../descriptors';
+import { getAllXClusterConfigs } from '../../../xcluster/ReplicationUtils';
 
 import './RollingUpgradeForm.scss';
 
@@ -490,6 +492,8 @@ export default class RollingUpgradeForm extends Component {
             />
           );
         }
+        const universeHasXClusterConfig =
+          getAllXClusterConfigs(universe.currentUniverse.data).length > 0;
         return (
           <YBModal
             className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
@@ -520,6 +524,27 @@ export default class RollingUpgradeForm extends Component {
               formValues.tlsCertificate === universe.currentUniverse?.data?.universeDetails?.rootCA
             }
           >
+            {universeHasXClusterConfig && isKubernetesUniverse(universe.currentUniverse.data) && (
+              <YBBanner variant={YBBannerVariant.WARNING} showBannerIcon={false}>
+                <b>{`Warning! `}</b>
+                <p>
+                  This Kubernetes universe is involved in one or more xCluster configurations.
+                  Changing TLS certificates on this universe will break the xCluster replication as
+                  mismatched certificates is not supported.
+                </p>
+                <p>
+                  To enable replication again after rotating the TLS certificate on this universe,
+                  you must:
+                  <ol>
+                    <li>
+                      Configure the TLS certificates on all other participating universes to match
+                      this universe.
+                    </li>
+                    <li>Restart all affected xCluster configurations.</li>
+                  </ol>
+                </p>
+              </YBBanner>
+            )}
             <div className="form-right-aligned-labels rolling-upgrade-form">
               <Field
                 name="tlsCertificate"

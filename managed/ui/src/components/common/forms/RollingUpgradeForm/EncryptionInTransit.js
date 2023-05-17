@@ -16,6 +16,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { getPrimaryCluster, getReadOnlyCluster } from '../../../../utils/UniverseUtils';
 import { updateTLS } from '../../../../actions/customers';
 import { YBBanner, YBBannerVariant } from '../../descriptors';
+import { getAllXClusterConfigs } from '../../../xcluster/ReplicationUtils';
 
 import './EncryptionInTransit.scss';
 
@@ -224,9 +225,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
     });
   };
 
-  const universeHasXClusterConfig =
-    universeDetails.sourceXClusterConfigs.length > 0 ||
-    universeDetails.targetXClusterConfigs.length > 0;
+  const universeHasXClusterConfig = getAllXClusterConfigs(currentUniverse.data).length > 0;
   return (
     <YBModalForm
       visible={visible}
@@ -256,7 +255,10 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
                 <p>
                   To enable replication again after toggling TLS on this universe, you must:
                   <ol>
-                    <li>Toggle TLS on all other participating universes.</li>
+                    <li>
+                      Configure the TLS toggle on all other participating universes to match the
+                      current universe.
+                    </li>
                     <li>Restart all affected xCluster configurations.</li>
                   </ol>
                 </p>
