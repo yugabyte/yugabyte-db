@@ -1027,37 +1027,36 @@ YugabyteDB uses PostgreSQL server configuration parameters to apply server confi
 
 1. Using the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag.
 
-2. Setting the option per-database:
+1. Setting the option per-database:
 
-```sql
-ALTER DATABASE database_name SET temp_file_limit=-1;
-```
+    ```sql
+    ALTER DATABASE database_name SET temp_file_limit=-1;
+    ```
 
-3. Setting the option per-role:
+1. Setting the option per-role:
 
-```sql
-ALTER ROLE yugabyte SET temp_file_limit=-1;
-```
+    ```sql
+    ALTER ROLE yugabyte SET temp_file_limit=-1;
+    ```
 
-When setting the GUC variable at the role or database level, you have to open a new session for the changes to take effect.
+    When setting the GUC variable at the role or database level, you have to open a new session for the changes to take effect.
 
-4. Setting the option for the current session:
+1. Setting the option for the current session:
 
-```sql
-SET temp_file_limit=-1;
---- alternative way
-SET SESSION temp_file_limit=-1;
-```
+    ```sql
+    SET temp_file_limit=-1;
+    --- alternative way
+    SET SESSION temp_file_limit=-1;
+    ```
 
-If `SET` is issued within a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back. 
+    If `SET` is issued within a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
+    If the surrounding transaction commits, the effects will persist for the whole session.
 
-If the surrounding transaction commits, the effects will persist for the whole session.
+1. Set the option for the current transaction:
 
-5. Set the option for the current transaction:
-
-```sql
-SET LOCAL temp_file_limit=-1;
-```
+    ```sql
+    SET LOCAL temp_file_limit=-1;
+    ```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
