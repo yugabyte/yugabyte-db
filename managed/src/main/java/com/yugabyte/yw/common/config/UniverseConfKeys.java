@@ -382,14 +382,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Temporary directory for Ansible to use on the controller.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> uiEnableTopK =
-      new ConfKeyInfo<>(
-          "yb.metrics.ui.topk.enable",
-          ScopeType.UNIVERSE,
-          "Universe Metrics view",
-          "Option to switch between old and new universe metrics UI",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
       new ConfKeyInfo<>(
           "yb.perf_advisor.enabled",
