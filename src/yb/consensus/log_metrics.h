@@ -37,6 +37,8 @@
 
 namespace yb {
 
+template<class T>
+class AtomicGauge;
 class Counter;
 class Histogram;
 class MetricEntity;
@@ -49,7 +51,7 @@ struct LogMetrics {
 
   // Global stats
   scoped_refptr<Counter> bytes_logged;
-  scoped_refptr<Counter> wal_size;
+  scoped_refptr<AtomicGauge<uint64_t>> wal_size;
 
   // Per-group group commit stats
   scoped_refptr<Histogram> sync_latency;
