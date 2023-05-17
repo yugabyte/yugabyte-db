@@ -429,7 +429,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     image.setPlatformDetails("linux/UNIX");
     when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), any())).thenReturn(image);
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
-        .thenReturn(getTestSecurityGroup(21, 24, "vpc-foo"));
+        .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, "vpc-foo")));
     Result result = editProvider(Json.parse(jsonString), provider.getUuid());
     assertOk(result);
     YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
@@ -794,7 +794,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "\"version\": %d}",
             provider.getVersion());
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
-        .thenReturn(getTestSecurityGroup(21, 24, "vpc-foo"));
+        .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, "vpc-foo")));
     Result result = editProvider(Json.parse(jsonString), provider.getUuid());
     assertOk(result);
   }
@@ -835,7 +835,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     image.setPlatformDetails("linux/UNIX");
     when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), any())).thenReturn(image);
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
-        .thenReturn(getTestSecurityGroup(21, 24, "vpc-foo"));
+        .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, "vpc-foo")));
     Result result =
         assertPlatformException(() -> editProvider(providerJson, provider.getUuid(), false));
     assertBadRequest(result, "No changes to be made for provider type: aws");
@@ -1021,9 +1021,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         .thenThrow(
             new PlatformServiceException(
                 BAD_REQUEST, "Security group extraction failed: Invalid SG ID"))
-        .thenReturn(getTestSecurityGroup(21, 24, null))
-        .thenReturn(getTestSecurityGroup(24, 24, "vpc_id_new"))
-        .thenReturn(getTestSecurityGroup(21, 24, "vpc_id"));
+        .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, null)))
+        .thenReturn(Arrays.asList(getTestSecurityGroup(24, 24, "vpc_id_new")))
+        .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, "vpc_id")));
 
     when(mockAWSCloudImpl.describeSubnetsOrBadRequest(any(), any()))
         .thenThrow(
@@ -1562,7 +1562,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "\"version\": %d}",
             provider.getVersion());
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
-        .thenReturn(getTestSecurityGroup(21, 24, "vpc-foo"));
+        .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, "vpc-foo")));
     Result result = editProvider(Json.parse(jsonString), provider.getUuid(), true);
     assertOk(result);
     provider = Provider.getOrBadRequest(provider.getUuid());
@@ -1607,6 +1607,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   private SecurityGroup getTestSecurityGroup(int fromPort, int toPort, String vpcId) {
     SecurityGroup sg = new SecurityGroup();
+    sg.setGroupId("sg_id");
     IpPermission ipPermission = new IpPermission();
     ipPermission.setFromPort(fromPort);
     ipPermission.setToPort(toPort);

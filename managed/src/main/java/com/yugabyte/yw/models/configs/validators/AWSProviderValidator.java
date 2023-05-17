@@ -213,32 +213,34 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
 
     try {
       if (!StringUtils.isEmpty(region.getSecurityGroupId())) {
-        SecurityGroup securityGroup =
+        List<SecurityGroup> securityGroupList =
             awsCloudImpl.describeSecurityGroupsOrBadRequest(provider, region);
         List<String> errorList = new ArrayList<>();
-        if (StringUtils.isEmpty(securityGroup.getVpcId())) {
-          errorList.add("No vpc is attached to SG: " + region.getSecurityGroupId());
-        } else if (!securityGroup.getVpcId().equals(region.getVnetName())) {
-          errorList.add(
-              region.getSecurityGroupId() + " is not attached to vpc: " + region.getVnetName());
-        }
-        Integer sshPort = provider.getDetails().getSshPort();
-        boolean portOpen = false;
-        if (!CollectionUtils.isNullOrEmpty(securityGroup.getIpPermissions())) {
-          for (IpPermission ipPermission : securityGroup.getIpPermissions()) {
-            Integer fromPort = ipPermission.getFromPort();
-            Integer toPort = ipPermission.getToPort();
-            if (fromPort == null || toPort == null) {
-              continue;
-            }
-            if (fromPort <= sshPort && toPort >= sshPort) {
-              portOpen = true;
-              break;
+        for (SecurityGroup securityGroup : securityGroupList) {
+          if (StringUtils.isEmpty(securityGroup.getVpcId())) {
+            errorList.add("No vpc is attached to SG: " + securityGroup.getGroupId());
+          } else if (!securityGroup.getVpcId().equals(region.getVnetName())) {
+            errorList.add(
+                securityGroup.getGroupId() + " is not attached to vpc: " + region.getVnetName());
+          }
+          Integer sshPort = provider.getDetails().getSshPort();
+          boolean portOpen = false;
+          if (!CollectionUtils.isNullOrEmpty(securityGroup.getIpPermissions())) {
+            for (IpPermission ipPermission : securityGroup.getIpPermissions()) {
+              Integer fromPort = ipPermission.getFromPort();
+              Integer toPort = ipPermission.getToPort();
+              if (fromPort == null || toPort == null) {
+                continue;
+              }
+              if (fromPort <= sshPort && toPort >= sshPort) {
+                portOpen = true;
+                break;
+              }
             }
           }
-        }
-        if (!portOpen) {
-          errorList.add(sshPort + " is not open on security group " + region.getSecurityGroupId());
+          if (!portOpen) {
+            errorList.add(sshPort + " is not open on security group " + securityGroup.getGroupId());
+          }
         }
         if (errorList.size() != 0) {
           validationErrorsMap.putAll(fieldDetails, errorList);

@@ -85,6 +85,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -731,13 +732,15 @@ public class AWSCloudImpl implements CloudAPI {
     }
   }
 
-  public SecurityGroup describeSecurityGroupsOrBadRequest(Provider provider, Region region) {
+  public List<SecurityGroup> describeSecurityGroupsOrBadRequest(Provider provider, Region region) {
     try {
       AmazonEC2 ec2Client = getEC2Client(provider, region.getCode());
       DescribeSecurityGroupsRequest request =
-          new DescribeSecurityGroupsRequest().withGroupIds(region.getSecurityGroupId());
+          new DescribeSecurityGroupsRequest()
+              .withGroupIds(
+                  Arrays.asList(region.getSecurityGroupId().replaceAll(",", "").split(" ")));
       DescribeSecurityGroupsResult result = ec2Client.describeSecurityGroups(request);
-      return result.getSecurityGroups().get(0);
+      return result.getSecurityGroups();
     } catch (AmazonServiceException e) {
       LOG.error("Security group details extraction failed: ", e);
       throw new PlatformServiceException(
