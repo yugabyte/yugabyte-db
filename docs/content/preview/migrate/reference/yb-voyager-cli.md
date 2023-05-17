@@ -526,7 +526,7 @@ yb-voyager import data file .... \
 --data-dir s3://voyager-data
 ```
 
-The authentication mechanism used when accessing the S3 bucket through yb-voyager is the same as using the AWS CLI tool to access the bucket.
+The authentication mechanism for accessing an S3 bucket using yb-voyager is the same as that used by the AWS CLI.
 
 Refer to [Configuring the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html) for additional details to set up your S3 bucket.
 
