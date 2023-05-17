@@ -1311,6 +1311,7 @@ public class CloudProviderHandler {
           // host VPC as for both hostVpcId and destVpcId.
           if (gcpCloudInfo.getDestVpcId() == null) {
             gcpCloudInfo.setDestVpcId(network);
+            gcpCloudInfo.setVpcType(CloudInfoInterface.VPCType.HOSTVPC);
           }
           if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
             gcpCloudInfo.setGceProject(currentHostInfo.get("project").asText());
