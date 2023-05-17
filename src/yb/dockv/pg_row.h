@@ -61,9 +61,14 @@ class PgValue {
   QLValuePB ToQLValuePB(DataType data_type) const;
 
   void AppendTo(DataType data_type, WriteBuffer* out) const;
+  void AppendTo(DataType data_type, ValueBuffer* out) const;
 
  private:
-  Slice vardata() const;
+  template <class Buffer>
+  void DoAppendTo(DataType data_type, Buffer* out) const;
+
+  Slice Vardata() const;
+  Slice VardataWithLen() const;
 
   PgValueDatum value_;
 };
@@ -71,6 +76,10 @@ class PgValue {
 class PgTableRow {
  public:
   explicit PgTableRow(std::reference_wrapper<const ReaderProjection> projection);
+
+  bool Exists() const {
+    return true;
+  }
 
   bool IsEmpty() const;
   std::string ToString() const;
@@ -100,6 +109,8 @@ class PgTableRow {
   }
 
   QLValuePB GetQLValuePB(ColumnIdRep column_id) const;
+
+  PgValue TrimString(size_t idx, size_t skip_prefix, size_t new_len);
 
  private:
   PgValueDatum GetDatum(size_t idx) const;

@@ -19,7 +19,7 @@
 namespace yb::dockv {
 
 std::string ProjectedColumn::ToString() const {
-  return YB_STRUCT_TO_STRING(subkey, type);
+  return YB_STRUCT_TO_STRING(id, data_type);
 }
 
 ReaderProjection::ReaderProjection(const Schema& schema) {
@@ -38,7 +38,7 @@ void ReaderProjection::AddColumn(
   columns.push_back({
     .id = column_id,
     .subkey = dockv::KeyEntryValue::MakeColumnId(column_id),
-    .type = schema.column(idx).type(),
+    .data_type = schema.column(idx).type()->main(),
   });
 }
 

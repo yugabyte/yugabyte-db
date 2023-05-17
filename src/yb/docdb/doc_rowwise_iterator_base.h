@@ -69,6 +69,8 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   ~DocRowwiseIteratorBase() override;
 
+  void SetSchema(const Schema& schema);
+
   // Init scan iterator.
   void Init(TableType table_type, const Slice& sub_doc_key = Slice());
   // Init QL read scan.
@@ -93,6 +95,12 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) override;
 
   void set_debug_dump(bool value) { debug_dump_ = value; }
+
+  const Schema& schema() const {
+    return *schema_;
+  }
+
+  const dockv::SchemaPackingStorage& schema_packing_storage();
 
  private:
   virtual void InitIterator(
@@ -138,11 +146,14 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   bool is_initialized_ = false;
 
+ private:
   // The schema for all columns, not just the columns we're scanning.
   const std::shared_ptr<DocReadContext> doc_read_context_holder_;
   // Used to maintain ownership of doc_read_context_.
   const DocReadContext& doc_read_context_;
+  const Schema* schema_;
 
+ protected:
   const TransactionOperationContext txn_op_context_;
 
   bool is_forward_scan_ = true;

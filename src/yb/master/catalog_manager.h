@@ -2531,7 +2531,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status AddSchemaVersionMappingToUniverseReplication(
       scoped_refptr<UniverseReplicationInfo> universe,
-      const ColocationId& consumer_table,
+      ColocationId consumer_table,
       const SchemaVersion& producer_schema_version,
       const SchemaVersion& consumer_schema_version);
 

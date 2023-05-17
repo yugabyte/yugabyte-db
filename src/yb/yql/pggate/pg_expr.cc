@@ -86,27 +86,26 @@ Slice MakeCollationEncodedString(
 
 } // namespace
 
-void DecodeCollationEncodedString(const char** text_ptr, int64_t* text_len_ptr) {
-  DCHECK(*text_len_ptr >= 0 && (*text_ptr)[*text_len_ptr] == '\0')
-    << "Data received from DocDB does not have expected format";
+Slice DecodeCollationEncodedString(Slice input) {
+  DCHECK(*input.cend() == '\0') << "Data received from DocDB does not have expected format";
   // is_original_value = true means that we have done storage space optimization
   // to only store the original value for non-key columns.
-  const bool is_original_value = (*text_len_ptr == 0 || (*text_ptr)[0] != '\0');
-  if (!is_original_value) {
-    // This is a collation encoded string, we need to fetch the original value.
-    CHECK_GE(*text_len_ptr, 3);
-    uint8_t collation_flags = (*text_ptr)[1];
-    CHECK_EQ(collation_flags, kCollationMarker | kDeterministicCollation);
-    // Skip the collation and sortkey get the original character value.
-    const char *p = static_cast<const char*>(memchr(*text_ptr + 2, '\0', *text_len_ptr - 2));
-    CHECK(p);
-    ++p;
-    const char* end = *text_ptr + *text_len_ptr;
-    CHECK_LE(p, end);
-    // update *text_ptr && *text_len_ptr to reflect original string value
-    *text_ptr = p;
-    *text_len_ptr = end - p;
+  const bool is_original_value = input.empty() || input[0] != '\0';
+  if (is_original_value) {
+    return input;
   }
+
+  // This is a collation encoded string, we need to fetch the original value.
+  CHECK_GE(input.size(), 3);
+  uint8_t collation_flags = input[1];
+  CHECK_EQ(collation_flags, kCollationMarker | kDeterministicCollation);
+  // Skip the collation and sortkey get the original character value.
+  input.remove_prefix(2);
+  const char *p = static_cast<const char*>(memchr(input.cdata(), '\0', input.size()));
+  CHECK(p);
+  ++p;
+  CHECK_LE(p, input.cend());
+  return Slice(p, input.cend());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -424,16 +423,15 @@ class PgTextColumnRef : public Base {
     //   size of data being serialized including the '\0' character. This is not necessarily be the
     //   length of a string.
     // Find strlen() of STRING by right-trimming all '\0' characters.
-    const char* text = data->cdata();
-    int64_t text_len = data_size - 1;
+    Slice text = data->Prefix(data_size - 1);
 
-    DCHECK(text_len >= 0 && text[text_len] == '\0' && (text_len == 0 || text[text_len - 1] != '\0'))
-      << "Data received from DocDB does not have expected format";
+    DCHECK(*text.cend() == '\0' && (text.empty() || !text.ends_with('\0')))
+        << "Data received from DocDB does not have expected format";
 
     if (kCollate) {
-      DecodeCollationEncodedString(&text, &text_len);
+      text = DecodeCollationEncodedString(text);
     }
-    Base::DoSetDatum(tuple, Base::YbToDatum(text, text_len));
+    Base::DoSetDatum(tuple, Base::YbToDatum(text.cdata(), text.size()));
     data->remove_prefix(data_size);
   }
 };

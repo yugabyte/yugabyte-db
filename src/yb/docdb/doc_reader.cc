@@ -373,7 +373,7 @@ struct StateEntry {
 
 // Returns true if value is NOT tombstone, false if value is tombstone.
 Result<bool> TryDecodeValueOnly(
-    const Slice& value_slice, const QLTypePtr& ql_type, QLValuePB* out) {
+    const Slice& value_slice, DataType data_type, QLValuePB* out) {
   if (dockv::DecodeValueEntryType(value_slice) == ValueEntryType::kTombstone) {
     if (out) {
       out->Clear();
@@ -381,8 +381,8 @@ Result<bool> TryDecodeValueOnly(
     return false;
   }
   if (out) {
-    if (ql_type) {
-      RETURN_NOT_OK(dockv::PrimitiveValue::DecodeToQLValuePB(value_slice, ql_type, out));
+    if (data_type != DataType::NULL_VALUE_TYPE) {
+      RETURN_NOT_OK(dockv::PrimitiveValue::DecodeToQLValuePB(value_slice, data_type, out));
     } else {
       out->Clear();
     }
@@ -391,7 +391,7 @@ Result<bool> TryDecodeValueOnly(
 }
 
 Result<bool> TryDecodeValueOnly(
-    const Slice& value_slice, const QLTypePtr& ql_type, dockv::PrimitiveValue* out) {
+    const Slice& value_slice, DataType data_type, dockv::PrimitiveValue* out) {
   if (dockv::DecodeValueEntryType(value_slice) == ValueEntryType::kTombstone) {
     if (out) {
       *out = dockv::PrimitiveValue::kTombstone;
@@ -416,13 +416,13 @@ class DocDbToQLTableRowConverter {
     row_->MarkTombstoned(column_);
   }
 
-  Status Decode(const Slice& value_slice, const QLTypePtr& ql_type) {
+  Status Decode(const Slice& value_slice, DataType data_type) {
     if (!row_) {
       return Status::OK();
     }
-    if (ql_type) {
+    if (data_type != DataType::NULL_VALUE_TYPE) {
       return dockv::PrimitiveValue::DecodeToQLValuePB(
-          value_slice, ql_type, &row_->AllocColumn(column_).value);
+          value_slice, data_type, &row_->AllocColumn(column_).value);
     }
 
     row_->MarkTombstoned(column_);
@@ -450,7 +450,7 @@ class DocDbToPgTableRowConverter {
     row_->Clear(column_index_);
   }
 
-  Status Decode(const Slice& value_slice, const QLTypePtr& ql_type) {
+  Status Decode(const Slice& value_slice, DataType data_type) {
     if (!row_) {
       return Status::OK();
     }
@@ -468,13 +468,13 @@ inline auto MakeConverter(dockv::PgTableRow* row, size_t column_index, ColumnId)
 
 template <class Converter> requires (!std::is_pointer_v<Converter>)
 Result<bool> TryDecodeValueOnly(
-    const Slice& value_slice, const QLTypePtr& ql_type, Converter converter) {
+    const Slice& value_slice, DataType data_type, Converter converter) {
   if (dockv::DecodeValueEntryType(value_slice) == ValueEntryType::kTombstone) {
     converter.Clear();
     return false;
   }
-  if (ql_type) {
-    RETURN_NOT_OK(converter.Decode(value_slice, ql_type));
+  if (data_type != DataType::NULL_VALUE_TYPE) {
+    RETURN_NOT_OK(converter.Decode(value_slice, data_type));
   }
   return true;
 }
@@ -696,7 +696,7 @@ class DocDBTableReader::GetHelperBase {
         RETURN_NOT_OK(DocHybridTime::EncodedFromStart(&value));
       }
       return TryDecodeValueOnly(
-          value, projected_column.type, get_value_address());
+          value, projected_column.data_type, get_value_address());
     }
     auto control_fields = VERIFY_RESULT(reader_.packed_row_->ObtainControlFields(
         column_index_ == kLivenessColumnIndex, &value));
@@ -759,7 +759,7 @@ class DocDBTableReader::GetHelperBase {
   Result<bool> TryDecodeValue(
       UserTimeMicros timestamp, const LazyDocHybridTime& write_time, const Expiration& expiration,
       const Slice& value_slice, dockv::PrimitiveValue* out) {
-    auto has_value = VERIFY_RESULT(TryDecodeValueOnly(value_slice, /* ql_type= */ nullptr, out));
+    auto has_value = VERIFY_RESULT(TryDecodeValueOnly(value_slice, DataType::NULL_VALUE_TYPE, out));
     if (has_value && out) {
       auto write_ht = VERIFY_RESULT(write_time.decoded()).hybrid_time();
       if (timestamp != ValueControlFields::kInvalidTimestamp) {
@@ -777,14 +777,14 @@ class DocDBTableReader::GetHelperBase {
       UserTimeMicros timestamp, const LazyDocHybridTime& write_time, const Expiration& expiration,
       const Slice& value_slice, QLValuePB* out) {
     return TryDecodeValueOnly(
-        value_slice, current_column_->type, out);
+        value_slice, current_column_->data_type, out);
   }
 
   template <class Converter> requires (!std::is_pointer_v<Converter>)
   Result<bool> TryDecodeValue(
       UserTimeMicros timestamp, const LazyDocHybridTime& write_time, const Expiration& expiration,
       const Slice& value_slice, Converter converter) {
-    return TryDecodeValueOnly(value_slice, current_column_->type, converter);
+    return TryDecodeValueOnly(value_slice, current_column_->data_type, converter);
   }
 
   bool IsObsolete(const Expiration& expiration) {
@@ -814,7 +814,7 @@ class DocDBTableReader::GetHelperBase {
     static dockv::ProjectedColumn kProjectedLivenessColumn = {
       .id = ColumnId(dockv::KeyEntryValue::kLivenessColumn.GetColumnId()),
       .subkey = dockv::KeyEntryValue::kLivenessColumn,
-      .type = nullptr,
+      .data_type = DataType::NULL_VALUE_TYPE,
     };
     return kProjectedLivenessColumn;
   }
@@ -1067,7 +1067,7 @@ class DocDBTableReader::FlatGetHelper :
         found_ = true;
       }
     } else {
-      if (VERIFY_RESULT(TryDecodeValueOnly(value_slice, current_column_->type, dest))) {
+      if (VERIFY_RESULT(TryDecodeValueOnly(value_slice, current_column_->data_type, dest))) {
         found_ = true;
       }
     }

@@ -30,7 +30,9 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value.h"
+#include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/server/skewed_clock.h"
@@ -175,6 +177,69 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
 Status PgInitSessionImpl(const char* database_name) {
   const std::string db_name(database_name ? database_name : "");
   return WithMaskedYsqlSignals([&db_name] { return pgapi->InitSession(db_name); });
+}
+
+// ql_value is modified in-place.
+dockv::PgValue DecodeCollationEncodedString(dockv::PgTableRow* row, Slice value, size_t idx) {
+  auto body = pggate::DecodeCollationEncodedString(value);
+  return row->TrimString(idx, body.cdata() - value.cdata(), body.size());
+}
+
+Status GetSplitPoints(YBCPgTableDesc table_desc,
+                      const YBCPgTypeEntity **type_entities,
+                      YBCPgTypeAttrs *type_attrs_arr,
+                      YBCPgSplitDatum *split_datums,
+                      bool *has_null) {
+  CHECK(table_desc->IsRangePartitioned());
+  const Schema& schema = table_desc->schema();
+  size_t num_range_key_columns = table_desc->num_range_key_columns();
+  size_t num_splits = table_desc->GetPartitionListSize() - 1;
+  dockv::ReaderProjection projection(schema, schema.key_column_ids());
+  dockv::PgTableRow table_row(projection);
+
+  // decode DocKeys
+  const auto& partitions_bounds = table_desc->GetPartitionList();
+  for (size_t split_idx = 0; split_idx < num_splits; ++split_idx) {
+    // +1 skip the first empty string lower bound partition key
+    Slice column_bounds(partitions_bounds[split_idx + 1]);
+
+    for (size_t col_idx = 0; col_idx < num_range_key_columns; ++col_idx) {
+      size_t split_datum_idx = split_idx * num_range_key_columns + col_idx;
+      SCHECK(!column_bounds.empty(), Corruption, "Incomplete column bounds");
+      auto entry_type = static_cast<dockv::KeyEntryType>(column_bounds[0]);
+      if (entry_type == dockv::KeyEntryType::kLowest) {
+        column_bounds.consume_byte();
+        // deal with boundary cases: MINVALUE and MAXVALUE
+        split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MIN;
+      } else if (entry_type == dockv::KeyEntryType::kHighest) {
+        column_bounds.consume_byte();
+        split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MAX;
+      } else {
+        table_row.Clear();
+        RETURN_NOT_OK(table_row.DecodeKey(col_idx, &column_bounds));
+        split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_STANDARD_VALUE;
+
+        auto val = table_row.GetValueByIndex(col_idx);
+        const bool is_null = !val;
+        if (!is_null) {
+          // Decode Collation
+          if (entry_type == dockv::KeyEntryType::kCollString ||
+              entry_type == dockv::KeyEntryType::kCollStringDescending) {
+            *val = DecodeCollationEncodedString(&table_row, val->string_value(), col_idx);
+          }
+
+          RETURN_NOT_OK(PgValueToDatum(
+              type_entities[col_idx], type_attrs_arr[col_idx], *val,
+              &split_datums[split_datum_idx].datum));
+        } else {
+          *has_null = true;
+          return Status::OK();
+        }
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 } // namespace
@@ -654,88 +719,6 @@ YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
   properties->colocation_id = table_desc->GetColocationId();
   properties->num_range_key_columns = table_desc->num_range_key_columns();
   return YBCStatusOK();
-}
-
-// ql_value is modified in-place.
-static void DecodeCollationEncodedString(QLValuePB *ql_value) {
-  const char* text = ql_value->string_value().c_str();
-  int64_t text_len = ql_value->string_value().size();
-  pggate::DecodeCollationEncodedString(&text, &text_len);
-  ql_value->set_string_value(std::string(text, text_len));
-}
-
-// This function checks for the existence of next KeyEntryValue in decoder,
-// and decodes it if exists, or returns bad status if it doesn't exist.
-static Status CheckAndDecodeKeyEntryValue(dockv::DocKeyDecoder& decoder,
-                                          dockv::KeyEntryValue *v) {
-  bool has_next_key_entry_value =
-      VERIFY_RESULT(decoder.HasPrimitiveValue(dockv::AllowSpecial::kTrue));
-
-  if (has_next_key_entry_value) {
-    RETURN_NOT_OK(decoder.DecodeKeyEntryValue(v));
-    return Status::OK();
-  }
-
-  return STATUS(Corruption, "Expected a KeyEntryValue");
-}
-
-static Status GetSplitPoints(YBCPgTableDesc table_desc,
-                             const YBCPgTypeEntity **type_entities,
-                             YBCPgTypeAttrs *type_attrs_arr,
-                             YBCPgSplitDatum *split_datums,
-                             bool *has_null) {
-  CHECK(table_desc->IsRangePartitioned());
-  const Schema& schema = table_desc->schema();
-  const auto& column_ids = table_desc->partition_schema().range_schema().column_ids;
-  size_t num_range_key_columns = table_desc->num_range_key_columns();
-  size_t num_splits = table_desc->GetPartitionListSize() - 1;
-  dockv::KeyEntryValue v;
-
-  // decode DocKeys
-  const auto& partitions_bounds = table_desc->GetPartitionList();
-  for (size_t split_idx = 0; split_idx < num_splits; ++split_idx) {
-    // +1 skip the first empty string lower bound partition key
-    const auto& column_bounds = (partitions_bounds)[split_idx + 1];
-    dockv::DocKeyDecoder decoder(column_bounds);
-
-    for (size_t col_idx = 0; col_idx < num_range_key_columns; ++col_idx) {
-      RETURN_NOT_OK(CheckAndDecodeKeyEntryValue(decoder, &v));
-      size_t split_datum_idx = split_idx * num_range_key_columns + col_idx;
-      if (v.IsInfinity()) {
-        // deal with boundary cases: MINVALUE and MAXVALUE
-        if (v.type() == dockv::KeyEntryType::kLowest) {
-          split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MIN;
-        } else {
-          CHECK(v.type() == dockv::KeyEntryType::kHighest);
-          split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MAX;
-        }
-      } else {
-        CHECK(!dockv::IsSpecialKeyEntryType(v.type()));
-        split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_STANDARD_VALUE;
-        // Convert from KeyEntryValue to QLValuePB
-        auto column_schema_result = VERIFY_RESULT(schema.column_by_id(column_ids[col_idx]));
-        QLValuePB ql_value;
-        v.ToQLValuePB(column_schema_result.get().type(), &ql_value);
-
-        // Decode Collation
-        if (v.type() == dockv::KeyEntryType::kCollString ||
-            v.type() == dockv::KeyEntryType::kCollStringDescending) {
-          DecodeCollationEncodedString(&ql_value);
-        }
-
-        // Convert from QLValuePB to datum
-        bool is_null;
-        RETURN_NOT_OK(PgValueFromPB(type_entities[col_idx], type_attrs_arr[col_idx], ql_value,
-                                    &split_datums[split_datum_idx].datum, &is_null));
-        if (is_null) {
-          *has_null = true;
-          return Status::OK();
-        }
-      }
-    }
-  }
-
-  return Status::OK();
 }
 
 // table_desc is expected to be a PgTableDesc of a range-partitioned table.

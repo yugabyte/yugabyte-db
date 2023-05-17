@@ -151,6 +151,7 @@ struct TableInfo {
       const TableInfoPtr& self, uint32_t schema_version, HybridTime history_cutoff);
 
   const Schema& schema() const;
+  SchemaPtr SharedSchema() const;
 
   Result<SchemaVersion> GetSchemaPackingVersion(const Schema& schema) const;
 
@@ -282,11 +283,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // This is mostly useful for tests which instantiate Raft groups directly.
   static Result<RaftGroupMetadataPtr> TEST_LoadOrCreate(const RaftGroupMetadataData& data);
 
-  Result<TableInfoPtr> GetTableInfo(
-      const TableId& table_id, const ColocationId& colocation_id = kColocationIdNotSet) const;
-  Result<TableInfoPtr> GetTableInfoUnlocked(
-      const TableId& table_id, const ColocationId& colocation_id = kColocationIdNotSet) const
-      REQUIRES(data_mutex_);
+  Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
+  Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const REQUIRES(data_mutex_);
+
+  Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const;
+  Result<TableInfoPtr> GetTableInfoUnlocked(ColocationId colocation_id) const REQUIRES(data_mutex_);
 
   const RaftGroupId& raft_group_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
@@ -313,18 +314,18 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   NamespaceId namespace_id() const;
 
-  std::string table_name(
-      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
+  std::string table_name(const TableId& table_id = "") const;
 
+  [[deprecated]]
   TableType table_type(const TableId& table_id = "") const;
 
-  yb::SchemaPtr schema(
-      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
+  [[deprecated]]
+  SchemaPtr schema(const TableId& table_id = "") const;
 
   std::shared_ptr<qlexpr::IndexMap> index_map(const TableId& table_id = "") const;
 
-  SchemaVersion schema_version(
-      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
+  [[deprecated]]
+  SchemaVersion schema_version(const TableId& table_id = "") const;
 
   Result<SchemaVersion> schema_version(ColocationId colocation_id) const;
 

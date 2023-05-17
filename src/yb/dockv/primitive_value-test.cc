@@ -214,7 +214,7 @@ void TestRoundTrip(const PrimitiveValue& primitive_value, DataType data_type) {
   AppendEncodedValue(ql_value, &buffer);
 
   QLValuePB decoded_ql_value;
-  ASSERT_OK(PrimitiveValue::DecodeToQLValuePB(buffer.AsSlice(), ql_type, &decoded_ql_value));
+  ASSERT_OK(PrimitiveValue::DecodeToQLValuePB(buffer.AsSlice(), data_type, &decoded_ql_value));
 
   ASSERT_EQ(QLValue(ql_value), QLValue(decoded_ql_value))
       << Format("{ expected: $0, actual: $1 }", ql_value, decoded_ql_value);

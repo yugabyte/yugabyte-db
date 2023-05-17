@@ -1373,7 +1373,7 @@ void TabletServiceImpl::GetCompatibleSchemaVersion(
   tablet::TableInfoPtr table_info = nullptr;
   if (req->schema().has_colocated_table_id()) {
     auto result = tablet.peer->tablet_metadata()->GetTableInfo(
-        {} /* table_id */, req->schema().colocated_table_id().colocation_id());
+        req->schema().colocated_table_id().colocation_id());
     if (!result.ok()) {
       SetupErrorAndRespond(
           resp->mutable_error(), result.status(), TabletServerErrorPB::TABLET_NOT_FOUND, &context);

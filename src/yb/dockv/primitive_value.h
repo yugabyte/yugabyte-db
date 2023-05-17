@@ -108,9 +108,7 @@ class PrimitiveValue {
   // encoding format. Expects the entire slice to be consumed and returns an error otherwise.
   Status DecodeFromValue(const Slice& rocksdb_slice);
 
-  static Status DecodeToQLValuePB(
-      const Slice& rocksdb_slice, const std::shared_ptr<QLType>& ql_type,
-      QLValuePB* ql_val);
+  static Status DecodeToQLValuePB(const Slice& input, DataType data_type, QLValuePB* out);
 
   static PrimitiveValue Double(double v);
   static PrimitiveValue Float(float v);
