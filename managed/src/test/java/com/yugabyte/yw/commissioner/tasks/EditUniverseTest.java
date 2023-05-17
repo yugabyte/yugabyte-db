@@ -76,7 +76,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
-          TaskType.SwamperTargetsFileUpdate,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
           TaskType.ChangeMasterConfig, // Remove
@@ -87,6 +86,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
@@ -112,7 +112,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
-          TaskType.SwamperTargetsFileUpdate,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
           TaskType.ChangeMasterConfig, // Remove
@@ -123,6 +122,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
