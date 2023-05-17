@@ -117,7 +117,7 @@ field_name ::= '<Text Literal>' ;
 
 alter_role ::= 'ALTER' 'ROLE' role_name  'WITH' ( role_property ) { 'AND' ( role_property ) } ;
 
-create_role ::= 'CREATE' 'ROLE' role_name [ 'WITH' ( role_property ) { 'AND' ( role_property ) } ] ;
+create_role ::= 'CREATE' 'ROLE' [ 'IF' 'NOT' 'EXISTS' ] role_name [ 'WITH' ( role_property ) { 'AND' ( role_property ) } ] ;
 
 role_property ::=  'PASSWORD' '=' '<Text Literal>'
                    | 'LOGIN' '=' '<Boolean Literal>'
