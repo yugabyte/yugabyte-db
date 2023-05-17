@@ -10,7 +10,7 @@ import { showOrRedirect } from '../../utils/LayoutUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox';
 import { YBCopyButton } from '../common/descriptors';
 import * as Yup from 'yup';
-import { isNonEmptyArray } from '../../utils/ObjectUtils';
+import { isNonEmptyArray, isNonEmptyString } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
 
 import moment from 'moment';
@@ -262,6 +262,17 @@ export default class UserProfileForm extends Component {
                       />
                     </FlexShrink>
                   </FlexContainer>
+                  {isNonEmptyString(apiToken.data || customer.data.apiToken) && (
+                    <FlexShrink className="api-token-warning">
+                      <div className="warning-color">
+                        <i className="fa fa-warning" />
+                        <span>
+                          {<b>{'Note! '}</b>}
+                          {'Save the token in a safe place as it’s only temporarily visible.'}
+                        </span>
+                      </div>
+                    </FlexShrink>
+                  )}
                   <Field
                     name="customerId"
                     readOnly={true}
