@@ -84,7 +84,7 @@ set_python_executable() {
 # Constants
 # -------------------------------------------------------------------------------------------------
 readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
-readonly PYTHON3_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8')
+readonly PYTHON3_EXECUTABLES=('python3.8' 'python3' 'python3.7' 'python3.6')
 readonly PYTHON2_VERSIONS=('python2.7')
 readonly PYTHON3_VERSIONS=('python3.6' 'python3.7' 'python3.8' 'python3.9' 'python3.10' \
                            'python3.11')
@@ -346,12 +346,15 @@ activate_virtualenv() {
 }
 
 create_pymodules_package() {
+  activate_virtualenv
   rm -rf "$YB_PYTHON_MODULES_DIR"
   mkdir -p "$YB_PYTHON_MODULES_DIR"
+  chmod 777 "$YB_PYTHON_MODULES_DIR"
   extra_install_flags=""
   if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
     extra_install_flags="setuptools<45"
   fi
+  run_pip install --upgrade pip > /dev/null
   # Download the scripts necessary (i.e. ansible). Remove the modules afterwards to avoid
   # system-specific libraries.
   log "Downloading package scripts"
