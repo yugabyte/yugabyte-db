@@ -45,7 +45,7 @@ yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
 
 {{<note title="Enable pg_hint_plan for all sessions">}}
-You can enable `pg_hint_plan` for all sessions by setting it in the [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) YB-TServer flag.
+You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-options).
 {{</note>}}
 
 
