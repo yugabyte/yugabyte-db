@@ -30,14 +30,27 @@ export enum NodeType {
   TServer = 'TServer'
 }
 
-export interface CpuMeasureQueryData {
+export interface PerfRecommendationMetaData {
   suggestion?: string;
   maxNodeName: string;
   maxNodeValue: number;
   otherNodesAvgValue: number;
 }
-export interface CpuMeasureRecommendation {
-  data: CpuMeasureQueryData;
+
+export interface HotShardData {
+  suggestion?: string;
+  hotShardNodeName: string;
+  hotShardMaxNodeValue: number;
+  hotShardAvgNodeValue: number;
+}
+
+export interface PerfRecommendationProps {
+  data: PerfRecommendationMetaData;
+  summary: React.ReactNode | string;
+}
+
+export interface HotShardRecommendation {
+  data: HotShardData;
   summary: React.ReactNode | string;
 }
 
