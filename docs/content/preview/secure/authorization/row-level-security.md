@@ -251,7 +251,7 @@ As defined in the policy, the `current_user` can only access their own row.
 
 YugabyteDB has **BYPASSRLS** and **NOBYPASSRLS** permissions, which can be assigned to a role. By default, table owner and superuser have `BYPASSRLS` permissions assigned, so these users can skip the row-level security. The other roles in a database will have `NOBYPASSRLS` assigned to them by default.
 
-Assign `NOBYPASSRLS` to user `joe` so they can see all the rows in the employees table.
+Assign `BYPASSRLS` to user `joe` so they can see all the rows in the employees table.
 
 ```sql
 \c yugabyte yugabyte;

@@ -460,7 +460,9 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
   if (entities_options) {
     MetricEntityOptions default_options;
     if (ParseEntityOptions("", req, &default_options)) {
+      // Create an entry for each aggregation level with the filters from the request.
       (*entities_options)[AggregationMetricLevel::kTable] = default_options;
+      (*entities_options)[AggregationMetricLevel::kStream] = default_options;
     }
     MetricEntityOptions server_options;
     if (ParseEntityOptions("server_", req, &server_options)) {
@@ -506,6 +508,7 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
   JsonWriter::Mode json_mode;
   ParseRequestOptions(req, &entities_opts, /* prometheus opts */ nullptr, &opts, &json_mode);
   if (entities_opts.empty()) {
+    // Using kTable to just group all the metrics together.
     entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
   }
   std::stringstream* output = &resp->output;
@@ -528,15 +531,13 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
   metrics->get_all_prototypes(prototypes);
 
   if (entities_opts.empty()) {
-    if (prototypes.find("cdcsdk") != prototypes.end()) {
-      entities_opts[AggregationMetricLevel::kStream].metrics.push_back("cdcsdk");
-      prototypes.erase("cdcsdk");
+    if (prototypes.find("cdc") != prototypes.end() ||
+        prototypes.find("cdcsdk") != prototypes.end()) {
+      // Only need to process Stream metrics if we have any cdc or cdcsdk metrics.
+      entities_opts[AggregationMetricLevel::kStream].metrics.push_back("*");
     }
-
     entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
-    entities_opts[AggregationMetricLevel::kTable].exclude_metrics.push_back("cdcsdk");
   }
-
   for (const auto& entity_options : entities_opts) {
     PrometheusWriter writer(output, entity_options.first);
     WARN_NOT_OK(metrics->WriteForPrometheus(&writer, entity_options.second, opts),

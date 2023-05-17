@@ -43,9 +43,8 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/leader_lease.h"
@@ -56,11 +55,16 @@
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/pgsql_operation.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
+
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/rpc/sidecars.h"
 #include "yb/rpc/thread_pool.h"
@@ -332,13 +336,15 @@ class WriteQueryCompletionCallback {
       WriteResponsePB* response,
       tablet::WriteQuery* query,
       const server::ClockPtr& clock,
-      bool trace = false)
+      bool trace,
+      bool leader_term_set_in_request)
       : tablet_peer_(std::move(tablet_peer)),
         context_(std::move(context)),
         response_(response),
         query_(query),
         clock_(clock),
         include_trace_(trace),
+        leader_term_set_in_request_(leader_term_set_in_request),
         trace_(include_trace_ ? Trace::CurrentTrace() : nullptr) {}
 
   void operator()(Status status) const {
@@ -354,6 +360,12 @@ class WriteQueryCompletionCallback {
     TRACE("Write completing with status $0", yb::ToString(status));
 
     if (!status.ok()) {
+      if (leader_term_set_in_request_ && status.IsAborted() &&
+          status.message().Contains("Operation submitted in term")) {
+        // Return a permanent error since term is set the request.
+        status = STATUS_FORMAT(InvalidArgument, "Leader term changed");
+      }
+
       LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status;
       if (include_trace_ && trace_) {
         response_->set_trace_buffer(trace_->DumpToString(true));
@@ -368,7 +380,7 @@ class WriteQueryCompletionCallback {
     for (const auto& ql_write_op : *query_->ql_write_ops()) {
       const auto& ql_write_req = ql_write_op->request();
       auto* ql_write_resp = ql_write_op->response();
-      const QLRowBlock* rowblock = ql_write_op->rowblock();
+      const auto* rowblock = ql_write_op->rowblock();
       SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas());
       rowblock->Serialize(ql_write_req.client(), &context_->sidecars().Start());
       ql_write_resp->set_rows_data_sidecar(
@@ -394,6 +406,7 @@ class WriteQueryCompletionCallback {
   tablet::WriteQuery* const query_;
   server::ClockPtr clock_;
   const bool include_trace_;
+  const bool leader_term_set_in_request_;
   scoped_refptr<Trace> trace_;
 };
 
@@ -402,7 +415,7 @@ class ScanResultChecksummer {
  public:
   ScanResultChecksummer() {}
 
-  void HandleRow(const Schema& schema, const QLTableRow& row) {
+  void HandleRow(const Schema& schema, const qlexpr::QLTableRow& row) {
     QLValue value;
     buffer_.clear();
     for (uint32_t col_index = 0; col_index != schema.num_columns(); ++col_index) {
@@ -641,14 +654,13 @@ void TabletServiceAdminImpl::BackfillIndex(
   bool all_at_backfill = true;
   bool all_past_backfill = true;
   bool is_pg_table = tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE;
-  const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map(
-    req->indexed_table_id());
-  std::vector<IndexInfo> indexes_to_backfill;
+  const auto index_map = tablet.peer->tablet_metadata()->index_map(req->indexed_table_id());
+  std::vector<qlexpr::IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
     auto result = index_map->FindIndex(idx.table_id());
     if (result) {
-      const IndexInfo* index_info = *result;
+      const auto* index_info = *result;
       indexes_to_backfill.push_back(*index_info);
       index_ids.push_back(index_info->table_id());
 
@@ -678,7 +690,7 @@ void TabletServiceAdminImpl::BackfillIndex(
       // Change this to see if for all indexes: IndexPermission > DO_BACKFILL.
       LOG(WARNING) << "Received BackfillIndex RPC: " << req->DebugString()
                    << " after all indexes have moved past DO_BACKFILL. IndexMap is "
-                   << ToString(index_map);
+                   << AsString(index_map);
       // This is possible if this tablet completed the backfill. But the master failed over before
       // other tablets could complete.
       // The new master is redoing the backfill. We are safe to ignore this request.
@@ -695,7 +707,7 @@ void TabletServiceAdminImpl::BackfillIndex(
             InvalidArgument,
             "Tablet has a different schema $0 vs $1. "
             "Requested index is not ready to backfill. IndexMap: $2",
-            our_schema_version, their_schema_version, ToString(index_map)),
+            our_schema_version, their_schema_version, AsString(index_map)),
         TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
     return;
   }
@@ -987,9 +999,9 @@ void TabletServiceImpl::VerifyTableRowRange(
 
     (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
   } else {
-    const IndexMap index_map =
+    const auto& index_map =
         *peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_map;
-    vector<IndexInfo> indexes;
+    vector<qlexpr::IndexInfo> indexes;
     vector<TableId> index_ids;
     if (req->index_ids().empty()) {
       for (auto it = index_map.begin(); it != index_map.end(); it++) {
@@ -999,7 +1011,7 @@ void TabletServiceImpl::VerifyTableRowRange(
       for (const auto& idx : req->index_ids()) {
         auto result = index_map.FindIndex(idx);
         if (result) {
-          const IndexInfo* index_info = *result;
+          const auto* index_info = *result;
           indexes.push_back(*index_info);
           index_ids.push_back(index_info->table_id());
         } else {
@@ -1016,7 +1028,7 @@ void TabletServiceImpl::VerifyTableRowRange(
       return;
     }
 
-    for (const IndexInfo& index : indexes) {
+    for (const auto& index : indexes) {
       const auto& table_id = index.table_id();
       (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
     }
@@ -1445,8 +1457,8 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(req->tablet_id(), server_->permanent_uuid()),
       tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
-      req->table_type(), schema, IndexMap(),
-      req->has_index_info() ? boost::optional<IndexInfo>(req->index_info()) : boost::none,
+      req->table_type(), schema, qlexpr::IndexMap(),
+      req->has_index_info() ? boost::optional<qlexpr::IndexInfo>(req->index_info()) : boost::none,
       0 /* schema_version */, partition_schema);
   std::vector<SnapshotScheduleId> snapshot_schedules;
   snapshot_schedules.reserve(req->snapshot_schedules().size());
@@ -1599,7 +1611,8 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       break;
     case FlushTabletsRequestPB::COMPACT:
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-          server_->tablet_manager()->TriggerAdminCompactionAndWait(tablet_ptrs), resp, &context);
+          server_->tablet_manager()->TriggerAdminCompaction(tablet_ptrs, true /* should_wait */),
+          resp, &context);
       break;
     case FlushTabletsRequestPB::LOG_GC:
       for (const auto& tablet : tablet_peers) {
@@ -1992,8 +2005,12 @@ Status TabletServiceImpl::PerformWrite(
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(*context));
 
+  const auto leader_term = req->has_leader_term() && req->leader_term() != OpId::kUnknownTerm
+                               ? req->leader_term()
+                               : tablet.leader_term;
+
   auto query = std::make_unique<tablet::WriteQuery>(
-      tablet.leader_term, context_ptr->GetClientDeadline(), tablet.peer.get(), tablet.tablet,
+      leader_term, context_ptr->GetClientDeadline(), tablet.peer.get(), tablet.tablet,
       context_ptr.get(), resp);
   query->set_client_request(*req);
 
@@ -2006,7 +2023,8 @@ Status TabletServiceImpl::PerformWrite(
   }
 
   query->set_callback(WriteQueryCompletionCallback(
-      tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace()));
+      tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace(),
+      req->has_leader_term()));
 
   query->AdjustYsqlQueryTransactionality(req->pgsql_write_batch_size());
 
@@ -2539,15 +2557,15 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 namespace {
 
 Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
-  auto scoped_read_operation = tablet->CreateNonAbortableScopedRWOperation();
+  auto scoped_read_operation = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
   const shared_ptr<Schema> schema = tablet->metadata()->schema();
-  auto client_schema = schema->CopyWithoutColumnIds();
-  auto iter = tablet->NewRowIterator(client_schema, {}, "", deadline);
+  dockv::ReaderProjection projection(*schema);
+  auto iter = tablet->NewRowIterator(projection, {}, "", deadline);
   RETURN_NOT_OK(iter);
 
-  QLTableRow value_map;
+  qlexpr::QLTableRow value_map;
   ScanResultChecksummer collector;
 
   while (VERIFY_RESULT((**iter).FetchNext(&value_map))) {
@@ -2683,22 +2701,24 @@ void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
 void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
                                       GetLockStatusResponsePB* resp,
                                       rpc::RpcContext context) {
-  TransactionId txn_id = TransactionId::Nil();
-  if (req->has_transaction_id() && !req->transaction_id().empty()) {
-    auto id_or_status = FullyDecodeTransactionId(req->transaction_id());
+  std::set<TransactionId> transaction_ids;
+  for (auto& txn_id : req->transaction_ids()) {
+    auto id_or_status = FullyDecodeTransactionId(txn_id);
     if (!id_or_status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
       return;
     }
-    txn_id = *id_or_status;
+    transaction_ids.insert(*id_or_status);
   }
+
   if (req->has_tablet_id() && !req->tablet_id().empty()) {
     PerformAtLeader(req, resp, &context,
-      [req, resp, &txn_id](const LeaderTabletPeer& tablet_peer) -> Status {
-        const auto& tablet = tablet_peer.tablet;
-        return tablet->GetLockStatus(
-            txn_id, req->subtransaction_id(), resp->add_tablet_lock_infos());
-        return Status::OK();
+      [resp, &transaction_ids](const LeaderTabletPeer& tablet_peer) -> Status {
+        auto s = tablet_peer.tablet->GetLockStatus(transaction_ids, resp->add_tablet_lock_infos());
+        if (!s.ok()) {
+          resp->Clear();
+        }
+        return s;
       });
     return;
   }
@@ -2711,9 +2731,8 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       // TODO(pglocks): https://github.com/yugabyte/yugabyte-db/issues/15647
       // Include leader_term in response so client may pick only the latest leader if multiple
       // tablets respond.
-      const auto& tablet = tablet_peer->shared_tablet();
-      auto s = tablet->GetLockStatus(
-          txn_id, req->subtransaction_id(), resp->add_tablet_lock_infos());
+      auto s = tablet_peer->shared_tablet()->GetLockStatus(
+          transaction_ids, resp->add_tablet_lock_infos());
       if (!s.ok()) {
         resp->Clear();
         SetupErrorAndRespond(resp->mutable_error(), s, &context);

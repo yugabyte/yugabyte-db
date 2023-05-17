@@ -16,15 +16,24 @@
 #include <stdlib.h>
 #include <string>
 #include <unordered_map>
+
 #include <boost/functional/hash.hpp>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/common_types.fwd.h"
 #include "yb/common/entity_ids_types.h"
+
 #include "yb/cdc/cdc_consumer.pb.h"
-#include "yb/util/format.h"
+
+#include "yb/client/client_fwd.h"
+
 #include "yb/gutil/strings/stringpiece.h"
+
+#include "yb/qlexpr/qlexpr_fwd.h"
+
+#include "yb/util/format.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace cdc {
@@ -42,6 +51,8 @@ typedef std::unordered_map<CDCStreamId, ColocatedSchemaVersionMap> StreamColocat
 constexpr uint32_t kInvalidSchemaVersion = std::numeric_limits<uint32_t>::max();
 
 typedef std::pair<uint32_t, uint32_t> SchemaVersionMapping;
+
+YB_STRONGLY_TYPED_BOOL(StreamModeTransactional);
 
 struct ConsumerTabletInfo {
   std::string tablet_id;
@@ -120,6 +131,14 @@ inline std::string GetOriginalReplicationUniverseId(const std::string& universe_
   }
   return clean_universe_id.ToString();
 }
+
+Result<std::optional<qlexpr::QLRow>> FetchOptionalCdcStreamInfo(
+    client::TableHandle* table, client::YBSession* session, const TabletId& tablet_id,
+    const CDCStreamId& stream_id, const std::vector<std::string>& columns);
+
+Result<qlexpr::QLRow> FetchCdcStreamInfo(
+    client::TableHandle* table, client::YBSession* session, const TabletId& tablet_id,
+    const CDCStreamId& stream_id, const std::vector<std::string>& columns);
 
 } // namespace cdc
 } // namespace yb

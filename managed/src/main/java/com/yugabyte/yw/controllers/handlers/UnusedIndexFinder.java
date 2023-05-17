@@ -9,9 +9,9 @@
  */
 package com.yugabyte.yw.controllers.handlers;
 
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-import static com.yugabyte.yw.common.TableSpaceStructures.UnusedIndexFinderResponse;
 import static com.yugabyte.yw.common.TableSpaceStructures.QueryUniverseDBListResponse;
+import static com.yugabyte.yw.common.TableSpaceStructures.UnusedIndexFinderResponse;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

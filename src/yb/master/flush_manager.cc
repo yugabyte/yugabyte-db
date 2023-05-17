@@ -94,7 +94,10 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
   const bool is_compaction = req->is_compaction();
 
   if (is_compaction) {
-    RETURN_NOT_OK(catalog_manager_->UpdateLastFullCompactionRequestTime(table->id()));
+    for (const auto& table_description : tables) {
+      RETURN_NOT_OK(catalog_manager_->UpdateLastFullCompactionRequestTime(
+          table_description.table_info->id()));
+    }
   }
 
   // Send FlushTablets requests to all Tablet Servers (one TS - one request).

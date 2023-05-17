@@ -33,6 +33,9 @@
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 typedef struct
 {
 	char	   *location;

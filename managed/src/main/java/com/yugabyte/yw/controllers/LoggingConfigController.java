@@ -19,7 +19,6 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.text.SimpleDateFormat;
 import org.slf4j.LoggerFactory;
-import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Result;
 

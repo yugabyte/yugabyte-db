@@ -37,8 +37,6 @@
 namespace yb {
 namespace docdb {
 
-YB_STRONGLY_TYPED_BOOL(IsFlatDoc);
-
 class IntentAwareIterator;
 
 YB_DEFINE_ENUM(DocReaderResult, (kNotFound)(kFoundAndFinished)(kFoundNotFinished));
@@ -49,15 +47,6 @@ Result<DocHybridTime> GetTableTombstoneTime(
     const Slice& root_doc_key, const DocDB& doc_db,
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline, const ReadHybridTime& read_time);
-
-struct ProjectedColumn {
-  dockv::KeyEntryValue subkey;
-  QLTypePtr type;
-
-  std::string ToString() const;
-};
-
-using ReaderProjection = std::vector<ProjectedColumn>;
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
@@ -81,7 +70,7 @@ Result<std::optional<dockv::SubDocument>> TEST_GetSubDocument(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time = ReadHybridTime::Max(),
-    const ReaderProjection* projection = nullptr);
+    const dockv::ReaderProjection* projection = nullptr);
 
 // This class reads SubDocument instances for a given table. The caller should initialize with
 // UpdateTableTombstoneTime and SetTableTtl, if applicable, before calling Get(). Instances
@@ -95,7 +84,7 @@ class DocDBTableReader {
  public:
   DocDBTableReader(
       IntentAwareIterator* iter, CoarseTimePoint deadline,
-      const ReaderProjection* projection,
+      const dockv::ReaderProjection* projection,
       TableType table_type,
       std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage);
   ~DocDBTableReader();
@@ -117,7 +106,8 @@ class DocDBTableReader {
   // This is always true for YSQL.
   // result shouldn't be nullptr and will be filled with the same number of primitives as number of
   // columns passed to ctor in projection and in the same order.
-  Result<DocReaderResult> GetFlat(const Slice& root_doc_key, QLTableRow* result);
+  Result<DocReaderResult> GetFlat(const Slice& root_doc_key, qlexpr::QLTableRow* result);
+  Result<DocReaderResult> GetFlat(const Slice& root_doc_key, dockv::PgTableRow* result);
 
  private:
   // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info
@@ -128,13 +118,14 @@ class DocDBTableReader {
   class GetHelperBase;
 
   class GetHelper;
+  template <class ResultType>
   class FlatGetHelper;
   class PackedRowData;
 
   // Owned by caller.
   IntentAwareIterator* iter_;
   DeadlineInfo deadline_info_;
-  const ReaderProjection* projection_;
+  const dockv::ReaderProjection* projection_;
   const TableType table_type_;
   std::unique_ptr<PackedRowData> packed_row_;
 

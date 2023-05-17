@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { createGlobalState } from 'react-use';
 import { browserStorage } from '@app/helpers';
 
-import YBLogo from '@app/assets/yb-logo-dark.svg';
+import YBLogo from '@app/assets/yb-logo.svg';
 import RocketIcon from '@app/assets/rocket.svg';
 import SettingsIcon from '@app/assets/cog.svg';
 import DbSecurityIcon from '@app/assets/database-security.svg';
@@ -52,7 +52,9 @@ const useStyles = makeStyles((theme) => ({
   logoIcon: {
     width: themeVariables.sidebarWidthMin,
     minWidth: themeVariables.sidebarWidthMin,
-    padding: theme.spacing(1),
+    height: themeVariables.sidebarWidthMin,
+    minHeight: themeVariables.sidebarWidthMin,
+    padding: theme.spacing(1.5),
     marginRight: theme.spacing(0.5)
   },
   claimShirtIcon: {

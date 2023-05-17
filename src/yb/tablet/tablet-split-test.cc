@@ -17,7 +17,7 @@
 
 #include "yb/dockv/partition.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/dockv/doc_key.h"
@@ -66,7 +66,7 @@ class TabletSplitTest : public YBTabletTest {
     return req->hash_code();
   }
 
-  Result<std::vector<QLRow>> SelectAll(Tablet* tablet) {
+  Result<std::vector<qlexpr::QLRow>> SelectAll(Tablet* tablet) {
     ReadHybridTime read_time = ReadHybridTime::SingleTime(VERIFY_RESULT(tablet->SafeTime()));
     QLReadRequestPB req;
     QLAddColumns(schema_, {}, &req);
@@ -77,10 +77,10 @@ class TabletSplitTest : public YBTabletTest {
 
     EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
 
-    return CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer())->rows();
+    return qlexpr::CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer())->rows();
   }
 
-  docdb::DocKeyHash GetRowHashCode(const QLRow& row) {
+  docdb::DocKeyHash GetRowHashCode(const qlexpr::QLRow& row) {
     std::string tmp;
     AppendToKey(row.column(0).value(), &tmp);
     return YBPartition::HashColumnCompoundValue(tmp);

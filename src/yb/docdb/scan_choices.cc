@@ -13,14 +13,14 @@
 
 #include "yb/docdb/scan_choices.h"
 
-#include "yb/dockv/ql_scanspec.h"
+#include "yb/qlexpr/ql_scanspec.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
-#include "yb/dockv/doc_scanspec_util.h"
+#include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/docdb/intent_aware_iterator_interface.h"
 #include "yb/dockv/value_type.h"
 
@@ -53,8 +53,8 @@ HybridScanChoices::HybridScanChoices(
     const KeyBytes& upper_doc_key,
     bool is_forward_scan,
     const std::vector<ColumnId>& options_col_ids,
-    const std::shared_ptr<std::vector<dockv::OptionList>>& options,
-    const dockv::QLScanRange* range_bounds,
+    const std::shared_ptr<std::vector<qlexpr::OptionList>>& options,
+    const qlexpr::QLScanRange* range_bounds,
     const ColGroupHolder& col_groups,
     const size_t prefix_length)
     : ScanChoices(is_forward_scan),
@@ -194,7 +194,7 @@ HybridScanChoices::HybridScanChoices(
 
 HybridScanChoices::HybridScanChoices(
     const Schema& schema,
-    const dockv::YQLScanSpec& doc_spec,
+    const qlexpr::YQLScanSpec& doc_spec,
     const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key)
     : HybridScanChoices(
@@ -804,7 +804,7 @@ Status HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
 }
 
 ScanChoicesPtr ScanChoices::Create(
-    const Schema& schema, const dockv::YQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
+    const Schema& schema, const qlexpr::YQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key) {
   if (doc_spec.options() || doc_spec.range_bounds()) {
     return std::make_unique<HybridScanChoices>(schema, doc_spec, lower_doc_key, upper_doc_key);

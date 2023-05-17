@@ -65,6 +65,7 @@ export const NTPConfigField = ({ isDisabled, providerCode }: NTPConfigFieldProps
         control={control}
         options={ntpSetupOptions}
         orientation={RadioGroupOrientation.HORIZONTAL}
+        isDisabled={isDisabled}
       />
       {ntpSetupType === NTPSetupType.SPECIFIED && (
         <YBMultiEntryInputField

@@ -87,7 +87,7 @@
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 
-#include "yb/common/ybc_util.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pgstat.h"
 
@@ -1050,6 +1050,7 @@ bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 bool yb_enable_sequence_pushdown = true;
 bool yb_disable_wait_for_backends_catalog_version = false;
+int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1131,6 +1132,7 @@ typedef struct DdlTransactionState {
 	MemoryContext mem_context;
 	bool is_catalog_version_increment;
 	bool is_breaking_catalog_change;
+	bool is_global_ddl;
 	NodeTag original_node_tag;
 } DdlTransactionState;
 
@@ -1188,7 +1190,7 @@ YBResetDdlState()
 	}
 	ddl_transaction_state = (struct DdlTransactionState){0};
 	YBResetEnableNonBreakingDDLMode();
-	YBCPgClearSeparateDdlTxnMode();
+	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
 	HandleYBStatus(status);
 }
 
@@ -1196,6 +1198,10 @@ int
 YBGetDdlNestingLevel()
 {
 	return ddl_transaction_state.nesting_level;
+}
+
+void YbSetIsGlobalDDL() {
+	ddl_transaction_state.is_global_ddl = true;
 }
 
 void
@@ -1244,18 +1250,21 @@ YBDecrementDdlNestingLevel()
 		YBResetEnableNonBreakingDDLMode();
 		bool is_catalog_version_increment = ddl_transaction_state.is_catalog_version_increment;
 		bool is_breaking_catalog_change = ddl_transaction_state.is_breaking_catalog_change;
+		bool is_global_ddl = ddl_transaction_state.is_global_ddl;
 		/*
-		 * Reset the two flags to false prior to executing
+		 * Reset these flags to false prior to executing
 		 * YbIncrementMasterCatalogVersionTableEntry() such that
 		 * even when it throws an exception we still reset the flags.
 		 */
 		ddl_transaction_state.is_catalog_version_increment = false;
 		ddl_transaction_state.is_breaking_catalog_change = false;
+		ddl_transaction_state.is_global_ddl = false;
+
 		const bool increment_done =
 			is_catalog_version_increment &&
 			YBCPgHasWriteOperationsInDdlTxnMode() &&
 			YbIncrementMasterCatalogVersionTableEntry(
-					is_breaking_catalog_change);
+					is_breaking_catalog_change, is_global_ddl);
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
 
@@ -1513,6 +1522,17 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * so nothing to do on the cache side.
 			 */
 			*is_breaking_catalog_change = false;
+			/*
+			 * In per-database catalog version mode, we do not need to rely on
+			 * catalog cache refresh to check that the database exists. We
+			 * detect that the database is dropped as we can no longer find
+			 * the row for MyDatabaseId when the table pg_yb_catalog_version
+			 * is prefetched from the master. We do need to rely on catalog
+			 * cache refresh to check that the database exists in global
+			 * catalog version mode.
+			 */
+			if (YBIsDBCatalogVersionMode())
+				*is_catalog_version_increment = false;
 			break;
 
 		// All T_Alter... tags from nodes.h:
@@ -2061,8 +2081,18 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	bool		nulls[ncols];
 
 	Relation	rel = relation_open(relid, AccessShareLock);
+	Oid dbid		= YBCGetDatabaseOid(rel);
+	Oid storage_relid = YbGetStorageRelid(rel);
 
-	YbTableProperties yb_props = YbTryGetTableProperties(rel);
+	YBCPgTableDesc yb_tabledesc = NULL;
+	YbTablePropertiesData yb_table_properties;
+	bool not_found = false;
+	HandleYBStatusIgnoreNotFound(
+		YBCPgGetTableDesc(dbid, storage_relid, &yb_tabledesc), &not_found);
+	if (!not_found)
+		HandleYBStatusIgnoreNotFound(
+			YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties),
+			&not_found);
 
 	tupdesc = CreateTemplateTupleDesc(ncols, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
@@ -2080,8 +2110,9 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	}
 	BlessTupleDesc(tupdesc);
 
-	if (yb_props)
+	if (!not_found)
 	{
+		YbTableProperties yb_props = &yb_table_properties;
 		values[0] = Int64GetDatum(yb_props->num_tablets);
 		values[1] = Int64GetDatum(yb_props->num_hash_key_columns);
 		values[2] = BoolGetDatum(yb_props->is_colocated);

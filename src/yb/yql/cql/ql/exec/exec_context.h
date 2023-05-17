@@ -369,7 +369,8 @@ class TnodeContext {
   const client::YBqlReadOpPtr& uncovered_select_op() const {
     return uncovered_select_op_;
   }
-  QLRowBlock* keys() {
+
+  qlexpr::QLRowBlock* keys() {
     return keys_.get();
   }
 
@@ -452,7 +453,7 @@ class TnodeContext {
 
   // Select op template and primary keys for fetching from indexed table in an uncovered query.
   client::YBqlReadOpPtr uncovered_select_op_;
-  std::unique_ptr<QLRowBlock> keys_;
+  std::unique_ptr<qlexpr::QLRowBlock> keys_;
 
   boost::optional<uint32_t> hash_code_from_partition_key_ops_;
   boost::optional<uint32_t> max_hash_code_from_partition_key_ops_;

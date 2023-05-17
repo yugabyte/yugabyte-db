@@ -144,8 +144,7 @@ public class HealthCheckMetrics {
     if (CollectionUtils.isEmpty(metrics)) {
       return Collections.emptyList();
     }
-    return metrics
-        .stream()
+    return metrics.stream()
         .flatMap(m -> buildNodeMetric(m, customer, universe, nodeName).stream())
         .collect(Collectors.toList());
   }
@@ -155,9 +154,7 @@ public class HealthCheckMetrics {
     if (CollectionUtils.isEmpty(metric.getValues())) {
       return Collections.emptyList();
     }
-    return metric
-        .getValues()
-        .stream()
+    return metric.getValues().stream()
         .map(
             value -> {
               Metric result =

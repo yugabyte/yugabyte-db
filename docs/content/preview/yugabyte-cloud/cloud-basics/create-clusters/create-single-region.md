@@ -44,6 +44,7 @@ The **Create Cluster** wizard has the following pages:
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
 1. [Network Access](#network-access)
+1. [Security](#security)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
@@ -84,9 +85,11 @@ Monthly total costs for the cluster are based on the number of vCPUs and estimat
 
 ![Add Cluster Wizard - Configure VPC](/images/yb-cloud/cloud-addcluster-paid3.3.png)
 
-To use a VPC for network isolation and security, select **Use VPC peering**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+To use a VPC for network isolation and security, choose **Select a VPC to use a dedicated network isolated from others**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 
 {{% includeMarkdown "network-access.md" %}}
+
+{{% includeMarkdown "include-security-settings.md" %}}
 
 ### Database Credentials
 

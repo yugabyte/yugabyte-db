@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.PRECONDITION_FAILED;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.google.api.gax.paging.Page;
 import com.google.auth.Credentials;
@@ -262,9 +262,7 @@ public class GCPUtil implements CloudUtil {
     Map<String, String> regionLocationsMap = new HashMap<>();
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
     if (CollectionUtils.isNotEmpty(gcsData.regionLocations)) {
-      gcsData
-          .regionLocations
-          .stream()
+      gcsData.regionLocations.stream()
           .forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
     }
     return regionLocationsMap;

@@ -141,9 +141,7 @@ public class TableSpaceUtil {
 
   private static void validatePlacement(PlacementInfo clusterPlacement, PlacementBlock pb) {
     PlacementAZ foundAZ =
-        clusterPlacement
-            .cloudList
-            .stream()
+        clusterPlacement.cloudList.stream()
             .filter(c -> Objects.equals(c.code, pb.cloud))
             .flatMap(c -> c.regionList.stream())
             .filter(r -> Objects.equals(r.code, pb.region))

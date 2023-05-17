@@ -12,7 +12,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
@@ -33,11 +33,9 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
-
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Set;
 import java.util.UUID;
-
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.core.AllOf;
 import org.hamcrest.core.Is;

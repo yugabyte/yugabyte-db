@@ -26,7 +26,7 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/gutil/bind.h"
 

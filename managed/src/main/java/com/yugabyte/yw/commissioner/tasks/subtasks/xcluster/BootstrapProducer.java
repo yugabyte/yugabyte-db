@@ -4,6 +4,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
@@ -15,7 +17,9 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.BootstrapUniverseResponse;
@@ -27,6 +31,11 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
   public static final long MINIMUM_ADMIN_OPERATION_TIMEOUT_MS_FOR_BOOTSTRAP = 120000;
   public static final long MINIMUM_SOCKET_READ_TIMEOUT_MS_FOR_BOOTSTRAP = 120000;
 
+  private static final long INITIAL_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_BOOTSTRAP_PRODUCER =
+      1000; // 1 second
+  private static final long MAXIMUM_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_BOOTSTRAP_PRODUCER =
+      60000; // 1 minute
+
   private final RuntimeConfGetter confGetter;
   private final YbClientConfigFactory ybcClientConfigFactory;
 
@@ -34,13 +43,15 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
   protected BootstrapProducer(
       BaseTaskDependencies baseTaskDependencies,
       RuntimeConfGetter confGetter,
-      YbClientConfigFactory ybcClientConfigFactory) {
-    super(baseTaskDependencies);
+      YbClientConfigFactory ybcClientConfigFactory,
+      XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
     this.confGetter = confGetter;
     this.ybcClientConfigFactory = ybcClientConfigFactory;
   }
 
   public static class Params extends XClusterConfigTaskParams {
+
     // The source universe UUID must be stored in universeUUID field.
     // The parent xCluster config must be stored in xClusterConfig field.
     // Table ids to bootstrap.
@@ -87,34 +98,61 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
             Math.max(
                 confGetter.getGlobalConf(GlobalConfKeys.ybcSocketReadTimeoutMs),
                 MINIMUM_SOCKET_READ_TIMEOUT_MS_FOR_BOOTSTRAP));
+    List<HostAndPort> tserverHostAndPortList =
+        sourceUniverse.getTServersInPrimaryCluster().stream()
+            .map(
+                tserverNodeDetails ->
+                    HostAndPort.fromParts(
+                        tserverNodeDetails.cloudInfo.private_ip, tserverNodeDetails.tserverRpcPort))
+            .collect(Collectors.toList());
+
     try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
       // Set bootstrap creation time.
       Date now = new Date();
       xClusterConfig.updateBootstrapCreateTimeForTables(taskParams().tableIds, now);
       log.info("Bootstrap creation time for tables {} set to {}", taskParams().tableIds, now);
 
-      // Todo: Add retry to other tservers if the first tserver is failing.
-      // Set the IP:Port of the first tserver in the list of tservers.
-      HostAndPort hostAndPort =
-          HostAndPort.fromParts(
-              sourceUniverse.getTServersInPrimaryCluster().get(0).cloudInfo.private_ip,
-              sourceUniverse.getTServersInPrimaryCluster().get(0).tserverRpcPort);
-      // Do the bootstrap.
-      BootstrapUniverseResponse resp = client.bootstrapUniverse(hostAndPort, taskParams().tableIds);
-      if (resp.hasError()) {
-        String errMsg =
-            String.format(
-                "Failed to bootstrap universe (%s) for table (%s): %s",
-                taskParams().getUniverseUUID(), taskParams().tableIds, resp.errorMessage());
-        throw new RuntimeException(errMsg);
+      int tserverIndex = 0;
+      BootstrapUniverseResponse resp = null;
+      while (tserverIndex < tserverHostAndPortList.size() && Objects.isNull(resp)) {
+        try {
+          // Do the bootstrap.
+          HostAndPort hostAndPort = tserverHostAndPortList.get(tserverIndex);
+          resp = client.bootstrapUniverse(hostAndPort, taskParams().tableIds);
+          if (resp.hasError()) {
+            String errMsg =
+                String.format(
+                    "Failed to bootstrap universe (%s) for table (%s): %s",
+                    taskParams().getUniverseUUID(), taskParams().tableIds, resp.errorMessage());
+            throw new RuntimeException(errMsg);
+          }
+        } catch (Exception e) {
+          // Print the error and retry.
+          log.error("client.bootstrapUniverse RPC hit error : {}", e.getMessage());
+          resp = null;
+          // Busy waiting is unavoidable.
+          Thread.sleep(
+              Util.getExponentialBackoffDelayMs(
+                  INITIAL_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_BOOTSTRAP_PRODUCER,
+                  MAXIMUM_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_BOOTSTRAP_PRODUCER,
+                  tserverIndex /* iterationNumber */));
+        } finally {
+          tserverIndex++;
+        }
       }
+
+      if (Objects.isNull(resp)) {
+        throw new RuntimeException(
+            String.format("BootstrapProducer RPC call has failed for %s", taskParams().tableIds));
+      }
+
       List<String> bootstrapIds = resp.bootstrapIds();
       if (bootstrapIds.size() != taskParams().tableIds.size()) {
         String errMsg =
             String.format(
                 "Received invalid number of bootstrap ids (%d), must be (%d)",
                 bootstrapIds.size(), taskParams().tableIds.size());
-        throw new RuntimeException(errMsg);
+        throw new IllegalStateException(errMsg);
       }
 
       // Save bootstrap ids.

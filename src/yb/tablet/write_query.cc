@@ -21,7 +21,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 
@@ -306,7 +306,7 @@ Result<bool> WriteQuery::PrepareExecute() {
 
 Status WriteQuery::InitExecute(ExecuteMode mode) {
   auto tablet = VERIFY_RESULT(tablet_safe());
-  scoped_read_operation_ = tablet->CreateNonAbortableScopedRWOperation();
+  scoped_read_operation_ = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   if (!scoped_read_operation_.ok()) {
     return MoveStatus(scoped_read_operation_);
   }
@@ -363,7 +363,7 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
         table_info->schema_version,
         table_info->doc_read_context,
         table_info->index_map,
-        tablet->unique_index_key_schema(),
+        table_info->unique_index_key_projection,
         txn_op_ctx);
     RETURN_NOT_OK(write_op->Init(resp));
     doc_ops_.emplace_back(std::move(write_op));
@@ -652,7 +652,7 @@ Status WriteQuery::DoCompleteExecute() {
       : docdb::InitMarkerBehavior::kOptional;
   for (;;) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
-        doc_ops_, deadline(), real_read_time, tablet->doc_db(),
+        doc_ops_, deadline(), real_read_time, tablet->doc_db(), scoped_read_operation_,
         request().mutable_write_batch(), init_marker_behavior,
         tablet->monotonic_counter(), &restart_read_ht_,
         tablet->metadata()->table_name()));

@@ -49,16 +49,27 @@ public enum AlertTemplateSystemVariable {
       "Alert notification channel name",
       "$labels.alert_channel_name"),
   YUGABYTE_ALERT_LABELS_JSON(
-      "yugabyte_alert_labels_json", "All alert labels in json format", "$labels.alert_labels_json");
+      "yugabyte_alert_labels_json",
+      "All alert labels in json format",
+      "$labels.alert_labels_json",
+      true);
   private final String name;
   private final String description;
+
+  private final boolean jsonObject;
 
   @JsonIgnore private final String placeholderValue;
 
   AlertTemplateSystemVariable(String name, String description, String placeholderValue) {
+    this(name, description, placeholderValue, false);
+  }
+
+  AlertTemplateSystemVariable(
+      String name, String description, String placeholderValue, boolean jsonObject) {
     this.name = name;
     this.description = description;
     this.placeholderValue = placeholderValue;
+    this.jsonObject = jsonObject;
   }
 
   @JsonCreator

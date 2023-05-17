@@ -26,28 +26,31 @@
 namespace yb {
 namespace pggate {
 
-template <class Value> requires (std::is_integral<Value>::value)
-void PgWriteInt(Value value, WriteBuffer* buffer) {
+namespace {
+
+template <class Value, class Buffer> requires (std::is_integral<Value>::value)
+void PgWriteInt(Value value, Buffer* buffer) {
   char buf[PgWireDataHeader::kSerializedSize + sizeof(value)];
   PgWireDataHeader().SerializeTo(buf);
   Store<Value, NetworkByteOrder>(buf + PgWireDataHeader::kSerializedSize, value);
   buffer->Append(buf, sizeof(buf));
 }
 
-template <class Int, class Value>
+template <class Int, class Value, class Buffer>
     requires (std::is_integral<Int>::value && std::is_floating_point<Value>::value)
-void PgWriteFloat(Value value, WriteBuffer* buffer) {
+void PgWriteFloat(Value value, Buffer* buffer) {
   PgWriteInt(bit_cast<Int>(value), buffer);
 }
 
-template <bool NullTerminated>
-void PgWriteBytes(const std::string& value, WriteBuffer* buffer) {
+template <bool NullTerminated, class Buffer>
+void PgWriteBytes(const Slice& value, Buffer* buffer) {
   auto length = value.size() + NullTerminated;
   PgWriteInt<uint64_t>(length, buffer);
-  buffer->Append(value.c_str(), length);
+  buffer->Append(value.cdata(), length);
 }
 
-Status WriteColumn(const QLValuePB& col_value, WriteBuffer *buffer) {
+template <class Buffer>
+Status DoWriteColumn(const QLValuePB& col_value, Buffer* buffer) {
   // Write data header.
   if (QLValue::IsNull(col_value)) {
     PgWireDataHeader header;
@@ -126,6 +129,20 @@ Status WriteColumn(const QLValuePB& col_value, WriteBuffer *buffer) {
   return Status::OK();
 }
 
+} // namespace
+
+Status WriteColumn(const QLValuePB& col_value, WriteBuffer* buffer) {
+  return DoWriteColumn(col_value, buffer);
+}
+
+Status WriteColumn(const QLValuePB& col_value, ValueBuffer* buffer) {
+  return DoWriteColumn(col_value, buffer);
+}
+
+void WriteBinaryColumn(const Slice& col_value, WriteBuffer* buffer) {
+  PgWriteBytes</* null_terminating= */ false>(col_value, buffer);
+}
+
 //--------------------------------------------------------------------------------------------------
 // Read Tuple Routine in DocDB Format (wire_protocol).
 //--------------------------------------------------------------------------------------------------
@@ -134,19 +151,7 @@ void PgDocData::LoadCache(const Slice& cache, int64_t *total_row_count, Slice *c
   *cursor = cache;
 
   // Read the number row_count in this set.
-  int64_t this_count;
-  size_t read_size = ReadNumber(cursor, &this_count);
-  *total_row_count = this_count;
-  cursor->remove_prefix(read_size);
-}
-
-PgWireDataHeader PgDocData::ReadDataHeader(Slice *cursor) {
-  // Read for NULL value.
-  uint8_t header_data;
-  size_t read_size = ReadNumber(cursor, &header_data);
-  cursor->remove_prefix(read_size);
-
-  return PgWireDataHeader(header_data);
+  *total_row_count = ReadNumber<int64_t>(cursor);
 }
 
 }  // namespace pggate

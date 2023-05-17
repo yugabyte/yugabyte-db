@@ -18,7 +18,6 @@
 #include <utility>
 
 #include "yb/common/row_mark.h"
-#include "yb/common/ybc_util.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
@@ -34,6 +33,7 @@
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 using std::string;
 
@@ -131,22 +131,14 @@ int64_t PgDocResult::NextRowOrder() {
   return current_row_order_ != row_orders_.end() ? *current_row_order_ : -1;
 }
 
-Status PgDocResult::WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *pg_tuple,
+Status PgDocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple *pg_tuple,
                                  int64_t *row_order) {
-  int attr_num = 0;
-  for (const PgExpr *target : targets) {
-    if (!target->is_colref() && !target->is_aggregate()) {
-      return STATUS(InternalError,
-                    "Unexpected expression, only column refs or aggregates supported here");
-    }
-    if (target->opcode() == PgColumnRef::Opcode::PG_EXPR_COLREF) {
-      attr_num = static_cast<const PgColumnRef *>(target)->attr_num();
+  for (auto* target : targets) {
+    if (PgDocData::ReadHeaderIsNull(&row_iterator_)) {
+      target->SetNull(pg_tuple);
     } else {
-      attr_num++;
+      target->SetValue(&row_iterator_, pg_tuple);
     }
-
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    target->TranslateData(&row_iterator_, header, attr_num - 1, pg_tuple);
   }
 
   *row_order = current_row_order_ != row_orders_.end() ? *current_row_order_++ : -1;
@@ -160,12 +152,10 @@ Status PgDocResult::ProcessSystemColumns() {
   syscol_processed_ = true;
 
   for (int i = 0; i < row_count_; i++) {
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "System column ybctid cannot be NULL");
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "System column ybctid cannot be NULL");
 
-    int64_t data_size;
-    size_t read_size = PgDocData::ReadNumber(&row_iterator_, &data_size);
-    row_iterator_.remove_prefix(read_size);
+    auto data_size = PgDocData::ReadNumber<int64_t>(&row_iterator_);
 
     ybctids_.emplace_back(row_iterator_.data(), data_size);
     row_iterator_.remove_prefix(data_size);
@@ -181,17 +171,13 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
   // ybctids.
   for (int i = 0; i < row_count_; i++) {
     // Read index column
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "Reservoir index cannot be NULL");
-    int32_t index;
-    size_t read_size = PgDocData::ReadNumber(&row_iterator_, &index);
-    row_iterator_.remove_prefix(read_size);
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "Reservoir index cannot be NULL");
+    auto index = PgDocData::ReadNumber<int32_t>(&row_iterator_);
     // Read ybctid column
-    header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "System column ybctid cannot be NULL");
-    int64_t data_size;
-    read_size = PgDocData::ReadNumber(&row_iterator_, &data_size);
-    row_iterator_.remove_prefix(read_size);
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "System column ybctid cannot be NULL");
+    auto data_size = PgDocData::ReadNumber<int64_t>(&row_iterator_);
 
     // Copy ybctid data to the reservoir
     reservoir[index].assign(reinterpret_cast<const char *>(row_iterator_.data()), data_size);
@@ -762,7 +748,7 @@ Result<bool> PgDocReadOp::BindNextBatchToRequest(LWPgsqlReadRequestPB* read_req)
 
 bool PgDocReadOp::IsHashBatchingEnabled() {
   if (PREDICT_FALSE(!is_hash_batched_.has_value())) {
-    is_hash_batched_ = pg_session_->IsHashBatchingEnabled();
+    is_hash_batched_ = pg_session_->IsHashBatchingEnabled() && total_permutation_count_ > 1;
   }
   return *is_hash_batched_;
 }
@@ -1207,28 +1193,33 @@ Status PgDocReadOp::CompleteProcessResponse() {
 void PgDocReadOp::SetRequestPrefetchLimit() {
   // Predict the maximum prefetch-limit using the associated gflags.
   auto& req = read_op_->read_request();
-  auto predicted_limit = FLAGS_ysql_prefetch_limit;
 
-  // System setting has to be at least 1 while user setting (LIMIT clause) can be anything that
-  // is allowed by SQL semantics.
-  if (predicted_limit < 1) {
-    predicted_limit = 1;
-  }
+  // Limits: 0 means 'unlimited'.
+  uint64_t predicted_row_limit = exec_params_.yb_fetch_row_limit;
+  uint64_t predicted_size_limit = exec_params_.yb_fetch_size_limit;
 
   // Use statement LIMIT(count + offset) if it is smaller than the predicted limit.
-  auto limit = exec_params_.limit_count + exec_params_.limit_offset;
+  auto row_limit = exec_params_.limit_count + exec_params_.limit_offset;
   suppress_next_result_prefetching_ = true;
-  if (exec_params_.limit_use_default || limit > predicted_limit) {
-    limit = predicted_limit;
+
+  if (exec_params_.limit_use_default ||
+      (predicted_row_limit > 0 && predicted_row_limit < row_limit)) {
+    row_limit = predicted_row_limit;
     suppress_next_result_prefetching_ = false;
   }
+
+  req.set_limit(row_limit);
+  req.set_size_limit(predicted_size_limit);
+
   VLOG(3) << __func__
           << " exec_params_.limit_count=" << exec_params_.limit_count
           << " exec_params_.limit_offset=" << exec_params_.limit_offset
           << " exec_params_.limit_use_default=" << exec_params_.limit_use_default
-          << " predicted_limit=" << predicted_limit
-          << " limit=" << limit;
-  req.set_limit(limit);
+          << " predicted_row_limit=" << predicted_row_limit
+          << " row_limit=" << row_limit
+          << (row_limit == 0 ? " (Unlimited)" : "")
+          << " size_limit=" << predicted_size_limit
+          << (predicted_size_limit == 0 ? " (Unlimited)" : "");
 }
 
 void PgDocReadOp::SetRowMark() {

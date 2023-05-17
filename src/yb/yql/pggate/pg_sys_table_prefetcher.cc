@@ -47,6 +47,7 @@
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 DEFINE_RUNTIME_bool(ysql_enable_read_request_caching, false, "Enable read request caching");
 DEFINE_NON_RUNTIME_uint32(
@@ -235,7 +236,7 @@ void AddTargetColumn(LWPgsqlReadRequestPB* req, const PgColumn& column) {
 void SetupPaging(LWPgsqlReadRequestPB* req) {
   req->set_return_paging_state(true);
   req->set_is_forward_scan(true);
-  req->set_limit(FLAGS_ysql_prefetch_limit);
+  req->set_limit(yb_fetch_row_limit);
 }
 
 template<class PB>

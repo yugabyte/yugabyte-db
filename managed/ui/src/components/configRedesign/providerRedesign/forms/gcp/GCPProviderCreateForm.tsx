@@ -36,6 +36,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
@@ -182,6 +183,17 @@ export const GCPProviderCreateForm = ({
       }
     }
 
+    let sshPrivateKeyContent = '';
+    try {
+      sshPrivateKeyContent =
+        formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+        formValues.sshPrivateKeyContent
+          ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+          : '';
+    } catch (error) {
+      throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    }
+
     // Note: Backend expects `useHostVPC` to be true for both host instance VPC and specified VPC for
     //       backward compatability reasons.
     const vpcConfig =
@@ -218,32 +230,37 @@ export const GCPProviderCreateForm = ({
       code: ProviderCode.GCP,
       name: formValues.providerName,
       ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-        ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-        ...(formValues.sshPrivateKeyContent && {
-          sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-        })
+        allAccessKeys: [
+          {
+            keyInfo: {
+              ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
+              ...(formValues.sshPrivateKeyContent && {
+                sshPrivateKeyContent: sshPrivateKeyContent
+              })
+            }
+          }
+        ]
       }),
-
       details: {
         airGapInstall: !formValues.dbNodePublicInternetAccess,
         cloudInfo: {
           [ProviderCode.GCP]: {
             ...vpcConfig,
             ...gcpCredentials,
-            ybFirewallTags: formValues.ybFirewallTags
+            ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
           }
         },
         ntpServers: formValues.ntpServers,
         setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-        sshPort: formValues.sshPort,
-        sshUser: formValues.sshUser
+        ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+        ...(formValues.sshUser && { sshUser: formValues.sshUser })
       },
       regions: formValues.regions.map<GCPRegionMutation>((regionFormValues) => ({
         code: regionFormValues.code,
         details: {
           cloudInfo: {
             [ProviderCode.GCP]: {
-              ybImage: regionFormValues.ybImage
+              ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
             }
           }
         },
@@ -296,7 +313,7 @@ export const GCPProviderCreateForm = ({
 
   const regions = formMethods.watch('regions', defaultValues.regions);
   const setRegions = (regions: CloudVendorRegionField[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: CloudVendorRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -331,7 +348,7 @@ export const GCPProviderCreateForm = ({
     }
   ];
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
-  const isFormDisabled = formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const isFormDisabled = getIsFormDisabled(formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -435,6 +452,7 @@ export const GCPProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -458,7 +476,7 @@ export const GCPProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -526,18 +544,18 @@ export const GCPProviderCreateForm = ({
                 <NTPConfigField isDisabled={isFormDisabled} providerCode={ProviderCode.GCP} />
               </FormField>
             </FieldGroup>
+            {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
+              <Box display="flex" gridGap="5px" marginLeft="auto">
+                <CircularProgress size={16} color="primary" thickness={5} />
+              </Box>
+            )}
           </Box>
-          {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-            <Box display="flex" gridGap="5px" marginLeft="auto">
-              <CircularProgress size={16} color="primary" thickness={5} />
-            </Box>
-          )}
           <Box marginTop="16px">
             <YBButton
               btnText="Create Provider Configuration"
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
@@ -553,6 +571,8 @@ export const GCPProviderCreateForm = ({
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           configuredRegions={regions}
+          isEditProvider={false}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}

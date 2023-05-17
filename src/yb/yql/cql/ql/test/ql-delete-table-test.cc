@@ -77,7 +77,7 @@ TEST_F(TestQLDeleteTable, TestQLDeleteTableSimple) {
                              "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 = $2 AND r2 = 'r$3';",
                              idx, idx, idx+100, idx+100);
     CHECK_VALID_STMT(select_stmt);
-    std::shared_ptr<QLRowBlock> one_row_block = processor->row_block();
+    auto one_row_block = processor->row_block();
     CHECK_EQ(one_row_block->row_count(), 1);
 
     // DELETE the entry.
@@ -87,7 +87,7 @@ TEST_F(TestQLDeleteTable, TestQLDeleteTableSimple) {
 
     // SELECT the same entry to make sure it's no longer there.
     CHECK_VALID_STMT(select_stmt);
-    std::shared_ptr<QLRowBlock> empty_row_block = processor->row_block();
+    auto empty_row_block = processor->row_block();
     CHECK_EQ(empty_row_block->row_count(), 0);
   }
 

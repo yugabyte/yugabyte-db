@@ -1,9 +1,10 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
@@ -28,12 +29,20 @@ var upgradeCmd = &cobra.Command{
 		// chose the correct workflow.
 		common.SetWorkflowUpgrade()
 
-		yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
-		if err != nil {
-			log.Fatal("Cannot upgrade: " + err.Error())
+		if common.RunFromInstalled() {
+			log.Fatal("Upgrade must be executed from the target yba bundle, not the existing install")
 		}
-		if !common.LessVersions(yugawareVersion, ybactl.Version) {
-			log.Fatal("yba-ctl version must be greater then the installed YugabyteDB Anywhere version")
+
+		if !skipVersionChecks {
+			installedVersion, err := yugaware.InstalledVersionFromMetadata()
+			if err != nil {
+				log.Fatal("Cannot upgrade: " + err.Error())
+			}
+			targetVersion := common.GetVersion()
+			if !common.LessVersions(installedVersion, targetVersion) {
+				log.Fatal(fmt.Sprintf("upgrade target version '%s' must be greater then the installed "+
+					"YugabyteDB Anywhere version '%s'", targetVersion, installedVersion))
+			}
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -42,6 +51,9 @@ var upgradeCmd = &cobra.Command{
 		if err != nil {
 			state = ybactlstate.New()
 		}
+
+		//Todo: this is a temporary hidden feature to migrate data
+		//from Pg to Ybdb and vice-a-versa.
 		results := preflight.Run(preflight.UpgradeChecks, skippedPreflightChecks...)
 		if preflight.ShouldFail(results) {
 			preflight.PrintPreflightResults(results)
@@ -70,6 +82,26 @@ var upgradeCmd = &cobra.Command{
 
 		// Here is the postgres minor version/no upgrade workflow
 		common.Upgrade(common.GetVersion())
+
+		// Check if upgrading requires DB migration.
+
+		dbMigrateFlow := state.GetDbUpgradeWorkFlow()
+
+		var newDbServiceName string
+		if dbMigrateFlow == ybactlstate.PgToYbdb {
+			serviceOrder = serviceOrder[1:]
+			migratePgToYbdbOrFatal()
+			newDbServiceName = YbdbServiceName
+			state.Postgres.IsEnabled = false
+			state.Ybdb.IsEnabled = true
+		} else if dbMigrateFlow == ybactlstate.YbdbToPg {
+			serviceOrder = serviceOrder[1:]
+			migrateYbdbToPgOrFatal()
+			newDbServiceName = PostgresServiceName
+			state.Postgres.IsEnabled = true
+			state.Ybdb.IsEnabled = false
+		}
+
 		for _, name := range serviceOrder {
 			log.Info("About to upgrade component " + name)
 			if err := services[name].Upgrade(); err != nil {
@@ -87,7 +119,9 @@ var upgradeCmd = &cobra.Command{
 		}
 
 		var statuses []common.Status
-		for _, service := range services {
+		serviceOrder = append([]string{newDbServiceName}, serviceOrder...)
+		for _, name := range serviceOrder {
+			service := services[name]
 			status, err := service.Status()
 			if err != nil {
 				log.Fatal("Failed to get status: " + err.Error())

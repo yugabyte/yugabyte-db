@@ -19,7 +19,7 @@
 
 #include "yb/client/table.h"
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/schema.h"
 
 #include "yb/util/logging.h"

@@ -12,10 +12,12 @@
 //
 
 #include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/txn-test-base.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/colocated_util.h"
 
@@ -244,9 +246,12 @@ TEST_F(SnapshotScheduleTest, Index) {
 
   auto session = CreateSession();
   for (size_t r = 0; r != kNumRows; ++r) {
-    ASSERT_OK(kv_table_test::WriteRow(
-        &index_, session, KeyForTransactionAndIndex(kTransaction, r),
-        ValueForTransactionAndIndex(kTransaction, r, op_type), op_type));
+    const auto op = index_.NewInsertOp();
+    auto* const req = op->mutable_request();
+    QLAddInt32HashValue(req, KeyForTransactionAndIndex(kTransaction, r));
+    QLAddInt32RangeValue(req, ValueForTransactionAndIndex(kTransaction, r, op_type));
+    session->Apply(op);
+    ASSERT_OK(session->TEST_Flush());
   }
 
   LOG(INFO) << "Index columns: " << AsString(index_.AllColumnNames());

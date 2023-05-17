@@ -38,8 +38,9 @@
 
 #include <boost/bimap.hpp>
 
+#include "yb/cdc/cdc_util.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
@@ -90,6 +91,13 @@ struct TabletReplicaDriveInfo {
   bool may_have_orphaned_post_split_data = true;
 };
 
+struct FullCompactionStatus {
+  tablet::FullCompactionState full_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
+
+  // Not valid if full_compaction_state == UNKNOWN.
+  HybridTime last_full_compaction_time;
+};
+
 // Information on a current replica of a tablet.
 // This is copyable so that no locking is needed.
 struct TabletReplica {
@@ -109,6 +117,8 @@ struct TabletReplica {
   TabletReplicaDriveInfo drive_info;
 
   TabletLeaderLeaseInfo leader_lease_info;
+
+  FullCompactionStatus full_compaction_status;
 
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
@@ -306,6 +316,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
     bool expected = false;
     return initiated_election_.compare_exchange_strong(expected, true);
   }
+
+  void UpdateReplicaFullCompactionStatus(
+      const TabletServerId& ts_uuid, const FullCompactionStatus& full_compaction_status);
 
   // The next five methods are getters and setters for the transient, in memory list of table ids
   // hosted by this tablet. They are only used if the underlying tablet proto's
@@ -628,7 +641,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   TabletInfoPtr GetColocatedUserTablet() const;
 
   // Get info of the specified index.
-  IndexInfo GetIndexInfo(const TableId& index_id) const;
+  qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
 
   // Returns true if all tablets of the table are deleted.
   bool AreAllTabletsDeleted() const;
@@ -647,12 +660,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
 
-  // Transition table from PREPARING to RUNNING state if all its tablets are RUNNING.
+  // Check if all tablets of the table are in RUNNING state.
   // new_running_tablets is the new set of tablets that are being transitioned to RUNNING state
-  // (dirty copy is modified) and yet to be persisted. Returns true if the table state has
-  // changed.
-  bool TransitionTableFromPreparingToRunning(
-      const std::unordered_map<TabletId, const TabletInfo::WriteLock*>& new_running_tablets);
+  // (dirty copy is modified) and yet to be persisted.
+  bool AreAllTabletsRunning(const std::set<TabletId>& new_running_tablets = {});
 
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
@@ -772,6 +783,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // from PG catalog tables because the user may have used Alter Table to change
   // the table's tablespace.
   TablespaceId tablespace_id_for_table_creation_;
+
+  // This field denotes the table is under xcluster bootstrapping. This is used to prevent create
+  // table from completing. Not needed once D23712 lands.
+  std::atomic_bool bootstrapping_xcluster_replication_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };
@@ -1152,6 +1167,10 @@ struct PersistentCDCStreamInfo : public Persistent<
   const google::protobuf::RepeatedPtrField<CDCStreamOptionsPB> options() const {
     return pb.options();
   }
+
+  cdc::StreamModeTransactional transactional() const {
+    return cdc::StreamModeTransactional(pb.transactional());
+  }
 };
 
 class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
@@ -1166,11 +1185,6 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   const NamespaceId namespace_id() const;
 
   std::string ToString() const override;
-
-  //  Set of table_ids which have been created after the CDCSDK stream has been created. This will
-  //  not be persisted in sys_catalog. Typically you should use the 'LockForRead'/'LockForRead' on
-  //  this object before accessing this member.
-  std::unordered_set<TableId> cdcsdk_unprocessed_tables;
 
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;

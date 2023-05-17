@@ -1,14 +1,11 @@
 package com.yugabyte.yw.models.helpers.provider.region;
 
-import java.util.Map;
-
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
-
 import io.swagger.annotations.ApiModelProperty;
-
+import java.util.Map;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;

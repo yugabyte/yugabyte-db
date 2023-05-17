@@ -20,6 +20,8 @@ include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 # Utility functions that are specific for PGGate.
 add_subdirectory(util)
 
+add_subdirectory(webserver)
+
 # PGGate API library.
 set(PGGATE_SRCS
     ybc_pggate.cc
@@ -58,7 +60,6 @@ set(PGGATE_LIBS
     consensus_error
     yb_util
     yb_common
-    yb_ql_common
     yb_client
     tserver_util
     yb_pggate_util

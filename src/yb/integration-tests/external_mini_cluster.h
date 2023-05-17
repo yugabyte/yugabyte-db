@@ -424,6 +424,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
 
+  Result<size_t> GetSegmentCounts(ExternalTabletServer* ts);
+
   Result<tserver::GetTabletStatusResponsePB> GetTabletStatus(
       const ExternalTabletServer& ts, const yb::TabletId& tablet_id);
 
@@ -977,7 +979,11 @@ Status RestartAllMasters(ExternalMiniCluster* cluster);
 
 Status CompactTablets(
     ExternalMiniCluster* cluster,
-    const yb::MonoDelta& timeout = MonoDelta::FromSeconds(60* kTimeMultiplier));
+    const MonoDelta& timeout = MonoDelta::FromSeconds(60* kTimeMultiplier));
+
+Status FlushAndCompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout);
+
+Status CompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout);
 
 void StartSecure(
   std::unique_ptr<ExternalMiniCluster>* cluster,

@@ -22,6 +22,8 @@
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 
+#include "yb/qlexpr/qlexpr_fwd.h"
+
 namespace yb {
 namespace ql {
 
@@ -308,7 +310,7 @@ class PTSelectStmt : public PTDmlStmt {
   // in CQL, so we will keep it that way for now to avoid new bugs and extra work. If the CQL
   // language is extended further toward SQL, we can change this design.
   virtual Status Analyze(SemContext *sem_context) override;
-  bool CoversFully(const IndexInfo& index_info,
+  bool CoversFully(const qlexpr::IndexInfo& index_info,
                    const MCUnorderedMap<int32, uint16> &column_ref_cnts) const;
 
   // Explain scan path.

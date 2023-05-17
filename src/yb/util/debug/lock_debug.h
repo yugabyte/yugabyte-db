@@ -37,14 +37,23 @@ class NonRecursiveSharedLockBase {
 
 template<class Mutex>
 class SCOPED_CAPABILITY NonRecursiveSharedLock : public NonRecursiveSharedLockBase {
+  bool acquired;
  public:
   explicit NonRecursiveSharedLock(Mutex& mutex) ACQUIRE_SHARED(mutex) // NOLINT
       : NonRecursiveSharedLockBase(&mutex) {
     mutex.lock_shared();
+    acquired = true;
+  }
+
+  void Release() RELEASE() {
+    if (acquired) {
+      static_cast<Mutex*>(mutex())->unlock_shared();
+    }
+    acquired = false;
   }
 
   ~NonRecursiveSharedLock() RELEASE() {
-    static_cast<Mutex*>(mutex())->unlock_shared();
+    Release();
   }
 };
 

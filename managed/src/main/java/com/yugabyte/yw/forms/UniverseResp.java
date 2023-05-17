@@ -59,8 +59,7 @@ public class UniverseResp {
     UniverseResourceDetails.Context context =
         new Context(config, customer, universeDefinitionTaskParams);
     fillRegions(universeList);
-    return universeList
-        .stream()
+    return universeList.stream()
         .map(
             universe ->
                 new UniverseResp(
@@ -76,16 +75,14 @@ public class UniverseResp {
 
   private static void fillRegions(Collection<Universe> universes) {
     fillClusterRegions(
-        universes
-            .stream()
+        universes.stream()
             .flatMap(universe -> universe.getUniverseDetails().clusters.stream())
             .collect(Collectors.toList()));
   }
 
   public static void fillClusterRegions(List<Cluster> clusters) {
     Set<UUID> regionUuids =
-        clusters
-            .stream()
+        clusters.stream()
             .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
             .flatMap(cluster -> cluster.userIntent.regionList.stream())
             .collect(Collectors.toSet());
@@ -93,19 +90,14 @@ public class UniverseResp {
       return;
     }
     Map<UUID, Region> regionMap =
-        Region.findByUuids(regionUuids)
-            .stream()
+        Region.findByUuids(regionUuids).stream()
             .collect(Collectors.toMap(region -> region.getUuid(), Function.identity()));
-    clusters
-        .stream()
+    clusters.stream()
         .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
         .forEach(
             cluster -> {
               cluster.regions =
-                  cluster
-                      .userIntent
-                      .regionList
-                      .stream()
+                  cluster.userIntent.regionList.stream()
                       .filter(regionMap::containsKey)
                       .map(regionMap::get)
                       .collect(Collectors.toList());
@@ -209,8 +201,7 @@ public class UniverseResp {
     boolean isKubernetesProvider =
         cluster.userIntent.providerType.equals(Common.CloudType.kubernetes);
     // Building --nodes param value of the command
-    nodeDetailsSet
-        .stream()
+    nodeDetailsSet.stream()
         .filter(
             nodeDetails ->
                 (nodeDetails.isTserver

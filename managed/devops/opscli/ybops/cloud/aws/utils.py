@@ -1169,26 +1169,38 @@ def update_disk(args, instance_id):
             device_name = attachment['Device'].replace('/dev/', '')
             # Format of device name is /dev/xvd{} or /dev/nvme{}n1
             if device_name in device_names:
-                modify_size = bool(args.volume_size and volume.size != args.volume_size)
-                modify_iops = bool(args.disk_iops and volume.iops != args.disk_iops)
-                modify_throughput = bool(args.disk_throughput and
-                                         volume.throughput != args.disk_throughput)
-                if args.force or modify_size or modify_iops or modify_throughput:
-                    new_size = args.volume_size if modify_size else volume.size
-                    new_iops = args.disk_iops if modify_iops else volume.iops
-                    new_throughput = \
-                        args.disk_throughput if modify_throughput else volume.throughput
+                modify_size = args.force or bool(args.volume_size)
+                modify_iops = args.force or bool(args.disk_iops)
+                modify_throughput = args.force or bool(args.disk_throughput)
+                if modify_size or modify_iops or modify_throughput:
                     logging.info(
                         "Existing instance %s's volume %s: size=%s, iops=%s, throughput=%s",
                         instance_id, volume.id, volume.size, volume.iops, volume.throughput)
+                    _args = {"VolumeId": volume.id}
+
+                    if modify_size:
+                        if args.volume_size:
+                            _args["Size"] = args.volume_size
+                        elif volume.size:
+                            _args["Size"] = volume.size
+                    if modify_iops:
+                        if args.disk_iops:
+                            _args["Iops"] = args.disk_iops
+                        elif volume.iops:
+                            _args["Iops"] = volume.iops
+                    if modify_throughput:
+                        if args.disk_throughput:
+                            _args["Throughput"] = args.disk_throughput
+                        elif volume.throughput:
+                            _args["Throughput"] = volume.throughput
+
                     logging.info(
-                        "Modified instance %s's volume %s: size=%s, iops=%s, throughput=%s",
-                        instance_id, volume.id, new_size, new_iops, new_throughput)
+                        "Modified volume %s: size=%s, iops=%s, throughput=%s",
+                        volume.id, _args.get("Size", volume.size), _args.get("Iops", volume.iops),
+                        _args.get("Throughput", volume.throughput))
                     vol_ids.append(volume.id)
-                    ec2_client.modify_volume(VolumeId=volume.id,
-                                             Size=new_size,
-                                             Iops=new_iops,
-                                             Throughput=new_throughput)
+                    ec2_client.modify_volume(**_args)
+
     # Wait for volumes to be ready.
     if vol_ids:
         _wait_for_disk_modifications(ec2_client, vol_ids)

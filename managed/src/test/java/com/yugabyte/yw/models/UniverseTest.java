@@ -875,4 +875,23 @@ public class UniverseTest extends FakeDBApplication {
     actions = new AllowedActionsHelper(u, masterNode).listAllowedActions();
     assertFalse(actions.contains(NodeActionType.START_MASTER));
   }
+
+  @Test
+  public void testGetNodeActions_StopProcessesForDedicated() {
+    Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, true /* setMasters */, true);
+    assertEquals(6, u.getNodes().size());
+    List<NodeDetails> tserverNodes =
+        u.getNodes().stream().filter(n -> n.isTserver).collect(Collectors.toList());
+    // Temporary disable tserver node.
+    tserverNodes.get(0).isTserver = false;
+    Set<NodeActionType> actions =
+        new AllowedActionsHelper(u, tserverNodes.get(1)).listAllowedActions();
+    // Not allowing stopping second tserver (as it will have only one tserver left)
+    assertFalse(actions.contains(NodeActionType.STOP));
+    assertFalse(actions.contains(NodeActionType.REMOVE));
+
+    // Cannot decommission first tserver node
+    actions = new AllowedActionsHelper(u, tserverNodes.get(0)).listAllowedActions();
+    assertFalse(actions.contains(NodeActionType.DELETE));
+  }
 }

@@ -41,8 +41,7 @@ public class CustomerTaskTest extends FakeDBApplication {
   private static List<CustomerTask> deleteStaleTasks(Customer defaultCustomer, int days) {
     List<CustomerTask> staleTasks =
         CustomerTask.findOlderThan(defaultCustomer, Duration.ofDays(days));
-    return staleTasks
-        .stream()
+    return staleTasks.stream()
         .filter(customerTask -> customerTask.cascadeDeleteCompleted() > 0)
         .collect(Collectors.toList());
   }

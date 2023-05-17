@@ -221,7 +221,6 @@
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "catalog/yb_type.h"
 #include "executor/executor.h"
 #include "executor/nodeAgg.h"
 #include "miscadmin.h"
@@ -233,14 +232,18 @@
 #include "parser/parse_coerce.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/numeric.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 #include "utils/datum.h"
+
+/* YB includes. */
+#include "catalog/yb_type.h"
+#include "pg_yb_utils.h"
+#include "utils/fmgroids.h"
+#include "utils/numeric.h"
+#include "utils/rel.h"
 
 
 static void select_current_set(AggState *aggstate, int setno, bool is_hash);

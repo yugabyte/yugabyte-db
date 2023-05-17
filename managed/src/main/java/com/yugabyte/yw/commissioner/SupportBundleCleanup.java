@@ -8,11 +8,11 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
-import java.util.List;
-import java.util.Date;
-import java.util.UUID;
 import java.text.ParseException;
 import java.time.Duration;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 @Singleton
@@ -25,7 +25,7 @@ public class SupportBundleCleanup {
 
   private final Config config;
 
-  private SupportBundleUtil supportBundleUtil;
+  private final SupportBundleUtil supportBundleUtil;
 
   @Inject
   public SupportBundleCleanup(
@@ -71,9 +71,8 @@ public class SupportBundleCleanup {
       SupportBundle.delete(supportBundle.getBundleUUID());
 
       log.info(
-          "Automatically deleted Support Bundle with UUID: "
-              + supportBundle.getBundleUUID().toString()
-              + ", with status = Failed");
+          "Automatically deleted Support Bundle with UUID: {}, with status = Failed",
+          supportBundle.getBundleUUID());
     } else if (supportBundle.getStatus() == SupportBundleStatusType.Running) {
       return;
     } else {
@@ -91,9 +90,8 @@ public class SupportBundleCleanup {
         supportBundleUtil.deleteFile(supportBundle.getPathObject());
 
         log.info(
-            "Automatically deleted Support Bundle with UUID: "
-                + supportBundle.getBundleUUID().toString()
-                + ", with status = Success");
+            "Automatically deleted Support Bundle with UUID: {}, with status = success",
+            supportBundle.getBundleUUID());
       }
     }
   }

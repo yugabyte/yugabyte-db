@@ -196,8 +196,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
           }
           // Remove ModifyBlackList task from tasks.
           tasks =
-              tasks
-                  .stream()
+              tasks.stream()
                   .filter(t -> t.getTaskType() != TaskType.ModifyBlackList)
                   .collect(Collectors.toList());
           assertEquals(3, tasks.size());

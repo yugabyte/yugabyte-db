@@ -33,9 +33,8 @@ namespace yb {
 HAS_MEMBER_FUNCTION(DynamicMemoryUsage);
 HAS_FREE_FUNCTION(DynamicMemoryUsageOf);
 
-template <class T>
-typename std::enable_if<HasMemberFunction_DynamicMemoryUsage<T>::value, std::size_t>::type
-DynamicMemoryUsageOf(const T& value) {
+template <class T> requires (HasMemberFunction_DynamicMemoryUsage<T>::value)
+std::size_t DynamicMemoryUsageOf(const T& value) {
   return value.DynamicMemoryUsage();
 }
 
@@ -142,8 +141,8 @@ size_t DynamicMemoryUsageOf(const boost::container::small_vector<T, InternalCapa
 }
 
 template <class T>
-typename std::enable_if<IsCollection<T>::value, std::size_t>::type
-DynamicMemoryUsageOf(const T& value) {
+    requires (IsCollection<T>::value && !HasMemberFunction_DynamicMemoryUsage<T>::value)
+std::size_t DynamicMemoryUsageOf(const T& value) {
   return DynamicMemoryUsageOfCollection(value);
 }
 

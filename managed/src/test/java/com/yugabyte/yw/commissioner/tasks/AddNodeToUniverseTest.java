@@ -241,6 +241,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // wait for process to come up
           TaskType.WaitForServer, // wait for postgres to be up
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SetNodeState, // Live
           TaskType.UniverseUpdateSucceeded);
@@ -259,6 +260,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

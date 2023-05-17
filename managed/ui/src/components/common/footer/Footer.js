@@ -57,7 +57,7 @@ class Footer extends PureComponent {
                 alt="YugabyteDB Community Rewards"
                 className="social-media-logo"
                 src={ybLogoImage}
-                width="100"
+                width="85"
               />
             </span>
           </a>

@@ -22,7 +22,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
@@ -249,7 +249,7 @@ Status TnodeContext::AppendRowsResult(RowsResult::SharedPtr&& rows_result) {
   }
 
   int64_t number_of_new_rows =
-    VERIFY_RESULT(QLRowBlock::GetRowCount(YQL_CLIENT_CQL, rows_result->rows_data()));
+    VERIFY_RESULT(qlexpr::QLRowBlock::GetRowCount(YQL_CLIENT_CQL, rows_result->rows_data()));
 
   if (query_state_) {
     RSTATUS_DCHECK(tnode_->opcode() == TreeNodeOpcode::kPTSelectStmt,
@@ -371,7 +371,7 @@ void TnodeContext::SetUncoveredSelectOp(const YBqlReadOpPtr& select_op) {
   for (size_t idx = 0; idx < schema.num_key_columns(); idx++) {
     key_column_ids.emplace_back(schema.column_id(idx));
   }
-  keys_ = std::make_unique<QLRowBlock>(schema, key_column_ids);
+  keys_ = std::make_unique<qlexpr::QLRowBlock>(schema, key_column_ids);
 }
 
 QueryPagingState *TnodeContext::CreateQueryState(const StatementParameters& user_params,

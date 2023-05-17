@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"log"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 )
 
 var startCmd = &cobra.Command{
@@ -20,14 +20,10 @@ var startCmd = &cobra.Command{
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: serviceOrder,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		if !skipVersionChecks {
-			yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
-			if err != nil {
-				log.Fatal("Cannot start: " + err.Error())
-			}
-			if yugawareVersion != ybactl.Version {
-				log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
-			}
+		if !common.RunFromInstalled() {
+			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
+			log.Fatal("start must be run from " + path +
+				". It may be in the systems $PATH for easy of use.")
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -57,14 +53,10 @@ var stopCmd = &cobra.Command{
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: serviceOrder,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		if !skipVersionChecks {
-			yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
-			if err != nil {
-				log.Fatal("Cannot stop: " + err.Error())
-			}
-			if yugawareVersion != ybactl.Version {
-				log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
-			}
+		if !common.RunFromInstalled() {
+			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
+			log.Fatal("stop must be run from " + path +
+				". It may be in the systems $PATH for easy of use.")
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -94,14 +86,10 @@ var restartCmd = &cobra.Command{
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: serviceOrder,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		if !skipVersionChecks {
-			yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
-			if err != nil {
-				log.Fatal("Cannot restart: " + err.Error())
-			}
-			if yugawareVersion != ybactl.Version {
-				log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
-			}
+		if !common.RunFromInstalled() {
+			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
+			log.Fatal("restart must be run from " + path +
+				". It may be in the systems $PATH for easy of use.")
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {

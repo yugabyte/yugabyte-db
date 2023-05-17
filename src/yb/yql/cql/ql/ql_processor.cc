@@ -20,7 +20,7 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/gutil/bind.h"
 

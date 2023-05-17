@@ -204,8 +204,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   friend class MetricRegistry;
   friend class RefCountedThreadSafe<MetricEntity>;
 
-  MetricEntity(const MetricEntityPrototype* prototype, std::string id,
-               AttributeMap attributes);
+  MetricEntity(const MetricEntityPrototype* prototype, std::string id, AttributeMap attributes);
   ~MetricEntity();
 
   // Ensure that the given metric prototype is allowed to be instantiated

@@ -88,6 +88,7 @@ import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
+import com.yugabyte.yw.forms.AlertChannelTemplatesPreview;
 import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
 import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
 import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
@@ -392,7 +393,11 @@ public class AlertControllerTest extends FakeDBApplication {
             authToken,
             channelFormDataJson);
     assertThat(result.status(), equalTo(OK));
-    return channelFromJson(Json.parse(contentAsString(result)));
+
+    JsonNode getResponse = Json.parse(contentAsString(result));
+    AlertChannel channel =
+        AlertChannel.get(customer.getUuid(), UUID.fromString(getResponse.get("uuid").asText()));
+    return channelFromJson(Json.toJson(channel));
   }
 
   @Test
@@ -655,8 +660,7 @@ public class AlertControllerTest extends FakeDBApplication {
     try {
       channelUUIDs = Arrays.asList(mapper.readValue(json.get("channels").traverse(), UUID[].class));
       List<AlertChannel> channels =
-          channelUUIDs
-              .stream()
+          channelUUIDs.stream()
               .map(uuid -> alertChannelService.getOrBadRequest(customer.getUuid(), uuid))
               .collect(Collectors.toList());
 
@@ -1672,8 +1676,7 @@ public class AlertControllerTest extends FakeDBApplication {
     List<AlertChannelTemplatesExt> listedTemplatesWithDefault =
         Arrays.asList(Json.fromJson(templatesJson, AlertChannelTemplatesExt[].class));
     List<AlertChannelTemplates> listedTemplates =
-        listedTemplatesWithDefault
-            .stream()
+        listedTemplatesWithDefault.stream()
             .map(AlertChannelTemplatesExt::getChannelTemplates)
             .filter(t -> t.getTextTemplate() != null)
             .collect(Collectors.toList());
@@ -1753,7 +1756,19 @@ public class AlertControllerTest extends FakeDBApplication {
             + "with test = '{{ test }}'");
     templates.setTextTemplate(
         "Channel '{{ yugabyte_alert_channel_name }}' got alert "
-            + "{{ yugabyte_alert_policy_name }} with test = '{{ test }}'");
+            + "{{ yugabyte_alert_policy_name }} with test = '{{ test }}'. "
+            + "Expression: {{ yugabyte_alert_expression }}");
+    AlertChannelTemplatesPreview previewTemplates =
+        new AlertChannelTemplatesPreview()
+            .setChannelTemplates(templates)
+            .setHighlightedTitleTemplate(
+                "<p>Alert {{ yugabyte_alert_policy_name }} "
+                    + "{{ yugabyte_alert_status }}: severity={{ yugabyte_alert_severity }} "
+                    + "with test = '{{ test }}'</p>")
+            .setHighlightedTextTemplate(
+                "<p>Channel <b>'{{ yugabyte_alert_channel_name }}'</b> got alert "
+                    + "{{ yugabyte_alert_policy_name }} with test = '{{ test }}'. "
+                    + "Expression: {{ yugabyte_alert_expression }}</p>");
 
     AlertConfiguration configuration =
         ModelFactory.createAlertConfiguration(
@@ -1762,7 +1777,7 @@ public class AlertControllerTest extends FakeDBApplication {
         ModelFactory.createAlertDefinition(customer, universe, configuration);
 
     NotificationPreviewFormData formData = new NotificationPreviewFormData();
-    formData.setAlertChannelTemplates(templates);
+    formData.setAlertChannelTemplates(previewTemplates);
     formData.setAlertConfigUuid(configuration.getUuid());
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -1778,7 +1793,17 @@ public class AlertControllerTest extends FakeDBApplication {
         resultPreview.getTitle(),
         equalTo("Alert alertConfiguration firing: severity=SEVERE with test = 'value'"));
     assertThat(
+        resultPreview.getHighlightedTitle(),
+        equalTo("<p>Alert alertConfiguration firing: severity=SEVERE with test = 'value'</p>"));
+    assertThat(
         resultPreview.getText(),
-        equalTo("Channel 'Channel name' got alert alertConfiguration with test = 'value'"));
+        equalTo(
+            "Channel 'Channel name' got alert alertConfiguration with "
+                + "test = 'value'. Expression: query &gt; 1"));
+    assertThat(
+        resultPreview.getHighlightedText(),
+        equalTo(
+            "<p>Channel <b>'Channel name'</b> got alert alertConfiguration with "
+                + "test = 'value'. Expression: query &gt; 1</p>"));
   }
 }

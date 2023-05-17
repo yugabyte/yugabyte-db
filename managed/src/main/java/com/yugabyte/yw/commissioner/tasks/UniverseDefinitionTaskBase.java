@@ -445,9 +445,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
     List<Cluster> onPremClusters =
-        universeDetails
-            .clusters
-            .stream()
+        universeDetails.clusters.stream()
             .filter(c -> c.userIntent.providerType.equals(CloudType.onprem))
             .collect(Collectors.toList());
     for (Cluster onPremCluster : onPremClusters) {
@@ -457,8 +455,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   private void updateOnPremNodeUuids(Collection<NodeDetails> clusterNodes, Cluster cluster) {
     Map<String, List<NodeDetails>> groupByType =
-        clusterNodes
-            .stream()
+        clusterNodes.stream()
             .collect(Collectors.groupingBy(n -> cluster.userIntent.getInstanceTypeForNode(n)));
     groupByType.forEach(
         (instanceType, nodes) -> {
@@ -468,10 +465,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void setCloudNodeUuids(Universe universe) {
     // Set random node UUIDs for nodes in the cloud.
-    universe
-        .getUniverseDetails()
-        .clusters
-        .stream()
+    universe.getUniverseDetails().clusters.stream()
         .filter(c -> !c.userIntent.providerType.equals(CloudType.onprem))
         .flatMap(c -> taskParams().getNodesInCluster(c.uuid).stream())
         .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
@@ -690,6 +684,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.rootCA = universe.getUniverseDetails().rootCA;
       params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
       params.enableYEDIS = userIntent.enableYEDIS;
+      // sshPortOverride, in case the passed imageBundle has a different port
+      // configured for the region.
+      params.sshPortOverride = node.sshPortOverride;
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
@@ -859,6 +856,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.useSystemd = userIntent.useSystemd;
+      // sshPortOverride, in case the passed imageBundle has a different port
+      // configured for the region.
+      params.sshPortOverride = node.sshPortOverride;
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
@@ -984,6 +984,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.useSystemd = userIntent.useSystemd;
       paramsCustomizer.accept(params);
       params.sshUserOverride = node.sshUserOverride;
+      params.sshPortOverride = node.sshPortOverride;
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
@@ -1074,6 +1075,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.setClientRootCA(taskParams().getClientRootCA());
       params.enableYEDIS = userIntent.enableYEDIS;
       params.useSystemd = userIntent.useSystemd;
+      // sshPortOverride, in case the passed imageBundle has a different port
+      // configured for the region.
+      params.sshPortOverride = node.sshPortOverride;
       paramsCustomizer.accept(params);
 
       // Development testing variable.
@@ -1538,15 +1542,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public Stream<NodeDetails> findNodesInUniverse(Universe universe, Set<NodeDetails> nodes) {
     // Node names to nodes in Universe map to find.
     Map<String, NodeDetails> nodesInUniverseMap =
-        universe
-            .getUniverseDetails()
-            .nodeDetailsSet
-            .stream()
+        universe.getUniverseDetails().nodeDetailsSet.stream()
             .collect(Collectors.toMap(NodeDetails::getNodeName, Function.identity()));
 
     // Locate the given node in the Universe by using the node name.
-    return nodes
-        .stream()
+    return nodes.stream()
         .map(
             node -> {
               String nodeName = node.getNodeName();
@@ -1672,8 +1672,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void createPreflightNodeCheckTasks(Universe universe, Collection<Cluster> clusters) {
     Set<Cluster> onPremClusters =
-        clusters
-            .stream()
+        clusters.stream()
             .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
             .collect(Collectors.toSet());
     if (onPremClusters.isEmpty()) {

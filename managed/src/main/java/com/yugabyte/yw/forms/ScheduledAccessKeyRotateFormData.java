@@ -1,8 +1,8 @@
 package com.yugabyte.yw.forms;
 
+import java.util.List;
 import java.util.UUID;
 import javax.validation.constraints.NotNull;
-import java.util.List;
 
 public class ScheduledAccessKeyRotateFormData {
 

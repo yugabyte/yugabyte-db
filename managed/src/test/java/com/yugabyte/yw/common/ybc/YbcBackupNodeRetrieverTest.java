@@ -12,11 +12,12 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
+import com.yugabyte.yw.forms.BackupTableParams.ParallelBackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
@@ -38,10 +39,10 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
 
   @Test
   public void testNodesInPoolNewTask() throws InterruptedException {
-    Map<String, ParallelBackupState> subTasksMap = new HashMap<>();
-    subTasksMap.put("keyspace1", new ParallelBackupState());
-    subTasksMap.put("keyspace2", new ParallelBackupState());
-    subTasksMap.put("keyspace3", new ParallelBackupState());
+    Map<UUID, ParallelBackupState> subTasksMap = new HashMap<>();
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
     when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(true);
     YbcBackupNodeRetriever ybcBackupNodeRetriever =
         new YbcBackupNodeRetriever(mockUniverse.getUniverseUUID(), 3);
@@ -65,12 +66,12 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
 
   @Test
   public void testNodesInPoolResumedTaskWithRunningBackup() throws InterruptedException {
-    Map<String, ParallelBackupState> subTasksMap = new HashMap<>();
+    Map<UUID, ParallelBackupState> subTasksMap = new HashMap<>();
     ParallelBackupState bS1 = new ParallelBackupState();
     bS1.nodeIp = "127.0.0.1";
-    subTasksMap.put("keyspace1", bS1);
-    subTasksMap.put("keyspace2", new ParallelBackupState());
-    subTasksMap.put("keyspace3", new ParallelBackupState());
+    subTasksMap.put(UUID.randomUUID(), bS1);
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
     when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(true);
     YbcBackupNodeRetriever ybcBackupNodeRetriever =
         new YbcBackupNodeRetriever(mockUniverse.getUniverseUUID(), 3);
@@ -99,12 +100,12 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
 
   @Test
   public void testNodesInPoolResumedTaskWithoutRunningBackup() throws InterruptedException {
-    Map<String, ParallelBackupState> subTasksMap = new HashMap<>();
+    Map<UUID, ParallelBackupState> subTasksMap = new HashMap<>();
     ParallelBackupState bS1 = new ParallelBackupState();
     bS1.alreadyScheduled = true;
-    subTasksMap.put("keyspace1", bS1);
-    subTasksMap.put("keyspace2", new ParallelBackupState());
-    subTasksMap.put("keyspace3", new ParallelBackupState());
+    subTasksMap.put(UUID.randomUUID(), bS1);
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
     when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(true);
     YbcBackupNodeRetriever ybcBackupNodeRetriever =
         new YbcBackupNodeRetriever(mockUniverse.getUniverseUUID(), 3);
@@ -123,7 +124,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
 
   @Test
   public void testPoolSizeOne() throws InterruptedException {
-    Map<String, ParallelBackupState> subTasksMap = new HashMap<>();
+    Map<UUID, ParallelBackupState> subTasksMap = new HashMap<>();
     YbcBackupNodeRetriever ybcBackupNodeRetriever =
         new YbcBackupNodeRetriever(mockUniverse.getUniverseUUID(), 1);
     when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(true);
@@ -138,10 +139,10 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
 
   @Test
   public void testPoolWithFewUnhealthyNodes() throws InterruptedException {
-    Map<String, ParallelBackupState> subTasksMap = new HashMap<>();
-    subTasksMap.put("keyspace1", new ParallelBackupState());
-    subTasksMap.put("keyspace2", new ParallelBackupState());
-    subTasksMap.put("keyspace3", new ParallelBackupState());
+    Map<UUID, ParallelBackupState> subTasksMap = new HashMap<>();
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
 
     when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt()))
         .thenReturn(false)
@@ -163,10 +164,10 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
 
   @Test
   public void testAllUnhealthyNodes() {
-    Map<String, ParallelBackupState> subTasksMap = new HashMap<>();
-    subTasksMap.put("keyspace1", new ParallelBackupState());
-    subTasksMap.put("keyspace2", new ParallelBackupState());
-    subTasksMap.put("keyspace3", new ParallelBackupState());
+    Map<UUID, ParallelBackupState> subTasksMap = new HashMap<>();
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
+    subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
 
     when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(false);
     YbcBackupNodeRetriever ybcBackupNodeRetriever =

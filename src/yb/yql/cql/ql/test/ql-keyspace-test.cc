@@ -376,9 +376,9 @@ TEST_F(TestQLKeyspace, TestCreateSystemTable) {
 
   // Select from system table.
   EXEC_VALID_STMT("select * from system.t where c = 1;");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& row = row_block->row(0);
+  const auto& row = row_block->row(0);
   CHECK_EQ(row.column(0).int32_value(), 1);
   CHECK_EQ(row.column(1).int32_value(), 2);
 }

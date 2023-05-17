@@ -3,9 +3,9 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.CustomerTask.TargetType;
-import static io.ebean.Ebean.beginTransaction;
-import static io.ebean.Ebean.commitTransaction;
-import static io.ebean.Ebean.endTransaction;
+import static io.ebean.DB.beginTransaction;
+import static io.ebean.DB.commitTransaction;
+import static io.ebean.DB.endTransaction;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -24,7 +24,7 @@ import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -120,23 +120,20 @@ public class CustomerTaskManager {
           // Make transition state false for inProgress backups
           List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskUUID);
           backupCategoryMap =
-              backupList
-                  .stream()
+              backupList.stream()
                   .filter(
                       backup ->
                           backup.getState().equals(Backup.BackupState.InProgress)
                               || backup.getState().equals(Backup.BackupState.Stopped))
                   .collect(Collectors.groupingBy(Backup::getCategory));
 
-          backupCategoryMap
-              .getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
+          backupCategoryMap.getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
               .stream()
               .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
           List<Backup> ybcBackups =
               backupCategoryMap.getOrDefault(BackupCategory.YB_CONTROLLER, new ArrayList<>());
           if (!optUniv.isPresent()) {
-            ybcBackups
-                .stream()
+            ybcBackups.stream()
                 .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
           } else {
             if (!ybcBackups.isEmpty()) {
@@ -167,8 +164,7 @@ public class CustomerTaskManager {
 
       if (!isRestoreYbc) {
         List<Restore> restoreList =
-            Restore.fetchByTaskUUID(taskUUID)
-                .stream()
+            Restore.fetchByTaskUUID(taskUUID).stream()
                 .filter(
                     restore ->
                         restore.getState().equals(Restore.State.Created)
@@ -278,8 +274,7 @@ public class CustomerTaskManager {
     LOG.info("Handle the pending tasks...");
     try {
       String incompleteStates =
-          TaskInfo.INCOMPLETE_STATES
-              .stream()
+          TaskInfo.INCOMPLETE_STATES.stream()
               .map(Objects::toString)
               .collect(Collectors.joining("','"));
       // Retrieve all incomplete customer tasks or task in incomplete state. Task state update and
@@ -295,7 +290,7 @@ public class CustomerTaskManager {
               + "(ti.task_state='Aborted' AND ti.details->>'errorString' = 'Platform shutdown'"
               + " AND ct.completion_time IS NULL))";
       // TODO use Finder.
-      Ebean.createSqlQuery(query)
+      DB.sqlQuery(query)
           .findList()
           .forEach(
               row -> {

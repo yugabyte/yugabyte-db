@@ -18,7 +18,6 @@ import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -29,10 +28,12 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RotateAccessKeyFormData;
 import com.yugabyte.yw.forms.ScheduledAccessKeyRotateFormData;
 import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -117,7 +118,12 @@ public class CloudProviderApiController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Provider",
           required = true,
           paramType = "body"))
-  public Result edit(UUID customerUUID, UUID providerUUID, boolean validate, Http.Request request) {
+  public Result edit(
+      UUID customerUUID,
+      UUID providerUUID,
+      boolean validate,
+      boolean ignoreValidationErrors,
+      Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
@@ -139,7 +145,8 @@ public class CloudProviderApiController extends AuthenticatedController {
 
     Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     UUID taskUUID =
-        cloudProviderHandler.editProvider(customer, provider, editProviderReq, validate);
+        cloudProviderHandler.editProvider(
+            customer, provider, editProviderReq, validate, ignoreValidationErrors);
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -156,7 +163,8 @@ public class CloudProviderApiController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.Provider",
           required = true))
-  public Result create(UUID customerUUID, boolean validate, Http.Request request) {
+  public Result create(
+      UUID customerUUID, boolean validate, boolean ignoreValidationErrors, Http.Request request) {
     JsonNode requestBody = mayBeMassageRequest(request.body().asJson(), false);
     Provider reqProvider =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), Provider.class);
@@ -165,11 +173,26 @@ public class CloudProviderApiController extends AuthenticatedController {
     CloudType providerCode = CloudType.valueOf(reqProvider.getCode());
     Provider providerEbean;
     if (providerCode.equals(CloudType.kubernetes)) {
+      /*
+       * Marking the k8s providers created starting from YBA version 2.18
+       * as non legacy. The default behaviour of this flag is `true` indicating
+       * the legacy provider.
+       *
+       * This will be removed once we fix the old providers & can safely start returning
+       * the merged configs.
+       */
+      KubernetesInfo k8sInfo = CloudInfoInterface.get(reqProvider);
+      k8sInfo.setLegacyK8sProvider(false);
       providerEbean = cloudProviderHandler.createKubernetesNew(customer, reqProvider);
     } else {
       providerEbean =
           cloudProviderHandler.createProvider(
-              customer, providerCode, reqProvider.getName(), reqProvider, validate);
+              customer,
+              providerCode,
+              reqProvider.getName(),
+              reqProvider,
+              validate,
+              ignoreValidationErrors);
     }
 
     if (providerCode.isRequiresBootstrap()) {
@@ -223,9 +246,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     }
     List<UUID> universeUUIDs =
         rotateAllUniverses
-            ? customer
-                .getUniversesForProvider(providerUUID)
-                .stream()
+            ? customer.getUniversesForProvider(providerUUID).stream()
                 .map(universe -> universe.getUniverseUUID())
                 .collect(Collectors.toList())
             : params.universeUUIDs;
@@ -266,9 +287,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     }
     List<UUID> universeUUIDs =
         rotateAllUniverses
-            ? customer
-                .getUniversesForProvider(providerUUID)
-                .stream()
+            ? customer.getUniversesForProvider(providerUUID).stream()
                 .map(universe -> universe.getUniverseUUID())
                 .collect(Collectors.toList())
             : params.universeUUIDs;

@@ -52,11 +52,11 @@
 #include "yb/util/thread.h"
 #include "yb/util/debug/trace_event.h"
 
-DEFINE_UNKNOWN_string(test_leave_files, "on_failure",
+DEFINE_NON_RUNTIME_string(test_leave_files, "on_failure",
               "Whether to leave test files around after the test run. "
               " Valid values are 'always', 'on_failure', or 'never'");
 
-DEFINE_UNKNOWN_int32(test_random_seed, 0, "Random seed to use for randomized tests");
+DEFINE_NON_RUNTIME_int32(test_random_seed, 0, "Random seed to use for randomized tests");
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(TEST_running_test);

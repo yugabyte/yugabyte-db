@@ -4,7 +4,7 @@ package com.yugabyte.yw.common.ybc;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
-import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
+import com.yugabyte.yw.forms.BackupTableParams.ParallelBackupState;
 import com.yugabyte.yw.models.Universe;
 import java.util.Map;
 import java.util.Set;
@@ -33,11 +33,9 @@ public class YbcBackupNodeRetriever {
     this.ybcManager = StaticInjectorHolder.injector().instanceOf(YbcManager.class);
   }
 
-  public void initializeNodePoolForBackups(Map<String, ParallelBackupState> backupDBStates) {
+  public void initializeNodePoolForBackups(Map<UUID, ParallelBackupState> backupDBStates) {
     Set<String> nodeIPsAlreadyAssigned =
-        backupDBStates
-            .entrySet()
-            .stream()
+        backupDBStates.entrySet().stream()
             .filter(
                 bDBS ->
                     StringUtils.isNotBlank(bDBS.getValue().nodeIp)
@@ -48,9 +46,7 @@ public class YbcBackupNodeRetriever {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     String certFile = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    universe
-        .getLiveTServersInPrimaryCluster()
-        .stream()
+    universe.getLiveTServersInPrimaryCluster().stream()
         .map(nD -> nD.cloudInfo.private_ip)
         .filter(
             ip ->

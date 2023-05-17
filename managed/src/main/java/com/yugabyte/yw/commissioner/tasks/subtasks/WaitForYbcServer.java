@@ -61,9 +61,7 @@ public class WaitForYbcServer extends UniverseTaskBase {
     Set<NodeDetails> nodeDetailsSet =
         taskParams().nodeDetailsSet == null
             ? universe.getUniverseDetails().nodeDetailsSet
-            : taskParams()
-                .nodeNameList
-                .stream()
+            : taskParams().nodeNameList.stream()
                 .map(nodeName -> universe.getNode(nodeName))
                 .collect(Collectors.toSet());
     String errMsg = "";

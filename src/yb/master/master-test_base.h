@@ -53,7 +53,6 @@
 
 #include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master-test-util.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy_base.h"
@@ -120,6 +119,8 @@ namespace yb {
 namespace master {
 
 using strings::Substitute;
+
+class MiniMaster;
 
 class MasterTestBase : public YBTest {
  protected:

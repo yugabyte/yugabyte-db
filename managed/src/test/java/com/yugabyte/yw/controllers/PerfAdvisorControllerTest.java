@@ -24,6 +24,8 @@ import com.yugabyte.yw.models.UniversePerfAdvisorRun;
 import com.yugabyte.yw.models.Users;
 import io.ebean.DB;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -63,8 +65,9 @@ public class PerfAdvisorControllerTest extends FakePerfAdvisorDBTest {
         createTestRecommendation().setRecommendationState(RecommendationState.HIDDEN);
     PerformanceRecommendation recommendation3 =
         createTestRecommendation().setRecommendationState(RecommendationState.RESOLVED);
-    performanceRecommendationService.save(
-        ImmutableList.of(recommendation1, recommendation2, recommendation3));
+    List<PerformanceRecommendation> recommendations =
+        ImmutableList.of(recommendation1, recommendation2, recommendation3);
+    performanceRecommendationService.save(recommendations);
 
     PerformanceRecommendationPagedQuery query = new PerformanceRecommendationPagedQuery();
     query.setSortBy(SortBy.recommendationState);
@@ -241,8 +244,8 @@ public class PerfAdvisorControllerTest extends FakePerfAdvisorDBTest {
             .setHotShardWriteSkewThresholdPct(800.0)
             .setHotShardReadSkewThresholdPct(800.0)
             .setHotShardIntervalMins(10)
-            .setHotShardMinimalWrites(600)
-            .setHotShardMinimalReads(600);
+            .setHotShardMinNodeWrites(600)
+            .setHotShardMinNodeReads(600);
 
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -306,6 +309,6 @@ public class PerfAdvisorControllerTest extends FakePerfAdvisorDBTest {
         .setPerformanceRecommendation(recommendation)
         .setCustomerId(customer.getUuid())
         .setUserId(UUID.randomUUID())
-        .setTimestamp(Instant.now());
+        .setTimestamp(Instant.now().truncatedTo(ChronoUnit.MICROS));
   }
 }

@@ -42,6 +42,8 @@ export interface Keyspace_Table {
   tablesList: string[];
   storageLocation?: string;
   defaultLocation?: string;
+  tableNameList?: string[];
+  tableUUIDList?: string[]
 }
 
 export interface ICommonBackupInfo {
@@ -58,6 +60,7 @@ export interface ICommonBackupInfo {
   updateTime: string;
   parallelism: number;
   kmsConfigUUID?: string;
+  tableByTableBackup: boolean;
 }
 
 export interface IBackup {
@@ -73,6 +76,7 @@ export interface IBackup {
   customerUUID: string;
   universeName: string;
   isStorageConfigPresent: boolean;
+  isTableByTableBackup: boolean;
   isUniversePresent: boolean;
   onDemand: boolean;
   updateTime: string;
@@ -84,7 +88,7 @@ export interface IBackup {
 }
 
 export interface IBackupEditParams {
-  backupUUID: string,
+  backupUUID: string;
   timeBeforeDeleteFromPresentInMillis: number;
   storageConfigUUID: string;
   expiryTimeUnit: string;
@@ -141,11 +145,21 @@ export enum Backup_Options_Type {
   CUSTOM = 'custom'
 }
 
+export type ThrottleParamsVal = {
+  currentValue: number;
+  presetValues: {
+    defaultValue: number;
+    minValue: number;
+    maxValue: number;
+  };
+};
 export interface ThrottleParameters {
-  max_concurrent_uploads: number;
-  per_upload_num_objects: number;
-  max_concurrent_downloads: number;
-  per_download_num_objects: number;
+  throttleParamsMap: {
+    per_download_num_objects: ThrottleParamsVal;
+    max_concurrent_downloads: ThrottleParamsVal;
+    max_concurrent_uploads: ThrottleParamsVal;
+    per_upload_num_objects: ThrottleParamsVal;
+  };
 }
 
 interface IOptionType extends OptionTypeBase {

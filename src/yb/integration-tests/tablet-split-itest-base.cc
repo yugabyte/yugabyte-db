@@ -25,15 +25,17 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/schema.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_util.h"
 
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
@@ -79,6 +81,7 @@ DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
+DECLARE_int32(auto_compact_check_interval_sec);
 
 namespace yb {
 
@@ -378,8 +381,10 @@ void TabletSplitITest::SetUp() {
   FLAGS_db_write_buffer_size = 100_KB;
   // Set scheduled full compaction frequency to 0 (disabled) and jitter factor
   // to 0 (for relevant full compaction tests).
+  // Auto full compactions disabled.
   FLAGS_scheduled_full_compaction_frequency_hours = 0;
   FLAGS_scheduled_full_compaction_jitter_factor_percentage = 0;
+  FLAGS_auto_compact_check_interval_sec = 0;
 
   TabletSplitITestBase<MiniCluster>::SetUp();
   snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
@@ -737,9 +742,9 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
 
     const auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
     const SchemaPtr schema = tablet->metadata()->schema();
-    auto client_schema = schema->CopyWithoutColumnIds();
-    auto iter = VERIFY_RESULT(tablet->NewRowIterator(client_schema));
-    QLTableRow row;
+    dockv::ReaderProjection projection(*schema);
+    auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection));
+    qlexpr::QLTableRow row;
     std::unordered_set<size_t> tablet_keys;
     while (VERIFY_RESULT(iter->FetchNext(&row))) {
       auto key_opt = row.GetValue(key_column_id);

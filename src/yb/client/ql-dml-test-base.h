@@ -22,7 +22,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/table_handle.h"
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/server/server_fwd.h"
 
@@ -179,7 +179,9 @@ Status CheckOp(YBqlOp* op);
 
 // Select rows count without intermediate conversion of rows to string vector as CountTableRows
 // does.
-Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table);
+Result<size_t> CountRows(
+    const YBSessionPtr& session, const TableHandle& table,
+    MonoDelta timeout = MonoDelta::FromSeconds(10) * kTimeMultiplier);
 
 }  // namespace client
 }  // namespace yb

@@ -694,8 +694,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         .forEach(node -> nodeNames.add(node.getNodeName()));
 
     Set<String> changedNodes = new HashSet<>();
-    subTasks
-        .stream()
+    subTasks.stream()
         .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
         .map(t -> t.getDetails().get("nodeName").asText())
         .forEach(changedNodes::add);
@@ -754,8 +753,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
           .forEach(node -> nodeNames.add(node.getNodeName()));
 
       Set<String> changedNodes = new HashSet<>();
-      subTasks
-          .stream()
+      subTasks.stream()
           .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
           .map(t -> t.getDetails().get("nodeName").asText())
           .forEach(changedNodes::add);
@@ -800,8 +798,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
 
     Set<String> changedNodes = new HashSet<>();
-    subTasks
-        .stream()
+    subTasks.stream()
         .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
         .map(t -> t.getDetails().get("nodeName").asText())
         .forEach(changedNodes::add);
@@ -1046,8 +1043,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   }
 
   private TaskInfo findGflagsTask(List<TaskInfo> tasks, String nodeName, ServerType process) {
-    return tasks
-        .stream()
+    return tasks.stream()
         .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
         .filter(t -> t.getDetails().get("nodeName").asText().equals(nodeName))
         .filter(

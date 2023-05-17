@@ -41,7 +41,7 @@
 #include "yb/dockv/partial_row.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"

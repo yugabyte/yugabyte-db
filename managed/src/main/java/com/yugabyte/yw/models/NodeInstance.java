@@ -9,7 +9,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -24,10 +24,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.stream.Collectors;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -150,7 +150,7 @@ public class NodeInstance extends Model {
             + "'";
     RawSql rawSql =
         RawSqlBuilder.unparsed(nodeQuery).columnMapping("node_uuid", "nodeUuid").create();
-    Query<NodeInstance> query = Ebean.find(NodeInstance.class);
+    Query<NodeInstance> query = DB.find(NodeInstance.class);
     query.setRawSql(rawSql);
     List<NodeInstance> list = query.findList();
     return list;
@@ -168,8 +168,7 @@ public class NodeInstance extends Model {
         universe.getNodes().stream().map(NodeDetails::getNodeUuid).collect(Collectors.toSet());
     List<NodeInstance> nodeInstances = NodeInstance.listByProvider(providerUUID);
     List<NodeInstance> filteredInstances =
-        nodeInstances
-            .stream()
+        nodeInstances.stream()
             .filter(instance -> nodeUUIDS.contains(instance.getNodeUuid()))
             .collect(Collectors.toList());
 
@@ -180,7 +179,7 @@ public class NodeInstance extends Model {
     String deleteNodeQuery =
         "delete from node_instance where zone_uuid in"
             + " (select az.uuid from availability_zone az join region r on az.region_uuid = r.uuid and r.provider_uuid=:provider_uuid)";
-    SqlUpdate deleteStmt = Ebean.createSqlUpdate(deleteNodeQuery);
+    SqlUpdate deleteStmt = DB.sqlUpdate(deleteNodeQuery);
     deleteStmt.setParameter("provider_uuid", providerUUID);
     return deleteStmt.execute();
   }

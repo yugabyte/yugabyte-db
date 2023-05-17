@@ -1,8 +1,8 @@
 ---
-title: Enable high availability
+title: High availability of YugabyteDB Anywhere
 headerTitle: Enable high availability
 linkTitle: Enable high availability
-description: Enable high availability
+description: Make YugabyteDB Anywhere highly available
 menu:
   stable_yugabyte-platform:
     identifier: platform-high-availability
@@ -18,7 +18,7 @@ Each HA cluster includes a single active YugabyteDB Anywhere instance and at lea
 - The active instance runs normally, but also pushes out backups of its state to all of the standby instances in the HA cluster.
 - A standby instance is completely passive while in standby mode and cannot be used for managing or monitoring clusters until you manually promote it to active.
 
-Backups from the active instance are periodically taken and pushed to standby instances at a configurable frequency (no more than once per minute). The active instance also creates and sends one-off backups to standby instances whenever a task completes (such as creating a new universe). Metrics are duplicated to standby instances using Prometheus federation. Standby instances retain ten most recent backups on disk.
+Backups from the active instance are periodically taken and pushed to standby instances at a configurable frequency (no more than once per minute). The active instance also creates and sends one-off backups to standby instances whenever a task completes (such as creating a new universe). Metrics are duplicated to standby instances using Prometheus federation. Standby instances retain the ten most recent backups on disk.
 
 When you promote a standby instance to active, YugabyteDB Anywhere restores your selected backup, and then automatically demotes the previous active instance to standby mode.
 
@@ -28,9 +28,17 @@ Before configuring a HA cluster for your YugabyteDB Anywhere instances, ensure t
 
 - [Multiple YugabyteDB Anywhere instances](../../install-yugabyte-platform/) to be used in the HA cluster.
 - YugabyteDB Anywhere VMs can connect to each other over the port that YugabyteDB Anywhere UI is typically reachable (port 80 and 443, for example).
-- All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software. Note that it is generally recommended to upgrade all YugabyteDB Anywhere instances in the HA cluster at approximately the same time.
+- All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software. You should upgrade all YugabyteDB Anywhere instances in the HA cluster at approximately the same time.
 
-## Configure the active instance
+## Configure active and standby instances
+
+To set up HA for YugabyteDB Anywhere, you first configure the active instance by creating an active replication configuration and generating a shared authentication key.
+
+You then configure one or more standby instances by creating standby replication configurations, using the shared authentication key generated on the active instance.
+
+If your instances are using the HTTPS protocol, you must also add the root certificates for the active and standby instances to the YugabyteDB Anywhere trust store on the active instance.
+
+### Configure the active instance
 
 You can configure the active instance as follows:
 
@@ -46,27 +54,25 @@ You can configure the active instance as follows:
 
     In most cases, you do not need to replicate very often. A replication interval of 5-10 minutes is recommended. For testing purposes, a 1-minute interval is more convenient.
 
-1. Click **Create**.
+1. If the active instance is using the HTTPS protocol, copy the root certificate for the active instance. For information on how to obtain the root certificate of a server using Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
 
-1. If the HTTPS protocol is enabled, you can use the **Manage Peer Certificates** dialog to set up a root certificate of other instances.
+    The root certificate is required for HTTPS connections, and allows a standby to connect to the active instance if the standby is promoted to active status.
+
+1. Add the root certificate by clicking **Add Peer Certificates**, click **Add Certificate**, paste the root certificate of the **active** instance in the field, and then click **Confirm**. This adds the certificate to the YugabyteDB Anywhere trust store.
+
+1. Click **Create**.
 
 1. Switch to **Instance Configuration**.
 
-    The address for this instance should be the only information under **Instances**.
+    The address for this active instance should be the only information under **Instances**.
 
 Your active instance is now configured.
 
-Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured active instance and clicking **Add a peer certificate**, as per the following illustration:
-
-![High availability active instance](/images/yp/high-availability/ha-configured.png)
-
-For information on how to export peer certificates on Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
-
-## Configure standby instances
+### Configure standby instances
 
 After the active instance has been configured, you can configure one or more standby instances by repeating the following steps for each standby instance you wish to add to the HA cluster:
 
-1. Navigate to **Admin > High Availability > Replication Configuration** and select **Standby**, as per the following illustration:
+1. On the standby instance, navigate to **Admin > High Availability > Replication Configuration** and select **Standby**, as per the following illustration:
 
     ![Standby instance type](/images/yp/high-availability/standby-configuration.png)
 
@@ -76,19 +82,21 @@ After the active instance has been configured, you can configure one or more sta
 
 1. Click **Create**.
 
-1. Switch to the active instance, and then switch to **Instance Configuration**. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443. If the HTTPS protocol is enabled, you can use the **Manage Peer Certificates** dialog to set up a root certificate of other instances.
+1. If the standby instance is using the HTTPS protocol, copy the root certificate for the standby instance. For information on how to obtain the root certificate of a server using Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
+
+    The CA certificate is required for HTTPS connections, and allows a standby to connect to the active instance if the standby is promoted to active status.
+
+1. Switch to the active instance, and then select **Instance Configuration**.
+
+1. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
+
+1. If the standby is using the HTTPS protocol, click **Manage Peer Certificates**, click **Add Certificate**, paste the root certificate of the **standby** instance in the field, and then click **Confirm**. This adds the certificate to the YugabyteDB Anywhere trust store.
 
 1. Click **Continue** on the **Add Standby Instance** dialog.
 
 1. Switch back to the new standby instance, wait for a replication interval to pass, and then refresh the page. The other instances in the HA cluster should now appear in the list of instances.
 
-Your standby instances are now configured.
-
-Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured standby instance and clicking **Add a peer certificate**, as per the following illustration:
-
-![High availability standby instance](/images/yp/high-availability/ha-configured-standby.png)
-
-For information on how to export peer certificates on Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
+Your standby instance is now configured.
 
 ## Promote a standby instance to active
 

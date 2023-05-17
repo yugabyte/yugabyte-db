@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 )
@@ -24,14 +25,19 @@ var preflightCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		// Print all known checks
 		// TODO: make the user specify which type of preflight list to specify
+		var checksToRun []preflight.Check
+		if viper.GetBool("ybdb.install.enabled") {
+			//TODO: Add preflight checks for YBDB.
+			checksToRun = preflight.InstallChecks
+		} else {
+			checksToRun = preflight.InstallChecksWithPostgres
+		}
 		if len(args) == 1 && args[0] == "list" {
 			fmt.Println("Known preflight install checks:")
-			for _, check := range preflight.InstallChecksWithPostgres {
+			for _, check := range checksToRun {
 				fmt.Println("  " + check.Name())
 			}
 		} else {
-			var checksToRun []preflight.Check
-			checksToRun = preflight.InstallChecksWithPostgres
 			if upgradePreflightChecks {
 				checksToRun = preflight.UpgradeChecks
 			}

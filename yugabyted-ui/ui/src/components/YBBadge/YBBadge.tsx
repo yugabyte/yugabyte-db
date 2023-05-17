@@ -2,8 +2,8 @@ import React, { FC, ReactNode } from 'react';
 import clsx from 'clsx';
 import { makeStyles } from '@material-ui/core';
 import WarningIcon from '@app/assets/alert-solid.svg';
-import ErrorIcon from '@app/assets/warning.svg';
-import SuccessIcon from '@app/assets/circle-check.svg';
+import ErrorIcon from '@app/assets/failed-solid.svg';
+import SuccessIcon from '@app/assets/check-badge.svg';
 import InfoIcon from '@app/assets/info.svg';
 import LoadingIcon from '@app/assets/Default-Loading-Circles.svg';
 

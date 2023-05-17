@@ -1249,15 +1249,8 @@ Status GetTableLocations(MiniCluster* cluster,
   return Status::OK();
 }
 
-int GetNumTabletsOfTableOnTS(tserver::TabletServer* const tserver, const TableId& table_id) {
-  const auto peers = tserver->tablet_manager()->GetTabletPeers();
-  int num = 0;
-  for (const auto& peer : peers) {
-    if (peer->tablet_metadata()->table_id() == table_id) {
-      ++num;
-    }
-  }
-  return num;
+size_t GetNumTabletsOfTableOnTS(tserver::TabletServer* tserver, const TableId& table_id) {
+  return tserver->tablet_manager()->GetTabletPeersWithTableId(table_id).size();
 }
 
 Status WaitForNumVotersInConfigOnMaster(

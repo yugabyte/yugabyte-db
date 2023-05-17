@@ -10,7 +10,7 @@
     customerUUID: f33e3c9b-75ab-4c30-80ad-cba85646ea39
     uuid: a9190fe6-1067-409f-95cf-dbd96893c9c9
     role: SuperAdmin
-    isPrimary: True
+    primary: True
 
 - &user2 !!com.yugabyte.yw.models.Users
     email: insecure
@@ -18,4 +18,4 @@
     customerUUID: f33e3c9b-75ab-4c30-80ad-cba85646ea39
     uuid: f3dd807e-3950-4cd1-860f-548bb581dc05
     role: ReadOnly
-    isPrimary: False
+    primary: False

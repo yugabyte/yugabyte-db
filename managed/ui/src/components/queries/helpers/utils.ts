@@ -44,17 +44,18 @@ const getIndexesAndShardingRecommendation = (perfRecommendations: any, type: Rec
   const result = [];
   const dbCount: any = getDBCount(perfRecommendations, type);
   for (const key of dbCount.keys()) {
-    const unusedIndexRecommendations = perfRecommendations?.entities?.filter((recommendation: any) =>
+    const indexAndShardingRecommendations = perfRecommendations?.entities?.filter((recommendation: any) =>
       recommendation.recommendationType === type && recommendation.recommendationInfo.database_name === key
     );
 
-    if (unusedIndexRecommendations.length) {
+    if (indexAndShardingRecommendations.length) {
       result.push({
         type,
         target: key,
         indicator: dbCount.get(key),
         table: {
-          data: unusedIndexRecommendations
+          data: indexAndShardingRecommendations.sort((a: any, b: any) => 
+            a.recommendationInfo.table_name.localeCompare(b.recommendationInfo.table_name))
         }
       });
     }

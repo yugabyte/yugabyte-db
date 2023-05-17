@@ -25,9 +25,8 @@ Result<MonoDelta> Expiration::ComputeRelativeTtl(const HybridTime& input_time) {
   if (ttl == ValueControlFields::kMaxTtl || ttl.IsNegative()) {
     return ttl;
   }
-  MonoDelta elapsed_time = MonoDelta::FromNanoseconds(
-      server::HybridClock::GetPhysicalValueNanos(input_time) -
-      server::HybridClock::GetPhysicalValueNanos(write_ht));
+  MonoDelta elapsed_time = MonoDelta::FromMicroseconds(
+      input_time.GetPhysicalValueMicros() - write_ht.GetPhysicalValueMicros());
   // This way, we keep the default TTL, and all negative TTLs are expired.
   MonoDelta new_ttl(ttl);
   return new_ttl -= elapsed_time;

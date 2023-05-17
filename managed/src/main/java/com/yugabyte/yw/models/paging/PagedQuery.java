@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.models.paging;
 
-import javax.validation.Valid;
 import lombok.Data;
 import play.data.validation.Constraints;
 

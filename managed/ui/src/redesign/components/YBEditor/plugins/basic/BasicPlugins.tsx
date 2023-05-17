@@ -120,7 +120,10 @@ const serialize = (node: CustomElement | CustomText, children: string) => {
 
   switch (node.type) {
     case 'paragraph':
-      return `<p align="${node.align}">${children}</p>`;
+      if (node.align) {
+        return `<p align="${node.align}">${children}</p>`;
+      }
+      return `<p>${children}</p>`;
     case 'heading':
       return `<h1>${children}</h1>`;
     default:

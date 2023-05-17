@@ -321,6 +321,8 @@ class PgApiImpl {
 
   Status AlterTableIncrementSchemaVersion(PgStatement *handle);
 
+  Status AlterTableSetTableId(PgStatement* handle, const PgObjectId& table_id);
+
   Status ExecAlterTable(PgStatement *handle);
 
   Status NewDropTable(const PgObjectId& table_id,
@@ -393,7 +395,7 @@ class PgApiImpl {
 
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
-  Status DmlAppendColumnRef(PgStatement *handle, PgExpr *colref, bool is_primary);
+  Status DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_primary);
 
   // Binding Columns: Bind column with a value (expression) in a statement.
   // + This API is used to identify the rows you want to operate on. If binding columns are not
@@ -565,7 +567,7 @@ class PgApiImpl {
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
   Status ExitSeparateDdlTxnMode();
-  void ClearSeparateDdlTxnMode();
+  Status ClearSeparateDdlTxnMode();
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
   double GetTransactionPriority() const;

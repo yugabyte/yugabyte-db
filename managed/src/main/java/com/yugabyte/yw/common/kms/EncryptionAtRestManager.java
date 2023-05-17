@@ -273,8 +273,7 @@ public class EncryptionAtRestManager {
 
   // Build up list of objects to backup
   public List<ObjectNode> getUniverseKeyRefsForBackup(UUID universeUUID) {
-    return EncryptionAtRestUtil.getAllUniverseKeys(universeUUID)
-        .stream()
+    return EncryptionAtRestUtil.getAllUniverseKeys(universeUUID).stream()
         .map(
             history -> {
               BackupEntry entry = null;

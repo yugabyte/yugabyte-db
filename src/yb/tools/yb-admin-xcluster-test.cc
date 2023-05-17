@@ -42,10 +42,10 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
-DECLARE_int64(rpc_throttle_threshold_bytes);
-DECLARE_bool(parallelize_bootstrap_producer);
+DECLARE_bool(allow_ycql_transactional_xcluster);
 DECLARE_bool(check_bootstrap_required);
-DECLARE_bool(enable_replicate_transaction_status_table);
+DECLARE_bool(parallelize_bootstrap_producer);
+DECLARE_int64(rpc_throttle_threshold_bytes);
 
 namespace yb {
 namespace tools {
@@ -179,6 +179,18 @@ class XClusterAdminCliTest : public AdminCliTestBase {
           VERIFY_RESULT(producer_cluster_->GetLeaderMasterBoundRpcAddr())));
     }
     return producer_backup_service_proxy_.get();
+  }
+
+  std::pair<client::TableHandle, client::TableHandle> CreateAdditionalTableOnBothClusters() {
+    const YBTableName kTableName2(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table2");
+    client::TableHandle consumer_table2;
+    client::TableHandle producer_table2;
+    client::kv_table_test::CreateTable(
+        Transactional::kTrue, NumTablets(), client_.get(), &consumer_table2, kTableName2);
+    client::kv_table_test::CreateTable(
+        Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table2,
+        kTableName2);
+    return std::make_pair(consumer_table2, producer_table2);
   }
 
   const string kProducerClusterId = "producer";
@@ -509,11 +521,13 @@ TEST_F(XClusterAdminCliTest, TestRenameUniverseReplication) {
 
   // Also create a second stream so we can verify name collisions.
   std::string collision_id = "collision_id";
+  // Need to create new tables so that we don't hit "N:1 replication topology not supported" errors.
+  auto [consumer_table2, producer_table2] = CreateAdditionalTableOnBothClusters();
   ASSERT_OK(RunAdminToolCommand(
       "setup_universe_replication",
       collision_id,
       producer_cluster_->GetMasterAddresses(),
-      producer_cluster_table->id()));
+      producer_table2->id()));
   ASSERT_NOK(RunAdminToolCommand(
       "alter_universe_replication", new_replication_id, "rename_id", collision_id));
 
@@ -557,14 +571,7 @@ TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplication) {
       Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
 
   // Create an additional table to test with as well.
-  const YBTableName kTableName2(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table2");
-  client::TableHandle consumer_table2;
-  client::TableHandle producer_table2;
-  client::kv_table_test::CreateTable(
-      Transactional::kTrue, NumTablets(), client_.get(), &consumer_table2, kTableName2);
-  client::kv_table_test::CreateTable(
-      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table2,
-      kTableName2);
+  auto [consumer_table2, producer_table2] = CreateAdditionalTableOnBothClusters();
 
   // Setup replication with both tables, this should only return once complete.
   // Only use the leader master address initially.
@@ -605,14 +612,7 @@ TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplicationWithBootst
       Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
 
   // Create an additional table to test with as well.
-  const YBTableName kTableName2(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table2");
-  client::TableHandle consumer_table2;
-  client::TableHandle producer_table2;
-  client::kv_table_test::CreateTable(
-      Transactional::kTrue, NumTablets(), client_.get(), &consumer_table2, kTableName2);
-  client::kv_table_test::CreateTable(
-      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table2,
-      kTableName2);
+  auto [consumer_table2, producer_table2] = CreateAdditionalTableOnBothClusters();
 
   // Get bootstrap ids for both producer tables and get bootstrap ids.
   string output =
@@ -829,20 +829,46 @@ TEST_F(XClusterAdminCliTest, TestFailedSetupUniverseWithDeletion) {
   std::this_thread::sleep_for(5s);
 }
 
-TEST_F(XClusterAdminCliTest, DisallowAddTransactionTablet) {
-  FLAGS_enable_replicate_transaction_status_table = true;
+TEST_F(XClusterAdminCliTest, SetupTransactionalReplicationFailure) {
+  client::TableHandle producer_table;
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+  ASSERT_NOK(RunAdminToolCommand(
+      "setup_universe_replication",
+      kProducerClusterId,
+      producer_cluster_->GetMasterAddresses(),
+      producer_table->id(),
+      "random_flag"));
+}
+
+TEST_F(XClusterAdminCliTest, SetupTransactionalReplicationWithYCQLTable) {
+  client::TableHandle producer_table;
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+
+  string error_msg;
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(
+      &error_msg,
+      "setup_universe_replication",
+      kProducerClusterId,
+      producer_cluster_->GetMasterAddresses(),
+      producer_table->id(),
+      "transactional"));
+
+  ASSERT_TRUE(
+      error_msg.find("Transactional replication is not supported for non-YSQL tables") !=
+      string::npos);
+}
+
+TEST_F(XClusterAdminCliTest, AllowAddTransactionTablet) {
+  // We normally disable setting up transactional replication for CQL tables because the
+  // implementation isn't quite complete yet.  It's fine to use it in tests, however.
+  FLAGS_allow_ycql_transactional_xcluster = true;
 
   // Create an identical table on the producer.
   client::TableHandle producer_table;
   client::kv_table_test::CreateTable(
       Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
-
-  ASSERT_OK(RunAdminToolCommand(
-      "setup_universe_replication",
-      kProducerClusterId,
-      producer_cluster_->GetMasterAddresses(),
-      producer_table->id()));
-
   auto global_txn_table =
       YBTableName(YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
   auto producer_global_txn_table_id =
@@ -850,13 +876,18 @@ TEST_F(XClusterAdminCliTest, DisallowAddTransactionTablet) {
   auto consumer_global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(client_.get(), global_txn_table));
 
-  // Fail to add for actively replicated transaction tables.
-  ASSERT_NOK(RunAdminToolCommandOnProducer("add_transaction_tablet", producer_global_txn_table_id));
-  ASSERT_NOK(RunAdminToolCommand("add_transaction_tablet", consumer_global_txn_table_id));
+  // Should be fine to add without any replication.
+  ASSERT_OK(RunAdminToolCommandOnProducer("add_transaction_tablet", producer_global_txn_table_id));
+  ASSERT_OK(RunAdminToolCommand("add_transaction_tablet", consumer_global_txn_table_id));
 
-  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+  ASSERT_OK(RunAdminToolCommand(
+      "setup_universe_replication",
+      kProducerClusterId,
+      producer_cluster_->GetMasterAddresses(),
+      producer_table->id(),
+      "transactional"));
 
-  // After deleting, should be fine to add again.
+  // Should be fine to add with transactional replication.
   ASSERT_OK(RunAdminToolCommandOnProducer("add_transaction_tablet", producer_global_txn_table_id));
   ASSERT_OK(RunAdminToolCommand("add_transaction_tablet", consumer_global_txn_table_id));
 }

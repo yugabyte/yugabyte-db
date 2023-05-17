@@ -44,8 +44,8 @@
 namespace yb {
 
 // These flags are used by the multi-threaded tests, can be used for microbenchmarking.
-DEFINE_UNKNOWN_int32(num_operations, 10*1000, "Number of operations to perform");
-DEFINE_UNKNOWN_int32(num_threads, 2, "Number of worker threads");
+DEFINE_NON_RUNTIME_int32(num_operations, 10 * 1000, "Number of operations to perform");
+DEFINE_NON_RUNTIME_int32(num_threads, 2, "Number of worker threads");
 
 // Test some basic operations
 TEST(Striped64Test, TestBasic) {

@@ -35,7 +35,7 @@
 const int64_t FLAGS_iters = 100000;
 #else
 #include "yb/util/flags.h"
-DEFINE_UNKNOWN_int64(iters, 100000, "number of pseudo-random operations in each test");
+DEFINE_NON_RUNTIME_int64(iters, 100000, "number of pseudo-random operations in each test");
 #endif  // GFLAGS
 
 /*

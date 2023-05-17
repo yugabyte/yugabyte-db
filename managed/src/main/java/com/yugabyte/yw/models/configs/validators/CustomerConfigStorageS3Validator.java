@@ -17,7 +17,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
-import play.libs.Json;
 
 public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValidator {
 

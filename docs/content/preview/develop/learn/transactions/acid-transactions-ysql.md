@@ -171,7 +171,7 @@ Shows the number of transactions that did not complete because the status tablet
 
 ## Session-level settings
 
-The following session-level settings affect transactions and can be configured to your application needs. These settings can be set using the [SET](../../../../api/ysql/the-sql-language/statements/cmd_set/) command and the current values can be fetched using the [SHOW](../../../../api/ysql/the-sql-language/statements/cmd_show/) command.
+The following YSQL parameters affect transactions and can be configured to your application needs. These settings can be set using the [SET](../../../../api/ysql/the-sql-language/statements/cmd_set/) command and the current values can be fetched using the [SHOW](../../../../api/ysql/the-sql-language/statements/cmd_show/) command.
 
 {{<note title="Note">}}
 These settings impact all transactions in the current session only.

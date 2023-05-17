@@ -363,9 +363,7 @@ public class YsqlQueryExecutor {
       allQueries.setLength(0);
 
       versionMatch =
-          universe
-              .getVersions()
-              .stream()
+          universe.getVersions().stream()
               .allMatch(v -> Util.compareYbVersions(v, "2.12.2.0-b31") >= 0);
       if (versionMatch) {
         query =

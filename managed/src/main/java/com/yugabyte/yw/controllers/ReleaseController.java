@@ -104,9 +104,7 @@ public class ReleaseController extends AuthenticatedController {
 
     // Filter out any deleted releases.
     Map<String, Object> filtered =
-        releases
-            .entrySet()
-            .stream()
+        releases.entrySet().stream()
             .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
             .collect(
                 Collectors.toMap(Entry::getKey, entry -> CommonUtils.maskObject(entry.getValue())));
@@ -137,9 +135,7 @@ public class ReleaseController extends AuthenticatedController {
 
     // Filter for active and matching region releases.
     Map<String, Object> filtered =
-        releases
-            .entrySet()
-            .stream()
+        releases.entrySet().stream()
             .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
             .filter(f -> releaseManager.metadataFromObject(f.getValue()).matchesRegion(region))
             .collect(

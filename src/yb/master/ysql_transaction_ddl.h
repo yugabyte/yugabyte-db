@@ -92,7 +92,7 @@ class YsqlTransactionDdl {
                          bool has_ysql_ddl_txn_state,
                          std::function<Status(bool /* is_success */)> complete_callback);
 
-  Result<bool> PgEntryExists(TableId tableId,
+  Result<bool> PgEntryExists(const TableId& tableId,
                              PgOid entry_oid,
                              boost::optional<PgOid> relfilenode_oid);
 
@@ -116,11 +116,9 @@ class YsqlTransactionDdl {
   // 'WHERE old_col_name = oid_value'. Each returned row contains the columns specified in
   // 'col_names'.
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> GetPgCatalogTableScanIterator(
-      const TableId& pg_catalog_table_id,
-      const std::string& oid_col_name,
+      const PgTableReadData& read_data,
       PgOid oid_value,
-      std::vector<GStringPiece> col_names,
-      Schema *projection);
+      const dockv::ReaderProjection& projection);
 
   const SysCatalogTable* sys_catalog_;
   std::shared_future<client::YBClient*> client_future_;

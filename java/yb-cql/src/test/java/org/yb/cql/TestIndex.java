@@ -1145,16 +1145,16 @@ public class TestIndex extends BaseCQLTest {
     // Insert into first table with conditional DML.
     session.execute("insert into test_cond (k, v1, v2) values (1, 1, 'a');");
     assertQuery("insert into test_cond (k, v1, v2) values (1, 1, 'a') if not exists;",
-                "Columns[[applied](boolean), k(int), v2(varchar), v1(int)]",
-                "Row[false, 1, a, 1]");
+                "Columns[[applied](boolean), k(int), v1(int), v2(varchar)]",
+                "Row[false, 1, 1, a]");
     assertQuery("insert into test_cond (k, v1, v2) values (2, 1, 'a') if not exists;",
                 "Row[true]");
 
     // Insert into second table with conditional DML.
     session.execute("insert into test_cond_unique (k, v1, v2) values (1, 1, 'a');");
     assertQuery("insert into test_cond_unique (k, v1, v2) values (1, 1, 'a') if not exists;",
-                "Columns[[applied](boolean), k(int), v2(varchar), v1(int)]",
-                "Row[false, 1, a, 1]");
+                "Columns[[applied](boolean), k(int), v1(int), v2(varchar)]",
+                "Row[false, 1, 1, a]");
     assertInvalidUniqueIndexDML("insert into test_cond_unique (k, v1, v2) values (2, 2, 'a') " +
                                 "if not exists;", "test_cond_unique_by_v2");
     assertQueryRowsUnordered("select * from test_cond_unique;",

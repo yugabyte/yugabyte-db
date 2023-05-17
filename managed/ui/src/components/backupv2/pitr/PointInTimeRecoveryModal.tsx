@@ -148,12 +148,13 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
         customTime.getMinutes(),
         customTime.getSeconds()
       );
-      const convertedDate = convertToTZ(
-        dateTime,
-        currentUserTimezone ? currentUserTimezone : 'UTC'
-      );
-      const timezoneDiff = moment(dateTime).unix() - moment(convertedDate).unix();
-      finalTimeStamp = (moment(dateTime).unix() + timezoneDiff) * 1000;
+      if (currentUserTimezone) {
+        const convertedDate = convertToTZ(dateTime, currentUserTimezone);
+        const timezoneDiff = moment(dateTime).unix() - moment(convertedDate).unix();
+        finalTimeStamp = (moment(dateTime).unix() + timezoneDiff) * 1000;
+      } else {
+        finalTimeStamp = moment(dateTime).unix() * 1000;
+      }
     }
 
     return finalTimeStamp;

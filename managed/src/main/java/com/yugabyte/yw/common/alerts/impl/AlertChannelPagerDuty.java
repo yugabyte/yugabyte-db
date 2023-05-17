@@ -68,8 +68,8 @@ public class AlertChannelPagerDuty extends AlertChannelWebBase {
     AlertChannelPagerDutyParams params = (AlertChannelPagerDutyParams) channel.getParams();
     List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customer.getUuid());
     Context context = new Context(channel, channelTemplates, variables);
-    String title = getNotificationTitle(alert, context);
-    String text = getNotificationText(alert, context);
+    String title = getNotificationTitle(alert, context, false);
+    String text = getNotificationText(alert, context, false);
 
     try {
       EventResult eventResult;
@@ -80,9 +80,7 @@ public class AlertChannelPagerDuty extends AlertChannelWebBase {
           severity = Severity.WARNING;
         }
         ObjectNode customDetails = Json.newObject();
-        alert
-            .getLabels()
-            .stream()
+        alert.getLabels().stream()
             .sorted(Comparator.comparing(AlertLabel::getName))
             .forEach(label -> customDetails.put(label.getName(), label.getValue()));
         Payload payload =

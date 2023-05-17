@@ -1,7 +1,7 @@
 import React, { FC, useEffect, useMemo } from 'react';
 import { makeStyles, Box, Typography, MenuItem, LinearProgress } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
-import { YBButton, YBInput, YBLoadingBox, YBSelect, YBTable } from '@app/components';
+import { YBButton, YBCheckbox, YBDropdown, YBInput, YBLoadingBox, YBSelect, YBTable } from '@app/components';
 import { useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterTabletsQuery } from '@app/api/src';
 import SearchIcon from '@app/assets/search.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
@@ -48,6 +48,14 @@ const useStyles = makeStyles((theme) => ({
   refreshBtn: {
     marginRight: theme.spacing(1)
   },
+  checkbox: {
+    padding: theme.spacing(0.5, 0.5, 0.5, 1.5),
+  },
+  nodeContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    width: 200,
+  }
 }));
 
 type DatabaseListProps = {
@@ -60,15 +68,32 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const [node, setNode] = React.useState<string>('');
-  const [tabletID, setTabletID] = React.useState<string>('');
-
   const { data: tablets, isFetching: isFetchingTablets } = useGetClusterTabletsQuery({ query: { refetchOnMount: 'always' }});
   const tableID = useMemo(() => tablets ? Object.values(tablets.data)
     .find(tablet => tablet.table_name === selectedTable)?.table_uuid as string : undefined, [selectedTable, tablets])
 
   const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery({ query: { refetchOnMount: 'always' }});
   const nodeNames = useMemo(() => nodesResponse?.data.map(node => node.name), [nodesResponse])
+
+  const [nodes, setNodes] = React.useState<string[]>(nodeNames ?? []);
+  const [tabletID, setTabletID] = React.useState<string>('');
+
+  React.useEffect(() => {
+    if (nodeNames) {
+      setNodes(nodeNames);
+    }
+  }, [nodeNames])
+
+  const handleNodeChange = (newNode: string) => {
+    const nodeIndex = nodes.findIndex(n => n === newNode);
+    const newNodes = [ ...nodes ];
+    if (nodeIndex !== -1) {
+      newNodes.splice(nodeIndex, 1);
+    } else {
+      newNodes.push(newNode);
+    }
+    setNodes(newNodes);
+  }
 
   const { data: healthCheckData, isFetching: isFetchingHealth } = useGetClusterHealthCheckQuery({ query: { refetchOnMount: 'always' }});
   
@@ -82,8 +107,10 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
 
     const populateTablets = async () => {
       let nodes = nodesResponse.data;
-      if (node) {
-        nodes = nodes.filter(n => n.name === node)
+      if (nodes.length > 0) {
+        nodes = nodes.filter(n => nodes.find(node => node.name === n.name))
+      } else {
+        nodes = [];
       }
       const nodeHosts = nodes.map(node => node.host);
       if (!nodeHosts) {
@@ -138,7 +165,7 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
     }
 
     populateTablets();
-  }, [nodesResponse, node, tableID, healthCheckData]);
+  }, [nodesResponse, nodes, tableID, healthCheckData]);
 
   const data = useMemo(() => {
     let data = tabletList;
@@ -220,7 +247,7 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
         </Box>
       </Box>
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-        <YBSelect
+        {/* <YBSelect
           value={node}
           onChange={(ev) => setNode(ev.target.value)}
           className={classes.dropdown}
@@ -229,7 +256,25 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
           {nodeNames?.map(nodeName => 
             <MenuItem key={nodeName} value={nodeName}>{nodeName}</MenuItem>
           )}
-        </YBSelect>
+        </YBSelect> */}
+        <YBDropdown origin={
+          <YBSelect inputProps={{ tabIndex: -1 }} style={{ pointerEvents: "none" }} className={classes.dropdown} 
+            value={nodes.join(', ')} >
+            <MenuItem value={nodes.join(', ')}>
+              {nodes.length === 0 ? t('clusterDetail.databases.none') : 
+                (nodes.length <= 2 ? nodes.join(', ') : 
+                (nodes.length === nodeNames?.length ? t('clusterDetail.databases.allNodes') : `${nodes.length} nodes`))}
+            </MenuItem>
+          </YBSelect>}
+          position={'bottom'} growDirection={'right'} keepOpenOnSelect>
+          <Box className={classes.nodeContainer}>
+            {nodeNames?.map(nodeName => 
+              <YBCheckbox key={nodeName} label={nodeName} className={classes.checkbox}
+                checked={!!nodes.find(n => n === nodeName)}
+                onClick={() => handleNodeChange(nodeName)} />
+            )}
+          </Box>
+        </YBDropdown>
         <YBInput
           placeholder={t('clusterDetail.databases.searchTabletID')}
           InputProps={{

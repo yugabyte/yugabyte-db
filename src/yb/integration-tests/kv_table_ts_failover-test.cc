@@ -26,7 +26,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_int32(test_num_iter,
+DEFINE_NON_RUNTIME_int32(test_num_iter,
              1,
              "Number of iterations for key-value table tablet server failover test");
 

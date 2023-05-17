@@ -15,6 +15,7 @@
 
 #include "yb/common/common_fwd.h"
 
+#include "yb/common/schema.h"
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -28,6 +29,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/monitored_task.h"
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -86,7 +88,7 @@ class CatalogManagerIf {
 
   virtual ThreadPool* AsyncTaskPool() = 0;
 
-  virtual Status ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) = 0;
+  virtual Status ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) = 0;
 
   virtual Status HandleTabletSchemaVersionReport(
       TabletInfo *tablet, uint32_t version, const scoped_refptr<TableInfo>& table = nullptr) = 0;
@@ -148,7 +150,8 @@ class CatalogManagerIf {
       const NamespaceId& id) const = 0;
 
   virtual scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
-      YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name) = 0;
+      YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name,
+      const PgSchemaName pg_schema_name = {}) = 0;
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentTasks() = 0;
 
@@ -270,6 +273,8 @@ class CatalogManagerIf {
 
   virtual Status GetCompactionStatus(
       const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) = 0;
+
+  virtual Status PromoteTableToRunningState(TableInfoPtr table_info) = 0;
 
   virtual ~CatalogManagerIf() = default;
 };

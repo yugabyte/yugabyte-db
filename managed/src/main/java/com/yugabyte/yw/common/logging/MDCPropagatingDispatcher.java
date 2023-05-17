@@ -8,9 +8,9 @@ import akka.dispatch.ExecutorServiceFactoryProvider;
 import akka.dispatch.MessageDispatcherConfigurator;
 import java.util.Map;
 import org.slf4j.MDC;
+import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 import scala.concurrent.duration.FiniteDuration;
-import scala.concurrent.ExecutionContext;
 
 /**
  * This custom dispatcher is used to capture MDC, propagate it through an {@link

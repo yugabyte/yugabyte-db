@@ -6,7 +6,7 @@
  */
 import React, { useState } from 'react';
 import JsYaml from 'js-yaml';
-import { Box, FormHelperText, Typography } from '@material-ui/core';
+import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
 import { toast } from 'react-toastify';
@@ -41,6 +41,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
@@ -143,7 +144,10 @@ export const K8sProviderEditForm = ({
     }
   );
 
-  if (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle) {
+  if (
+    enableSuggestedConfigFeature &&
+    (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)
+  ) {
     return <YBLoading />;
   }
 
@@ -169,7 +173,8 @@ export const K8sProviderEditForm = ({
       kubernetesImageRegistry,
       kubernetesProvider,
       kubernetesPullSecretContent,
-      providerName
+      providerName,
+      regions
     } = adaptSuggestedKubernetesConfig(suggestedKubernetesConfig);
 
     formMethods.setValue('editPullSecretContent', true);
@@ -177,7 +182,7 @@ export const K8sProviderEditForm = ({
     formMethods.setValue('kubernetesImageRegistry', kubernetesImageRegistry);
     formMethods.setValue('kubernetesProvider', kubernetesProvider);
     formMethods.setValue('providerName', providerName);
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   };
   const onFormReset = () => {
     formMethods.reset(defaultValues);
@@ -187,10 +192,8 @@ export const K8sProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = (options?: { isExistingRegion: boolean }) => {
-    setRegionOperation(
-      options?.isExistingRegion ? RegionOperation.EDIT_EXISTING : RegionOperation.EDIT_NEW
-    );
+  const showEditRegionFormModal = (regionOperation: RegionOperation) => {
+    setRegionOperation(regionOperation);
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -204,7 +207,8 @@ export const K8sProviderEditForm = ({
   };
 
   const regions = formMethods.watch('regions', defaultValues.regions);
-  const setRegions = (regions: K8sRegionField[]) => formMethods.setValue('regions', regions);
+  const setRegions = (regions: K8sRegionField[]) =>
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: K8sRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -227,8 +231,7 @@ export const K8sProviderEditForm = ({
     ...KUBERNETES_PROVIDER_OPTIONS.k8sDeprecated
   ] as const;
   const existingRegions = providerConfig.regions.map((region) => region.code);
-  const isFormDisabled =
-    isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const isFormDisabled = getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -376,6 +379,7 @@ export const K8sProviderEditForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={isProviderInUse}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -383,13 +387,18 @@ export const K8sProviderEditForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
+            {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
+              <Box display="flex" gridGap="5px" marginLeft="auto">
+                <CircularProgress size={16} color="primary" thickness={5} />
+              </Box>
+            )}
           </Box>
           <Box marginTop="16px">
             <YBButton
               btnText="Apply Changes"
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
@@ -405,6 +414,7 @@ export const K8sProviderEditForm = ({
       {isRegionFormModalOpen && (
         <ConfigureK8sRegionModal
           configuredRegions={regions}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -452,6 +462,7 @@ const constructDefaultFormValues = (
           certIssuerName:
             zone.details?.cloudInfo.kubernetes.certManagerClusterIssuer ??
             zone.details?.cloudInfo.kubernetes.certManagerIssuer,
+          kubeConfigFilepath: zone.details.cloudInfo.kubernetes.kubeConfig,
           kubeDomain: zone.details.cloudInfo.kubernetes.kubeDomain,
           kubeNamespace: zone.details.cloudInfo.kubernetes.kubeNamespace,
           kubePodAddressTemplate: zone.details.cloudInfo.kubernetes.kubePodAddressTemplate,
@@ -522,21 +533,40 @@ const constructProviderPayload = async (
               details: {
                 cloudInfo: {
                   [ProviderCode.KUBERNETES]: {
-                    ...((!existingZone?.kubeconfigPath || azFormValues.editKubeConfigContent) &&
-                      azFormValues.kubeConfigContent && {
-                        kubeConfigContent:
-                          (await readFileAsText(azFormValues.kubeConfigContent)) ?? ''
-                      }),
-                    kubeDomain: azFormValues.kubeDomain,
-                    kubeNamespace: azFormValues.kubeNamespace,
-                    kubePodAddressTemplate: azFormValues.kubePodAddressTemplate,
-                    kubernetesStorageClass: azFormValues.kubernetesStorageClass,
-                    overrides: azFormValues.overrides,
-                    ...(azFormValues.certIssuerType === K8sCertIssuerType.CLUSTER_ISSUER && {
-                      certManagerClusterIssuer: azFormValues.certIssuerName
+                    ...(!existingZone?.details?.cloudInfo.kubernetes.kubeConfig ||
+                    azFormValues.editKubeConfigContent
+                      ? {
+                          ...(azFormValues.kubeConfigContent && {
+                            kubeConfigContent:
+                              (await readFileAsText(azFormValues.kubeConfigContent)) ?? '',
+                            ...(azFormValues.kubeConfigContent.name && {
+                              kubeConfigName: azFormValues.kubeConfigContent.name
+                            })
+                          })
+                        }
+                      : {
+                          ...(existingZone?.details.cloudInfo.kubernetes.kubeConfig && {
+                            kubeConfig: existingZone?.details.cloudInfo.kubernetes.kubeConfig
+                          })
+                        }),
+                    ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
+                    ...(azFormValues.kubeNamespace && {
+                      kubeNamespace: azFormValues.kubeNamespace
                     }),
-                    ...(azFormValues.certIssuerType === K8sCertIssuerType.ISSUER && {
-                      certManagerIssuer: azFormValues.certIssuerName
+                    ...(azFormValues.kubePodAddressTemplate && {
+                      kubePodAddressTemplate: azFormValues.kubePodAddressTemplate
+                    }),
+                    ...(azFormValues.kubernetesStorageClass && {
+                      kubernetesStorageClass: azFormValues.kubernetesStorageClass
+                    }),
+                    ...(azFormValues.overrides && { overrides: azFormValues.overrides }),
+                    ...(azFormValues.certIssuerName && {
+                      ...(azFormValues.certIssuerType === K8sCertIssuerType.CLUSTER_ISSUER && {
+                        certManagerClusterIssuer: azFormValues.certIssuerName
+                      }),
+                      ...(azFormValues.certIssuerType === K8sCertIssuerType.ISSUER && {
+                        certManagerIssuer: azFormValues.certIssuerName
+                      })
                     })
                   }
                 }
@@ -575,18 +605,29 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.KUBERNETES]: {
-          ...(formValues.editKubeConfigContent &&
-            formValues.kubeConfigContent && {
-              kubeConfigContent: kubeConfigContent,
-              kubeConfigName: formValues.kubeConfigContent?.name ?? ''
-            }),
+          ...(formValues.editKubeConfigContent && formValues.kubeConfigContent
+            ? {
+                kubeConfigContent: kubeConfigContent,
+                ...(formValues.kubeConfigContent.name && {
+                  kubeConfigName: formValues.kubeConfigContent.name
+                })
+              }
+            : {
+                ...(providerConfig?.details.cloudInfo.kubernetes.kubeConfig && {
+                  kubeConfig: providerConfig?.details.cloudInfo.kubernetes.kubeConfig
+                })
+              }),
           kubernetesImageRegistry: formValues.kubernetesImageRegistry,
           kubernetesProvider: formValues.kubernetesProvider.value,
           ...(formValues.editPullSecretContent &&
             formValues.kubernetesPullSecretContent && {
               kubernetesPullSecretContent: kubernetesPullSecretContent,
-              kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name ?? '',
-              kubernetesImagePullSecretName: kubernetesImagePullSecretName
+              ...(formValues.kubernetesPullSecretContent.name && {
+                kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
+              }),
+              ...(kubernetesImagePullSecretName && {
+                kubernetesImagePullSecretName: kubernetesImagePullSecretName
+              })
             })
         }
       }

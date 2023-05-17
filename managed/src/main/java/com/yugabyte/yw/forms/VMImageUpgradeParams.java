@@ -10,8 +10,12 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashMap;
@@ -29,9 +33,12 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     None
   }
 
+  @YBADeprecated(sinceDate = "2023-03-30", sinceYBAVersion = "2.18.0")
   @ApiModelProperty(
-      value = "Map  of region UUID to AMI name",
-      required = true,
+      value =
+          "Map  of region UUID to AMI name. Deprecated: sinceDate=2023-03-30,"
+              + "sinceYBAVersion=2.18.0, Use imageBundle instead.",
+      required = false,
       example =
           "{\n"
               + "    'b28e0813-4866-4a2d-89f3-52265766d666':"
@@ -45,11 +52,17 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
   public Map<UUID, String> machineImages = new HashMap<>();
   // Use whenwe want to use a different SSH_USER instead of what is defined in the default
   // accessKey.
+  @YBADeprecated(sinceDate = "2023-03-30", sinceYBAVersion = "2.18.0")
   @ApiModelProperty(
-      value = "Map of region UUID to SSH User override",
+      value =
+          "Map of region UUID to SSH User override. Deprecated: sinceDate=2023-03-30,"
+              + "sinceYBAVersion=2.18.0, Use imageBundle instead.",
       required = false,
       example = "{\n" + "    'b28e0813-4866-4a2d-89f3-52265766d666':" + " 'ec2-user',\n" + "  }")
   public Map<UUID, String> sshUserOverrideMap = new HashMap<>();
+
+  @ApiModelProperty("ImageBundle to be used for upgrade")
+  public UUID imageBundleUUID;
 
   public boolean forceVMImageUpgrade = false;
   public String ybSoftwareVersion = null;
@@ -62,8 +75,10 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
 
   @JsonCreator
   public VMImageUpgradeParams(
-      @JsonProperty(value = "machineImages", required = true) Map<UUID, String> machineImages) {
+      @JsonProperty(value = "machineImages", required = false) Map<UUID, String> machineImages,
+      @JsonProperty(value = "imageBundleUUID", required = false) UUID imageBundleUUID) {
     this.machineImages = machineImages;
+    this.imageBundleUUID = imageBundleUUID;
   }
 
   @Override
@@ -96,8 +111,9 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage.");
     }
 
-    if (machineImages.isEmpty()) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, "machineImages param is required.");
+    if ((machineImages == null || machineImages.isEmpty()) && imageBundleUUID == null) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "machineImages/imageBundle param is required.");
     }
 
     nodeToRegion.clear();
@@ -112,9 +128,30 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
                             Status.BAD_REQUEST,
                             "Could not find region for AZ " + node.cloudInfo.az));
 
-        if (!machineImages.containsKey(region.getUuid())) {
+        if (machineImages != null && !machineImages.containsKey(region.getUuid())) {
           throw new PlatformServiceException(
               Status.BAD_REQUEST, "No VM image was specified for region " + node.cloudInfo.region);
+        } else if (imageBundleUUID != null) {
+          ImageBundle bundle = ImageBundle.getOrBadRequest(imageBundleUUID);
+          if (bundle == null) {
+            throw new PlatformServiceException(
+                Status.BAD_REQUEST,
+                String.format("Image bundle with UUID %s does not exist", imageBundleUUID));
+          }
+          if (bundle.getProvider().getCloudCode().equals(CloudType.aws)) {
+            Map<String, ImageBundleDetails.BundleInfo> regionsBundleInfo =
+                bundle.getDetails().getRegions();
+            // Validate that the provided image bundle contains all the regions
+            // that are present on the univserse being upgraded.
+            CloudSpecificInfo cloudSpecificInfo = node.cloudInfo;
+            if (!regionsBundleInfo.containsKey(cloudSpecificInfo.region)) {
+              throw new PlatformServiceException(
+                  Status.BAD_REQUEST,
+                  String.format(
+                      "Image Bundle %s is missing AMI ID for region %s",
+                      bundle.getName(), cloudSpecificInfo.region));
+            }
+          }
         }
 
         nodeToRegion.putIfAbsent(node.nodeUuid, region.getUuid());

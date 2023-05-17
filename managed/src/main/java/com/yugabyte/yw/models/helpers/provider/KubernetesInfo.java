@@ -1,8 +1,5 @@
 package com.yugabyte.yw.models.helpers.provider;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -10,9 +7,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.models.common.YBADeprecated;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-
 import io.swagger.annotations.ApiModelProperty;
-
+import java.util.HashMap;
+import java.util.Map;
 import lombok.Data;
 
 @Data
@@ -68,6 +65,10 @@ public class KubernetesInfo implements CloudInfoInterface {
   @JsonAlias("KUBECONFIG_PULL_SECRET_NAME")
   @ApiModelProperty
   private String kubernetesPullSecretName;
+
+  // Flag for identifying the legacy k8s providers created before release 2.18.
+  @ApiModelProperty(hidden = true)
+  private boolean legacyK8sProvider = true;
 
   @JsonIgnore
   public Map<String, String> getEnvVars() {
@@ -136,5 +137,6 @@ public class KubernetesInfo implements CloudInfoInterface {
     if (this.kubernetesPullSecretName != null && this.kubernetesPullSecretName.contains("*")) {
       this.kubernetesPullSecretName = kubernetesInfo.kubernetesPullSecretName;
     }
+    this.legacyK8sProvider = kubernetesInfo.legacyK8sProvider;
   }
 }

@@ -51,7 +51,7 @@ import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.ListTabletServersResponse;
@@ -568,9 +568,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     Universe u = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     Map<String, String> nodeNameToIP =
-        u.getUniverseDetails()
-            .nodeDetailsSet
-            .stream()
+        u.getUniverseDetails().nodeDetailsSet.stream()
             .collect(Collectors.toMap(n -> n.nodeName, n -> n.cloudInfo.private_ip));
     assertEquals(expectedNodeNameToIP, nodeNameToIP);
     assertEquals(newNamingStyle, u.getUniverseDetails().useNewHelmNamingStyle);

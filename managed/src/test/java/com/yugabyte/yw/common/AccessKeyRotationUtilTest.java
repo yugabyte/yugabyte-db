@@ -2,47 +2,43 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.mockStatic;
 
-import java.util.Date;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
-import junitparams.JUnitParamsRunner;
-
-import org.junit.Test;
-import org.apache.commons.lang3.time.DateUtils;
-import org.junit.Before;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import org.mockito.MockedStatic;
-
-import com.yugabyte.yw.models.Customer;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AccessKeyId;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.AccessKey.KeyInfo;
-
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.typesafe.config.Config;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKey.KeyInfo;
+import com.yugabyte.yw.models.AccessKeyId;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import junitparams.JUnitParamsRunner;
+import org.apache.commons.lang3.time.DateUtils;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockedStatic;
+import org.mockito.MockitoAnnotations;
 
 @RunWith(JUnitParamsRunner.class)
 public class AccessKeyRotationUtilTest extends FakeDBApplication {
@@ -153,9 +149,7 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
     universeUUIDs.add(uni2.getUniverseUUID());
     Universe.delete(uni2.getUniverseUUID());
     Set<UUID> filteredUniverses =
-        accessKeyRotationUtil
-            .removeDeletedUniverses(universeUUIDs)
-            .stream()
+        accessKeyRotationUtil.removeDeletedUniverses(universeUUIDs).stream()
             .collect(Collectors.toSet());
     assertTrue(filteredUniverses.contains(uni1.getUniverseUUID()));
     assertFalse(filteredUniverses.contains(uni2.getUniverseUUID()));
@@ -170,9 +164,7 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
     universeUUIDs.add(uni2.getUniverseUUID());
     setUniversePaused(true, uni2);
     Set<UUID> filteredUniverses =
-        accessKeyRotationUtil
-            .removePausedUniverses(universeUUIDs)
-            .stream()
+        accessKeyRotationUtil.removePausedUniverses(universeUUIDs).stream()
             .collect(Collectors.toSet());
     assertTrue(filteredUniverses.contains(uni1.getUniverseUUID()));
     assertFalse(filteredUniverses.contains(uni2.getUniverseUUID()));

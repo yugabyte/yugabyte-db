@@ -5,16 +5,13 @@ package com.yugabyte.yw.forms.filters;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.filters.RestoreFilter;
-
 import io.swagger.annotations.ApiModelProperty;
-
 import java.util.Date;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 
 @Data
 @NoArgsConstructor

@@ -1,5 +1,5 @@
 ---
-title: C
+title: Build applications with C Drivers and ORMs
 headerTitle: C
 linkTitle: C
 description: C Drivers and ORMs support for YugabyteDB.

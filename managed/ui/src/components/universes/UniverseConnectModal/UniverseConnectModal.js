@@ -159,15 +159,16 @@ class UniverseConnectModal extends Component {
       );
 
       // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-      const isTLSEnabled = userIntent.enableNodeToNodeEncrypt || userIntent.enableClientToNodeEncrypt;
+      const isTLSEnabled =
+        userIntent.enableNodeToNodeEncrypt || userIntent.enableClientToNodeEncrypt;
       const connectIp = this.state.connectIp ?? '127.0.0.1';
       const jdbcConnection = `jdbc:postgresql://${connectIp}:${ysqlRpcPort}/yugabyte`;
-      
+
       const jdbcTLSConnection = `${jdbcConnection}?sslmode=require`;
-      const ysqlConnection = `bin/ysqlsh -h ${connectIp}`;
+      const ysqlConnection = `tserver/bin/ysqlsh -h ${connectIp}`;
       const ySqlTLSConnection = `${ysqlConnection} sslmode=require`;
-      const ycqlConnection = 'bin/ycqlsh';
-      const yCqlTLSConnection = `SSL_CERTFILE=<path to ca.crt> ycqlsh --ssl ${connectIp} 9042`;
+      const ycqlConnection = 'tserver/bin/ycqlsh';
+      const yCqlTLSConnection = `SSL_CERTFILE=<path to ca.crt> tserver/bin/ycqlsh --ssl ${connectIp} 9042`;
 
       content = (
         <Fragment>
@@ -220,13 +221,13 @@ class UniverseConnectModal extends Component {
     }
     return (
       <Fragment>
-        {!universePaused &&
+        {!universePaused && (
           <YBButton
             btnText={'Connect'}
             btnClass={'btn btn-orange'}
             onClick={showOverviewConnectModal}
           />
-        }
+        )}
         <YBModal
           title={'Connect'}
           visible={showModal && visibleModal === 'UniverseConnectModal'}

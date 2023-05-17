@@ -8,7 +8,9 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NetworkManager;
@@ -16,6 +18,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.forms.RegionEditFormData;
 import com.yugabyte.yw.forms.RegionFormData;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -26,9 +29,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class RegionHandler {
 
   @Inject NetworkManager networkManager;
@@ -39,6 +44,8 @@ public class RegionHandler {
 
   @Inject ProviderEditRestrictionManager providerEditRestrictionManager;
 
+  @Inject AWSCloudImpl awsCloudImpl;
+
   // TODO: this will be removed after UI revamp
   public Region createRegion(UUID customerUUID, UUID providerUUID, RegionFormData form) {
     return providerEditRestrictionManager.tryEditProvider(
@@ -48,35 +55,47 @@ public class RegionHandler {
   public Region editRegion(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, RegionEditFormData form) {
     return providerEditRestrictionManager.tryEditProvider(
-        providerUUID,
-        () -> {
-          Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+        providerUUID, () -> doEditRegion(customerUUID, providerUUID, regionUUID, form));
+  }
 
-          region.setSecurityGroupId(form.securityGroupId);
-          region.setVnetName(form.vnetName);
-          region.setYbImage(form.ybImage);
+  public Region doEditRegion(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, RegionEditFormData form) {
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
 
-          region.update();
-          return region;
-        });
+    region.setSecurityGroupId(form.securityGroupId);
+    region.setVnetName(form.vnetName);
+    region.setYbImage(form.ybImage);
+
+    region.update();
+    return region;
   }
 
   public Region deleteRegion(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     return providerEditRestrictionManager.tryEditProvider(
-        providerUUID,
-        () -> {
-          Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
-          long nodeCount = region.getNodeCount();
-          if (nodeCount > 0) {
-            throw new PlatformServiceException(
-                FORBIDDEN,
-                String.format(
-                    "There %s %d node%s in this region",
-                    nodeCount > 1 ? "are" : "is", nodeCount, nodeCount > 1 ? "s" : ""));
-          }
-          region.disableRegionAndZones();
-          return region;
-        });
+        providerUUID, () -> doDeleteRegion(customerUUID, providerUUID, regionUUID));
+  }
+
+  public Region doDeleteRegion(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    long nodeCount = region.getNodeCount();
+    if (nodeCount > 0) {
+      throw new PlatformServiceException(
+          FORBIDDEN,
+          String.format(
+              "There %s %d node%s in this region",
+              nodeCount > 1 ? "are" : "is", nodeCount, nodeCount > 1 ? "s" : ""));
+    }
+    region.disableRegionAndZones();
+    if (provider.getCloudCode().equals(CloudType.aws)
+        && provider.getAllAccessKeys() != null
+        && provider.getAllAccessKeys().size() > 0) {
+      String keyPairName = AccessKey.getLatestKey(provider.getUuid()).getKeyCode();
+      log.info(
+          String.format("Deleting keyPair %s from region %s", keyPairName, regionUUID.toString()));
+      awsCloudImpl.deleteKeyPair(provider, region, keyPairName);
+    }
+    return region;
   }
 
   private Region doCreateRegion(UUID customerUUID, UUID providerUUID, RegionFormData form) {

@@ -80,24 +80,21 @@ public class AwsEARServiceUtil {
     }
 
     public static List<String> getEditableFields() {
-      return Arrays.asList(values())
-          .stream()
+      return Arrays.asList(values()).stream()
           .filter(configField -> configField.isEditable)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());
     }
 
     public static List<String> getNonEditableFields() {
-      return Arrays.asList(values())
-          .stream()
+      return Arrays.asList(values()).stream()
           .filter(configField -> !configField.isEditable)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());
     }
 
     public static List<String> getMetadataFields() {
-      return Arrays.asList(values())
-          .stream()
+      return Arrays.asList(values()).stream()
           .filter(configField -> configField.isMetadata)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());

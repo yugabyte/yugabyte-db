@@ -106,8 +106,7 @@ class YbcLogsComponent implements SupportBundleComponent {
               nodeHomeDir,
               String.join(
                   ";",
-                  ybcLogFilePaths
-                      .stream()
+                  ybcLogFilePaths.stream()
                       .map(filePath -> Paths.get(nodeHomeDir).relativize(filePath))
                       .map(Path::toString)
                       .collect(Collectors.toList())),

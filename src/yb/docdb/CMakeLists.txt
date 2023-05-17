@@ -87,7 +87,6 @@ set(DOCDB_DEPS
         yb_util
         yb_rocksutil
         yb_common
-        yb_ql_common
         docdb_proto
         server_common
         rpc_introspection_proto

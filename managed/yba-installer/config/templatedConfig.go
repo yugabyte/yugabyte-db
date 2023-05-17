@@ -107,7 +107,7 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 
 // GenerateTemplate of a particular component.
 func GenerateTemplate(component common.Component) {
-
+	log.Debug("Generating config files for " + component.Name())
 	createdBytes, _ := readConfigAndTemplate(component.TemplateFile(), component)
 
 	jsonData, _ := readYAMLtoJSON(createdBytes)
@@ -126,7 +126,7 @@ func GenerateTemplate(component common.Component) {
 		// Only write the service files to the appropriate file location if we are
 		// running as root (since we might not be able to write to /etc/systemd)
 		// in the non-root case.
-
+		log.Debug("Creating file from template: " + serviceFileName)
 		if !common.HasSudoAccess() {
 
 			if !strings.Contains(serviceName, "Service") {
@@ -153,6 +153,7 @@ func GenerateTemplate(component common.Component) {
 			// Add the additional raw text to yb-platform.conf if it exists.
 			additionalEntryString := strings.TrimSuffix(GetYamlPathData(".platform.additional"), "\n")
 
+			log.DebugLF("Writing addition data to yb-platform config: " + additionalEntryString)
 			if _, err := file.WriteString(additionalEntryString); err != nil {
 				log.Fatal("Error: " + err.Error() + ".")
 			}

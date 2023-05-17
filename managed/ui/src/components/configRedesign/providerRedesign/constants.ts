@@ -1,4 +1,5 @@
 import { OptionProps } from '../../../redesign/components';
+import { RegionOperation } from './forms/configureRegion/constants';
 
 export const CONFIG_ROUTE_PREFIX = 'config';
 
@@ -52,6 +53,20 @@ export const ArchitectureType = {
   ARM64: 'aarch64'
 } as const;
 export type ArchitectureType = typeof ArchitectureType[keyof typeof ArchitectureType];
+
+/**
+ * Maps to 'usabilityState' enum from the backend.
+ *
+ * Reference: managed/src/main/java/com/yugabyte/yw/models/Provider.java
+ */
+export const ProviderStatus = {
+  READY: 'READY',
+  UPDATING: 'UPDATING',
+  ERROR: 'ERROR'
+} as const;
+export type ProviderStatus = typeof ProviderStatus[keyof typeof ProviderStatus];
+
+export const TRANSITORY_PROVIDER_STATUSES = [ProviderStatus.UPDATING] as const;
 
 // --------------------------------------------------------------------------------------
 // Route Constants
@@ -155,6 +170,12 @@ export const ProviderLabel = {
   [ProviderCode.ON_PREM]: 'On Prem'
 } as const;
 
+export const ProviderStatusLabel = {
+  [ProviderStatus.ERROR]: 'Error',
+  [ProviderStatus.READY]: 'Ready',
+  [ProviderStatus.UPDATING]: 'Updating'
+};
+
 export const NTPSetupTypeLabel = {
   [NTPSetupType.SPECIFIED]: 'Specify Custom NTP Server(s)',
   [NTPSetupType.NO_NTP]: 'Assume NTP server configured in machine image', // Assume NTP server configured in machine image
@@ -184,7 +205,19 @@ export const KubernetesProviderTypeLabel = {
   [KubernetesProviderType.TANZU]: 'VMWare Tanzu'
 } as const;
 
+export const RegionOperationLabel = {
+  [RegionOperation.ADD]: 'Add',
+  [RegionOperation.EDIT_EXISTING]: 'Edit',
+  [RegionOperation.EDIT_NEW]: 'Edit',
+  [RegionOperation.VIEW]: 'View'
+};
+
 export const InstanceTypeOperationLabel = {
   [InstanceTypeOperation.ADD]: 'Add',
   [InstanceTypeOperation.EDIT]: 'Edit'
 } as const;
+
+// --------------------------------------------------------------------------------------
+// Data Refetching Constants
+// --------------------------------------------------------------------------------------
+export const PROVIDER_CONFIG_REFETCH_INTERVAL_MS = 30_000;

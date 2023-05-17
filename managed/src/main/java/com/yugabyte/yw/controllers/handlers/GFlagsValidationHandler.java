@@ -6,13 +6,13 @@ import static java.util.regex.Pattern.CASE_INSENSITIVE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.GFlagsValidationFormData;
 import com.yugabyte.yw.forms.GFlagsValidationFormData.GFlagValidationDetails;
 import com.yugabyte.yw.forms.GFlagsValidationFormData.GFlagsValidationRequest;
@@ -91,15 +91,11 @@ public class GFlagsValidationHandler {
 
     // extract master gflags metadata.
     Map<String, GFlagDetails> masterGflagsMap =
-        gflagsValidation
-            .extractGFlags(version, ServerType.MASTER.toString(), false)
-            .stream()
+        gflagsValidation.extractGFlags(version, ServerType.MASTER.toString(), false).stream()
             .collect(Collectors.toMap(gflag -> gflag.name, Function.identity()));
     // extract tserver gflags metadata.
     Map<String, GFlagDetails> tserverGflagsMap =
-        gflagsValidation
-            .extractGFlags(version, ServerType.TSERVER.toString(), false)
-            .stream()
+        gflagsValidation.extractGFlags(version, ServerType.TSERVER.toString(), false).stream()
             .collect(Collectors.toMap(gflag -> gflag.name, Function.identity()));
 
     List<GFlagsValidationResponse> validationResponseArrayList = new ArrayList<>();
@@ -118,8 +114,7 @@ public class GFlagsValidationHandler {
     validateServerType(serverType);
     validateVersionFormat(version);
     List<GFlagDetails> gflagsList = gflagsValidation.extractGFlags(version, serverType, false);
-    return gflagsList
-        .stream()
+    return gflagsList.stream()
         .filter(flag -> flag.name.equals(gflag))
         .findFirst()
         .orElseThrow(
@@ -211,18 +206,15 @@ public class GFlagsValidationHandler {
   }
 
   private List<GFlagDetails> filterGFlagsList(List<GFlagDetails> gflagsList) {
-    return gflagsList
-        .stream()
+    return gflagsList.stream()
         .filter(
             flag ->
-                !GFLAGS_FILTER_PATTERN
-                        .stream()
+                !GFLAGS_FILTER_PATTERN.stream()
                         .anyMatch(
                             regexMatcher ->
                                 !StringUtils.isEmpty(flag.name)
                                     && regexMatcher.matcher(flag.name).find())
-                    && !GFLAGS_FILTER_TAGS
-                        .stream()
+                    && !GFLAGS_FILTER_TAGS.stream()
                         .anyMatch(
                             tags -> !StringUtils.isEmpty(flag.tags) && flag.tags.contains(tags)))
         .collect(Collectors.toList());

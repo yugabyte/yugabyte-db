@@ -23,10 +23,12 @@ class XClusterYsqlTestBase : public XClusterTestBase {
  public:
   void SetUp() override;
   Status InitClusters(const MiniClusterOptions& opts) override;
+  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1);
 
   static std::string GetCompleteTableName(const client::YBTableName& table);
 
   static Result<std::string> GetNamespaceId(YBClient* client);
+  Result<std::string> GetUniverseId(Cluster* cluster);
 
   Result<client::YBTableName> CreateYsqlTable(
       Cluster* cluster,

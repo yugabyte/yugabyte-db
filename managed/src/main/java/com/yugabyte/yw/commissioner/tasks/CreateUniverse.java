@@ -17,21 +17,19 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.AllArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import javax.inject.Inject;
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Abortable
@@ -196,6 +194,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
+      log.debug("Unlocking universe {}", getUniverse().getUniverseUUID());
       Universe universe = unlockUniverseForUpdate();
       if (universe != null && universe.getUniverseDetails().updateSucceeded) {
         log.debug("Removing passwords for {}", universe.getUniverseUUID());

@@ -252,10 +252,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Clear the host from master's blacklist.
-      if (currentNode.state == NodeState.Removed) {
-        createModifyBlackListTask(nodeSet, false /* isAdd */, false /* isLeaderBlacklist */)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
+      createModifyBlackListTask(
+              null /* addNodes */, nodeSet /*removeNodes */, false /* isLeaderBlacklist */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Wait for the master leader to hear from all tservers.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

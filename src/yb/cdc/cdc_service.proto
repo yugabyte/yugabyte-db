@@ -128,6 +128,7 @@ message CreateCDCStreamRequestPB {
   optional string namespace_name = 4;
   optional CDCRequestSource source_type = 5 [default = XCLUSTER];
   optional CDCCheckpointType checkpoint_type = 6 [default = IMPLICIT];
+  optional bool transactional = 7; // [default = false]
 }
 
 message CreateCDCStreamResponsePB {
@@ -250,6 +251,10 @@ message CDCRecordPB {
 
   // If operation type is a CHANGE_METADATA_OP, then include the tablet payload for it.
   optional tablet.ChangeMetadataRequestPB change_metadata_request = 11;
+
+  // For intents, what subtransaction, if any, they are part of.
+  // Omitted in cases where the subtransaction ID is kMinSubTransactionId.
+  optional uint32 subtransaction_id = 12;
 }
 
 // CDCSDK: Column information used in case of DDL, as part of schema info
@@ -413,6 +418,8 @@ message GetCheckpointRequestPB {
   optional bytes tablet_id = 2;
   // The table_id will be required in case of colocated tables.
   optional bytes table_id = 3;
+  // Whether the caller knows the tablet address or needs to use us as a proxy.
+  optional bool serve_as_proxy = 4 [default = true];
 }
 
 message GetCheckpointResponsePB {
@@ -453,6 +460,8 @@ message BootstrapProducerRequestPB {
 message BootstrapProducerResponsePB {
   optional CDCErrorPB error = 1;
   repeated bytes cdc_bootstrap_ids = 2;
+  // Minimum time after which data is available on all the bootstrapped streams.
+  optional fixed64 bootstrap_time = 3;
 }
 
 message GetLatestEntryOpIdRequestPB {
@@ -465,6 +474,7 @@ message GetLatestEntryOpIdResponsePB {
 
   optional OpIdPB op_id = 2; // Deprecated.
   repeated OpIdPB op_ids = 3; // Batch param.
+  optional fixed64 bootstrap_time = 4;
 }
 
 message TableInfo {
@@ -489,6 +499,8 @@ message SetCDCCheckpointRequestPB {
   optional bool initial_checkpoint = 5 [default = false];
   optional bool bootstrap = 6 [default = false];
   optional fixed64 cdc_sdk_safe_time = 7;
+  // Whether the caller knows the tablet address or needs to use us as a proxy.
+  optional bool serve_as_proxy = 8 [default = true];
 }
 
 message SetCDCCheckpointResponsePB {

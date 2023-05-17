@@ -3,7 +3,6 @@
 package com.yugabyte.yw.metrics;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
-
 import java.util.ArrayList;
 import java.util.Map;
 import play.libs.Json;

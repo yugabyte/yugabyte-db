@@ -13,18 +13,19 @@ import { array, boolean, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import { YBModal, YBModalProps } from '../../../../../redesign/components';
-import { ProviderCode, VPCSetupType } from '../../constants';
+import { ProviderCode, RegionOperationLabel, VPCSetupType } from '../../constants';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
 import { ConfigureK8sAvailabilityZoneField } from './ConfigureK8sAvailabilityZoneField';
 import { K8sCertIssuerType, K8sRegionFieldLabel, RegionOperation } from './constants';
 import { getRegionOptions } from './utils';
-import { generateLowerCaseAlphanumericId } from '../utils';
+import { generateLowerCaseAlphanumericId, getIsRegionFormDisabled } from '../utils';
 
 interface ConfigureK8sRegionModalProps extends YBModalProps {
   configuredRegions: K8sRegionField[];
   onRegionSubmit: (region: K8sRegionField) => void;
   onClose: () => void;
   regionOperation: RegionOperation;
+  isProviderFormDisabled: boolean;
 
   regionSelection?: K8sRegionField;
   vpcSetupType?: VPCSetupType;
@@ -78,6 +79,7 @@ const useStyles = makeStyles((theme) => ({
 
 export const ConfigureK8sRegionModal = ({
   configuredRegions,
+  isProviderFormDisabled,
   onRegionSubmit,
   onClose,
   regionOperation,
@@ -132,17 +134,25 @@ export const ConfigureK8sRegionModal = ({
       regionSelection?.code === regionOption.value.code ||
       !configuredRegionCodes.includes(regionOption.value.code)
   );
+  const isFormDisabled = isProviderFormDisabled || getIsRegionFormDisabled(formMethods.formState);
   return (
     <FormProvider {...formMethods}>
       <YBModal
-        title="Add Region"
+        title={`${RegionOperationLabel[regionOperation]} Region`}
         titleIcon={<i className={clsx('fa fa-plus', classes.titleIcon)} />}
-        submitLabel="Add Region"
+        submitLabel={
+          regionOperation !== RegionOperation.VIEW
+            ? `${RegionOperationLabel[regionOperation]} Region`
+            : undefined
+        }
         cancelLabel="Cancel"
-        submitTestId="ConfigureK8sRegionModal-SubmitButton"
-        cancelTestId="ConfigureK8sRegionModal-CancelButton"
         onSubmit={formMethods.handleSubmit(onSubmit)}
         onClose={onClose}
+        submitTestId="ConfigureRegionModal-SubmitButton"
+        cancelTestId="ConfigureRegionModal-CancelButton"
+        buttonProps={{
+          primary: { disabled: isFormDisabled }
+        }}
         {...modalProps}
       >
         <div className={classes.formField}>
@@ -151,13 +161,14 @@ export const ConfigureK8sRegionModal = ({
             control={formMethods.control}
             name="regionData"
             options={regionOptions}
+            isDisabled={isFormDisabled}
           />
         </div>
         <div>
           <ConfigureK8sAvailabilityZoneField
             className={classes.manageAvailabilityZoneField}
             regionOperation={regionOperation}
-            isSubmitting={formMethods.formState.isSubmitting}
+            isFormDisabled={isFormDisabled}
           />
           {formMethods.formState.errors.zones?.message && (
             <FormHelperText error={true}>

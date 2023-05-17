@@ -122,7 +122,7 @@ class BulkLoadTask : public Runnable {
   Status InsertRow(const string &row,
                    const Schema &schema,
                    uint32_t schema_version,
-                   const IndexMap& index_map,
+                   const qlexpr::IndexMap& index_map,
                    BulkLoadDocDBUtil *const db_fixture,
                    docdb::DocWriteBatch *const doc_write_batch,
                    YBPartitionGenerator *const partition_generator);
@@ -189,8 +189,9 @@ BulkLoadTask::BulkLoadTask(vector<pair<TabletId, string>> rows,
 }
 
 void BulkLoadTask::Run() {
+  auto dummy_pending_op = ScopedRWOperation();
   DocWriteBatch doc_write_batch(docdb::DocDB::FromRegularUnbounded(db_fixture_->rocksdb()),
-                                InitMarkerBehavior::kOptional);
+                                InitMarkerBehavior::kOptional, dummy_pending_op);
 
   for (const auto &entry : rows_) {
     const string &row = entry.second;
@@ -260,7 +261,7 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
 Status BulkLoadTask::InsertRow(const string &row,
                                const Schema &schema,
                                uint32_t schema_version,
-                               const IndexMap& index_map,
+                               const qlexpr::IndexMap& index_map,
                                BulkLoadDocDBUtil *const db_fixture,
                                docdb::DocWriteBatch *const doc_write_batch,
                                YBPartitionGenerator *const partition_generator) {
@@ -331,7 +332,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(
       "BULK LOAD: ", TableType::YQL_TABLE_TYPE, schema, schema_version);
   docdb::QLWriteOperation op(
-      req, schema_version, doc_read_context, index_map, nullptr /* unique_index_key_schema */,
+      req, schema_version, doc_read_context, index_map, /* unique_index_key_projection= */ nullptr,
       TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&resp));
   RETURN_NOT_OK(op.Apply(docdb::DocOperationApplyData{

@@ -204,9 +204,18 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageExpiration)) {
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
 
   uint32_t record_size = change_resp2.cdc_sdk_proto_records_size();
+  uint32_t seen_dml_record = 0;
   for (uint32_t i = 0; i < record_size; ++i) {
     const CDCSDKProtoRecordPB record = change_resp2.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+    // Ignore DDL records which are created due to leadership changes.
+    if (record.row_message().op() == RowMessage::DDL) {
+      continue;
+    }
+
+    CheckRecord(
+        record, expected_records[seen_dml_record], count, true,
+        expected_before_image_records[seen_dml_record]);
+    seen_dml_record += 1;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {
@@ -1073,6 +1082,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageO
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 1, 2, 0, 0, 0};
+  const uint32_t expected_count_with_packed_row[] = {1, 3, 0, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {1, 3}, {1, 4}};
@@ -1086,7 +1096,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageO
     CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
-  CheckCount(expected_count, count);
+  if (FLAGS_ysql_enable_packed_row) {
+    // For packed row if all the columns of a row is updated, it come as INSERT record.
+    CheckCount(expected_count_with_packed_row, count);
+  } else {
+    CheckCount(expected_count, count);
+  }
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImageOnColocatedTable)) {
@@ -1120,6 +1135,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImageOn
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 2, 4, 0, 0, 0};
+  const uint32_t expected_count_with_packed_row[] = {1, 6, 0, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {0, 0},   {1, 88}, {1, 888}, {0, 0},
@@ -1135,7 +1151,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImageOn
     CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
-  CheckCount(expected_count, count);
+  if (FLAGS_ysql_enable_packed_row) {
+    // For packed row if all the columns of a row is updated, it come as INSERT record.
+    CheckCount(expected_count_with_packed_row, count);
+  } else {
+    CheckCount(expected_count, count);
+  }
 }
 
 }  // namespace cdc

@@ -47,14 +47,22 @@ public class PlatformServiceException extends RuntimeException {
     return buildResult(request.method(), request.uri());
   }
 
+  public JsonNode getContentJson() {
+    return getContentJson(method, uri);
+  }
+
+  private JsonNode getContentJson(String method, String uri) {
+    Object ybpError;
+    if (errJson == null) {
+      ybpError = new YBPError(method, uri, userVisibleMessage, null);
+    } else {
+      ybpError = new YBPStructuredError(errJson);
+    }
+    return Json.toJson(ybpError);
+  }
+
   @VisibleForTesting() // for routeWithYWErrHandler
   Result buildResult(String method, String uri) {
-    if (errJson == null) {
-      YBPError ybpError = new YBPError(method, uri, userVisibleMessage, null);
-      return Results.status(httpStatus, Json.toJson(ybpError));
-    } else {
-      YBPStructuredError ybpError = new YBPStructuredError(errJson);
-      return Results.status(httpStatus, Json.toJson(ybpError));
-    }
+    return Results.status(httpStatus, getContentJson(method, uri));
   }
 }

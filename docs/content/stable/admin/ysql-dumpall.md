@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: ysql-dumpall
     parent: admin
-    weight: 2468
+    weight: 80
 type: docs
 ---
 

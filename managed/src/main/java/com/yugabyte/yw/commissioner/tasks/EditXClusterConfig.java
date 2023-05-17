@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -28,8 +29,9 @@ import org.yb.master.MasterDdlOuterClass;
 public class EditXClusterConfig extends CreateXClusterConfig {
 
   @Inject
-  protected EditXClusterConfig(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected EditXClusterConfig(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   @Override
@@ -47,6 +49,13 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       // Lock the target universe.
       lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
       try {
+
+        // Check Auto flags on source and target universes while resuming xCluster.
+        if (editFormData.status != null && editFormData.status.equals("Running")) {
+          createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
+        }
+
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
@@ -188,8 +197,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
               xClusterConfig.getTableIdsWithReplicationSetup(
                   tableIdsNeedBootstrap, true /* done */);
           tableIdsDeleteReplication.addAll(
-              tableIdsNeedBootstrapInReplication
-                  .stream()
+              tableIdsNeedBootstrapInReplication.stream()
                   .filter(tableId -> !tableIdsScheduledForBeingRemoved.contains(tableId))
                   .collect(Collectors.toSet()));
         });

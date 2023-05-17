@@ -22,12 +22,14 @@ To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-
 ```sh
 yb-admin \
     [ -master_addresses <master-addresses> ]  \
+    [ -init_master_addrs <master-address> ]  \
     [ -timeout_ms <millisec> ] \
     [ -certs_dir_name <dir_name> ] \
     <command> [ command_flags ]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *init_master_addrs*: Allows specifying a single YB-Master address from which the rest of the YB-Masters are discovered.
 * *timeout_ms*: The RPC timeout, in milliseconds. Default value is `60000`. A value of `0` means don't wait; `-1` means wait indefinitely.
 * *certs_dir_name*: The directory with certificates to use for secure server connections. Default value is `""`.
 
@@ -153,12 +155,13 @@ Use this to find out who the LEADER of a tablet is.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    list_tablets <keyspace> <table_name> [max_tablets]
+    list_tablets <keyspace_type>.<keyspace_name> <table> [max_tablets]
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *keyspace*: The namespace, or name of the database or keyspace.
-* *table_name*: The name of the table.
+* *keyspace_type*: Type of the keyspace, ysql or ycql.
+* *keyspace_name*: The namespace, or name of the database or keyspace.
+* *table*: The name of the table.
 * *max_tablets*: The maximum number of tables to be returned. Default is `10`. Set to `0` to return all tablets.
 
 **Example**
@@ -166,7 +169,7 @@ yb-admin \
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    list_tablets ydb test_tb 0
+    list_tablets ysql.db_name table_name 0
 ```
 
 ```output
@@ -562,20 +565,18 @@ Add a tablet to a transaction status table.
 yb-admin \
     -master_addresses <master-addresses> \
     add_transaction_tablet \
-    <keyspace> <table_name>
+    <table_id>
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *keyspace*: The name of the keyspace.
-* *table_name*: The name of the transaction status table name.
+* *table_id*: The identifier (ID) of the table.
 
 **Example**
 
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    add_transaction_tablet \
-    system transactions
+    add_transaction_tablet 000033eb000030008000000000004002
 ```
 
 To verify that the new status tablet has been created, run the [`list_tablets`](#list-tablets) command.
@@ -922,11 +923,13 @@ Returns a schedule ID in JSON format.
 
 ```sh
 yb-admin create_snapshot_schedule \
+    -master_addresses <master-addresses> \
     <snapshot-interval>\
     <retention-time>\
     <filter-expression>
 ```
 
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *snapshot-interval*: The frequency at which to take snapshots, in minutes.
 * *retention-time*: The number of minutes to keep a snapshot before deleting it.
 * *filter-expression*: The set of objects to include in the snapshot.
@@ -938,7 +941,9 @@ The filter expression is a list of acceptable objects, which can be either raw t
 Take a snapshot of the `ysql.yugabyte` database once per minute, and retain each snapshot for 10 minutes:
 
 ```sh
-./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    create_snapshot_schedule 1 10 ysql.yugabyte
 ```
 
 ```output.json
@@ -968,15 +973,19 @@ Returns one or more schedule lists in JSON format.
 **Syntax**
 
 ```sh
-yb-admin list_snapshot_schedules <schedule-id>
+yb-admin \
+    -master_addresses <master-addresses> \
+    list_snapshot_schedules <schedule-id>
 ```
 
-Where *schedule-id* is the snapshot schedule's unique identifier. The ID is optional; omit the ID to return all schedules in the system.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *schedule-id*: the snapshot schedule's unique identifier. The ID is optional; omit the ID to return all schedules in the system.
 
 **Example**
 
 ```sh
 ./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
@@ -1012,9 +1021,12 @@ Schedules group a set of items into a single tracking object (the *schedule*). W
 **Syntax**
 
 ```sh
-yb-admin restore_snapshot_schedule <schedule-id> <restore-target>
+yb-admin \
+    -master_addresses <master-addresses> \
+    restore_snapshot_schedule <schedule-id> <restore-target>
 ```
 
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *schedule-id*: The identifier (ID) of the schedule to be restored.
 * *restore-target*: The time to which to restore the snapshots in the schedule. This can be either an absolute Unix timestamp, or a relative time such as `minus 5m` (to restore to 5 minutes ago).
 
@@ -1042,6 +1054,7 @@ Restore from an absolute timestamp:
 
 ```sh
 ./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     1617670679185100
 ```
@@ -1050,6 +1063,7 @@ Restore from a relative time:
 
 ```sh
 ./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     minus 60s
 ```
@@ -1072,15 +1086,19 @@ Returns a JSON object with the schedule_id that was just deleted.
 **Syntax**
 
 ```sh
-yb-admin delete_snapshot_schedule <schedule-id>
+yb-admin \
+    -master_addresses <master-addresses> \
+    delete_snapshot_schedule <schedule-id>
 ```
 
-Where *schedule-id* is the snapshot schedule's unique identifier.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *schedule-id*: the snapshot schedule's unique identifier.
 
 **Example**
 
 ```sh
 ./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
@@ -1668,7 +1686,7 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 ```sh
 ./bin/yb-admin \
     -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 \
+    setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3_xClusterSetup1 \
     127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
 ```

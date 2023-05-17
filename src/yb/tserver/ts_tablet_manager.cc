@@ -233,15 +233,18 @@ DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
              "pool is used to run full compactions on tablets, either on a shceduled basis "
               "or after they have been split and still contain irrelevant data from the tablet "
               "they were sourced from.");
-DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_queue_size, 200,
+DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_queue_size, 500,
              "The maximum number of tasks that can be held in the pool for "
              "full_compaction_pool_. This pool is used to run full compactions on tablets "
              "on a scheduled basis or after they have been split and still contain irrelevant data "
              "from the tablet they were sourced from.");
 
 DEFINE_NON_RUNTIME_int32(scheduled_full_compaction_check_interval_min, 15,
-             "The interval at which the scheduled full compaction task checks for tablets "
-             "eligible for compaction, in minutes. 0 indicates that the background task "
+             "DEPRECATED. Use auto_compact_check_interval_sec.");
+
+DEFINE_NON_RUNTIME_int32(auto_compact_check_interval_sec, 60,
+             "The interval at which the full compaction task checks for tablets "
+             "eligible for compaction, in seconds. 0 indicates that the background task "
              "is fully disabled.");
 
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
@@ -250,7 +253,13 @@ DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
 DEFINE_UNKNOWN_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
+DEFINE_RUNTIME_int32(bg_superblock_flush_interval_secs, 60,
+    "The interval at which tablet superblocks are flushed to disk (if dirty) by a background "
+    "thread. Applicable only when lazily_flush_superblock is enabled. 0 indicates that the "
+    "background task is fully disabled.");
+
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(lazily_flush_superblock);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -468,7 +477,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       server_->metric_entity(),
       [this](){ return GetTabletPeers(); });
 
-  full_compaction_manager_ = std::make_unique<FullCompactionManager>(this);
+  full_compaction_manager_ = std::make_unique<FullCompactionManager>(
+      this, FLAGS_auto_compact_check_interval_sec);
 
   tablet_options_.priority_thread_pool_metrics =
       std::make_shared<rocksdb::RocksDBPriorityThreadPoolMetrics>(
@@ -574,15 +584,23 @@ Status TSTabletManager::Init() {
   }
 
   // Background task initiation.
-  const int32_t compaction_check_interval_min =
-      FLAGS_scheduled_full_compaction_check_interval_min;
-  if (compaction_check_interval_min > 0) {
+  const auto compaction_check_interval_sec = full_compaction_manager_->check_interval_sec();
+  if (compaction_check_interval_sec > 0) {
     scheduled_full_compaction_bg_task_.reset(
         new BackgroundTask(std::function<void()>([this]() {
             full_compaction_manager_->ScheduleFullCompactions(); }),
-        "tablet manager", "scheduled full compactions",
-        MonoDelta::FromMinutes(compaction_check_interval_min).ToChronoMilliseconds()));
+        "tablet manager", "full compaction manager",
+        MonoDelta::FromSeconds(compaction_check_interval_sec).ToChronoMilliseconds()));
     RETURN_NOT_OK(scheduled_full_compaction_bg_task_->Init());
+  }
+
+  const int32_t bg_superblock_flush_interval_secs = FLAGS_bg_superblock_flush_interval_secs;
+  if (FLAGS_lazily_flush_superblock && bg_superblock_flush_interval_secs > 0) {
+    superblock_flush_bg_task_.reset(new BackgroundTask(
+        std::function<void()>([this]() { FlushDirtySuperblocks(); }), "tablet manager",
+        "bg superblock flush",
+        MonoDelta::FromSeconds(bg_superblock_flush_interval_secs).ToChronoMilliseconds()));
+    RETURN_NOT_OK(superblock_flush_bg_task_->Init());
   }
 
   {
@@ -777,7 +795,6 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     .colocated = colocated,
     .snapshot_schedules = snapshot_schedules,
     .hosted_services = hosted_services,
-    .last_change_metadata_op_id = OpId::Min(),
   }, data_root_dir, wal_root_dir);
   if (!create_result.ok()) {
     UnregisterDataWalDir(table_info->table_id, tablet_id, data_root_dir, wal_root_dir);
@@ -1550,33 +1567,34 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
 
     tablet::TabletInitData tablet_init_data = {
-      .metadata = meta,
-      .client_future = server_->client_future(),
-      .clock = scoped_refptr<server::Clock>(server_->clock()),
-      .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
-      .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
-      .metric_registry = metric_registry_,
-      .log_anchor_registry = tablet_peer->log_anchor_registry(),
-      .tablet_options = tablet_options_,
-      .log_prefix_suffix = " P " + tablet_peer->permanent_uuid(),
-      .transaction_participant_context = tablet_peer.get(),
-      .local_tablet_filter = std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
-      .transaction_coordinator_context = tablet_peer.get(),
-      .txns_enabled = tablet::TransactionsEnabled::kTrue,
-      // We are assuming we're never dealing with the system catalog tablet in TSTabletManager.
-      .is_sys_catalog = tablet::IsSysCatalogTablet::kFalse,
-      .snapshot_coordinator = nullptr,
-      .tablet_splitter = this,
-      .allowed_history_cutoff_provider = std::bind(
-          &TSTabletManager::AllowedHistoryCutoff, this, _1),
-      .transaction_manager_provider = [server = server_]() -> client::TransactionManager& {
-        return server->TransactionManager();
-      },
-      .waiting_txn_registry = waiting_txn_registry_.get(),
-      .wait_queue_pool = waiting_txn_pool_.get(),
-      .full_compaction_pool = full_compaction_pool(),
-      .post_split_compaction_added = ts_post_split_compaction_added_
-    };
+        .metadata = meta,
+        .client_future = server_->client_future(),
+        .clock = scoped_refptr<server::Clock>(server_->clock()),
+        .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
+        .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
+        .metric_registry = metric_registry_,
+        .log_anchor_registry = tablet_peer->log_anchor_registry(),
+        .tablet_options = tablet_options_,
+        .log_prefix_suffix = " P " + tablet_peer->permanent_uuid(),
+        .transaction_participant_context = tablet_peer.get(),
+        .local_tablet_filter = std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
+        .transaction_coordinator_context = tablet_peer.get(),
+        .txns_enabled = tablet::TransactionsEnabled::kTrue,
+        // We are assuming we're never dealing with the system catalog tablet in TSTabletManager.
+        .is_sys_catalog = tablet::IsSysCatalogTablet::kFalse,
+        .snapshot_coordinator = nullptr,
+        .tablet_splitter = this,
+        .allowed_history_cutoff_provider = std::bind(
+            &TSTabletManager::AllowedHistoryCutoff, this, _1),
+        .transaction_manager_provider = [server = server_]() -> client::TransactionManager& {
+          return server->TransactionManager();
+        },
+        .waiting_txn_registry = waiting_txn_registry_.get(),
+        .wait_queue_pool = waiting_txn_pool_.get(),
+        .full_compaction_pool = full_compaction_pool(),
+        .admin_triggered_compaction_pool = admin_triggered_compaction_pool(),
+        .post_split_compaction_added = ts_post_split_compaction_added_
+      };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = tablet_peer->status_listener(),
@@ -1650,26 +1668,31 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   }
 }
 
-Status TSTabletManager::TriggerAdminCompactionAndWait(const TabletPtrs& tablets) {
+Status TSTabletManager::TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait) {
   CountDownLatch latch(tablets.size());
-  auto token = admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
   std::vector<TabletId> tablet_ids;
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
   for (auto tablet : tablets) {
-    RETURN_NOT_OK(token->SubmitFunc([&latch, tablet]() {
-      WARN_NOT_OK(tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kAdminCompaction),
-          "Failed to submit compaction for tablet.");
-      latch.CountDown();
-    }));
+    Status status;
+    if (should_wait) {
+      status = tablet->TriggerAdminFullCompactionWithCallbackIfNeeded(latch.CountDownCallback());
+    } else {
+      status = tablet->TriggerAdminFullCompactionIfNeeded();
+    }
+    RETURN_NOT_OK(status);
     tablet_ids.push_back(tablet->tablet_id());
     total_size += tablet->GetCurrentVersionSstFilesSize();
   }
-  VLOG(1) << yb::Format("Beginning batch admin compaction for tablets $0, $1 bytes",
-      tablet_ids, total_size);
-  latch.Wait();
-  LOG(INFO) << yb::Format("Admin compaction finished for tablets $0, $1 bytes took $2 seconds",
-      tablet_ids, total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
+  VLOG(1) << yb::Format(
+      "Beginning batch admin compaction for tablets $0, $1 bytes", tablet_ids, total_size);
+
+  if (should_wait) {
+    latch.Wait();
+    LOG(INFO) << yb::Format(
+        "Admin compaction finished for tablets $0, $1 bytes took $2 seconds", tablet_ids,
+        total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
+  }
   return Status::OK();
 }
 
@@ -1766,7 +1789,7 @@ void TSTabletManager::StartShutdown() {
 
 void TSTabletManager::CompleteShutdown() {
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
-    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse);
+    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
   }
 
   // Shut down the apply pool.
@@ -1789,6 +1812,9 @@ void TSTabletManager::CompleteShutdown() {
   }
   if (scheduled_full_compaction_bg_task_) {
     scheduled_full_compaction_bg_task_->Shutdown();
+  }
+  if (superblock_flush_bg_task_) {
+    superblock_flush_bg_task_->Shutdown();
   }
   if (full_compaction_pool_) {
     full_compaction_pool_->Shutdown();
@@ -1941,6 +1967,18 @@ TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers(TabletPtrs* tablet_
     }
   }
   return peers;
+}
+
+TSTabletManager::TabletPeers TSTabletManager::GetTabletPeersWithTableId(
+    const TableId& table_id) const {
+  const auto peers = GetTabletPeers();
+  TabletPeers filtered_peers;
+  for (const auto& peer : peers) {
+    if (peer && peer->tablet_metadata()->table_id() == table_id) {
+      filtered_peers.push_back(peer);
+    }
+  }
+  return filtered_peers;
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
@@ -2741,6 +2779,18 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
   return result;
 }
 
+void TSTabletManager::FlushDirtySuperblocks() {
+  for (const auto& peer : GetTabletPeers()) {
+    if (peer->state() == RUNNING && peer->tablet_metadata()->IsLazySuperblockFlushEnabled()) {
+      auto s = peer->tablet_metadata()->Flush(tablet::OnlyIfDirty::kTrue);
+      if (!s.ok()) {
+        LOG(WARNING) << "Failed flushing superblock for tablet " << peer->tablet_id()
+                     << " from background thread: " << s;
+      }
+    }
+  }
+}
+
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
                         TabletDataState data_state,
                         const string& uuid,
@@ -2846,7 +2896,7 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
   }
   // If shutdown was initiated by someone else we should not wait for shutdown to complete.
   if (tablet_peer && tablet_peer->StartShutdown()) {
-    tablet_peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse);
+    tablet_peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
   }
   tserver::LogAndTombstone(meta, msg, uuid, status, ts_tablet_manager);
   return status;

@@ -30,8 +30,9 @@ class KeyBytes;
 class KeyEntryValue;
 class Partition;
 class PartitionSchema;
+class PgTableRow;
+class PgValue;
 class PrimitiveValue;
-class QLScanSpec;
 class RowPacker;
 class SchemaPacking;
 class SchemaPackingStorage;
@@ -39,6 +40,8 @@ class SubDocKey;
 class YBPartialRow;
 
 struct ColumnPackingData;
+struct ProjectedColumn;
+struct ReaderProjection;
 struct ValueControlFields;
 
 using DocKeyHash = uint16_t;
@@ -55,13 +58,5 @@ YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 YB_STRONGLY_TYPED_BOOL(UseHash);
 
 YB_DEFINE_ENUM(OperationKind, (kRead)(kWrite));
-
-// "Weak" intents are written for ancestor keys of a key that's being modified. For example, if
-// we're writing a.b.c with snapshot isolation, we'll write weak snapshot isolation intents for
-// keys "a" and "a.b".
-//
-// "Strong" intents are written for keys that are being modified. In the example above, we will
-// write a strong snapshot isolation intent for the key a.b.c itself.
-YB_DEFINE_ENUM(IntentStrength, (kWeak)(kStrong));
 
 }  // namespace yb::dockv

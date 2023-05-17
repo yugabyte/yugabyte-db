@@ -180,8 +180,7 @@ public class AlertDefinition extends Model {
   }
 
   public String getLabelValue(String name) {
-    return getLabels()
-        .stream()
+    return getLabels().stream()
         .filter(label -> name.equals(label.getName()))
         .map(AlertDefinitionLabel::getValue)
         .findFirst()
@@ -206,8 +205,7 @@ public class AlertDefinition extends Model {
 
   public AlertDefinition removeLabel(KnownAlertLabels labelName) {
     AlertDefinitionLabel toRemove =
-        labels
-            .stream()
+        labels.stream()
             .filter(label -> label.getName().equals(labelName.labelName()))
             .findFirst()
             .orElse(null);
@@ -220,8 +218,7 @@ public class AlertDefinition extends Model {
   }
 
   public List<AlertDefinitionLabel> getLabels() {
-    return labels
-        .stream()
+    return labels.stream()
         .sorted(Comparator.comparing(AlertDefinitionLabel::getName))
         .collect(Collectors.toList());
   }

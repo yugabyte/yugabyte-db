@@ -224,13 +224,13 @@ void AsyncRpc::SendRpc() {
 
 std::string AsyncRpc::ToString() const {
   const auto& transaction = batcher_->in_flight_ops().metadata.transaction;
-  const auto subtransaction_pb_opt = batcher_->in_flight_ops().metadata.subtransaction_pb;
+  const auto subtransaction_opt = batcher_->in_flight_ops().metadata.subtransaction;
   return Format("$0(tablet: $1, num_ops: $2, num_attempts: $3, txn: $4, subtxn: $5)",
                 ops_.front().yb_op->read_only() ? "Read" : "Write",
                 tablet().tablet_id(), ops_.size(), num_attempts(),
                 transaction.transaction_id,
-                subtransaction_pb_opt
-                    ? Format("$0", subtransaction_pb_opt->subtransaction_id())
+                subtransaction_opt
+                    ? Format("$0", subtransaction_opt->subtransaction_id)
                     : "[none]");
 }
 
@@ -349,8 +349,9 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
     metadata.transaction.TransactionIdToPB(transaction);
   }
   dest->set_deprecated_may_have_metadata(true);
-  if (metadata.subtransaction_pb) {
-    *dest->mutable_subtransaction() = *metadata.subtransaction_pb;
+
+  if (metadata.subtransaction && !metadata.subtransaction->IsDefaultState()) {
+    metadata.subtransaction->ToPB(dest->mutable_subtransaction());
   }
 }
 
@@ -567,6 +568,10 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
 
   VLOG(3) << "Created batch for " << data.tablet->tablet_id() << ":\n"
           << req_.ShortDebugString();
+
+  if (batcher_->GetLeaderTerm() != OpId::kUnknownTerm) {
+    req_.set_leader_term(batcher_->GetLeaderTerm());
+  }
 
   const auto& client_id = batcher_->client_id();
   if (!client_id.IsNil() && FLAGS_detect_duplicates_for_retryable_requests) {

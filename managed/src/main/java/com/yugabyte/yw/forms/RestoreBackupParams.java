@@ -107,14 +107,6 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
   public RestoreBackupParams(
       RestoreBackupParams otherParams, BackupStorageInfo backupStorageInfo, ActionType actionType) {
-    this(otherParams, backupStorageInfo, actionType, null);
-  }
-
-  public RestoreBackupParams(
-      RestoreBackupParams otherParams,
-      BackupStorageInfo backupStorageInfo,
-      ActionType actionType,
-      String currentYbcTaskId) {
     this.customerUUID = otherParams.customerUUID;
     this.setUniverseUUID(otherParams.getUniverseUUID());
     this.storageConfigUUID = otherParams.storageConfigUUID;
@@ -129,7 +121,6 @@ public class RestoreBackupParams extends UniverseTaskParams {
     this.disableMultipart = otherParams.disableMultipart;
     this.enableVerboseLogs = otherParams.enableVerboseLogs;
     this.prefixUUID = otherParams.prefixUUID;
-    this.currentYbcTaskId = currentYbcTaskId;
   }
 
   @JsonIgnore

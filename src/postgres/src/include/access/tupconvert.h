@@ -40,9 +40,10 @@ extern TupleConversionMap *convert_tuples_by_name(TupleDesc indesc,
 					   TupleDesc outdesc,
 					   const char *msg);
 
-extern AttrNumber *convert_tuples_by_name_map(TupleDesc indesc,
-						   TupleDesc outdesc,
-						   const char *msg);
+extern AttrNumber *convert_tuples_by_name_map(TupleDesc	  indesc,
+											  TupleDesc	  outdesc,
+											  const char *msg,
+											  bool yb_ignore_type_mismatch);
 extern AttrNumber *convert_tuples_by_name_map_if_req(TupleDesc indesc,
 								  TupleDesc outdesc,
 								  const char *msg);

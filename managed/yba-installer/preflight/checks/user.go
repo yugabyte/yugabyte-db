@@ -39,6 +39,7 @@ func (u userCheck) Execute() Result {
 		return res
 	}
 	uname := viper.GetString("service_username")
+	log.Debug("Checking user " + uname + " exists")
 	_, err := osuser.Lookup(uname)
 	if err == nil {
 		log.Info("Found user '" + uname + "', no need to create a user")

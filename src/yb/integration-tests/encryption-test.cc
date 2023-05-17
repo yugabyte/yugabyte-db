@@ -17,6 +17,11 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/encryption/encrypted_file_factory.h"
+#include "yb/encryption/header_manager.h"
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -117,6 +122,7 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
     auto bytes = RandomBytes(32);
     ASSERT_OK(yb_admin_client_->AddUniverseKeyToAllMasters(
         current_key_id_, std::string(bytes.begin(), bytes.end())));
+    current_key_ = bytes;
   }
 
   Status WaitForAllMastersHaveLatestKeyInMemory() {
@@ -141,8 +147,9 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
   void DisableEncryption() {
     ASSERT_OK(yb_admin_client_->DisableEncryptionInMemory());
   }
- private:
+ protected:
   std::string current_key_id_ = "";
+  std::vector<uint8_t> current_key_;
 };
 
 INSTANTIATE_TEST_CASE_P(TestWithCounterOverflow, EncryptionTest, ::testing::Bool());
@@ -284,6 +291,125 @@ TEST_F(EncryptionTest, ServerRestart) {
       tablet_server, MonoDelta::FromSeconds(30)));
   ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
+}
+
+TEST_F(EncryptionTest, MasterSendKeys) {
+  // Test the following set of steps:
+  // 1. Write some data with key1.
+  // 2. Rotate to key2 and write some more data.
+  // 3. Restart the masters all at once and just add key2 to the masters memory (similar to the YBA
+  // task of just seeding with the latest key, so key1 is not in master memory).
+  // 4. Restart a tserver, and make sure master sends it both key1 and key2.
+  WriteWorkload(0, kNumKeys);
+  ASSERT_NO_FATALS(AddUniverseKeys());
+  ASSERT_NO_FATALS(RotateKey());
+  WriteWorkload(kNumKeys, 2 * kNumKeys);
+  for (size_t i = 0; i < external_mini_cluster()->num_masters(); i++) {
+    external_mini_cluster()->master(i)->Shutdown();
+  }
+  for (size_t i = 0; i < external_mini_cluster()->num_masters(); i++) {
+    ASSERT_OK(external_mini_cluster()->master(i)->Restart());
+  }
+  ASSERT_NOK(yb_admin_client_->AllMastersHaveUniverseKeyInMemory(current_key_id_));
+  ASSERT_OK(yb_admin_client_->AddUniverseKeyToAllMasters(
+        current_key_id_, std::string(current_key_.begin(), current_key_.end())));
+  ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
+
+  for (size_t i = 0; i < external_mini_cluster()->num_tablet_servers(); i++) {
+    external_mini_cluster()->tablet_server(i)->Shutdown();
+    ASSERT_OK(external_mini_cluster()->tablet_server(i)->Restart());
+  }
+
+  ClusterVerifier cv(external_mini_cluster());
+  cv.SetVerificationTimeout(MonoDelta::FromSeconds(30));
+  ASSERT_NO_FATALS(cv.CheckCluster());
+}
+
+TEST_F(EncryptionTest, AutoFlags) {
+  // Test the following set of steps to ensure auto flags work properly with encryption
+  // 1. Write some data with key1
+  // 2. Promote auto flags with class kExternal to trigger an overwrite of the flagfile.
+  // 3. Restart a tserver to ensure its able to properly Init and read the auto flagfile.
+  WriteWorkload(0, kNumKeys);
+  ASSERT_OK(yb_admin_client_->PromoteAutoFlags(
+      ToString(AutoFlagClass::kExternal), true, true));
+
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  for (size_t i = 0; i < external_mini_cluster()->num_tablet_servers(); i++) {
+    external_mini_cluster()->tablet_server(i)->Shutdown();
+    ASSERT_OK(external_mini_cluster()->tablet_server(i)->Restart());
+  }
+
+  ClusterVerifier cv(external_mini_cluster());
+  cv.SetVerificationTimeout(MonoDelta::FromSeconds(30));
+  ASSERT_NO_FATALS(cv.CheckCluster());
+}
+
+class WALReuseEncryptionTest : public EncryptionTest {
+ public:
+  size_t num_tablet_servers() override {
+    return 1;
+  }
+
+  size_t num_masters() override {
+    return 1;
+  }
+
+  int num_tablets() override {
+    return 1;
+  }
+
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->extra_tserver_flags.push_back("--reuse_unclosed_segment_threshold=524288");
+    opts->extra_master_flags.push_back("--reuse_unclosed_segment_threshold=524288");
+    opts->extra_master_flags.push_back("--replication_factor=1");
+  }
+
+  void TestEncryptWALDataAfterWALReuse(bool rotate_key);
+};
+
+void WALReuseEncryptionTest::TestEncryptWALDataAfterWALReuse(bool rotate_key) {
+  constexpr uint32_t kNumInsert = 100;
+  auto* tablet_server = external_mini_cluster()->tablet_server(0);
+  WriteWorkload(0, kNumInsert);
+  tablet_server->Shutdown();
+  ASSERT_OK(tablet_server->Restart());
+  ASSERT_OK(external_mini_cluster()->WaitForTabletsRunning(
+      tablet_server, MonoDelta::FromSeconds(30)));
+  ClusterVerifier cv(external_mini_cluster());
+  ASSERT_NO_FATALS(cv.CheckCluster());
+  // Insert data after reuse log.
+  WriteWorkload(kNumInsert, 2 * kNumInsert);
+  auto current_segment_size =
+      ASSERT_RESULT(external_mini_cluster()->GetSegmentCounts(tablet_server));
+  ASSERT_EQ(1, current_segment_size);
+  tablet_server->Shutdown();
+  if (rotate_key) {
+    ASSERT_NO_FATALS(AddUniverseKeys());
+    ASSERT_NO_FATALS(RotateKey());
+  }
+  ASSERT_OK(tablet_server->Restart());
+  // Verify the tablet can successfully finish boostrapping.
+  ASSERT_OK(external_mini_cluster()->WaitForTabletsRunning(
+      tablet_server, MonoDelta::FromSeconds(30)));
+  ASSERT_NO_FATALS(cv.CheckCluster());
+  // Verify number of WAL segment. If the key is changed, WAL will not be reused after restart.
+  // Instead, it allocates a new segment to obtain the lastest universe key id.
+  current_segment_size =
+      ASSERT_RESULT(external_mini_cluster()->GetSegmentCounts(tablet_server));
+  auto expect_segment_size = rotate_key ? 2 : 1;
+  ASSERT_EQ(expect_segment_size, current_segment_size);
+}
+
+TEST_F_EX(EncryptionTest, EncryptWALDataAfterWALReuse,
+    WALReuseEncryptionTest) {
+  TestEncryptWALDataAfterWALReuse(false);
+}
+
+TEST_F_EX(EncryptionTest, EncryptWALDataAfterWALReuseWithRotateKey,
+    WALReuseEncryptionTest) {
+  TestEncryptWALDataAfterWALReuse(true);
 }
 
 } // namespace integration_tests

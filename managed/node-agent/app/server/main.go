@@ -35,6 +35,7 @@ func CancelFunc() context.CancelFunc {
 
 // Entry method for service.
 func Start() {
+	defer cancelFunc()
 	sigs = make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	config := util.CurrentConfig()
@@ -43,6 +44,7 @@ func Start() {
 		util.FileLogger().Fatalf(Context(), "Node Agent ID must be set")
 	}
 	executor.Init(Context())
+	disableMetricsTLS := config.Bool(util.NodeAgentDisableMetricsTLS)
 	host := config.String(util.NodeIpKey)
 	port := config.String(util.NodePortKey)
 
@@ -59,16 +61,25 @@ loop:
 			}
 			util.FileLogger().Errorf(Context(), "Error handling restart - %s", err.Error())
 		case <-sigs:
-			cancelFunc()
 			return
 		}
 	}
 	addr := fmt.Sprintf("%s:%s", host, port)
-	server, err := NewRPCServer(Context(), addr, true)
+	serverConfig := &RPCServerConfig{
+		Address:           addr,
+		EnableTLS:         true,
+		EnableMetrics:     true,
+		DisableMetricsTLS: disableMetricsTLS,
+	}
+	server, err := NewRPCServer(Context(), serverConfig)
 	if err != nil {
 		util.FileLogger().Fatalf(Context(), "Error in starting RPC server - %s", err.Error())
 	}
-	util.FileLogger().Infof(Context(), "Started Service on %s", addr)
-	<-sigs
+	util.FileLogger().Infof(Context(), "Started RPC service on %s", addr)
+	select {
+	case <-sigs:
+	case <-server.Done():
+	case <-Context().Done():
+	}
 	server.Stop()
 }

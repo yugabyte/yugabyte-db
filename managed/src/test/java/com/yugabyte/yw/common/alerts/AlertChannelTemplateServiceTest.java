@@ -11,6 +11,7 @@ import static org.junit.Assert.assertThrows;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertTemplateVariable;
@@ -40,6 +41,20 @@ public class AlertChannelTemplateServiceTest extends FakeDBApplication {
 
     AlertChannelTemplates fromDb = templateService.get(defaultCustomerUuid, ChannelType.Email);
     assertThat(fromDb, equalTo(templates));
+  }
+
+  @Test
+  public void testCreateWithDefaultValue() {
+    for (AlertChannelTemplatesExt defaultTemplates :
+        templateService.listWithDefaults(defaultCustomerUuid)) {
+      AlertChannelTemplates templates = defaultTemplates.getChannelTemplates();
+      templates.setTitleTemplate(defaultTemplates.getDefaultTitleTemplate());
+      templates.setTextTemplate(defaultTemplates.getDefaultTextTemplate());
+      templateService.save(templates);
+
+      AlertChannelTemplates fromDb = templateService.get(defaultCustomerUuid, templates.getType());
+      assertThat(fromDb, equalTo(templates));
+    }
   }
 
   @Test

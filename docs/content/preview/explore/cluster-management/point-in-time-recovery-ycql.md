@@ -34,11 +34,13 @@ Point-in-time recovery (PITR) allows you to restore the state of your cluster's 
 
 For more information, see [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/#features). For details on the `yb-admin` commands, refer to [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands).
 
-You can try out PITR by creating a namespace and populating it, creating a snapshot schedule, and restoring from that schedule.
+The following examples show how you can use the PITR feature by creating a database and populating it, creating a snapshot schedule, and restoring from a snapshot on the schedule.
 
 Note that the examples are deliberately simplified. In many of the scenarios, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
 
-{{% explore-setup-single-local %}}
+## Set up universe
+
+The examples run on a local multi-node YugabyteDB universe. To create a universe, see [Set up YugabyteDB universe](../../#set-up-yugabytedb-universe).
 
 ## Undo data changes
 
@@ -92,7 +94,9 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Create a snapshot schedule for the new `pitr` keyspace from a shell prompt. In the following example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    ./bin/yb-admin create_snapshot_schedule 1 10 ycql.pitr
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        create_snapshot_schedule 1 10 ycql.pitr
     ```
 
     ```output.json
@@ -104,7 +108,9 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Verify that a snapshot has happened:
 
     ```sh
-    ./bin/yb-admin list_snapshot_schedules
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshot_schedules
     ```
 
     ```output.json
@@ -162,7 +168,9 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
     ```output.json
@@ -175,20 +183,22 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Next, verify the restoration is in `RESTORED` state (you'll observe more snapshots in the list, as well):
 
     ```sh
-    ./bin/yb-admin list_snapshots
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        list_snapshots
     ```
 
     ```output
-    Snapshot UUID                         State
-    8d588cb7-13f2-4bda-b584-e9be47a144c5  COMPLETE
-    1f4db0e2-0706-45db-b157-e577702a648a  COMPLETE
-    b91c734b-5c57-4276-851e-f982bee73322  COMPLETE
-    04fc6f05-8775-4b43-afbd-7a11266da110  COMPLETE
-    e7bc7b48-351b-4713-b46b-dd3c9c028a79  COMPLETE
-    2287921b-1cf9-4bbc-ad38-e309f86f72e9  COMPLETE
-    97aa2968-6b56-40ce-b2c5-87d2e54e9786  COMPLETE
-    Restoration UUID                      State
-    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb  RESTORED
+    Snapshot UUID                           State       Creation Time
+    8d588cb7-13f2-4bda-b584-e9be47a144c5    COMPLETE    2023-04-20 00:24:58.246932
+    1f4db0e2-0706-45db-b157-e577702a648a    COMPLETE    2023-04-20 00:26:03.257519
+    b91c734b-5c57-4276-851e-f982bee73322    COMPLETE    2023-04-20 00:27:08.272905
+    04fc6f05-8775-4b43-afbd-7a11266da110    COMPLETE    2023-04-20 00:28:13.287202
+    e7bc7b48-351b-4713-b46b-dd3c9c028a79    COMPLETE    2023-04-20 00:29:18.294031
+    2287921b-1cf9-4bbc-ad38-e309f86f72e9    COMPLETE    2023-04-20 00:30:23.306355
+    97aa2968-6b56-40ce-b2c5-87d2e54e9786    COMPLETE    2023-04-20 00:31:28.319685
+    Restoration UUID                        State
+    1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb    RESTORED
     ```
 
 1. In the YCQL shell, verify the data is restored, and there is no row for employee 9999:

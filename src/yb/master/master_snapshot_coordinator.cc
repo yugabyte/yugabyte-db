@@ -784,6 +784,23 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
+  HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+    HybridTime min_last_snapshot_ht = HybridTime::kMax;
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& schedule : schedules_) {
+      if (schedule->deleted()) {
+        continue;
+      }
+      auto complete_time = LastSnapshotTime(schedule->id());
+      // No snapshot yet for the schedule so retain everything.
+      if (!complete_time) {
+        return HybridTime::kMin;
+      }
+      min_last_snapshot_ht.MakeAtMost(complete_time);
+    }
+    return min_last_snapshot_ht;
+  }
+
   Status VerifyRestoration(RestorationState* restoration) REQUIRES(mutex_) {
     auto schedule_result = FindSnapshotSchedule(restoration->schedule_id());
     RETURN_NOT_OK_PREPEND(schedule_result, "Snapshot schedule not found.");
@@ -1245,14 +1262,21 @@ class MasterSnapshotCoordinator::Impl {
   void ExecuteRestoreOperation(
       const TabletRestoreOperation& operation, const TabletInfoPtr& tablet_info,
       int64_t leader_term) {
+    auto callback = MakeDoneCallback(
+        &mutex_, restorations_, operation.restoration_id, operation.tablet_id,
+        std::bind(&Impl::FinishRestoration, this, _1, leader_term));
+    if (!tablet_info) {
+      callback(STATUS_EC_FORMAT(
+          NotFound, MasterError(MasterErrorPB::TABLET_NOT_RUNNING), "Tablet info not found for $0",
+          operation.tablet_id));
+      return;
+    }
     auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
     // If this tablet did not participate in snapshot, i.e. was deleted.
     // We just change hybrid time limit and clear hide state.
     auto task = context_.CreateAsyncTabletSnapshotOp(
         tablet_info, operation.is_tablet_part_of_snapshot ? snapshot_id_str : std::string(),
-        tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
-        MakeDoneCallback(&mutex_, restorations_, operation.restoration_id, operation.tablet_id,
-                          std::bind(&Impl::FinishRestoration, this, _1, leader_term)));
+        tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET, callback);
     task->SetSnapshotHybridTime(operation.restore_at);
     task->SetRestorationId(operation.restoration_id);
     if (!operation.schedule_id.IsNil()) {
@@ -1714,16 +1738,21 @@ class MasterSnapshotCoordinator::Impl {
       return;
     }
 
-    auto temp_ids = restoration->tablet_ids();
-    std::vector<TabletId> tablet_ids(temp_ids.begin(), temp_ids.end());
+    std::vector<TabletId> tablet_ids = restoration->TabletIdsInState(SysSnapshotEntryPB::RESTORED);
     auto tablets = context_.GetTabletInfos(tablet_ids);
+    int tablet_ids_counter = 0;
     for (const auto& tablet : tablets) {
-      auto task = context_.CreateAsyncTabletSnapshotOp(
-          tablet, std::string(), tserver::TabletSnapshotOpRequestPB::RESTORE_FINISHED,
-          /* callback= */ nullptr);
-      task->SetRestorationId(restoration->restoration_id());
-      task->SetRestorationTime(restoration->complete_time());
-      context_.ScheduleTabletSnapshotOp(task);
+      if (tablet) {
+        auto task = context_.CreateAsyncTabletSnapshotOp(
+            tablet, std::string(), tserver::TabletSnapshotOpRequestPB::RESTORE_FINISHED,
+            /* callback= */ nullptr);
+        task->SetRestorationId(restoration->restoration_id());
+        task->SetRestorationTime(restoration->complete_time());
+        context_.ScheduleTabletSnapshotOp(task);
+      } else {
+        LOG(DFATAL) << Format("Tablet info not found for $0", tablet_ids[tablet_ids_counter]);
+      }
+      tablet_ids_counter++;
     }
     // Update restoration entry to sys catalog.
     LOG(INFO) << "Marking restoration " << restoration->restoration_id()
@@ -2091,6 +2120,11 @@ Status MasterSnapshotCoordinator::ApplyWritePair(const Slice& key, const Slice& 
 
 Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
   return impl_->FillHeartbeatResponse(resp);
+}
+
+HybridTime MasterSnapshotCoordinator::AllowedHistoryCutoffProvider(
+    tablet::RaftGroupMetadata* metadata) {
+  return impl_->AllowedHistoryCutoffProvider(metadata);
 }
 
 Result<SnapshotSchedulesToObjectIdsMap>

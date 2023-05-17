@@ -15,6 +15,7 @@ import { CloudVendorRegionField } from '../forms/configureRegion/ConfigureRegion
 import { ProviderCode, CloudVendorProviders } from '../constants';
 import { K8sRegionField } from '../forms/configureRegion/ConfigureK8sRegionModal';
 import { ConfigureOnPremRegionFormValues } from '../forms/configureRegion/ConfigureOnPremRegionModal';
+import { RegionOperation } from '../forms/configureRegion/constants';
 
 import { SupportedRegionField } from '../forms/configureRegion/types';
 
@@ -22,8 +23,9 @@ import styles from './RegionList.module.scss';
 
 interface RegionListCommmonProps {
   showAddRegionFormModal: () => void;
-  showEditRegionFormModal: (options?: { isExistingRegion: boolean }) => void;
+  showEditRegionFormModal: (regionOperation: RegionOperation) => void;
   showDeleteRegionModal: () => void;
+  isProviderInUse: boolean;
 
   existingRegions?: string[];
   disabled?: boolean;
@@ -81,6 +83,7 @@ export const RegionList = (props: RegionListProps) => {
 
 const contextualHelpers = ({
   disabled,
+  isProviderInUse,
   existingRegions,
   providerCode,
   regions,
@@ -92,9 +95,17 @@ const contextualHelpers = ({
     case ProviderCode.AWS:
     case ProviderCode.AZU:
     case ProviderCode.GCP: {
+      const handleViewRegion = (regionField: CloudVendorRegionField) => {
+        setRegionSelection(regionField);
+        showEditRegionFormModal(RegionOperation.VIEW);
+      };
       const handleEditRegion = (regionField: CloudVendorRegionField) => {
         setRegionSelection(regionField);
-        showEditRegionFormModal();
+        showEditRegionFormModal(
+          existingRegions?.includes(regionField.code)
+            ? RegionOperation.EDIT_EXISTING
+            : RegionOperation.EDIT_NEW
+        );
       };
       const handleDeleteRegion = (regionField: CloudVendorRegionField) => {
         setRegionSelection(regionField);
@@ -105,16 +116,26 @@ const contextualHelpers = ({
       const formatRegionActions = (_: unknown, row: CloudVendorRegionField) => {
         return (
           <div className={styles.buttonContainer}>
-            <YBButton
-              className={clsx(disabled && styles.disabledButton)}
-              btnIcon="fa fa-pencil"
-              btnText="Edit"
-              btnClass="btn btn-default"
-              btnType="button"
-              onClick={() => handleEditRegion(row)}
-              disabled={disabled}
-              data-testid="RegionList-EditRegion"
-            />
+            {isProviderInUse ? (
+              <YBButton
+                btnText="View"
+                btnClass="btn btn-default"
+                btnType="button"
+                onClick={() => handleViewRegion(row)}
+                data-testid="RegionList-ViewRegion"
+              />
+            ) : (
+              <YBButton
+                className={clsx(disabled && styles.disabledButton)}
+                btnIcon="fa fa-pencil"
+                btnText={isProviderInUse ? 'View' : 'Edit'}
+                btnClass="btn btn-default"
+                btnType="button"
+                onClick={() => handleEditRegion(row)}
+                disabled={disabled}
+                data-testid="RegionList-EditRegion"
+              />
+            )}
             <YBButton
               className={clsx(disabled && styles.disabledButton)}
               btnIcon="fa fa-trash"
@@ -136,11 +157,17 @@ const contextualHelpers = ({
       };
     }
     case ProviderCode.KUBERNETES: {
+      const handleViewRegion = (regionField: K8sRegionField) => {
+        setRegionSelection(regionField);
+        showEditRegionFormModal(RegionOperation.VIEW);
+      };
       const handleEditRegion = (regionField: K8sRegionField) => {
         setRegionSelection(regionField);
-        showEditRegionFormModal({
-          isExistingRegion: existingRegions?.includes(regionField.code) ?? false
-        });
+        showEditRegionFormModal(
+          existingRegions?.includes(regionField.code)
+            ? RegionOperation.EDIT_EXISTING
+            : RegionOperation.EDIT_NEW
+        );
       };
       const handleDeleteRegion = (regionField: K8sRegionField) => {
         setRegionSelection(regionField);
@@ -151,16 +178,26 @@ const contextualHelpers = ({
       const formatRegionActions = (_: unknown, row: K8sRegionField) => {
         return (
           <div className={styles.buttonContainer}>
-            <YBButton
-              className={clsx(disabled && styles.disabledButton)}
-              btnIcon="fa fa-pencil"
-              btnText="Edit"
-              btnClass="btn btn-default"
-              btnType="button"
-              onClick={() => handleEditRegion(row)}
-              disabled={disabled}
-              data-testid="RegionList-EditRegion"
-            />
+            {isProviderInUse ? (
+              <YBButton
+                btnText="View"
+                btnClass="btn btn-default"
+                btnType="button"
+                onClick={() => handleViewRegion(row)}
+                data-testid="RegionList-ViewRegion"
+              />
+            ) : (
+              <YBButton
+                className={clsx(disabled && styles.disabledButton)}
+                btnIcon="fa fa-pencil"
+                btnText={isProviderInUse ? 'View' : 'Edit'}
+                btnClass="btn btn-default"
+                btnType="button"
+                onClick={() => handleEditRegion(row)}
+                disabled={disabled}
+                data-testid="RegionList-EditRegion"
+              />
+            )}
             <YBButton
               className={clsx(disabled && styles.disabledButton)}
               btnIcon="fa fa-trash"
@@ -182,9 +219,17 @@ const contextualHelpers = ({
       };
     }
     case ProviderCode.ON_PREM: {
+      const handleViewRegion = (regionField: ConfigureOnPremRegionFormValues) => {
+        setRegionSelection(regionField);
+        showEditRegionFormModal(RegionOperation.VIEW);
+      };
       const handleEditRegion = (regionField: ConfigureOnPremRegionFormValues) => {
         setRegionSelection(regionField);
-        showEditRegionFormModal();
+        showEditRegionFormModal(
+          existingRegions?.includes(regionField.code)
+            ? RegionOperation.EDIT_EXISTING
+            : RegionOperation.EDIT_NEW
+        );
       };
       const handleDeleteRegion = (regionField: ConfigureOnPremRegionFormValues) => {
         setRegionSelection(regionField);
@@ -195,16 +240,26 @@ const contextualHelpers = ({
       const formatRegionActions = (_: unknown, row: ConfigureOnPremRegionFormValues) => {
         return (
           <div className={styles.buttonContainer}>
-            <YBButton
-              className={clsx(disabled && styles.disabledButton)}
-              btnIcon="fa fa-pencil"
-              btnText="Edit"
-              btnClass="btn btn-default"
-              btnType="button"
-              onClick={() => handleEditRegion(row)}
-              disabled={disabled}
-              data-testid="RegionList-EditRegion"
-            />
+            {isProviderInUse ? (
+              <YBButton
+                btnText="View"
+                btnClass="btn btn-default"
+                btnType="button"
+                onClick={() => handleViewRegion(row)}
+                data-testid="RegionList-ViewRegion"
+              />
+            ) : (
+              <YBButton
+                className={clsx(disabled && styles.disabledButton)}
+                btnIcon="fa fa-pencil"
+                btnText={isProviderInUse ? 'View' : 'Edit'}
+                btnClass="btn btn-default"
+                btnType="button"
+                onClick={() => handleEditRegion(row)}
+                disabled={disabled}
+                data-testid="RegionList-EditRegion"
+              />
+            )}
             <YBButton
               className={clsx(disabled && styles.disabledButton)}
               btnIcon="fa fa-trash"

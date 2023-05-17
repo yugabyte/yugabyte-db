@@ -1,5 +1,5 @@
 ---
-title: Create a read replica cluster
+title: Create a read replica cluster in YugabyteDB Anywhere
 headerTitle: Create a read replica cluster
 linkTitle: Read replica cluster
 description: Use YugabyteDB Anywhere to create a read replica cluster.

@@ -5,7 +5,9 @@ package com.yugabyte.yw.models;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -14,6 +16,7 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.UpdatedTimestamp;
+import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -30,7 +33,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -44,7 +46,6 @@ import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http.Status;
@@ -53,6 +54,7 @@ import play.mvc.Http.Status;
 @Entity
 @Getter
 @Setter
+@ApiModel(description = "Node agent details")
 public class NodeAgent extends Model {
 
   /** Node agent server OS type. */
@@ -146,12 +148,18 @@ public class NodeAgent extends Model {
     }
   }
 
+  @Getter
+  @Setter
+  public static class Config {
+    private String certPath;
+    private String serverCert;
+    private String serverKey;
+    private boolean offloadable;
+  }
+
   public static final Finder<UUID, NodeAgent> finder =
       new Finder<UUID, NodeAgent>(NodeAgent.class) {};
 
-  public static final String CERT_DIR_PATH_PROPERTY = "certPath";
-  public static final String SERVER_CERT_PROPERTY = "serverCert";
-  public static final String SERVER_KEY_PROPERTY = "serverKey";
   public static final String ROOT_CA_CERT_NAME = "ca.root.crt";
   public static final String ROOT_CA_KEY_NAME = "ca.key.pem";
   public static final String SERVER_CERT_NAME = "server.crt";
@@ -160,47 +168,51 @@ public class NodeAgent extends Model {
   public static final String ROOT_NODE_AGENT_HOME = "/root/node-agent";
 
   @Id
-  @ApiModelProperty(accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Node agent UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
-  @ApiModelProperty(accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Node agent name", accessMode = READ_ONLY)
   private String name;
 
-  @ApiModelProperty(accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Node agent server IP", accessMode = READ_ONLY)
   private String ip;
 
-  @ApiModelProperty(accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Node agent server port", accessMode = READ_ONLY)
   private int port;
 
-  @ApiModelProperty(accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUuid;
 
-  @ApiModelProperty(accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Node agent installed version", accessMode = READ_ONLY)
   private String version;
 
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Node agent state", accessMode = READ_ONLY)
   private State state;
 
   @UpdatedTimestamp
   @Column(nullable = false)
-  @ApiModelProperty(value = "Updated time", accessMode = READ_ONLY, example = "1624295239113")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Updated time",
+      accessMode = READ_ONLY,
+      example = "2022-12-21T13:07:18Z")
   private Date updatedAt;
 
-  @ApiModelProperty(accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Node agent configuration", accessMode = READ_ONLY)
   @Column(nullable = false)
   @DbJson
-  private Map<String, String> config;
+  private Config config;
 
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Node agent host OS", accessMode = READ_ONLY)
   private OSType osType;
 
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Node agent host machine arch", accessMode = READ_ONLY)
   private ArchType archType;
 
-  @ApiModelProperty(accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Node agent installation directory", accessMode = READ_ONLY)
   @Column(nullable = false)
   private String home;
 
@@ -224,6 +236,14 @@ public class NodeAgent extends Model {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot find node agent " + nodeAgentUuid);
     }
     return nodeAgent;
+  }
+
+  public static NodeAgent getOrBadRequest(UUID nodeAgentUuid) {
+    return NodeAgent.maybeGet(nodeAgentUuid)
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(
+                    BAD_REQUEST, "Cannot find node agent " + nodeAgentUuid));
   }
 
   public static Collection<NodeAgent> list(UUID customerUuid, String nodeAgentIp /* Optional */) {
@@ -300,14 +320,14 @@ public class NodeAgent extends Model {
   }
 
   public void heartbeat() {
-    Date current = new Date();
-    if (db().update(NodeAgent.class)
-            .set("updatedAt", current)
-            .where()
-            .eq("uuid", getUuid())
-            .update()
+    updateTimestamp(new Date());
+  }
+
+  @VisibleForTesting
+  public void updateTimestamp(Date date) {
+    if (db().update(NodeAgent.class).set("updatedAt", date).where().eq("uuid", getUuid()).update()
         > 0) {
-      setUpdatedAt(current);
+      setUpdatedAt(date);
     }
   }
 
@@ -316,7 +336,7 @@ public class NodeAgent extends Model {
       try {
         File file = certDir.toFile();
         if (file.exists()) {
-          FileUtils.deleteDirectory(file);
+          FileData.deleteFiles(file.getAbsolutePath(), true);
         }
       } catch (Exception e) {
         log.warn("Error deleting cert directory {}", certDir, e);
@@ -346,36 +366,42 @@ public class NodeAgent extends Model {
 
   @JsonIgnore
   public Path getCertDirPath() {
-    String certDirPath = getConfig().get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    String certDirPath = getConfig().getCertPath();
     if (StringUtils.isBlank(certDirPath)) {
-      throw new IllegalArgumentException(
-          "Missing config key - " + NodeAgent.CERT_DIR_PATH_PROPERTY);
+      throw new IllegalArgumentException("Missing cert path");
     }
     return Paths.get(certDirPath);
   }
 
   @JsonIgnore
   public Path getCaCertFilePath() {
-    return getCertDirPath().resolve(NodeAgent.ROOT_CA_CERT_NAME);
+    return getCertDirPath().resolve(ROOT_CA_CERT_NAME);
   }
 
   @JsonIgnore
   public Path getMergedCaCertFilePath() {
-    return getCertDirPath().resolve(NodeAgent.MERGED_ROOT_CA_CERT_NAME);
+    return getCertDirPath().resolve(MERGED_ROOT_CA_CERT_NAME);
   }
 
   @JsonIgnore
   public Path getServerCertFilePath() {
-    return getCertDirPath().resolve(NodeAgent.SERVER_CERT_NAME);
+    return getCertDirPath().resolve(SERVER_CERT_NAME);
   }
 
   @JsonIgnore
   public Path getServerKeyFilePath() {
-    return getCertDirPath().resolve(NodeAgent.SERVER_KEY_NAME);
+    return getCertDirPath().resolve(SERVER_KEY_NAME);
   }
 
   public void updateCertDirPath(Path certDirPath) {
-    getConfig().put(NodeAgent.CERT_DIR_PATH_PROPERTY, certDirPath.toString());
+    getConfig().setCertPath(certDirPath.toString());
     save();
+  }
+
+  public void updateOffloadable(boolean offloadable) {
+    if (getConfig().isOffloadable() != offloadable) {
+      getConfig().setOffloadable(offloadable);
+      save();
+    }
   }
 }

@@ -72,7 +72,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_int32(num_rows_per_tablet, 100,
+DEFINE_NON_RUNTIME_int32(num_rows_per_tablet, 100,
     "The number of rows to be inserted into each tablet");
 
 using std::vector;
@@ -180,7 +180,7 @@ struct SliceKeysTestSetup {
     TypeDescriptor<KeyTypeWrapper>::AddHashValue(insert->mutable_request(), row_key_num);
   }
 
-  int64_t KeyIntVal(const QLRow& row) const {
+  int64_t KeyIntVal(const qlexpr::QLRow& row) const {
     return TypeDescriptor<KeyTypeWrapper>::GetIntVal(row.column(0));
   }
 
@@ -230,7 +230,7 @@ struct IntKeysTestSetup {
     TypeDescriptor<CppType>::AddHashValue(insert->mutable_request(), val);
   }
 
-  int64_t KeyIntVal(const QLRow& row) const {
+  int64_t KeyIntVal(const qlexpr::QLRow& row) const {
     return TypeDescriptor<CppType>::GetIntVal(row.column(0));
   }
 
@@ -358,7 +358,7 @@ class AllTypesItest : public YBTest {
     projection->push_back("bool_val");
   }
 
-  void VerifyRow(const QLRow& row) {
+  void VerifyRow(const qlexpr::QLRow& row) {
     int64_t key_int_val = setup_.KeyIntVal(row);
     int64_t row_idx = key_int_val % setup_.Increment();;
     int64_t split_idx = key_int_val / setup_.Increment();

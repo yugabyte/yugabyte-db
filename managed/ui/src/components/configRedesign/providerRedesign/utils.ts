@@ -20,7 +20,7 @@ import {
 import { K8sCertIssuerType } from './forms/configureRegion/constants';
 import { SupportedAZField, SupportedRegionField } from './forms/configureRegion/types';
 import { UniverseItem } from './providerView/providerDetails/UniverseTable';
-import { K8sRegionCloudInfo, YBAvailabilityZone, YBProvider, YBRegion } from './types';
+import { AccessKey, K8sRegionCloudInfo, YBAvailabilityZone, YBProvider, YBRegion } from './types';
 
 export const getCertIssuerType = (k8sRegionCloudInfo: K8sRegionCloudInfo) => {
   if (k8sRegionCloudInfo.certManagerClusterIssuer) {
@@ -101,6 +101,20 @@ export const getLinkedUniverses = (providerUUID: string, universes: Universe[]) 
     }
     return linkedUniverses;
   }, []);
+
+export const getLatestAccessKey = (accessKeys: AccessKey[]) =>
+  accessKeys.reduce((latestAccessKey: null | AccessKey, currentAccessKey) => {
+    if (!latestAccessKey) {
+      return currentAccessKey;
+    }
+    const latestAccessKeyCreationTimestamp = Date.parse(latestAccessKey.creationDate);
+    const currentAccessKeyCreationTimestamp = Date.parse(currentAccessKey.creationDate);
+
+    return Number.isNaN(latestAccessKeyCreationTimestamp) ||
+      currentAccessKeyCreationTimestamp > latestAccessKeyCreationTimestamp
+      ? currentAccessKey
+      : latestAccessKey;
+  }, null);
 
 export const findExistingRegion = <TYBProvider extends YBProvider, TYBRegion extends YBRegion>(
   providerConfig: TYBProvider,

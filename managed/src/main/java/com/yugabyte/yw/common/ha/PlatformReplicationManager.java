@@ -238,14 +238,12 @@ public class PlatformReplicationManager {
 
     // Delete any instances that exist locally but aren't included in the sync request.
     Set<String> instanceAddrsToDelete = Sets.difference(existingAddrs, newAddrs);
-    existingInstances
-        .stream()
+    existingInstances.stream()
         .filter(i -> instanceAddrsToDelete.contains(i.getAddress()))
         .forEach(PlatformInstance::delete);
 
     // Import the new instances, or update existing ones.
-    return newInstances
-        .stream()
+    return newInstances.stream()
         .map(replicationHelper::processImportedInstance)
         .filter(Optional::isPresent)
         .map(Optional::get)
@@ -313,8 +311,7 @@ public class PlatformReplicationManager {
 
                             // Send the platform backup to all followers.
                             Set<PlatformInstance> instancesToSync =
-                                remoteInstances
-                                    .stream()
+                                remoteInstances.stream()
                                     .filter(this::sendBackup)
                                     .collect(Collectors.toSet());
 

@@ -2,7 +2,10 @@
 
 package util
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 func TestBuffer(t *testing.T) {
 	buffer := NewBuffer(3)
@@ -41,5 +44,42 @@ func TestBuffer(t *testing.T) {
 	}
 	if size != 0 {
 		t.Fatalf("expected 0, found %d", size)
+	}
+}
+
+func TestResettableBuffer(t *testing.T) {
+	source := &bytes.Buffer{}
+	source.Write([]byte("hello"))
+	buffer := NewResettableBuffer(source)
+	data := make([]byte, 1)
+	_, err := buffer.Read(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if "h" != string(data) {
+		t.Logf("Expected h, found %s", string(data))
+	}
+	_, err = buffer.Read(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if "e" != string(data) {
+		t.Logf("Expected e, found %s", string(data))
+	}
+	buffer.Reset()
+	_, err = buffer.Read(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if "h" != string(data) {
+		t.Logf("Expected h, found %s after reset", string(data))
+	}
+	buffer.Reset()
+	_, err = buffer.Read(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if "h" != string(data) {
+		t.Logf("Expected h, found %s after reset", string(data))
 	}
 }

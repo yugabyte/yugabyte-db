@@ -27,7 +27,7 @@
 #include "yb/util/flags.h"
 
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/integral_types.h"
@@ -110,7 +110,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   Status Launch();
 
-  Status UpdateSafeTime(const Status& s, HybridTime ht);
+  Status UpdateSafeTime(const Status& s, HybridTime ht) EXCLUDES(mutex_);
 
   Status Done(const Status& s, const std::unordered_set<TableId>& failed_indexes);
 
@@ -134,7 +134,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
     return timestamp_chosen_.load(std::memory_order_acquire);
   }
 
-  HybridTime read_time_for_backfill() const {
+  HybridTime read_time_for_backfill() const EXCLUDES(mutex_) {
     std::lock_guard<simple_spinlock> l(mutex_);
     return read_time_for_backfill_;
   }
@@ -180,6 +180,10 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status CheckIfDone();
   Status UpdateIndexPermissionsForIndexes();
   Status ClearCheckpointStateInTablets();
+  Status SetSafeTimeAndStartBackfill(const HybridTime& read_time) EXCLUDES(mutex_);
+
+  // Persist the value in read_time_for_backfill_ to the sys-catalog and start the backfill job.
+  Status PersistSafeTimeAndStartBackfill() EXCLUDES(mutex_);
 
   // We want to prevent major compactions from garbage collecting delete markers
   // on an index table, until the backfill process is complete.
@@ -218,8 +222,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 class BackfillTableJob : public server::MonitoredTask {
  public:
   explicit BackfillTableJob(std::shared_ptr<BackfillTable> backfill_table)
-      : start_timestamp_(MonoTime::Now()),
-        backfill_table_(backfill_table),
+      : backfill_table_(backfill_table),
         requested_index_names_(backfill_table_->requested_index_names()) {}
 
   server::MonitoredTaskType type() const override {
@@ -228,17 +231,7 @@ class BackfillTableJob : public server::MonitoredTask {
 
   std::string type_name() const override { return "Backfill Table"; }
 
-  MonoTime start_timestamp() const override { return start_timestamp_; }
-
-  MonoTime completion_timestamp() const override {
-    return completion_timestamp_;
-  }
-
   std::string description() const override;
-
-  server::MonitoredTaskState state() const override {
-    return state_.load(std::memory_order_acquire);
-  }
 
   void SetState(server::MonitoredTaskState new_state);
 
@@ -247,8 +240,6 @@ class BackfillTableJob : public server::MonitoredTask {
   void MarkDone();
 
  private:
-  MonoTime start_timestamp_, completion_timestamp_;
-  std::atomic<server::MonitoredTaskState> state_{server::MonitoredTaskState::kWaiting};
   std::shared_ptr<BackfillTable> backfill_table_;
   const std::string requested_index_names_;
 };

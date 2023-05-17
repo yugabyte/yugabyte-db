@@ -111,8 +111,7 @@ public class CustomerController extends AuthenticatedController {
     List<Customer> customers = Customer.getAll();
     if (includeUniverseUuids) {
       Map<Long, Set<UUID>> allUniverseUuids = Universe.getAllCustomerUniverseUUIDs();
-      customers
-          .stream()
+      customers.stream()
           .forEach(
               c ->
                   c.setTransientUniverseUUIDs(
@@ -212,8 +211,7 @@ public class CustomerController extends AuthenticatedController {
             // + interval as next notification attempt. Even if it's before now -
             // instant notification will happen - which is what we need.
             alertsToUpdate =
-                activeAlerts
-                    .stream()
+                activeAlerts.stream()
                     .filter(
                         alert ->
                             alert.getNextNotificationTime() == null
@@ -230,8 +228,7 @@ public class CustomerController extends AuthenticatedController {
             // In case we already notified on ACTIVE state and scheduled subsequent notification
             // - clean that
             alertsToUpdate =
-                activeAlerts
-                    .stream()
+                activeAlerts.stream()
                     .filter(
                         alert ->
                             alert.getNextNotificationTime() != null

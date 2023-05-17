@@ -18,6 +18,8 @@
 #include "yb/docdb/docdb.fwd.h"
 #include "yb/dockv/dockv_fwd.h"
 
+#include "yb/qlexpr/qlexpr_fwd.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -50,7 +52,6 @@ class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 
 struct ApplyTransactionState;
-struct CompactionSchemaPacking;
 struct DocDB;
 struct DocReadContext;
 struct IntentKeyValueForCDC;
@@ -62,7 +63,7 @@ using LockBatchEntries = std::vector<LockBatchEntry>;
 using DocReadContextPtr = std::shared_ptr<DocReadContext>;
 using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
 
-using IndexRequests = std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>;
+using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestPB>>;
 
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 

@@ -36,8 +36,6 @@
 namespace yb {
 namespace pggate {
 
-class PgTuple;
-
 YB_STRONGLY_TYPED_BOOL(RequestSent);
 
 //--------------------------------------------------------------------------------------------------
@@ -58,7 +56,8 @@ class PgDocResult {
   }
 
   // Get the postgres tuple from this batch.
-  Status WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple* pg_tuple, int64_t* row_order);
+  Status WritePgTuple(
+      const std::vector<PgFetchedTarget*>& targets, PgTuple* pg_tuple, int64_t* row_order);
 
   // Get system columns' values from this batch.
   // Currently, we only have ybctids, but there could be more.

@@ -89,6 +89,7 @@ export const ExpandedConfigTableSelect = ({
           dataFormat={(cell: XClusterTableStatus, row: XClusterTable) => (
             <XClusterTableStatusLabel
               status={cell}
+              streamId={row.streamId}
               tableUUID={row.tableUUID}
               nodePrefix={sourceUniverseNodePrefix}
               universeUUID={sourceUniverseUUID}

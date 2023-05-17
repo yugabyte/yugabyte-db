@@ -47,7 +47,7 @@ Where
 
 - `role_specification` specifies the name of the role whose attributes are to be changed or current user or current session user.
 
-- `SUPERUSER`, `NOSUPERUSER` determine whether the role is a “superuser” or not. Superusers can override all access restrictions and should be used with care.
+- `SUPERUSER`, `NOSUPERUSER` determine whether the role is a "superuser" or not. Superusers can override all access restrictions and should be used with care.
 Only roles with SUPERUSER privilege can create other SUPERUSER roles.
 - `CREATEDB`, `NOCREATEDB` determine whether the role can create a database or not.
 - `CREATEROLE`, `NOCREATEROLE` determine whether the role can create other roles or not.
@@ -57,7 +57,7 @@ Without INHERIT, membership in another role only grants the ability to SET ROLE 
 - `CONNECTION LIMIT` specifies how many concurrent connections the role can make. This only applies to roles that can login.
 - `[ENCRYPTED] PASSWORD` sets the password for the role. This only applies to roles that can login.
 If no password is specified, the password will be set to null and password authentication will always fail for that user.
-Note that password is always stored encrypted in system catalogs and the optional keyword ENCRYPTED is only present for compatibility with Postgres.
+Note that password is always stored encrypted in system catalogs and the optional keyword ENCRYPTED is only present for compatibility with PostgreSQL.
 - `VALID UNTIL` sets a date and time after which the role's password is no longer valid.
 
 - `config_param` and `config_value` are the name and value of configuration parameters being set.

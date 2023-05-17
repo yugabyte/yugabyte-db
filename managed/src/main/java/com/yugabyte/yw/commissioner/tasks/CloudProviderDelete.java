@@ -57,6 +57,8 @@ public class CloudProviderDelete extends AbstractTaskBase {
     if (customer.getUniversesForProvider(provider.getUuid()).size() > 0) {
       throw new IllegalStateException("Cannot delete Provider with Universes");
     }
+    provider.setUsabilityState(Provider.UsabilityState.ERROR);
+    provider.save();
 
     // Clear the key files in the DB.
     String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.getUuid());

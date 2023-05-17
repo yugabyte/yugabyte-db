@@ -5,18 +5,16 @@ package com.yugabyte.yw.common;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
-
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
-import io.ebean.Ebean;
-import io.ebean.EbeanServer;
+import io.ebean.DB;
+import io.ebean.Database;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileWriter;
@@ -83,14 +81,10 @@ public class TestHelper {
   }
 
   public static void shutdownDatabase() {
-    EbeanServer server = Ebean.getServer("default");
-    if (server != null) {
-      server.shutdown(false, false);
-    }
-    EbeanServer perfAdvisorServer = Ebean.getServer("perf_advisor");
-    if (perfAdvisorServer != null) {
-      perfAdvisorServer.shutdown(false, false);
-    }
+    Database server = DB.byName("default");
+    server.shutdown(false, false);
+    Database perfAdvisorServer = DB.byName("perf_advisor");
+    perfAdvisorServer.shutdown(false, false);
   }
 
   public static void createTarGzipFiles(List<Path> paths, Path output) throws IOException {

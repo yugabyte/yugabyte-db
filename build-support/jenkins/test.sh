@@ -125,6 +125,8 @@ export BUILD_ROOT
 # End of build root setup and build directory cleanup
 # -------------------------------------------------------------------------------------------------
 
+export YB_SKIP_LLVM_TOOLCHAIN_SYMLINK_CREATION=1
+
 # We need to set this prior to the first invocation of yb_build.sh.
 export YB_SKIP_FINAL_LTO_LINK=1
 
@@ -255,7 +257,7 @@ export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=0
 
 if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
   if ! ( set -x
-         "${YB_SRC_ROOT}/python/yb/dependency_graph.py" \
+         "$YB_SCRIPT_PATH_DEPENDENCY_GRAPH" \
            --build-root "${BUILD_ROOT}" \
            self-test \
            --rebuild-graph ); then
@@ -307,7 +309,7 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         # of tests to run. Useful when testing this script.
         (
           set -x
-          "${YB_SRC_ROOT}/python/yb/dependency_graph.py" \
+          "$YB_SCRIPT_PATH_DEPENDENCY_GRAPH" \
               --build-root "${BUILD_ROOT}" \
               --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
               --output-test-config "${test_conf_path}" \
@@ -388,7 +390,7 @@ fi
 remove_latest_symlink
 
 log "Aggregating test reports"
-"$YB_SRC_ROOT/python/yb/aggregate_test_reports.py" \
+"$YB_SCRIPT_PATH_AGGREGATE_TEST_REPORTS" \
       --yb-src-root "${YB_SRC_ROOT}" \
       --output-dir "${YB_SRC_ROOT}" \
       --build-type "${build_type}" \

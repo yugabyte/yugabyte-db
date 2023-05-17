@@ -21,12 +21,12 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
 import play.Environment;
 import play.libs.Json;
-import org.apache.commons.lang3.StringUtils;
-import org.yaml.snakeyaml.LoaderOptions;
 
 @Slf4j
 public class MetricGrafanaGen {
@@ -91,9 +91,7 @@ public class MetricGrafanaGen {
         new TreeMap<String, ArrayList<ObjectNode>>();
 
     List<String> allMetrics =
-        MetricConfig.find
-            .all()
-            .stream()
+        MetricConfig.find.all().stream()
             .map(MetricConfig::getKey)
             .sorted()
             .collect(Collectors.toList());

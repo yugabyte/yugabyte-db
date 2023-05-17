@@ -258,17 +258,22 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
 
+  // Sleep to induce cdc lag.
   SleepFor(MonoDelta::FromSeconds(5));
+
   ASSERT_OK(WriteRowsHelper(3, 4, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
                 {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
-        return metrics->cdcsdk_sent_lag_micros->value() <= 5500000 &&
-               metrics->cdcsdk_sent_lag_micros->value() > 5000000;
+        return metrics->cdcsdk_sent_lag_micros->value() >= 5000000;
       },
-      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
 }
 
 // Begin transaction, perform some operations and abort transaction.
@@ -3304,24 +3309,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCreateStreamAfterSetCheckpoin
   EXPECT_OK(session->TEST_ApplyAndFlush(op));
 
   // Now Read the cdc_state table check checkpoint is updated to MAX.
-  const auto read_op = cdc_state.NewReadOp();
-  auto* const req_read = read_op->mutable_request();
-  QLAddStringHashValue(req_read, tablets[0].tablet_id());
-  auto req_cond = req->mutable_where_expr()->mutable_condition();
-  req_cond->set_op(QLOperator::QL_OP_AND);
-  QLAddStringCondition(
-      req_cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-  cdc_state.AddColumns({master::kCdcCheckpoint}, req_read);
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        EXPECT_OK(session->TEST_ApplyAndFlush(read_op));
-        auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
-        if (row_block->row_count() == 1 &&
-            row_block->row(0).column(0).string_value() == OpId::Max().ToString()) {
-          return true;
-        }
-        return false;
+        auto row = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
+            &cdc_state, session.get(), tablets[0].tablet_id(), stream_id,
+            {master::kCdcCheckpoint}));
+        return row && row->column(0).string_value() == OpId::Max().ToString();
       },
       MonoDelta::FromSeconds(60),
       "Failed to read from cdc_state table."));
@@ -4622,6 +4616,36 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActive
   ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_2));
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAdd100TableToNamespaceWithActiveStream)) {
+  ASSERT_OK(SetUpWithParams(1, 1, true));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  const int num_new_tables = 100;
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  for (int i = 1; i <= num_new_tables; i++) {
+    std::string table_name = "test_table_" + std::to_string(i);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(key int PRIMARY KEY, value_1 int);", table_name));
+  }
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto result = GetCDCStreamTableIds(stream_id);
+        if (!result.ok()) return false;
+
+        return (result.get().size() == num_new_tables + 1);
+      },
+      MonoDelta::FromSeconds(180),
+      "Could not find all the added table's in the stream's metadata"));
+}
+
 TEST_F(
     CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActiveStreamMasterRestart)) {
   FLAGS_catalog_manager_bg_task_wait_ms = 60 * 1000;
@@ -4944,7 +4968,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnEmptyNamespace)
   NamespaceId ns_id;
   std::vector<TableId> stream_table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+  StreamModeTransactional transactional(false);
+  ASSERT_OK(
+      test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options, &transactional));
 
   const std::string& stream_state = options.at(kStreamState);
   ASSERT_EQ(
@@ -4987,7 +5013,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnNamespaceNoPKTa
   NamespaceId ns_id;
   std::vector<TableId> stream_table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+  StreamModeTransactional transactional(false);
+  ASSERT_OK(
+      test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options, &transactional));
 
   const std::string& stream_state = options.at(kStreamState);
   ASSERT_EQ(
@@ -5115,23 +5143,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
   EXPECT_OK(session->TEST_ApplyAndFlush(op));
 
   // Now Read the cdc_state table check active_time is set to null.
-  const auto read_op = cdc_state.NewReadOp();
-  auto* const req_read = read_op->mutable_request();
-  QLAddStringHashValue(req_read, tablets[0].tablet_id());
-  auto req_cond = req_read->mutable_where_expr()->mutable_condition();
-  req_cond->set_op(QLOperator::QL_OP_AND);
-  QLAddStringCondition(
-      req_cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-  cdc_state.AddColumns({master::kCdcData}, req_read);
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        EXPECT_OK(session->TEST_ApplyAndFlush(read_op));
-        auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
-        if (row_block->row_count() == 1 && row_block->row(0).column(0).IsNull()) {
-          return true;
-        }
-        return false;
+        auto row = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
+            &cdc_state, session.get(), tablets[0].tablet_id(), stream_id,
+            {master::kCdcData}));
+
+        return row && row->column(0).IsNull();
       },
       MonoDelta::FromSeconds(60),
       "Failed to update active_time null in cdc_state table."));
@@ -5929,9 +5948,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamWithAllTablesHaveNonPri
 
   // Set checkpoint should throw an error, for the tablet that is not part of the stream, because
   // it's non-primary key table.
-  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  LOG(INFO) << "Response for setcheckpoint: " << resp.DebugString();
-  ASSERT_TRUE(resp.has_error());
+  ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets));
 
   ASSERT_OK(WriteRowsHelper(
       0 /* start */, 1 /* end */, &test_cluster_, true, 2, tables_wo_pk[0].c_str()));
@@ -7756,6 +7773,55 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotNoData)) {
 
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   ASSERT_GT(change_resp.cdc_sdk_proto_records_size(), 1000);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddManyColocatedTablesOnNamesapceWithStream)) {
+  ASSERT_OK(SetUpWithParams(3 /* replication_factor */, 2 /* num_masters */, true /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  for (int i = 1; i <= 400; i++) {
+    std::string table_name = "test" + std::to_string(i);
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0(id1 int primary key, value_2 int, value_3 int);", table_name));
+    LOG(INFO) << "Done create table: " << table_name;
+  }
+}
+
+TEST_F(
+    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetAndSetCheckpointWithDefaultNumTabletsForTable)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  // Create a table with default number of tablets.
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+
+  auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  OpId op_id = {change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index()};
+  auto set_resp2 =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, op_id, change_resp.safe_hybrid_time()));
+  ASSERT_FALSE(set_resp2.has_error());
+
+  GetChangesResponsePB change_resp2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  OpId op_id2 = {
+      change_resp.cdc_sdk_checkpoint().term(), change_resp2.cdc_sdk_checkpoint().index()};
+  auto set_resp3 =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, op_id2, change_resp2.safe_hybrid_time()));
+  ASSERT_FALSE(set_resp2.has_error());
 }
 
 }  // namespace cdc

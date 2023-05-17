@@ -3,17 +3,17 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.Hook;
+import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.Users;
 import org.junit.Test;
 

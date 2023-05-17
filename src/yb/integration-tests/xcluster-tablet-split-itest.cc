@@ -118,7 +118,7 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
     return s;
   }
 
-  Result<std::vector<QLRow>> GetRowsFromCdcStateTable(const string& stream_id = "") {
+  Result<std::vector<qlexpr::QLRow>> GetRowsFromCdcStateTable(const string& stream_id = "") {
     client::YBClient* producer_client(
         producer_cluster_ ? producer_client_.get() : TabletSplitBase::client_.get());
     client::TableHandle table;
@@ -126,7 +126,7 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
         YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
     RETURN_NOT_OK(table.Open(cdc_state_table, producer_client));
 
-    std::vector<QLRow> rows;
+    std::vector<qlexpr::QLRow> rows;
     for (const auto& row : client::TableRange(table)) {
       if (stream_id.empty() || row.column(master::kCdcStreamIdIdx).string_value() == stream_id) {
         rows.emplace_back(row);

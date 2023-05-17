@@ -11,20 +11,23 @@ import React, { FC, useRef } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
-import { Descendant, Transforms } from 'slate';
+import { Descendant } from 'slate';
 import { Box, makeStyles, MenuItem, Typography } from '@material-ui/core';
+import { toast } from 'react-toastify';
 import { YBLoadingCircleIcon } from '../../../../../../components/common/indicators';
 import { YBModal, YBSelect } from '../../../../../components';
 import { YBEditor } from '../../../../../components/YBEditor';
-import { IYBEditor, clearEditor } from '../../../../../components/YBEditor/plugins';
+import { IYBEditor } from '../../../../../components/YBEditor/plugins';
 import {
   ALERT_TEMPLATES_QUERY_KEY,
   fetchAlertConfigList,
   previewAlertNotification
 } from '../../CustomVariablesAPI';
 import { useCommonStyles } from '../../CommonStyles';
-import { TextSerializer } from '../../../../../components/YBEditor/serializers/Text/TextSerializer';
-import { TextDeserializer } from '../../../../../components/YBEditor/serializers/Text/TextDeSerializer';
+import { createErrorMessage } from '../../../../universe/universe-form/utils/helpers';
+import { fillAlertVariablesWithValue } from '../ComposerUtils';
+import { HTMLSerializer } from '../../../../../components/YBEditor/serializers';
+import { convertNodesToText } from '../../../../../components/YBEditor/serializers/Text/TextSerializer';
 
 type WebhookPreviewModalProps = {
   visible: boolean;
@@ -69,29 +72,29 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
   );
 
   const fillTemplateWithValue = useMutation(
-    ({ textTemplate, alertConfigUUID }: { textTemplate: string; alertConfigUUID: string }) =>
+    ({ textTemplate, htmlTemplate, alertConfigUUID }: { textTemplate: string; htmlTemplate: string; alertConfigUUID: string }) =>
       previewAlertNotification(
         {
           type: 'WebHook',
-          textTemplate
+          textTemplate,
+          highlightedTextTemplate: htmlTemplate
         },
         alertConfigUUID
       ),
     {
       onSuccess(data) {
-        const slateNode = new TextDeserializer(
-          bodyEditorRef.current!,
-          data.data.text
-        ).deserialize();
-        clearEditor(bodyEditorRef.current!);
-        Transforms.insertNodes(bodyEditorRef.current!, slateNode);
+        fillAlertVariablesWithValue(bodyEditorRef.current!, data.data.highlightedText);
+      },
+      onError(err) {
+        toast.error(createErrorMessage(err));
       }
     }
   );
 
   const previewTemplate = (alertConfigUUID: string) => {
-    const textTemplate = new TextSerializer(bodyEditorRef.current!).serlializeElements(bodyValue);
-    fillTemplateWithValue.mutate({ textTemplate, alertConfigUUID });
+    const bodyAsHTML = new HTMLSerializer(bodyEditorRef.current!).serializeElement(bodyValue);
+    const bodyAsText = convertNodesToText(bodyValue);
+    fillTemplateWithValue.mutate({ textTemplate: bodyAsText, htmlTemplate: bodyAsHTML, alertConfigUUID });
   };
 
   if (!visible) return null;
@@ -160,7 +163,7 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
               style: { height: '260px' },
               'data-testid': 'preview-webhook-subject-editor'
             }}
-            loadPlugins={{ alertVariablesPlugin: false, jsonPlugin: true }}
+            loadPlugins={{ alertVariablesPlugin: true, jsonPlugin: true }}
             initialValue={bodyValue}
             ref={bodyEditorRef}
           />

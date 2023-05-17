@@ -36,6 +36,7 @@ DEFINE_RUNTIME_bool(dump_transactions, false, "Dump transactions data in debug b
 // The output dir is tried in the following order (first existing and non empty is taken):
 // Symlink $HOME/logs/latest_test
 // Flag log_dir
+// Flag tmp_dir
 // /tmp
 
 DEFINE_RUNTIME_uint64(dump_transactions_chunk_size, 10_GB,
@@ -43,6 +44,8 @@ DEFINE_RUNTIME_uint64(dump_transactions_chunk_size, 10_GB,
 
 DEFINE_RUNTIME_uint64(dump_transactions_gzip, true,
                       "Whether transaction dump should be compressed in GZip format.");
+
+DECLARE_string(tmp_dir);
 
 namespace yb {
 namespace docdb {
@@ -202,7 +205,7 @@ class Dumper {
       result = FLAGS_log_dir;
     }
     if (result.empty()) {
-      result = "/tmp";
+      result = FLAGS_tmp_dir;
     }
     return result;
   }

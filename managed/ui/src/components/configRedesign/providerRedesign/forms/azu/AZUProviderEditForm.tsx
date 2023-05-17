@@ -35,14 +35,17 @@ import {
   findExistingZone,
   getDeletedRegions,
   getDeletedZones,
+  getLatestAccessKey,
   getNtpSetupType
 } from '../../utils';
 import { RegionOperation } from '../configureRegion/constants';
 import {
   addItem,
+  constructAccessKeysPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
@@ -82,7 +85,7 @@ export interface AZUProviderEditFormFieldValues {
   regions: CloudVendorRegionField[];
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
-  sshPort: number;
+  sshPort: number | null;
   sshPrivateKeyContent: File;
   sshUser: string;
   version: number;
@@ -152,8 +155,8 @@ export const AZUProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT_NEW);
+  const showEditRegionFormModal = (regionOperation: RegionOperation) => {
+    setRegionOperation(regionOperation);
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -192,7 +195,7 @@ export const AZUProviderEditForm = ({
 
   const regions = formMethods.watch('regions', defaultValues.regions);
   const setRegions = (regions: CloudVendorRegionField[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: CloudVendorRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -204,8 +207,9 @@ export const AZUProviderEditForm = ({
   const currentProviderVersion = formMethods.watch('version', defaultValues.version);
   const keyPairManagement = formMethods.watch('sshKeypairManagement');
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
-  const isFormDisabled =
-    isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
+  const existingRegions = providerConfig.regions.map((region) => region.code);
+  const isFormDisabled = getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -299,12 +303,14 @@ export const AZUProviderEditForm = ({
               <RegionList
                 providerCode={ProviderCode.AZU}
                 regions={regions}
+                existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={isProviderInUse}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -328,26 +334,18 @@ export const AZUProviderEditForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Keypair Name</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.keyPairName}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.keyPairName} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Private Key</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.privateKey}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.privateKey} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Change SSH Keypair</FieldLabel>
@@ -366,6 +364,7 @@ export const AZUProviderEditForm = ({
                       control={formMethods.control}
                       options={KEY_PAIR_MANAGEMENT_OPTIONS}
                       orientation={RadioGroupOrientation.HORIZONTAL}
+                      isDisabled={isFormDisabled}
                     />
                   </FormField>
                   {keyPairManagement === KeyPairManagement.SELF_MANAGED && (
@@ -425,7 +424,7 @@ export const AZUProviderEditForm = ({
               btnText="Apply Changes"
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
@@ -442,6 +441,8 @@ export const AZUProviderEditForm = ({
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           configuredRegions={regions}
+          isEditProvider={true}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -483,8 +484,8 @@ const constructDefaultFormValues = (
     ybImage: region.details.cloudInfo.azu.ybImage ?? '',
     zones: region.zones
   })),
-  sshKeypairManagement: providerConfig.allAccessKeys?.[0]?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort ?? '',
+  sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
+  sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version
 });
@@ -492,78 +493,96 @@ const constructDefaultFormValues = (
 const constructProviderPayload = async (
   formValues: AZUProviderEditFormFieldValues,
   providerConfig: AZUProvider
-): Promise<YBProviderMutation> => ({
-  code: ProviderCode.AZU,
-  name: formValues.providerName,
-  ...(formValues.editSSHKeypair &&
-    formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-      ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-      ...(formValues.sshPrivateKeyContent && {
-        sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-      })
-    }),
-  details: {
-    airGapInstall: !formValues.dbNodePublicInternetAccess,
-    cloudInfo: {
-      [ProviderCode.AZU]: {
-        azuClientId: formValues.azuClientId,
-        azuClientSecret: formValues.azuClientSecret,
-        azuHostedZoneId: formValues.azuHostedZoneId,
-        azuRG: formValues.azuRG,
-        azuSubscriptionId: formValues.azuSubscriptionId,
-        azuTenantId: formValues.azuTenantId
-      }
+): Promise<YBProviderMutation> => {
+  let sshPrivateKeyContent = '';
+  try {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContent
+      ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+      : '';
+  } catch (error) {
+    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+  }
+
+  const allAccessKeysPayload = constructAccessKeysPayload(
+    formValues.editSSHKeypair,
+    formValues.sshKeypairManagement,
+    { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
+    providerConfig.allAccessKeys
+  );
+
+  return {
+    code: ProviderCode.AZU,
+    name: formValues.providerName,
+    ...allAccessKeysPayload,
+    details: {
+      airGapInstall: !formValues.dbNodePublicInternetAccess,
+      cloudInfo: {
+        [ProviderCode.AZU]: {
+          azuClientId: formValues.azuClientId,
+          azuClientSecret: formValues.azuClientSecret,
+          ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
+          azuRG: formValues.azuRG,
+          azuSubscriptionId: formValues.azuSubscriptionId,
+          azuTenantId: formValues.azuTenantId
+        }
+      },
+      ntpServers: formValues.ntpServers,
+      setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
-    ntpServers: formValues.ntpServers,
-    setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-    sshPort: formValues.sshPort,
-    sshUser: formValues.sshUser
-  },
-  regions: [
-    ...formValues.regions.map<AZURegionMutation>((regionFormValues) => {
-      const existingRegion = findExistingRegion<AZUProvider, AZURegion>(
-        providerConfig,
-        regionFormValues.code
-      );
-      return {
-        ...(existingRegion && {
-          active: existingRegion.active,
-          uuid: existingRegion.uuid
-        }),
-        code: regionFormValues.code,
-        details: {
-          cloudInfo: {
-            [ProviderCode.AZU]: {
-              securityGroupId: regionFormValues.securityGroupId,
-              vnet: regionFormValues.vnet,
-              ybImage: regionFormValues.ybImage
-            }
-          }
-        },
-        zones: [
-          ...regionFormValues.zones.map<AZUAvailabilityZoneMutation>((azFormValues) => {
-            const existingZone = findExistingZone<AZURegion, AZUAvailabilityZone>(
-              existingRegion,
-              azFormValues.code
-            );
-            return {
-              ...(existingZone && {
-                active: existingZone.active,
-                uuid: existingZone.uuid
-              }),
-              code: azFormValues.code,
-              name: azFormValues.code,
-              subnet: azFormValues.subnet
-            };
+    regions: [
+      ...formValues.regions.map<AZURegionMutation>((regionFormValues) => {
+        const existingRegion = findExistingRegion<AZUProvider, AZURegion>(
+          providerConfig,
+          regionFormValues.code
+        );
+        return {
+          ...(existingRegion && {
+            active: existingRegion.active,
+            uuid: existingRegion.uuid
           }),
-          ...getDeletedZones(existingRegion?.zones, regionFormValues.zones)
-        ]
-      };
-    }),
-    ...getDeletedRegions<AZURegion, CloudVendorRegionField>(
-      providerConfig.regions,
-      formValues.regions
-    )
-  ],
-  version: formValues.version
-});
+          code: regionFormValues.code,
+          details: {
+            cloudInfo: {
+              [ProviderCode.AZU]: {
+                ...(regionFormValues.securityGroupId && {
+                  securityGroupId: regionFormValues.securityGroupId
+                }),
+                ...(regionFormValues.vnet && {
+                  vnet: regionFormValues.vnet
+                }),
+                ...(regionFormValues.ybImage && {
+                  ybImage: regionFormValues.ybImage
+                })
+              }
+            }
+          },
+          zones: [
+            ...regionFormValues.zones.map<AZUAvailabilityZoneMutation>((azFormValues) => {
+              const existingZone = findExistingZone<AZURegion, AZUAvailabilityZone>(
+                existingRegion,
+                azFormValues.code
+              );
+              return {
+                ...(existingZone && {
+                  active: existingZone.active,
+                  uuid: existingZone.uuid
+                }),
+                code: azFormValues.code,
+                name: azFormValues.code,
+                subnet: azFormValues.subnet
+              };
+            }),
+            ...getDeletedZones(existingRegion?.zones, regionFormValues.zones)
+          ]
+        };
+      }),
+      ...getDeletedRegions<AZURegion, CloudVendorRegionField>(
+        providerConfig.regions,
+        formValues.regions
+      )
+    ],
+    version: formValues.version
+  };
+};

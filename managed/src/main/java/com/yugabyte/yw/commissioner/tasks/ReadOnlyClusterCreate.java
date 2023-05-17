@@ -142,10 +142,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
             ImmutableMap.of(
                 Universe.USE_CUSTOM_IMAGE,
                 Boolean.toString(
-                    universe
-                        .getUniverseDetails()
-                        .nodeDetailsSet
-                        .stream()
+                    universe.getUniverseDetails().nodeDetailsSet.stream()
                         .allMatch(n -> n.ybPrebuiltAmi))));
         universe.save();
       }

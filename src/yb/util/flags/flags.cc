@@ -81,8 +81,9 @@ DEFINE_NON_RUNTIME_int64(profiler_sample_freq_bytes, 10_MB, "The frequency at wh
     "TCMalloc should sample allocations (if enable_process_lifetime_heap_profiling is set to "
     "true).");
 
-DEFINE_RUNTIME_string(heap_profile_path, "", "Output path to store heap profiles. If not set " \
-    "profiles are stored in /tmp/<process-name>.<pid>.<n>.heap.");
+DEFINE_RUNTIME_string(heap_profile_path, "",
+    "Output path to store heap profiles. If not set, profiles are stored in the directory "
+    "specified by the tmp_dir flag as $FLAGS_tmp_dir/<process-name>.<pid>.<n>.heap.");
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
 
@@ -101,6 +102,9 @@ DEFINE_UNKNOWN_bool(help_auto_flag_json, false,
     "Dump a JSON document describing all of the AutoFlags available in this binary.");
 TAG_FLAG(help_auto_flag_json, stable);
 TAG_FLAG(help_auto_flag_json, advanced);
+
+DEFINE_NON_RUNTIME_string(tmp_dir, "/tmp",
+    "Directory to store temporary files. By default, the value of '/tmp' is used.");
 
 DECLARE_bool(TEST_promote_all_auto_flags);
 
@@ -471,9 +475,14 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     google::HandleCommandLineHelpFlags();
   }
 
+  // Disallow relative path for tmp_dir.
+  if (!FLAGS_tmp_dir.starts_with('/')) {
+    LOG(FATAL) << "tmp_dir must be an absolute path, found value to be " << FLAGS_tmp_dir;
+  }
+
   if (FLAGS_heap_profile_path.empty()) {
-    const auto path =
-        strings::Substitute("/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
+    const auto path = strings::Substitute(
+        "$0/$1.$2", FLAGS_tmp_dir, google::ProgramInvocationShortName(), getpid());
     CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(heap_profile_path, path));
   }
 

@@ -42,9 +42,7 @@ public class RuntimeConfigChangeNotifier {
   public RuntimeConfigChangeNotifier(
       Config config, MetricCollectionLevelListener metricCollectionLevelListener) {
     List<String> refreshableClients =
-        config
-            .getStringList(RuntimeConfService.INCLUDED_OBJECTS_KEY)
-            .stream()
+        config.getStringList(RuntimeConfService.INCLUDED_OBJECTS_KEY).stream()
             .filter(object -> object.endsWith(WS_RUNTIME_CONFIG_SUFFIX))
             .collect(Collectors.toList());
     for (String wsClientKey : refreshableClients) {

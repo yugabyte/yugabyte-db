@@ -137,9 +137,7 @@ public class ShellLogsManager {
               .thenComparing(Comparator.comparingLong(File::length).reversed()));
 
       Set<String> currentlyUsedLogs =
-          currentProcesses
-              .values()
-              .stream()
+          currentProcesses.values().stream()
               .flatMap(p -> Stream.of(p.getLeft(), p.getRight()))
               .map(f -> f.getName())
               .collect(Collectors.toSet());

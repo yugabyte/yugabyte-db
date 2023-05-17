@@ -40,7 +40,7 @@ bool FLAGS_enable_print = false;
 #include "yb/util/flags.h"
 
 using GFLAGS::ParseCommandLineFlags;
-DEFINE_UNKNOWN_bool(enable_print, false, "Print options generated to console.");
+DEFINE_NON_RUNTIME_bool(enable_print, false, "Print options generated to console.");
 #endif  // GFLAGS
 
 using std::unique_ptr;

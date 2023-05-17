@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
+import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertTemplateVariable;
@@ -32,11 +33,16 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import play.Environment;
-import play.libs.Json;
 
 @Singleton
 @Slf4j
 public class AlertChannelTemplateService {
+
+  private static final Set<String> JSON_OBJECT_VARIABLE_PATTERNS =
+      Arrays.stream(AlertTemplateSystemVariable.values())
+          .filter(AlertTemplateSystemVariable::isJsonObject)
+          .map(variable -> "\\{\\{\\s*" + variable.getName() + "\\s*\\}\\}")
+          .collect(Collectors.toSet());
 
   private final BeanValidator beanValidator;
 
@@ -80,8 +86,7 @@ public class AlertChannelTemplateService {
 
   public List<AlertChannelTemplatesExt> listWithDefaults(UUID customerUUID) {
     Map<ChannelType, AlertChannelTemplates> templates =
-        list(customerUUID)
-            .stream()
+        list(customerUUID).stream()
             .collect(Collectors.toMap(AlertChannelTemplates::getType, Function.identity()));
     return Arrays.stream(ChannelType.values())
         .map(type -> appendDefaults(templates.get(type), customerUUID, type))
@@ -112,7 +117,7 @@ public class AlertChannelTemplateService {
         customerUUID);
   }
 
-  private void validate(AlertChannelTemplates templates) {
+  public void validate(AlertChannelTemplates templates) {
     beanValidator.validate(templates);
 
     AlertChannelParams.validateTemplateString(
@@ -121,8 +126,7 @@ public class AlertChannelTemplateService {
         beanValidator, "textTemplate", templates.getTextTemplate());
 
     Set<String> variables =
-        AlertTemplateVariable.list(templates.getCustomerUUID())
-            .stream()
+        AlertTemplateVariable.list(templates.getCustomerUUID()).stream()
             .map(AlertTemplateVariable::getName)
             .collect(Collectors.toSet());
 
@@ -148,14 +152,12 @@ public class AlertChannelTemplateService {
             });
     if (templates.getType() == ChannelType.WebHook) {
       if (!StringUtils.isEmpty(templates.getTextTemplate())) {
-        try {
-          Json.parse(templates.getTextTemplate());
-        } catch (Exception e) {
-          beanValidator
-              .error()
-              .forField("textTemplate", "Only JSON body is supported for WebHook template")
-              .throwError();
+        String jsonizedTemplate = templates.getTextTemplate();
+        for (String jsonVariablePattern : JSON_OBJECT_VARIABLE_PATTERNS) {
+          jsonizedTemplate = jsonizedTemplate.replaceAll(jsonVariablePattern, "{}");
         }
+        beanValidator.validateValidJson(
+            "textTemplate", jsonizedTemplate, "Only JSON body is supported for WebHook template");
       }
     }
   }

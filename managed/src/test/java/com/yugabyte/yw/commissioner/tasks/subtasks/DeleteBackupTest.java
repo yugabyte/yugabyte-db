@@ -12,9 +12,9 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.Backup.BackupState.Completed;
+import static com.yugabyte.yw.models.Backup.BackupState.Failed;
 import static com.yugabyte.yw.models.Backup.BackupState.FailedToDelete;
 import static com.yugabyte.yw.models.Backup.BackupState.InProgress;
-import static com.yugabyte.yw.models.Backup.BackupState.Failed;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;

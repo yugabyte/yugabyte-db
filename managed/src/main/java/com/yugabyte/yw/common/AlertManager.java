@@ -222,8 +222,7 @@ public class AlertManager {
     Set<UUID> customerUuids =
         toNotify.stream().map(Alert::getCustomerUUID).collect(Collectors.toSet());
     Map<UUID, AlertingData> alertingConfigByCustomer =
-        CustomerConfig.getAlertConfigs(customerUuids)
-            .stream()
+        CustomerConfig.getAlertConfigs(customerUuids).stream()
             .filter(config -> config.getData() != null)
             .collect(
                 Collectors.toMap(
@@ -368,9 +367,7 @@ public class AlertManager {
 
     String resultMessage =
         "Result: "
-            + perChannelStatus
-                .entrySet()
-                .stream()
+            + perChannelStatus.entrySet().stream()
                 .sorted(Entry.comparingByKey())
                 .map(e -> e.getKey() + " - " + e.getValue())
                 .collect(Collectors.joining("; "));

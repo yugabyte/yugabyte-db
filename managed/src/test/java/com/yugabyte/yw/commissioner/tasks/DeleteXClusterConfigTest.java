@@ -14,14 +14,19 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
@@ -29,12 +34,12 @@ import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -51,7 +56,9 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.DeleteUniverseReplicationResponse;
+import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
+import org.yb.master.MasterClusterOuterClass;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.master.MasterTypes.MasterErrorPB.Code;
 
@@ -80,6 +87,8 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
           TaskType.DeleteReplication,
           TaskType.DeleteBootstrapIds,
           TaskType.DeleteXClusterConfigEntry,
+          TaskType.PromoteAutoFlags,
+          TaskType.PromoteAutoFlags,
           TaskType.UniverseUpdateSucceeded,
           TaskType.UniverseUpdateSucceeded);
 
@@ -122,6 +131,21 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(targetUniverseMasterAddresses, targetUniverseCertificate))
         .thenReturn(mockClient);
+    try {
+      GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+          new GFlagsValidation.AutoFlagsPerServer();
+      autoFlagsPerServer.autoFlagDetails = new ArrayList<>();
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+          .thenReturn(autoFlagsPerServer);
+      when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+          .thenReturn(
+              new PromoteAutoFlagsResponse(
+                  0,
+                  "uuid",
+                  MasterClusterOuterClass.PromoteAutoFlagsResponsePB.getDefaultInstance()));
+    } catch (Exception ignored) {
+      fail();
+    }
   }
 
   private TaskInfo submitTask(XClusterConfig xClusterConfig) {
@@ -202,6 +226,42 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
       TaskInfo subtaskGroup = taskInfo.getSubTasks().get(i);
       assertNotNull(subtaskGroup);
       assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
+    }
+
+    assertFalse(XClusterConfig.maybeGet(xClusterConfig.getUuid()).isPresent());
+
+    targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
+    assertEquals(1, targetUniverse.getVersion());
+    assertFalse("universe unlocked", targetUniverse.universeIsLocked());
+    assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
+    assertTrue("update successful", targetUniverse.getUniverseDetails().updateSucceeded);
+  }
+
+  @Test
+  public void testDeleteWithPromoteAutoFlagsOnSelectiveUniverse() {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+    TestHelper.updateUniverseVersion(targetUniverse, "2.14.0.0-b1");
+
+    try {
+      DeleteUniverseReplicationResponse mockDeleteResponse =
+          new DeleteUniverseReplicationResponse(0, "", null, null);
+      when(mockClient.deleteUniverseReplication(xClusterConfig.getReplicationGroupName(), false))
+          .thenReturn(mockDeleteResponse);
+    } catch (Exception e) {
+    }
+
+    TaskInfo taskInfo = submitTask(xClusterConfig);
+    assertNotNull(taskInfo);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskType> taskSequence = new ArrayList<>(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE);
+    taskSequence.remove(taskSequence.indexOf(TaskType.PromoteAutoFlags));
+    assertEquals(taskSequence.size(), taskInfo.getSubTasks().size());
+    for (int i = 0; i < taskSequence.size(); i++) {
+      TaskInfo subtaskGroup = taskInfo.getSubTasks().get(i);
+      assertNotNull(subtaskGroup);
+      assertEquals(taskSequence.get(i), subtaskGroup.getTaskType());
     }
 
     assertFalse(XClusterConfig.maybeGet(xClusterConfig.getUuid()).isPresent());

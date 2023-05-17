@@ -283,7 +283,7 @@ TableIterator& TableIterator::operator++() {
   return *this;
 }
 
-const QLRow& TableIterator::operator*() const {
+const qlexpr::QLRow& TableIterator::operator*() const {
   return current_block_->rows()[row_index_];
 }
 

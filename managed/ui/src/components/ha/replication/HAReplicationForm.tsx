@@ -376,7 +376,9 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                               showAddPeerCertModal();
                             }}
                           >
-                            Add a peer certificate
+                            {`Add a peer certificate ${
+                              isHTTPS ? '(Required for HTTPS setup)' : ''
+                            }`}
                           </button>
                         ) : (
                           peerCerts.map((peerCert) => {

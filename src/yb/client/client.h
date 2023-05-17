@@ -54,7 +54,10 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
+
+#include "yb/encryption/encryption.pb.h"
 
 #include "yb/dockv/dockv_fwd.h"
 
@@ -121,6 +124,25 @@ struct TransactionStatusTablets {
   std::vector<TabletId> placement_local_tablets;
 };
 
+struct TabletReplicaFullCompactionStatus {
+  TabletServerId ts_id;
+  TabletId tablet_id;
+  tablet::FullCompactionState full_compaction_state;
+  // Not valid if full_compaction_state == UNKNOWN.
+  // No full compaction ever been completed is represented as 0 time.
+  HybridTime last_full_compaction_time;
+};
+
+struct TableCompactionStatus {
+  tablet::FullCompactionState full_compaction_state;
+
+  // Not valid if full_compaction_state == UNKNOWN.
+  // No full compaction ever been completed is represented as 0 time.
+  HybridTime last_full_compaction_time;
+  // No admin compaction ever been requested is represented as 0 time.
+  HybridTime last_request_time;
+  std::vector<TabletReplicaFullCompactionStatus> replica_statuses;
+};
 
 // Creates a new YBClient with the desired options.
 //
@@ -301,7 +323,8 @@ class YBClient {
                      int timeout_secs,
                      bool is_compaction);
 
-  Result<MonoTime> GetCompactionStatus(const YBTableName& table_name);
+  Result<TableCompactionStatus> GetCompactionStatus(
+      const YBTableName& table_name, bool show_tablets);
 
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const std::string id);
@@ -516,9 +539,11 @@ class YBClient {
       bool active = true,
       const NamespaceId& namespace_id = "");
 
-  void CreateCDCStream(const TableId& table_id,
-                       const std::unordered_map<std::string, std::string>& options,
-                       CreateCDCStreamCallback callback);
+  void CreateCDCStream(
+      const TableId& table_id,
+      const std::unordered_map<std::string, std::string>& options,
+      cdc::StreamModeTransactional transactional,
+      CreateCDCStreamCallback callback);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(const std::vector<CDCStreamId>& streams,
@@ -547,7 +572,8 @@ class YBClient {
   Status GetCDCStream(const CDCStreamId &stream_id,
                       NamespaceId* ns_id,
                       std::vector<TableId>* table_ids,
-                      std::unordered_map<std::string, std::string>* options);
+                      std::unordered_map<std::string, std::string>* options,
+                      cdc::StreamModeTransactional* transactional);
 
   void GetCDCStream(const CDCStreamId& stream_id,
                     std::shared_ptr<TableId> table_id,
@@ -562,6 +588,13 @@ class YBClient {
 
   Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
+
+  Status BootstrapProducer(
+      const YQLDatabase& db_type,
+      const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName>& pg_schema_names,
+      const std::vector<TableName>& table_names,
+      BootstrapProducerCallback callback);
 
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(const std::string& producer_id,
@@ -811,6 +844,8 @@ class YBClient {
   void LookupAllTablets(const std::shared_ptr<YBTable>& table,
                         CoarseTimePoint deadline,
                         LookupTabletRangeCallback callback);
+
+  Result<encryption::UniverseKeyRegistryPB> GetFullUniverseKeyRegistry();
 
   // Get the AutoFlagConfig from master. Returns std::nullopt if master is runnning on an older
   // version that does not support AutoFlags.

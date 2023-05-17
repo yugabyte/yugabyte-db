@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,7 +75,7 @@ public class AllowedActionsHelper {
     if (action == NodeActionType.STOP
         || action == NodeActionType.REMOVE
         || action == NodeActionType.REBOOT) {
-      String errorMsg = removeMasterErrOrNull(action);
+      String errorMsg = removeProcessesErrOrNull(action);
       if (errorMsg != null) {
         return errorMsg;
       }
@@ -114,10 +115,7 @@ public class AllowedActionsHelper {
       if (node.isMaster) {
         // a primary node is being removed
         long numNodesUp =
-            universe
-                .getUniverseDetails()
-                .getNodesInCluster(cluster.uuid)
-                .stream()
+            universe.getUniverseDetails().getNodesInCluster(cluster.uuid).stream()
                 .filter(n -> n != node && n.state == Live)
                 .count();
         if (numNodesUp == 0) {
@@ -128,33 +126,42 @@ public class AllowedActionsHelper {
     return null;
   }
 
-  private String removeMasterErrOrNull(NodeActionType action) {
+  private String removeProcessesErrOrNull(NodeActionType action) {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     if (cluster.clusterType == PRIMARY) {
       if (node.isMaster) {
-        // Number of live masters excluding this node.
-        long numOtherMasterNodesUp =
-            universe
-                .getUniverseDetails()
-                .getNodesInCluster(cluster.uuid)
-                .stream()
-                .filter(n -> n.isMaster && n.state == Live)
-                .filter(n -> !n.nodeName.equals(node.nodeName))
-                .count();
-        if (numOtherMasterNodesUp < (cluster.userIntent.replicationFactor + 1) / 2) {
-          long currentCount = numOtherMasterNodesUp;
-          if (node.isMaster && node.state == Live) {
-            currentCount++;
-          }
-          return errorMsg(
-              action,
-              "As it will under replicate the masters (count = "
-                  + currentCount
-                  + ", replicationFactor = "
-                  + cluster.userIntent.replicationFactor
-                  + ")");
-        }
+        return removePrimaryProcessOrNull(action, cluster, true);
+      } else if (node.isTserver && cluster.userIntent.dedicatedNodes) {
+        return removePrimaryProcessOrNull(action, cluster, false);
       }
+    }
+    return null;
+  }
+
+  private String removePrimaryProcessOrNull(
+      NodeActionType action, UniverseDefinitionTaskParams.Cluster cluster, boolean isMaster) {
+    Predicate<NodeDetails> predicate = n -> isMaster ? n.isMaster : n.isTserver;
+    long numOtherNodesUp =
+        universe.getUniverseDetails().getNodesInCluster(cluster.uuid).stream()
+            .filter(predicate)
+            .filter(n -> n.state == Live)
+            .filter(n -> !n.nodeName.equals(node.nodeName))
+            .count();
+    if (numOtherNodesUp < (cluster.userIntent.replicationFactor + 1) / 2) {
+      long currentCount = numOtherNodesUp;
+      if (predicate.test(node) && node.state == Live) {
+        currentCount++;
+      }
+      String processName = isMaster ? "masters" : "tservers";
+      return errorMsg(
+          action,
+          "As it will under replicate the "
+              + processName
+              + " (count = "
+              + currentCount
+              + ", replicationFactor = "
+              + cluster.userIntent.replicationFactor
+              + ")");
     }
     return null;
   }
@@ -163,14 +170,18 @@ public class AllowedActionsHelper {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     if ((cluster.clusterType == PRIMARY) && (node.state == NodeState.Decommissioned)) {
       int nodesInCluster = universe.getUniverseDetails().getNodesInCluster(cluster.uuid).size();
-      if (nodesInCluster <= cluster.userIntent.replicationFactor) {
+      int minNodes =
+          cluster.userIntent.dedicatedNodes
+              ? cluster.userIntent.replicationFactor * 2
+              : cluster.userIntent.replicationFactor;
+      if (nodesInCluster <= minNodes) {
         return errorMsg(
             action,
-            "Unable to have less nodes than RF (count = "
-                + nodesInCluster
-                + ", replicationFactor = "
-                + cluster.userIntent.replicationFactor
-                + ")");
+            String.format(
+                "Unable to have less nodes than %s (count = %d, replicationFactor = %d)",
+                cluster.userIntent.dedicatedNodes ? "2 * RF" : "RF",
+                nodesInCluster,
+                cluster.userIntent.replicationFactor));
       }
     }
     return null;

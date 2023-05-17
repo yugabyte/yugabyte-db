@@ -607,7 +607,7 @@ Replication factor of the YugabyteDB cluster can be manually set with `--rf` fla
 
 To use the latest features of the database and apply the latest security fixes, it's prudent to upgrade your YugabyteDB cluster to the latest available release when its available. This section describes about rolling out upgrades to your YugabyteDB cluster using yugabyted. Upgrading an existing YugabyteDB cluster includes the following steps:
 
-- Step 1: Download the current [YugabyteDB preview release](https://download.yugabyte.com/).
+- Step 1: Download the current [YugabyteDB preview release](https://download.yugabyte.com/#/).
 
 - Step 2: Stop the running YugabyteDB node, using `yugabyted stop` command.
 
@@ -621,7 +621,7 @@ Repeat the above steps on all the nodes of a YugabyteDB cluster, one node at a t
 
 {{< note title="Note" >}}
 
-Multi-zone, multi-region deployment is supported in the latest [YugabyteDB 2.15.0.0](https://download.yugabyte.com/) release.
+Multi-zone, multi-region deployment is supported in YugabyteDB 2.15.0.0 and later.
 
 {{< /note >}}
 
@@ -633,7 +633,7 @@ The following steps assume that you already have a running YugabyteDB cluster de
   ./bin/yugabyted stop
   ```
 
-- Step 2: Download the current [YugabyteDB preview release](https://download.yugabyte.com/).
+- Step 2: Download the current [YugabyteDB preview release](https://download.yugabyte.com/#/).
 
 - Step 3: Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information as follows:
 

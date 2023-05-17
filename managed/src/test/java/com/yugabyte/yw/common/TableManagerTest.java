@@ -29,12 +29,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -283,9 +283,7 @@ public class TableManagerTest extends FakeDBApplication {
       cmd.add(
           Json.stringify(
               Json.toJson(
-                  testUniverse
-                      .getTServers()
-                      .stream()
+                  testUniverse.getTServers().stream()
                       .collect(Collectors.toMap(t -> t.cloudInfo.private_ip, t -> pkPath)))));
     }
     cmd.add("--backup_location");

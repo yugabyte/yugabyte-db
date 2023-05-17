@@ -18,7 +18,6 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
@@ -46,7 +45,6 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private NodeAgentClient mockNodeAgentClient;
 
-  @Mock private RuntimeConfGetter runtimeConfGetter;
   private NodeAgentManager nodeAgentManager;
   private NodeAgentHandler nodeAgentHandler;
   private Customer customer;
@@ -54,7 +52,7 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, runtimeConfGetter);
+    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper);
     nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
 
     nodeAgentHandler.enableConnectionValidation(false);
@@ -96,12 +94,12 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     assertNotNull(nodeAgent.getUuid());
     UUID nodeAgentUuid = nodeAgent.getUuid();
     verify(mockAppConfig, times(1)).getString(eq("yb.storage.path"));
-    String serverCert = nodeAgent.getConfig().get(NodeAgent.SERVER_CERT_PROPERTY);
+    String serverCert = nodeAgent.getConfig().getServerCert();
     assertNotNull(serverCert);
     Path serverCertPath = nodeAgent.getServerCertFilePath();
     assertNotNull(serverCertPath);
     assertTrue(Files.exists(serverCertPath));
-    String serverKey = nodeAgent.getConfig().get(NodeAgent.SERVER_KEY_PROPERTY);
+    String serverKey = nodeAgent.getConfig().getServerKey();
     assertNotNull(serverKey);
     Path serverKeyPath = nodeAgent.getServerKeyFilePath();
     assertNotNull(serverKeyPath);

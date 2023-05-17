@@ -90,7 +90,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
         TaskType taskType = tasks.get(0).getTaskType();
 
         assertEquals(1, tasks.size());
-        assertEquals(type, taskType);
+        assertEquals("At position " + position, type, taskType);
         if (!NON_NODE_TASKS.contains(taskType)) {
           Map<String, Object> assertValues =
               new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
@@ -149,8 +149,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Override
   protected List<Integer> getRollingUpgradeNodeOrder(UniverseTaskBase.ServerType serverType) {
-    return super.getRollingUpgradeNodeOrder(serverType)
-        .stream()
+    return super.getRollingUpgradeNodeOrder(serverType).stream()
         .filter(idx -> !nodesToFilter.contains(idx))
         .collect(Collectors.toList());
   }

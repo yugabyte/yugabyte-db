@@ -13,6 +13,11 @@
 
 #pragma once
 
+#include <functional>
+#include <utility>
+
+#include <boost/optional/optional.hpp>
+
 #include "yb/common/pgsql_protocol.pb.h"
 
 #include "yb/docdb/doc_expr.h"
@@ -22,13 +27,11 @@
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
+#include "yb/util/operation_counter.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/write_buffer.h"
 
-namespace yb {
-
-class IndexInfo;
-
-namespace docdb {
+namespace yb::docdb {
 
 YB_STRONGLY_TYPED_BOOL(IsUpsert);
 
@@ -93,9 +96,10 @@ class PgsqlWriteOperation :
                    const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   // Reading current row before operating on it.
-  Status ReadColumns(const DocOperationApplyData& data, QLTableRow* table_row);
+  // Returns true if row was present.
+  Result<bool> ReadColumns(const DocOperationApplyData& data, qlexpr::QLTableRow* table_row);
 
-  Status PopulateResultSet(const QLTableRow& table_row);
+  Status PopulateResultSet(const qlexpr::QLTableRow& table_row);
 
   // Reading path to operate on.
   Status GetDocPaths(GetDocPathsMode mode,
@@ -105,13 +109,13 @@ class PgsqlWriteOperation :
   class RowPackContext;
 
   Status InsertColumn(
-      const DocOperationApplyData& data, const QLTableRow& table_row,
+      const DocOperationApplyData& data, const qlexpr::QLTableRow& table_row,
       const PgsqlColumnValuePB& column_value, RowPackContext* pack_context);
 
   Status UpdateColumn(
-      const DocOperationApplyData& data, const QLTableRow& table_row,
-      const PgsqlColumnValuePB& column_value, QLTableRow* returning_table_row,
-      QLExprResult* result, RowPackContext* pack_context);
+      const DocOperationApplyData& data, const qlexpr::QLTableRow& table_row,
+      const PgsqlColumnValuePB& column_value, qlexpr::QLTableRow* returning_table_row,
+      qlexpr::QLExprResult* result, RowPackContext* pack_context);
 
   //------------------------------------------------------------------------------------------------
   // Context.
@@ -164,6 +168,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                          bool is_explicit_request_read_time,
                          const DocReadContext& doc_read_context,
                          const DocReadContext* index_doc_read_context,
+                         std::reference_wrapper<const ScopedRWOperation> pending_op,
                          WriteBuffer* result_buffer,
                          HybridTime* restart_read_ht,
                          const DocDBStatistics* statistics = nullptr);
@@ -180,6 +185,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
                                const DocReadContext* index_doc_read_context,
+                               std::reference_wrapper<const ScopedRWOperation> pending_op,
                                WriteBuffer* result_buffer,
                                HybridTime* restart_read_ht,
                                bool* has_paging_state,
@@ -190,6 +196,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                     CoarseTimePoint deadline,
                                     const ReadHybridTime& read_time,
                                     const DocReadContext& doc_read_context,
+                                    std::reference_wrapper<const ScopedRWOperation> pending_op,
                                     WriteBuffer* result_buffer,
                                     HybridTime* restart_read_ht,
                                     const DocDBStatistics* statistics);
@@ -199,25 +206,23 @@ class PgsqlReadOperation : public DocExprExecutor {
                                const ReadHybridTime& read_time,
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
+                               std::reference_wrapper<const ScopedRWOperation> pending_op,
                                WriteBuffer* result_buffer,
                                HybridTime* restart_read_ht,
                                bool* has_paging_state,
                                const DocDBStatistics* statistics);
 
-  Status PopulateResultSet(const QLTableRow& table_row,
+  Status PopulateResultSet(const qlexpr::QLTableRow& table_row,
                            WriteBuffer *result_buffer);
 
-  Status EvalAggregate(const QLTableRow& table_row);
+  Status EvalAggregate(const qlexpr::QLTableRow& table_row);
 
   Status PopulateAggregate(WriteBuffer *result_buffer);
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  Status SetPagingState(
-      YQLRowwiseIteratorIf* iter,
-      const Schema& schema,
-      const ReadHybridTime& read_time,
-      bool* has_paging_state);
+  Result<bool> SetPagingState(
+      YQLRowwiseIteratorIf* iter, const Schema& schema, const ReadHybridTime& read_time);
 
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;
@@ -227,5 +232,4 @@ class PgsqlReadOperation : public DocExprExecutor {
   YQLRowwiseIteratorIf::UniPtr index_iter_;
 };
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

@@ -27,6 +27,7 @@ import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -409,6 +410,10 @@ public class CertificateInfo extends Model {
     return find.query().where().eq("label", label).findOne();
   }
 
+  public static List<CertificateInfo> getAll() {
+    return find.query().where().findList();
+  }
+
   public static CertificateInfo getOrBadRequest(String label) {
     CertificateInfo certificateInfo = get(label);
     if (certificateInfo == null) {
@@ -421,16 +426,14 @@ public class CertificateInfo extends Model {
       String label, CertConfigType certType) {
     List<CertificateInfo> certificateInfoList =
         find.query().where().eq("cert_type", certType).like("label", label + "%").findList();
-    return certificateInfoList
-        .stream()
+    return certificateInfoList.stream()
         .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
         .collect(Collectors.toList());
   }
 
   public static List<CertificateInfo> getAllNoChecksum() {
     List<CertificateInfo> certificateInfoList = find.query().where().isNull("checksum").findList();
-    return certificateInfoList
-        .stream()
+    return certificateInfoList.stream()
         .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
         .collect(Collectors.toList());
   }
@@ -440,8 +443,7 @@ public class CertificateInfo extends Model {
         find.query().where().eq("customer_uuid", customerUUID).findList();
 
     certificateInfoList =
-        certificateInfoList
-            .stream()
+        certificateInfoList.stream()
             .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
             .collect(Collectors.toList());
 
@@ -551,6 +553,9 @@ public class CertificateInfo extends Model {
   public static void delete(UUID certUUID, UUID customerUUID) {
     CertificateInfo certificate = CertificateInfo.getOrBadRequest(certUUID, customerUUID);
     if (!certificate.getInUse()) {
+      // Delete the certs from FS & DB.
+      File certDirectory = new File(certificate.getCertificate()).getParentFile();
+      FileData.deleteFiles(certDirectory.getAbsolutePath(), true);
       if (certificate.delete()) {
         LOG.info("Successfully deleted the certificate: " + certUUID);
       } else {

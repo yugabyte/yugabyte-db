@@ -51,6 +51,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetReplicationStatus)
     (GetTableSchemaFromSysCatalog)
     (ChangeXClusterRole)
+    (BootstrapProducer)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(CatalogManager, (GetXClusterSafeTime))

@@ -1,4 +1,4 @@
-# <img src="https://www.yugabyte.com/wp-content/uploads/2021/05/yb_horizontal_alt_color_RGB.png" align="top" alt="YugabyteDB" height="51"/> CONTRIBUTORS
+# <img src="https://cloud.yugabyte.com/logo-big.png" align="top" alt="YugabyteDB" height="51"/> CONTRIBUTORS
 
 ## New Contributors
 

@@ -1,10 +1,27 @@
 // Copyright (c) YugaByte, Inc.
 import _ from 'lodash';
 
-import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from './ObjectUtils';
-import { PROVIDER_TYPES , BASE_URL } from '../config';
+import {
+  isNonEmptyArray,
+  isNonEmptyObject,
+  isDefinedNotNull,
+  isNonEmptyString
+} from './ObjectUtils';
+import { PROVIDER_TYPES, BASE_URL } from '../config';
 import { NodeState } from '../redesign/helpers/dtos';
 
+export const CONST_VALUES = {
+  LDAP: 'ldap',
+  EMPTY_STRING: '',
+  SPACE_SEPARATOR: ' ',
+  DOUBLE_QUOTES_SEPARATOR: '"',
+  DOUBLE_DOUBLE_QUOTES_SEPARATOR: '""',
+  SINGLE_QUOTES_SEPARATOR: "'",
+  COMMA_SEPARATOR: ',',
+  EQUALS: '='
+};
+
+export const GFLAG_EDIT = 'EDIT';
 
 export const nodeInClusterStates = [
   NodeState.Live,
@@ -230,4 +247,163 @@ export const readUploadedFile = (inputFile, isRequired) => {
 
 export const getProxyNodeAddress = (universeUUID, nodeIp, nodePort) => {
   return `${BASE_URL}/universes/${universeUUID}/proxy/${nodeIp}:${nodePort}/`;
+};
+
+export const isLDAPKeywordExist = (GFlagInput) => {
+  return GFlagInput.includes(CONST_VALUES.LDAP);
+};
+
+/**
+ * Unformat LDAP Configuration string to ensure they are split into rows accordingly in EDIT mode
+ *
+ * @param GFlagInput The entire Gflag configuration enetered that needs to be unformatted
+ */
+export const unformatLDAPConf = (GFlagInput) => {
+  // Regex expression to extract non-quoted comma
+  const filteredGFlagInput = GFlagInput.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+
+  const unformattedConf = filteredGFlagInput?.map((GFlagRowConf, index) => {
+    const hasInputStartQuotes =
+      GFlagRowConf.startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) ||
+      GFlagRowConf.startsWith(CONST_VALUES.SINGLE_QUOTES_SEPARATOR);
+    const hasInputEndQuotes =
+      GFlagRowConf.endsWith(CONST_VALUES.SINGLE_QUOTES_SEPARATOR) ||
+      GFlagRowConf.endsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR);
+    let GFlagRowConfSubset = '';
+
+    if (hasInputStartQuotes || hasInputEndQuotes) {
+      GFlagRowConfSubset = GFlagRowConf.substring(
+        hasInputStartQuotes ? 1 : 0,
+        hasInputEndQuotes
+          ? GFlagRowConf[0].startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
+            GFlagRowConf[GFlagRowConf.length - 2].startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR)
+            ? GFlagRowConf.length - 2
+            : GFlagRowConf.length - 1
+          : GFlagRowConf.length
+      );
+    }
+    return {
+      id: `item-${index}`,
+      index: index,
+      content: isNonEmptyString(GFlagRowConfSubset) ? GFlagRowConfSubset : GFlagRowConf,
+      error: false
+    };
+  });
+
+  return unformattedConf;
+};
+
+/**
+  * Format LDAP Configuration string based on rules here: 
+  * https://docs.yugabyte.com/preview/reference/configuration/yb-tserver/#ysql-hba-conf-csv
+  *
+  * @param GFlagInput Input entered in the text field
+
+*/
+export const formatLDAPConf = (GFlagInput) => {
+  const LDAPKeywordLength = CONST_VALUES.LDAP.length;
+  const isLDAPExist = isLDAPKeywordExist(GFlagInput);
+
+  if (isLDAPExist) {
+    const LDAPKeywordIndex = GFlagInput.indexOf(CONST_VALUES.LDAP);
+    const initialLDAPConf = GFlagInput.substring(0, LDAPKeywordIndex + 1 + LDAPKeywordLength);
+    // Get the substring of entire configuration which has LDAP attributes
+    const LDAPRowWithAttributes = GFlagInput?.substring(
+      LDAPKeywordIndex + 1 + LDAPKeywordLength,
+      GFlagInput.length
+    );
+
+    // Extract LDAP Attributes key/value pair
+    const LDAPAttributes = LDAPRowWithAttributes?.match(/"([^"]+)"|""([^""]+)""|[^" ]+/g);
+    const appendedLDAPConf = LDAPAttributes?.reduce((accumulator, attribute, index) => {
+      if (
+        attribute.startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
+        !attribute.startsWith(CONST_VALUES.DOUBLE_DOUBLE_QUOTES_SEPARATOR)
+      ) {
+        accumulator =
+          accumulator +
+          CONST_VALUES.DOUBLE_QUOTES_SEPARATOR +
+          attribute +
+          CONST_VALUES.DOUBLE_QUOTES_SEPARATOR +
+          (index === LDAPAttributes.length - 1
+            ? CONST_VALUES.EMPTY_STRING
+            : CONST_VALUES.SPACE_SEPARATOR);
+      } else if (attribute.startsWith(CONST_VALUES.DOUBLE_DOUBLE_QUOTES_SEPARATOR)) {
+        accumulator =
+          accumulator +
+          attribute +
+          (index === LDAPAttributes.length - 1
+            ? CONST_VALUES.EMPTY_STRING
+            : CONST_VALUES.SPACE_SEPARATOR);
+      } else {
+        accumulator =
+          accumulator +
+          attribute +
+          (attribute.endsWith(CONST_VALUES.EQUALS)
+            ? CONST_VALUES.EMPTY_STRING
+            : index === LDAPAttributes.length - 1
+            ? CONST_VALUES.EMPTY_STRING
+            : CONST_VALUES.SPACE_SEPARATOR);
+      }
+      return accumulator;
+    }, CONST_VALUES.EMPTY_STRING);
+
+    return initialLDAPConf + appendedLDAPConf;
+  }
+  return GFlagInput;
+};
+
+/**
+  * verifyLDAPAttributes checks for certain validation rules and return a boolean value.
+  * to indicate if GFlag Conf does not meet the criteria
+  *
+  * @param GFlagInput Input entered in the text field
+
+*/
+export const verifyLDAPAttributes = (GFlagInput) => {
+  let isAttributeInvalid = false;
+  let isWarning = false;
+  let errorMessage = '';
+
+  const numNonASCII = GFlagInput.match(/[^\x20-\x7F]+/);
+  if (numNonASCII && numNonASCII?.length > 0) {
+    isAttributeInvalid = false;
+    isWarning = true;
+    errorMessage = 'universeForm.gFlags.nonASCIIDetected';
+  }
+
+  const LDAPKeywordLength = CONST_VALUES.LDAP.length;
+  const isLDAPExist = isLDAPKeywordExist(GFlagInput);
+
+  if (isLDAPExist) {
+    const LDAPIndex = GFlagInput.indexOf(CONST_VALUES.LDAP);
+    const LDAPConf = GFlagInput?.substring(LDAPIndex + 1 + LDAPKeywordLength, GFlagInput.length);
+    const LDAPAttributes = LDAPConf?.split(CONST_VALUES.SPACE_SEPARATOR);
+    const LDAPRowWithAttributes = LDAPAttributes?.filter((attribute) =>
+      attribute.startsWith(CONST_VALUES.LDAP)
+    );
+
+    for (let index = 0; index < LDAPRowWithAttributes?.length; index++) {
+      const splitLDAPAttribute = LDAPRowWithAttributes[index]?.split(CONST_VALUES.EQUALS);
+      // If a LDAP attribute does not have any value, raise a validation error
+      if (splitLDAPAttribute?.length < 2 && isNonEmptyString(splitLDAPAttribute?.[0])) {
+        isAttributeInvalid = true;
+        isWarning = false;
+        errorMessage = 'universeForm.gFlags.LDAPMissingAttributeValue';
+        break;
+      }
+      // If a LDAP attribute starts with double quotes and does not end with it, raise a validation error
+      if (
+        splitLDAPAttribute.length === 2 &&
+        splitLDAPAttribute[1].startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
+        !splitLDAPAttribute[1].endsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR)
+      ) {
+        isAttributeInvalid = true;
+        isWarning = false;
+        errorMessage = 'universeForm.gFlags.LDAPMissingQuote';
+        break;
+      }
+    }
+  }
+  return { isAttributeInvalid, errorMessage, isWarning };
 };

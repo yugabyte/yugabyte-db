@@ -169,8 +169,7 @@ public class MetricQueryResponse {
         nameOrderMap.put(alias, position++);
       }
     }
-    return graphData
-        .stream()
+    return graphData.stream()
         .sorted(
             Comparator.comparing(
                 data -> {
@@ -224,8 +223,8 @@ public class MetricQueryResponse {
         if (valueNode != null) {
           entry.values.add(
               new ImmutablePair<>(
-                  new Double(valueNode.get(0).asText()), // timestamp
-                  new Double(valueNode.get(1).asText()) // value
+                  Double.parseDouble(valueNode.get(0).asText()), // timestamp
+                  Double.parseDouble(valueNode.get(1).asText()) // value
                   ));
         } else if (valuesNode != null) {
           entry.values = new ArrayList<>();
@@ -234,8 +233,8 @@ public class MetricQueryResponse {
             final JsonNode eachValueNode = elements.next();
             entry.values.add(
                 new ImmutablePair<>(
-                    new Double(eachValueNode.get(0).asText()), // timestamp
-                    new Double(eachValueNode.get(1).asText()) // value
+                    Double.parseDouble(eachValueNode.get(0).asText()), // timestamp
+                    Double.parseDouble(eachValueNode.get(1).asText()) // value
                     ));
           }
         }

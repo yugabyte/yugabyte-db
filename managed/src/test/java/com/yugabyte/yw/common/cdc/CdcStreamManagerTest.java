@@ -1,25 +1,23 @@
 package com.yugabyte.yw.common.cdc;
 
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.models.Universe;
-import kamon.lib.org.checkerframework.checker.nullness.Opt;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.CDCStreamInfo;
-import org.yb.client.ListCDCStreamsResponse;
-import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
-import org.yb.master.MasterReplicationOuterClass;
-
-import java.util.*;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+
+import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.models.Universe;
+import java.util.*;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
+import org.yb.client.CDCStreamInfo;
+import org.yb.client.ListCDCStreamsResponse;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.YBClient;
+import org.yb.master.MasterReplicationOuterClass;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CdcStreamManagerTest {

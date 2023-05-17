@@ -15,11 +15,11 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/pg_types.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -63,7 +63,7 @@ Status ApplyWriteRequest(
       kLogPrefix, TableType::YQL_TABLE_TYPE, schema, write_request.schema_version());
   docdb::DocOperationApplyData apply_data{
       .doc_write_batch = write_batch, .deadline = {}, .read_time = {}, .restart_read_ht = nullptr};
-  IndexMap index_map;
+  qlexpr::IndexMap index_map;
   docdb::QLWriteOperation operation(
       write_request, write_request.schema_version(), doc_read_context, index_map, nullptr,
       TransactionOperationContext());
@@ -739,13 +739,15 @@ std::string RestoreSysCatalogState::Objects::SizesToString() const {
 template <class PB>
 Status RestoreSysCatalogState::IterateSysCatalog(
     const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
-    HybridTime read_time, std::unordered_map<std::string, PB>* map,
+    std::reference_wrapper<const ScopedRWOperation> pending_op, HybridTime read_time,
+    std::unordered_map<std::string, PB>* map,
     std::unordered_map<std::string, PB>* sequences_data_map) {
-  auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-      doc_read_context.schema, doc_read_context, TransactionOperationContext(), doc_db,
-      CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), nullptr);
+  dockv::ReaderProjection projection(doc_read_context.schema);
+  docdb::DocRowwiseIterator iter = docdb::DocRowwiseIterator(
+      projection, doc_read_context, TransactionOperationContext(), doc_db,
+      CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), pending_op, nullptr);
   return EnumerateSysCatalog(
-      iter.get(), doc_read_context.schema, GetEntryType<PB>::value, [map, sequences_data_map](
+      &iter, doc_read_context.schema, GetEntryType<PB>::value, [map, sequences_data_map](
           const Slice& id, const Slice& data) -> Status {
     auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data));
     if (!ShouldLoadObject(pb)) {
@@ -766,25 +768,32 @@ Status RestoreSysCatalogState::IterateSysCatalog(
 }
 
 Status RestoreSysCatalogState::LoadObjects(
-    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db, HybridTime read_time,
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> pending_op, HybridTime read_time,
     Objects* objects) {
   RETURN_NOT_OK(IterateSysCatalog(
-      doc_read_context, doc_db, read_time, &objects->namespaces, &objects->sequences_namespace));
+      doc_read_context, doc_db, pending_op, read_time, &objects->namespaces,
+      &objects->sequences_namespace));
   RETURN_NOT_OK(IterateSysCatalog(
-      doc_read_context, doc_db, read_time, &objects->tables, &objects->sequences_table));
+      doc_read_context, doc_db, pending_op, read_time, &objects->tables,
+      &objects->sequences_table));
   RETURN_NOT_OK(IterateSysCatalog(
-      doc_read_context, doc_db, read_time, &objects->tablets, &objects->sequences_tablets));
+      doc_read_context, doc_db, pending_op, read_time, &objects->tablets,
+      &objects->sequences_tablets));
   return Status::OK();
 }
 
 Status RestoreSysCatalogState::LoadRestoringObjects(
-    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db) {
-  return LoadObjects(doc_read_context, doc_db, restoration_.restore_at, &restoring_objects_);
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> pending_op) {
+  return LoadObjects(
+      doc_read_context, doc_db, pending_op, restoration_.restore_at, &restoring_objects_);
 }
 
 Status RestoreSysCatalogState::LoadExistingObjects(
-    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db) {
-  return LoadObjects(doc_read_context, doc_db, HybridTime::kMax, &existing_objects_);
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> pending_op) {
+  return LoadObjects(doc_read_context, doc_db, pending_op, HybridTime::kMax, &existing_objects_);
 }
 
 Status RestoreSysCatalogState::CheckExistingEntry(
@@ -897,12 +906,13 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
     docdb::DocWriteBatch* write_batch) {
   std::string config_type;
   SysConfigEntryPB catalog_meta;
-  auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-      doc_read_context.schema, doc_read_context, TransactionOperationContext(), doc_db,
-      CoarseTimePoint::max(), ReadHybridTime::Max(), nullptr);
+  dockv::ReaderProjection projection(doc_read_context.schema);
+  auto iter = docdb::DocRowwiseIterator(
+      projection, doc_read_context, TransactionOperationContext(), doc_db,
+      CoarseTimePoint::max(), ReadHybridTime::Max(), write_batch->pending_op(), nullptr);
 
   RETURN_NOT_OK(EnumerateSysCatalog(
-      iter.get(), doc_read_context.schema, SysRowEntryType::SYS_CONFIG,
+      &iter, doc_read_context.schema, SysRowEntryType::SYS_CONFIG,
       [&](const Slice& id, const Slice& data) -> Status {
         if (id.ToBuffer() != kYsqlCatalogConfigType) {
           return Status::OK();

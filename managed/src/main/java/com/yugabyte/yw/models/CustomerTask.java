@@ -294,7 +294,10 @@ public class CustomerTask extends Model {
     UpgradeUniverseYbc,
 
     @EnumValue("DisableYbc")
-    DisableYbc;
+    DisableYbc,
+
+    @EnumValue("CreateImageBundle")
+    CreateImageBundle;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -424,6 +427,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Ybc" : "Upgrading Ybc";
         case DisableYbc:
           return completed ? "Disabled Ybc" : "Disabling Ybc";
+        case CreateImageBundle:
+          return completed ? "Created" : "Creating";
         default:
           return null;
       }
@@ -714,8 +719,7 @@ public class CustomerTask extends Model {
   }
 
   private static String maybeGetEmailFromSchedule() {
-    return Schedule.getAllActive()
-        .stream()
+    return Schedule.getAllActive().stream()
         .filter(Schedule::isRunningState)
         .findAny()
         .map(Schedule::getUserEmail)

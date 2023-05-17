@@ -1,7 +1,7 @@
 ---
 title: Prepare nodes for on-premises deployment
 headerTitle: Prepare nodes for on-premises deployment
-linkTitle: Prepare nodes
+linkTitle: Prepare on-prem nodes
 description: Prepare YugabyteDB nodes for on-premises deployments.
 menu:
   preview_yugabyte-platform:

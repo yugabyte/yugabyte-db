@@ -13,6 +13,8 @@ import {
 } from '../../../actions/customers';
 import { RuntimeConfig } from './RuntimeConfig';
 
+const TOAST_AUTO_CLOSE_INTERVAL = 2000; //ms
+
 const mapDispatchToProps = (dispatch: any) => {
   return {
     fetchRuntimeConfigs: (scope: string = DEFAULT_RUNTIME_GLOBAL_SCOPE) => {
@@ -39,9 +41,13 @@ const mapDispatchToProps = (dispatch: any) => {
               typeof responseError !== 'string'
                 ? 'Could not save config, try again'
                 : responseError;
-            toast.error(errorMessage);
+            toast.error(errorMessage, {
+              autoClose: TOAST_AUTO_CLOSE_INTERVAL
+            });
           } else {
-            toast.success('Config saved successfully');
+            toast.success('Config saved successfully', {
+              autoClose: TOAST_AUTO_CLOSE_INTERVAL
+            });
             dispatch(setRunTimeConfigResponse(response.payload));
           }
         } catch (error) {
@@ -62,9 +68,13 @@ const mapDispatchToProps = (dispatch: any) => {
       ).then((response: any) => {
         try {
           if (response.payload.isAxiosError || response.payload.status !== 200) {
-            toast.error('Could not delete config, try again');
+            toast.error('Could not delete config, try again', {
+              autoClose: TOAST_AUTO_CLOSE_INTERVAL
+            });
           } else {
-            toast.success('Config resetted to parent scope successfully');
+            toast.success('Config resetted to parent scope successfully', {
+              autoClose: TOAST_AUTO_CLOSE_INTERVAL
+            });
             dispatch(deleteRunTimeConfigResponse(response.payload));
           }
         } catch (error) {

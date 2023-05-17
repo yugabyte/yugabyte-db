@@ -41,7 +41,7 @@
 
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/transaction.h"
 
 #include "yb/master/master_fwd.h"
@@ -53,6 +53,7 @@
 #include "yb/server/server_base_options.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -130,10 +131,13 @@ class YBClient::Data {
                                  bool *create_in_progress);
 
   // Take one of table id or name.
-  Status WaitForCreateTableToFinish(YBClient* client,
-                                    const YBTableName& table_name,
-                                    const std::string& table_id,
-                                    CoarseTimePoint deadline);
+  Status WaitForCreateTableToFinish(
+      YBClient* client,
+      const YBTableName& table_name,
+      const std::string& table_id,
+      CoarseTimePoint deadline,
+      const uint32_t max_jitter_ms = CoarseBackoffWaiter::kDefaultMaxJitterMs,
+      const uint32_t init_exponent = CoarseBackoffWaiter::kDefaultInitExponent);
 
   // Take one of table id or name.
   Status DeleteTable(YBClient* client,
@@ -232,8 +236,8 @@ class YBClient::Data {
                                    const FlushRequestId& flush_id,
                                    const CoarseTimePoint deadline);
 
-  Status GetCompactionStatus(
-      const YBTableName& table_name, const CoarseTimePoint deadline, MonoTime* last_request_time);
+  Result<TableCompactionStatus> GetCompactionStatus(
+      const YBTableName& table_name, bool show_tablets, const CoarseTimePoint deadline);
 
   Status GetTableSchema(YBClient* client,
                         const YBTableName& table_name,
@@ -294,6 +298,7 @@ class YBClient::Data {
   void CreateCDCStream(YBClient* client,
                        const TableId& table_id,
                        const std::unordered_map<std::string, std::string>& options,
+                       cdc::StreamModeTransactional transactional,
                        CoarseTimePoint deadline,
                        CreateCDCStreamCallback callback);
 
@@ -301,6 +306,15 @@ class YBClient::Data {
                        const CDCStreamId& stream_id,
                        CoarseTimePoint deadline,
                        StatusCallback callback);
+
+  Status BootstrapProducer(
+      YBClient* client,
+      const YQLDatabase& db_type,
+      const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName>& pg_schema_names,
+      const std::vector<TableName>& table_names,
+      CoarseTimePoint deadline,
+      BootstrapProducerCallback callback);
 
   void GetCDCDBStreamInfo(YBClient *client,
     const std::string &db_stream_id,
@@ -378,6 +392,7 @@ class YBClient::Data {
   std::shared_ptr<master::MasterDclProxy> master_dcl_proxy() const;
   std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy() const;
   std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy() const;
+  std::shared_ptr<master::MasterEncryptionProxy> master_encryption_proxy() const;
 
   HostPort leader_master_hostport() const;
 
@@ -490,6 +505,7 @@ class YBClient::Data {
   std::shared_ptr<master::MasterDclProxy> master_dcl_proxy_;
   std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy_;
   std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy_;
+  std::shared_ptr<master::MasterEncryptionProxy> master_encryption_proxy_;
 
   // Ref-counted RPC instance: since 'SetMasterServerProxyAsync' call
   // is asynchronous, we need to hold a reference in this class

@@ -974,6 +974,16 @@ Status PgApiImpl::AlterTableIncrementSchemaVersion(PgStatement *handle) {
   return pg_stmt->IncrementSchemaVersion();
 }
 
+Status PgApiImpl::AlterTableSetTableId(PgStatement *handle, const PgObjectId &table_id) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable *>(handle);
+  return pg_stmt->SetTableId(table_id);
+}
+
 Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
     // Invalid handle.
@@ -1217,7 +1227,7 @@ Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual, bool is_prima
   return down_cast<PgDml*>(handle)->AppendQual(qual, is_primary);
 }
 
-Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgExpr *colref, bool is_primary) {
+Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_primary) {
   return down_cast<PgDml*>(handle)->AppendColumnRef(colref, is_primary);
 }
 
@@ -1565,8 +1575,8 @@ Status PgApiImpl::NewColumnRef(
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  *expr_handle = stmt->arena().NewObject<PgColumnRef>(
-      attr_num, type_entity, collate_is_valid_non_c, type_attrs);
+  *expr_handle = PgColumnRef::Create(
+     &stmt->arena(), attr_num, type_entity, collate_is_valid_non_c, type_attrs);
 
   return Status::OK();
 }
@@ -1645,8 +1655,7 @@ Status PgApiImpl::NewOperator(
   RETURN_NOT_OK(PgExpr::CheckOperatorName(opname));
 
   // Create operator.
-  *op_handle = stmt->arena().NewObject<PgOperator>(
-      &stmt->arena(), opname, type_entity, collate_is_valid_non_c);
+  *op_handle = PgOperator::Create(&stmt->arena(), opname, type_entity, collate_is_valid_non_c);
 
   return Status::OK();
 }
@@ -1828,9 +1837,9 @@ Status PgApiImpl::ExitSeparateDdlTxnMode() {
   return Status::OK();
 }
 
-void PgApiImpl::ClearSeparateDdlTxnMode() {
+Status PgApiImpl::ClearSeparateDdlTxnMode() {
   pg_session_->DropBufferedOperations();
-  CHECK_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kFalse));
+  return pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kFalse);
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {

@@ -52,11 +52,13 @@ public class PromoteAutoFlags extends ServerSubTaskBase {
           throw new PlatformServiceException(INTERNAL_SERVER_ERROR, error.toString());
         }
       }
-    } catch (PlatformServiceException e) {
-      throw e;
+    } catch (PlatformServiceException pe) {
+      log.error("Promote auto flags task failed: ", pe);
+      throw pe;
     } catch (Exception e) {
       log.error("Promote AutoFlag task failed: ", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
+    log.info("Completed {}", getName());
   }
 }

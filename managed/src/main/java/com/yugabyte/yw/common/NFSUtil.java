@@ -4,17 +4,15 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.google.inject.Singleton;
 import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.Universe;
-
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.collections.CollectionUtils;
@@ -75,9 +73,7 @@ public class NFSUtil implements StorageUtil {
     Map<String, String> regionLocationsMap = new HashMap<>();
     CustomerConfigStorageNFSData nfsData = (CustomerConfigStorageNFSData) configData;
     if (CollectionUtils.isNotEmpty(nfsData.regionLocations)) {
-      nfsData
-          .regionLocations
-          .stream()
+      nfsData.regionLocations.stream()
           .forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
     }
     return regionLocationsMap;

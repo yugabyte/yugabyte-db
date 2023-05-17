@@ -22,7 +22,7 @@ import {
 } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
-import { find, isFunction } from 'lodash';
+import { find, findIndex, isFunction } from 'lodash';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { getKMSConfigs, addIncrementalBackup } from '../common/BackupAPI';
@@ -90,26 +90,48 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
       if (backupDetails!.backupType === TableType.YQL_TABLE_TYPE) {
         responseList = responseList.map((r) => {
           const backupTablesPresentInUniverse = r.tablesList.filter(
-            (tableName) => find(tablesInUniverse, { tableName })?.tableName
+            (tableName) => find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableName
           );
 
           return {
             ...r,
-            tablesList: r.allTables ? [] : backupTablesPresentInUniverse,
+            tableNameList: r.allTables ? [] : backupTablesPresentInUniverse,
             tableUUIDList: r.allTables
               ? []
               : backupTablesPresentInUniverse.map(
-                  (tableName) => find(tablesInUniverse, { tableName })?.tableUUID
+                  (tableName) =>
+                    find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
                 )
           };
         });
       }
 
+      const uniqueKeyspaceResponseList: any[] = [];
+
+      responseList.forEach((r) => {
+        const indexOfKeyspace = findIndex(uniqueKeyspaceResponseList, { keyspace: r.keyspace });
+        if (indexOfKeyspace !== -1) {
+          uniqueKeyspaceResponseList[indexOfKeyspace] = {
+            ...uniqueKeyspaceResponseList[indexOfKeyspace],
+            tableNameList: [
+              ...uniqueKeyspaceResponseList[indexOfKeyspace].tableNameList,
+              ...r.tableNameList!
+            ],
+            tableUUIDList: [
+              ...uniqueKeyspaceResponseList[indexOfKeyspace].tableUUIDList,
+              ...r.tableUUIDList!
+            ]
+          };
+        } else {
+          uniqueKeyspaceResponseList.push(r);
+        }
+      });
+
       return addIncrementalBackup({
         ...backupDetails!,
         commonBackupInfo: {
           ...backupDetails!.commonBackupInfo,
-          responseList
+          responseList: uniqueKeyspaceResponseList
         }
       });
     },
@@ -130,7 +152,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-        return config.metadata.configUUID === backupDetails?.kmsConfigUUID;
+        return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
       })
     : undefined;
 
@@ -282,7 +304,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </div>
               <div>
                 <div className="header-text">KMS Config</div>
-                <div>{kmsConfig ? kmsConfig.label : '-'}</div>
+                <div>{kmsConfig ? kmsConfig.metadata?.name : '-'}</div>
               </div>
             </div>
             {!storageConfigName && (

@@ -14,7 +14,11 @@ menu:
 type: docs
 ---
 
-YugabyteDB allows external applications to set the priority of individual transactions. When using optimistic concurrency control, it is possible to ensure that a higher priority transaction gets priority over a lower priority transaction. In this scenario, if these transactions conflict, the lower priority transaction is aborted. This behavior can be achieved by setting the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is computed and assigned as the transaction priority for the transactions in that session. If this transaction conflicts with another, the value of transaction priority is compared with that of the conflicting transaction. The transaction with a higher priority value wins. To view the transaction priority of the active transaction in current session, run `SHOW yb_transaction_priority` inside the transaction block. If `SHOW yb_transaction_priority` is run outside a transaction block, it will output 0.
+YugabyteDB allows external applications to set the priority of individual transactions. When using optimistic concurrency control, it is possible to ensure that a higher priority transaction gets priority over a lower priority transaction. In this scenario, if these transactions conflict, the lower priority transaction is aborted. This behavior can be achieved by setting the pair of YSQL parameters `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`.
+
+A random number between the lower and upper bound is computed and assigned as the transaction priority for the transactions in that session. If this transaction conflicts with another, the value of transaction priority is compared with that of the conflicting transaction. The transaction with a higher priority value wins.
+
+To view the transaction priority of the active transaction in current session, run `SHOW yb_transaction_priority` inside the transaction block. If `SHOW yb_transaction_priority` is run outside a transaction block, it will output 0.
 
 | Flag | Valid Range | Description |
 | :--- | :---------- | :---------- |

@@ -50,10 +50,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     params.memoryType = Util.AVAILABLE_MEMORY;
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.nodeIpList =
-        defaultUniverse
-            .getUniverseDetails()
-            .nodeDetailsSet
-            .stream()
+        defaultUniverse.getUniverseDetails().nodeDetailsSet.stream()
             .map(node -> node.cloudInfo.private_ip)
             .collect(Collectors.toList());
     ShellResponse shellResponse = new ShellResponse();
@@ -74,10 +71,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     params.memoryType = Util.AVAILABLE_MEMORY;
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.nodeIpList =
-        defaultUniverse
-            .getUniverseDetails()
-            .nodeDetailsSet
-            .stream()
+        defaultUniverse.getUniverseDetails().nodeDetailsSet.stream()
             .map(node -> node.cloudInfo.private_ip)
             .collect(Collectors.toList());
     ShellResponse shellResponse = new ShellResponse();
@@ -99,10 +93,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     params.memoryType = Util.AVAILABLE_MEMORY;
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.nodeIpList =
-        defaultUniverse
-            .getUniverseDetails()
-            .nodeDetailsSet
-            .stream()
+        defaultUniverse.getUniverseDetails().nodeDetailsSet.stream()
             .map(node -> node.cloudInfo.private_ip)
             .collect(Collectors.toList());
     ShellResponse shellResponse = new ShellResponse();

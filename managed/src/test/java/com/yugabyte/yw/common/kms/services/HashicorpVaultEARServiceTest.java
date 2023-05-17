@@ -11,31 +11,31 @@
 
 package com.yugabyte.yw.common.kms.services;
 
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.mockito.Mockito.mockStatic;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultEARServiceUtilTest;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultEARServiceUtilTest;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.UUID;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import play.libs.Json;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.Base64;
 import org.mockito.MockedStatic;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class HashicorpVaultEARServiceTest extends FakeDBApplication {

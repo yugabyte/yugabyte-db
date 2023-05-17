@@ -69,7 +69,8 @@ public class GFlagsUpgradeParams extends UpgradeTaskParams {
       XClusterUniverseService xClusterUniverseService) {
     try {
       Set<UUID> xClusterConnectedUniverseUUIDSet =
-          xClusterUniverseService.getXClusterSourceAndTargetUniverseSet(universe.getUniverseUUID());
+          xClusterUniverseService.getActiveXClusterSourceAndTargetUniverseSet(
+              universe.getUniverseUUID());
       if (CollectionUtils.isEmpty(xClusterConnectedUniverseUUIDSet)) {
         return;
       }
@@ -112,7 +113,8 @@ public class GFlagsUpgradeParams extends UpgradeTaskParams {
       XClusterUniverseService xClusterUniverseService) {
     try {
       Set<UUID> xClusterConnectedUniverseUUIDSet =
-          xClusterUniverseService.getXClusterSourceAndTargetUniverseSet(universe.getUniverseUUID());
+          xClusterUniverseService.getActiveXClusterSourceAndTargetUniverseSet(
+              universe.getUniverseUUID());
       if (CollectionUtils.isEmpty(xClusterConnectedUniverseUUIDSet)) {
         return;
       }
@@ -167,10 +169,8 @@ public class GFlagsUpgradeParams extends UpgradeTaskParams {
               + " does not support auto flags");
     }
     Set<String> xClusterUniverseAutoFlags =
-        gFlagsValidation
-            .extractAutoFlags(xClusterUniverseSoftwareVersion, serverType.name())
-            .autoFlagDetails
-            .stream()
+        gFlagsValidation.extractAutoFlags(xClusterUniverseSoftwareVersion, serverType.name())
+            .autoFlagDetails.stream()
             .map(autoFlagDetails -> autoFlagDetails.name)
             .collect(Collectors.toSet());
     // Check if all user overridden auto flags are supported on xCluster universe.

@@ -44,6 +44,7 @@ export interface CpuMeasureRecommendation {
 export interface CustomRecommendation {
   summary: React.ReactNode | string;
   suggestion: string;
+  type: string;
 }
 
 export interface IndexSchemaQueryData {
@@ -86,6 +87,7 @@ export enum RecommendationType {
   UNUSED_INDEX = 'UNUSED_INDEX',
   CPU_SKEW = 'CPU_SKEW',
   HOT_SHARD = 'HOT_SHARD',
+  REJECTED_CONNECTIONS = 'REJECTED_CONNECTIONS'
 }
 
 export enum SortDirection {

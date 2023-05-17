@@ -16,8 +16,7 @@
     position: absolute;
     background: colors.$YB_VIOLET;
     .logo {
-      height: 46px;
-      margin: 8px auto;
+      margin: 22px auto;
       pointer-events: none;
       @include mixins.transition(0.3s);
 

@@ -168,14 +168,14 @@ DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
 
-DEFINE_UNKNOWN_string(external_daemon_heap_profile_prefix, "",
+DEFINE_NON_RUNTIME_string(external_daemon_heap_profile_prefix, "",
               "If this is not empty, tcmalloc's HEAPPROFILE is set this, followed by a unique "
               "suffix for external mini-cluster daemons.");
 
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
 
-DEFINE_UNKNOWN_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
+DEFINE_NON_RUNTIME_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
              "Max total size of log bytes produced by all external mini-cluster daemons. "
              "The test is shut down if this limit is exceeded.");
 
@@ -1654,6 +1654,14 @@ Result<std::vector<std::string>> ExternalMiniCluster::GetTabletIds(ExternalTable
   return result;
 }
 
+Result<size_t> ExternalMiniCluster::GetSegmentCounts(ExternalTabletServer* ts) {
+  auto tablets = VERIFY_RESULT(GetTablets(ts));
+  size_t result = 0;
+  for (const auto& tablet : tablets) {
+    result += tablet.num_log_segments();
+  }
+  return result;
+}
 Status ExternalMiniCluster::WaitForTabletsRunning(ExternalTabletServer* ts,
                                                   const MonoDelta& timeout) {
   TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());
@@ -2771,17 +2779,8 @@ Status RestartAllMasters(ExternalMiniCluster* cluster) {
   return Status::OK();
 }
 
-Status CompactTablets(ExternalMiniCluster* cluster, const yb::MonoDelta& timeout) {
-  for (auto* daemon : cluster->master_daemons()) {
-    master::CompactSysCatalogRequestPB req;
-    master::CompactSysCatalogResponsePB resp;
-    rpc::RpcController controller;
-    controller.set_timeout(timeout);
-
-    auto proxy = cluster->GetProxy<master::MasterAdminProxy>(daemon);
-    RETURN_NOT_OK(proxy.CompactSysCatalog(req, &resp, &controller));
-  }
-
+Status CompactTablets(ExternalMiniCluster* cluster, const MonoDelta& timeout) {
+  RETURN_NOT_OK(CompactSysCatalog(cluster, timeout));
   for (auto* daemon : cluster->tserver_daemons()) {
     tserver::FlushTabletsRequestPB req;
     tserver::FlushTabletsResponsePB resp;
@@ -2796,6 +2795,33 @@ Status CompactTablets(ExternalMiniCluster* cluster, const yb::MonoDelta& timeout
     RETURN_NOT_OK(proxy.FlushTablets(req, &resp, &controller));
   }
 
+  return Status::OK();
+}
+
+Status FlushAndCompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout) {
+  for (auto* daemon : cluster->master_daemons()) {
+    master::FlushSysCatalogRequestPB req;
+    master::FlushSysCatalogResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(timeout);
+
+    auto proxy = cluster->GetProxy<master::MasterAdminProxy>(daemon);
+    RETURN_NOT_OK(proxy.FlushSysCatalog(req, &resp, &controller));
+  }
+
+  return CompactSysCatalog(cluster, timeout);
+}
+
+Status CompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout) {
+  for (auto* daemon : cluster->master_daemons()) {
+    master::CompactSysCatalogRequestPB req;
+    master::CompactSysCatalogResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(timeout);
+
+    auto proxy = cluster->GetProxy<master::MasterAdminProxy>(daemon);
+    RETURN_NOT_OK(proxy.CompactSysCatalog(req, &resp, &controller));
+  }
   return Status::OK();
 }
 

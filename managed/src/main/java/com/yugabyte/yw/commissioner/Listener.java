@@ -2,15 +2,12 @@
 
 package com.yugabyte.yw.commissioner;
 
-import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;

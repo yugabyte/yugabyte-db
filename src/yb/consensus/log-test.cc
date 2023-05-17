@@ -40,7 +40,7 @@
 
 #include <glog/stl_logging.h>
 
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log.messages.h"
@@ -56,7 +56,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_int32(num_batches, 10000,
+DEFINE_NON_RUNTIME_int32(num_batches, 10000,
              "Number of batches to write to/read from the Log in TestWriteManyBatches");
 
 DECLARE_int32(log_min_segments_to_retain);

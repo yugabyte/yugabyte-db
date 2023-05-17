@@ -1,20 +1,25 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { Field } from 'formik';
+import clsx from 'clsx';
 import { ListGroupItem, ListGroup, Row, Col, Badge } from 'react-bootstrap';
 import { YBButton, YBFormInput, YBInputField } from '../../common/forms/fields';
 import { YBLabel } from '../../common/descriptors';
 import { YBLoading } from '../../common/indicators';
 import { FlexShrink, FlexContainer } from '../../common/flexbox/YBFlexBox';
 import { fetchGFlags, fetchParticularFlag } from '../../../actions/universe';
-import clsx from 'clsx';
+import { GFlagsConf } from './GFlagsConf';
+import { GFLAG_EDIT } from '../../../utils/UniverseUtils';
 //Icons
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
 
-//modes
-const EDIT = 'EDIT';
+const ConfKeys = {
+  HBA_CONF: 'ysql_hba_conf_csv'
+};
 
 const AddGFlag = ({ formProps, gFlagProps }) => {
+  const featureFlags = useSelector((state) => state.featureFlags);
   const { mode, server, dbVersion } = gFlagProps;
   const [searchVal, setSearchVal] = useState('');
   const [isLoading, setLoader] = useState(true);
@@ -24,6 +29,10 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   const [filteredArr, setFilteredArr] = useState(null);
   const [selectedFlag, setSelectedFlag] = useState(null);
   const [apiError, setAPIError] = useState(null);
+
+  // HBA Conf GFlag
+  const enableGFlagHBAConf =
+    featureFlags.test.enableGFlagHBAConf || featureFlags.released.enableGFlagHBAConf;
 
   //Declarative methods
   const filterByText = (arr, text) => arr.filter((e) => e?.name?.includes(text));
@@ -90,7 +99,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   };
 
   const onInit = () => {
-    if (mode === EDIT) {
+    if (mode === GFLAG_EDIT) {
       getFlagByName();
     } else getAllFlags();
   };
@@ -172,7 +181,11 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
         );
 
       case 'string':
-        return <Field name="flagvalue" type="text" label={valueLabel} component={YBFormInput} />;
+        if (flag?.name === 'ysql_hba_conf_csv' && enableGFlagHBAConf) {
+          return <GFlagsConf formProps={formProps} mode={mode} />;
+        } else {
+          return <Field name="flagvalue" type="text" label={valueLabel} component={YBFormInput} />;
+        }
 
       default:
         //number type
@@ -200,7 +213,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       <FlexShrink className="button-container">
         <YBButton
           btnText="Most used"
-          disabled={mode === EDIT}
+          disabled={mode === GFLAG_EDIT}
           active={!toggleMostUsed}
           btnClass={clsx(toggleMostUsed ? 'btn btn-orange' : 'btn btn-default', 'gflag-button')}
           onClick={() => {
@@ -213,7 +226,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
         &nbsp;
         <YBButton
           btnText="All Flags"
-          disabled={mode === EDIT}
+          disabled={mode === GFLAG_EDIT}
           active={toggleMostUsed}
           btnClass={clsx(!toggleMostUsed ? 'btn btn-orange' : 'btn btn-default', 'gflag-button')}
           onClick={() => {
@@ -251,7 +264,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   );
 
   const renderFlagDetails = () => {
-    const showDocLink = mode !== EDIT && (toggleMostUsed || isMostUsed(selectedFlag?.name));
+    const showDocLink = mode !== GFLAG_EDIT && (toggleMostUsed || isMostUsed(selectedFlag?.name));
     if (selectedFlag) {
       // eslint-disable-next-line no-prototype-builtins
       const defaultKey = selectedFlag?.hasOwnProperty('current') ? 'current' : 'default';
@@ -275,6 +288,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
             </div>
           </div>
           <div className="gflag-form">{renderFormComponent(selectedFlag)}</div>
+          {selectedFlag.name !== ConfKeys.HBA_CONF && <span className="gflag-form-separator" />}
         </>
       );
     } else return infoText;

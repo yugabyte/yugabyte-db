@@ -1,9 +1,8 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.yugabyte.yw.models.AvailabilityZone;
-import lombok.Data;
-
 import java.util.UUID;
+import lombok.Data;
 
 @Data
 public class ClusterAZ {

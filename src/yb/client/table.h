@@ -23,6 +23,8 @@
 
 #include "yb/master/master_fwd.h"
 
+#include "yb/qlexpr/qlexpr_fwd.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
@@ -99,7 +101,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   PartitionListVersion GetPartitionListVersion() const;
 
   // Indexes available on the table.
-  const IndexMap& index_map() const;
+  const qlexpr::IndexMap& index_map() const;
 
   // Is this an index?
   bool IsIndex() const;
@@ -107,7 +109,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   bool IsUniqueIndex() const;
 
   // For index table: information about this index.
-  const IndexInfo& index_info() const;
+  const qlexpr::IndexInfo& index_info() const;
 
   // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   bool colocated() const;

@@ -356,18 +356,31 @@ void XClusterConsumer::UpdateInMemoryState(
         auto schema_versions = stream_entry_pb.schema_versions();
         schema_version_map[schema_versions.current_producer_schema_version()] =
             schema_versions.current_consumer_schema_version();
-        schema_version_map[schema_versions.old_producer_schema_version()] =
-            schema_versions.old_consumer_schema_version();
+        // Update the old producer schema version, only if it is not the same as
+        // current producer schema version.
+        if (schema_versions.old_producer_schema_version() !=
+            schema_versions.current_producer_schema_version()) {
+          DCHECK(schema_versions.old_producer_schema_version() <
+              schema_versions.current_producer_schema_version());
+          schema_version_map[schema_versions.old_producer_schema_version()] =
+              schema_versions.old_consumer_schema_version();
+        }
       }
 
-      for (const auto& colocated_entry : stream_entry_pb.colocated_schema_versions()) {
+      for (const auto& [colocated_id, versions] : stream_entry_pb.colocated_schema_versions()) {
         auto& schema_version_map =
-            stream_colocated_schema_version_map_[stream_entry.first][colocated_entry.first];
-        auto schema_versions = stream_entry_pb.schema_versions();
-        schema_version_map[schema_versions.current_producer_schema_version()] =
-            schema_versions.current_consumer_schema_version();
-        schema_version_map[schema_versions.old_producer_schema_version()] =
-            schema_versions.old_consumer_schema_version();
+            stream_colocated_schema_version_map_[stream_entry.first][colocated_id];
+        schema_version_map[versions.current_producer_schema_version()] =
+            versions.current_consumer_schema_version();
+
+        // Update the old producer schema version, only if it is not the same as
+        // current producer schema version - handles the case where versions are 0.
+        if (versions.old_producer_schema_version() != versions.current_producer_schema_version()) {
+          DCHECK(versions.old_producer_schema_version() <
+              versions.current_producer_schema_version());
+          schema_version_map[versions.old_producer_schema_version()] =
+              versions.old_consumer_schema_version();
+        }
       }
 
       for (const auto& tablet_entry : stream_entry_pb.consumer_producer_tablet_map()) {
@@ -515,17 +528,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             global_transaction_status_tablets_, enable_replicate_transaction_status_table_,
             last_compatible_consumer_schema_version);
 
-        auto schema_versions = FindOrNull(stream_schema_version_map_,
-                                          producer_tablet_info.stream_id);
-        if (schema_versions != nullptr) {
-          xcluster_poller->UpdateSchemaVersions(*schema_versions);
-        }
-
-        auto colocated_schema_versions = FindOrNull(stream_colocated_schema_version_map_,
-                                                    producer_tablet_info.stream_id);
-        if (colocated_schema_versions != nullptr) {
-          xcluster_poller->UpdateColocatedSchemaVersionMap(*colocated_schema_versions);
-        }
+        UpdatePollerSchemaVersionMaps(xcluster_poller, producer_tablet_info.stream_id);
 
         LOG_WITH_PREFIX(INFO) << Format(
             "Start polling for producer tablet $0, consumer tablet $1", producer_tablet_info,
@@ -540,26 +543,32 @@ void XClusterConsumer::TriggerPollForNewTablets() {
       SharedLock<rw_spinlock> read_lock_pollers(producer_pollers_map_mutex_);
       auto xcluster_poller_iter = producer_pollers_map_.find(producer_tablet_info);
       if (xcluster_poller_iter != producer_pollers_map_.end()) {
-        auto schema_version_iter = stream_to_schema_version_.find(producer_tablet_info.stream_id);
-        if (schema_version_iter != stream_to_schema_version_.end()) {
-            xcluster_poller_iter->second->SetSchemaVersion(schema_version_iter->second.first,
-                                                      schema_version_iter->second.second);
-        }
-
-        auto schema_versions_iter = stream_schema_version_map_.find(producer_tablet_info.stream_id);
-        if (schema_versions_iter != stream_schema_version_map_.end()) {
-          xcluster_poller_iter->second->UpdateSchemaVersions(schema_versions_iter->second);
-        }
-
-        auto iter = stream_colocated_schema_version_map_.find(producer_tablet_info.stream_id);
-        if (iter != stream_colocated_schema_version_map_.end()) {
-          xcluster_poller_iter->second->UpdateColocatedSchemaVersionMap(iter->second);
-        }
+        UpdatePollerSchemaVersionMaps(xcluster_poller_iter->second, producer_tablet_info.stream_id);
       }
     }
   }
 
   last_polled_at_cluster_config_version_ = current_cluster_config_version;
+}
+
+void XClusterConsumer::UpdatePollerSchemaVersionMaps(
+    std::shared_ptr<XClusterPoller> xcluster_poller, const CDCStreamId& stream_id) const {
+
+  auto compatible_schema_version = FindOrNull(stream_to_schema_version_, stream_id);
+  if (compatible_schema_version != nullptr) {
+      xcluster_poller->SetSchemaVersion(compatible_schema_version->first,
+                                        compatible_schema_version->second);
+  }
+
+  auto schema_versions = FindOrNull(stream_schema_version_map_, stream_id);
+  if (schema_versions != nullptr) {
+    xcluster_poller->UpdateSchemaVersions(*schema_versions);
+  }
+
+  auto colocated_schema_versions = FindOrNull(stream_colocated_schema_version_map_, stream_id);
+  if (colocated_schema_versions != nullptr) {
+    xcluster_poller->UpdateColocatedSchemaVersionMap(*colocated_schema_versions);
+  }
 }
 
 void XClusterConsumer::TriggerDeletionOfOldPollers() {

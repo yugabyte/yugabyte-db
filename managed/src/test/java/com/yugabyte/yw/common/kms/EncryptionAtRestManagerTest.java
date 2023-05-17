@@ -1,19 +1,15 @@
 package com.yugabyte.yw.common.kms;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
-
-import java.util.Base64;
-import java.util.List;
-import java.util.Random;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -27,15 +23,18 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.KmsHistoryId.TargetType;
+import com.yugabyte.yw.models.Universe;
+import java.util.Base64;
+import java.util.List;
+import java.util.Random;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EncryptionAtRestManagerTest extends FakeDBApplication {

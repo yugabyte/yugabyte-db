@@ -154,7 +154,8 @@ class GraphPanelHeader extends Component {
         selectedRegionClusterUUID: currentQuery.selectedRegionClusterUUID,
         metricMeasure: currentQuery.metricMeasure,
         outlierType: currentQuery.outlierType,
-        outlierNumNodes: currentQuery.outlierNumNodes
+        outlierNumNodes: currentQuery.outlierNumNodes,
+        refreshIntervalLabel: currentQuery.refreshIntervalLabel
       };
       if (currentQuery.filterType === 'custom') {
         filterParams.startMoment = moment.unix(currentQuery.startDate);
@@ -297,6 +298,7 @@ class GraphPanelHeader extends Component {
 
   // Turns off auto-refresh if the interval type is 'off', otherwise resets the interval
   handleIntervalChange = (eventKey) => {
+    const newParams = _.cloneDeep(this.state);
     const intervalInfo = intervalTypes[eventKey] || intervalTypes[DEFAULT_FILTER_KEY];
     clearInterval(this.refreshInterval);
     if (intervalInfo.value !== 'off') {
@@ -306,6 +308,9 @@ class GraphPanelHeader extends Component {
       refreshInterval: intervalInfo.value,
       refreshIntervalLabel: intervalInfo.selectedLabel
     });
+
+    newParams.refreshIntervalLabel = intervalInfo.selectedLabel;
+    this.updateUrlQueryParams(newParams);
   };
 
   universeItemChanged = (universeUUID) => {
@@ -530,6 +535,8 @@ class GraphPanelHeader extends Component {
       queryParams.outlierNumNodes = filterParams.outlierNumNodes;
     }
 
+    queryParams.refreshInterval = filterParams.refreshInterval;
+    queryParams.refreshIntervalLabel = filterParams.refreshIntervalLabel;
     queryParams.nodePrefix = filterParams.nodePrefix;
     queryParams.nodeName = filterParams.nodeName;
     queryParams.filterType = filterParams.filterType;
@@ -565,6 +572,7 @@ class GraphPanelHeader extends Component {
       currentSelectedNodeType,
       selectedRegionClusterUUID
     } = this.state;
+
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     let datePicker = null;
     if (this.state.filterLabel === 'Custom') {

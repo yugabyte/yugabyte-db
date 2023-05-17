@@ -3,12 +3,11 @@
 package com.yugabyte.yw.common.operator;
 
 import com.yugabyte.yw.models.Universe;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
+import java.util.HashMap;
+import java.util.Map;
 import play.Logger;
 
 public class KubernetesOperatorStatusUpdater {

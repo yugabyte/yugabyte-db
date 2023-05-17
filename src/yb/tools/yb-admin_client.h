@@ -246,7 +246,7 @@ class ClusterAdminClient {
                          int timeout_secs,
                          bool is_compaction);
 
-  Status CompactionStatus(const client::YBTableName& table_name);
+  Status CompactionStatus(const client::YBTableName& table_name, bool show_tablets);
 
   Status FlushSysCatalog();
 
@@ -394,7 +394,8 @@ class ClusterAdminClient {
   Status SetupUniverseReplication(const std::string& producer_uuid,
                                   const std::vector<std::string>& producer_addresses,
                                   const std::vector<TableId>& tables,
-                                  const std::vector<std::string>& producer_bootstrap_ids);
+                                  const std::vector<std::string>& producer_bootstrap_ids,
+                                  bool transactional);
 
   Status DeleteUniverseReplication(const std::string& producer_id,
                                    bool ignore_errors = false);

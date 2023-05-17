@@ -18,6 +18,7 @@ Use the `cluster` resource to perform operations on a YugabyteDB Managed cluster
 - pause and resume clusters
 - get information about clusters
 - download the cluster certificate
+- encrypt clusters and manage encryption
 
 ## Syntax
 
@@ -61,11 +62,21 @@ Create a cluster.
 | --credentials | Required. Database credentials for the default user, provided as key-value pairs.<br>Arguments:<ul><li>username</li><li>password</li></ul> |
 | --cloud-provider | Cloud provider. `AWS` (default) or `GCP`.
 | --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
-| --node-config | Number of vCPUs and disk size per node for the cluster, provided as key-value pairs.<br>Arguments:<ul><li>num-cores - number of vCPUs per node</li><li>disk-size-gb - disk size in GB per node</li></ul>If specified, num-cores is mandatory, disk-size-gb is optional. |
-| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region-name - name of the region specified as cloud.region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is mandatory, vpc is optional. |
+| --node-config | Number of vCPUs and disk size per node for the cluster, provided as key-value pairs.<br>Arguments:<ul><li>num-cores - number of vCPUs per node</li><li>disk-size-gb - disk size in GB per node</li></ul>If specified, num-cores is required, disk-size-gb is optional. |
+| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region-name - name of the region specified as cloud.region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is required, vpc is optional. |
 | --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
 | --fault-tolerance | Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`. |
 | --database-version | Database version to use for the cluster. `Stable` or `Preview`. |
+| --encryption-spec | customer managed key (CMK) credentials for encryption at rest, provided as key-value pairs.<br>Arguments:<ul><li>cloud-provider - cloud provider (`AWS`); required</li><li>aws-access-key - access key ID (AWS only); required for AWS</li><li>aws-secret-key - secret access key (AWS only)</li></ul>If not provided, you are prompted for the secret access key.</br>Secret access key can also be configured using the YBM_AWS_SECRET_KEY [environment variable](../../managed-cli-overview/#environment-variables). |
+
+### cert download
+
+Download the [cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/) to a specified location.
+
+| Flag | Description |
+| :--- | :--- |
+| --force | Overwrite the output file if it exists. |
+| --out | Full path with file name of the location to which to download the cluster certificate file. Default is `stdout`. |
 
 ### delete
 
@@ -83,6 +94,23 @@ Fetch detailed information about the specified cluster.
 | :--- | :--- |
 | --cluster-name | Name of the cluster. |
 
+### encryption list
+
+List the encryption at rest configuration for the specified cluster.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | Required. The name of the cluster. |
+
+### encryption update
+
+Update the credentials to use for the customer managed key (CMK) used to encrypt the specified cluster.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | Required. Name of the cluster. |
+| --encryption-spec | CMK credentials, provided as key-value pairs.<br>Arguments:<ul><li>cloud-provider - cloud provider (`AWS`); required</li><li>aws-access-key - access key ID (AWS only); required for AWS</li><li>aws-secret-key - secret access key (AWS only)</li></ul>If not provided, you are prompted for the secret access key.</br>Secret access key can also be configured using the YBM_AWS_SECRET_KEY [environment variable](../../managed-cli-overview/#environment-variables). |
+
 ### list
 
 List all the clusters to which you have access.
@@ -90,21 +118,6 @@ List all the clusters to which you have access.
 | Flag | Description |
 | :--- | :--- |
 | --cluster-name | The name of the cluster to filter. |
-
-### update
-
-Update the specified cluster.
-
-| Flag | Description |
-| :--- | :--- |
-| --cluster-name | Required. Name of the cluster to update. |
-| --cloud-provider | Cloud provider. `AWS` or `GCP`. |
-| --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
-| --node-config | Number of vCPUs and disk size per node for the cluster, provided as key-value pairs.<br>Arguments:<ul><li>num-cores - number of vCPUs per node</li><li>disk-size-gb - disk size in GB per node</li></ul>If specified, num-cores is mandatory, disk-size-gb is optional. |
-| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region-name - name of the region specified as cloud.region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is mandatory, vpc is optional. |
-| --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
-| --fault-tolerance | Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`. |
-| --database-version | Database version to use for the cluster. `Stable` or `Preview`. |
 
 ### pause
 
@@ -122,11 +135,17 @@ Resume the specified cluster.
 | :--- | :--- |
 | --cluster-name | Required. Name of the cluster to resume. |
 
-### cert download
+### update
 
-Download the [cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/) to a specified location.
+Update the specified cluster.
 
 | Flag | Description |
 | :--- | :--- |
-| --force | Overwrite the output file if it exists. |
-| --out | Full path with file name of the location to which to download the cluster certificate file. Default is `stdout`. |
+| --cluster-name | Required. Name of the cluster to update. |
+| --cloud-provider | Cloud provider. `AWS` or `GCP`. |
+| --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
+| --node-config | Number of vCPUs and disk size per node for the cluster, provided as key-value pairs.<br>Arguments:<ul><li>num-cores - number of vCPUs per node</li><li>disk-size-gb - disk size in GB per node</li></ul>If specified, num-cores is required, disk-size-gb is optional. |
+| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region-name - name of the region specified as cloud.region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is required, vpc is optional. |
+| --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
+| --fault-tolerance | Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`. |
+| --database-version | Database version to use for the cluster. `Stable` or `Preview`. |

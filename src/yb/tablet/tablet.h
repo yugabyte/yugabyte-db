@@ -49,6 +49,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/qlexpr/qlexpr_fwd.h"
+
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
@@ -75,6 +77,8 @@
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
+DECLARE_bool(TEST_docdb_log_write_batches);
+
 namespace yb {
 
 class FsManager;
@@ -87,9 +91,9 @@ class Clock;
 
 namespace tablet {
 
-YB_STRONGLY_TYPED_BOOL(IncludeIntents);
-YB_STRONGLY_TYPED_BOOL(Abortable);
+YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
+YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
@@ -120,11 +124,11 @@ YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
 struct TabletScopedRWOperationPauses {
-  ScopedRWOperationPause abortable;
-  ScopedRWOperationPause non_abortable;
+  ScopedRWOperationPause blocking_rocksdb_shutdown_start;
+  ScopedRWOperationPause not_blocking_rocksdb_shutdown_start;
 
   std::array<ScopedRWOperationPause*, 2> AsArray() {
-    return {&abortable, &non_abortable};
+    return {&blocking_rocksdb_shutdown_start, &not_blocking_rocksdb_shutdown_start};
   }
 };
 
@@ -154,7 +158,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Upon completion, the tablet enters the kBootstrapping state.
   Status Open();
 
-  Status EnableCompactions(ScopedRWOperationPause* non_abortable_ops_pause);
+  Status EnableCompactions(ScopedRWOperationPause* blocking_rocksdb_shutdown_start_ops_pause);
 
   // Performs backfill for the key range beginning from the row immediately after
   // <backfill_from>, until either it reaches the end of the tablet
@@ -164,7 +168,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //    next API call can resume from where the backfill was left off.
   //    Note that <backfilled_until> only applies to the non-failing indexes.
   Status BackfillIndexesForYsql(
-      const std::vector<IndexInfo>& indexes,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
@@ -175,7 +179,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       std::string* backfilled_until);
 
   Status VerifyIndexTableConsistencyForCQL(
-      const std::vector<IndexInfo>& indexes,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const std::string& start_key,
       const int num_rows,
       const CoarseTimePoint deadline,
@@ -194,7 +198,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Status VerifyTableConsistencyForCQL(
       const std::vector<TableId>& table_ids,
-      const std::vector<yb::ColumnSchema>& columns,
+      const std::vector<ColumnId>& columns,
       const std::string& start_key,
       const int num_rows,
       const CoarseTimePoint deadline,
@@ -204,7 +208,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       std::string* verified_until);
 
   Status VerifyTableInBatches(
-      const QLTableRow& row,
+      const qlexpr::QLTableRow& row,
       const std::vector<TableId>& table_ids,
       const HybridTime read_time,
       const CoarseTimePoint deadline,
@@ -239,7 +243,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // <failed_indexes> will be updated with the collection of index-ids for which any errors
   //    were encountered.
   Status BackfillIndexes(
-      const std::vector<IndexInfo>& indexes,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
@@ -248,8 +252,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       std::unordered_set<TableId>* failed_indexes);
 
   Status UpdateIndexInBatches(
-      const QLTableRow& row,
-      const std::vector<IndexInfo>& indexes,
+      const qlexpr::QLTableRow& row,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const HybridTime write_time,
       const CoarseTimePoint deadline,
       docdb::IndexRequests* index_requests,
@@ -295,7 +299,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // - etc.
   // By default, RocksDB shutdown flushes the memtable. This behavior is overriden depending on the
   // provided value of disable_flush_on_shutdown.
-  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown);
+  // If abort_ops is specified, aborts pending RocksDB operations that are abortable.
+  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
   Status ImportData(const std::string& source_dir);
 
@@ -390,11 +395,17 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status PreparePgsqlWriteOperations(WriteQuery* query);
   void KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteQuery> query);
 
+  // Creates and returns a new RequestScope, which prevents intents from
+  // being removed while the object is alive. It is necessary to hold
+  // a RequestScope when scanning with IntentAwareIterator to prevent missing entries
+  // due to intent removal.
+  Result<RequestScope> CreateRequestScope();
+
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized and should be initialized by the caller before usage.
   Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedDocRowIterator(
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
@@ -402,7 +413,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // The following functions create new row iterator that is already initialized.
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max()) const;
@@ -411,7 +422,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const TableId& table_id) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> CreateCDCSnapshotIterator(
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       const ReadHybridTime& time,
       const std::string& next_key,
       const TableId& table_id = "");
@@ -742,13 +753,23 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // and that compaction has not yet finished.
   Status TriggerFullCompactionIfNeeded(rocksdb::CompactionReason reason);
 
+  // Triggers an admin full compaction on this tablet.
+  Status TriggerAdminFullCompactionIfNeeded();
+  // Triggers an admin full compaction on this tablet with a callback to execute once the compaction
+  // completes.
+  Status TriggerAdminFullCompactionWithCallbackIfNeeded(
+      std::function<void()> on_compaction_completion);
+
   bool HasActiveFullCompaction();
 
   bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_) {
-    // Check if there is an active scheduled full compaction.
-    return full_compaction_task_pool_token_ != nullptr ?
-        !full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero) :
-        false;
+    bool has_active_scheduled = full_compaction_task_pool_token_ != nullptr
+                                    ? !full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero)
+                                    : false;
+    bool has_active_admin = admin_full_compaction_task_pool_token_ != nullptr
+                                ? !admin_full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero)
+                                : false;
+    return has_active_scheduled || has_active_admin;
   }
 
   bool HasActiveTTLFileExpiration();
@@ -788,17 +809,23 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // atomically to avoid race conditions.
   std::shared_ptr<client::YBMetaDataCache> YBMetaDataCache();
 
-  ScopedRWOperation CreateNonAbortableScopedRWOperation(
+  // Should only be used in code that could be executed from Raft operations apply or other
+  // callsites that doesn't handle RocksDB shutdown start (without destroy, see
+  // Tablet::StartShutdownRocksDBs, rocksdb::DB::StartShutdown) during operation, so tablet shutdown
+  // will wait till their completion and don't fail Raft operation apply.
+  ScopedRWOperation CreateScopedRWOperationBlockingRocksDbShutdownStart(
+      const CoarseTimePoint deadline = CoarseTimePoint()) const;
+
+  // Should NOT be used in code that might be executed from Raft operations apply or callsites that
+  // doesn't handle RocksDB start shutdown during operation, so we can start shutdown of RocksDB
+  // without waiting for these operations and they might be aborted during tablet shutdown.
+  ScopedRWOperation CreateScopedRWOperationNotBlockingRocksDbShutdownStart(
       const CoarseTimePoint deadline = CoarseTimePoint()) const;
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const TransactionMetadataPB& transaction_metadata,
       bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
-
-  const Schema* unique_index_key_schema() const {
-    return unique_index_key_schema_.get();
-  }
 
   bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
 
@@ -809,11 +836,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::string LogPrefix() const;
 
   // Populate tablet_locks_info with lock information pertaining to locks persisted in intents_db of
-  // this tablet. If txn_id is not Nil, restrict returned information to locks which are held or
-  // requested by the given txn_id.
+  // this tablet. If transaction_ids is not empty, restrict returned information to locks which are
+  // held or requested by the given set of transaction_ids.
   Status GetLockStatus(
-      const TransactionId& txn_id, SubTransactionId subtxn_id,
-      TabletLockInfoPB* tablet_lock_info) const;
+      const std::set<TransactionId>& transaction_ids, TabletLockInfoPB* tablet_lock_info) const;
+
+  docdb::ExternalTxnIntentsState* GetExternalTxnIntentsState() const {
+    return external_txn_intents_state_.get();
+  }
 
  private:
   friend class Iterator;
@@ -828,7 +858,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status OpenKeyValueTablet();
   virtual Status CreateTabletDirectories(const std::string& db_dir, FsManager* fs);
 
-  std::vector<yb::ColumnSchema> GetColumnSchemasForIndex(const std::vector<IndexInfo>& indexes);
+  std::vector<ColumnId> GetColumnSchemasForIndex(
+      const std::vector<qlexpr::IndexInfo>& indexes);
 
   void DocDBDebugDump(std::vector<std::string> *lines);
 
@@ -843,30 +874,34 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
-  // Pause abortable/non-abortable new read/write operations and wait for all
-  // abortable/non-abortable pending read/write operations to finish.
+  // Pause new read/write operations that are blocking/not blocking start of RocksDB shutdown and
+  // wait for all such pending read/write operations to finish.
   // If stop is false, ScopedRWOperation constructor will wait while ScopedRWOperationPause is
   // alive.
   // If stop is true, ScopedRWOperation constructor will create an instance with an error (see
   // ScopedRWOperation::ok()) while ScopedRWOperationPause is alive.
   ScopedRWOperationPause PauseReadWriteOperations(
-      Abortable abortable, Stop stop = Stop::kFalse);
+      BlockingRocksDbShutdownStart blocking_rocksdb_shutdown_start, Stop stop = Stop::kFalse);
 
-  // Pauses new non-abortable read/write operations and wait for all of those that are pending to
-  // complete.
-  // Starts RocksDB shutdown (that will abort abortable read/write operations).
-  // Pauses new abortable read/write operations and wait for all of those that are pending to
-  // complete.
+  // 1. Pauses new read/write operations that block RocksDB shutdown and wait for all of those that
+  // are pending to complete.
+  // 2. Starts RocksDB shutdown (that might abort some of the rest of read/write operations).
+  // 3. If abort_ops is specified, aborts pending RocksDB operations that are abortable.
+  // 4. Pauses new read/write operations and wait for all of those that are pending to complete.
   // Returns TabletScopedRWOperationPauses that are preventing new read/write operations from being
   // started.
-  Result<TabletScopedRWOperationPauses> StartShutdownRocksDBs(
-      DisableFlushOnShutdown disable_flush_on_shutdown, Stop stop = Stop::kFalse);
+  TabletScopedRWOperationPauses StartShutdownRocksDBs(
+      DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops,
+      Stop stop = Stop::kFalse);
 
-  Status CompleteShutdownRocksDBs(
-      Destroy destroy, TabletScopedRWOperationPauses* ops_pauses);
+  // Returns DB paths for destructed in-memory RocksDBs objects, so caller can delete on-disk
+  // directories if needed.
+  std::vector<std::string> CompleteShutdownRocksDBs(
+      const TabletScopedRWOperationPauses& ops_pauses);
 
-  ScopedRWOperation CreateAbortableScopedRWOperation(
-      const CoarseTimePoint deadline = CoarseTimePoint()) const;
+  // Attempt to delete on-disk RocksDBs from all provided db_paths, even if errors are encountered.
+  // Return the first error encountered.
+  Status DeleteRocksDBs(const std::vector<std::string>& db_paths);
 
   Status DoEnableCompactions();
 
@@ -907,6 +942,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   template <class PB>
   Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);
+
+  Status TriggerAdminFullCompactionIfNeededHelper(
+      std::function<void()> on_compaction_completion = []() {});
 
   std::unique_ptr<const Schema> key_schema_;
 
@@ -984,7 +1022,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   const TabletOptions tablet_options_;
 
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
-  // prevent race conditions between destroying the RocksDB instance and read/write operations.
+  // prevent race conditions between destructing the RocksDB in-memory instance and read/write
+  // operations.
   std::atomic_bool shutdown_requested_{false};
 
   // This is a special atomic counter per tablet that increases monotonically.
@@ -994,22 +1033,25 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // restarts and leader changes.
   std::atomic<int64_t> monotonic_counter_{0};
 
-  // Number of pending non-abortable operations. We use this to make sure we don't shut down RocksDB
-  // before all non-abortable pending operations are finished. We don't have a strict definition of
-  // an "operation" for the purpose of this counter. We simply wait for this counter to go to zero
-  // before starting RocksDB shutdown.
+  // Number of pending operations that block RocksDB shutdown start. We use this to make sure we
+  // don't start RocksDB shutdown before all such pending operations are finished. We don't have a
+  // strict definition of an "operation" for the purpose of this counter. We simply wait for this
+  // counter to go to zero before starting RocksDB shutdown.
   // Note: as of 2021-06-28 applying of Raft operations could not handle errors that happened due to
   // RocksDB shutdown.
   //
   // This is marked mutable because read path member functions (which are const) are using this.
-  mutable RWOperationCounter pending_non_abortable_op_counter_;
+  mutable RWOperationCounter pending_op_counter_blocking_rocksdb_shutdown_start_;
 
-  // Similar to pending_non_abortable_op_counter_ but for operations that could be aborted, i.e.
-  // operations that could handle RocksDB shutdown during their execution, for example manual
-  // compactions.
-  // We wait for this counter to go to zero after starting RocksDB shutdown and before destroying
+  // Similar to pending_op_counter_blocking_rocksdb_shutdown_start_ but for operations that don't
+  // block RocksDB shutdown start, i.e. operations that could handle start of RocksDB shutdown
+  // during their execution, for example manual compactions.
+  // We wait for this counter to go to zero after starting RocksDB shutdown and before destructing
   // RocksDB in-memory instance.
-  mutable RWOperationCounter pending_abortable_op_counter_;
+  mutable RWOperationCounter pending_op_counter_not_blocking_rocksdb_shutdown_start_;
+
+  // Used to abort pending operations that are not blocking RocksDB shutdown start.
+  StatusHolder abort_pending_op_status_holder_;
 
   // Used by Alter/Schema-change ops to pause new write ops from being submitted.
   RWOperationCounter write_ops_being_submitted_counter_;
@@ -1027,9 +1069,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Use methods YBMetaDataCache, CreateNewYBMetaDataCache, and ResetYBMetaDataCache to read it
   // and modify it.
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
-
-  // Created only if it is a unique index tablet.
-  std::unique_ptr<Schema> unique_index_key_schema_;
 
   std::atomic<int64_t> last_committed_write_index_{0};
 
@@ -1101,8 +1140,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::unique_ptr<ThreadPoolToken> full_compaction_task_pool_token_
       GUARDED_BY(full_compaction_token_mutex_);
 
+  // Thread pool token for triggering admin full compactions.
+  std::unique_ptr<ThreadPoolToken> admin_full_compaction_task_pool_token_
+      GUARDED_BY(full_compaction_token_mutex_);
+
   // Pointer to shared thread pool in TsTabletManager. Managed by the FullCompactionManager.
   ThreadPool* full_compaction_pool_ = nullptr;
+
+  // Pointer to shared admin triggered thread pool in TsTabletManager.
+  ThreadPool* admin_triggered_compaction_pool_ = nullptr;
 
   // Gauge to monitor post-split compactions that have been started.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;

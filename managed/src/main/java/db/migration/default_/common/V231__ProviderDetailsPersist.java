@@ -7,13 +7,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.migrations.V231.AvailabilityZone;
+import com.yugabyte.yw.models.migrations.V231.CloudInfoInterface_Clone;
 import com.yugabyte.yw.models.migrations.V231.Customer;
 import com.yugabyte.yw.models.migrations.V231.Provider;
 import com.yugabyte.yw.models.migrations.V231.Region;
-import com.yugabyte.yw.models.migrations.V231.CloudInfoInterface_Clone;
-import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +25,7 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
 
   @Override
   public void migrate(Context context) {
-    Ebean.execute(V231__ProviderDetailsPersist::migrateConfigToDetails);
+    DB.execute(V231__ProviderDetailsPersist::migrateConfigToDetails);
   }
 
   public static void migrateConfigToDetails() {

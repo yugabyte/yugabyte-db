@@ -3,6 +3,7 @@ import { useMutation } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useFieldArray, FieldArrayPath, useForm } from 'react-hook-form';
 import { Box, Grid, IconButton, Typography, InputAdornment } from '@material-ui/core';
+import { toast } from 'react-toastify';
 import {
   YBButton,
   YBCheckbox,
@@ -19,6 +20,7 @@ import {
   HelmOverridesError,
   UniverseConfigure
 } from '../../../utils/dto';
+import { createErrorMessage } from '../../../utils/helpers';
 import { useFormMainStyles } from '../../../universeMainStyle';
 //Icons
 import { AZ_OVERRIDES_FIELD, UNIVERSE_OVERRIDES_FIELD } from '../../../utils/constants';
@@ -100,6 +102,9 @@ export const HelmOverridesModal = ({
         // sometimes, the backend throws 500 error, if the validation is failed. we don't want to block the user if that happens
         if (err.response.status === 500) {
           setOverides(reqValues.values.universeOverrides, reqValues.values.azOverrides);
+        } else {
+          // user can still use force apply option to apply overrides
+          toast.error(createErrorMessage(err));
         }
       }
     }

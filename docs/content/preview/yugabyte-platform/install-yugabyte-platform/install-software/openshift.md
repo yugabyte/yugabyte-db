@@ -1,8 +1,9 @@
 ---
 title: Install YugabyteDB Anywhere software - OpenShift
-headerTitle: Install YugabyteDB Anywhere software - OpenShift
-linkTitle: Install software
+headerTitle: Install YugabyteDB Anywhere
+linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software in your OpenShift environment
+headContent: Install YBA software in an OpenShift environment
 menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -11,11 +12,20 @@ menu:
 type: docs
 ---
 
+Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA Prerequisites](../../prerequisites/default/).
+
+Note: For higher availability, one or more additional YugabyteDB Anywhere instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
+  </li>
+
+  <li>
+    <a href="../airgapped/" class="nav-link">
+      <i class="fa-solid fa-link-slash"></i>Replicated - Airgapped</a>
   </li>
 
   <li>
@@ -24,13 +34,13 @@ type: docs
   </li>
 
   <li>
-    <a href="../airgapped/" class="nav-link">
-      <i class="fa-solid fa-link-slash"></i>Airgapped</a>
+    <a href="../openshift/" class="nav-link active">
+      <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="../openshift/" class="nav-link active">
-      <i class="fa-brands fa-redhat"></i>OpenShift</a>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>YBA Installer</a>
   </li>
 
 </ul>
@@ -344,7 +354,8 @@ To create a YugabyteDB Anywhere instance, perform the following:
   helm install yw-test yugabytedb/yugaware -n yb-platform \
      --version {{<yb-version version="preview" format="short">}} \
      --set image.repository=quay.io/yugabyte/yugaware-ubi \
-     --set ocpCompatibility.enabled=true --set rbac.create=false --wait
+     --set ocpCompatibility.enabled=true --set rbac.create=false \
+     --set securityContext.enabled=false --wait
   ```
 
   Expect to see a message notifying you whether or not the deployment is successful.
@@ -372,7 +383,8 @@ To create a YugabyteDB Anywhere instance, perform the following:
   EOF
   ```
 
-  ClusterRole or ClusterRoleBinding with the cluster-admin role are recommended if your intention is to create clusters across multiple namespaces.
+  - ClusterRole or ClusterRoleBinding with the cluster-admin role are recommended if your intention is to create clusters across multiple namespaces.
+  - Certain container-level metrics like CPU, memory will be unavailable without the above `ClusterRoleBinding`.
 
 ### Delete the Helm installation of YugabyteDB Anywhere
 

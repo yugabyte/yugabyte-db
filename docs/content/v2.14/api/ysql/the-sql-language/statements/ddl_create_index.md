@@ -240,6 +240,6 @@ If it still doesn't work, here are some troubleshooting steps:
 **To prioritize keeping other transactions alive** during the index backfill, bump up the following:
 
 - master flag `index_backfill_wait_for_old_txns_ms`
-- YSQL GUC variable `yb_index_state_flags_update_delay`
+- YSQL parameter `yb_index_state_flags_update_delay`
 
-**To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL GUC variable `yb_index_state_flags_update_delay` to zero.
+**To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL parameter `yb_index_state_flags_update_delay` to zero.

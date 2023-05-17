@@ -41,11 +41,13 @@ class RestoreSysCatalogState {
 
   // Load objects that should be restored from DB snapshot.
   Status LoadRestoringObjects(
-      const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db);
+      const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+      std::reference_wrapper<const ScopedRWOperation> pending_op);
 
   // Load existing objects from DB snapshot.
   Status LoadExistingObjects(
-      const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db);
+      const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+      std::reference_wrapper<const ScopedRWOperation> pending_op);
 
   // Process loaded data and prepare entries to restore.
   Status Process();
@@ -89,8 +91,8 @@ class RestoreSysCatalogState {
   template <class PB>
   Status IterateSysCatalog(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
-      HybridTime read_time, std::unordered_map<std::string, PB>* map,
-      std::unordered_map<std::string, PB>* seq_map);
+      std::reference_wrapper<const ScopedRWOperation> pending_op, HybridTime read_time,
+      std::unordered_map<std::string, PB>* map, std::unordered_map<std::string, PB>* seq_map);
 
   bool AreSequencesDataObjectsValid(Objects* existing_objects, Objects* restoring_objects);
 
@@ -131,7 +133,8 @@ class RestoreSysCatalogState {
 
   Status LoadObjects(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
-      HybridTime read_time, Objects* objects);
+      std::reference_wrapper<const ScopedRWOperation> pending_op, HybridTime read_time,
+      Objects* objects);
 
   // Prepare write batch to delete obsolete tablet.
   Status PrepareTabletCleanup(

@@ -42,8 +42,8 @@ var statusCmd = &cobra.Command{
 		} else {
 			// Print status for all services.
 			var statuses []common.Status
-			for _, service := range services {
-				status, err := service.Status()
+			for _, name := range serviceOrder {
+				status, err := services[name].Status()
 				if err != nil {
 					log.Fatal("Failed to get status: " + err.Error())
 				}

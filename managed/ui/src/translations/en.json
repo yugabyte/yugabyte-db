@@ -150,6 +150,8 @@
         "modalTitle": "Delete Read Replica of {{universeName}}"
       },
       "gFlags": {
+        "edit": "Edit",
+        "preview": "Preview",
         "addFlag": "Add Flag",
         "addGflags": "Add Flags",
         "addJson": "Add as JSON",
@@ -170,7 +172,14 @@
         "selectedDBVersion": "Selected DB Version : ",
         "title": "G-Flags",
         "tServerValue": "T-SERVER VALUE",
-        "validationError": "Fix all the errors shown below to proceed"
+        "addRow": "Add Row",
+        "validationError": "Fix all the errors shown below to proceed",
+        "hbaLDAPConflocal": "local database user auth-method [auth-options]",
+        "hbaLDAPConfHost": "host database user address auth-method [auth-options]",
+        "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
+        "LDAPMissingAttributeValue": "Missing value for the attribute",
+        "LDAPMissingQuote": "Attribute value should be enclosed in quotes",
+        "nonASCIIDetected": "Non-ASCII value detected"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
@@ -274,7 +283,8 @@
         "confirmPassword": "Passwords should match",
         "fieldRequired": "This field is required",
         "passwordStrength": "Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.",
-        "required": "{{field}} is required"
+        "required": "{{field}} is required",
+        "universeNameValidation": "{{cloudType}} Universe name cannot contain capital letters or special characters except dashes"
       }
     },
     "clusterDetail": {
@@ -298,7 +308,7 @@
           "ScanBtn": "Scan",
           "ReScanBtn": "Re-Scan",
           "Hurray": "Hurray",
-          "ScanTime": "Current Scan",
+          "ScanTime": "Last Scanned",
           "DBScanFailed": "Failed to scan the database. Try again later."
         },
         "typeTag": {
@@ -308,7 +318,8 @@
           "QueryLoadSkew": "QUERY LOAD SKEW",
           "CpuSkew": "CPU SKEW",
           "CpuUsage": "CPU USAGE",
-          "HotShard": "HOT SHARD"
+          "HotShard": "HOT SHARD",
+          "RejectedConnections": "REJECTED CONNECTIONS"
         },
         "suggestionTypes": {
           "All": "All Recommendation Types",
@@ -318,7 +329,8 @@
           "ConnectionSkew": "Connection Skew",
           "QueryLoadSkew": "Query Load Skew",
           "IndexSuggestion": "Index Suggestion",
-          "HotShard": "Hot Shard"
+          "HotShard": "Hot Shard",
+          "RejectedConnections": "Rejected Connections"
         },
         "chartTitle": {
           "CpuUsagePercentage": "CPU Usage (Percentage)",
@@ -380,7 +392,8 @@
           "values": "Values",
           "default": "Default",
           "addValuesButton": "Add Values",
-          "valuesHelpText": "Define the possible values for the variable. Set one of the values as the <bold>default</bold> to use for all alerts that use the notification template. You can choose a value when configuring the alert policy."
+          "valuesHelpText": "Define the possible values for the variable. Set one of the values as the <bold>default</bold> to use for all alerts that use the notification template. You can choose a value when configuring the alert policy.",
+          "nameError":"Name should contain only alphanumeric and _(underscore)"
         },
         "assignCustomVariableValueModal": {
           "title": "Assign Variable Value to Alert Policies",
@@ -402,7 +415,8 @@
         "webhookComposer": {
           "rollback": "Rollback to Default Template",
           "clearTemplate": "Clear Template"
-        }
+        },
+        "invalidVariables": "Variables {{variable}} not found"
       },
       "customVariablesPlugin": {
         "sysOrCusVariable": "{{variable_type}} VAR",

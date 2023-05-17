@@ -49,6 +49,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="atomicjar/">
+      <img src="/images/section_icons/develop/ecosystem/atomicjar-icon.png">
+      AtomicJar Testcontainers
+    </a>
+  </li>
+
+  <li>
     <a href="camunda/">
       <img src="/images/section_icons/develop/ecosystem/camunda.png">
       Camunda
@@ -124,6 +131,12 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     </a>
   </li>
 
+   <li>
+    <a href="mirantis/">
+      <img src="/images/section_icons/develop/ecosystem/mirantis.png">
+      Mirantis MKE
+    </a>
+  </li>
   <li>
     <a href="presto/">
       <img src="/images/section_icons/develop/ecosystem/presto-icon.png">

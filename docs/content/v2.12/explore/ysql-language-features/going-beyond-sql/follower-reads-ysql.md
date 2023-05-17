@@ -33,7 +33,7 @@ Replicas may not be completely up to date with all updates, so this design may r
 
 ### Surface area
 
-Two session variables control the behavior of follower reads:
+Two YSQL parameters control the behavior of follower reads:
 
 - `yb_read_from_followers` controls whether reading from followers is enabled. Default is false.
 - `yb_follower_read_staleness_ms` sets the maximum allowable staleness. Default is 30000 (30 seconds).
@@ -44,8 +44,8 @@ The table describes what the expected behavior is when a read happens from a fol
 
 | Conditions | Expected behavior |
 | :--------- | :---------------- |
-| yb_read_from_followers is true AND transaction is marked read-only | Read happens from the closest follower |
-| yb_read_from_followers is false OR transaction/statement is not read-only | Read happens from the leader |
+| `yb_read_from_followers` is true AND transaction is marked read-only | Read happens from the closest follower |
+| `yb_read_from_followers` is false OR transaction/statement is not read-only | Read happens from the leader |
 
 ### Read from follower conditions
 
@@ -64,7 +64,7 @@ To mark a transaction as read only, a user can do one of the following:
 
 ## Examples
 
-This example uses follower reads since the **transaction** is marked read-only.
+This example uses follower reads because the **transaction** is marked read-only.
 
 ```sql
 set yb_read_from_followers = true;
@@ -79,7 +79,7 @@ commit;
  k1 | v1
 ```
 
-This example uses follower reads since the **session** is marked read only.
+This example uses follower reads because the **session** is marked read only.
 
 ```sql
 set session characteristics as transaction read only;
@@ -94,7 +94,7 @@ SELECT * from t WHERE k='k1';
 (1 row)
 ```
 
-The following examples use follower reads since the **pg_hint_plan** mechanism is used during SELECT, PREPARE, and CREATE FUNCTION to perform follower reads.
+The following examples use follower reads because the **pg_hint_plan** mechanism is used during SELECT, PREPARE, and CREATE FUNCTION to perform follower reads.
 
 {{< note title="Note" >}}
 The pg_hint_plan hint needs to be applied at the prepare/function-definition stage and not at the `execute` stage.
@@ -117,7 +117,7 @@ set yb_read_from_followers = true;
 PREPARE select_stmt(text) AS
 /*+ Set(transaction_read_only on) */
 SELECT * from t WHERE k=$1;
-EXECUTE select_stmt(‘k1’);
+EXECUTE select_stmt('k1');
 ```
 
 ```output

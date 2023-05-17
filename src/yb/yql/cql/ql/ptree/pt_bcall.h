@@ -85,7 +85,8 @@ class PTBcall : public PTExpr {
 
   void CollectReferencedIndexColnames(MCSet<std::string> *col_names) const override;
 
-  std::string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override;
+  std::string QLName(
+      qlexpr::QLNameOption option = qlexpr::QLNameOption::kUserOriginalName) const override;
   bool IsAggregateCall() const override;
   yb::bfql::TSOpcode aggregate_opcode() const override;
 

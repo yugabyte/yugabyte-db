@@ -14,7 +14,7 @@
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
@@ -30,6 +30,10 @@
 
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
+
+DEFINE_RUNTIME_bool(ignore_null_sys_catalog_entries, false,
+                    "Whether we should ignore system catalog entries with NULL value during "
+                    "iteration.");
 
 namespace yb {
 namespace master {
@@ -52,7 +56,7 @@ Status SetColumnId(
 }
 
 Status ReadNextSysCatalogRow(
-    const QLTableRow& value_map, const Schema& schema, int8_t entry_type,
+    const qlexpr::QLTableRow& value_map, const Schema& schema, int8_t entry_type,
     ssize_t type_col_idx, ssize_t entry_id_col_idx, ssize_t metadata_col_idx,
     const EnumerationCallback& callback) {
   QLValue found_entry_type, entry_id, metadata;
@@ -60,9 +64,18 @@ Status ReadNextSysCatalogRow(
   SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
   RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
   RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
-  SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption, "Found wrong metadata type");
-  RETURN_NOT_OK(callback(entry_id.binary_value(), metadata.binary_value()));
-  return Status::OK();
+  if (metadata.type() != InternalType::kBinaryValue) {
+    auto status = STATUS_FORMAT(
+        Corruption, "Unexpected value type for metadata: $0, row: $1, type: $2, id: $3",
+        metadata.type(), value_map.ToString(), static_cast<SysRowEntryType>(entry_type),
+        Slice(entry_id.binary_value()).ToDebugHexString());
+    if (FLAGS_ignore_null_sys_catalog_entries && IsNull(metadata)) {
+      LOG(DFATAL) << status;
+      return Status::OK();
+    }
+    return status;
+  }
+  return callback(entry_id.binary_value(), metadata.binary_value());
 }
 
 } // namespace
@@ -104,7 +117,7 @@ Status SysCatalogWriter::DoMutateItem(
 }
 
 Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
-                                             const QLTableRow& source_row,
+                                             const qlexpr::QLTableRow& source_row,
                                              const TableId& target_table_id,
                                              const Schema& target_schema,
                                              const uint32_t target_schema_version,
@@ -185,8 +198,9 @@ Status FillSysCatalogWriteRequest(
 Status EnumerateSysCatalog(
     tablet::Tablet* tablet, const Schema& schema, int8_t entry_type,
     const EnumerationCallback& callback) {
+  dockv::ReaderProjection projection(schema);
   auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-      schema.CopyWithoutColumnIds(), ReadHybridTime::Max(), /* table_id= */ "",
+      projection, ReadHybridTime::Max(), /* table_id= */ "",
       CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
 
   return EnumerateSysCatalog(iter.get(), schema, entry_type, callback);
@@ -209,7 +223,7 @@ Status EnumerateSysCatalog(
       empty_hash_components, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
-  QLTableRow value_map;
+  qlexpr::QLTableRow value_map;
   while (VERIFY_RESULT(doc_iter->FetchNext(&value_map))) {
     YB_RETURN_NOT_OK_PREPEND(
         ReadNextSysCatalogRow(

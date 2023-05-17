@@ -2,14 +2,14 @@
 
 package com.yugabyte.yw.forms;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.UUID;
-
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 @ApiModel(value = "CustomerTaskData", description = "Customer task data")
 public class CustomerTaskFormData {

@@ -21,8 +21,8 @@
 #include "yb/client/yb_op.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_wire_protocol.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema.h"
 #include "yb/util/debug-util.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
@@ -163,7 +163,7 @@ RowsResult::RowsResult(const PTDmlStmt *tnode)
     : table_name_(tnode->table()->name()),
       column_schemas_(tnode->selected_schemas()),
       client_(YQL_CLIENT_CQL),
-      rows_data_(QLRowBlock::ZeroRowsData(YQL_CLIENT_CQL)) {
+      rows_data_(qlexpr::QLRowBlock::ZeroRowsData(YQL_CLIENT_CQL)) {
   if (column_schemas_ == nullptr) {
     column_schemas_ = make_shared<vector<ColumnSchema>>();
   }
@@ -201,7 +201,7 @@ Status RowsResult::Append(RowsResult&& other) {
   if (rows_data_.empty()) {
     rows_data_ = std::move(other.rows_data_);
   } else {
-    RETURN_NOT_OK(QLRowBlock::AppendRowsData(other.client_, other.rows_data_, &rows_data_));
+    RETURN_NOT_OK(qlexpr::QLRowBlock::AppendRowsData(other.client_, other.rows_data_, &rows_data_));
   }
   paging_state_ = std::move(other.paging_state_);
   return Status::OK();
@@ -240,8 +240,8 @@ void RowsResult::ClearPagingState() {
   paging_state_.clear();
 }
 
-std::unique_ptr<QLRowBlock> RowsResult::GetRowBlock() const {
-  return CreateRowBlock(client_, Schema(*column_schemas_, 0), rows_data_.AsSlice());
+std::unique_ptr<qlexpr::QLRowBlock> RowsResult::GetRowBlock() const {
+  return qlexpr::CreateRowBlock(client_, Schema(*column_schemas_, 0), rows_data_.AsSlice());
 }
 
 //------------------------------------------------------------------------------------------------

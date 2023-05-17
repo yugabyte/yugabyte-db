@@ -87,8 +87,7 @@ public class CreateTableSpaces extends AbstractTaskBase {
               objectMapper.readValue(
                   jsonData, new TypeReference<List<TableSpaceQueryResponse>>() {});
           existingTablespaces =
-              tablespaceList
-                  .stream()
+              tablespaceList.stream()
                   .map(TableSpaceUtil::parseToTableSpaceInfo)
                   .collect(Collectors.toMap(tsi -> tsi.name, Function.identity()));
         } catch (IOException ioe) {

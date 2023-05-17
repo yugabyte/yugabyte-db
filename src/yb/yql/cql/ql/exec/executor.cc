@@ -26,12 +26,12 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/consistent_read_point.h"
-#include "yb/common/index.h"
-#include "yb/common/index_column.h"
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
@@ -1147,7 +1147,7 @@ Result<QueryPagingState*> Executor::LoadPagingStateFromUser(const PTSelectStmt* 
 
 Status Executor::GenerateEmptyResult(const PTSelectStmt* tnode) {
   YBqlReadOpPtr select_op(tnode->table()->NewQLSelect());
-  QLRowBlock empty_row_block(tnode->table()->InternalSchema(), {});
+  qlexpr::QLRowBlock empty_row_block(tnode->table()->InternalSchema(), {});
   WriteBuffer buffer(1024);
   empty_row_block.Serialize(select_op->request().client(), &buffer);
   select_op->set_rows_data(buffer.ToContinuousBlock());
@@ -1250,10 +1250,10 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
 
 Result<bool> Executor::FetchRowsByKeys(const PTSelectStmt* tnode,
                                        const YBqlReadOpPtr& select_op,
-                                       const QLRowBlock& keys,
+                                       const qlexpr::QLRowBlock& keys,
                                        TnodeContext* tnode_context) {
   const Schema& schema = tnode->table()->InternalSchema();
-  for (const QLRow& key : keys.rows()) {
+  for (const auto& key : keys.rows()) {
     YBqlReadOpPtr op(tnode->table()->NewQLSelect());
     op->set_yb_consistency_level(select_op->yb_consistency_level());
     QLReadRequestPB* req = op->mutable_request();
@@ -1434,8 +1434,8 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
       columns->emplace_back("[message]", DataType::STRING);
       columns->insert(columns->end(), schema.columns().begin(), schema.columns().end());
 
-      QLRowBlock result_row_block(Schema(*columns, 0));
-      QLRow& row = result_row_block.Extend();
+      qlexpr::QLRowBlock result_row_block(Schema(*columns, 0));
+      auto& row = result_row_block.Extend();
       row.mutable_column(0)->set_bool_value(false);
       row.mutable_column(1)->set_string_value(
         "No update performed as all JSON cols are set to 'null'");
@@ -1449,8 +1449,8 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
         std::make_shared<std::vector<ColumnSchema>>();
       columns->emplace_back("[applied]", DataType::BOOL);
 
-      QLRowBlock result_row_block(Schema(*columns, 0));
-      QLRow& row = result_row_block.Extend();
+      qlexpr::QLRowBlock result_row_block(Schema(*columns, 0));
+      auto& row = result_row_block.Extend();
       row.mutable_column(0)->set_bool_value(false);
 
       result_ = std::make_shared<RowsResult>(
@@ -1570,7 +1570,7 @@ Status Executor::ExecPTNode(const PTAlterKeyspace *tnode) {
 
 namespace {
 
-void AddStringRow(const string& str, QLRowBlock* row_block) {
+void AddStringRow(const string& str, qlexpr::QLRowBlock* row_block) {
   row_block->Extend().mutable_column(0)->set_string_value(str);
 }
 
@@ -1587,7 +1587,7 @@ Status Executor::ExecPTNode(const PTExplainStmt *tnode) {
   auto explainColumns = std::make_shared<std::vector<ColumnSchema>>(
       std::initializer_list<ColumnSchema>{explainColumn});
   auto explainSchema = std::make_shared<Schema>(*explainColumns, 0);
-  QLRowBlock row_block(*explainSchema);
+  qlexpr::QLRowBlock row_block(*explainSchema);
   ExplainPlanPB explain_plan = dmlStmt->AnalysisResultToPB();
   switch (explain_plan.plan_case()) {
     case ExplainPlanPB::kSelectPlan: {
@@ -2147,7 +2147,7 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
 
     auto data = child_context->rows_result()->rows_data();
     if (!child_select->covers_fully() && !data.empty()) {
-      QLRowBlock* keys = tnode_context->keys();
+      auto* keys = tnode_context->keys();
       keys->rows().clear();
       RETURN_NOT_OK(keys->Deserialize(YQL_CLIENT_CQL,  &data));
       const YBqlReadOpPtr& select_op = tnode_context->uncovered_select_op();
@@ -2343,7 +2343,7 @@ Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode,
   // deleted when the row in the main table is deleted, or it will be inserted into the index
   // when a row is inserted into the main table or updated (for a non-pk column).
   for (const auto& index_table : tnode->pk_only_indexes()) {
-    const IndexInfo* index =
+    const auto* index =
         VERIFY_RESULT(tnode->table()->index_map().FindIndex(index_table->id()));
     const bool index_ready_to_accept = (is_upsert ? index->HasWritePermission()
                                                   : index->HasDeletePermission());
@@ -2541,8 +2541,8 @@ Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
       ColumnSchemaToPB(column, column_schemas->Add());
     }
 
-    QLRowBlock result_row_block(Schema(columns, 0));
-    QLRow& row = result_row_block.Extend();
+    qlexpr::QLRowBlock result_row_block(Schema(columns, 0));
+    auto& row = result_row_block.Extend();
     row.mutable_column(0)->set_bool_value(false);
     row.mutable_column(1)->set_string_value(resp.error_message());
     // Leave the rest of the columns null in this case.

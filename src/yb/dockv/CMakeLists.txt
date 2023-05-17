@@ -22,30 +22,30 @@ YRPC_GENERATE(
 
 ADD_YB_LIBRARY(dockv_proto
         SRCS ${DOCKV_PROTO_SRCS}
-        DEPS protobuf
+        DEPS gutil protobuf yb_util yrpc
         NONLINK_DEPS ${DOCKV_PROTO_TGTS})
 
 set(DOCKV_SRCS
     doc_key.cc
     doc_kv_util.cc
     doc_path.cc
-    doc_scanspec_util.cc
     doc_ttl_util.cc
     expiration.cc
     intent.cc
     key_bytes.cc
+    pg_row.cc
     packed_row.cc
     partial_row.cc
     partition.cc
     primitive_value.cc
     primitive_value_util.cc
-    ql_scanspec.cc
+    reader_projection.cc
     schema_packing.cc
     subdocument.cc
     value.cc
     )
 
-set(DOCKV_DEPS yb_common yb_util dockv_proto)
+set(DOCKV_DEPS dockv_proto yb_common yb_pggate_util yb_util)
 
 ADD_YB_LIBRARY(yb_dockv
         SRCS ${DOCKV_SRCS}
@@ -60,10 +60,11 @@ ADD_YB_LIBRARY(
     DEPS yb_dockv)
 
 
-set(YB_TEST_LINK_LIBS yb_common_test_util yb_dockv_test_util ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_common yb_dockv_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(doc_key-test)
 ADD_YB_TEST(doc_kv_util-test)
+ADD_YB_TEST(intent-test)
 ADD_YB_TEST(packed_row-test)
 ADD_YB_TEST(partial_row-test)
 ADD_YB_TEST(partition-test)

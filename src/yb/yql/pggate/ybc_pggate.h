@@ -16,7 +16,7 @@
 
 #include <stdint.h>
 
-#include "yb/common/ybc_util.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #ifdef __cplusplus
@@ -244,6 +244,9 @@ YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
                                      const char *newname);
 
 YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle);
+
+YBCStatus YBCPgAlterTableSetTableId(
+    YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_oid);
 
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
@@ -542,7 +545,7 @@ YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
 YBCStatus YBCPgExitSeparateDdlTxnMode();
-void YBCPgClearSeparateDdlTxnMode();
+YBCStatus YBCPgClearSeparateDdlTxnMode();
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
 YBCStatus YBCPgRollbackToSubTransaction(uint32_t id);
 double YBCGetTransactionPriority();

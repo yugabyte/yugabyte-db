@@ -184,27 +184,16 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     client::YBTableName cdc_state_table(
         YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
     ASSERT_OK(table.Open(cdc_state_table, client));
-
-    const auto op = table.NewReadOp();
-    auto* const req = op->mutable_request();
-    QLAddStringHashValue(req, tablet_id);
-    auto cond = req->mutable_where_expr()->mutable_condition();
-    cond->set_op(QLOperator::QL_OP_AND);
-    QLAddStringCondition(
-        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-    table.AddColumns({master::kCdcCheckpoint}, req);
-
     auto session = client->NewSession();
-    ASSERT_OK(session->TEST_ApplyAndFlush(op));
+
+    auto row = ASSERT_RESULT(FetchCdcStreamInfo(
+        &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
 
     LOG(INFO) << strings::Substitute(
         "Verifying tablet: $0, stream: $1, op_id: $2", tablet_id, stream_id,
         OpId(term, index).ToString());
 
-    auto row_block = ql::RowsResult(op.get()).GetRowBlock();
-    ASSERT_EQ(row_block->row_count(), 1);
-
-    string checkpoint = row_block->row(0).column(0).string_value();
+    string checkpoint = row.column(0).string_value();
     auto result = OpId::FromString(checkpoint);
     ASSERT_OK(result);
     OpId op_id = *result;
@@ -249,29 +238,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     const client::YBTableName cdc_state_table(
         YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
     ASSERT_OK(table.Open(cdc_state_table, client));
-
-    const auto op = table.NewReadOp();
-    auto* const req = op->mutable_request();
-    QLAddStringHashValue(req, tablet_id);
-
-    auto cond = req->mutable_where_expr()->mutable_condition();
-    cond->set_op(QLOperator::QL_OP_AND);
-    QLAddStringCondition(
-        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-
-    table.AddColumns({master::kCdcCheckpoint}, req);
     auto session = client->NewSession();
 
     // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
     // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
     ASSERT_OK(WaitFor(
-        [&]() {
-          EXPECT_OK(session->TEST_ApplyAndFlush(op));
-          auto row_block = ql::RowsResult(op.get()).GetRowBlock();
-          if (row_block->row_count() == 0) {
-            return true;
-          }
-          return false;
+        [&]() -> Result<bool> {
+          auto row = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
+              &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
+          return !row;
         },
         MonoDelta::FromSeconds(timeout_secs),
         "Failed to delete stream rows from cdc_state table."));
@@ -283,22 +258,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     const client::YBTableName cdc_state_table(
         YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
     RETURN_NOT_OK(table.Open(cdc_state_table, client));
-
-    const auto op = table.NewReadOp();
-    auto* const req = op->mutable_request();
-    QLAddStringHashValue(req, tablet_id);
-
-    auto cond = req->mutable_where_expr()->mutable_condition();
-    cond->set_op(QLOperator::QL_OP_AND);
-    QLAddStringCondition(
-        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-
-    table.AddColumns({master::kCdcCheckpoint}, req);
     auto session = client->NewSession();
 
-    EXPECT_OK(session->TEST_ApplyAndFlush(op));
-    auto row_block = ql::RowsResult(op.get()).GetRowBlock();
-    auto op_id_result = OpId::FromString(row_block->row(0).column(0).string_value());
+    auto row = VERIFY_RESULT(FetchCdcStreamInfo(
+        &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
+
+    auto op_id_result = OpId::FromString(row.column(0).string_value());
     RETURN_NOT_OK(op_id_result);
     auto op_id = *op_id_result;
 
@@ -313,24 +278,13 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     const client::YBTableName cdc_state_table(
         YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
     ASSERT_OK(table.Open(cdc_state_table, client));
-
-    const auto op = table.NewReadOp();
-    auto* const req = op->mutable_request();
-    QLAddStringHashValue(req, tablet_id);
-
-    auto cond = req->mutable_where_expr()->mutable_condition();
-    cond->set_op(QLOperator::QL_OP_AND);
-    QLAddStringCondition(
-        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-
-    table.AddColumns({master::kCdcCheckpoint}, req);
     auto session = client->NewSession();
 
     ASSERT_OK(WaitFor(
-        [&]() {
-          EXPECT_OK(session->TEST_ApplyAndFlush(op));
-          auto row_block = ql::RowsResult(op.get()).GetRowBlock();
-          auto op_id_result = OpId::FromString(row_block->row(0).column(0).string_value());
+        [&]() -> Result<bool> {
+          auto row = VERIFY_RESULT(FetchCdcStreamInfo(
+              &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
+          auto op_id_result = OpId::FromString(row.column(0).string_value());
           if (!op_id_result.ok()) {
             return false;
           }
@@ -1112,45 +1066,76 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const OpId& op_id = OpId::Min(), const uint64_t cdc_sdk_safe_time = 0,
       bool initial_checkpoint = true, const int tablet_idx = 0, bool bootstrap = false) {
-    int max_retries = 3;
     Status st;
-    for (int retry = 0; retry < max_retries; ++retry) {
-      RpcController set_checkpoint_rpc;
-      SetCDCCheckpointRequestPB set_checkpoint_req;
-      SetCDCCheckpointResponsePB set_checkpoint_resp;
-      auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-      set_checkpoint_rpc.set_deadline(deadline);
-      PrepareSetCheckpointRequest(
-          &set_checkpoint_req, stream_id, tablets, tablet_idx, op_id, initial_checkpoint,
-          cdc_sdk_safe_time, bootstrap);
-      st = cdc_proxy_->SetCDCCheckpoint(
-          set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
+    SetCDCCheckpointResponsePB set_checkpoint_resp_final;
 
-      if (st.ok()) {
-        return set_checkpoint_resp;
-      }
-    }
 
-    return st;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          RpcController set_checkpoint_rpc;
+          SetCDCCheckpointRequestPB set_checkpoint_req;
+
+          SetCDCCheckpointResponsePB set_checkpoint_resp;
+          auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
+          set_checkpoint_rpc.set_deadline(deadline);
+          PrepareSetCheckpointRequest(
+              &set_checkpoint_req, stream_id, tablets, tablet_idx, op_id, initial_checkpoint,
+              cdc_sdk_safe_time, bootstrap);
+          st = cdc_proxy_->SetCDCCheckpoint(
+              set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
+
+          if (set_checkpoint_resp.has_error() &&
+              (set_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND)) {
+            return STATUS_FORMAT(
+                InternalError, "Response had error: $0", set_checkpoint_resp.DebugString());
+          }
+          if (st.ok() && !set_checkpoint_resp.has_error()) {
+            set_checkpoint_resp_final.CopyFrom(set_checkpoint_resp);
+            return true;
+          }
+
+          return false;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout),
+        "GetChanges timed out waiting for Leader to get ready"));
+
+    return set_checkpoint_resp_final;
   }
 
   Result<std::vector<OpId>> GetCDCCheckpoint(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
-    RpcController get_checkpoint_rpc;
     GetCheckpointRequestPB get_checkpoint_req;
-    GetCheckpointResponsePB get_checkpoint_resp;
-    auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-    get_checkpoint_rpc.set_deadline(deadline);
 
     std::vector<OpId> op_ids;
-    for (auto tablet : tablets) {
+    op_ids.reserve(tablets.size());
+    for (const auto& tablet : tablets) {
       get_checkpoint_req.set_stream_id(stream_id);
-      get_checkpoint_req.set_tablet_id(tablets.Get(0).tablet_id());
-      RETURN_NOT_OK(
-          cdc_proxy_->GetCheckpoint(get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
-      op_ids.push_back(OpId::FromPB(get_checkpoint_resp.checkpoint().op_id()));
+      get_checkpoint_req.set_tablet_id(tablet.tablet_id());
+
+      RETURN_NOT_OK(WaitFor(
+          [&]() -> Result<bool> {
+            GetCheckpointResponsePB get_checkpoint_resp;
+            RpcController get_checkpoint_rpc;
+            RETURN_NOT_OK(cdc_proxy_->GetCheckpoint(
+                get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
+
+            if (get_checkpoint_resp.has_error() &&
+                (get_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND)) {
+              return STATUS_FORMAT(
+                  InternalError, "Response had error: $0", get_checkpoint_resp.DebugString());
+            }
+            if (!get_checkpoint_resp.has_error()) {
+              op_ids.push_back(OpId::FromPB(get_checkpoint_resp.checkpoint().op_id()));
+              return true;
+            }
+
+            return false;
+          },
+          MonoDelta::FromSeconds(kRpcTimeout),
+          "GetChanges timed out waiting for Leader to get ready"));
     }
+
     return op_ids;
   }
 
@@ -1469,7 +1454,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequest(&change_req, stream_id, tablets, *cp, tablet_idx, "", safe_hybrid_time);
     }
 
-    // Retry only on LeaderNotReadyToServe errors
+    // Retry only on LeaderNotReadyToServe or NotFound errors
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           RpcController get_changes_rpc;
@@ -1479,7 +1464,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
             status = StatusFromPB(change_resp.error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe()) {
+          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
             return false;
           }
 
@@ -1506,7 +1491,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequest(&change_req, stream_id, tablet_id, *cp, tablet_idx);
     }
 
-    // Retry only on LeaderNotReadyToServe errors
+    // Retry only on LeaderNotReadyToServe or NotFound errors
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           RpcController get_changes_rpc;
@@ -1516,7 +1501,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
             status = StatusFromPB(change_resp.error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe()) {
+          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
             return false;
           }
 
@@ -1543,7 +1528,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequestWithExplicitCheckpoint(&change_req, stream_id, tablets, *cp, tablet_idx);
     }
 
-    // Retry only on LeaderNotReadyToServe errors
+    // Retry only on LeaderNotReadyToServe or NotFound errors
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           RpcController get_changes_rpc;
@@ -1553,7 +1538,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
             status = StatusFromPB(change_resp.error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe()) {
+          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
             return false;
           }
 
@@ -1773,11 +1758,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       ASSERT_EQ(OpId(1, 3), op_id);
     }
 
-    resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId(1, -3)));
-    ASSERT_TRUE(resp.has_error());
+    ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets, OpId(1, -3)));
 
-    resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId(-2, 1)));
-    ASSERT_TRUE(resp.has_error());
+    ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets, OpId(-2, 1)));
   }
 
   Result<GetChangesResponsePB> VerifyIfDDLRecordPresent(
@@ -1993,25 +1976,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
         YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
     RETURN_NOT_OK(table.Open(cdc_state_table, client));
 
-    auto read_op = table.NewReadOp();
-    auto* read_req = read_op->mutable_request();
-    QLAddStringHashValue(read_req, tablet_id);
-    auto cond = read_req->mutable_where_expr()->mutable_condition();
-    cond->set_op(QLOperator::QL_OP_AND);
-    QLAddStringCondition(
-        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-    table.AddColumns({master::kCdcData}, read_req);
-    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-    RETURN_NOT_OK(session->TEST_ReadSync(read_op));
-
-    auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
-    if (row_block->row_count() != 1) {
-      return STATUS(
-          InvalidArgument, "Did not find a row in the cdc_state table for the tablet and stream.");
-    }
+    auto row = VERIFY_RESULT(FetchCdcStreamInfo(
+        &table, session.get(), tablet_id, stream_id, {master::kCdcData}));
 
     const auto& last_active_time_string =
-        row_block->row(0).column(0).map_value().values().Get(0).string_value();
+        row.column(0).map_value().values().Get(0).string_value();
 
     auto last_active_time = VERIFY_RESULT(CheckedStoInt<int64_t>(last_active_time_string));
     return last_active_time;
@@ -2025,27 +1994,13 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
         YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
     RETURN_NOT_OK(table.Open(cdc_state_table, client));
 
-    auto read_op = table.NewReadOp();
-    auto* read_req = read_op->mutable_request();
-    QLAddStringHashValue(read_req, tablet_id);
-    auto cond = read_req->mutable_where_expr()->mutable_condition();
-    cond->set_op(QLOperator::QL_OP_AND);
-    QLAddStringCondition(
-        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-    table.AddColumns({master::kCdcData}, read_req);
-    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-    RETURN_NOT_OK(session->TEST_ReadSync(read_op));
-
-    auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
-    if (row_block->row_count() != 1) {
-      return STATUS(
-          InvalidArgument, "Did not find a row in the cdc_state table for the tablet and stream.");
-    }
+    auto row = VERIFY_RESULT(FetchCdcStreamInfo(
+        &table, session.get(), tablet_id, stream_id, {master::kCdcData}));
 
     int32_t snapshot_time_index = -1;
     int32_t snasphot_key_index = -1;
-    for (int32_t i = 0; i < row_block->row(0).column(0).map_value().keys().size(); ++i) {
-      const auto& key_pb = row_block->row(0).column(0).map_value().keys().Get(i);
+    for (int32_t i = 0; i < row.column(0).map_value().keys().size(); ++i) {
+      const auto& key_pb = row.column(0).map_value().keys().Get(i);
       if (key_pb.string_value() == kCDCSDKSafeTime) {
         snapshot_time_index = i;
       } else if (key_pb.string_value() == kCDCSDKSnapshotKey) {
@@ -2060,14 +2015,13 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     uint64 snapshot_time = 0;
     if (snapshot_time_index != -1) {
       const auto& snapshot_time_string =
-          row_block->row(0).column(0).map_value().values().Get(snapshot_time_index).string_value();
+          row.column(0).map_value().values().Get(snapshot_time_index).string_value();
       snapshot_time = VERIFY_RESULT(CheckedStol<uint64>(snapshot_time_string));
     }
 
     std::string snapshot_key = "";
     if (snasphot_key_index != -1) {
-      snapshot_key =
-          row_block->row(0).column(0).map_value().values().Get(snasphot_key_index).string_value();
+      snapshot_key = row.column(0).map_value().values().Get(snasphot_key_index).string_value();
     }
 
     return std::make_pair(snapshot_time, snapshot_key);
@@ -2081,25 +2035,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
         YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
     RETURN_NOT_OK(table.Open(cdc_state_table, client));
 
-    auto read_op = table.NewReadOp();
-    auto* read_req = read_op->mutable_request();
-    QLAddStringHashValue(read_req, tablet_id);
-    auto cond = read_req->mutable_where_expr()->mutable_condition();
-    cond->set_op(QLOperator::QL_OP_AND);
-    QLAddStringCondition(
-        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-    table.AddColumns({master::kCdcData}, read_req);
-    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-    RETURN_NOT_OK(session->TEST_ReadSync(read_op));
-
-    auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
-    if (row_block->row_count() != 1) {
-      return STATUS(
-          InvalidArgument, "Did not find a row in the cdc_state table for the tablet and stream.");
-    }
+    auto row = VERIFY_RESULT(FetchCdcStreamInfo(
+        &table, session.get(), tablet_id, stream_id, {master::kCdcData}));
 
     const auto& safe_hybrid_time_string =
-        row_block->row(0).column(0).map_value().values().Get(1).string_value();
+        row.column(0).map_value().values().Get(1).string_value();
 
     auto safe_hybrid_time = VERIFY_RESULT(CheckedStoInt<int64_t>(safe_hybrid_time_string));
     return safe_hybrid_time;
@@ -2189,7 +2129,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     NamespaceId ns_id;
     std::vector<TableId> stream_table_ids;
     std::unordered_map<std::string, std::string> options;
-    RETURN_NOT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+    StreamModeTransactional transactional(false);
+    RETURN_NOT_OK(test_client()->GetCDCStream(
+        stream_id, &ns_id, &stream_table_ids, &options, &transactional));
     return stream_table_ids;
   }
 

@@ -1005,6 +1005,10 @@ Status CompactionJob::OpenCompactionOutputFile(
     }
   }
   out.finished = false;
+  // Reset the filter post compaction.
+  if (out.meta.largest.user_frontier) {
+    out.meta.largest.user_frontier->ResetFilter();
+  }
 
   sub_compact->outputs.push_back(out);
 

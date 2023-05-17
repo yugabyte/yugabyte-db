@@ -78,11 +78,9 @@ In this listing:
 
 ### Identify and terminate an open transaction
 
-Often enough, you may need to identify long-running queries, because these queries could indicate deeper problems. The pg_stat_activity view can help identify these issues. In this example, you create an open transaction, identify it, and terminate it.
+Often enough, you may need to identify long-running queries, because these queries could indicate deeper problems. The pg_stat_activity view can help identify these issues. In this example, you create an open transaction, identify it, and terminate it. The example uses the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
 
 #### Create an open transaction
-
-1. Follow the steps on [this page](https://download.yugabyte.com/#macos) to load the `yb_demo` sample dataset.
 
 1. Use the following query to return a row from the users table.
 

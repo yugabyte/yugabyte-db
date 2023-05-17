@@ -16,9 +16,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
@@ -172,9 +172,7 @@ public class BackupUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         Set<String> tableNames =
-            taskParams()
-                .getTableNames()
-                .stream()
+            taskParams().getTableNames().stream()
                 .map(tableName -> taskParams().getKeyspace() + ":" + tableName)
                 .collect(Collectors.toSet());
 
@@ -193,13 +191,12 @@ public class BackupUniverse extends UniverseTaskBase {
         }
       } catch (Throwable t) {
         if (taskParams().alterLoadBalancer) {
-          // Clear previous subtasks if any.
-          getRunnableTask().reset();
           // If the task failed, we don't want the loadbalancer to be
           // disabled, so we enable it again in case of errors.
-          createLoadBalancerStateChangeTask(true)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-          getRunnableTask().runSubTasks();
+          setTaskQueueAndRun(
+              () ->
+                  createLoadBalancerStateChangeTask(true)
+                      .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse));
         }
         throw t;
       }

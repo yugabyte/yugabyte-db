@@ -637,8 +637,7 @@ public class AWSInitializer extends AbstractInitializer {
   }
 
   private boolean isInstanceTypeSupported(Map<String, String> productAttributes) {
-    return InstanceType.getAWSInstancePrefixesSupported(config)
-        .stream()
+    return InstanceType.getAWSInstancePrefixesSupported(config).stream()
         .anyMatch(productAttributes.getOrDefault("instanceType", "")::startsWith);
   }
 }

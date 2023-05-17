@@ -187,7 +187,7 @@ public class PgRegressBuilder {
 
   private void addPostProcessEnvVar() throws IOException {
     File postprocessScript = new File(
-        TestUtils.findYbRootDir() + "/build-support/pg_regress_postprocess_output.py");
+        TestUtils.findYbRootDir() + "/python/yugabyte/pg_regress_postprocess_output.py");
 
     if (!postprocessScript.exists()) {
       throw new IOException("File does not exist: " + postprocessScript);

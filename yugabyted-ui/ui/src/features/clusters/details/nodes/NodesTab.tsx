@@ -24,6 +24,10 @@ import { StateEnum, StatusEntity, YBSmartStatus } from '@app/components/YBStatus
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 
 const useStyles = makeStyles((theme) => ({
+    title: {
+      marginTop: theme.spacing(3),
+      marginBottom: theme.spacing(2.5),
+    },
     loadingCount: {
       height: theme.spacing(2.5),
       width: theme.spacing(20),
@@ -37,7 +41,7 @@ const useStyles = makeStyles((theme) => ({
     },
     nodeComponent: {
         display: 'flex',
-        padding: '16px',
+        padding: '12px 32px',
         alignItems: 'center'
     },
     nodeName: {
@@ -53,7 +57,7 @@ const useStyles = makeStyles((theme) => ({
         alignItems: 'center'
     },
     regionZoneComponent: {
-        padding: '16px'
+        padding: '12px 32px'
     },
     selectBox: {
         width: '180px'
@@ -69,7 +73,8 @@ const useStyles = makeStyles((theme) => ({
         marginLeft: '32px'
     },
     filterRow: {
-        display: 'flex'
+        display: 'flex',
+        marginBottom: theme.spacing(2),
     },
     filterRowButtons: {
         marginLeft: 'auto'
@@ -80,7 +85,7 @@ const useStyles = makeStyles((theme) => ({
   }));
 
 // const StatusComponent = (isHealthy: boolean) => (
-//   <YBStatus type={isHealthy ? STATUS_TYPES.SUCCESS : STATUS_TYPES.ERROR} />
+//   <YBStatus type={isHealthy ? STATUS_TYPES.SUCCESS : STATUS_TYPES.ERROR} tooltip />
 // );
 
 const NodeComponent = (classes: ClassNameMap) => (
@@ -93,7 +98,7 @@ const NodeComponent = (classes: ClassNameMap) => (
 ) => {
     return (
     <Box className={classes.nodeComponent}>
-        <YBStatus type={node_data.status ? STATUS_TYPES.SUCCESS : STATUS_TYPES.ERROR} />
+        <YBStatus type={node_data.status ? STATUS_TYPES.SUCCESS : STATUS_TYPES.ERROR} tooltip />
         <Box>
             <Typography variant='body1' className={classes.nodeName}>
                 {node_data.name}
@@ -107,7 +112,7 @@ const NodeComponent = (classes: ClassNameMap) => (
         </Box>
         {node_data.bootstrapping && (
             <div className={classes.nodeBootstrappingIcon}>
-                <YBStatus type={STATUS_TYPES.IN_PROGRESS}/>
+                <YBStatus type={STATUS_TYPES.IN_PROGRESS} tooltip />
             </div>
         )}
     </Box>
@@ -332,7 +337,7 @@ export const NodesTab: FC = () => {
         filter: true,
         customBodyRender: NodeComponent(classes),
         display: columns.node_data,
-        setCellHeaderProps: () => ({style:{whiteSpace: 'nowrap', padding: '8px 8px 8px 44px'}})
+        setCellHeaderProps: () => ({style:{whiteSpace: 'nowrap', padding: '8px 8px 8px 34px' }})
       }
     },
     {
@@ -358,7 +363,7 @@ export const NodesTab: FC = () => {
         options: {
           filter: true,
           customBodyRender: RegionZoneComponent(classes),
-          setCellHeaderProps: () => ({style:{whiteSpace: 'nowrap', padding: '8px 8px 8px 16px'}}),
+          setCellHeaderProps: () => ({style:{whiteSpace: 'nowrap', padding: '8px 32px' }}),
           display: columns.region_and_zone
         }
     },
@@ -379,8 +384,8 @@ export const NodesTab: FC = () => {
                   // We hard code widths for subcolumns for now to ensure the body cells line
                   // up with the header cells. For this to happen automatically, we'll
                   // need to modify YBTable further, which we may or may not want to do.
-                  setCellProps: () => ({ style: { width: '120px' } }),
-                  setCellHeaderProps: () => ({ style: { width: '120px' } })
+                  setCellProps: () => ({ style: { width: '150px', padding: '0 32px' } }),
+                  setCellHeaderProps: () => ({ style: { width: '150px', padding: '8px 32px' } })
               }
           },
           {
@@ -389,8 +394,8 @@ export const NodesTab: FC = () => {
               options: {
                   filter: true,
                   display: columns.write_ops,
-                  setCellProps: () => ({ style: { width: '120px' } }),
-                  setCellHeaderProps: () => ({ style: { width: '120px' } })
+                  setCellProps: () => ({ style: { width: '150px', padding: '0 32px' } }),
+                  setCellHeaderProps: () => ({ style: { width: '150px', padding: '8px 32px' } })
               }
           },
           {
@@ -399,8 +404,8 @@ export const NodesTab: FC = () => {
             options: {
                 filter: true,
                 display: columns.active_connections,
-                setCellProps: () => ({ style: { width: '150px' } }),
-                setCellHeaderProps: () => ({ style: { width: '150px' } })
+                setCellProps: () => ({ style: { width: '180px', padding: '0 32px' } }),
+                setCellHeaderProps: () => ({ style: { width: '180px', padding: '8px 32px' } })
             }
           },
         ],
@@ -419,8 +424,8 @@ export const NodesTab: FC = () => {
               options: {
                   filter: true,
                   display: columns.peer_tablets,
-                  setCellProps: () => ({ style: { width: '90px' } }),
-                  setCellHeaderProps: () => ({ style: { width: '90px' } })
+                  setCellProps: () => ({ style: { width: '100px', padding: '0 32px' } }),
+                  setCellHeaderProps: () => ({ style: { width: '100px', padding: '8px 32px' } })
               }
           },
           {
@@ -429,8 +434,8 @@ export const NodesTab: FC = () => {
               options: {
                   filter: true,
                   display: columns.leader_tablets,
-                  setCellProps: () => ({ style: { width: '90px' } }),
-                  setCellHeaderProps: () => ({ style: { width: '90px' } })
+                  setCellProps: () => ({ style: { width: '100px', padding: '0 32px' } }),
+                  setCellHeaderProps: () => ({ style: { width: '100px', padding: '8px 32px' } })
               }
           },
           {
@@ -439,8 +444,8 @@ export const NodesTab: FC = () => {
             options: {
                 filter: true,
                 display: columns.total_tablets,
-                setCellProps: () => ({ style: { width: '90px' } }),
-                setCellHeaderProps: () => ({ style: { width: '90px' } })
+                setCellProps: () => ({ style: { width: '100px', padding: '0 32px' } }),
+                setCellHeaderProps: () => ({ style: { width: '100px', padding: '8px 32px' } })
             }
           },
         ],
@@ -459,8 +464,8 @@ export const NodesTab: FC = () => {
                 options: {
                     filter: true,
                     display: columns.uptime_seconds,
-                    setCellProps: () => ({ style: { width: '120px' } }),
-                    setCellHeaderProps: () => ({ style: { width: '120px' } })
+                    setCellProps: () => ({ style: { width: '120px', padding: '0 32px' } }),
+                    setCellHeaderProps: () => ({ style: { width: '120px', padding: '8px 32px' } })
                 }
             },
             {
@@ -469,8 +474,8 @@ export const NodesTab: FC = () => {
                 options: {
                     filter: true,
                     display: columns.time_since_hb_sec,
-                    setCellProps: () => ({ style: { width: '160px' } }),
-                    setCellHeaderProps: () => ({ style: { width: '160px' } })
+                    setCellProps: () => ({ style: { width: '200px', padding: '0 32px' } }),
+                    setCellHeaderProps: () => ({ style: { width: '200px', padding: '8px 32px' } })
                 }
             }
         ],
@@ -502,8 +507,8 @@ export const NodesTab: FC = () => {
                 options: {
                     filter: true,
                     display: columns.ram_used,
-                    setCellProps: () => ({ style: { width: '90px' } }),
-                    setCellHeaderProps: () => ({ style: { width: '90px' } })
+                    setCellProps: () => ({ style: { width: '120px', padding: '0 32px' } }),
+                    setCellHeaderProps: () => ({ style: { width: '120px', padding: '8px 32px' } })
                 }
             },
             {
@@ -512,8 +517,8 @@ export const NodesTab: FC = () => {
                 options: {
                     filter: true,
                     display: columns.ram_provisioned,
-                    setCellProps: () => ({ style: { width: '110px' } }),
-                    setCellHeaderProps: () => ({ style: { width: '110px' } })
+                    setCellProps: () => ({ style: { width: '140px', padding: '0 32px' } }),
+                    setCellHeaderProps: () => ({ style: { width: '140px', padding: '8px 32px' } })
                 }
             }
         ],
@@ -535,8 +540,8 @@ export const NodesTab: FC = () => {
                 options: {
                     filter: true,
                     display: columns.sst_size,
-                    setCellProps: () => ({ style: { width: '90px' } }),
-                    setCellHeaderProps: () => ({ style: { width: '90px' } })
+                    setCellProps: () => ({ style: { width: '120px', padding: '0 32px' } }),
+                    setCellHeaderProps: () => ({ style: { width: '120px', padding: '8px 32px' } })
                 }
             },
             {
@@ -545,8 +550,8 @@ export const NodesTab: FC = () => {
                 options: {
                     filter: true,
                     display: columns.uncompressed_sst_size,
-                    setCellProps: () => ({ style: { width: '180px' } }),
-                    setCellHeaderProps: () => ({ style: { width: '180px' } })
+                    setCellProps: () => ({ style: { width: '200px', padding: '0 32px' } }),
+                    setCellHeaderProps: () => ({ style: { width: '200px', padding: '8px 32px' } })
                 }
             },
             {
@@ -555,8 +560,8 @@ export const NodesTab: FC = () => {
                 options: {
                     filter: true,
                     display: columns.disk_provisioned,
-                    setCellProps: () => ({ style: { width: '140px' } }),
-                    setCellHeaderProps: () => ({ style: { width: '140px' } })
+                    setCellProps: () => ({ style: { width: '160px', padding: '0 32px' } }),
+                    setCellHeaderProps: () => ({ style: { width: '160px', padding: '8px 32px' } })
                 }
             }
         ],
@@ -596,8 +601,8 @@ export const NodesTab: FC = () => {
                 options: {
                     filter: true,
                     display: columns.master_tserver_status,
-                    setCellProps: () => ({ style: { width: '90px' } }),
-                    setCellHeaderProps: () => ({ style: { width: '90px' } })
+                    setCellProps: () => ({ style: { width: '140px', padding: '0 32px 0' } }),
+                    setCellHeaderProps: () => ({ style: { width: '140px', padding: '8px 32px' } })
                 }
             },
             {
@@ -606,8 +611,8 @@ export const NodesTab: FC = () => {
                 options: {
                     filter: true,
                     display: columns.master_tserver_uptime,
-                    setCellProps: () => ({ style: { width: '90px' } }),
-                    setCellHeaderProps: () => ({ style: { width: '90px' } })
+                    setCellProps: () => ({ style: { width: '100px', padding: '0 32px' } }),
+                    setCellHeaderProps: () => ({ style: { width: '100px', padding: '8px 32px' } })
                 }
             }
         ],
@@ -615,13 +620,13 @@ export const NodesTab: FC = () => {
             if (index == 0) {
                 return (
                     <>
-                        <div>
+                        <div style={{ 'margin': '6px 0' }}>
                             <YBSmartStatus
                                 status={value.tserver ? StateEnum.Succeeded : StateEnum.Failed}
                                 entity={StatusEntity.Tserver}
                             />
                         </div>
-                        <div>
+                        <div style={{ 'margin': '6px 0' }}>
                             <YBSmartStatus
                                 status={value.master ? StateEnum.Succeeded : StateEnum.Failed}
                                 entity={StatusEntity.Master}
@@ -632,13 +637,13 @@ export const NodesTab: FC = () => {
             } else if (index == 1) {
                 return (
                     <>
-                        <div>
+                        <div style={{ 'margin': '8px 0' }}>
                             {value.tserver >= 0
                                 ? getHumanInterval(new Date(0).toString(),
                                     new Date(value.tserver * 1000).toString())
                                 : '-'}
                         </div>
-                        <div>
+                        <div style={{ 'margin': '12px 0 8px 0' }}>
                             {value.master >= 0
                                 ? getHumanInterval(new Date(0).toString(),
                                     new Date(value.tserver * 1000).toString())
@@ -686,7 +691,7 @@ export const NodesTab: FC = () => {
             {
                 name: 'region_and_zone',
                 label: t('clusterDetail.nodes.regionAndZone')
-            }
+            },
         ]
     },
     performance: {
@@ -912,13 +917,14 @@ export const NodesTab: FC = () => {
         {MODAL_CHECKBOXES_COMPONENT}
       </YBModal>
       { nodesData.length ?
-        <Box pb={4} pt={1}>
+        <Box pb={4}>
             <YBTable
                 data={nodesData}
                 columns={NODES_TABLE_COLUMNS}
                 options={{ pagination: false }}
                 touchBorder
                 cellBorder
+                noCellBottomBorder
                 alternateRowShading
             />
         </Box>

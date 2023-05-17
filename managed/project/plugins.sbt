@@ -25,7 +25,7 @@ libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.11"
 addSbtPlugin("com.typesafe.play" % "sbt-plugin" % "2.8.19")
 
 // ORM
-addSbtPlugin("com.typesafe.play" % "sbt-play-ebean" % "6.2.0-RC4")
+addSbtPlugin("com.typesafe.play" % "sbt-play-ebean" % "6.2.0-RC5")
 
 addSbtPlugin("com.github.sbt" % "sbt-native-packager" % "1.9.16")
 
@@ -36,7 +36,7 @@ addSbtPlugin("com.github.sbt" % "sbt-eclipse" % "6.0.0")
 addSbtPlugin("org.openapitools" % "sbt-openapi-generator" % "5.0.1")
 
 // Plugin for formatting code.
-addSbtPlugin("com.swoval" % "sbt-jvm-format" % "0.3.1")
+addSbtPlugin("com.lightbend.sbt" % "sbt-java-formatter" % "0.8.0")
 
 addSbtPlugin("io.kamon" % "sbt-kanela-runner-play-2.8" % "2.0.14")
 

@@ -100,8 +100,7 @@ public class MetricsController extends Controller {
     List<Metric> allMetrics = metricService.list(MetricFilter.builder().expired(false).build());
 
     Map<String, List<Metric>> metricsByName =
-        allMetrics
-            .stream()
+        allMetrics.stream()
             .collect(Collectors.groupingBy(Metric::getName, TreeMap::new, Collectors.toList()));
 
     Map<String, PlatformMetrics> platformMetricsMap =

@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -109,6 +110,10 @@ public class GFlagsUtil {
   public static final String WEBSERVER_CERTIFICATE_FILE = "webserver_certificate_file";
   public static final String WEBSERVER_PRIVATE_KEY_FILE = "webserver_private_key_file";
   public static final String WEBSERVER_CA_CERTIFICATE_FILE = "webserver_ca_certificate_file";
+  public static final String RAFT_HEARTBEAT_INTERVAL = "raft_heartbeat_interval_ms";
+  public static final String LEADER_LEASE_DURATION_MS = "leader_lease_duration_ms";
+  public static final String LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS =
+      "leader_failure_max_missed_heartbeat_periods";
 
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
   public static final String CORES_DIR_PATH = "/cores";
@@ -208,6 +213,14 @@ public class GFlagsUtil {
       extra_gflags.put(FS_DATA_DIRS, mountPoints);
     } else {
       throw new RuntimeException("mountpoints and numVolumes are missing from taskParam");
+    }
+
+    boolean isMultiRegion =
+        universe.getConfig().getOrDefault(Universe.IS_MULTIREGION, "false").equals("true");
+    if (isMultiRegion) {
+      extra_gflags.put(RAFT_HEARTBEAT_INTERVAL, String.valueOf(1500));
+      extra_gflags.put(LEADER_LEASE_DURATION_MS, String.valueOf(6000));
+      extra_gflags.put(LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS, String.valueOf(5));
     }
 
     NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -331,8 +344,16 @@ public class GFlagsUtil {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
     String providerUUID = userIntent.provider;
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
+    String ybHomeDir = provider.getYbHome();
+    int hardwareConcurrency =
+        (int)
+            Math.ceil(
+                InstanceType.getOrBadRequest(provider.getUuid(), node.cloudInfo.instance_type)
+                    .getNumCores());
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", Integer.toString(1));
+    ybcFlags.put("hardware_concurrency", Integer.toString(hardwareConcurrency));
     ybcFlags.put("server_address", node.cloudInfo.private_ip);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("log_dir", K8S_YBC_LOG_SUBDIR);
@@ -340,13 +361,13 @@ public class GFlagsUtil {
     ybcFlags.put("yb_master_webserver_port", Integer.toString(node.masterHttpPort));
     ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
-    ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
-    ybcFlags.put("yb_admin", getYbHomeDir(providerUUID) + YB_ADMIN_PATH);
-    ybcFlags.put("yb_ctl", getYbHomeDir(providerUUID) + YB_CTL_PATH);
-    ybcFlags.put("ysql_dump", getYbHomeDir(providerUUID) + YSQL_DUMP_PATH);
-    ybcFlags.put("ysql_dumpall", getYbHomeDir(providerUUID) + YSQL_DUMPALL_PATH);
-    ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
-    ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
+    ybcFlags.put("redis_cli", ybHomeDir + REDIS_CLI_PATH);
+    ybcFlags.put("yb_admin", ybHomeDir + YB_ADMIN_PATH);
+    ybcFlags.put("yb_ctl", ybHomeDir + YB_CTL_PATH);
+    ybcFlags.put("ysql_dump", ybHomeDir + YSQL_DUMP_PATH);
+    ybcFlags.put("ysql_dumpall", ybHomeDir + YSQL_DUMPALL_PATH);
+    ybcFlags.put("ysqlsh", ybHomeDir + YSQLSH_PATH);
+    ybcFlags.put("ycqlsh", ybHomeDir + YCQLSH_PATH);
 
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
@@ -714,8 +735,7 @@ public class GFlagsUtil {
       Collection<UniverseDefinitionTaskParams.Cluster> allClusters) {
     UserIntent userIntent = cluster.userIntent;
     UniverseDefinitionTaskParams.Cluster primary =
-        allClusters
-            .stream()
+        allClusters.stream()
             .filter(c -> c.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY)
             .findFirst()
             .orElse(null);
@@ -910,9 +930,7 @@ public class GFlagsUtil {
 
   public static Set<String> getDeletedGFlags(
       Map<String, String> currentGFlags, Map<String, String> updatedGFlags) {
-    return currentGFlags
-        .keySet()
-        .stream()
+    return currentGFlags.keySet().stream()
         .filter(flag -> !updatedGFlags.containsKey(flag))
         .collect(Collectors.toSet());
   }

@@ -13,10 +13,9 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.models.TaskInfo;
 import java.util.Map;
 import javax.inject.Inject;
-
-import com.yugabyte.yw.models.TaskInfo;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -58,10 +57,12 @@ public class InstanceActions extends NodeTaskBase {
   }
 
   @Override
-  public void onFailure(TaskInfo taskInfo, Throwable cause) {
+  public boolean onFailure(TaskInfo taskInfo, Throwable cause) {
     // don't reboot if disk update failed
     if (taskParams().type != NodeManager.NodeCommandType.Disk_Update) {
-      super.onFailure(taskInfo, cause);
+      return super.onFailure(taskInfo, cause);
     }
+
+    return false;
   }
 }

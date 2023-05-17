@@ -10,14 +10,13 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.forms.SupportBundleFormData;
+import com.yugabyte.yw.models.helpers.BundleDetails;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModelProperty;
-
 import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Path;

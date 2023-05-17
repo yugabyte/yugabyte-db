@@ -91,8 +91,7 @@ public class MetricStorage {
   }
 
   private void acquireLocks(Collection<Metric> metrics) {
-    metrics
-        .stream()
+    metrics.stream()
         .map(Metric::getName)
         .distinct()
         .sorted()
@@ -102,8 +101,7 @@ public class MetricStorage {
   }
 
   private void releaseLocks(Collection<Metric> metrics) {
-    metrics
-        .stream()
+    metrics.stream()
         .map(Metric::getName)
         .distinct()
         .sorted()
@@ -116,9 +114,7 @@ public class MetricStorage {
 
   private Stream<NamedMetricStore> get(MetricFilter filter) {
     Set<String> names = getNames(filter);
-    return metricsByKey
-        .entrySet()
-        .stream()
+    return metricsByKey.entrySet().stream()
         .filter(e -> names.contains(e.getKey()))
         .map(Entry::getValue);
   }
@@ -130,17 +126,13 @@ public class MetricStorage {
     }
     if (CollectionUtils.isNotEmpty(filter.getSourceKeys())) {
       names.addAll(
-          filter
-              .getSourceKeys()
-              .stream()
+          filter.getSourceKeys().stream()
               .map(MetricSourceKey::getName)
               .collect(Collectors.toList()));
     }
     if (CollectionUtils.isNotEmpty(filter.getKeys())) {
       names.addAll(
-          filter
-              .getKeys()
-              .stream()
+          filter.getKeys().stream()
               .map(MetricKey::getSourceKey)
               .map(MetricSourceKey::getName)
               .collect(Collectors.toList()));
@@ -199,27 +191,21 @@ public class MetricStorage {
       }
       if (CollectionUtils.isNotEmpty(filter.getSourceKeys())) {
         uuids.addAll(
-            filter
-                .getSourceKeys()
-                .stream()
+            filter.getSourceKeys().stream()
                 .map(MetricSourceKey::getCustomerUuid)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
       }
       if (CollectionUtils.isNotEmpty(filter.getKeys())) {
         uuids.addAll(
-            filter
-                .getKeys()
-                .stream()
+            filter.getKeys().stream()
                 .map(MetricKey::getSourceKey)
                 .map(MetricSourceKey::getCustomerUuid)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
       }
 
-      return customerMetrics
-          .entrySet()
-          .stream()
+      return customerMetrics.entrySet().stream()
           .filter(e -> CollectionUtils.isEmpty(uuids) || uuids.contains(e.getKey()))
           .map(Entry::getValue);
     }
@@ -246,27 +232,21 @@ public class MetricStorage {
       }
       if (CollectionUtils.isNotEmpty(filter.getSourceKeys())) {
         uuids.addAll(
-            filter
-                .getSourceKeys()
-                .stream()
+            filter.getSourceKeys().stream()
                 .map(MetricSourceKey::getSourceUuid)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
       }
       if (CollectionUtils.isNotEmpty(filter.getKeys())) {
         uuids.addAll(
-            filter
-                .getKeys()
-                .stream()
+            filter.getKeys().stream()
                 .map(MetricKey::getSourceKey)
                 .map(MetricSourceKey::getSourceUuid)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
       }
 
-      return sourceMetrics
-          .entrySet()
-          .stream()
+      return sourceMetrics.entrySet().stream()
           .filter(e -> CollectionUtils.isEmpty(uuids) || uuids.contains(e.getKey()))
           .map(Entry::getValue);
     }
@@ -283,13 +263,10 @@ public class MetricStorage {
     List<Metric> sourceMetrics = new ArrayList<>();
 
     private Optional<Metric> get(Map<String, String> labels) {
-      return sourceMetrics
-          .stream()
+      return sourceMetrics.stream()
           .filter(
               metric ->
-                  labels
-                      .entrySet()
-                      .stream()
+                  labels.entrySet().stream()
                       .allMatch(
                           l -> Objects.equals(metric.getLabelValue(l.getKey()), l.getValue())))
           .findFirst();

@@ -1,8 +1,5 @@
 package com.yugabyte.yw.models.helpers.provider;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -10,10 +7,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-
 import io.swagger.annotations.ApiModelProperty;
-import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
+import io.swagger.annotations.ApiParam;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.Data;
 
 @Data

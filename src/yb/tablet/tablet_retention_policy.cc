@@ -191,6 +191,7 @@ HybridTime TabletRetentionPolicy::SanitizeHistoryCutoff(HybridTime proposed_cuto
   if (allowed_history_cutoff_provider_) {
     provided_allowed_cutoff = allowed_history_cutoff_provider_(&metadata_);
     allowed_cutoff = std::min(provided_allowed_cutoff, allowed_cutoff);
+    VLOG_WITH_PREFIX(2) << __func__ << ", cutoff from the provider " << allowed_cutoff;
   }
 
   if (metadata_.table_id() == kObsoleteShortPrimaryTableId) {

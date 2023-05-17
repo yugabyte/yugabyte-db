@@ -1929,8 +1929,8 @@ TEST_F_EX(PgIndexBackfillTest,
       "INSERT INTO $0 VALUES (generate_series(1, $1))", kTableName, kNumRows));
 
   thread_holder_.AddThreadFunctor([this] {
-    auto create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
     LOG(INFO) << "Begin create thread";
+    auto create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
     ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
   });
 
@@ -1961,8 +1961,8 @@ TEST_F_EX(PgIndexBackfillTest,
       "INSERT INTO $0 VALUES (generate_series(1, $1))", kTableName, kNumRows));
 
   thread_holder_.AddThreadFunctor([this] {
-    auto user_one_create_index_conn = ASSERT_RESULT(ConnectToDBAsUser(kDatabaseName, kUserOne));
     LOG(INFO) << "Begin create thread";
+    auto user_one_create_index_conn = ASSERT_RESULT(ConnectToDBAsUser(kDatabaseName, kUserOne));
     ASSERT_OK(user_one_create_index_conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
   });
 
@@ -1996,8 +1996,8 @@ TEST_F_EX(PgIndexBackfillTest,
       "INSERT INTO $0 VALUES (generate_series(1, $1))", kTableName, kNumRows));
 
   thread_holder_.AddThreadFunctor([this] {
-    auto create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
     LOG(INFO) << "Begin create thread";
+    auto create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
     ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
   });
 
@@ -2076,16 +2076,18 @@ TEST_F(PgIndexBackfillTest,
   for (auto& stmt : create_index_stmts) {
     ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "postbackfill"));
     thread_holder_.AddThreadFunctor([this, &stmt] {
-      auto create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
       LOG(INFO) << "Begin create thread";
+      auto create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
       ASSERT_OK(create_conn.Execute(stmt));
     });
     if (stmt.find("NONCONCURRENTLY") != std::string::npos) {
       ASSERT_OK(WaitForIndexProgressOutput(cols, Format(
-          "yugabyte, backfilling, CREATE INDEX NONCONCURRENTLY, $0, $0", num_rows_indexed_table)));
+          "$0, backfilling, CREATE INDEX NONCONCURRENTLY, $1, $1",
+          kDatabaseName, num_rows_indexed_table)));
     } else {
       ASSERT_OK(WaitForIndexProgressOutput(cols, Format(
-          "yugabyte, backfilling, CREATE INDEX CONCURRENTLY, $0, $0", num_rows_indexed_table)));
+          "$0, backfilling, CREATE INDEX CONCURRENTLY, $1, $1",
+          kDatabaseName, num_rows_indexed_table)));
     }
     ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
     thread_holder_.JoinAll();
@@ -2108,8 +2110,8 @@ TEST_F(PgIndexBackfillTest,
   ASSERT_OK(conn_->ExecuteFormat("ANALYZE $0", kTableName));
 
   thread_holder_.AddThreadFunctor([this] {
-    auto create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
     LOG(INFO) << "Begin create thread";
+    auto create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
     // Note: concurrent create index on partitioned tables is not supported - we build
     // the index non-concurrently.
     ASSERT_OK(create_conn.ExecuteFormat(
@@ -2121,16 +2123,47 @@ TEST_F(PgIndexBackfillTest,
   // Verify entries for the partitioned indexes.
   for (int i = 0; i < kNumPartitions; ++i) {
     ASSERT_OK(WaitForIndexProgressOutput(cols, Format(
-        "yugabyte, CREATE INDEX NONCONCURRENTLY, initializing, 0, 30, $0, $1",
-        kNumPartitions, i)));
+        "$0, CREATE INDEX NONCONCURRENTLY, initializing, 0, 30, $1, $2",
+        kDatabaseName, kNumPartitions, i)));
     ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "postbackfill"));
     ASSERT_OK(WaitForIndexProgressOutput(cols, Format(
-        "yugabyte, CREATE INDEX NONCONCURRENTLY, backfilling, 30, 30, $0, $1",
-        kNumPartitions, i)));
+        "$0, CREATE INDEX NONCONCURRENTLY, backfilling, 30, 30, $1, $2",
+        kDatabaseName, kNumPartitions, i)));
     ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
   }
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
   thread_holder_.JoinAll();
+}
+
+// Verify in-progress CREATE INDEX command's entry in pg_stat_progress_create_index
+// for an index created in a different database.
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(PgStatProgressCreateIndexDifferentDatabase),
+          PgIndexBackfillBlockDoBackfill) {
+  constexpr int kNumRows = 10;
+  constexpr auto kTestDatabaseName = "test_db";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0", kTestDatabaseName));
+  auto new_db_conn = ASSERT_RESULT(ConnectToDB(kTestDatabaseName));
+  ASSERT_OK(new_db_conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(new_db_conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1))", kTableName, kNumRows));
+  ASSERT_OK(new_db_conn.ExecuteFormat("ANALYZE $0", kTableName));
+  const auto num_rows_indexed_table = ASSERT_RESULT(new_db_conn.FetchValue<float>(
+      Format("SELECT reltuples FROM pg_class WHERE relname='$0'", kTableName)
+  ));
+
+  thread_holder_.AddThreadFunctor([&new_db_conn] {
+    LOG(INFO) << "Begin create thread";
+    ASSERT_OK(new_db_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
+  });
+
+  constexpr auto cols = "datname, phase, command, tuples_total, tuples_done";
+  ASSERT_OK(WaitForIndexProgressOutput(cols, Format(
+      "$0, backfilling, CREATE INDEX CONCURRENTLY, $1, 0",
+      kTestDatabaseName, num_rows_indexed_table)));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  thread_holder_.Stop();
 }
 
 } // namespace pgwrapper

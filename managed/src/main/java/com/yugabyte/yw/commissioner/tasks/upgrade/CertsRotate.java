@@ -237,8 +237,7 @@ public class CertsRotate extends UpgradeTaskBase {
             .getStringList("yb.features.cert_reload.supportedVersions");
     Version ybSoftwareVersion =
         new Version(universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-    return supportedVersions
-        .stream()
+    return supportedVersions.stream()
         .map(Version::new)
         .anyMatch(supportedVersion -> (supportedVersion.compareTo(ybSoftwareVersion) == 0));
   }

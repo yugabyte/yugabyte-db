@@ -13,12 +13,18 @@
 
 #include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/join.h"
+
 #include "yb/master/master_cluster.pb.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
+
 #include "yb/server/secure.h"
+
 #include "yb/util/flags/auto_flags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/flags.h"
@@ -33,20 +39,21 @@ DEFINE_UNKNOWN_bool(disable_auto_flags_management, false,
 TAG_FLAG(disable_auto_flags_management, advanced);
 TAG_FLAG(disable_auto_flags_management, unsafe);
 
-DEFINE_RUNTIME_AUTO_bool(
-    TEST_auto_flags_initialized, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(TEST_auto_flags_initialized, kLocalPersisted, false, true,
     "AutoFlag that indicates initialization of AutoFlags. Not meant to be overridden.");
 TAG_FLAG(TEST_auto_flags_initialized, hidden);
 
-DEFINE_UNKNOWN_int32(
-    auto_flags_load_from_master_backoff_increment_ms, 100,
+DEFINE_RUNTIME_AUTO_bool(TEST_auto_flags_new_install, kNewInstallsOnly, false, true,
+    "AutoFlag that indicates initialization of AutoFlags for new installs only.");
+TAG_FLAG(TEST_auto_flags_new_install, hidden);
+
+DEFINE_UNKNOWN_int32(auto_flags_load_from_master_backoff_increment_ms, 100,
     "Number of milliseconds added to the delay between reties of fetching AutoFlags config from "
     "master leader. This delay is applied after the RPC reties have been exhausted.");
 TAG_FLAG(auto_flags_load_from_master_backoff_increment_ms, stable);
 TAG_FLAG(auto_flags_load_from_master_backoff_increment_ms, advanced);
 
-DEFINE_UNKNOWN_int32(
-    auto_flags_load_from_master_max_backoff_sec, 3,
+DEFINE_UNKNOWN_int32(auto_flags_load_from_master_max_backoff_sec, 3,
     "Maximum number of seconds to delay between reties of fetching AutoFlags config from master "
     "leader. This delay is applied after the RPC reties have been exhausted.");
 TAG_FLAG(auto_flags_load_from_master_max_backoff_sec, stable);
@@ -58,6 +65,7 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 namespace yb {
 
 namespace {
+
 class AutoFlagClient {
  public:
   Status Init(

@@ -3,9 +3,8 @@ package com.yugabyte.yw.common.supportbundle;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
-import java.util.Date;
 import java.nio.file.Path;
+import java.util.Date;
 
 public interface SupportBundleComponent {
 

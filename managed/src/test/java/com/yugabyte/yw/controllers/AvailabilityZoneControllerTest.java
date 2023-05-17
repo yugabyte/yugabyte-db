@@ -139,6 +139,37 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateAvailabilityZoneWithInValidParams() {
+    Provider onPremProvider = ModelFactory.onpremProvider(defaultCustomer);
+    Region onPremProviderRegion =
+        Region.create(onPremProvider, "default-region", "Default PlacementRegion", null);
+    ObjectNode azRequestJson = Json.newObject();
+    ArrayNode azs = Json.newArray();
+    ObjectNode az1 = Json.newObject();
+    az1.put("code", "foo-az-1");
+    az1.put("name", "foo az 1");
+    azs.add(az1);
+    ObjectNode az2 = Json.newObject();
+    az2.put("code", "foo-az-2");
+    az2.put("name", "foo az %%^&S 2");
+    azs.add(az2);
+    azRequestJson.set("availabilityZones", azs);
+
+    JsonNode json =
+        doCreateAZAndVerifyResult(
+            onPremProvider.getUuid(),
+            onPremProviderRegion.getUuid(),
+            azRequestJson,
+            BAD_REQUEST,
+            true);
+
+    assertEquals("providerValidation", json.get("error").get("errorSource").get(0).asText());
+    assertEquals(
+        "Zone name cannot contain any special characters except '-' and '_'.",
+        json.get("error").get("data.ZONE").get(0).asText());
+  }
+
+  @Test
   public void testCreateAvailabilityZoneWithInvalidTopFormParams() {
     JsonNode json =
         doCreateAZAndVerifyResult(

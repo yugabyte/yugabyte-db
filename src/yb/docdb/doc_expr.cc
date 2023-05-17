@@ -37,7 +37,9 @@ using std::vector;
 namespace yb {
 namespace docdb {
 
-using yb::util::Decimal;
+using util::Decimal;
+using qlexpr::QLExprResult;
+using qlexpr::QLTableRow;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -47,7 +49,7 @@ DocExprExecutor::~DocExprExecutor() {}
 
 Status DocExprExecutor::EvalColumnRef(ColumnIdRep col_id,
                                       const QLTableRow* table_row,
-                                      QLExprResultWriter result_writer) {
+                                      qlexpr::QLExprResultWriter result_writer) {
   // Return NULL value if row is not provided.
   if (table_row == nullptr) {
     result_writer.SetNull();
@@ -346,7 +348,7 @@ template <class Expr, class Val, class Extractor>
 Status DocExprExecutor::EvalSumInt(
     const Expr& operand, const QLTableRow& table_row, Val *aggr_sum,
     const Extractor& extractor) {
-  ExprResult<Val> arg_result(aggr_sum);
+  qlexpr::ExprResult<Val> arg_result(aggr_sum);
   RETURN_NOT_OK(EvalExpr(operand, table_row, arg_result.Writer()));
   const auto& val = arg_result.Value();
 
@@ -367,7 +369,7 @@ template <class Expr, class Val, class Extractor, class Setter>
 Status DocExprExecutor::EvalSumReal(
     const Expr& operand, const QLTableRow& table_row, Val *aggr_sum,
     const Extractor& extractor, const Setter& setter) {
-  ExprResult<Val> arg_result(aggr_sum);
+  qlexpr::ExprResult<Val> arg_result(aggr_sum);
   RETURN_NOT_OK(EvalExpr(operand, table_row, arg_result.Writer()));
   const auto& val = arg_result.Value();
 

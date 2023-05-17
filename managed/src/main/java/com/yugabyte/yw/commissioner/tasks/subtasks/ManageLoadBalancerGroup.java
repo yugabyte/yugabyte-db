@@ -12,15 +12,14 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
-
-import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.MapUtils;
 
 @Slf4j
 public class ManageLoadBalancerGroup extends UniverseTaskBase {

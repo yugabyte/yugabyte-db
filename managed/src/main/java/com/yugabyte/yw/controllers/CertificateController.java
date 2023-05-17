@@ -378,8 +378,7 @@ public class CertificateController extends AuthenticatedController {
   private List<CertificateInfoExt> convert(List<CertificateInfo> certificateInfo) {
     boolean backwardCompatibleDate =
         runtimeConfGetter.getGlobalConf(GlobalConfKeys.backwardCompatibleDate);
-    return certificateInfo
-        .stream()
+    return certificateInfo.stream()
         .map(
             info ->
                 new CertificateInfoExt()

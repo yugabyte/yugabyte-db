@@ -140,7 +140,10 @@ SELECT a, b FROM collate_test2 WHERE a < 4 INTERSECT SELECT a, b FROM collate_te
 SELECT a, b FROM collate_test2 EXCEPT SELECT a, b FROM collate_test2 WHERE a < 2 ORDER BY 2;
 
 SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test2 ORDER BY 2; -- fail
-SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test2 ORDER BY 2; -- ok
+-- YB edit: add consistent ordering.
+SELECT * FROM (
+SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test2 -- ok
+LIMIT ALL) ybview ORDER BY a;
 SELECT a, b FROM collate_test1 UNION SELECT a, b FROM collate_test2 ORDER BY 2; -- fail
 SELECT a, b COLLATE "C" FROM collate_test1 UNION SELECT a, b FROM collate_test2 ORDER BY 2; -- ok
 SELECT a, b FROM collate_test1 INTERSECT SELECT a, b FROM collate_test2 ORDER BY 2; -- fail
@@ -150,7 +153,10 @@ CREATE TABLE test_u AS SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM
 
 -- ideally this would be a parse-time error, but for now it must be run-time:
 select x < y from collate_test10; -- fail
-select x || y from collate_test10 ORDER BY 1; -- ok, because || is not collation aware
+-- YB edit: add consistent ordering.
+SELECT xy AS "?column?" FROM (
+select x || y from collate_test10 -- ok, because || is not collation aware
+LIMIT ALL) ybview(xy) ORDER BY xy COLLATE "C" DESC;
 select x, y from collate_test10 order by x || y; -- not so ok
 
 -- collation mismatch between recursive and non-recursive term

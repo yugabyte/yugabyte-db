@@ -245,22 +245,20 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        filters = [
-            {
-                "Name": "instance-state-name",
-                "Values": ["stopped"]
-            }
-        ]
         host_info = self.cloud.get_host_info_specific_args(
             args.region,
             args.search_pattern,
             get_all=False,
-            private_ip=args.node_ip,
-            filters=filters
+            private_ip=args.node_ip
         )
+
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
+
+        if host_info["instance_state"] != "stopped":
+            logging.warning(f"Expected instance {args.search_pattern} to be stopped, "
+                            f"got {host_info['instance_state']}")
         self.update_ansible_vars_with_args(args)
         server_ports = self.get_server_ports_to_check(args)
         self.cloud.start_instance(host_info, server_ports)
@@ -312,7 +310,9 @@ class AwsAccessAddKeyMethod(AbstractAccessMethod):
 
     def callback(self, args):
         (private_key_file, public_key_file) = self.validate_key_files(args)
-        delete_remote = self.cloud.add_key_pair(args)
+        delete_remote = False
+        if not args.skip_add_keypair_aws:
+            delete_remote = self.cloud.add_key_pair(args)
         print(json.dumps({"private_key": private_key_file,
                           "public_key": public_key_file,
                           "delete_remote": delete_remote}))

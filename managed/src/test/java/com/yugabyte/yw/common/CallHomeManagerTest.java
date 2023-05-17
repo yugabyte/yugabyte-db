@@ -7,7 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyZeroInteractions;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,9 +24,9 @@ import com.yugabyte.yw.models.Users;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
-import java.util.Base64;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -141,6 +141,6 @@ public class CallHomeManagerTest extends FakeDBApplication {
   public void testNoSendDiagnostics() {
     ModelFactory.setCallhomeLevel(defaultCustomer, "NONE");
     callHomeManager.sendDiagnostics(defaultCustomer);
-    verifyZeroInteractions(apiHelper);
+    verifyNoInteractions(apiHelper);
   }
 }

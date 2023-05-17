@@ -42,7 +42,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/dockv/partial_row.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
 

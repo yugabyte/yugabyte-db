@@ -12,6 +12,7 @@ import static com.yugabyte.yw.common.NodeActionType.REMOVE;
 import static com.yugabyte.yw.common.NodeActionType.START;
 import static com.yugabyte.yw.common.NodeActionType.STOP;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
@@ -20,6 +21,8 @@ import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Arrays;
+import java.util.Date;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -65,6 +68,9 @@ public class NodeDetails {
 
   @ApiModelProperty(value = "SSH user override for the AMI")
   public String sshUserOverride;
+
+  @ApiModelProperty(value = "SSH port override for the AMI")
+  public Integer sshPortOverride;
 
   // Indicates that disks in fstab are mounted using using uuid (not as by path).
   @ApiModelProperty(value = "Disks are mounted by uuid")
@@ -248,6 +254,13 @@ public class NodeDetails {
   @ApiModelProperty(value = "Used for configurations where each node can have only one process")
   public UniverseTaskBase.ServerType dedicatedTo = null;
 
+  @ApiModelProperty(
+      value = "Store last volume update time",
+      example = "2022-12-12T13:07:18Z",
+      accessMode = ApiModelProperty.AccessMode.READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  public Date lastVolumeUpdateTime;
+
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
   public static final Set<NodeState> IN_TRANSIT_STATES =
       ImmutableSet.of(
@@ -364,6 +377,18 @@ public class NodeDetails {
         || state == NodeState.Stopping
         || state == NodeState.UpdateCert
         || state == NodeState.ToggleTls);
+  }
+
+  @JsonIgnore
+  public Set<UniverseTaskBase.ServerType> getAllProcesses() {
+    Set<UniverseTaskBase.ServerType> result = new LinkedHashSet<>();
+    if (isMaster) {
+      result.add(UniverseTaskBase.ServerType.MASTER);
+    }
+    if (isTserver) {
+      result.add(UniverseTaskBase.ServerType.TSERVER);
+    }
+    return result;
   }
 
   @JsonIgnore

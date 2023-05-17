@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.UniversePerfAdvisorRun;
@@ -26,6 +27,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
@@ -43,7 +45,6 @@ import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.perf_advisor.configs.PerfAdvisorScriptConfig;
 import org.yb.perf_advisor.configs.UniverseConfig;
-import org.yb.perf_advisor.configs.UniverseNodeConfigInterface;
 import org.yb.perf_advisor.models.PerformanceRecommendation.RecommendationType;
 import org.yb.perf_advisor.services.generation.PlatformPerfAdvisor;
 
@@ -94,14 +95,17 @@ public class PerfAdvisorScheduler {
   }
 
   void scheduleRunner() {
+    if (HighAvailabilityConfig.isFollower()) {
+      log.debug("Skipping perf advisor scheduler for follower platform");
+      return;
+    }
     log.info("Running Perf Advisor Scheduler");
     int defaultUniBatchSize =
         configFactory.staticApplicationConf().getInt("yb.perf_advisor.universe_batch_size");
 
     try {
       Map<Long, Customer> customerMap =
-          Customer.getAll()
-              .stream()
+          Customer.getAll().stream()
               .collect(Collectors.toMap(Customer::getId, Function.identity()));
       Set<UUID> uuidList = Universe.getAllUUIDs();
       for (List<UUID> batch : Iterables.partition(uuidList, defaultUniBatchSize)) {
@@ -120,8 +124,10 @@ public class PerfAdvisorScheduler {
 
   private RunResult run(Customer customer, Universe universe, boolean scheduled) {
     // Check status of universe
-    if (universe.getUniverseDetails().updateInProgress) {
-      return RunResult.builder().failureReason("Universe update in progress").build();
+    if (universe.getUniverseDetails().isUniverseBusyByTask()) {
+      return RunResult.builder()
+          .failureReason("Universe task, which may affect performance, is in progress")
+          .build();
     }
     if (universesLock.containsKey(universe.getUniverseUUID())) {
       UniversePerfAdvisorRun currentRun =
@@ -156,8 +162,11 @@ public class PerfAdvisorScheduler {
       }
     }
 
-    List<UniverseNodeConfigInterface> universeNodeConfigList = new ArrayList<>();
+    List<PlatformUniverseNodeConfig> universeNodeConfigList = new ArrayList<>();
     for (NodeDetails details : universe.getNodes()) {
+      if (!details.isTserver) {
+        continue;
+      }
       if (details.state.equals(NodeDetails.NodeState.Live)) {
         PlatformUniverseNodeConfig nodeConfig =
             new PlatformUniverseNodeConfig(details, universe, ShellProcessContext.DEFAULT);
@@ -168,7 +177,8 @@ public class PerfAdvisorScheduler {
     if (universeNodeConfigList.isEmpty()) {
       log.warn(
           String.format(
-              "Universe %s node config list is empty! Skipping..", universe.getUniverseUUID()));
+              "Universe %s node config list has no TServers! Skipping..",
+              universe.getUniverseUUID()));
       return RunResult.builder().failureReason("No Live nodes found").build();
     }
 
@@ -209,11 +219,13 @@ public class PerfAdvisorScheduler {
       Customer customer,
       Universe universe,
       Config universeConfig,
-      List<UniverseNodeConfigInterface> universeNodeConfigList,
+      List<PlatformUniverseNodeConfig> universeNodeConfigList,
       UniversePerfAdvisorRun run) {
     try {
       run.setStartTime(new Date()).setState(State.RUNNING).save();
+      List<RecommendationType> dbQueryRecommendationTypes = DB_QUERY_RECOMMENDATION_TYPES;
       JsonNode databaseNamesResult = queryHelper.listDatabaseNames(universe);
+      List<String> databases = new ArrayList<>();
       if (databaseNamesResult.has("error")) {
         String errorMessage = databaseNamesResult.get("error").toString();
         log.error(
@@ -221,20 +233,20 @@ public class PerfAdvisorScheduler {
                 + universe.getUniverseUUID()
                 + ": "
                 + errorMessage);
-        run.setEndTime(new Date()).setState(State.FAILED).save();
-        return;
-      }
-      List<String> databases = new ArrayList<>();
-      Iterator<JsonNode> queryIterator = databaseNamesResult.get("result").elements();
-      while (queryIterator.hasNext()) {
-        databases.add(queryIterator.next().get("datname").asText());
+        // We'll not retrieve any recommendation types from DB nodes in these case - just pass
+        // empty recommendation types list to leave existing recommendations active.
+        dbQueryRecommendationTypes = Collections.emptyList();
+      } else {
+        Iterator<JsonNode> queryIterator = databaseNamesResult.get("result").elements();
+        while (queryIterator.hasNext()) {
+          databases.add(queryIterator.next().get("datname").asText());
+        }
       }
       Provider provider =
           Provider.getOrBadRequest(
               UUID.fromString(
                   universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
       NodeDetails tserverNode = CommonUtils.getServerToRunYsqlQuery(universe);
-      String databaseHost = tserverNode.cloudInfo.private_ip;
       boolean ysqlAuth =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth;
       boolean tlsClient =
@@ -244,7 +256,7 @@ public class PerfAdvisorScheduler {
               databases,
               NodeManager.YUGABYTE_USER,
               tserverNode.ysqlServerRpcPort,
-              DB_QUERY_RECOMMENDATION_TYPES,
+              dbQueryRecommendationTypes,
               ysqlAuth,
               tlsClient);
       UniverseConfig uConfig =

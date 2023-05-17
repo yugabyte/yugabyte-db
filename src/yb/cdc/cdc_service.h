@@ -218,6 +218,7 @@ class CDCServiceImpl : public CDCServiceIf {
  private:
   FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
   FRIEND_TEST(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure);
+  FRIEND_TEST(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadership);
 
   class Impl;
 
@@ -290,13 +291,14 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<NamespaceId> GetNamespaceId(const std::string& ns_name);
 
   Result<std::shared_ptr<StreamMetadata>> GetStream(
-      const std::string& stream_id, bool ignore_cache = false);
+      const std::string& stream_id, RefreshStreamMapOption ops = RefreshStreamMapOption::kNone)
+      EXCLUDES(mutex_);
 
   void RemoveStreamFromCache(const CDCStreamId& stream_id);
 
-  std::shared_ptr<StreamMetadata> GetStreamMetadataFromCache(const std::string& stream_id);
   void AddStreamMetadataToCache(
-      const std::string& stream_id, const std::shared_ptr<StreamMetadata>& stream_metadata);
+      const std::string& stream_id, const std::shared_ptr<StreamMetadata>& stream_metadata)
+      EXCLUDES(mutex_);
 
   Status CheckTabletValidForStream(const ProducerTabletInfo& producer_info);
 
@@ -321,10 +323,14 @@ class CDCServiceImpl : public CDCServiceIf {
       const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
       bool enable_update_local_peer_min_index, bool ignore_rpc_failures = true);
 
-  Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
+  // Returns the latest OpId and safe time from the leader of given tablet.
+  Result<std::pair<OpId, HybridTime>> TabletLeaderLatestEntryOpIdAndSafeTime(
+      const TabletId& tablet_id);
 
-  Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
-  Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
+  Result<client::internal::RemoteTabletPtr> GetRemoteTablet(
+      const TabletId& tablet_id, const bool use_cache = true);
+  Result<client::internal::RemoteTabletServer*> GetLeaderTServer(
+      const TabletId& tablet_id, const bool use_cache = true);
   Status GetTServers(const TabletId& tablet_id,
                      std::vector<client::internal::RemoteTabletServer*>* servers);
 
@@ -395,6 +401,14 @@ class CDCServiceImpl : public CDCServiceIf {
   void RefreshCdcStateTable() EXCLUDES(mutex_);
 
   Status RefreshCacheOnFail(const Status& s) EXCLUDES(mutex_);
+
+  template <class T>
+  Result<T> RefreshCacheOnFail(Result<T> res) EXCLUDES(mutex_) {
+    if (!res.ok()) {
+      return RefreshCacheOnFail(res.status());
+    }
+    return res;
+  }
 
   client::YBClient* client();
 

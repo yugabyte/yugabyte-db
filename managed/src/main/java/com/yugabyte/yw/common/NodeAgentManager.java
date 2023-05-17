@@ -5,16 +5,15 @@ package com.yugabyte.yw.common;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.JWTVerifier;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
-import com.yugabyte.yw.models.Provider;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import java.io.BufferedInputStream;
@@ -35,7 +34,6 @@ import java.security.PublicKey;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,7 +53,6 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.commons.compress.utils.IOUtils;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.WildcardFileFilter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -83,14 +80,11 @@ public class NodeAgentManager {
 
   private final Config appConfig;
   private final ConfigHelper configHelper;
-  private final RuntimeConfGetter confGetter;
 
   @Inject
-  public NodeAgentManager(
-      Config appConfig, ConfigHelper configHelper, RuntimeConfGetter confGetter) {
+  public NodeAgentManager(Config appConfig, ConfigHelper configHelper) {
     this.appConfig = appConfig;
     this.configHelper = configHelper;
-    this.confGetter = confGetter;
   }
 
   @Getter
@@ -139,7 +133,7 @@ public class NodeAgentManager {
   // Certs are created in each directory <base-cert-dir>/<index>/.
   // The index keeps increasing.
   private Path getOrCreateNextCertDirectory(NodeAgent nodeAgent) {
-    String certDirPath = nodeAgent.getConfig().get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    String certDirPath = nodeAgent.getConfig().getCertPath();
     if (StringUtils.isBlank(certDirPath)) {
       return getOrCreateCertDirectory(nodeAgent, "0");
     }
@@ -266,15 +260,6 @@ public class NodeAgentManager {
   }
 
   /**
-   * Returns if server needs to be installed on a node.
-   *
-   * @return true if yes, false otherwise.
-   */
-  public boolean isServerToBeInstalled(Provider provider) {
-    return confGetter.getConfForScope(provider, ProviderConfKeys.installNodeAgentServer);
-  }
-
-  /**
    * Returns the private key of the given node agent.
    *
    * @param nodeAgentUuid node agent UUID.
@@ -338,7 +323,7 @@ public class NodeAgentManager {
   // Returns the YBA software version.
   public String getSoftwareVersion() {
     return Objects.requireNonNull(
-        (String) configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version"));
+        (String) configHelper.getConfig(ConfigType.SoftwareVersion).get("version"));
   }
 
   /**
@@ -433,23 +418,20 @@ public class NodeAgentManager {
    * @return the updated node agent record along with cert and key in the config.
    */
   public NodeAgent create(NodeAgent nodeAgent, boolean includeCertContents) {
-    nodeAgent.setConfig(new HashMap<>());
+    nodeAgent.setConfig(new NodeAgent.Config());
     nodeAgent.setState(State.REGISTERING);
     nodeAgent.insert();
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
     Pair<X509Certificate, KeyPair> serverPair = generateNodeAgentCerts(nodeAgent, certDirPath);
     nodeAgent.updateCertDirPath(certDirPath);
-    ImmutableMap.Builder<String, String> builder =
-        ImmutableMap.<String, String>builder().putAll(nodeAgent.getConfig());
     if (includeCertContents) {
       X509Certificate serverCert = serverPair.getLeft();
       KeyPair serverKeyPair = serverPair.getRight();
-      builder.put(NodeAgent.SERVER_CERT_PROPERTY, CertificateHelper.getAsPemString(serverCert));
-      builder.put(
-          NodeAgent.SERVER_KEY_PROPERTY,
-          CertificateHelper.getAsPemString(serverKeyPair.getPrivate()));
+      nodeAgent.getConfig().setServerCert(CertificateHelper.getAsPemString(serverCert));
+      nodeAgent
+          .getConfig()
+          .setServerKey(CertificateHelper.getAsPemString(serverKeyPair.getPrivate()));
     }
-    nodeAgent.setConfig(builder.build());
     return nodeAgent;
   }
 
@@ -534,7 +516,7 @@ public class NodeAgentManager {
           "Deleting current cert dir {} for node agent {}",
           currentCertDirPath,
           nodeAgent.getUuid());
-      FileUtils.deleteDirectory(currentCertDirPath.toFile());
+      FileData.deleteFiles(currentCertDirPath.toString(), true);
     } catch (Exception e) {
       // Ignore error.
       log.warn("Error deleting old cert directory {}", currentCertDirPath, e);

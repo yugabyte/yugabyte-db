@@ -104,9 +104,7 @@ public class Metric {
   }
 
   public Map<String, String> getKeyLabelValues() {
-    return labels
-        .entrySet()
-        .stream()
+    return labels.entrySet().stream()
         .filter(e -> keyLabels.contains(e.getKey()))
         .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
   }

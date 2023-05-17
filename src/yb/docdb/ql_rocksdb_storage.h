@@ -13,11 +13,14 @@
 
 #pragma once
 
-#include <boost/optional.hpp>
+#include <functional>
+#include <memory>
 
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/docdb/ql_storage_interface.h"
+
+#include "yb/util/status.h"
 
 namespace yb {
 namespace docdb {
@@ -31,12 +34,13 @@ class QLRocksDBStorage : public YQLStorageIf {
   // CQL Support.
   Status GetIterator(
       const QLReadRequestPB& request,
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const dockv::QLScanSpec& spec,
+      const qlexpr::QLScanSpec& spec,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<YQLRowwiseIteratorIf> *iter) const override;
 
   Status BuildYQLScanSpec(
@@ -44,18 +48,18 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadHybridTime& read_time,
       const Schema& schema,
       bool include_static_columns,
-      const Schema& static_projection,
-      std::unique_ptr<dockv::QLScanSpec>* spec,
-      std::unique_ptr<dockv::QLScanSpec>* static_row_spec) const override;
+      std::unique_ptr<qlexpr::QLScanSpec>* spec,
+      std::unique_ptr<qlexpr::QLScanSpec>* static_row_spec) const override;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
   Status CreateIterator(
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       YQLRowwiseIteratorIf::UniPtr* iter,
       const docdb::DocDBStatistics* statistics = nullptr) const override;
 
@@ -66,25 +70,26 @@ class QLRocksDBStorage : public YQLStorageIf {
 
   Status GetIterator(
       const PgsqlReadRequestPB& request,
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const dockv::DocKey& start_doc_key,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       YQLRowwiseIteratorIf::UniPtr* iter,
-      boost::optional<size_t> end_referenced_key_column_index = boost::none,
       const docdb::DocDBStatistics* statistics = nullptr) const override;
 
   Status GetIterator(
       uint64 stmt_id,
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const QLValuePB& min_ybctid,
       const QLValuePB& max_ybctid,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       YQLRowwiseIteratorIf::UniPtr* iter,
       const docdb::DocDBStatistics* statistics = nullptr) const override;
 

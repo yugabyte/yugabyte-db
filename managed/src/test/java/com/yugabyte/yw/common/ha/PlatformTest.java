@@ -35,8 +35,9 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
-import io.ebean.Ebean;
-import io.ebean.EbeanServer;
+import io.ebean.DB;
+import io.ebean.Database;
+import io.ebean.MockHelper;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -84,7 +85,7 @@ public class PlatformTest extends FakeDBApplication {
   private static final String LOCAL_ACME_ORG = "http://local.acme.org/";
   private static final String REMOTE_ACME_ORG = "http://remote.acme.org";
   private FakeApi fakeApi;
-  EbeanServer localEBeanServer;
+  Database localEBeanServer;
 
   private PlatformInstanceClientFactory mockPlatformInstanceClientFactory =
       mock(PlatformInstanceClientFactory.class);
@@ -104,7 +105,7 @@ public class PlatformTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer, Users.Role.SuperAdmin);
     authToken = user.createAuthToken();
-    localEBeanServer = Ebean.getDefaultServer();
+    localEBeanServer = DB.getDefault();
     fakeApi = new FakeApi(app, localEBeanServer);
     clusterKey = createClusterKey();
     localConfigUUID = createHAConfig(fakeApi, clusterKey);
@@ -137,7 +138,7 @@ public class PlatformTest extends FakeDBApplication {
                 remoteStorage.getRoot().getAbsolutePath()));
     Helpers.start(remoteApp);
     mat = remoteApp.getWrappedApplication().materializer();
-    EbeanServer remoteEBenServer = Ebean.getDefaultServer();
+    Database remoteEBenServer = DB.getDefault();
     replicationDir =
         Paths.get(
             remoteApp.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY),
@@ -161,7 +162,7 @@ public class PlatformTest extends FakeDBApplication {
     PlatformReplicationManager replicationManager =
         app.injector().instanceOf(PlatformReplicationManager.class);
 
-    Ebean.register(localEBeanServer, true);
+    MockHelper.mock(localEBeanServer, true);
 
     assertTrue("sendBackup failed", replicationManager.sendBackup(remoteInstance));
 

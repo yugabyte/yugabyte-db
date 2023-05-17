@@ -118,7 +118,7 @@ trap cleanup EXIT
 readonly process_supervisor_log_path=\
 ${TEST_TMPDIR:-/tmp}/yb_process_supervisor_for_pid_$$__$RANDOM.log
 
-"$YB_SRC_ROOT/python/yb/process_tree_supervisor.py" \
+"$YB_SCRIPT_PATH_PROCESS_TREE_SUPERVISOR" \
   --pid $$ \
   --terminate-subtree \
   --timeout-sec "$PROCESS_TREE_SUPERVISOR_TEST_TIMEOUT_SEC" \

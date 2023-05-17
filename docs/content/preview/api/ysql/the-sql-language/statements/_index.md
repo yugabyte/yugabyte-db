@@ -12,8 +12,12 @@ menu:
 aliases:
   - /preview/api/ysql/commands/
 type: indexpage
+cascade:
+  rightNav:
+    hideH4: true
 ---
-The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by catagory.
+
+The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by category.
 
 ## Data definition language (DDL)
 
@@ -77,7 +81,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | Statement | Description |
 | :-------- | :---------- |
 | [`DELETE`](dml_delete/) | Delete rows from a table |
-| [`INSERT`](dml_insert) | Insert rows into a table |
+| [`INSERT`](dml_insert/) | Insert rows into a table |
 | [`SELECT`](dml_select/) | Select rows from a table |
 | [`UPDATE`](dml_update/) | Update rows in a table |
 
@@ -118,6 +122,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`SET CONSTRAINTS`](txn_set_constraints) | Set constraints on current transaction |
 | [`SET TRANSACTION`](txn_set) | Set transaction behaviors |
 | [`SHOW TRANSACTION`](txn_show) | Show properties of a transaction |
+| [`START TRANSACTION`](txn_start) | Start a transaction |
 | [`SAVEPOINT`](savepoint_create) | Create a new savepoint |
 | [`ROLLBACK TO`](savepoint_rollback) | Rollback to a savepoint |
 | [`RELEASE`](savepoint_release) | Release a savepoint |
@@ -126,9 +131,9 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 
 | Statement | Description |
 | :-------- | :---------- |
-| [`RESET`](cmd_reset) | Reset a parameter to factory settings |
-| [`SET`](cmd_set) | Set a system, session, or transactional parameter |
-| [`SHOW`](cmd_show) | Show value of a system, session, or transactional parameter |
+| [`RESET`](cmd_reset) | Reset a run-time parameter to its default value |
+| [`SET`](cmd_set) | Set the value of a run-time parameter |
+| [`SHOW`](cmd_show) | Show the value of a run-time parameter |
 
 ## Performance control
 

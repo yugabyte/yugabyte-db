@@ -6,7 +6,6 @@ import java.util.Date;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Builder;
-import lombok.NonNull;
 import lombok.Value;
 
 @Value

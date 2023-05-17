@@ -38,6 +38,7 @@ import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelFormData;
 import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
+import com.yugabyte.yw.forms.AlertChannelTemplatesPreview;
 import com.yugabyte.yw.forms.AlertDestinationFormData;
 import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
 import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
@@ -439,7 +440,7 @@ public class AlertController extends AuthenticatedController {
             Audit.TargetType.AlertChannel,
             Objects.toString(channel.getUuid(), null),
             Audit.ActionType.Create);
-    return PlatformResults.withData(channel);
+    return PlatformResults.withData(CommonUtils.maskObject(channel));
   }
 
   @ApiOperation(value = "Get an alert channel", response = AlertChannel.class)
@@ -496,9 +497,7 @@ public class AlertController extends AuthenticatedController {
   public Result listAlertChannels(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(
-        alertChannelService
-            .list(customerUUID)
-            .stream()
+        alertChannelService.list(customerUUID).stream()
             .map(channel -> CommonUtils.maskObject(channel))
             .collect(Collectors.toList()));
   }
@@ -767,20 +766,38 @@ public class AlertController extends AuthenticatedController {
     AlertConfiguration alertConfiguration =
         alertConfigurationService.getOrBadRequest(previewFormData.getAlertConfigUuid());
 
-    AlertChannelTemplates channelTemplates = previewFormData.getAlertChannelTemplates();
+    AlertChannelTemplatesPreview channelTemplates = previewFormData.getAlertChannelTemplates();
+    channelTemplates.getChannelTemplates().setCustomerUUID(customerUUID);
+    alertChannelTemplateService.validate(channelTemplates.getChannelTemplates());
+
+    ChannelType channelType = channelTemplates.getChannelTemplates().getType();
     Alert testAlert = createTestAlert(customer, alertConfiguration, false);
     AlertChannel channel = new AlertChannel().setName("Channel name");
     List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customerUUID);
     AlertChannelTemplatesExt templatesExt =
         alertChannelTemplateService.appendDefaults(
-            channelTemplates, customerUUID, channelTemplates.getType());
+            channelTemplates.getChannelTemplates(), customerUUID, channelType);
     Context context = new Context(channel, templatesExt, variables);
 
     NotificationPreview preview = new NotificationPreview();
-    if (channelTemplates.getType().isHasTitle()) {
-      preview.setTitle(AlertChannelBase.getNotificationTitle(testAlert, context));
+    if (channelType.isHasTitle()) {
+      preview.setTitle(AlertChannelBase.getNotificationTitle(testAlert, context, false));
+      if (StringUtils.isNotEmpty(channelTemplates.getHighlightedTextTemplate())) {
+        templatesExt
+            .getChannelTemplates()
+            .setTitleTemplate(channelTemplates.getHighlightedTitleTemplate());
+        preview.setHighlightedTitle(
+            AlertChannelBase.getNotificationTitle(testAlert, context, true));
+      }
     }
-    preview.setText(AlertChannelBase.getNotificationText(testAlert, context));
+    boolean escapeHtml = channelType == ChannelType.Email;
+    preview.setText(AlertChannelBase.getNotificationText(testAlert, context, escapeHtml));
+    if (StringUtils.isNotEmpty(channelTemplates.getHighlightedTextTemplate())) {
+      templatesExt
+          .getChannelTemplates()
+          .setTextTemplate(channelTemplates.getHighlightedTextTemplate());
+      preview.setHighlightedText(AlertChannelBase.getNotificationText(testAlert, context, true));
+    }
     return PlatformResults.withData(preview);
   }
 
@@ -790,18 +807,15 @@ public class AlertController extends AuthenticatedController {
 
   private List<AlertData> convert(List<Alert> alerts) {
     List<Alert> alertsWithoutExpressionLabel =
-        alerts
-            .stream()
+        alerts.stream()
             .filter(alert -> alert.getLabelValue(KnownAlertLabels.ALERT_EXPRESSION) == null)
             .collect(Collectors.toList());
     List<UUID> alertsConfigurationUuids =
-        alertsWithoutExpressionLabel
-            .stream()
+        alertsWithoutExpressionLabel.stream()
             .map(Alert::getConfigurationUuid)
             .collect(Collectors.toList());
     List<UUID> alertDefinitionUuids =
-        alertsWithoutExpressionLabel
-            .stream()
+        alertsWithoutExpressionLabel.stream()
             .map(Alert::getDefinitionUuid)
             .collect(Collectors.toList());
     Map<UUID, AlertConfiguration> alertConfigurationMap =
@@ -814,12 +828,10 @@ public class AlertController extends AuthenticatedController {
     Map<UUID, AlertDefinition> alertDefinitionMap =
         CollectionUtils.isNotEmpty(alertDefinitionUuids)
             ? alertDefinitionService
-                .list(AlertDefinitionFilter.builder().uuids(alertDefinitionUuids).build())
-                .stream()
+                .list(AlertDefinitionFilter.builder().uuids(alertDefinitionUuids).build()).stream()
                 .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()))
             : Collections.emptyMap();
-    return alerts
-        .stream()
+    return alerts.stream()
         .map(
             alert ->
                 convertInternal(
@@ -900,9 +912,7 @@ public class AlertController extends AuthenticatedController {
         alertTemplateSettingsService.get(
             configuration.getCustomerUUID(), configuration.getTemplate().name());
     List<AlertLabel> labels =
-        definition
-            .getEffectiveLabels(configuration, alertTemplateSettings, severity)
-            .stream()
+        definition.getEffectiveLabels(configuration, alertTemplateSettings, severity).stream()
             .map(label -> new AlertLabel(label.getName(), label.getValue()))
             .collect(Collectors.toList());
     labels.add(new AlertLabel(KnownAlertLabels.ALERTNAME.labelName(), configuration.getName()));
@@ -949,8 +959,7 @@ public class AlertController extends AuthenticatedController {
   private Universe getOrCreateUniverseForTestAlert(Customer customer) {
     Set<Universe> allUniverses = Universe.getAllWithoutResources(customer);
     Universe firstUniverse =
-        allUniverses
-            .stream()
+        allUniverses.stream()
             .filter(universe -> universe.getUniverseDetails().nodePrefix != null)
             .min(Comparator.comparing(universe -> universe.getCreationDate()))
             .orElse(null);

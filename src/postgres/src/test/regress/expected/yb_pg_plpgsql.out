@@ -5576,7 +5576,6 @@ UPDATE alter_table_under_transition_tables
 -- now change 'name' to an integer to see what happens...
 ALTER TABLE alter_table_under_transition_tables
   ALTER COLUMN name TYPE int USING name::integer;
-ERROR:  This ALTER TABLE command is not yet supported.
 UPDATE alter_table_under_transition_tables
   SET name = (name::text || name::text)::integer;
 -- now drop column 'name'

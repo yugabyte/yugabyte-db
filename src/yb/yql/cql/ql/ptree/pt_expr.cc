@@ -22,8 +22,8 @@
 #include "yb/client/table.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/index.h"
-#include "yb/common/index_column.h"
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_type.h"
 
 #include "yb/gutil/casts.h"
@@ -48,6 +48,8 @@ namespace ql {
 using client::YBColumnSchema;
 using std::shared_ptr;
 using std::string;
+
+using qlexpr::QLNameOption;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -1162,7 +1164,7 @@ const ColumnDesc *PTExpr::GetColumnDesc(const SemContext *sem_context,
                                         const MCString& col_name) const {
   if (sem_context->selecting_from_index()) {
     // Mangle column name when selecting from IndexTable.
-    MCString mangled_name(YcqlName::MangleColumnName(col_name.c_str()).c_str(),
+    MCString mangled_name(qlexpr::YcqlName::MangleColumnName(col_name.c_str()).c_str(),
                           sem_context->PTempMem());
     return GetColumnDesc(sem_context, mangled_name, sem_context->current_dml_stmt());
   }
@@ -1252,7 +1254,7 @@ std::string PTRef::QLName(QLNameOption option) const {
   }
 
   if (option == QLNameOption::kMangledName) {
-    return YcqlName::MangleColumnName(name_->QLName());
+    return qlexpr::YcqlName::MangleColumnName(name_->QLName());
   }
 
   return name_->QLName();
@@ -1407,7 +1409,7 @@ std::string PTJsonColumnWithOperators::QLName(QLNameOption option) const {
     DCHECK(desc_) << "Metadata is not yet loaded to this node";
     qlname = desc_->MetadataName();
   } else if (option == QLNameOption::kMangledName) {
-    qlname = YcqlName::MangleColumnName(name_->QLName());
+    qlname = qlexpr::YcqlName::MangleColumnName(name_->QLName());
   } else {
     qlname = name_->QLName();
   }

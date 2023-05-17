@@ -17,6 +17,7 @@ import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_CON
 import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_PARAMS_CONF_PATH;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -31,11 +32,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableSet;
+import com.nimbusds.oauth2.sdk.ParseException;
+import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -117,8 +122,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             "yb.taskGC.task_retention_duration",
             "yb.external_script");
     Set<String> actualKeys =
-        ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements())
-            .stream()
+        ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements()).stream()
             .map(JsonNode::asText)
             .collect(Collectors.toSet());
     assertTrue(String.valueOf(actualKeys), actualKeys.containsAll(expectedKeys));
@@ -176,9 +180,11 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   @Test
   public void key() {
-    assertEquals(
-        NOT_FOUND,
-        assertPlatformException(() -> getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)).status());
+    String defaultInterval = "1 hour";
+    Result res = getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY);
+    assertEquals(OK, res.status());
+    assertEquals(defaultInterval, contentAsString(res));
+
     String newInterval = "2 days";
     assertEquals(OK, setGCInterval(newInterval, GLOBAL_SCOPE_UUID).status());
     RuntimeConfigFactory runtimeConfigFactory =
@@ -188,8 +194,34 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertEquals(newInterval, contentAsString(getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)));
     assertEquals(OK, deleteKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY).status());
     assertEquals(
-        NOT_FOUND,
-        assertPlatformException(() -> getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)).status());
+        defaultInterval, contentAsString(getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)));
+  }
+
+  // Multiline json should be posted as triple quoted string
+  // UI should wrap before request such multiline content in
+  // triple quotes (and similarly unwrap the response)
+  @Test
+  public void multilineJsonContent() throws ParseException {
+    String metadataKey = "yb.security.oidcProviderMetadata";
+    String defaultValue = "";
+    Result res = getKey(GLOBAL_SCOPE_UUID, metadataKey);
+    assertEquals(OK, res.status());
+    assertEquals(defaultValue, contentAsString(res));
+    String multilineJsonAsString =
+        TestUtils.readResource("com/yugabyte/yw/controllers/test_openid_config.txt");
+    String tripleQuoted = "\"\"\"" + multilineJsonAsString + "\"\"\"";
+    assertEquals(OK, setKey(metadataKey, tripleQuoted, GLOBAL_SCOPE_UUID).status());
+    RuntimeConfigFactory runtimeConfigFactory =
+        app.injector().instanceOf(RuntimeConfigFactory.class);
+    String m = runtimeConfigFactory.globalRuntimeConf().getString(metadataKey);
+    OIDCProviderMetadata metadata = OIDCProviderMetadata.parse(m);
+    // internally we get it without quotes
+    assertEquals(multilineJsonAsString, m);
+    res = getKey(GLOBAL_SCOPE_UUID, metadataKey);
+    assertEquals(OK, res.status());
+
+    // triple quotes are preserved on HTTP GET response
+    assertEquals(tripleQuoted, contentAsString(res));
   }
 
   private Result setGCInterval(String interval, UUID scopeUUID) {
@@ -198,11 +230,11 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   @Test
   public void keyObj() {
-    assertEquals(
-        NOT_FOUND,
-        assertPlatformException(
-                () -> getKey(defaultUniverse.getUniverseUUID(), GC_CHECK_INTERVAL_KEY))
-            .status());
+    String defaultInterval = "1 hour";
+    Result res = getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY);
+    assertEquals(OK, res.status());
+    assertEquals(defaultInterval, contentAsString(res));
+
     String newInterval = "2 days";
     String newRetention = "32 days";
     assertEquals(
@@ -248,11 +280,10 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         OK,
         deleteKey(defaultUniverse.getUniverseUUID(), EXT_SCRIPT_KEY).status());
 
-    assertEquals(
-        "The object was deleted. So expecting NOT_FOUND status",
-        NOT_FOUND,
-        assertPlatformException(() -> getKey(defaultUniverse.getUniverseUUID(), EXT_SCRIPT_KEY))
-            .status());
+    // Expect ConfigException since default value in reference.conf is null
+    assertThrows(
+        ConfigException.WrongType.class,
+        () -> getKey(defaultUniverse.getUniverseUUID(), EXT_SCRIPT_KEY));
   }
 
   private Result setExtScriptObject(String schedule, String content, UUID scopeUUID) {
@@ -498,16 +529,14 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     Result result = doRequestWithAuthToken("GET", LIST_KEYS, authToken);
     assertEquals(OK, result.status());
     Set<String> listKeys =
-        ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements())
-            .stream()
+        ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements()).stream()
             .map(JsonNode::asText)
             .collect(Collectors.toSet());
 
     result = doRequestWithAuthToken("GET", LIST_KEY_INFO, authToken);
     assertEquals(OK, result.status());
     Set<String> metaKeys =
-        ImmutableSet.copyOf(Json.parse(contentAsString(result)))
-            .stream()
+        ImmutableSet.copyOf(Json.parse(contentAsString(result))).stream()
             .map(JsonNode -> JsonNode.get("key"))
             .map(JsonNode::asText)
             .collect(Collectors.toSet());

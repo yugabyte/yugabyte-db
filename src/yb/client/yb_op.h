@@ -52,16 +52,6 @@
 #include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {
-
-class RedisWriteRequestPB;
-class RedisReadRequestPB;
-class RedisResponsePB;
-
-class QLWriteRequestPB;
-class QLReadRequestPB;
-class QLResponsePB;
-class QLRowBlock;
-
 namespace client {
 
 namespace internal {
@@ -419,7 +409,7 @@ class YBqlReadOp : public YBqlOp {
   }
 
   std::vector<ColumnSchema> MakeColumnSchemasFromRequest() const;
-  Result<QLRowBlock> MakeRowBlock() const;
+  Result<qlexpr::QLRowBlock> MakeRowBlock() const;
 
   const ReadHybridTime& read_time() const { return read_time_; }
   void SetReadTime(const ReadHybridTime& value) { read_time_ = value; }

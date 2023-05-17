@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/gutil/bind.h"
 
@@ -134,7 +134,7 @@ class TestQLProcessor : public ClockHolder {
   Status Run(const Statement& stmt, const StatementParameters& params);
 
   // Construct a row_block and send it back.
-  std::shared_ptr<QLRowBlock> row_block() const;
+  std::shared_ptr<qlexpr::QLRowBlock> row_block() const;
 
   const ExecutedResultPtr& result() const { return result_; }
 

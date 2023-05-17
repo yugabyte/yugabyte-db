@@ -77,7 +77,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -172,7 +172,7 @@ public class UniverseCRUDHandler {
 
     boolean smartResizePossible =
         ResizeNodeParams.checkResizeIsPossible(
-            currentCluster.userIntent, cluster.userIntent, universe, true);
+            cluster.uuid, currentCluster.userIntent, cluster.userIntent, universe, true);
 
     for (NodeDetails node : nodesInCluster) {
       if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
@@ -281,9 +281,7 @@ public class UniverseCRUDHandler {
       if (op == OpType.CREATE || op == OpType.UPDATE) {
         int nodesInDefRegion =
             (int)
-                taskParams
-                    .nodeDetailsSet
-                    .stream()
+                taskParams.nodeDetailsSet.stream()
                     .filter(n -> n.isActive() && defaultRegion.getCode().equals(n.cloudInfo.region))
                     .count();
         if (nodesInDefRegion < intent.replicationFactor) {
@@ -630,8 +628,7 @@ public class UniverseCRUDHandler {
     // for this customer id.
     Universe universe;
     TaskType taskType = TaskType.CreateUniverse;
-
-    Ebean.beginTransaction();
+    DB.beginTransaction();
     try {
       universe = Universe.create(taskParams, customer.getId());
       LOG.info("Created universe {} : {}.", universe.getUniverseUUID(), universe.getName());
@@ -652,6 +649,12 @@ public class UniverseCRUDHandler {
         UniverseDefinitionTaskParams.UserIntent primaryIntent = primaryCluster.userIntent;
         primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
         primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
+
+        // Check if universe has multi-regions configured at creation time.
+        int numRegions = primaryIntent.regionList.size();
+        boolean isMultiRegion = numRegions > 1;
+        universe.updateConfig(
+            ImmutableMap.of(Universe.IS_MULTIREGION, Boolean.toString(isMultiRegion)));
 
         if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
@@ -746,13 +749,13 @@ public class UniverseCRUDHandler {
               Boolean.toString(taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi))));
       universe.save();
 
-      Ebean.commitTransaction();
+      DB.commitTransaction();
 
     } catch (Exception e) {
       LOG.info("Universe wasn't created because of the error: {}", e.getMessage());
       throw e;
     } finally {
-      Ebean.endTransaction();
+      DB.endTransaction();
     }
 
     // Submit the task to create the universe.
@@ -820,7 +823,8 @@ public class UniverseCRUDHandler {
 
   private static void validateRegionsAndZones(Provider provider, Cluster cluster) {
     Map<UUID, Region> regionMap =
-        provider.getRegions().stream().collect(Collectors.toMap(r -> r.getUuid(), r -> r));
+        Region.getByProvider(provider.getUuid(), false).stream()
+            .collect(Collectors.toMap(r -> r.getUuid(), r -> r));
     if (cluster.placementInfo == null) {
       return; // Otherwise tests are failing
     }
@@ -1307,8 +1311,7 @@ public class UniverseCRUDHandler {
         universe.getUniverseDetails().getNonPrimaryClusters();
 
     Cluster cluster =
-        existingNonPrimaryClusters
-            .stream()
+        existingNonPrimaryClusters.stream()
             .filter(c -> c.uuid.equals(clusterUUID))
             .findFirst()
             .orElse(null);
@@ -1879,8 +1882,7 @@ public class UniverseCRUDHandler {
 
     // Collect all the nodes which are not in ToBeAdded state and validate.
     Map<String, NodeDetails> inputNodesMap =
-        inputNodes
-            .stream()
+        inputNodes.stream()
             .filter(
                 node -> {
                   if (node.state != NodeState.ToBeAdded) {
@@ -1924,8 +1926,7 @@ public class UniverseCRUDHandler {
     }
 
     // Ensure all the nodes in the cluster are present in the input.
-    existingNodes
-        .stream()
+    existingNodes.stream()
         .filter(existingNode -> existingNode.state != NodeState.ToBeAdded)
         .forEach(
             existingNode -> {
@@ -1956,15 +1957,11 @@ public class UniverseCRUDHandler {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
     Set<UUID> taskParamClustersUuids =
-        taskParams
-            .clusters
-            .stream()
+        taskParams.clusters.stream()
             .map(c -> c.uuid)
             .collect(Collectors.toCollection(HashSet::new));
 
-    universeDetails
-        .clusters
-        .stream()
+    universeDetails.clusters.stream()
         .forEach(
             c -> {
               taskParamClustersUuids.remove(c.uuid);

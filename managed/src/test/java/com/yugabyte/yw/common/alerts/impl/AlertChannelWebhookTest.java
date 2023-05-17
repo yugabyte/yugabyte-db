@@ -30,6 +30,7 @@ import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
+import org.eclipse.jetty.http.HttpStatus;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -106,6 +107,25 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
           groupLabelsJson.get("configuration_uuid").asText(),
           equalTo(alert.getConfigurationUuid().toString()));
       assertThat(groupLabelsJson.get("definition_name").asText(), equalTo("alertConfiguration"));
+    }
+  }
+
+  @Test
+  public void test204() throws PlatformNotificationException, IOException, InterruptedException {
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      HttpUrl baseUrl = server.url(WEBHOOK_TEST_PATH);
+      server.enqueue(new MockResponse().setResponseCode(HttpStatus.NO_CONTENT_204));
+
+      AlertChannel channelConfig = new AlertChannel();
+      channelConfig.setName("Channel name");
+      AlertChannelWebHookParams params = new AlertChannelWebHookParams();
+      params.setWebhookUrl(baseUrl.toString());
+      channelConfig.setParams(params);
+
+      Alert alert = ModelFactory.createAlert(defaultCustomer);
+      channel.sendNotification(defaultCustomer, alert, channelConfig, alertChannelTemplatesExt);
+      // In case no Exception is raised - notification was sent successfully
     }
   }
 

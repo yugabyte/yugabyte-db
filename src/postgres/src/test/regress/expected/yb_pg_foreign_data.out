@@ -1582,12 +1582,10 @@ ALTER TABLE fd_pt1 ALTER COLUMN c4 SET DEFAULT 0;
 ALTER TABLE fd_pt1 ALTER COLUMN c5 DROP DEFAULT;
 ALTER TABLE fd_pt1 ALTER COLUMN c6 SET NOT NULL;
 ALTER TABLE fd_pt1 ALTER COLUMN c7 DROP NOT NULL;
-ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10) USING '0';        -- ERROR
-ERROR:  This ALTER TABLE command is not yet supported.
+-- YB Note: The below errors in PG but doesn't in YB because inheritance isn't supported.
+ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10) USING '0';
 ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10);
-ERROR:  This ALTER TABLE command is not yet supported.
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET DATA TYPE text;
-ERROR:  This ALTER TABLE command is not yet supported.
 ALTER TABLE fd_pt1 ALTER COLUMN c1 SET STATISTICS 10000;
 ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
 ERROR:  ALTER TABLE ALTER column not supported yet
@@ -1611,7 +1609,7 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumb
  c5     | integer |           |          |         | plain    |              |
  c6     | integer |           | not null |         | plain    |              |
  c7     | integer |           |          |         | plain    |              |
- c8     | integer |           |          |         | plain    |              |
+ c8     | text    |           |          |         | extended |              |
 
 -- ^^^ originally extra:
 -- Child tables: ft2

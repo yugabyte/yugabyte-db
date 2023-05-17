@@ -155,6 +155,9 @@ typedef struct PgTypeEntity {
   // - Set to (-1) for types of variable in-memory size - VARSIZE_ANY should be used.
   int64_t datum_fixed_size;
 
+  // Whether we could use cast to convert value to datum.
+  bool direct_datum;
+
   // Converting Postgres datum to YugaByte expression.
   YBCPgDatumToData datum_to_yb;
 
@@ -298,6 +301,8 @@ typedef struct PgExecParameters {
   bool is_index_backfill = false;
   bool is_select_distinct = false;
   int work_mem = 4096; // Default work_mem in guc.c
+  int yb_fetch_row_limit = 1024; // Default yb_fetch_row_limit in guc.c
+  int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
 #else
   uint64_t limit_count;
   uint64_t limit_offset;
@@ -312,6 +317,8 @@ typedef struct PgExecParameters {
   bool is_index_backfill;
   bool is_select_distinct;
   int work_mem;
+  int yb_fetch_row_limit;
+  int yb_fetch_size_limit;
 #endif
 } YBCPgExecParameters;
 
@@ -352,6 +359,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_ddl_rollback_enabled;
   const bool*     ysql_enable_read_request_caching;
   const bool*     ysql_enable_profile;
+  const bool*     ysql_disable_global_impact_ddl_statements;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

@@ -270,10 +270,7 @@ public class NodeInstanceController extends AuthenticatedController {
           NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, getJWTClientUuid());
           nodeAgent.ensureState(State.READY);
           List<ValidationResult> failedResults =
-              nodeConfigValidator
-                  .validateNodeConfigs(provider, nodeData, true)
-                  .values()
-                  .stream()
+              nodeConfigValidator.validateNodeConfigs(provider, nodeData, true).values().stream()
                   .filter(r -> r.isRequired())
                   .filter(r -> !r.isValid())
                   .collect(Collectors.toList());
@@ -468,8 +465,7 @@ public class NodeInstanceController extends AuthenticatedController {
     List<NodeInstance> nodesInProvider = NodeInstance.listByProvider(provider.getUuid());
     // TODO: Need to convert routes to use UUID instead of instances' IP address
     // See: https://github.com/yugabyte/yugabyte-db/issues/7936
-    return nodesInProvider
-        .stream()
+    return nodesInProvider.stream()
         .filter(node -> node.getDetails().ip.equals(instanceIP))
         .findFirst()
         .orElseThrow(() -> new PlatformServiceException(BAD_REQUEST, "Node Not Found"));

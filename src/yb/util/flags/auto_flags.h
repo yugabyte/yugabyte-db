@@ -65,7 +65,10 @@ YB_DEFINE_ENUM(
     ((kLocalPersisted, 2))
     // Adds/modifies format of data which might be used outside the universe.
     // Example of external processes: XCluster and CDCServer.
-    ((kExternal, 3)));
+    ((kExternal, 3))
+    // Promotes a flag only for new installs, no promotions for upgrade workflow.
+    // Example: features that are not yet safe for upgrades.
+    ((kNewInstallsOnly, 4)));
 
 // Disable Auto Flag Promotion for a test file
 #define DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST \

@@ -41,7 +41,9 @@ type: docs
 
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
+Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
+
+Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
 
 The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
 
@@ -53,7 +55,9 @@ The AWS user associated with a KMS configuration requires the following minimum 
 - `kms:UpdateAlias`
 - `kms:TagResource`
 
-You can create a KMS configuration that uses AWS KMS as follows:
+## Create a KMS configuration
+
+You can create a KMS configuration that uses AWS KMS, as follows:
 
 1. Use the YugabyteDB Anywhere UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
 

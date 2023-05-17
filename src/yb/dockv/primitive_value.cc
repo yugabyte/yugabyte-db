@@ -1000,7 +1000,8 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
 
     case KeyEntryType::kInetaddress:
     case KeyEntryType::kInetaddressDescending: {
-      auto decoder = &DecodeComplementZeroEncodedStr;
+      using Decoder = Status(*)(Slice*, std::string*);
+      Decoder decoder = &DecodeComplementZeroEncodedStr;
       if (type == KeyEntryType::kInetaddress) {
         decoder = &DecodeZeroEncodedStr;
       }

@@ -76,8 +76,7 @@ public class AlertTemplateVariableService {
 
     List<AlertTemplateVariable> beforeVariables = Collections.emptyList();
     Set<UUID> variableUuids =
-        variables
-            .stream()
+        variables.stream()
             .filter(variable -> !variable.isNew())
             .map(AlertTemplateVariable::getUuid)
             .collect(Collectors.toSet());
@@ -85,14 +84,12 @@ public class AlertTemplateVariableService {
       beforeVariables = list(variableUuids);
     }
     Map<UUID, AlertTemplateVariable> beforeVariablesMap =
-        beforeVariables
-            .stream()
+        beforeVariables.stream()
             .collect(Collectors.toMap(AlertTemplateVariable::getUuid, Function.identity()));
 
     List<AlertTemplateVariable> existingVariablesWithSameName = Collections.emptyList();
     Set<String> newVariableNames =
-        variables
-            .stream()
+        variables.stream()
             .filter(AlertTemplateVariable::isNew)
             .map(AlertTemplateVariable::getName)
             .filter(Objects::nonNull)
@@ -101,13 +98,11 @@ public class AlertTemplateVariableService {
       existingVariablesWithSameName = list(customerUuid, newVariableNames);
     }
     Map<String, AlertTemplateVariable> existingVariablesWithSameNameMap =
-        existingVariablesWithSameName
-            .stream()
+        existingVariablesWithSameName.stream()
             .collect(Collectors.toMap(AlertTemplateVariable::getName, Function.identity()));
 
     Map<EntityOperation, List<AlertTemplateVariable>> toCreateAndUpdate =
-        variables
-            .stream()
+        variables.stream()
             .peek(
                 configuration ->
                     validate(
@@ -202,9 +197,7 @@ public class AlertTemplateVariableService {
         variables.stream().map(AlertTemplateVariable::getUuid).collect(Collectors.toSet());
 
     Map<ChannelType, Set<String>> alertChannelTemplateVariables =
-        alertChannelTemplateService
-            .list(customerUuid)
-            .stream()
+        alertChannelTemplateService.list(customerUuid).stream()
             .collect(
                 Collectors.toMap(
                     AlertChannelTemplates::getType, AlertChannelTemplates::getCustomVariablesSet));
@@ -213,8 +206,7 @@ public class AlertTemplateVariableService {
     appendInClause(AlertTemplateVariable.createQuery(), "uuid", uuidsToDelete).delete();
 
     Map<String, Set<String>> removedValues =
-        variables
-            .stream()
+        variables.stream()
             .collect(
                 Collectors.toMap(
                     AlertTemplateVariable::getName, AlertTemplateVariable::getPossibleValues));
@@ -291,8 +283,7 @@ public class AlertTemplateVariableService {
         alertConfigurationService.list(
             AlertConfigurationFilter.builder().customerUuid(customerUuid).build());
     List<AlertConfiguration> affectedConfigurations =
-        alertConfigurations
-            .stream()
+        alertConfigurations.stream()
             .filter(configuration -> configuration.getLabels() != null)
             .filter(
                 configuration -> {

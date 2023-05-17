@@ -220,4 +220,27 @@ public class CommonUtilsTest {
         CommonUtils.isEqualIgnoringOrder(Arrays.asList("a", "b", "c"), Arrays.asList("a", "b")));
     assertFalse(CommonUtils.isEqualIgnoringOrder(Arrays.asList("a", "b", "c"), null));
   }
+
+  @Test
+  public void testReplaceBeginningPathChanged() {
+    String pathToModify = "/opt/yugaware/path/to/opt/yugaware/file";
+    String initialRootPath = "/opt/yugaware";
+    String finalRootPath = "/root/data";
+    String expectedModifiedPath = "/root/data/path/to/opt/yugaware/file";
+
+    String modifiedPath =
+        CommonUtils.replaceBeginningPath(pathToModify, initialRootPath, finalRootPath);
+    assertEquals(expectedModifiedPath, modifiedPath);
+  }
+
+  @Test
+  public void testReplaceBeginningPathUnChanged() {
+    String pathToModify = "/opt/yugaware/path/to/opt/path/file";
+    String initialRootPath = "/opt/yugaware";
+    String finalRootPath = "/opt/yugaware";
+
+    String modifiedPath =
+        CommonUtils.replaceBeginningPath(pathToModify, initialRootPath, finalRootPath);
+    assertEquals(pathToModify, modifiedPath);
+  }
 }

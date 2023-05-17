@@ -162,7 +162,6 @@ public class AccessManager extends DevopsBase {
         true);
   }
 
-  // This method would upload the provided key file to the provider key file path.
   public AccessKey uploadKeyFile(
       UUID regionUUID,
       Path uploadedFile,
@@ -176,6 +175,38 @@ public class AccessManager extends DevopsBase {
       List<String> ntpServers,
       boolean showSetUpChrony,
       boolean deleteRemote)
+      throws IOException {
+    return uploadKeyFile(
+        regionUUID,
+        uploadedFile,
+        keyCode,
+        keyType,
+        sshUser,
+        sshPort,
+        airGapInstall,
+        skipProvisioning,
+        setUpChrony,
+        ntpServers,
+        showSetUpChrony,
+        deleteRemote,
+        false);
+  }
+
+  // This method would upload the provided key file to the provider key file path.
+  public AccessKey uploadKeyFile(
+      UUID regionUUID,
+      Path uploadedFile,
+      String keyCode,
+      KeyType keyType,
+      String sshUser,
+      Integer sshPort,
+      boolean airGapInstall,
+      boolean skipProvisioning,
+      boolean setUpChrony,
+      List<String> ntpServers,
+      boolean showSetUpChrony,
+      boolean deleteRemote,
+      boolean skipKeyValidateAndUpload)
       throws IOException {
     Region region = Region.get(regionUUID);
     final Provider provider = region.getProvider();
@@ -223,6 +254,7 @@ public class AccessManager extends DevopsBase {
     keyInfo.sshPrivateKeyContent = new String(Files.readAllBytes(destination));
     // In case of upload, keys will be user provided.
     keyInfo.setManagementState(AccessKey.KeyInfo.KeyManagementState.SelfManaged);
+    keyInfo.skipKeyValidateAndUpload = skipKeyValidateAndUpload;
 
     // TODO: Move this code for ProviderDetails update elsewhere
     ProviderDetails details = provider.getDetails();
@@ -252,7 +284,7 @@ public class AccessManager extends DevopsBase {
       boolean setUpChrony,
       List<String> ntpServers,
       boolean showSetUpChrony,
-      boolean skipKeyPairValidate) {
+      boolean skipKeyValidateAndUpload) {
     AccessKey key = null;
     Path tempFile = null;
 
@@ -274,24 +306,23 @@ public class AccessManager extends DevopsBase {
               setUpChrony,
               ntpServers,
               showSetUpChrony,
-              false);
+              false,
+              skipKeyValidateAndUpload);
 
       File pemFile = new File(key.getKeyInfo().privateKey);
       // Delete is always false and we don't even try to make AWS calls.
-      if (!skipKeyPairValidate) {
-        key =
-            addKey(
-                regionUUID,
-                keyCode,
-                pemFile,
-                sshUser,
-                sshPort,
-                airGapInstall,
-                skipProvisioning,
-                setUpChrony,
-                ntpServers,
-                showSetUpChrony);
-      }
+      key =
+          addKey(
+              regionUUID,
+              keyCode,
+              pemFile,
+              sshUser,
+              sshPort,
+              airGapInstall,
+              skipProvisioning,
+              setUpChrony,
+              ntpServers,
+              showSetUpChrony);
     } catch (NoSuchFileException ioe) {
       log.error(ioe.getMessage(), ioe);
     } catch (IOException ioe) {
@@ -380,9 +411,10 @@ public class AccessManager extends DevopsBase {
       boolean showSetupChrony) {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
-    String keyFilePath = getOrCreateKeyFilePath(region.getProvider().getUuid());
+    Provider provider = region.getProvider();
+    String keyFilePath = getOrCreateKeyFilePath(provider.getUuid());
 
-    AccessKey accessKey = AccessKey.get(region.getProvider().getUuid(), keyCode);
+    AccessKey accessKey = AccessKey.get(provider.getUuid(), keyCode);
 
     commandArgs.add("--key_pair_name");
     commandArgs.add(keyCode);
@@ -399,6 +431,10 @@ public class AccessManager extends DevopsBase {
     if (privateKeyFilePath != null) {
       commandArgs.add("--private_key_file");
       commandArgs.add(privateKeyFilePath);
+    }
+
+    if (accessKey != null && accessKey.getKeyInfo().skipKeyValidateAndUpload) {
+      commandArgs.add("--skip_add_keypair_aws");
     }
 
     JsonNode response =
@@ -521,8 +557,7 @@ public class AccessManager extends DevopsBase {
 
     if (Common.CloudType.valueOf(provider.getCode()) == Common.CloudType.aws) {
       ArrayNode ret = Json.mapper().getNodeFactory().arrayNode();
-      regions
-          .stream()
+      regions.stream()
           .map(r -> deleteKey(provider.getUuid(), r.getUuid(), keyCode, deleteRemote))
           .collect(Collectors.toList())
           .forEach(ret::add);
@@ -647,8 +682,7 @@ public class AccessManager extends DevopsBase {
     AccessKey newAccessKey = AccessKey.getOrBadRequest(providerUUID, newKeyCode);
     // request would fail if there is a universe which does not exist
     Set<Universe> universes =
-        universeUUIDs
-            .stream()
+        universeUUIDs.stream()
             .map((universeUUID) -> Universe.getOrBadRequest(universeUUID))
             .collect(Collectors.toSet());
     Set<Universe> providerUniverses = customer.getUniversesForProvider(providerUUID);
@@ -684,10 +718,7 @@ public class AccessManager extends DevopsBase {
    */
   public boolean checkAccessKeyPermissionsValidity(
       Universe universe, Map<AccessKeyId, AccessKey> allAccessKeysMap) {
-    return universe
-        .getUniverseDetails()
-        .clusters
-        .stream()
+    return universe.getUniverseDetails().clusters.stream()
         .noneMatch(
             cluster -> {
               String keyCode = cluster.userIntent.accessKeyCode;

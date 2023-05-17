@@ -230,9 +230,7 @@ public class TableManagerYbTest extends FakeDBApplication {
       cmd.add(
           Json.stringify(
               Json.toJson(
-                  testUniverse
-                      .getTServers()
-                      .stream()
+                  testUniverse.getTServers().stream()
                       .collect(Collectors.toMap(t -> t.cloudInfo.private_ip, t -> pkPath)))));
     }
     cmd.add("--backup_location");

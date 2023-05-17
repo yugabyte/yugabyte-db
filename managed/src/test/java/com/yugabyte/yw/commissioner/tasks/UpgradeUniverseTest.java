@@ -61,7 +61,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.SqlUpdate;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -77,7 +77,6 @@ import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
-
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -906,8 +905,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   private void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
     List<String> nodeNames =
-        subTasks
-            .stream()
+        subTasks.stream()
             .map(t -> t.getDetails().get("nodeName").textValue())
             .collect(Collectors.toList());
     int nodeCount = (int) assertValues.getOrDefault("nodeCount", 1);
@@ -926,8 +924,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         (expectedKey, expectedValue) -> {
           if (!ImmutableList.of("nodeName", "nodeNames", "nodeCount").contains(expectedKey)) {
             List<Object> values =
-                subTaskDetails
-                    .stream()
+                subTaskDetails.stream()
                     .map(
                         t -> {
                           JsonNode data =
@@ -962,13 +959,13 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
             + "instance_type_details )"
             + "VALUES ("
             + ":providerUUID, :typeCode, true, :numCores, :memSize, :details)";
-    SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
+    SqlUpdate update = DB.sqlUpdate(updateQuery);
     update.setParameter("providerUUID", defaultProvider.getUuid());
     update.setParameter("typeCode", intendedInstanceType);
     update.setParameter("numCores", 8);
     update.setParameter("memSize", 16);
     update.setParameter("details", "{\"volumeDetailsList\":[],\"tenancy\":\"Shared\"}");
-    int modifiedCount = Ebean.execute(update);
+    int modifiedCount = DB.getDefault().execute(update);
     assertEquals(1, modifiedCount);
 
     Region secondRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
@@ -1202,8 +1199,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     final int expectedRootVolumeCreationTasks = 4;
 
     Map<UUID, List<String>> createVolumeOutput =
-        Arrays.asList(az1, az2, az3)
-            .stream()
+        Arrays.asList(az1, az2, az3).stream()
             .collect(
                 Collectors.toMap(
                     az -> az.getUuid(),

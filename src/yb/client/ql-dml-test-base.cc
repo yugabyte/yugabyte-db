@@ -25,7 +25,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/ql_name.h"
+#include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_value.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
@@ -275,11 +275,11 @@ void InitIndex(
 
   auto* column = index_info->add_columns();
   const string name = schema.Column(indexed_column_index).name();
-  column->set_column_name(use_mangled_names ? YcqlName::MangleColumnName(name) : name);
+  column->set_column_name(use_mangled_names ? qlexpr::YcqlName::MangleColumnName(name) : name);
   column->set_indexed_column_id(schema.ColumnId(indexed_column_index));
 
   // Setup Index table schema.
-  builder->AddColumn(use_mangled_names ? YcqlName::MangleColumnName(name) : name)
+  builder->AddColumn(use_mangled_names ? qlexpr::YcqlName::MangleColumnName(name) : name)
       ->Type(schema.Column(indexed_column_index).type())
       ->NotNull()
       ->HashPrimaryKey();
@@ -288,13 +288,13 @@ void InitIndex(
   for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
     if (i != indexed_column_index) {
       const string name = schema.Column(i).name();
-      builder->AddColumn(use_mangled_names ? YcqlName::MangleColumnName(name) : name)
+      builder->AddColumn(use_mangled_names ? qlexpr::YcqlName::MangleColumnName(name) : name)
           ->Type(schema.Column(i).type())
           ->NotNull()
           ->PrimaryKey();
 
       column = index_info->add_columns();
-      column->set_column_name(use_mangled_names ? YcqlName::MangleColumnName(name) : name);
+      column->set_column_name(use_mangled_names ? qlexpr::YcqlName::MangleColumnName(name) : name);
       column->set_indexed_column_id(schema.ColumnId(i));
       ++num_range_keys;
     }
@@ -515,9 +515,9 @@ Status CheckOp(YBqlOp* op) {
   return Status::OK();
 }
 
-Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table) {
+Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table, MonoDelta timeout) {
   LOG(INFO) << "Running full scan on table " << table.name().ToString() << "...";
-  session->SetTimeout(5s * kTimeMultiplier);
+  session->SetTimeout(timeout);
   QLPagingStatePB paging_state;
   bool has_paging_state = false;
   size_t row_count = 0;

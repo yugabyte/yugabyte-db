@@ -1,9 +1,8 @@
 package com.yugabyte.yw.commissioner.tasks.params;
 
-import java.util.UUID;
-
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AccessKey;
+import java.util.UUID;
 
 public class RotateAccessKeyParams extends UniverseTaskParams implements IProviderTaskParams {
   public UUID customerUUID;

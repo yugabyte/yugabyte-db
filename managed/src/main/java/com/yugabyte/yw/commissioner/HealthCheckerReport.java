@@ -354,8 +354,7 @@ public class HealthCheckerReport {
   private static List<String> getNodeNames(
       Universe u, Cluster cluster, Map<String, NodeReport> reports) {
     List<String> nodeNames =
-        u.getNodesInCluster(cluster.uuid)
-            .stream()
+        u.getNodesInCluster(cluster.uuid).stream()
             .map(node -> node.nodeName)
             .sorted(new NodesComparator(reports))
             .collect(Collectors.toList());

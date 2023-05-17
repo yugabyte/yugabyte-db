@@ -13,6 +13,7 @@ import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
+import com.amazonaws.services.ec2.model.DeleteKeyPairRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesResult;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsRequest;
@@ -58,7 +59,6 @@ import com.amazonaws.services.elasticloadbalancingv2.model.TargetTypeEnum;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.model.CreateKeyRequest;
 import com.amazonaws.services.kms.model.CreateKeyResult;
-import com.amazonaws.services.kms.model.DescribeKeyResult;
 import com.amazonaws.services.kms.model.DisableKeyRequest;
 import com.amazonaws.services.kms.model.ScheduleKeyDeletionRequest;
 import com.amazonaws.services.kms.model.Tag;
@@ -78,8 +78,8 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
-import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
@@ -180,8 +180,7 @@ public class AWSCloudImpl implements CloudAPI {
                 })
             .collect(Collectors.toList());
 
-    return results
-        .stream()
+    return results.stream()
         .flatMap(result -> result.getInstanceTypeOfferings().stream())
         .collect(
             groupingBy(
@@ -387,13 +386,11 @@ public class AWSCloudImpl implements CloudAPI {
       }
       // Add/remove nodes from target group
       List<String> addInstanceIDs =
-          instanceIDs
-              .stream()
+          instanceIDs.stream()
               .filter(i -> !currentInstanceIDs.contains(i))
               .collect(Collectors.toList());
       removeInstanceIDs.addAll(
-          currentInstanceIDs
-              .stream()
+          currentInstanceIDs.stream()
               .filter(i -> !instanceIDs.contains(i))
               .collect(Collectors.toList()));
       registerTargets(lbClient, targetGroupArn, addInstanceIDs, port);
@@ -591,8 +588,7 @@ public class AWSCloudImpl implements CloudAPI {
       AmazonElasticLoadBalancing lbClient, String targetGroupArn, List<String> instanceIDs) {
     List<TargetDescription> allTargets = getTargetGroupNodes(lbClient, targetGroupArn);
     List<TargetDescription> targets =
-        allTargets
-            .stream()
+        allTargets.stream()
             .filter(t -> instanceIDs.contains(t.getId()))
             .collect(Collectors.toList());
     return targets;
@@ -768,9 +764,7 @@ public class AWSCloudImpl implements CloudAPI {
       DescribeSubnetsRequest request =
           new DescribeSubnetsRequest()
               .withSubnetIds(
-                  region
-                      .getZones()
-                      .stream()
+                  region.getZones().stream()
                       .map(zone -> zone.getSubnet())
                       .collect(Collectors.toList()));
       DescribeSubnetsResult result = ec2Client.describeSubnets(request);
@@ -786,5 +780,25 @@ public class AWSCloudImpl implements CloudAPI {
     AWSCloudInfo cloudInfo = provider.getDetails().getCloudInfo().getAws();
     return !StringUtils.isEmpty(cloudInfo.awsAccessKeyID)
         && !StringUtils.isEmpty(cloudInfo.awsAccessKeySecret);
+  }
+
+  public void deleteKeyPair(Provider provider, Region region, String keyPairName) {
+    List<Region> regions = new ArrayList<Region>();
+    regions.add(region);
+    if (regions.size() == 0) {
+      regions = provider.getRegions();
+    }
+
+    try {
+      for (Region r : regions) {
+        AmazonEC2 ec2Client = getEC2Client(provider, r.getCode());
+        DeleteKeyPairRequest request = new DeleteKeyPairRequest().withKeyName(keyPairName);
+        ec2Client.deleteKeyPair(request);
+      }
+    } catch (AmazonServiceException e) {
+      LOG.error("Access Key deletion failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Access Key deletion failed: " + e.getMessage());
+    }
   }
 }

@@ -257,6 +257,8 @@ class PgAlterTable : public PgDdl {
 
   Status IncrementSchemaVersion();
 
+  Status SetTableId(const PgObjectId& table_id);
+
   Status Exec();
 
   virtual ~PgAlterTable();

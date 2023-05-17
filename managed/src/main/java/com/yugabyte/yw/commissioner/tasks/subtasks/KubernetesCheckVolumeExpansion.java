@@ -17,15 +17,12 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.forms.AbstractTaskParams;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimVolumeSource;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Volume;
-
-import com.yugabyte.yw.models.Provider;
-
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +30,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -112,13 +108,10 @@ public class KubernetesCheckVolumeExpansion extends AbstractTaskBase {
             "yb-tserver",
             taskParams().newNamingStyle);
     Set<String> pvcsAttachedToPods = new HashSet<>();
-    podsInNs
-        .stream()
+    podsInNs.stream()
         .map(
             pod -> {
-              return pod.getSpec()
-                  .getVolumes()
-                  .stream()
+              return pod.getSpec().getVolumes().stream()
                   .map(Volume::getPersistentVolumeClaim)
                   .filter(Objects::nonNull)
                   .map(PersistentVolumeClaimVolumeSource::getClaimName)

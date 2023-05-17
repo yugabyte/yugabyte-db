@@ -305,9 +305,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     int tserversStarted =
         (int)
-            taskInfo
-                .getSubTasks()
-                .stream()
+            taskInfo.getSubTasks().stream()
                 .filter(t -> t.getTaskType() == TaskType.AnsibleClusterServerCtl)
                 .map(t -> t.getDetails())
                 .filter(t -> t.has("process") && t.get("process").asText().equals("tserver"))

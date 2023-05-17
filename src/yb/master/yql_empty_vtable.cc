@@ -23,10 +23,9 @@ YQLEmptyVTable::YQLEmptyVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, schema) {
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLEmptyVTable::RetrieveData(
-    const QLReadRequestPB& request) const {
+Result<VTableDataPtr> YQLEmptyVTable::RetrieveData(const QLReadRequestPB& request) const {
   // Empty rowblock.
-  return std::make_shared<QLRowBlock>(schema());
+  return std::make_shared<qlexpr::QLRowBlock>(schema());
 }
 
 }  // namespace master

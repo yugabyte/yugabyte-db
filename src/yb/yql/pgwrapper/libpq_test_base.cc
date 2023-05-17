@@ -75,5 +75,10 @@ bool LibPqTestBase::TransactionalFailure(const Status& status) {
   return code == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
 }
 
+Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
+  return conn->FetchValue<PGOid>(
+      Format("SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
+}
+
 } // namespace pgwrapper
 } // namespace yb

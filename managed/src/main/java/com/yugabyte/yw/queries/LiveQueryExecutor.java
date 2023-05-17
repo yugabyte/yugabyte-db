@@ -14,7 +14,6 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import play.api.Play;
 import play.libs.Json;
 import play.libs.ws.WSClient;
 

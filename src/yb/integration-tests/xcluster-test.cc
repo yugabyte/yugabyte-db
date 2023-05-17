@@ -53,7 +53,6 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_replication.proxy.h"
-#include "yb/master/master-test-util.h"
 
 #include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/rpc/rpc_controller.h"
@@ -80,48 +79,48 @@ using std::string;
 
 using namespace std::literals;
 
-DECLARE_bool(enable_ysql);
-DECLARE_bool(TEST_xcluster_write_hybrid_time);
-DECLARE_int32(cdc_wal_retention_time_secs);
-DECLARE_int32(replication_failure_delay_exponent);
-DECLARE_double(TEST_respond_write_failed_probability);
-DECLARE_int32(async_replication_idle_delay_ms);
-DECLARE_int32(async_replication_polling_delay_ms);
-DECLARE_int32(async_replication_max_idle_wait);
-DECLARE_uint32(external_intent_cleanup_secs);
-DECLARE_int32(yb_num_shards_per_tserver);
-DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
-DECLARE_int64(rpc_throttle_threshold_bytes);
-DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(TEST_block_get_changes);
+DECLARE_bool(TEST_cdc_skip_replication_poll);
+DECLARE_bool(TEST_disable_apply_committed_transactions);
+DECLARE_bool(TEST_disable_cleanup_applied_transactions);
+DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_bool(TEST_exit_unfinished_deleting);
 DECLARE_bool(TEST_exit_unfinished_merging);
-DECLARE_int32(transaction_table_num_tablets);
-DECLARE_bool(enable_replicate_transaction_status_table);
-DECLARE_bool(TEST_block_get_changes);
+DECLARE_bool(TEST_fail_setup_system_universe_replication);
 DECLARE_bool(TEST_hang_wait_replication_drain);
-DECLARE_int32(ns_replication_sync_retry_secs);
-DECLARE_int32(ns_replication_sync_backoff_secs);
-DECLARE_bool(xcluster_wait_on_ddl_alter);
-DECLARE_int32(transaction_table_num_tablets);
-DECLARE_bool(TEST_disable_cleanup_applied_transactions);
-DECLARE_bool(TEST_disable_apply_committed_transactions);
-DECLARE_uint64(log_segment_size_bytes);
-DECLARE_int32(log_min_seconds_to_retain);
-DECLARE_bool(TEST_disable_wal_retention_time);
-DECLARE_int64(log_stop_retaining_min_disk_mb);
-DECLARE_int32(log_min_segments_to_retain);
-DECLARE_bool(TEST_cdc_skip_replication_poll);
-DECLARE_int32(log_cache_size_limit_mb);
-DECLARE_int32(global_log_cache_size_limit_mb);
-DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
-DECLARE_bool(enable_load_balancing);
-DECLARE_bool(use_node_to_node_encryption);
-DECLARE_bool(use_client_to_server_encryption);
+DECLARE_double(TEST_respond_write_failed_probability);
+DECLARE_bool(TEST_xcluster_write_hybrid_time);
+DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_bool(allow_insecure_connections);
+DECLARE_bool(allow_ycql_transactional_xcluster);
+DECLARE_int32(async_replication_idle_delay_ms);
+DECLARE_int32(async_replication_max_idle_wait);
+DECLARE_int32(async_replication_polling_delay_ms);
+DECLARE_int32(cdc_wal_retention_time_secs);
 DECLARE_string(certs_dir);
 DECLARE_string(certs_for_cdc_dir);
-DECLARE_bool(TEST_fail_setup_system_universe_replication);
+DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_ysql);
+DECLARE_uint32(external_intent_cleanup_secs);
+DECLARE_int32(global_log_cache_size_limit_mb);
+DECLARE_int32(log_cache_size_limit_mb);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(log_min_segments_to_retain);
+DECLARE_uint64(log_segment_size_bytes);
+DECLARE_int64(log_stop_retaining_min_disk_mb);
+DECLARE_int32(ns_replication_sync_backoff_secs);
+DECLARE_int32(ns_replication_sync_retry_secs);
+DECLARE_int32(replication_failure_delay_exponent);
+DECLARE_int64(rpc_throttle_threshold_bytes);
+DECLARE_int32(transaction_table_num_tablets);
+DECLARE_int32(transaction_table_num_tablets);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_bool(use_client_to_server_encryption);
+DECLARE_bool(use_node_to_node_encryption);
+DECLARE_bool(xcluster_wait_on_ddl_alter);
+DECLARE_int32(yb_num_shards_per_tserver);
 
 namespace yb {
 
@@ -313,93 +312,6 @@ class XClusterTest : public XClusterTestBase,
     ASSERT_OK(pair.second->CommitFuture().get());
   }
 
-  Result<int64_t> GetCommitTimeOfTransaction(YBClient* client, const TransactionId& txn_id) {
-    auto transaction_status_table = client::YBTableName(
-          YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
-    std::vector<TabletId> tablet_uuids;
-    // Read from the transaction status table
-    RETURN_NOT_OK(client->GetTablets(
-        transaction_status_table, 0 /* max_tablets */, &tablet_uuids, nullptr));
-    if(static_cast<int>(tablet_uuids.size()) != FLAGS_transaction_table_num_tablets) {
-      return STATUS(InvalidArgument, "Could not fetch txn status tablets");
-    }
-    tserver::GetTransactionStatusResponsePB txn_status_resp;
-    RETURN_NOT_OK(WaitFor([&]() {
-      for (const auto& uuid : tablet_uuids) {
-        tserver::GetTransactionStatusRequestPB req;
-        req.set_tablet_id(uuid);
-        req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.data()), txn_id.size());
-        rpc::Rpcs rpcs;
-        auto status_future = rpc::WrapRpcFuture<tserver::GetTransactionStatusResponsePB>(
-            client::GetTransactionStatus, &rpcs)(
-                CoarseMonoClock::Now() + MonoDelta::FromSeconds(30), nullptr /* tablet */,
-                client, &req);
-        if (!status_future.valid()) {
-          continue;
-        }
-        if (status_future.wait_for(NonTsanVsTsan(3s, 10s)) != std::future_status::ready) {
-          continue;
-        }
-        auto resp = status_future.get();
-        if (!resp.ok()) {
-          continue;
-        }
-        if (resp->status().size() != 1) {
-          continue;
-        }
-        if (resp->status(0) != TransactionStatus::COMMITTED) {
-          continue;
-        }
-        txn_status_resp = *resp;
-        return true;
-      }
-      return false;
-    }, MonoDelta::FromSeconds(30), "Commited transaction"));
-    return txn_status_resp.status_hybrid_time(0);
-  }
-
-  Status WaitForTransactionCleanedUp(YBClient* client, const TransactionId& txn_id) {
-    auto transaction_status_table = client::YBTableName(
-          YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
-    std::vector<TabletId> tablet_uuids;
-    // Read from the transaction status table
-    RETURN_NOT_OK(client->GetTablets(
-        transaction_status_table, 0 /* max_tablets */, &tablet_uuids, nullptr));
-    if(static_cast<int>(tablet_uuids.size()) != FLAGS_transaction_table_num_tablets) {
-      return STATUS(InvalidArgument, "Could not fetch txn status tablets");
-    }
-    tserver::GetTransactionStatusResponsePB txn_status_resp;
-    return WaitFor([&]() {
-      for (const auto& uuid : tablet_uuids) {
-        tserver::GetTransactionStatusRequestPB req;
-        req.set_tablet_id(uuid);
-        req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.data()), txn_id.size());
-        rpc::Rpcs rpcs;
-        auto status_future = rpc::WrapRpcFuture<tserver::GetTransactionStatusResponsePB>(
-            client::GetTransactionStatus, &rpcs)(
-                CoarseMonoClock::Now() + MonoDelta::FromSeconds(30), nullptr /* tablet */,
-                client, &req);
-        if (!status_future.valid()) {
-          return false;
-        }
-        if (status_future.wait_for(NonTsanVsTsan(3s, 10s)) != std::future_status::ready) {
-          return false;
-        }
-        auto resp = status_future.get();
-        if (!resp.ok()) {
-          return false;
-        }
-        if (resp->status().size() != 1) {
-          return false;
-        }
-        if (resp->status(0) != TransactionStatus::ABORTED) {
-          return false;
-        }
-      }
-      return true;
-    }, MonoDelta::FromSeconds(30), "Cleaned up transaction");
-  }
-
   void VerifyReplicationError(
       const std::string& consumer_table_id,
       const std::string& stream_id,
@@ -472,7 +384,9 @@ class XClusterTest : public XClusterTestBase,
   }
 
   YB_STRONGLY_TYPED_BOOL(EnableTLSEncryption);
-  Status TestSetupUniverseReplication(EnableTLSEncryption enable_tls_encryption) {
+  Status TestSetupUniverseReplication(
+      EnableTLSEncryption enable_tls_encryption,
+      Transactional transactional = Transactional::kFalse) {
     if (enable_tls_encryption) {
       FLAGS_use_node_to_node_encryption = true;
       FLAGS_use_client_to_server_encryption = true;
@@ -496,7 +410,8 @@ class XClusterTest : public XClusterTestBase,
         consumer_tables.push_back(tables[i]);
       }
     }
-    RETURN_NOT_OK(SetupUniverseReplication(producer_tables));
+
+    RETURN_NOT_OK(SetupUniverseReplication(producer_tables, {LeaderOnly::kTrue, transactional}));
 
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
@@ -521,29 +436,6 @@ class XClusterTest : public XClusterTestBase,
     }
 
     RETURN_NOT_OK(DeleteUniverseReplication());
-    return Status::OK();
-  }
-
-  Status PauseResumeXClusterProducerStreams(
-      const std::vector<std::string>& stream_ids, bool is_paused) {
-    master::PauseResumeXClusterProducerStreamsRequestPB req;
-    master::PauseResumeXClusterProducerStreamsResponsePB resp;
-
-    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-        &producer_client()->proxy_cache(),
-        VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-    for (const auto& stream_id : stream_ids) {
-      req.add_stream_ids(stream_id);
-    }
-    req.set_is_paused(is_paused);
-    RETURN_NOT_OK(master_proxy->PauseResumeXClusterProducerStreams(req, &resp, &rpc));
-    SCHECK(
-        !resp.has_error(), IllegalState,
-        Format(
-            "PauseResumeXClusterProducerStreams returned error: $0", resp.error().DebugString()));
     return Status::OK();
   }
 
@@ -1285,10 +1177,10 @@ TEST_P(XClusterTest, PollWithProducerNodesRestart) {
 
   uint32_t replication_factor = 3, tablet_count = 4, master_count = 3;
   auto tables = ASSERT_RESULT(
-      SetUpWithParams({tablet_count}, {tablet_count}, replication_factor,  master_count));
-
+      SetUpWithParams({tablet_count}, {tablet_count}, replication_factor, master_count));
   ASSERT_OK(
-      SetupUniverseReplication({tables[0]} /* all producer tables */, false /* leader_only */));
+      SetupUniverseReplication({tables[0]} /* all producer tables */,
+                               {LeaderOnly::kFalse, Transactional::kFalse}));
 
   // After creating the cluster, make sure all tablets being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
@@ -1355,7 +1247,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   auto tables = ASSERT_RESULT(
       SetUpWithParams({tablet_count}, {tablet_count}, replication_factor,  master_count));
 
-  ASSERT_OK(SetupUniverseReplication({tables[0]}, false));
+  ASSERT_OK(SetupUniverseReplication({tables[0]}, {LeaderOnly::kFalse, Transactional::kFalse}));
 
   // After creating the cluster, make sure all tablets being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
@@ -1505,14 +1397,26 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Values(XClusterTestParams(true /* transactional_table */)));
 
 TEST_P(XClusterTestTransactionalOnly, SetupUniverseReplicationWithTLSEncryption) {
-  FLAGS_enable_replicate_transaction_status_table = true;
-  ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kTrue));
+  ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kTrue, Transactional::kTrue));
 }
 
 TEST_P(XClusterTestTransactionalOnly, FailedSetupSystemUniverseReplication) {
-  FLAGS_enable_replicate_transaction_status_table = true;
-  FLAGS_TEST_fail_setup_system_universe_replication = true;
-  ASSERT_NOK(TestSetupUniverseReplication(EnableTLSEncryption::kFalse));
+  // Make sure we cannot setup replication on System tables like the transaction status table.
+  constexpr int kNumTablets = 1;
+  auto tables =
+      ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, 1 /* replication_factor */));
+  auto& producer_table = tables[0];
+
+  static const client::YBTableName transaction_table_name(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  std::shared_ptr<client::YBTable> producer_transaction_table;
+  ASSERT_OK(producer_client()->OpenTable(transaction_table_name, &producer_transaction_table));
+
+  ASSERT_NOK(SetupUniverseReplication(
+      {producer_table, producer_transaction_table}, {LeaderOnly::kTrue, Transactional::kFalse}));
+
+  ASSERT_NOK(SetupUniverseReplication(
+      {producer_table, producer_transaction_table}, {LeaderOnly::kTrue, Transactional::kTrue}));
 }
 
 TEST_P(XClusterTestTransactionalOnly, ApplyOperationsWithTransactions) {
@@ -1542,112 +1446,6 @@ TEST_P(XClusterTestTransactionalOnly, ApplyOperationsWithTransactions) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   ASSERT_OK(DeleteUniverseReplication());
-}
-
-TEST_P(XClusterTestTransactionalOnly, TransactionStatusTable) {
-  FLAGS_enable_replicate_transaction_status_table = true;
-  constexpr int kNumTablets = 1;
-  uint32_t replication_factor = NonTsanVsTsan(3, 1);
-  auto tables = ASSERT_RESULT(SetUpWithParams(
-      {kNumTablets, kNumTablets}, {kNumTablets, kNumTablets}, replication_factor));
-
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables_1 = {tables[0]};
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables_2 = {tables[2]};
-  ASSERT_OK(SetupUniverseReplication(producer_tables_1));
-  static const string kUniverseId2 = "test_universe_2";
-  ASSERT_OK(SetupUniverseReplication(kUniverseId2, producer_tables_2));
-
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), FLAGS_transaction_table_num_tablets +
-                                                           kNumTablets * 2));
-
-  // After setting up replication, ensure that the transaction status table is in the mapping
-  // in a new system replication bucket.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    master::SysClusterConfigEntryPB cluster_info;
-    auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-    RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
-    if (!cluster_info.has_consumer_registry()) {
-      return false;
-    }
-    return cluster_info.consumer_registry().producer_map().count("system") == 1;
-  }, MonoDelta::FromSeconds(30), "Cluster config has system replication id."));
-
-  // Delete one replication id and ensure we poll for one stream and the transaction status table.
-  ASSERT_OK(DeleteUniverseReplication());
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), FLAGS_transaction_table_num_tablets +
-                                                           kNumTablets));
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId2));
-  // Delete the second replication id and ensure we poll for nothing.
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
-
-}
-
-TEST_P(XClusterTestTransactionalOnly, TransactionStatusTableWithWrites) {
-  FLAGS_enable_replicate_transaction_status_table = true;
-  FLAGS_TEST_disable_cleanup_applied_transactions = true;
-  constexpr int kNumTablets = 1;
-  uint32_t replication_factor = NonTsanVsTsan(3, 1);
-  auto tables = ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, replication_factor));
-
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables = {tables[0]};
-  ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
-  auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
-  WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
-  ASSERT_OK(txn.second->CommitFuture().get());
-  auto txn_id = txn.second->id();
-
-  auto commit_ht_producer = ASSERT_RESULT(GetCommitTimeOfTransaction(producer_client(), txn_id));
-  auto commit_ht_consumer = ASSERT_RESULT(GetCommitTimeOfTransaction(consumer_client(), txn_id));
-  ASSERT_EQ(commit_ht_producer, commit_ht_consumer);
-
-  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
-}
-
-TEST_P(XClusterTestTransactionalOnly, OnlyApplyTransactionOnCaughtUpTablet) {
-  FLAGS_enable_replicate_transaction_status_table = true;
-  FLAGS_TEST_disable_apply_committed_transactions = true;
-  constexpr int kNumTablets = 1;
-  uint32_t replication_factor = NonTsanVsTsan(3, 1);
-  auto tables = ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, replication_factor));
-
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables = {tables[0]};
-  ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
-  master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(&resp));
-
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
-  auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
-  WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
-  ASSERT_OK(txn.second->CommitFuture().get());
-  auto txn_id = txn.second->id();
-  ASSERT_RESULT(GetCommitTimeOfTransaction(consumer_client(), txn_id));
-  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
-  FLAGS_TEST_disable_apply_committed_transactions = false;
-  ASSERT_OK(WaitForTransactionCleanedUp(consumer_client(), txn_id));
-  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
-}
-
-TEST_P(XClusterTestTransactionalOnly, TransactionsWithoutApply) {
-  // This is a test that should only pass when we use the new intents format along with the txn
-  // status table. We do this by disabling replication of APPLY records and ensuring that we can
-  // still read records from the committed transaction.
-  FLAGS_enable_replicate_transaction_status_table = true;
-  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 3, 1));
-
-  auto producer_table = tables[0];
-  auto consumer_table = tables[1];
-  ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
-  master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
-                                      kUniverseId, &resp));
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
-  auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
-  WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
-  ASSERT_OK(txn.second->CommitFuture().get());
-  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
 TEST_P(XClusterTestTransactionalOnly, UpdateWithinTransaction) {
@@ -1861,16 +1659,20 @@ TEST_P(XClusterTestTransactionalOnly, OneToManyTabletMapping) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name(), 60 /* timeout_secs */));
 }
 
-TEST_P(XClusterTestTransactionalOnly, TransactionStatusTableMissingBootstrap) {
-  // Make sure that setup fails if we Bootstrap user tables without the transaction status table
-  // when enable_replicate_transaction_status_table is set.
-  FLAGS_enable_replicate_transaction_status_table = true;
-
+TEST_P(XClusterTestTransactionalOnly, WithBootstrap) {
   constexpr int kNumTablets = 1;
   auto tables =
       ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, 1 /* replication_factor */));
   auto& producer_table = tables[0];
+  auto& consumer_table = tables[1];
 
+  // 1. Write batch_size rows transactionally. This batch should never get replicated as we only
+  // bootstrap after this.
+  const uint32 batch_size = 10;
+  WriteTransactionalWorkload(
+      0, batch_size, producer_client(), producer_txn_mgr(), producer_table->name());
+
+  // 2. Bootstrap user table.
   cdc::BootstrapProducerRequestPB req;
   cdc::BootstrapProducerResponsePB resp;
   req.add_table_ids(producer_table->id());
@@ -1884,67 +1686,13 @@ TEST_P(XClusterTestTransactionalOnly, TransactionStatusTableMissingBootstrap) {
 
   ASSERT_EQ(resp.cdc_bootstrap_ids().size(), 1);
 
-  std::vector<string> bootstrap_ids;
-  for (const auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
-    bootstrap_ids.emplace_back(bootstrap_id);
-  }
+  const auto& bootstrap_id = resp.cdc_bootstrap_ids(0);
+  LOG(INFO) << "Got bootstrap id " << bootstrap_id << " for table "
+            << producer_table->name().table_name();
 
-  ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table},
-      true /* leader_only */, bootstrap_ids));
-  master::GetUniverseReplicationResponsePB verify_repl_resp;
-  ASSERT_NOK(VerifyUniverseReplication(kUniverseId, &verify_repl_resp));
-}
-
-TEST_P(XClusterTestTransactionalOnly, TransactionStatusTableWithBootstrap) {
-  FLAGS_enable_replicate_transaction_status_table = true;
-
-  constexpr int kNumTablets = 1;
-  auto tables =
-      ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, 1 /* replication_factor */));
-  auto& producer_table = tables[0];
-  auto& consumer_table = tables[1];
-
-  std::shared_ptr<client::YBTable> producer_tran_table;
-  YBTableName producer_tran_table_name(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
-  ASSERT_OK(producer_client()->OpenTable(producer_tran_table_name, &producer_tran_table));
-  std::vector<TabletId> tran_tablet_uuids;
-  ASSERT_OK(producer_client()->GetTablets(
-      producer_tran_table_name, 0 /* max_tablets */, &tran_tablet_uuids, nullptr));
-
-  // 1. Write 10 rows transactionally.
-  WriteTransactionalWorkload(0, 10, producer_client(), producer_txn_mgr(), producer_table->name());
-
-  // 2. Bootstrap user tables and transaction status table.
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables = {
-      producer_table, producer_tran_table};
-
-  cdc::BootstrapProducerRequestPB req;
-  cdc::BootstrapProducerResponsePB resp;
-  for (const auto& producer_table : producer_tables) {
-    req.add_table_ids(producer_table->id());
-  }
-
-  rpc::RpcController rpc;
-  auto producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
-      &producer_client()->proxy_cache(),
-      HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
-  ASSERT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
-  ASSERT_FALSE(resp.has_error());
-
-  ASSERT_EQ(resp.cdc_bootstrap_ids().size(), producer_tables.size());
-
-  int table_idx = 0;
-  std::vector<string> bootstrap_ids;
-  for (const auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
-    LOG(INFO) << "Got bootstrap id " << bootstrap_id << " for table "
-              << producer_tables[table_idx++]->name().table_name();
-    bootstrap_ids.emplace_back(bootstrap_id);
-  }
-
-  // 3. Write 10 more rows transactionally.
-  WriteTransactionalWorkload(10, 20, producer_client(), producer_txn_mgr(), producer_table->name());
+  // 3. Write batch_size more rows transactionally.
+  WriteTransactionalWorkload(
+      batch_size, 2 * batch_size, producer_client(), producer_txn_mgr(), producer_table->name());
 
   // 4. Flush the table and run log GC.
   ASSERT_OK(producer_cluster()->FlushTablets());
@@ -1957,19 +1705,21 @@ TEST_P(XClusterTestTransactionalOnly, TransactionStatusTableWithBootstrap) {
 
   // 5. Setup replication.
   ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables,
-      true /* leader_only */, bootstrap_ids));
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table},
+      {bootstrap_id}, {LeaderOnly::kTrue, Transactional::kTrue}));
   master::GetUniverseReplicationResponsePB verify_repl_resp;
   ASSERT_OK(VerifyUniverseReplication(kUniverseId, &verify_repl_resp));
   ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
 
-  // 6. Verify we got the rows from 3 but not 1.
-  ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 10));
+  // 6. Verify we got the rows from step 3 but not 1.
+  ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), batch_size));
   ASSERT_NOK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 
   // 7. Write some more rows and make sure they are replicated.
-  WriteTransactionalWorkload(20, 30, producer_client(), producer_txn_mgr(), producer_table->name());
-  ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 20));
+  WriteTransactionalWorkload(
+      2 * batch_size, 3 * batch_size, producer_client(), producer_txn_mgr(),
+      producer_table->name());
+  ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 2 * batch_size));
 }
 
 TEST_P(XClusterTest, TestExternalWriteHybridTime) {

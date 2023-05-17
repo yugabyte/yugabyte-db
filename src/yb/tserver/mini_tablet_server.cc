@@ -39,16 +39,12 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
-
-#include "yb/encryption/encrypted_file_factory.h"
-#include "yb/encryption/header_manager_impl.h"
-#include "yb/encryption/universe_key_manager.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
@@ -94,11 +90,7 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
                                    const TabletServerOptions& extra_opts, int index)
   : started_(false),
     opts_(extra_opts),
-    index_(index + 1),
-    universe_key_manager_(new encryption::UniverseKeyManager()),
-    encrypted_env_(NewEncryptedEnv(encryption::DefaultHeaderManager(universe_key_manager_.get()))),
-    rocksdb_encrypted_env_(
-      NewRocksDBEncryptedEnv(encryption::DefaultHeaderManager(universe_key_manager_.get()))) {
+    index_(index + 1) {
 
   // Start RPC server on loopback.
   FLAGS_rpc_server_allow_ephemeral_ports = true;
@@ -117,9 +109,6 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
   }
   opts_.fs_opts.wal_paths = wal_paths;
   opts_.fs_opts.data_paths = data_paths;
-  opts_.universe_key_manager = universe_key_manager_.get();
-  opts_.env = encrypted_env_.get();
-  opts_.rocksdb_env = rocksdb_encrypted_env_.get();
 }
 
 MiniTabletServer::MiniTabletServer(const string& fs_root,
@@ -314,7 +303,7 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
 
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(tablet_id, server_->permanent_uuid()), tablet::Primary::kTrue,
-      table_id, ns_id, table_id, table_type, schema_with_ids, IndexMap(),
+      table_id, ns_id, table_id, table_type, schema_with_ids, qlexpr::IndexMap(),
       boost::none /* index_info */, 0 /* schema_version */, partition.first);
 
   return ResultToStatus(server_->tablet_manager()->CreateNewTablet(

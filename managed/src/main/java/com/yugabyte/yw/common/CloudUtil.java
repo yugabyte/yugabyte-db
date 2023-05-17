@@ -9,13 +9,23 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 
 public interface CloudUtil extends StorageUtil {
 
+  public static enum ExtraPermissionToValidate {
+    READ,
+    LIST,
+    DELETE,
+    NULL
+  }
+
   public static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
   public static final String SUCCESS = "success";
   int FILE_DOWNLOAD_BUFFER_SIZE = 8 * 1024;
+
+  public static final String DUMMY_DATA = "dummy-text";
 
   public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
       throws Exception;
@@ -45,5 +55,14 @@ public interface CloudUtil extends StorageUtil {
       default:
         throw new PlatformServiceException(BAD_REQUEST, "Unsupported cloud type");
     }
+  }
+
+  default void validate(CustomerConfigData configData, List<ExtraPermissionToValidate> permissions)
+      throws Exception {
+    // default fall through stub
+  }
+
+  default UUID getRandomUUID() {
+    return UUID.randomUUID();
   }
 }

@@ -50,6 +50,8 @@ DEFINE_UNKNOWN_bool(yb_pg_terminate_child_backend, false,
 DEFINE_UNKNOWN_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
 DEFINE_UNKNOWN_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
+DEFINE_NON_RUNTIME_bool(yb_enable_valgrind, false,
+            "True to run postgres under Valgrind. Must compile with --no-tcmalloc");
 
 DEFINE_test_flag(bool, pg_collation_enabled, true,
                  "True to enable collation support in YugaByte PostgreSQL.");
@@ -91,6 +93,7 @@ DEFINE_UNKNOWN_string(ysql_hba_conf, "",
               "Deprecated, use `ysql_hba_conf_csv` flag instead. " \
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
+DECLARE_string(tmp_dir);
 
 // gFlag wrappers over Postgres GUC parameter.
 // The value type should match the GUC parameter, or it should be a string, in which case Postgres
@@ -159,6 +162,12 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
     "Delay in milliseconds between stages of online index build. For testing purposes.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 60 * 1000, // 5 min
+    "Timeout in milliseconds to wait for backends to reach desired catalog versions. The actual"
+    " time spent may be longer than that by as much as master flag"
+    " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms. Setting to zero or less"
+    " results in no timeout. Currently used by concurrent CREATE INDEX.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1,
     "Batch size of nested loop joins.");
 
@@ -179,6 +188,12 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_disable_wait_for_backends_catalog_version, false
     " issues, which could be mitigated by setting high ysql_yb_index_state_flags_update_delay."
     " Although it is runtime-settable, the effects won't take place for any in-progress"
     " queries.");
+
+DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_row_limit, 1024,
+    "Maximum number of rows to fetch per scan.");
+
+DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_size_limit, 0,
+    "Maximum size of a fetch response.");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
@@ -492,12 +507,6 @@ Status PgWrapper::PreflightCheck() {
 Status PgWrapper::Start() {
   auto postgres_executable = GetPostgresExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(postgres_executable));
-  vector<string> argv {
-    postgres_executable,
-    "-D", conf_.data_dir,
-    "-p", std::to_string(conf_.pg_port),
-    "-h", conf_.listen_addresses,
-  };
 
   bool log_to_file = !FLAGS_logtostderr && !FLAGS_log_dir.empty() && !conf_.force_disable_log_file;
   VLOG(1) << "Deciding whether the child postgres process should to file: "
@@ -505,6 +514,42 @@ Status PgWrapper::Start() {
           << EXPR_VALUE_FOR_LOG(FLAGS_log_dir.empty()) << ", "
           << EXPR_VALUE_FOR_LOG(conf_.force_disable_log_file) << ": "
           << EXPR_VALUE_FOR_LOG(log_to_file);
+
+  vector<string> argv {};
+
+#ifdef YB_VALGRIND_PATH
+  if (FLAGS_yb_enable_valgrind) {
+    vector<string> valgrind_argv {
+      AS_STRING(YB_VALGRIND_PATH),
+      "--leak-check=no",
+      "--gen-suppressions=all",
+      "--suppressions=" + GetPostgresSuppressionsPath(),
+      "--time-stamp=yes",
+      "--track-origins=yes",
+      "--error-markers=VALGRINDERROR_BEGIN,VALGRINDERROR_END",
+      "--trace-children=yes",
+    };
+
+    argv.insert(argv.end(), valgrind_argv.begin(), valgrind_argv.end());
+
+    if (log_to_file) {
+      argv.push_back("--log-file=" + FLAGS_log_dir + "/valgrind_postgres_check_%p.log");
+    }
+  }
+#else
+  if (FLAGS_yb_enable_valgrind) {
+    LOG(ERROR) << "yb_enable_valgrind is ON, but Yugabyte was not compiled with Valgrind support.";
+  }
+#endif
+
+  vector<string> postgres_argv {
+    postgres_executable,
+    "-D", conf_.data_dir,
+    "-p", std::to_string(conf_.pg_port),
+    "-h", conf_.listen_addresses,
+  };
+
+  argv.insert(argv.end(), postgres_argv.begin(), postgres_argv.end());
 
   // Configure UNIX domain socket for index backfill tserver-postgres communication and for
   // Yugabyte Platform backups.
@@ -539,7 +584,8 @@ Status PgWrapper::Start() {
     argv.push_back("log_error_verbosity=VERBOSE");
   }
 
-  pg_proc_.emplace(postgres_executable, argv);
+  pg_proc_.emplace(argv[0], argv);
+
   vector<string> ld_library_path {
     GetPostgresLibPath(),
     GetPostgresThirdPartyLibPath()
@@ -550,6 +596,12 @@ Status PgWrapper::Start() {
   pg_proc_->SetEnv("FLAGS_yb_pg_terminate_child_backend",
                     FLAGS_yb_pg_terminate_child_backend ? "true" : "false");
   pg_proc_->SetEnv("FLAGS_yb_backend_oom_score_adj", FLAGS_yb_backend_oom_score_adj);
+
+  // Pass down custom temp path through environment variable.
+  if (!VERIFY_RESULT(Env::Default()->DoesDirectoryExist(FLAGS_tmp_dir))) {
+    return STATUS_FORMAT(IOError, "Directory $0 does not exist", FLAGS_tmp_dir);
+  }
+  pg_proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
   pg_proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
@@ -676,6 +728,11 @@ string PgWrapper::GetPostgresExecutablePath() {
   return JoinPathSegments(GetPostgresInstallRoot(), "bin", "postgres");
 }
 
+string PgWrapper::GetPostgresSuppressionsPath() {
+  return JoinPathSegments(yb::env_util::GetRootDir("postgres_build"),
+    "postgres_build", "src", "tools", "valgrind.supp");
+}
+
 string PgWrapper::GetPostgresLibPath() {
   return JoinPathSegments(GetPostgresInstallRoot(), "lib");
 }
@@ -704,6 +761,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
+  CHECK_NE(conf_.tserver_shm_fd, -1);
   proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
 #ifdef OS_MACOSX
   // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
@@ -734,7 +792,6 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
 
     // Pass non-default flags to the child process using FLAGS_... environment variables.
     static const std::vector<string> explicit_flags{"pggate_master_addresses",
-                                                    "pggate_tserver_shm_fd",
                                                     "certs_dir",
                                                     "certs_for_client_dir",
                                                     "mem_tracker_tcmalloc_gc_release_bytes",

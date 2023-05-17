@@ -67,12 +67,16 @@ class XClusterYcqlTestBase : public XClusterTestBase {
 
   client::YBSchema* GetSchema() { return &schema_; }
 
-  Result<std::unique_ptr<Cluster>> AddConsumerCluster(
-      YBClusters* consumer_clusters, const std::string& cluster_id, uint32_t num_tservers = 1);
+  Result<std::unique_ptr<Cluster>> AddCluster(
+      YBClusters* clusters, const std::string& cluster_id, bool is_producer,
+      uint32_t num_tservers = 1);
 
-  Result<std::unique_ptr<Cluster>> AddConsumerClusterWithTables(
-      YBClusters* consumer_clusters, YBTables* consumer_tables, const std::string& cluster_id,
-      size_t num_tables, uint32_t num_tablets_per_table, uint32_t num_tservers = 1);
+  Status CreateAdditionalClusterTables(
+      YBClient* client, YBTables* tables, uint32_t num_tablets_per_table, size_t num_tables);
+
+  Result<std::unique_ptr<XClusterTestBase::Cluster>> AddClusterWithTables(
+      YBClusters* clusters, YBTables* tables, const std::string& cluster_id, size_t num_tables,
+      uint32_t num_tablets_per_table, bool is_producer, uint32_t num_tservers = 1);
 
  private:
   server::ClockPtr clock_{new server::HybridClock()};

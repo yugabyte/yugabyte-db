@@ -20,7 +20,7 @@
 
 using std::string;
 
-DEFINE_UNKNOWN_int32(flagstest_testflag, 0, "test flag");
+DEFINE_NON_RUNTIME_int32(flagstest_testflag, 0, "test flag");
 bool ValidateTestFlag(const char* flag_name, const int32 new_val) { return new_val >= 0; }
 DEFINE_validator(flagstest_testflag, &ValidateTestFlag);
 DECLARE_string(vmodule);

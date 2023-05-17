@@ -43,9 +43,9 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/mini_cluster_utils.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/master-test-util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
@@ -187,7 +187,7 @@ TEST_F(RegistrationTest, TestTabletReports) {
 
   // Add a tablet, make sure it reports itself.
   CreateTabletForTesting(
-      cluster_->mini_master(),
+      cluster_.get(),
       YBTableName(YQL_DATABASE_CQL, "my_keyspace", "fake-table"),
       schema_,
       &tablet_id_1,
@@ -215,7 +215,7 @@ TEST_F(RegistrationTest, TestTabletReports) {
   before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
   LOG(INFO) << "Begin calculating sys catalog rows inserted (2)";
   CreateTabletForTesting(
-      cluster_->mini_master(),
+      cluster_.get(),
       YBTableName(YQL_DATABASE_CQL, "my_keyspace", "fake-table2"),
       schema_copy,
       &tablet_id_2);

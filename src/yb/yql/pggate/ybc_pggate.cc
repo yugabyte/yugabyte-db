@@ -16,32 +16,33 @@
 #include <atomic>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 
-#include "yb/client/tablet_server.h"
 #include "yb/client/table_info.h"
+#include "yb/client/tablet_server.h"
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/ybc-internal.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
-#include "yb/util/atomic.h"
-#include "yb/util/flags.h"
-#include "yb/util/result.h"
-#include "yb/util/slice.h"
-#include "yb/util/status.h"
-#include "yb/util/thread.h"
-#include "yb/util/yb_partition.h"
-
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/server/skewed_clock.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/flags.h"
+#include "yb/util/result.h"
+#include "yb/util/signal_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/thread.h"
+#include "yb/util/yb_partition.h"
 
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -52,6 +53,7 @@
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
+#include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
@@ -88,6 +90,10 @@ DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
             "If true, YB catalog preloads additional tables upon "
             "connection creation and cache refresh.");
 
+DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
+            "If true, disable global impact ddl statements in per database catalog "
+            "version mode.");
+
 namespace yb {
 namespace pggate {
 
@@ -101,9 +107,20 @@ inline YBCStatus YBCStatusOK() {
   return nullptr;
 }
 
+class ThreadIdChecker {
+ public:
+  bool operator()() const {
+    return std::this_thread::get_id() == thread_id_;
+  }
+
+ private:
+  const std::thread::id thread_id_ = std::this_thread::get_id();
+};
+
 // Using a raw pointer here to fully control object initialization and destruction.
 pggate::PgApiImpl* pgapi;
 std::atomic<bool> pgapi_shutdown_done;
+const ThreadIdChecker is_main_thread;
 
 template<class T, class Functor>
 YBCStatus ExtractValueFromResult(Result<T> result, const Functor& functor) {
@@ -146,6 +163,20 @@ inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
   return Bound{.value = value, .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
 }
 
+Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
+                      int count,
+                      const PgCallbacks& pg_callbacks) {
+  return WithMaskedYsqlSignals([data_type_table, count, &pg_callbacks] {
+    YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr /* context */);
+    return static_cast<Status>(Status::OK());
+  });
+}
+
+Status PgInitSessionImpl(const char* database_name) {
+  const std::string db_name(database_name ? database_name : "");
+  return WithMaskedYsqlSignals([&db_name] { return pgapi->InitSession(db_name); });
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -181,10 +212,13 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
 extern "C" {
 
 void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks) {
-  YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr);
+  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks));
 }
 
 void YBCDestroyPgGate() {
+  LOG_IF(DFATAL, !is_main_thread())
+    << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
+
   if (pgapi_shutdown_done.exchange(true)) {
     LOG(DFATAL) << __PRETTY_FUNCTION__ << " should only be called once";
     return;
@@ -197,6 +231,9 @@ void YBCDestroyPgGate() {
 }
 
 void YBCInterruptPgGate() {
+  LOG_IF(DFATAL, !is_main_thread())
+    << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
+
   pgapi->Interrupt();
 }
 
@@ -205,8 +242,7 @@ const YBCPgCallbacks *YBCGetPgCallbacks() {
 }
 
 YBCStatus YBCPgInitSession(const char *database_name) {
-  const std::string db_name(database_name ? database_name : "");
-  return ToYBCStatus(pgapi->InitSession(db_name));
+  return ToYBCStatus(PgInitSessionImpl(database_name));
 }
 
 YBCPgMemctx YBCPgCreateMemctx() {
@@ -550,6 +586,12 @@ YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->AlterTableIncrementSchemaVersion(handle));
 }
 
+YBCStatus YBCPgAlterTableSetTableId(
+    YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_oid) {
+  const PgObjectId table_id(database_oid, table_oid);
+  return ToYBCStatus(pgapi->AlterTableSetTableId(handle, table_id));
+}
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecAlterTable(handle));
 }
@@ -822,7 +864,8 @@ YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_prima
 }
 
 YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref, bool is_primary) {
-  return ToYBCStatus(pgapi->DmlAppendColumnRef(handle, colref, is_primary));
+  return ToYBCStatus(pgapi->DmlAppendColumnRef(
+      handle, down_cast<PgColumnRef*>(colref), is_primary));
 }
 
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
@@ -1253,8 +1296,8 @@ YBCStatus YBCPgExitSeparateDdlTxnMode() {
   return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode());
 }
 
-void YBCPgClearSeparateDdlTxnMode() {
-  pgapi->ClearSeparateDdlTxnMode();
+YBCStatus YBCPgClearSeparateDdlTxnMode() {
+  return ToYBCStatus(pgapi->ClearSeparateDdlTxnMode());
 }
 
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {
@@ -1367,7 +1410,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_colocate_database_by_default        = &FLAGS_ysql_colocate_database_by_default,
       .ysql_ddl_rollback_enabled                = &FLAGS_ysql_ddl_rollback_enabled,
       .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
-      .ysql_enable_profile                      = &FLAGS_ysql_enable_profile
+      .ysql_enable_profile                      = &FLAGS_ysql_enable_profile,
+      .ysql_disable_global_impact_ddl_statements =
+          &FLAGS_ysql_disable_global_impact_ddl_statements
   };
   return &accessor;
 }

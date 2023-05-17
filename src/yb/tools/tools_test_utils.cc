@@ -24,7 +24,7 @@
 
 using std::string;
 
-DEFINE_UNKNOWN_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
+DEFINE_NON_RUNTIME_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
 
 namespace yb {
 namespace tools {

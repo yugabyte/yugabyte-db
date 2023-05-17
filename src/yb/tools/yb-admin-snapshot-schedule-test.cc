@@ -2860,6 +2860,43 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(TablegroupGCAfter
   }
 }
 
+class YbAdminSnapshotScheduleTestWithYsqlRetention : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
+    opts->extra_master_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
+    opts->extra_tserver_flags.emplace_back(
+        "--timestamp_syscatalog_history_retention_interval_sec=0");
+    opts->extra_master_flags.emplace_back(
+        "--timestamp_syscatalog_history_retention_interval_sec=0");
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SysCatalogRetention),
+          YbAdminSnapshotScheduleTestWithYsqlRetention) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kNotColocated, 300s, 1200s));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  for (int i = 1; i <= 50; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0(id INT PRIMARY KEY, name TEXT)", i));
+  }
+  // Note down the time.
+  auto time = ASSERT_RESULT(GetCurrentTime());
+  for (int i = 1; i <= 50; i++) {
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE t$0", i));
+  }
+  // Flush and compact sys catalog. The original create table entries should not be
+  // removed.
+  ASSERT_OK(FlushAndCompactSysCatalog(cluster_.get(), 300s));
+  // Restore to time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Tables should exist now.
+  for (int i = 1; i <= 50; i++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t$0 (id, name) VALUES (1, 'after')", i));
+  }
+}
+
 class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotScheduleTestWithYsql {
   std::vector<std::string> ExtraMasterFlags() override {
     // To speed up tests.
@@ -4081,6 +4118,45 @@ TEST_F_EX(
 
   LOG(INFO) << "Reading rows after restoration the second time";
   ASSERT_TRUE(ASSERT_RESULT(VerifyData(&conn, prev_tablets_count)));
+}
+
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(DeadlockWithSplitting),
+    YbAdminSnapshotScheduleAutoSplitting) {
+  // Create an aggressive snapshot schedule that takes a snapshot every second.
+  auto schedule_id = ASSERT_RESULT(
+      PreparePg(YsqlColocationConfig::kNotColocated, 1s /* interval */, 6s /* retention */));
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) "
+      "SPLIT INTO 3 tablets",
+      client::kTableName.table_name()));
+
+  // Only this row should be present after restoration.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 (key, value) VALUES ($1, 'after')", client::kTableName.table_name(), 0));
+
+  auto prev_tablets_count = ASSERT_RESULT(GetTabletCount(test_admin_client_.get()));
+  LOG(INFO) << prev_tablets_count << " tablets present before restore";
+
+  // Splitting should be delayed for 2 secs with the lock held. At least one snapshot
+  // should take place since the frequency is 1 every second.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_split_registration_secs", "2"));
+
+  // Insert enough data conducive to splitting.
+  ASSERT_OK(InsertDataForSplitting(&conn, 15000));
+  LOG(INFO) << "Inserted 15000 rows";
+
+  // Now split and wait for them. If deadlocked this should time out.
+  ASSERT_OK(WaitFor(
+      [this, prev_tablets_count]() -> Result<bool> {
+        auto tablets_count = VERIFY_RESULT(GetTabletCount(test_admin_client_.get()));
+        LOG(INFO) << tablets_count << " tablets thus far after inserting 5000 rows";
+        return tablets_count >= prev_tablets_count + 5;
+      },
+      120s, "Wait for tablets to be split"));
 }
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshOnNewConnection),

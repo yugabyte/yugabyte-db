@@ -125,8 +125,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     if (customerConfig.getType() == ConfigType.STORAGE) {
       List<Backup> backupList = Backup.getInProgressAndCompleted(customerConfig.getCustomerUUID());
       backupList =
-          backupList
-              .stream()
+          backupList.stream()
               .filter(
                   b -> b.getBackupInfo().storageConfigUUID.equals(customerConfig.getConfigUUID()))
               .collect(Collectors.toList());
@@ -143,8 +142,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
           Schedule.getActiveBackupSchedules(customerConfig.getCustomerUUID());
       // This should be safe to do since storageConfigUUID is a required constraint.
       scheduleList =
-          scheduleList
-              .stream()
+          scheduleList.stream()
               .filter(
                   s ->
                       s.getTaskParams()

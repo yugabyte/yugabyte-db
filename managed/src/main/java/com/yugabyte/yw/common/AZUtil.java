@@ -2,21 +2,27 @@
 
 package com.yugabyte.yw.common;
 
+import static org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.EXPECTATION_FAILED;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.core.http.rest.PagedResponse;
+import com.azure.core.util.BinaryData;
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobContainerClientBuilder;
 import com.azure.storage.blob.models.BlobItem;
 import com.azure.storage.blob.models.BlobStorageException;
 import com.azure.storage.blob.models.ListBlobsOptions;
+import com.azure.storage.blob.specialized.BlobInputStream;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
+import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -24,6 +30,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -131,6 +138,14 @@ public class AZUtil implements CloudUtil {
     return blobContainerClient;
   }
 
+  public BlobContainerClient createBlobContainerClient(String sasToken, String location)
+      throws BlobStorageException {
+    String[] splitLocation = getSplitLocationValue(location);
+    String azureUrl = "https://" + splitLocation[0];
+    String container = splitLocation.length > 1 ? splitLocation[1] : "";
+    return createBlobContainerClient(azureUrl, sasToken, container);
+  }
+
   @Override
   public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
       throws Exception {
@@ -229,6 +244,9 @@ public class AZUtil implements CloudUtil {
 
   private Map<String, String> createCredsMapYbc(String azureSasToken, String azureContainerUrl) {
     Map<String, String> azCredsMap = new HashMap<>();
+    if (!azureSasToken.startsWith("?")) {
+      azureSasToken = "?" + azureSasToken;
+    }
     azCredsMap.put(YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME, azureSasToken);
     azCredsMap.put(YBC_AZURE_STORAGE_END_POINT_FIELDNAME, azureContainerUrl);
     return azCredsMap;
@@ -252,5 +270,142 @@ public class AZUtil implements CloudUtil {
   public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
       throws Exception {
     throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "This method is not implemented yet");
+  }
+
+  /**
+   * Validates create and delete permissions on the azure configuration on default region and other
+   * regions, apart from other permissions if specified.
+   */
+  @Override
+  public void validate(CustomerConfigData configData, List<ExtraPermissionToValidate> permissions)
+      throws Exception {
+    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+    if (!StringUtils.isEmpty(azData.azureSasToken)) {
+      validateTokenAndLocation(azData.azureSasToken, azData.backupLocation, permissions);
+      if (CollectionUtils.isNotEmpty(azData.regionLocations)) {
+        azData.regionLocations.stream()
+            .forEach(
+                location -> {
+                  validateTokenAndLocation(location.azureSasToken, location.location, permissions);
+                });
+      }
+    } else {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Not carrying out Azure Storage Config validation because sas token is empty!");
+    }
+  }
+
+  /**
+   * Validates create permission on a BlobContainerClient, apart from read, list or delete
+   * permissions if specified.
+   */
+  public void validateOnBlobContainerClient(
+      BlobContainerClient blobContainerClient, List<ExtraPermissionToValidate> permissions) {
+    Optional<ExtraPermissionToValidate> unsupportedPermission =
+        permissions.stream()
+            .filter(
+                permission ->
+                    permission != ExtraPermissionToValidate.READ
+                        && permission != ExtraPermissionToValidate.LIST
+                        && permission != ExtraPermissionToValidate.DELETE)
+            .findAny();
+
+    if (unsupportedPermission.isPresent()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Unsupported permission "
+              + unsupportedPermission.get().toString()
+              + " validation is not supported!");
+    }
+
+    String fileName = getRandomUUID().toString() + ".txt";
+    createDummyBlob(blobContainerClient, DUMMY_DATA, fileName);
+
+    if (permissions.contains(ExtraPermissionToValidate.READ)) {
+      validateReadBlob(fileName, DUMMY_DATA, blobContainerClient);
+    }
+
+    if (permissions.contains(ExtraPermissionToValidate.LIST)) {
+      validateListBlobs(blobContainerClient, fileName);
+    }
+
+    if (permissions.contains(ExtraPermissionToValidate.DELETE)) {
+      validateDelete(blobContainerClient, fileName);
+    }
+  }
+
+  /**
+   * Validates create permissions on an azure sas token and location, apart from read, list or
+   * delete permissions if specified.
+   */
+  public void validateTokenAndLocation(
+      String sasToken, String location, List<ExtraPermissionToValidate> permissions) {
+    BlobContainerClient blobContainerClient = createBlobContainerClient(sasToken, location);
+    validateOnBlobContainerClient(blobContainerClient, permissions);
+  }
+
+  /**
+   * Deletes the given fileName from the container. Checks absence of deleted blob via list
+   * operation in case list operation validation has already been done successfully. Throws
+   * exception in case anything fails, hence validating.
+   */
+  private void validateDelete(BlobContainerClient blobContainerClient, String fileName) {
+    blobContainerClient.getBlobClient(fileName).delete();
+    if (containsBlobWithName(blobContainerClient, fileName)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED, "Deleted blob \"" + fileName + "\" is still in the container");
+    }
+  }
+
+  /** Checks if the given fileName blob's existence can be verified via the list operation. */
+  private void validateListBlobs(BlobContainerClient blobContainerClient, String fileName) {
+    if (!containsBlobWithName(blobContainerClient, fileName)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED, "Created blob with name \"" + fileName + "\" not found in list.");
+    }
+  }
+
+  private boolean containsBlobWithName(BlobContainerClient blobContainerClient, String fileName) {
+    BlobClient blobClient = blobContainerClient.getBlobClient(fileName);
+    return blobClient.exists();
+  }
+
+  private String createDummyBlob(
+      BlobContainerClient blobContainerClient, String content, String dummyFileName) {
+    BlobClient blobClient = blobContainerClient.getBlobClient(dummyFileName);
+    blobClient.upload(BinaryData.fromString(content));
+    return dummyFileName;
+  }
+
+  private void validateReadBlob(
+      String fileName, String content, BlobContainerClient blobContainerClient) {
+    String readString = readBlob(blobContainerClient, fileName, content.getBytes().length);
+    if (!readString.equals(content)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Error reading test blob "
+              + fileName
+              + ", expected: \""
+              + content
+              + "\", got: \""
+              + readString
+              + "\"");
+    }
+  }
+
+  private String readBlob(
+      BlobContainerClient blobContainerClient, String fileName, int bytesToRead) {
+    BlobClient blobClient = blobContainerClient.getBlobClient(fileName);
+    BlobInputStream blobIS = blobClient.openInputStream();
+    byte[] data = new byte[bytesToRead];
+    try {
+      blobIS.read(data);
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Error reading test blob " + fileName + ", exception occurred: " + getStackTrace(e));
+    }
+    return new String(data);
   }
 }

@@ -18,12 +18,14 @@
 #include "yb/util/range.h"
 #include "yb/util/stopwatch.h"
 
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+
 
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
-DECLARE_uint64(ysql_prefetch_limit);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
 
@@ -104,9 +106,8 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ManyRowsInsert)) {
 
 class PgMiniBigPrefetchTest : public PgSingleTServerTest {
  public:
-  void SetUp() override {
-    FLAGS_ysql_prefetch_limit = 20000000;
-    PgSingleTServerTest::SetUp();
+  Status SetupConnection(PGConn* conn) const override {
+    return conn->Execute("SET yb_fetch_row_limit = 20000000");
   }
 
   void Run(int rows, int block_size, int reads, bool compact = false, bool select = false) {
@@ -182,6 +183,54 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanWithCompaction), PgMi
   Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ true, /* select= */ true);
 }
 
+TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanSkipPK), PgMiniBigPrefetchTest) {
+  constexpr auto kNumRows = kScanRows / 2;
+  constexpr int kNumKeyColumns = 5;
+
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+
+  std::string create_cmd = "CREATE TABLE t (";
+  std::string pk = "";
+  std::string insert_cmd = "INSERT INTO t VALUES (";
+  for (const auto column : Range(kNumKeyColumns)) {
+    create_cmd += Format("r$0 TEXT, ", column);
+    if (!pk.empty()) {
+      pk += ", ";
+    }
+    pk += Format("r$0", column);
+    insert_cmd += "MD5(random()::text), ";
+  }
+  create_cmd += "value INT, PRIMARY KEY (" + pk + "))";
+  insert_cmd += "generate_series($0, $1))";
+  const std::string select_cmd = "SELECT value FROM t";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, kScanReads,
+      /* compact= */ false, /* aggregate = */ false);
+}
+
+TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanBigPK), PgMiniBigPrefetchTest) {
+  constexpr auto kNumRows = kScanRows / 4;
+  constexpr auto kNumRepetitions = 10;
+
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+
+  std::string create_cmd = "CREATE TABLE t (k TEXT PRIMARY KEY, value INT)";
+  std::string insert_cmd = "INSERT INTO t (k, value) VALUES (";
+  for (const auto i : Range(kNumRepetitions)) {
+    if (i) {
+      insert_cmd += "||";
+    }
+    insert_cmd += "md5(random()::TEXT)";
+  }
+  insert_cmd += ", generate_series($0, $1))";
+  const std::string select_cmd = "SELECT k FROM t";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, kScanReads,
+      /* compact= */ false, /* aggregate = */ false);
+}
+
 TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
   constexpr size_t kValueSize = 32_MB;
   constexpr int kKey = 42;
@@ -198,11 +247,10 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
   LOG(INFO) << "Passed: " << finish - start << ", result: " << result;
 }
 
-class PgNoPrefetchTest : public PgSingleTServerTest {
+class PgSmallPrefetchTest : public PgSingleTServerTest {
  protected:
-  void SetUp() override {
-    FLAGS_ysql_prefetch_limit = 1;
-    PgSingleTServerTest::SetUp();
+  Status SetupConnection(PGConn* conn) const override {
+    return conn->Execute("SET yb_fetch_row_limit = 1");
   }
 
   void Run(int rows, int block_size, int reads) {
@@ -215,12 +263,36 @@ class PgNoPrefetchTest : public PgSingleTServerTest {
   }
 };
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(SingleRowScan), PgNoPrefetchTest) {
+TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(SingleRowScan), PgSmallPrefetchTest) {
   constexpr int kRows = RegularBuildVsDebugVsSanitizers(10000, 1000, 100);
   constexpr int kBlockSize = 100;
   constexpr int kReads = 3;
 
   Run(kRows, kBlockSize, kReads);
+}
+
+TEST_F_EX(
+    PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(TestPagingInSerializableIsolation),
+    PgSmallPrefetchTest) {
+  // This test is related to #14284, #13041. As part of a regression, the read time set in the
+  // paging state returned by the tserver to YSQL, was sent back by YSQL in subsequent read
+  // requests even for serializable isolation level. This is only correct for the other isolation
+  // levels. In serializable isolation level, a read time is invalid since each read is supposed to
+  // read and lock the latest data. This resulted in the tserver crashing with -
+  // "Read time should NOT be specified for serializable isolation level".
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT GENERATE_SERIES(1, 10)"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+  ASSERT_OK(conn.Execute("DECLARE c CURSOR FOR SELECT * FROM test"));
+  ASSERT_OK(conn.Fetch("FETCH c"));
+  ASSERT_OK(conn.Fetch("FETCH c"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  ASSERT_OK(conn.Execute("COMMIT"));
 }
 
 // Microbenchmark, see
@@ -295,7 +367,7 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns)) {
 }
 
 TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ColocatedJoinPerformance),
-          PgNoPrefetchTest) {
+          PgSmallPrefetchTest) {
   const std::string kDatabaseName = "testdb";
   constexpr int kNumRows = RegularBuildVsDebugVsSanitizers(10000, 1000, 100);
   auto conn = ASSERT_RESULT(Connect());

@@ -17,9 +17,14 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.SqlUpdate;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +34,7 @@ import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -308,7 +314,7 @@ public class BackupTest extends FakeDBApplication {
     assertNotNull(b);
 
     SqlUpdate sqlUpdate =
-        Ebean.createSqlUpdate(
+        DB.sqlUpdate(
             "update public.backup set backup_info = '"
                 + jsonWithUnknownFields
                 + "'  where backup_uuid::text = '"
@@ -318,5 +324,107 @@ public class BackupTest extends FakeDBApplication {
 
     b = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
     assertNotNull(b);
+  }
+
+  private BackupTableParams createTableParams(int lower, int upper, String keyspace) {
+    List<UUID> tableUUIDs =
+        Arrays.asList(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+    List<String> tableNames = Arrays.asList("t1", "t2", "t3", "t4");
+    BackupTableParams params = new BackupTableParams();
+    params.setKeyspace(keyspace);
+    params.storageConfigUUID = s3StorageConfig.getConfigUUID();
+    params.tableNameList = new ArrayList<>(tableNames.subList(lower, upper));
+    params.tableUUIDList = new ArrayList<>(tableUUIDs.subList(lower, upper));
+    return params;
+  }
+
+  private BackupTableParams createParentParams(Universe universe) {
+    BackupTableParams tableParamsParent = new BackupTableParams();
+    tableParamsParent.setUniverseUUID(universe.getUniverseUUID());
+    tableParamsParent.customerUuid = defaultCustomer.getUuid();
+    tableParamsParent.storageConfigUUID = s3StorageConfig.getConfigUUID();
+    tableParamsParent.backupType = TableType.YQL_TABLE_TYPE;
+    return tableParamsParent;
+  }
+
+  @Test
+  public void testCreateBackupWithPreviousBackupAllOverlap() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 2, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 4, "bar");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup previousBackup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    previousBackup.transitionState(BackupState.Completed);
+    UUID baseIdentifier_1 = previousBackup.getBackupInfo().backupList.get(0).backupParamsIdentifier;
+    UUID baseIdentifier_2 = previousBackup.getBackupInfo().backupList.get(1).backupParamsIdentifier;
+    tableParamsParent.baseBackupUUID = previousBackup.getBaseBackupUUID();
+    // Incremental backup type 1 - same tableParams
+    Backup increment1 =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    UUID increment1_identifier_1 =
+        increment1.getBackupInfo().backupList.get(0).backupParamsIdentifier;
+    UUID increment1_identifier_2 =
+        increment1.getBackupInfo().backupList.get(1).backupParamsIdentifier;
+    assertEquals(increment1_identifier_1, baseIdentifier_1);
+    assertEquals(increment1_identifier_2, baseIdentifier_2);
+  }
+
+  @Test
+  public void testCreateBackupWithPreviousBackupPartialOverlap() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 2, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "bar");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup previousBackup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    previousBackup.transitionState(BackupState.Completed);
+    UUID baseIdentifier_1 = previousBackup.getBackupInfo().backupList.get(0).backupParamsIdentifier;
+    UUID baseIdentifier_2 = previousBackup.getBackupInfo().backupList.get(1).backupParamsIdentifier;
+
+    BackupTableParams tableParamsParent2 = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList2 = new ArrayList<>();
+    paramsList2.add(childParam1);
+    paramsList2.add(childParam2);
+    BackupTableParams childParam3 = createTableParams(3, 4, "bar");
+    paramsList2.add(childParam3);
+    tableParamsParent2.backupList = paramsList2;
+    tableParamsParent2.baseBackupUUID = previousBackup.getBaseBackupUUID();
+    Backup increment1 =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent2,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    UUID increment1_identifier_1 =
+        increment1.getBackupInfo().backupList.get(0).backupParamsIdentifier;
+    UUID increment1_identifier_2 =
+        increment1.getBackupInfo().backupList.get(1).backupParamsIdentifier;
+    UUID increment1_identifier_3 =
+        increment1.getBackupInfo().backupList.get(2).backupParamsIdentifier;
+
+    assertEquals(increment1_identifier_1, baseIdentifier_1);
+    assertEquals(increment1_identifier_2, baseIdentifier_2);
+    assertNotEquals(increment1_identifier_3, baseIdentifier_2);
   }
 }

@@ -614,7 +614,6 @@ CREATE TABLE fail_part (
 ALTER TABLE list_parted ATTACH PARTITION fail_part FOR VALUES IN (1);
 ERROR:  child table "fail_part" has different type for column "b"
 ALTER TABLE fail_part ALTER b TYPE char (2) COLLATE "POSIX";
-ERROR:  This ALTER TABLE command is not yet supported.
 -- Uncomment when ALTER TABLE COLLATE is supported (#1013)
 -- ALTER TABLE list_parted ATTACH PARTITION fail_part FOR VALUES IN (1);
 DROP TABLE fail_part;

@@ -738,10 +738,22 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR
     set(TCMALLOC_STATIC_LIB_LD_FLAGS
         "-Wl,--whole-archive ${TCMALLOC_STATIC_LIB} -Wl,--no-whole-archive")
   endif()
-else()
+elseif(NOT APPLE)
   message("Not allowing any undefined symbols "
           "(tcmalloc is disabled and build type is ${YB_BUILD_TYPE})")
   ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
+endif()
+
+if (NOT "$ENV{YB_VALGRIND_PATH}" STREQUAL "")
+  if(APPLE)
+    message(FATAL_ERROR "Valgrind cannot be used in macOS.")
+  endif()
+
+  if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+    message(FATAL_ERROR "Valgrind cannot be used while TCMalloc is enabled. "
+            "Build with --no-tcmalloc to use Valgrind.")
+  endif()
+  ADD_CXX_FLAGS("-DYB_VALGRIND_PATH=$ENV{YB_VALGRIND_PATH}")
 endif()
 
 ############################################################
@@ -833,6 +845,7 @@ set(YB_SUBDIR_NAMES
     gutil
     integration-tests
     master
+    qlexpr
     rocksdb
     rocksutil
     rpc

@@ -56,15 +56,42 @@ func SaveCerts(ctx context.Context, config *Config, cert string, key string, sub
 	return nil
 }
 
-// DeleteCerts deletes all the certs in the given sub-directory.
-func DeleteCerts(ctx context.Context, subDir string) error {
-	certsDir := filepath.Join(CertsDir(), subDir)
-	FileLogger().Infof(ctx, "Deleting certs %s", certsDir)
-	err := os.RemoveAll(certsDir)
+// DeleteCertsExcept deletes all the certs except the given cert directory.
+func DeleteCertsExcept(ctx context.Context, certDir string) error {
+	return ScanDir(CertsDir(), func(fInfo os.FileInfo) (bool, error) {
+		name := fInfo.Name()
+		if name != certDir && fInfo.IsDir() {
+			if err := DeleteCerts(ctx, name); err != nil {
+				return false, err
+			}
+		}
+		return true, nil
+	})
+}
+
+// DeleteCerts deletes all the certs in the given cert directory.
+func DeleteCerts(ctx context.Context, certDir string) error {
+	certsPath := filepath.Join(CertsDir(), certDir)
+	FileLogger().Infof(ctx, "Deleting certs %s", certsPath)
+	err := os.RemoveAll(certsPath)
 	if err != nil {
-		FileLogger().Errorf(ctx, "Error while deleting certs %s, err %s", certsDir, err.Error())
+		FileLogger().Errorf(ctx, "Error while deleting certs %s, err %s", certsPath, err.Error())
 	}
 	return err
+}
+
+// DeleteReleasesExcept deletes all releases except the given release.
+func DeleteReleasesExcept(ctx context.Context, release string) error {
+	return ScanDir(ReleaseDir(), func(fInfo os.FileInfo) (bool, error) {
+		name := fInfo.Name()
+		if release != name && fInfo.IsDir() {
+			err := DeleteRelease(ctx, name)
+			if err != nil {
+				return false, err
+			}
+		}
+		return true, nil
+	})
 }
 
 // DeleteCerts deletes a release.

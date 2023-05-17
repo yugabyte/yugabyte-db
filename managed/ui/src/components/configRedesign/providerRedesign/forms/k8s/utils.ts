@@ -1,5 +1,7 @@
 import { SuggestedKubernetesConfig } from '../../../../../redesign/helpers/dtos';
 import { KubernetesProviderLabel, ProviderCode } from '../../constants';
+import { K8sRegionField } from '../configureRegion/ConfigureK8sRegionModal';
+import { K8sCertIssuerType } from '../configureRegion/constants';
 import { getRegionlabel } from '../configureRegion/utils';
 import { generateLowerCaseAlphanumericId } from '../utils';
 
@@ -26,16 +28,17 @@ export const adaptSuggestedKubernetesConfig = (
     }
   );
   const kubernetesProvider = KUBECONFIG_PROVIDER.toLowerCase();
-  const regions = regionList.map((region) => ({
+  const regions = regionList.map<K8sRegionField>((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
     regionData: {
       value: { code: region.code, zoneOptions: [] },
-      label: getRegionlabel(ProviderCode.KUBERNETES, region.code)
+      label: region.name || getRegionlabel(ProviderCode.KUBERNETES, region.code)
     },
     zones: region.zoneList.map((zone) => ({
       code: zone.name,
-      kubernetesStorageClass: zone.config.STORAGE_CLASS
+      kubernetesStorageClass: zone.config.STORAGE_CLASS,
+      certIssuerType: K8sCertIssuerType.NONE
     }))
   }));
 

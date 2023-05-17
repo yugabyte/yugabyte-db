@@ -2,35 +2,37 @@
 
 package com.yugabyte.yw.common.supportbundle;
 
-import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.createTarGzipFiles;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Paths;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.HashSet;
-import java.util.Arrays;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -45,6 +47,7 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
   @Mock public NodeUniverseManager mockNodeUniverseManager;
   @Mock public Config mockConfig;
   @Mock public SupportBundleUtil mockSupportBundleUtil = new SupportBundleUtil();
+  @Mock public RuntimeConfGetter MockConfGetter;
 
   private final String testUniverseLogsRegexPattern =
       "((?:.*)(?:yb-)(?:master|tserver)(?:.*))(\\d{8})-(?:\\d*)\\.(?:.*)";
@@ -91,9 +94,11 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     // Mock all the invocations with fake data
     when(mockSupportBundleUtil.getDataDirPath(any(), any(), any(), any()))
         .thenReturn(fakeSupportBundleBasePath);
-    when(mockConfig.getString("yb.support_bundle.universe_logs_regex_pattern"))
+    when(MockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.universeLogsRegexPattern)))
         .thenReturn(testUniverseLogsRegexPattern);
-    when(mockConfig.getString("yb.support_bundle.postgres_logs_regex_pattern"))
+    when(MockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.postgresLogsRegexPattern)))
         .thenReturn(testPostgresLogsRegexPattern);
     when(mockSupportBundleUtil.extractFileTypeFromFileNameAndRegex(any(), any()))
         .thenCallRealMethod();
@@ -140,7 +145,11 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     // Calling the download function
     UniverseLogsComponent universeLogsComponent =
         new UniverseLogsComponent(
-            mockUniverseInfoHandler, mockNodeUniverseManager, mockConfig, mockSupportBundleUtil);
+            mockUniverseInfoHandler,
+            mockNodeUniverseManager,
+            mockConfig,
+            mockSupportBundleUtil,
+            MockConfGetter);
     universeLogsComponent.downloadComponentBetweenDates(
         customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
 

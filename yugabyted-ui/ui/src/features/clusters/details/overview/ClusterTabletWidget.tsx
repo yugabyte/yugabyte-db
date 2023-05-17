@@ -80,7 +80,7 @@ export const ClusterTabletWidget: FC<ClusterTabletWidgetProps> = ({ health }) =>
             <Typography variant="h4" className={classes.value}>
               {underReplicatedTablets.length}
             </Typography>
-            <YBStatus type={STATUS_TYPES.WARNING}/>
+            <YBStatus value={underReplicatedTablets.length} type={STATUS_TYPES.WARNING} tooltip />
           </Box>
           <Typography variant="body2" className={classes.label}>
             {t('clusterDetail.overview.underReplicated')}
@@ -91,7 +91,7 @@ export const ClusterTabletWidget: FC<ClusterTabletWidgetProps> = ({ health }) =>
             <Typography variant="h4" className={classes.value}>
               {unavailableTablets.length}
             </Typography>
-            <YBStatus type={STATUS_TYPES.FAILED}/>
+            <YBStatus value={unavailableTablets.length} type={STATUS_TYPES.FAILED} tooltip />
           </Box>
           <Typography variant="body2" className={classes.label}>
             {t('clusterDetail.overview.unavailable')}

@@ -77,6 +77,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   private final Set<TaskType> RETRYABLE_TASKS =
       ImmutableSet.of(
+          TaskType.CreateKubernetesUniverse,
+          TaskType.DestroyKubernetesUniverse,
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
           TaskType.ReadOnlyClusterCreate,
@@ -560,8 +562,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void testRetryableAnnotation() {
     // Iterate through allowed Task Types by Commissioner only
     Set<TaskType> retryableTaskTypes =
-        TaskType.filteredValues()
-            .stream()
+        TaskType.filteredValues().stream()
             .filter(taskType -> TaskExecutor.isTaskRetryable(taskType.getTaskClass()))
             .collect(Collectors.toSet());
     assertEquals(RETRYABLE_TASKS, retryableTaskTypes);

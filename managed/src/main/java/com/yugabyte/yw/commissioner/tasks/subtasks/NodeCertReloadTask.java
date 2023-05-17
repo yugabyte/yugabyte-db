@@ -1,17 +1,15 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import javax.inject.Inject;
-
-import org.yb.client.YBClient;
-
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
-
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.client.YBClient;
+
 /**
  * This class interacts with the YBClient and get the certs reload done for every node
  *

@@ -271,17 +271,19 @@
 
 // Convenience macros to define metric prototypes.
 // See the documentation at the top of this file for example usage.
-#define METRIC_DEFINE_counter_with_level(entity, name, label, unit, desc, level)   \
+#define METRIC_DEFINE_counter_with_level(entity, name, label, unit, desc, level, ...)   \
   ::yb::CounterPrototype BOOST_PP_CAT(METRIC_, name)(                        \
       ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity), \
                                       BOOST_PP_STRINGIZE(name), \
                                       label, \
                                       unit, \
                                       desc, \
-                                      level))
+                                      level, \
+                                      ## __VA_ARGS__))
 
-#define METRIC_DEFINE_counter(entity, name, label, unit, desc)   \
-  METRIC_DEFINE_counter_with_level(entity, name, label, unit, desc, yb::MetricLevel::kInfo)
+#define METRIC_DEFINE_counter(entity, name, label, unit, desc, ...)   \
+  METRIC_DEFINE_counter_with_level(entity, name, label, unit, desc, \
+      yb::MetricLevel::kInfo, ## __VA_ARGS__)
 
 #define METRIC_DEFINE_simple_counter(entity, name, label, unit) \
     METRIC_DEFINE_counter(entity, name, label, unit, label)
@@ -343,12 +345,13 @@
                                       yb::MetricLevel::kInfo),                 \
       max_val, num_sig_digits, yb::ExportPercentiles::kTrue)
 
-#define METRIC_DEFINE_coarse_histogram(entity, name, label, unit, desc)        \
+#define METRIC_DEFINE_coarse_histogram(entity, name, label, unit, desc, ...)   \
   ::yb::HistogramPrototype BOOST_PP_CAT(METRIC_, name)(                        \
       ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity),              \
                                       BOOST_PP_STRINGIZE(name), label, unit,   \
                                       desc,                                    \
-                                      yb::MetricLevel::kInfo),                 \
+                                      yb::MetricLevel::kInfo,                  \
+                                      ## __VA_ARGS__),                         \
       2, 1, yb::ExportPercentiles::kFalse)
 
 // The following macros act as forward declarations for entity types and metric prototypes.
@@ -569,13 +572,16 @@ class MetricPrototype {
  public:
   struct OptionalArgs {
     OptionalArgs(uint32_t flags = 0,
-                 AggregationFunction aggregation_function = AggregationFunction::kSum)
+                 AggregationFunction aggregation_function = AggregationFunction::kSum,
+                 AggregationMetricLevel aggregation_metric_level = AggregationMetricLevel::kTable)
       : flags_(flags),
-        aggregation_function_(aggregation_function) {
+        aggregation_function_(aggregation_function),
+        aggregation_metric_level_(aggregation_metric_level) {
     }
 
     const uint32_t flags_;
     const AggregationFunction aggregation_function_;
+    const AggregationMetricLevel aggregation_metric_level_;
   };
 
   // Simple struct to aggregate the arguments common to all prototypes.
@@ -595,7 +601,8 @@ class MetricPrototype {
         description_(description),
         level_(level),
         flags_(optional_args.flags_),
-        aggregation_function_(optional_args.aggregation_function_) {
+        aggregation_function_(optional_args.aggregation_function_),
+        aggregation_metric_level_(optional_args.aggregation_metric_level_) {
     }
 
     const char* const entity_type_;
@@ -606,6 +613,7 @@ class MetricPrototype {
     const MetricLevel level_;
     const uint32_t flags_;
     const AggregationFunction aggregation_function_;
+    const AggregationMetricLevel aggregation_metric_level_;
   };
 
   const char* entity_type() const { return args_.entity_type_; }
@@ -615,6 +623,9 @@ class MetricPrototype {
   const char* description() const { return args_.description_; }
   MetricLevel level() const { return args_.level_; }
   AggregationFunction aggregation_function() const { return args_.aggregation_function_; }
+  AggregationMetricLevel aggregation_metric_level() const {
+    return args_.aggregation_metric_level_;
+  }
   virtual MetricType::Type type() const = 0;
 
   // Writes the fields of this prototype to the given JSON writer.

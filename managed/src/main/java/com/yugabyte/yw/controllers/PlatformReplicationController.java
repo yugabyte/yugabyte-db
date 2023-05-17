@@ -123,9 +123,7 @@ public class PlatformReplicationController extends AuthenticatedController {
       }
 
       List<String> backups =
-          replicationManager
-              .listBackups(new URL(leaderAddr))
-              .stream()
+          replicationManager.listBackups(new URL(leaderAddr)).stream()
               .map(File::getName)
               .sorted(Collections.reverseOrder())
               .collect(Collectors.toList());

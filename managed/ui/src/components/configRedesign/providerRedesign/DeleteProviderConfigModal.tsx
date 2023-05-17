@@ -3,11 +3,13 @@ import { browserHistory } from 'react-router';
 import { makeStyles } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import { useQueryClient } from 'react-query';
+import { useDispatch } from 'react-redux';
 
 import { YBModal, YBModalProps } from '../../../redesign/components';
 import { fetchTaskUntilItCompletes } from '../../../actions/xClusterReplication';
 import { providerQueryKey } from '../../../redesign/helpers/api';
 import { useDeleteProvider } from '../../../redesign/helpers/hooks';
+import { fetchCloudMetadata } from '../../../actions/cloud';
 
 import { YBProvider } from './types';
 
@@ -37,6 +39,7 @@ export const DeleteProviderConfigModal = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const classes = useStyles();
   const queryClient = useQueryClient();
+  const dispatch = useDispatch();
 
   const deleteProviderMutation = useDeleteProvider(queryClient, {
     onSuccess: (response, variables) => {
@@ -58,6 +61,7 @@ export const DeleteProviderConfigModal = ({
           );
         }
         queryClient.invalidateQueries(providerQueryKey.ALL);
+        dispatch(fetchCloudMetadata());
       });
 
       setIsSubmitting(false);

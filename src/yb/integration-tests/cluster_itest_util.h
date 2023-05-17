@@ -480,7 +480,7 @@ Status GetTableLocations(MiniCluster* cluster,
                          master::GetTableLocationsResponsePB* table_locations);
 
 // Get number of tablets of given table hosted by tserver.
-int GetNumTabletsOfTableOnTS(tserver::TabletServer* const tserver, const TableId& table_id);
+size_t GetNumTabletsOfTableOnTS(tserver::TabletServer* tserver, const TableId& table_id);
 
 // Wait for the specified number of voters to be reported to the config on the
 // master for the specified tablet.

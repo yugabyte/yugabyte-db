@@ -69,7 +69,7 @@ YQLPartitionsVTable::YQLPartitionsVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
+Result<VTableDataPtr> YQLPartitionsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   if (GeneratePartitionsVTableWithBgTask()) {
     SharedLock<std::shared_timed_mutex> read_lock(mutex_);
@@ -101,7 +101,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
   return GenerateAndCacheData();
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() const {
+Result<VTableDataPtr> YQLPartitionsVTable::GenerateAndCacheData() const {
   auto* catalog_manager = &this->catalog_manager();
   {
     SharedLock<std::shared_timed_mutex> read_lock(mutex_);
@@ -227,7 +227,7 @@ Result<YQLPartitionsVTable::TabletData> YQLPartitionsVTable::GetTabletData(
 }
 
 Status YQLPartitionsVTable::InsertTabletIntoRowUnlocked(
-    const TabletData& tablet, QLRow* row,
+    const TabletData& tablet, qlexpr::QLRow* row,
     const std::unordered_map<std::string, InetAddress>& dns_results) const {
   RETURN_NOT_OK(SetColumnValue(kKeyspaceName, tablet.namespace_name, row));
   RETURN_NOT_OK(SetColumnValue(kTableName, tablet.table_name, row));
@@ -318,9 +318,9 @@ Status YQLPartitionsVTable::ProcessMutatedTablets(
   return Status::OK();
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GetTableFromMap() const {
+Result<VTableDataPtr> YQLPartitionsVTable::GetTableFromMap() const {
   if (update_cache_) {
-    auto vtable = std::make_shared<QLRowBlock>(*schema_);
+    auto vtable = std::make_shared<qlexpr::QLRowBlock>(*schema_);
 
     for (const auto& partition_start_to_row_map : table_to_partition_start_to_row_map_) {
       for (const auto& row : partition_start_to_row_map.second) {

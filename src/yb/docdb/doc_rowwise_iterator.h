@@ -22,7 +22,7 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/dockv/ql_scanspec.h"
+#include "yb/qlexpr/ql_scanspec.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
@@ -45,37 +45,28 @@ class IntentAwareIterator;
 class ScanChoices;
 struct FetchKeyResult;
 
+// In tests we could set doc mode to kAny to allow fetching PgTableRow for CQL table.
+YB_DEFINE_ENUM(DocMode, (kGeneric)(kFlat)(kAny));
+
 // An SQL-mapped-to-document-DB iterator.
 class DocRowwiseIterator : public DocRowwiseIteratorBase {
  public:
-  DocRowwiseIterator(const Schema &projection,
+  DocRowwiseIterator(const dockv::ReaderProjection &projection,
                      std::reference_wrapper<const DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
+                     std::reference_wrapper<const ScopedRWOperation> pending_op,
                      const DocDBStatistics* statistics = nullptr);
 
-  DocRowwiseIterator(std::unique_ptr<Schema> projection,
+  DocRowwiseIterator(const dockv::ReaderProjection& projection,
                      std::shared_ptr<DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
-                     const DocDBStatistics* statistics = nullptr);
-
-  DocRowwiseIterator(std::unique_ptr<Schema> projection,
-                     std::reference_wrapper<const DocReadContext> doc_read_context,
-                     const TransactionOperationContext& txn_op_context,
-                     const DocDB& doc_db,
-                     CoarseTimePoint deadline,
-                     const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
+                     ScopedRWOperation&& pending_op,
                      const DocDBStatistics* statistics = nullptr);
 
   ~DocRowwiseIterator() override;
@@ -90,6 +81,16 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
 
   HybridTime TEST_MaxSeenHt() override;
 
+  Result<bool> PgFetchNext(dockv::PgTableRow* table_row) override;
+
+  bool TEST_is_flat_doc() const {
+    return doc_mode_ == DocMode::kFlat;
+  }
+
+  void TEST_force_allow_fetch_pg_table_row() {
+    doc_mode_ = DocMode::kAny;
+  }
+
  private:
   void InitIterator(
       BloomFilterMode bloom_filter_mode = BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -98,10 +99,13 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr) override;
 
   Result<bool> DoFetchNext(
-      QLTableRow* table_row,
-      const Schema* projection,
-      QLTableRow* static_row,
-      const Schema* static_projection) override;
+      qlexpr::QLTableRow* table_row,
+      const dockv::ReaderProjection* projection,
+      qlexpr::QLTableRow* static_row,
+      const dockv::ReaderProjection* static_projection) override;
+
+  template <class TableRow>
+  Result<bool> FetchNextImpl(TableRow table_row);
 
   void Seek(const Slice& key) override;
   void PrevDocKey(const Slice& key) override;
@@ -117,11 +121,24 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   Status AdvanceIteratorToNextDesiredRow(bool row_finished) const;
 
   // Read next row into a value map using the specified projection.
-  Status FillRow(QLTableRow* table_row, const Schema* projection);
+  Status FillRow(qlexpr::QLTableRow* table_row, const dockv::ReaderProjection* projection);
+
+  struct QLTableRowPair {
+    qlexpr::QLTableRow* table_row;
+    const dockv::ReaderProjection* projection;
+    qlexpr::QLTableRow* static_row;
+    const dockv::ReaderProjection* static_projection;
+  };
+
+  Result<DocReaderResult> FetchRow(const Slice& doc_key, dockv::PgTableRow* table_row);
+  Result<DocReaderResult> FetchRow(const Slice& doc_key, QLTableRowPair table_row);
+
+  Status FillRow(QLTableRowPair table_row);
+  Status FillRow(dockv::PgTableRow* table_row);
 
   std::unique_ptr<IntentAwareIterator> db_iter_;
 
-  IsFlatDoc is_flat_doc_ = IsFlatDoc::kFalse;
+  DocMode doc_mode_ = DocMode::kGeneric;
 
   // Points to appropriate alternative owned by result_ field.
   std::optional<dockv::SubDocument> row_;

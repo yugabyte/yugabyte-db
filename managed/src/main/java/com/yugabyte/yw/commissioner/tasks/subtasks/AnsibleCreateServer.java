@@ -126,12 +126,12 @@ public class AnsibleCreateServer extends NodeTaskBase {
   }
 
   @Override
-  public void onFailure(TaskInfo taskInfo, Throwable cause) {
+  public boolean onFailure(TaskInfo taskInfo, Throwable cause) {
     Params params = taskParams();
 
     if (instanceExists(taskParams())) {
       if (cause instanceof RecoverableException) {
-        super.onFailure(taskInfo, cause);
+        return super.onFailure(taskInfo, cause);
       } else {
         // TODO: retry in a different AZ?
         log.warn("Instance creation in {} failed", params.getAZ().getName());
@@ -150,7 +150,10 @@ public class AnsibleCreateServer extends NodeTaskBase {
         task.initialize(destroyParams);
         task.setUserTaskUUID(userTaskUUID);
         task.run();
+        return true;
       }
     }
+
+    return false;
   }
 }

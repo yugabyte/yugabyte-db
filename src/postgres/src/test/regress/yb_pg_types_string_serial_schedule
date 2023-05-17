@@ -11,11 +11,8 @@ test: yb_bytea
 test: yb_pg_uuid
 test: yb_pg_tstypes
 
-# Chain of dependencies for yb_pg_tsearch
-test: yb_pg_create_function_1
-test: yb_pg_create_type
-test: yb_pg_create_table
-test: yb_pg_copy
+# Dependency.
+test: yb_dep_test_tsvector
 
 test: yb_pg_collate
 test: yb_collate_icu_utf8

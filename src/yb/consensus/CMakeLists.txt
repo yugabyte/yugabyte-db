@@ -115,7 +115,6 @@ target_link_libraries(log
   server_common
   gutil
   yb_common
-  yb_ql_common
   yb_fs
   consensus_proto
   log_proto
@@ -182,6 +181,5 @@ add_executable(log-dump log-dump.cc)
 target_link_libraries(log-dump
   log
   yb_docdb
-  yb_ql_common
   ${YB_BASE_LIBS})
 add_dependencies(log-dump gen_src_yb_rpc_any_proto)

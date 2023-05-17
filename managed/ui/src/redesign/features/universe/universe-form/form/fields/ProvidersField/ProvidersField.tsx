@@ -9,6 +9,8 @@ import { api, QUERY_KEY } from '../../../utils/api';
 import { UniverseFormData, Provider, DEFAULT_CLOUD_CONFIG } from '../../../utils/dto';
 import { PROVIDER_FIELD } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
+import { YBProvider } from '../../../../../../../components/configRedesign/providerRedesign/types';
+import { ProviderStatus } from '../../../../../../../components/configRedesign/providerRedesign/constants';
 
 interface ProvidersFieldProps {
   disabled?: boolean;
@@ -41,7 +43,11 @@ export const ProvidersField = ({
 
   let providersList: Provider[] = [];
   if (!isLoading && data) {
-    providersList = filterByProvider ? data.filter((p) => p.code === filterByProvider) : data;
+    providersList = (data as YBProvider[]).filter(
+      (provider) =>
+        provider.usabilityState === ProviderStatus.READY &&
+        (!filterByProvider || provider.code === filterByProvider)
+    ) as Provider[];
     providersList = _.sortBy(providersList, 'code', 'name'); //sort by provider code and name
   }
 

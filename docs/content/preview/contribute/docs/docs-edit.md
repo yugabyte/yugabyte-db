@@ -68,20 +68,33 @@ After you've made your changes, make a pull request by telling GitHub to compare
 
 ### Use the PR preview build {#preview-build}
 
-Preview builds take 5 minutes to build.
+Preview builds take up to 5 minutes to build.
 
 All PR previews on the main repository are of the form `https://deploy-preview-ABCDE--infallible-bardeen-164bc9.netlify.app/` where ABCDE is the pull request number.
 
-Add a line in your pull request's description to tag the Netlify bot and tell it where to launch the preview:
+Optionally, you can tag the Netlify bot in the PR description to tell the bot where to launch the preview. For example, if you changed the page at `docs.yugabyte.com/preview/contribute/docs/docs-edit/` you could add a tag to the PR description as shown in the following illustration:
 
-`@netlify /preview/quick-start/`
+![Tag Netlify in a PR](/images/contribute/contribute-docs-description.png)
+
+When your reviewer opens the build preview, it will automatically land on the page you specified.
 
 ### Run a link checker
 
-<https://linkchecker.github.io/linkchecker/>
+Optionally, run a link checker. For example, <https://linkchecker.github.io/linkchecker/>.
 
 ### Ask for a review
 
-**Internal contributors**, please add the `area/documentation` label to your pull request, tag a member of the docs team for review, along with technical reviewers as required, and let us know about your PR in the #docs channel in Slack.
+**External contributors**
 
-**External contributors**, please add the `area/documentation` label to your pull request, and let us know about it [in Slack](https://www.yugabyte.com/slack/).
+If possible, in your PR on GitHub, click **Labels**, filter on 'doc', and apply the `area/documentation` label.
+
+![Apply the docs label](/images/contribute/contribute-docs-pr-panel.png)
+
+Let us know about your PR [in Slack](https://www.yugabyte.com/slack/) in the `#contributors-docs` channel.
+
+**Internal contributors**
+
+- Under **Reviewers** set a member of the docs team for review, along with technical reviewers as required.
+- Under **Labels**, apply the `area/documentation` label to your PR.
+
+Let us know about your PR in the `#docs` channel in Slack.

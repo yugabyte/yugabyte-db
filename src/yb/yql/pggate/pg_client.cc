@@ -443,7 +443,7 @@ class PgClient::Impl {
       data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
 
       proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
-        ProcessPerformResponse(data.get(), data->controller.response());
+        ProcessPerformResponse(data.get(), data->controller.CheckedResponse());
       });
     }
   }
@@ -502,6 +502,8 @@ class PgClient::Impl {
         union_op.ref_write(&write_op.write_request());
       }
       if (op->read_time()) {
+        DCHECK(!req->options().has_isolation() ||
+            req->options().isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
         op->read_time().AddToPB(req->mutable_options());
       }
     }

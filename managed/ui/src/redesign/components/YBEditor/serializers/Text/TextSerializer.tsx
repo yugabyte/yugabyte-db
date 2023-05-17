@@ -1,5 +1,5 @@
 /*
- * Created on Mon Apr 10 2023
+ * Created on Tue May 02 2023
  *
  * Copyright 2021 YugaByte, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
@@ -7,26 +7,21 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { Descendant } from "slate";
-import { IYBEditor, serializeToText } from "../../plugins";
+import { Text } from 'slate';
+import { Descendant } from 'slate';
+import { ALERT_VARIABLE_END_TAG, ALERT_VARIABLE_START_TAG } from '../../plugins';
 
-/**
- * convert slatejs nodes to text
- */
-export class TextSerializer {
-
-    editor: IYBEditor;
-
-    constructor(editor: IYBEditor) {
-        this.editor = editor;
-    }
-
-    serialize = () => {
-        return this.editor.children.map((child) => serializeToText(child)).join('\n');
-    }
-
-    serlializeElements = (nodes: Descendant[]) => {
-        return nodes.map((child) => serializeToText(child)).join('\n');
-    }
-
-}
+export const convertNodesToText = (nodes: Descendant[]): string => {
+  return nodes
+    .map((node) => {
+      if (Text.isText(node)) {
+        return node.text;
+      }
+      if (node.type === 'alertVariable') {
+        return `${ALERT_VARIABLE_START_TAG}${node.variableName}${ALERT_VARIABLE_END_TAG}`;
+      }
+      const text = convertNodesToText(node.children);
+      return text;
+    })
+    .join('');
+};

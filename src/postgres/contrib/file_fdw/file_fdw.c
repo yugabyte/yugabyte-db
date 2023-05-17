@@ -36,6 +36,9 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/sampling.h"
+
+/* YB includes. */
+#include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 PG_MODULE_MAGIC;

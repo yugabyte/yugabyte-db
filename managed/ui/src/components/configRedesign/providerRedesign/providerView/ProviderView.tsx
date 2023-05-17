@@ -9,11 +9,16 @@ import clsx from 'clsx';
 import { ArrowBack } from '@material-ui/icons';
 import { Typography } from '@material-ui/core';
 import { browserHistory } from 'react-router';
-import { useQuery } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 
 import { DeleteProviderConfigModal } from '../DeleteProviderConfigModal';
-import { PROVIDER_ROUTE_PREFIX } from '../constants';
+import {
+  ProviderStatus,
+  PROVIDER_CONFIG_REFETCH_INTERVAL_MS,
+  PROVIDER_ROUTE_PREFIX,
+  TRANSITORY_PROVIDER_STATUSES
+} from '../constants';
 import { ProviderDetails } from './providerDetails/ProviderDetails';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { YBLabelWithIcon } from '../../../common/descriptors';
@@ -21,6 +26,8 @@ import { api, providerQueryKey, universeQueryKey } from '../../../../redesign/he
 import { getInfraProviderTab, getLinkedUniverses } from '../utils';
 
 import styles from './ProviderView.module.scss';
+import { ProviderStatusLabel } from '../components/ProviderStatusLabel';
+import { useInterval } from 'react-use';
 
 interface ProviderViewProps {
   providerUUID: string;
@@ -33,6 +40,18 @@ export const ProviderView = ({ providerUUID }: ProviderViewProps) => {
     api.fetchProvider(providerUUID)
   );
   const universeListQuery = useQuery(universeQueryKey.ALL, () => api.fetchUniverseList());
+  const queryClient = useQueryClient();
+
+  useInterval(() => {
+    if (
+      providerQuery.data?.usabilityState &&
+      (TRANSITORY_PROVIDER_STATUSES as readonly ProviderStatus[]).includes(
+        providerQuery.data?.usabilityState
+      )
+    ) {
+      queryClient.invalidateQueries(providerQueryKey.detail(providerUUID));
+    }
+  }, PROVIDER_CONFIG_REFETCH_INTERVAL_MS);
 
   if (
     providerQuery.isLoading ||
@@ -69,6 +88,7 @@ export const ProviderView = ({ providerUUID }: ProviderViewProps) => {
       <div className={styles.header}>
         <ArrowBack className={styles.arrowBack} fontSize="large" onClick={navigateBack} />
         <Typography variant="h4">{providerConfig.name}</Typography>
+        <ProviderStatusLabel providerStatus={providerConfig.usabilityState} variant="h4" />
         <DropdownButton
           bsClass={clsx(styles.actionButton, 'dropdown')}
           title="Actions"

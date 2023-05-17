@@ -7,7 +7,6 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
-import com.yugabyte.yw.models.TaskInfo;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;

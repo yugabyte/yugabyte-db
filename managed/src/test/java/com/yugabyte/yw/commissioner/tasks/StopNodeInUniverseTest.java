@@ -46,6 +46,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -59,6 +60,7 @@ import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
+@Slf4j
 public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
@@ -352,6 +354,19 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       List<TaskType> sequence,
       List<JsonNode> details,
       Map<Integer, List<TaskInfo>> subTasksByPosition) {
+    if (subTasksByPosition.size() != sequence.size()) {
+      log.debug("Expected:");
+      for (TaskType taskType : sequence) {
+        log.debug("" + taskType);
+      }
+      log.debug("Actual:");
+      subTasksByPosition.keySet().stream()
+          .sorted()
+          .forEach(
+              position -> {
+                log.debug("" + subTasksByPosition.get(position).get(0).getTaskType());
+              });
+    }
     assertEquals(subTasksByPosition.size(), sequence.size());
     int position = 0;
     for (TaskType taskType : sequence) {
@@ -540,9 +555,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
             defaultUniverse.getUniverseUUID(),
             u -> {
               NodeDetails node =
-                  u.getUniverseDetails()
-                      .nodeDetailsSet
-                      .stream()
+                  u.getUniverseDetails().nodeDetailsSet.stream()
                       .filter(n -> n.isMaster)
                       .findFirst()
                       .get();

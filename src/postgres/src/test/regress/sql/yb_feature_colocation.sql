@@ -335,3 +335,36 @@ SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
 -- Drop database
 \c yugabyte
 DROP DATABASE colocation_test;
+
+-- Test Colocated Materialized View describe
+CREATE DATABASE colocation_test WITH colocation = true;
+\c colocation_test
+CREATE TABLE t1 (a INT PRIMARY KEY);
+CREATE MATERIALIZED VIEW m1 AS SELECT * FROM t1;
+CREATE MATERIALIZED VIEW m2 with (colocation = true) AS SELECT * FROM t1;
+CREATE MATERIALIZED VIEW m3 with (colocation = false) AS SELECT * FROM t1;
+
+\d m1
+\d m2
+\d m3
+
+\c yugabyte
+DROP DATABASE colocation_test;
+
+-- Test Colocated Materialized View 
+CREATE DATABASE colocation_test WITH colocation = true;
+\c colocation_test
+CREATE TABLE t1 (a INT PRIMARY KEY) WITH (colocation = true);
+CREATE TABLE t2 (b INT PRIMARY KEY) WITH (colocation = false);
+CREATE MATERIALIZED VIEW m0 WITH (colocation = true) as SELECT * FROM t1;
+CREATE MATERIALIZED VIEW m1 WITH (colocation = false) as SELECT * FROM t1;
+CREATE MATERIALIZED VIEW m2 WITH (colocation = true) as SELECT * FROM t2;
+CREATE MATERIALIZED VIEW m3 WITH (colocation = false) as SELECT * FROM t2;
+CREATE MATERIALIZED VIEW m4 WITH (colocation = true) as SELECT * FROM t1, t2;
+CREATE MATERIALIZED VIEW m5 WITH (colocation = false) as SELECT * FROM t1, t2;
+select is_colocated from yb_table_properties('m0'::regclass);
+select is_colocated from yb_table_properties('m1'::regclass);
+select is_colocated from yb_table_properties('m2'::regclass);
+select is_colocated from yb_table_properties('m3'::regclass);
+select is_colocated from yb_table_properties('m4'::regclass);
+select is_colocated from yb_table_properties('m5'::regclass);

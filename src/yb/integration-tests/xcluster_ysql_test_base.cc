@@ -15,6 +15,8 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/mini_master.h"
@@ -33,6 +35,7 @@ DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(replication_factor);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
+DECLARE_uint64(TEST_pg_auth_key);
 
 namespace yb {
 
@@ -42,6 +45,21 @@ using client::YBTableName;
 void XClusterYsqlTestBase::SetUp() {
   YB_SKIP_TEST_IN_TSAN();
   XClusterTestBase::SetUp();
+}
+
+Status XClusterYsqlTestBase::Initialize(uint32_t replication_factor, uint32_t num_masters) {
+  // In this test, the tservers in each cluster share the same postgres proxy. As each tserver
+  // initializes, it will overwrite the auth key for the "postgres" user. Force an identical key
+  // so that all tservers can authenticate as "postgres".
+  FLAGS_TEST_pg_auth_key = RandomUniformInt<uint64_t>();
+
+  MiniClusterOptions opts;
+  opts.num_tablet_servers = replication_factor;
+  opts.num_masters = num_masters;
+
+  RETURN_NOT_OK(InitClusters(opts));
+
+  return Status::OK();
 }
 
 Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
@@ -225,6 +243,23 @@ Status XClusterYsqlTestBase::CreateYsqlTable(
       num_tablets, colocated, colocation_id, ranged_partitioned));
   table_names->push_back(table);
   return OK();
+}
+
+Result<std::string> XClusterYsqlTestBase::GetUniverseId(Cluster* cluster) {
+  master::GetMasterClusterConfigRequestPB req;
+  master::GetMasterClusterConfigResponsePB resp;
+
+  master::MasterClusterProxy master_proxy(
+      &cluster->client_->proxy_cache(),
+      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMasterBoundRpcAddr()));
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  RETURN_NOT_OK(master_proxy.GetMasterClusterConfig(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return STATUS(IllegalState, "Error getting cluster config");
+  }
+  return resp.cluster_config().cluster_uuid();
 }
 
 Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(

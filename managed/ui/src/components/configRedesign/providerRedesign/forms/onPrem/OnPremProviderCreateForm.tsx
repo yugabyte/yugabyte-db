@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, FormHelperText, Typography } from '@material-ui/core';
+import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -30,7 +30,7 @@ import { RegionOperation } from '../configureRegion/constants';
 import { YBButton } from '../../../../common/forms/fields';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInputField, YBToggleField } from '../../../../../redesign/components';
-import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, getIsFormDisabled, readFileAsText } from '../utils';
 
 import { OnPremRegionMutation, YBProviderMutation } from '../../types';
 
@@ -149,7 +149,7 @@ export const OnPremProviderCreateForm = ({
 
   const regions = formMethods.watch('regions', defaultValues.regions);
   const setRegions = (regions: ConfigureOnPremRegionFormValues[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: ConfigureOnPremRegionFormValues) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -163,7 +163,7 @@ export const OnPremProviderCreateForm = ({
     defaultValues.installNodeExporter
   );
 
-  const isFormDisabled = formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const isFormDisabled = getIsFormDisabled(formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -204,6 +204,7 @@ export const OnPremProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message ? (
                 <FormHelperText error={true}>
@@ -227,7 +228,7 @@ export const OnPremProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   fullWidth
                   disabled={isFormDisabled}
                 />
@@ -323,13 +324,18 @@ export const OnPremProviderCreateForm = ({
                 <NTPConfigField isDisabled={isFormDisabled} providerCode={ProviderCode.ON_PREM} />
               </FormField>
             </FieldGroup>
+            {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
+              <Box display="flex" gridGap="5px" marginLeft="auto">
+                <CircularProgress size={16} color="primary" thickness={5} />
+              </Box>
+            )}
           </Box>
           <Box marginTop="16px">
             <YBButton
               btnText="Create Provider Configuration"
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
@@ -345,10 +351,12 @@ export const OnPremProviderCreateForm = ({
       {isRegionFormModalOpen && (
         <ConfigureOnPremRegionModal
           configuredRegions={regions}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
           regionSelection={regionSelection}
+          regionOperation={regionOperation}
         />
       )}
       {isDeleteRegionModalOpen && (
@@ -392,17 +400,17 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.ON_PREM]: {
-          ybHomeDir: formValues.ybHomeDir
+          ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir })
         }
       },
       installNodeExporter: formValues.installNodeExporter,
-      nodeExporterPort: formValues.nodeExporterPort,
-      nodeExporterUser: formValues.nodeExporterUser,
+      ...(formValues.nodeExporterPort && { nodeExporterPort: formValues.nodeExporterPort }),
+      ...(formValues.nodeExporterUser && { nodeExporterUser: formValues.nodeExporterUser }),
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
       skipProvisioning: formValues.skipProvisioning,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: formValues.regions.map<OnPremRegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,

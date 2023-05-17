@@ -103,8 +103,7 @@ public class PlacementInfo {
 
   @JsonIgnore
   public Stream<PlacementAZ> azStream() {
-    return cloudList
-        .stream()
+    return cloudList.stream()
         .flatMap(cloud -> cloud.regionList.stream())
         .flatMap(region -> region.azList.stream());
   }

@@ -47,11 +47,6 @@ Status WaitForRunningTabletCount(MiniMaster* mini_master,
                                  int expected_count,
                                  GetTableLocationsResponsePB* resp);
 
-void CreateTabletForTesting(MiniMaster* mini_master,
-                            const client::YBTableName& table_name,
-                            const Schema& schema,
-                            std::string* tablet_id,
-                            std::string* table_id = nullptr);
 
 } // namespace master
 } // namespace yb

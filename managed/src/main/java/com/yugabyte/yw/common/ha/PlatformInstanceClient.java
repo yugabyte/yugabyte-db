@@ -173,9 +173,7 @@ public class PlatformInstanceClient {
             "backup", file.getName(), "application/octet-stream", FileIO.fromFile(file, 1024));
 
     List<Http.MultipartFormData.Part<Source<ByteString, ?>>> ret =
-        dataParts
-            .entrySet()
-            .stream()
+        dataParts.entrySet().stream()
             .map(kv -> new Http.MultipartFormData.DataPart(kv.getKey(), kv.getValue()))
             .collect(Collectors.toList());
 

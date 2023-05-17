@@ -48,9 +48,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
   }
 
   public boolean validateKeySize(int keySize, T algorithm) {
-    return algorithm
-        .getKeySizes()
-        .stream()
+    return algorithm.getKeySizes().stream()
         .anyMatch(supportedKeySize -> supportedKeySize == keySize);
   }
 

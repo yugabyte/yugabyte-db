@@ -150,6 +150,8 @@ class RpcController {
 
   CallResponsePtr response() const;
 
+  Result<CallResponsePtr> CheckedResponse() const;
+
  private:
   friend class OutboundCall;
   friend class Proxy;

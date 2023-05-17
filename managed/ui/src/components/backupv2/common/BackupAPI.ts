@@ -161,7 +161,8 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
     parallelism: values['parallel_threads'],
     sse: values['storage_config'].name === 'S3',
     storageConfigUUID: values['storage_config'].value,
-    universeUUID: values['universeUUID']
+    universeUUID: values['universeUUID'],
+    tableByTableBackup: values['isTableByTableBackup']
   };
 
   let dbMap: Dictionary<any> = [];
@@ -228,13 +229,16 @@ export const fetchThrottleParameters = (universeUUID: string) => {
   return axios.get<ThrottleParameters>(requestUrl);
 };
 
-export const setThrottleParameters = (universeUUID: string, values: ThrottleParameters) => {
+export const setThrottleParameters = (
+  universeUUID: string,
+  values: ThrottleParameters['throttleParamsMap']
+) => {
   const cUUID = localStorage.getItem('customerId');
   const payload = {
-    maxConcurrentUploads: values.max_concurrent_uploads,
-    perUploadNumObjects: values.per_upload_num_objects,
-    maxConcurrentDownloads: values.max_concurrent_downloads,
-    perDownloadNumObjects: values.per_download_num_objects
+    maxConcurrentUploads: values.max_concurrent_uploads.currentValue,
+    perUploadNumObjects: values.per_upload_num_objects.currentValue,
+    maxConcurrentDownloads: values.max_concurrent_downloads.currentValue,
+    perDownloadNumObjects: values.per_download_num_objects.currentValue
   };
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params`;
   return axios.post<ThrottleParameters>(requestUrl, payload);
@@ -266,7 +270,8 @@ export const addIncrementalBackup = (backup: IBackup) => {
     storageConfigUUID: backup.commonBackupInfo.storageConfigUUID,
     universeUUID: backup.universeUUID,
     baseBackupUUID: backup.commonBackupInfo.baseBackupUUID,
-    keyspaceTableList: backup.commonBackupInfo.responseList
+    keyspaceTableList: backup.commonBackupInfo.responseList,
+    tableByTableBackup: backup.commonBackupInfo.tableByTableBackup
   };
 
   return axios.post(requestUrl, payload);

@@ -33,9 +33,11 @@ import {
 import { FieldGroup } from '../components/FieldGroup';
 import {
   addItem,
+  constructAccessKeysPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
@@ -45,7 +47,13 @@ import { FieldLabel } from '../components/FieldLabel';
 import { GCP_REGIONS } from '../../providerRegionsData';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { api, hostInfoQueryKey } from '../../../../../redesign/helpers/api';
-import { findExistingRegion, getDeletedRegions, getNtpSetupType, getYBAHost } from '../../utils';
+import {
+  findExistingRegion,
+  getDeletedRegions,
+  getLatestAccessKey,
+  getNtpSetupType,
+  getYBAHost
+} from '../../utils';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
 import { RegionOperation } from '../configureRegion/constants';
 import { toast } from 'react-toastify';
@@ -82,7 +90,7 @@ interface GCPProviderEditFormFieldValues {
   regions: CloudVendorRegionField[];
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
-  sshPort: number;
+  sshPort: number | null;
   sshPrivateKeyContent: File;
   sshUser: string;
   version: number;
@@ -197,8 +205,8 @@ export const GCPProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT_NEW);
+  const showEditRegionFormModal = (regionOperation: RegionOperation) => {
+    setRegionOperation(regionOperation);
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -225,7 +233,7 @@ export const GCPProviderEditForm = ({
 
   const regions = formMethods.watch('regions', defaultValues.regions);
   const setRegions = (regions: CloudVendorRegionField[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: CloudVendorRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -264,8 +272,9 @@ export const GCPProviderEditForm = ({
     'editCloudCredentials',
     defaultValues.editCloudCredentials
   );
-  const isFormDisabled =
-    isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
+  const existingRegions = providerConfig.regions.map((region) => region.code);
+  const isFormDisabled = getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -320,6 +329,7 @@ export const GCPProviderEditForm = ({
                       control={formMethods.control}
                       options={credentialOptions}
                       orientation={RadioGroupOrientation.HORIZONTAL}
+                      isDisabled={isFormDisabled}
                     />
                   </FormField>
                   {providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT && (
@@ -363,6 +373,7 @@ export const GCPProviderEditForm = ({
                       formMethods.setValue('destVpcId', '');
                     }
                   }}
+                  isDisabled={isFormDisabled}
                 />
               </FormField>
               {(vpcSetupType === VPCSetupType.EXISTING || vpcSetupType === VPCSetupType.NEW) && (
@@ -396,12 +407,14 @@ export const GCPProviderEditForm = ({
               <RegionList
                 providerCode={ProviderCode.GCP}
                 regions={regions}
+                existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={isProviderInUse}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -425,26 +438,18 @@ export const GCPProviderEditForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Keypair Name</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.keyPairName}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.keyPairName} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Private Key</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.privateKey}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.privateKey} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Change SSH Keypair</FieldLabel>
@@ -463,6 +468,7 @@ export const GCPProviderEditForm = ({
                       control={formMethods.control}
                       options={KEY_PAIR_MANAGEMENT_OPTIONS}
                       orientation={RadioGroupOrientation.HORIZONTAL}
+                      isDisabled={isFormDisabled}
                     />
                   </FormField>
                   {keyPairManagement === KeyPairManagement.SELF_MANAGED && (
@@ -532,7 +538,7 @@ export const GCPProviderEditForm = ({
               btnText="Apply Changes"
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
@@ -548,6 +554,8 @@ export const GCPProviderEditForm = ({
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           configuredRegions={regions}
+          isEditProvider={true}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -593,8 +601,8 @@ const constructDefaultFormValues = (
       })
     )
   })),
-  sshKeypairManagement: providerConfig.allAccessKeys?.[0]?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort ?? '',
+  sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
+  sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
   vpcSetupType: providerConfig.details.cloudInfo.gcp.vpcType,
@@ -665,16 +673,17 @@ const constructProviderPayload = async (
         }
       : assertUnreachableCase(formValues.providerCredentialType);
 
+  const allAccessKeysPayload = constructAccessKeysPayload(
+    formValues.editSSHKeypair,
+    formValues.sshKeypairManagement,
+    { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
+    providerConfig.allAccessKeys
+  );
+
   return {
     code: ProviderCode.GCP,
     name: formValues.providerName,
-    ...(formValues.editSSHKeypair &&
-      formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-        ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-        ...(formValues.sshPrivateKeyContent && {
-          sshPrivateKeyContent: sshPrivateKeyContent
-        })
-      }),
+    ...allAccessKeysPayload,
     details: {
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
@@ -682,13 +691,13 @@ const constructProviderPayload = async (
           ...providerConfig.details.cloudInfo.gcp,
           ...vpcConfig,
           ...(formValues.editCloudCredentials && { ...gcpCredentials }),
-          ybFirewallTags: formValues.ybFirewallTags
+          ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
         }
       },
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: [
       ...formValues.regions.map<GCPRegionMutation>((regionFormValues) => {
@@ -705,17 +714,25 @@ const constructProviderPayload = async (
           details: {
             cloudInfo: {
               [ProviderCode.GCP]: {
-                ybImage: regionFormValues.ybImage
+                ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
               }
             }
           },
-          zones: GCP_REGIONS[regionFormValues.code]?.zones.map<GCPAvailabilityZoneMutation>(
-            (zoneSuffix: string) => ({
-              code: `${regionFormValues.code}${zoneSuffix}`,
-              name: `${regionFormValues.code}${zoneSuffix}`,
-              subnet: regionFormValues.sharedSubnet ?? ''
-            })
-          )
+          zones: existingRegion
+            ? existingRegion.zones.map((zone) => ({
+                active: zone.active,
+                code: zone.code,
+                name: zone.name,
+                subnet: regionFormValues.sharedSubnet ?? '',
+                uuid: zone.uuid
+              }))
+            : GCP_REGIONS[regionFormValues.code]?.zones.map<GCPAvailabilityZoneMutation>(
+                (zoneSuffix: string) => ({
+                  code: `${regionFormValues.code}${zoneSuffix}`,
+                  name: `${regionFormValues.code}${zoneSuffix}`,
+                  subnet: regionFormValues.sharedSubnet ?? ''
+                })
+              )
         };
       }),
       ...getDeletedRegions(providerConfig.regions, formValues.regions)

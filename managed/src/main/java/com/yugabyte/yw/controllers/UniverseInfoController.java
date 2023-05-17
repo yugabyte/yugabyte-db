@@ -294,8 +294,7 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   private List<DetailsExt> convertDetails(List<Details> details, boolean backwardCompatibleDate) {
-    return details
-        .stream()
+    return details.stream()
         .map(
             d ->
                 new DetailsExt()
@@ -307,8 +306,7 @@ public class UniverseInfoController extends AuthenticatedController {
 
   private List<NodeDataExt> convertNodeData(
       List<NodeData> nodeDataList, boolean backwardCompatibleDate) {
-    return nodeDataList
-        .stream()
+    return nodeDataList.stream()
         .map(
             data ->
                 new NodeDataExt()

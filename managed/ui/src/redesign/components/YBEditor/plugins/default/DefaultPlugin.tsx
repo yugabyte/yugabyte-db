@@ -7,27 +7,25 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-
-import React from "react";
-import { IYBSlatePlugin, SlateRenderElementProps } from "../IPlugin";
-import { nonActivePluginReturnType, serializeToText } from "../PluginUtils";
+import React from 'react';
+import { IYBSlatePlugin, SlateRenderElementProps } from '../IPlugin';
+import { nonActivePluginReturnType, serializeToText } from '../PluginUtils';
 
 const PLUGIN_NAME = 'default plugin';
 
-
 export const useDefaultPlugin: IYBSlatePlugin = ({ enabled, editor }) => {
+  if (!enabled) {
+    return { name: PLUGIN_NAME, ...nonActivePluginReturnType };
+  }
 
-    if (!enabled) {
-        return { name: PLUGIN_NAME, ...nonActivePluginReturnType };
-    }
-
-    return {
-        name: PLUGIN_NAME,
-        isEnabled: () => enabled,
-        onKeyDown: () => false,
-        renderElement: ({ attributes, children, element }: SlateRenderElementProps) => <p {...attributes}>{children}</p>,
-        renderLeaf: () => undefined,
-        serialize: serializeToText,
-    }
-
-}
+  return {
+    name: PLUGIN_NAME,
+    isEnabled: () => enabled,
+    onKeyDown: () => false,
+    renderElement: ({ attributes, children, element }: SlateRenderElementProps) => (
+      <p {...attributes}>{children}</p>
+    ),
+    renderLeaf: () => undefined,
+    serialize: serializeToText
+  };
+};

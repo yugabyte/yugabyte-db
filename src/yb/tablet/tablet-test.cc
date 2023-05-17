@@ -43,7 +43,7 @@
 
 #include "yb/client/table.h"
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
@@ -53,6 +53,7 @@
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-base.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 
 #include "yb/util/enums.h"
@@ -67,7 +68,7 @@ using std::vector;
 namespace yb {
 namespace tablet {
 
-DEFINE_UNKNOWN_int32(testiterator_num_inserts, 1000,
+DEFINE_NON_RUNTIME_int32(testiterator_num_inserts, 1000,
              "Number of rows inserted in TestRowIterator/TestInsert");
 
 static_assert(static_cast<int>(to_underlying(TableType::YQL_TABLE_TYPE)) ==
@@ -143,7 +144,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
 
   // Collect the expected rows.
   vector<string> rows;
-  ASSERT_OK(yb::tablet::DumpTablet(*this->tablet(), this->client_schema_, &rows));
+  ASSERT_OK(yb::tablet::DumpTablet(*this->tablet(), &rows));
   ASSERT_EQ(max_rows, rows.size());
 }
 
@@ -223,6 +224,35 @@ TYPED_TEST(TestTablet, TestFlushedOpId) {
   ASSERT_OK(tablet->Flush(FlushMode::kSync));
   id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
   ASSERT_EQ(id.index, start_index + 2*kCount);
+}
+
+TYPED_TEST(TestTablet, TestDocKeyMetrics) {
+  auto metrics = this->harness()->tablet()->metrics();
+  auto total_keys = metrics->docdb_keys_found;
+  auto obsolete_keys = metrics->docdb_obsolete_keys_found;
+
+  ASSERT_EQ(total_keys->value(), 0);
+  ASSERT_EQ(obsolete_keys->value(), 0);
+
+  LocalTabletWriter writer(this->tablet());
+  ASSERT_OK(this->InsertTestRow(&writer, 0, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 1, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 2, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 3, 0));
+  ASSERT_OK(this->InsertTestRow(&writer, 4, 0));
+
+  this->VerifyTestRows(0, 5);
+
+  ASSERT_EQ(total_keys->value(), 5);
+  ASSERT_EQ(obsolete_keys->value(), 0);
+  auto prev_total_keys = total_keys->value();
+
+  ASSERT_OK(this->DeleteTestRow(&writer, 0));
+  std::vector<std::string> str;
+  ASSERT_OK(this->IterateToStringList(&str));
+
+  ASSERT_EQ(total_keys->value() - prev_total_keys, 5);
+  ASSERT_EQ(obsolete_keys->value(), 1);
 }
 
 } // namespace tablet

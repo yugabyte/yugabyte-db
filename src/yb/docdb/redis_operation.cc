@@ -875,8 +875,7 @@ Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
   // Handle ExpireAt
   if (absolute_expiration) {
     int64_t calc_ttl = request_.set_ttl_request().absolute_time() -
-      server::HybridClock::GetPhysicalValueNanos(data.read_time.read) /
-      MonoTime::kNanosecondsPerMillisecond;
+                           data.read_time.read.GetPhysicalValueMillis();
     if (calc_ttl <= 0) {
       return ApplyDel(data);
     }

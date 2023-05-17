@@ -2,7 +2,7 @@
 title: VPC network
 headerTitle: VPC network
 linkTitle: VPC network
-description: Configure VPC networking.
+description: Configure VPC networking in YugabyteDB Managed.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 headcontent: Set up VPC networking so that your clusters can communicate privately with applications
 aliases:

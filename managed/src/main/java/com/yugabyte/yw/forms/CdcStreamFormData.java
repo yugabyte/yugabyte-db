@@ -1,8 +1,8 @@
 package com.yugabyte.yw.forms;
 
-import play.data.validation.Constraints;
 import lombok.Getter;
 import lombok.Setter;
+import play.data.validation.Constraints;
 
 @Getter
 @Setter

@@ -14,7 +14,6 @@
 #include "yb/common/ql_protocol_util.h"
 
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -87,15 +86,6 @@ void QLAddColumns(const Schema& schema, const std::vector<ColumnId>& columns,
     rscol_desc->set_name(column->name());
     column->type()->ToQLTypePB(rscol_desc->mutable_ql_type());
   }
-}
-
-std::unique_ptr<QLRowBlock> CreateRowBlock(QLClient client, const Schema& schema, Slice data) {
-  auto rowblock = std::make_unique<QLRowBlock>(schema);
-  if (!data.empty()) {
-    // TODO: a better way to handle errors here?
-    CHECK_OK(rowblock->Deserialize(client, &data));
-  }
-  return rowblock;
 }
 
 bool RequireReadForExpressions(const QLWriteRequestPB& request) {

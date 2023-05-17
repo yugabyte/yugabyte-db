@@ -1,15 +1,13 @@
 package com.yugabyte.yw.common.config;
 
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.config.ConfDataType.parseTagsList;
 import static com.yugabyte.yw.common.config.ConfDataType.parseSetMultimap;
+import static com.yugabyte.yw.common.config.ConfDataType.parseTagsList;
 import static org.junit.Assert.assertTrue;
 
 import com.google.common.collect.*;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
-
 import java.util.*;
-
 import org.junit.Test;
 
 public class ConfDataTypeTest {

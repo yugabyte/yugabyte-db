@@ -141,7 +141,8 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
 
   // Set the read point to the databases xCluster safe time if consistent reads are enabled
   Status UpdateReadPointForXClusterConsistentReads(
-      const PgPerformOptionsPB& options, ConsistentReadPoint* read_point);
+      const PgPerformOptionsPB& options, const CoarseTimePoint& deadline,
+      ConsistentReadPoint* read_point);
 
   template <class InRequestPB, class OutRequestPB>
   Status SetCatalogVersion(const InRequestPB& in_req, OutRequestPB* out_req) const {

@@ -50,11 +50,14 @@ namespace yb {
     };
 
 // We suppose that if class has nested const_iterator then it is collection.
-BOOST_TTI_HAS_TYPE(const_iterator);
+HAS_MEMBER_FUNCTION(begin);
+HAS_MEMBER_FUNCTION(end);
 
 template <class T>
-class IsCollection : public has_type_const_iterator<
-    typename std::remove_cv<typename std::remove_reference<T>::type>::type> {
+struct IsCollection {
+  using StrippedT = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
+  constexpr static bool value =
+      HasMemberFunction_begin<StrippedT>::value && HasMemberFunction_end<StrippedT>::value;
 };
 
 // This class is used to determine whether T is similar to pointer.

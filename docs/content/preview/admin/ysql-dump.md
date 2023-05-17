@@ -46,7 +46,7 @@ Dump only the data, not the schema (data definitions). Table data, large objects
 
 #### -b, --blobs
 
-Include large objects in the dump. This is the default behavior except when [`-n|--schema`](#n-schema-schema-schema)`, [`-t|--table`](#t-table-table-table)`, or [`-s|--schema-only`](#s-schema-only) is specified. The `-b|--blobs` option is therefore only useful to add large objects to dumps where a specific schema or table has been requested. Note that blobs are considered data and therefore will be included when `-a|--data-only` is used, but not when [`-s|--schema-only`](#s-schema-only) is used.
+Include large objects in the dump. This is the default behavior except when [`-n|--schema`](#n-schema-schema-schema), [`-t|--table`](#t-table-table-table), or [`-s|--schema-only`](#s-schema-only) is specified. The `-b|--blobs` option is therefore only useful to add large objects to dumps where a specific schema or table has been requested. Note that blobs are considered data and therefore will be included when `-a|--data-only` is used, but not when [`-s|--schema-only`](#s-schema-only) is used.
 
 #### -B, --no-blobs
 
@@ -91,9 +91,9 @@ Non-schema objects, such as blobs, are not dumped when `-n|--schema` is specifie
 
 #### -N *schema*, --exclude-schema=*schema*
 
-Do not dump any schemas matching the schema pattern. The pattern is interpreted according to the same rules as for [`-n|--schema`](#n-schema-schema-schema)` option. `-N|--exclude-schema` can be given more than once to exclude schemas matching any of several patterns.
+Do not dump any schemas matching the schema pattern. The pattern is interpreted according to the same rules as for [`-n|--schema`](#n-schema-schema-schema) option. `-N|--exclude-schema` can be given more than once to exclude schemas matching any of several patterns.
 
-When both [`-n|--schema`](#n-schema-schema-schema)` and `-N|--exclude-schema` are given, the behavior is to dump just the schemas that match at least one [`-n|--schema`](#n-schema-schema-schema)` option but no `-N|--exclude-schema` options. If `-N|--exclude-schema` appears without [`-n|--schema`](#n-schema-schema-schema)`, then schemas matching `-N|--exclude-schema` are excluded from what is otherwise a normal dump.
+When both [`-n|--schema`](#n-schema-schema-schema) and `-N|--exclude-schema` are given, the behavior is to dump just the schemas that match at least one [`-n|--schema`](#n-schema-schema-schema) option but no `-N|--exclude-schema` options. If `-N|--exclude-schema` appears without [`-n|--schema`](#n-schema-schema-schema), then schemas matching `-N|--exclude-schema` are excluded from what is otherwise a normal dump.
 
 #### -o, --oids
 
@@ -109,7 +109,7 @@ Dump only the object definitions (schema), not data.
 
 This option is the inverse of [`-a|--data-only`](#a-data-only).
 
-(Do not confuse this with the [[`-n|--schema`](#n-schema-schema-schema)`](#n-schema) option, which uses the word “schema” in a different meaning.)
+(Do not confuse this with the [`-n|--schema`](#n-schema-schema-schema) option, which uses the word “schema” in a different meaning.)
 
 To exclude table data for only a subset of tables in the database, see [`--exclude-table-data`](#exclude-table-data).
 

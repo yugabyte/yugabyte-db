@@ -44,6 +44,10 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.client.utils.Serialization;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,11 +62,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
-
-import java.io.File;
-import java.io.FileInputStream;
-import io.fabric8.kubernetes.client.utils.Serialization;
-import java.io.InputStream;
 
 @RunWith(MockitoJUnitRunner.class)
 public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {

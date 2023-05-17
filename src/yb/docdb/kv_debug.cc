@@ -95,6 +95,11 @@ Result<std::string> DocDBValueToDebugStrInternal(
   if (key_type == KeyType::kIntentKey) {
     auto txn_id_res = VERIFY_RESULT(dockv::DecodeTransactionIdFromIntentValue(&value_slice));
     prefix = Format("TransactionId($0) ", txn_id_res);
+    if (value_slice.TryConsumeByte(dockv::ValueEntryTypeAsChar::kSubTransactionId)) {
+      SubTransactionId subtransaction_id = Load<SubTransactionId, BigEndian>(value_slice.data());
+      value_slice.remove_prefix(sizeof(SubTransactionId));
+      prefix += Format("SubTransactionId($0) ", subtransaction_id);
+    }
     if (!value_slice.empty()) {
       RETURN_NOT_OK(value_slice.consume_byte(dockv::ValueEntryTypeAsChar::kWriteId));
       if (value_slice.size() < sizeof(IntraTxnWriteId)) {
@@ -182,14 +187,27 @@ Result<std::string> DocDBValueToDebugStr(
       RETURN_NOT_OK(value.consume_byte(dockv::ValueEntryTypeAsChar::kUuid));
       auto involved_tablet = VERIFY_RESULT(Uuid::FromSlice(value.Prefix(kUuidSize)));
       value.remove_prefix(kUuidSize);
-      RETURN_NOT_OK(value.consume_byte(dockv::KeyEntryTypeAsChar::kExternalIntents));
+      char header_byte = value.consume_byte();
+      if (header_byte != dockv::KeyEntryTypeAsChar::kExternalIntents &&
+          header_byte != dockv::KeyEntryTypeAsChar::kSubTransactionId) {
+        return STATUS_FORMAT(
+            Corruption, "Wrong first byte, expected $0 or $1 but found $2",
+            static_cast<int>(dockv::KeyEntryTypeAsChar::kExternalIntents),
+            static_cast<int>(dockv::KeyEntryTypeAsChar::kSubTransactionId), header_byte);
+      }
+      SubTransactionId subtransaction_id = kMinSubTransactionId;
+      if (header_byte == dockv::KeyEntryTypeAsChar::kSubTransactionId) {
+        subtransaction_id = Load<SubTransactionId, BigEndian>(value.data());
+        value.remove_prefix(sizeof(SubTransactionId));
+        RETURN_NOT_OK(value.consume_byte(dockv::KeyEntryTypeAsChar::kExternalIntents));
+      }
       for (;;) {
         auto len = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value));
         if (len == 0) {
           break;
         }
-        RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
-            value.Prefix(len), dockv::HybridTimeRequired::kFalse));
+        RETURN_NOT_OK(
+            sub_doc_key.FullyDecodeFrom(value.Prefix(len), dockv::HybridTimeRequired::kFalse));
         value.remove_prefix(len);
         len = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value));
         intents.push_back(Format(
@@ -200,7 +218,13 @@ Result<std::string> DocDBValueToDebugStr(
         value.remove_prefix(len);
       }
       DCHECK(value.empty());
-      return Format("IT $0 $1", involved_tablet.ToHexString(), intents);
+      if (header_byte == dockv::KeyEntryTypeAsChar::kSubTransactionId) {
+        return Format(
+            "IT $0 SubTransaction($1) $2", involved_tablet.ToHexString(), subtransaction_id,
+            intents);
+      } else {
+        return Format("IT $0 $1", involved_tablet.ToHexString(), intents);
+      }
     }
   }
   FATAL_INVALID_ENUM_VALUE(KeyType, key_type);

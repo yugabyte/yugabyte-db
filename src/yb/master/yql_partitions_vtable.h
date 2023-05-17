@@ -30,8 +30,8 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   explicit YQLPartitionsVTable(const TableName& table_name,
                                const NamespaceName& namespace_name,
                                Master* const master);
-  Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const;
-  Result<std::shared_ptr<QLRowBlock>> GenerateAndCacheData() const;
+  Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const;
+  Result<VTableDataPtr> GenerateAndCacheData() const;
 
   // Remove tables from the system.partitions vtable.
   void RemoveFromCache(const std::vector<TableId>& table_ids) const;
@@ -74,24 +74,24 @@ class YQLPartitionsVTable : public YQLVirtualTable {
       DnsLookupMap* dns_lookups,
       google::protobuf::Arena* arena) const;
 
-  Status InsertTabletIntoRowUnlocked(const TabletData& tablet, QLRow* row,
+  Status InsertTabletIntoRowUnlocked(const TabletData& tablet, qlexpr::QLRow* row,
       const std::unordered_map<std::string, InetAddress>& dns_results) const;
 
   Schema CreateSchema() const;
 
   mutable std::shared_timed_mutex mutex_;
-  mutable std::shared_ptr<QLRowBlock> cache_ GUARDED_BY(mutex_);
+  mutable VTableDataPtr cache_ GUARDED_BY(mutex_);
   mutable intptr_t cached_tablets_version_ GUARDED_BY(mutex_) = kInvalidCache;
   mutable intptr_t cached_tablet_locations_version_ GUARDED_BY(mutex_) = kInvalidCache;
   // Generate the cache from the map lazily (only when there's a request and update_cache_ is true).
   mutable bool update_cache_ GUARDED_BY(mutex_) = true;
 
   // Store the table as a map for more efficient modifications.
-  mutable std::map<TableId, std::map<std::string, QLRow>> table_to_partition_start_to_row_map_
-      GUARDED_BY(mutex_);
+  mutable std::map<TableId, std::map<std::string, qlexpr::QLRow>>
+      table_to_partition_start_to_row_map_ GUARDED_BY(mutex_);
 
   // Convert the map to the expected vtable format.
-  Result<std::shared_ptr<QLRowBlock>> GetTableFromMap() const REQUIRES(mutex_);
+  Result<VTableDataPtr> GetTableFromMap() const REQUIRES(mutex_);
 };
 
 }  // namespace master

@@ -66,7 +66,7 @@ DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
 DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
 
-DEFINE_UNKNOWN_int32(num_test_tablets, 60, "Number of tablets for stress test");
+DEFINE_NON_RUNTIME_int32(num_test_tablets, 60, "Number of tablets for stress test");
 
 using std::string;
 using std::vector;

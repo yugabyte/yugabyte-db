@@ -145,6 +145,10 @@ class XClusterConsumer {
       const cdc::ProducerTabletInfo producer_tablet_info,
       const cdc::ConsumerTabletInfo consumer_tablet_info) REQUIRES_SHARED(master_data_mutex_);
 
+  void UpdatePollerSchemaVersionMaps(
+      std::shared_ptr<XClusterPoller> xcluster_poller,
+      const CDCStreamId& stream_id) const REQUIRES_SHARED (master_data_mutex_);
+
   void RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info);
 
   // Mutex and cond for should_run_ state.
