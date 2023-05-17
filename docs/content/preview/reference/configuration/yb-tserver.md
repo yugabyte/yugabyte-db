@@ -1049,7 +1049,7 @@ SET temp_file_limit=-1;
 SET SESSION temp_file_limit=-1;
 ```
 
-If `SET` is issued within a transaction that is later aborted, the effects of the SET command are rolled back when the transaction is rolled back. 
+If `SET` is issued within a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back. 
 
 If the surrounding transaction commits, the effects will persist for the whole session.
 
