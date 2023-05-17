@@ -68,7 +68,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
 
   const Schema& projection() {
     if (!projection_) {
-      projection_ = doc_read_context().schema;
+      projection_ = doc_read_context().schema();
     }
     return *projection_;
   }
@@ -228,19 +228,19 @@ const KeyBytes kEncodedDocKey2 = dockv::MakeDocKey(kStrKey2, kIntKey2).Encode();
 
 Schema DocRowwiseIteratorTest::CreateSchema() {
   return Schema({
-        ColumnSchema("a", DataType::STRING, /* is_nullable = */ false),
-        ColumnSchema("b", DataType::INT64, false),
+        ColumnSchema("a", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+        ColumnSchema("b", DataType::INT64, ColumnKind::RANGE_ASC_NULL_FIRST),
         // Non-key columns
-        ColumnSchema("c", DataType::STRING, true),
-        ColumnSchema("d", DataType::INT64, true),
-        ColumnSchema("e", DataType::STRING, true)
+        ColumnSchema("c", DataType::STRING, ColumnKind::VALUE, Nullable::kTrue),
+        ColumnSchema("d", DataType::INT64, ColumnKind::VALUE, Nullable::kTrue),
+        ColumnSchema("e", DataType::STRING, ColumnKind::VALUE, Nullable::kTrue)
     }, {
         10_ColId,
         20_ColId,
         30_ColId,
         40_ColId,
         50_ColId
-    }, 2);
+    });
 }
 constexpr int32_t kFixedHashCode = 0;
 
@@ -253,21 +253,13 @@ const KeyBytes GetKeyBytes(
 }
 
 const Schema population_schema(
-    {ColumnSchema(
-         "country", DataType::STRING, /* is_nullable = */ false, true, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "state", DataType::STRING, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "city", DataType::STRING, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "area", DataType::STRING, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
+    {ColumnSchema("country", DataType::STRING, ColumnKind::HASH),
+     ColumnSchema("state", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("city", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("area", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
      // Non-key columns
-     ColumnSchema("population", DataType::INT64, true)},
-    {10_ColId, 20_ColId, 30_ColId, 40_ColId, 50_ColId}, 4);
+     ColumnSchema("population", DataType::INT64, ColumnKind::VALUE, Nullable::kTrue)},
+    {10_ColId, 20_ColId, 30_ColId, 40_ColId, 50_ColId});
 
 const std::string INDIA = "INDIA";
 const std::string CG = "CG";
@@ -350,18 +342,12 @@ const KeyBytes GetKeyBytes(int32_t hash_key, int32_t range_key1, int32_t range_k
 }
 
 const Schema test_range_schema(
-    {ColumnSchema(
-         "h", DataType::INT32, /* is_nullable = */ false, true, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
+    {ColumnSchema("h", DataType::INT32, ColumnKind::HASH),
+     ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
      // Non-key columns
-     ColumnSchema("payload", DataType::INT32, true)},
-    {10_ColId, 11_ColId, 12_ColId, 13_ColId}, 3);
+     ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+    {10_ColId, 11_ColId, 12_ColId, 13_ColId});
 
 void DocRowwiseIteratorTest::InsertTestRangeData() {
   int h = 5;
@@ -529,7 +515,7 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
         CoarseTimePoint::max() /* deadline */, read_time, pending_op));
 
     ValidateIterator(
-        iter.get(), mode, doc_read_context().schema, &doc_read_context().schema, expected,
+        iter.get(), mode, doc_read_context().schema(), &doc_read_context().schema(), expected,
         expected_max_seen_ht);
   }
 }
@@ -566,15 +552,11 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
   constexpr ColocationId colocation_id(0x4001);
 
   Schema test_schema(
-      {ColumnSchema(
-           "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-           SortingType::kAscending),
-       ColumnSchema(
-           "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-           SortingType::kAscending),
+      {ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
        // Non-key columns
-       ColumnSchema("payload", DataType::INT32, true)},
-      {10_ColId, 11_ColId, 12_ColId}, 2);
+       ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+      {10_ColId, 11_ColId, 12_ColId});
   test_schema.set_colocation_id(colocation_id);
 
   const KeyEntryValues range_components{
@@ -618,16 +600,11 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
   constexpr ColocationId colocation_id(0x4001);
 
   Schema test_schema(
-      {ColumnSchema(
-           "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-           SortingType::kAscending),
-       ColumnSchema(
-           "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-           SortingType::kAscending),
+      {ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
        // Non-key columns
-       ColumnSchema("payload", DataType::INT32, true)},
-      {10_ColId, 11_ColId, 12_ColId}, 2);
-  test_schema.set_colocation_id(colocation_id);
+       ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+      {10_ColId, 11_ColId, 12_ColId});
 
   const KeyEntryValues range_components{
       KeyEntryValue::Int32(5), KeyEntryValue::Int32(6)};
@@ -1205,10 +1182,10 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorIncompleteProjection() {
       )#");
 
   Schema projection;
-  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"c", "d"}, &projection));
+  ASSERT_OK(doc_read_context().schema().TEST_CreateProjectionByNames({"c", "d"}, &projection));
 
   CreateIteratorAndValidate(
-      doc_read_context().schema, ReadHybridTime::FromMicros(5000),
+      doc_read_context().schema(), ReadHybridTime::FromMicros(5000),
       R"#(
         {missing,missing,null,int64:10000,missing}
         {missing,missing,null,int64:20000,missing}
@@ -1239,7 +1216,7 @@ SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 2000 }]) -> DEL
 SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
     HT{ physical: 1000 }]) -> null
       )#");
-  Schema schema_copy = doc_read_context().schema;
+  Schema schema_copy = doc_read_context().schema();
   schema_copy.set_colocation_id(colocation_id);
   Schema projection;
   auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
@@ -1312,13 +1289,13 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
       )#");
 
   Schema projection;
-  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"c", "e"}, &projection));
+  ASSERT_OK(doc_read_context().schema().TEST_CreateProjectionByNames({"c", "e"}, &projection));
 
   // PgFetchNext does not support control fields.
   skip_pg_validation_ = true;
 
   CreateIteratorAndValidate(
-      doc_read_context().schema, read_time,
+      doc_read_context().schema(), read_time,
       R"#(
         {missing,missing,null,missing,string:"row2_e"}
       )#",
@@ -1363,13 +1340,13 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorValidColumnNotInProjection() 
       )#");
 
   Schema projection;
-  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"c", "d"}, &projection));
+  ASSERT_OK(doc_read_context().schema().TEST_CreateProjectionByNames({"c", "d"}, &projection));
 
   // PgFetchNext expects liveness column, so does not work in this test.
   skip_pg_validation_ = true;
 
   CreateIteratorAndValidate(
-      doc_read_context().schema, ReadHybridTime::FromMicros(2800),
+      doc_read_context().schema(), ReadHybridTime::FromMicros(2800),
       R"#(
         {missing,missing,null,null,missing}
         {missing,missing,string:"row2_c",int64:20000,missing}
@@ -1400,9 +1377,9 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 2 }]
       )#");
 
   Schema projection;
-  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"a", "b"}, &projection, 2));
+  ASSERT_OK(doc_read_context().schema().TEST_CreateProjectionByNames({"a", "b"}, &projection));
   CreateIteratorAndValidate(
-      doc_read_context().schema, ReadHybridTime::FromMicros(2800),
+      doc_read_context().schema(), ReadHybridTime::FromMicros(2800),
       R"#(
         {string:"row1",int64:11111,missing,missing,missing}
       )#",
@@ -1717,7 +1694,7 @@ void DocRowwiseIteratorTest::TestScanWithinTheSameTxn() {
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ASSERT_RESULT(ConvertIteratorRowsToString(
-          iter.get(), IteratorMode::kGeneric, doc_read_context().schema)),
+          iter.get(), IteratorMode::kGeneric, doc_read_context().schema())),
       R"#(
         {string:"row1",int64:11111,string:"row1_c_t1",null,null}
         {string:"row2",int64:22222,string:"row2_c_t1",null,null}
@@ -1935,7 +1912,7 @@ void DocRowwiseIteratorTest::TestPartialKeyColumnsProjection() {
   auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   Schema projection;
-  ASSERT_OK(population_schema.CreateProjectionByNames({"population"}, &projection));
+  ASSERT_OK(population_schema.TEST_CreateProjectionByNames({"population"}, &projection));
 
   auto pending_op = ScopedRWOperation::TEST_Create();
   auto iter = ASSERT_RESULT(CreateIterator(

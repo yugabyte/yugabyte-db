@@ -40,9 +40,6 @@
 //   Each column of a primary key can be specified as hash or regular primary key.
 //   Function PrimaryKey()
 //   Function HashPrimaryKey().
-// - Second API:
-//   All hash and regular primary columns can be specified together in a list.
-//   Function YBSchemaBuilder::SetPrimaryKey().
 #pragma once
 
 #include <string>
@@ -85,17 +82,13 @@ class YBColumnSchema {
   static InternalType ToInternalDataType(DataType type);
   static InternalType ToInternalDataType(const std::shared_ptr<QLType>& ql_type);
 
-  // DEPRECATED: use YBSchemaBuilder instead.
-  // TODO(KUDU-809): make this hard-to-use constructor private. Clients should use
-  // the Builder API. Currently only the Python API uses this old API.
   YBColumnSchema(const std::string &name,
                  const std::shared_ptr<QLType>& type,
-                 bool is_nullable = false,
-                 bool is_hash_key = false,
+                 ColumnKind kind = ColumnKind::VALUE,
+                 Nullable is_nullable = Nullable::kFalse,
                  bool is_static = false,
                  bool is_counter = false,
                  int32_t order = 0,
-                 SortingType sorting_type = SortingType::kNotSpecified,
                  int32_t pg_type_oid = kPgInvalidOid);
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
@@ -109,6 +102,7 @@ class YBColumnSchema {
   // Getters to expose column schema information.
   const std::string& name() const;
   const std::shared_ptr<QLType>& type() const;
+  bool is_key() const;
   bool is_hash_key() const;
   bool is_nullable() const;
   bool is_static() const;
@@ -146,13 +140,9 @@ class YBColumnSpec {
 
   // Set this column to be the primary key of the table.
   //
-  // This may only be used to set non-composite primary keys. If a composite
-  // key is desired, use YBSchemaBuilder::SetPrimaryKey(). This may not be
-  // used in conjunction with YBSchemaBuilder::SetPrimaryKey().
-  //
   // Only relevant for a CreateTable operation. Primary keys may not be changed
   // after a table is created.
-  YBColumnSpec* PrimaryKey();
+  YBColumnSpec* PrimaryKey(SortingType sorting_type = SortingType::kAscending);
 
   // Set this column to be a hash primary key column of the table. A hash value of all hash columns
   // in the primary key will be used to determine what partition (tablet) a particular row falls in.
@@ -179,9 +169,6 @@ class YBColumnSpec {
 
   // Specify the user-defined order of the column.
   YBColumnSpec* Order(int32_t order);
-
-  // Specify the user-defined sorting direction.
-  YBColumnSpec* SetSortingType(SortingType sorting_type);
 
   // Identify this column as counter.
   YBColumnSpec* Counter();
@@ -238,12 +225,6 @@ class YBSchemaBuilder {
   // The returned object is owned by the YBSchemaBuilder.
   YBColumnSpec* AddColumn(const std::string& name);
 
-  // Set the primary key of the new Schema based on the given column names. The first
-  // 'key_hash_col_count' columns in the primary are hash columns whose values will be used for
-  // table partitioning. This may be used to specify a compound primary key.
-  YBSchemaBuilder* SetPrimaryKey(const std::vector<std::string>& key_col_names,
-                                 size_t key_hash_col_count = 0);
-
   YBSchemaBuilder* SetTableProperties(const TableProperties& table_properties);
 
   YBSchemaBuilder* SetSchemaName(const std::string& pgschema_name);
@@ -278,8 +259,7 @@ class YBSchema {
   void MoveFrom(YBSchema&& other);
 
   // DEPRECATED: will be removed soon.
-  Status Reset(const std::vector<YBColumnSchema>& columns, size_t key_columns,
-               const TableProperties& table_properties) WARN_UNUSED_RESULT;
+  Status Reset(const std::vector<YBColumnSchema>& columns, const TableProperties& table_properties);
 
   void Reset(std::unique_ptr<Schema> schema);
 

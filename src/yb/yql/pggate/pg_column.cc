@@ -28,8 +28,8 @@ namespace pggate {
 namespace {
 
 ColumnSchema kColumnYBctid(
-    "ybctid", QLType::Create(DataType::BINARY),
-    false, false, false, false, to_underlying(PgSystemAttrNum::kYBTupleId));
+    "ybctid", QLType::Create(DataType::BINARY), ColumnKind::RANGE_ASC_NULL_FIRST, Nullable::kFalse,
+    false, false, to_underlying(PgSystemAttrNum::kYBTupleId));
 
 }
 

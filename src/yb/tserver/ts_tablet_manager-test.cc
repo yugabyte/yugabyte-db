@@ -111,7 +111,7 @@ static const int kDrivesNum = 4;
 class TsTabletManagerTest : public YBTest {
  public:
   TsTabletManagerTest()
-    : schema_({ ColumnSchema("key", UINT32) }, 1) {
+    : schema_({ ColumnSchema("key", UINT32, ColumnKind::RANGE_ASC_NULL_FIRST) }) {
   }
 
   string GetDrivePath(int index) {

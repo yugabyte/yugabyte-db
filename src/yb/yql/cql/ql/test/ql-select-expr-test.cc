@@ -1826,9 +1826,9 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vm_binds = result->bind_variable_schemas();
   EXPECT_EQ(vm_binds.size(), 3);
-  EXPECT_EQ(vm_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vm_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vm_binds[2].ToString(), "vm[map NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vm_binds[0].ToString(), "h[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vm_binds[1].ToString(), "r[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vm_binds[2].ToString(), "vm[map NOT NULL VALUE]");
   EXPECT_EQ(vm_binds[2].type()->ToString(), "map<int, text>");
 
   // Bind and execute the prepared statement with correct values.
@@ -1892,9 +1892,9 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vs_binds = result->bind_variable_schemas();
   EXPECT_EQ(vs_binds.size(), 3);
-  EXPECT_EQ(vs_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vs_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vs_binds[2].ToString(), "vs[set NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vs_binds[0].ToString(), "h[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vs_binds[1].ToString(), "r[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vs_binds[2].ToString(), "vs[set NOT NULL VALUE]");
   EXPECT_EQ(vs_binds[2].type()->ToString(), "set<int>");
 
   // Bind and execute the prepared statement with correct values.
@@ -1937,9 +1937,9 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vl_binds = result->bind_variable_schemas();
   EXPECT_EQ(vl_binds.size(), 3);
-  EXPECT_EQ(vl_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vl_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vl_binds[2].ToString(), "vl[list NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vl_binds[0].ToString(), "h[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vl_binds[1].ToString(), "r[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vl_binds[2].ToString(), "vl[list NOT NULL VALUE]");
   EXPECT_EQ(vl_binds[2].type()->ToString(), "list<text>");
 
   // Bind and execute the prepared statement with correct values.
@@ -2484,8 +2484,8 @@ TEST_F(QLTestSelectedExpr, BindVarsMultiColumnInTest) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vl_binds = result->bind_variable_schemas();
   EXPECT_EQ(vl_binds.size(), 2);
-  EXPECT_EQ(vl_binds[0].ToString(), "tup1[tuple NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vl_binds[1].ToString(), "tup2[tuple NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vl_binds[0].ToString(), "tup1[tuple NOT NULL VALUE]");
+  EXPECT_EQ(vl_binds[1].ToString(), "tup2[tuple NOT NULL VALUE]");
   EXPECT_EQ(vl_binds[1].type()->ToString(), "tuple<int, text>");
 }
 
@@ -2508,10 +2508,10 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithEmbeddedNull) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto binds = result->bind_variable_schemas();
   EXPECT_EQ(binds.size(), 4);
-  EXPECT_EQ(binds[0].ToString(), "h[string NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(binds[1].ToString(), "r[string NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(binds[2].ToString(), "v1[string NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(binds[3].ToString(), "v2[int32 NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(binds[0].ToString(), "h[string NOT NULL VALUE]");
+  EXPECT_EQ(binds[1].ToString(), "r[string NOT NULL VALUE]");
+  EXPECT_EQ(binds[2].ToString(), "v1[string NOT NULL VALUE]");
+  EXPECT_EQ(binds[3].ToString(), "v2[int32 NOT NULL VALUE]");
 
   // Bind and execute the prepared statement with values where the text column value
   // embedded null byte.

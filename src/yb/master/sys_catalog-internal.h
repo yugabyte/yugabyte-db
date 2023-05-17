@@ -97,7 +97,7 @@ Status SysCatalogTable::ForceMutate(
 }
 
 std::unique_ptr<SysCatalogWriter> SysCatalogTable::NewWriter(int64_t leader_term) {
-  return std::make_unique<SysCatalogWriter>(doc_read_context_->schema, leader_term);
+  return std::make_unique<SysCatalogWriter>(doc_read_context_->schema(), leader_term);
 }
 
 } // namespace master

@@ -63,9 +63,9 @@ namespace tablet {
 class TabletPushdownTest : public YBTabletTest {
  public:
   TabletPushdownTest()
-    : YBTabletTest(Schema({ ColumnSchema("key", INT32, false, true),
+    : YBTabletTest(Schema({ ColumnSchema("key", INT32, ColumnKind::HASH),
                             ColumnSchema("int_val", INT32),
-                            ColumnSchema("string_val", STRING) }, 1)) {
+                            ColumnSchema("string_val", STRING) })) {
   }
 
   void SetUp() override {
