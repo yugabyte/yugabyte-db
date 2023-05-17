@@ -17,13 +17,20 @@ import com.azure.storage.blob.models.BlobItem;
 import com.azure.storage.blob.models.BlobStorageException;
 import com.azure.storage.blob.models.ListBlobsOptions;
 import com.azure.storage.blob.specialized.BlobInputStream;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
+import play.libs.Json;
 
 @Singleton
 @Slf4j
@@ -45,6 +53,14 @@ public class AZUtil implements CloudUtil {
   public static final String YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
 
   public static final String YBC_AZURE_STORAGE_END_POINT_FIELDNAME = "AZURE_STORAGE_END_POINT";
+
+  private static final String PRICING_JSON_URL =
+      "https://prices.azure.com/api/retail/prices?$filter=";
+
+  private static final String PRICE_QUERY =
+      "armRegionName eq '%s' and armSkuName eq '%s' and "
+          + "endsWith(productName, 'Series') and "
+          + "priceType eq 'Consumption' and contains(meterName, 'Spot')";
 
   public static String[] getSplitLocationValue(String backupLocation) {
     backupLocation = backupLocation.substring(8);
@@ -407,5 +423,32 @@ public class AZUtil implements CloudUtil {
           "Error reading test blob " + fileName + ", exception occurred: " + getStackTrace(e));
     }
     return new String(data);
+  }
+
+  public static Double getAzuSpotPrice(String region, String instanceType) {
+    try {
+      String query = String.format(PRICE_QUERY, region, instanceType);
+      query = URLEncoder.encode(query, StandardCharsets.UTF_8.toString());
+      URL url = new URL(PRICING_JSON_URL + query);
+      HttpURLConnection con = (HttpURLConnection) url.openConnection();
+      con.setRequestMethod("GET");
+      con.setRequestProperty("Accept-Charset", StandardCharsets.UTF_8.toString());
+      con.connect();
+      BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+      String inputLine;
+      StringBuffer content = new StringBuffer();
+      while ((inputLine = in.readLine()) != null) {
+        content.append(inputLine);
+      }
+      in.close();
+      JsonNode response = Json.mapper().readTree(content.toString());
+      Double spotPrice = response.findValue("retailPrice").asDouble();
+      log.info(
+          "AZU spot price for instance {} in region {} is {}", instanceType, region, spotPrice);
+      return spotPrice;
+    } catch (Exception e) {
+      log.error("Fetch Azure spot prices failed with error {}", e.getMessage());
+    }
+    return Double.NaN;
   }
 }

@@ -19,6 +19,9 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.AWSUtil;
+import com.yugabyte.yw.common.AZUtil;
+import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -203,7 +206,27 @@ public class UniverseResourceDetails {
       if (!params.universePaused) {
         // Node is in Stopped state when universe is paused and when node processes are stopped
         // - and we need to distinguish between the two.
-        hourlyPrice += instancePrice.getPriceDetails().pricePerHour;
+        if (!userIntent.useSpotInstance) {
+          hourlyPrice += instancePrice.getPriceDetails().pricePerHour;
+        } else {
+          if (userIntent.spotPrice > 0.0) {
+            hourlyPrice += userIntent.spotPrice;
+          } else {
+            switch (userIntent.providerType) {
+              case aws:
+                hourlyPrice += AWSUtil.getAwsSpotPrice(nodeDetails.getZone(), instanceType);
+                break;
+              case gcp:
+                hourlyPrice += GCPUtil.getGcpSpotPrice(nodeDetails.getRegion(), instanceType);
+                break;
+              case azu:
+                hourlyPrice += AZUtil.getAzuSpotPrice(nodeDetails.getRegion(), instanceType);
+                break;
+              default:
+                hourlyPrice += instancePrice.getPriceDetails().pricePerHour;
+            }
+          }
+        }
       }
     }
     hourlyPrice += hourlyEBSPrice;
