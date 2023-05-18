@@ -207,7 +207,7 @@ DEFINE_UNKNOWN_int64(time_based_wal_gc_clock_delta_usec, 0,
              "skewed hybrid clock, because the clock used for time-based WAL GC is the wall clock, "
              "not hybrid clock.");
 
-DEFINE_UNKNOWN_int64(reuse_unclosed_segment_threshold, -1,
+DEFINE_UNKNOWN_int64(reuse_unclosed_segment_threshold_bytes, -1,
             "If the last left in-progress segment size is smaller or equal to this threshold, "
             "Log will reuse this last segment as writable active_segment at startup."
             "Otherwise, Log will create a new segment. If the value is negative, it means"
@@ -954,14 +954,14 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
   int64_t file_size = read_entries.end_offset;
   // For now, we want to test reuse unclosed segment feature aggressively in debug builds.
   // Thus, by using IsDebug(), we can trigger this feature in most restart from a crash scenario.
-  int64_t reuse_unclosed_segment_threshold = FLAGS_reuse_unclosed_segment_threshold;
-  if (IsDebug() && reuse_unclosed_segment_threshold >= 0) {
-    reuse_unclosed_segment_threshold = max_segment_size_;
+  int64_t reuse_unclosed_segment_threshold_bytes = FLAGS_reuse_unclosed_segment_threshold_bytes;
+  if (IsDebug() && reuse_unclosed_segment_threshold_bytes >= 0) {
+    reuse_unclosed_segment_threshold_bytes = max_segment_size_;
   }
-  if (file_size > reuse_unclosed_segment_threshold) {
+  if (file_size > reuse_unclosed_segment_threshold_bytes) {
     LOG(INFO) << "Cannot reuse last WAL segment " << recover_segment->path()
               << " as active_segment due to its actual file size " << file_size
-              << " is greater than reuse threshold " << reuse_unclosed_segment_threshold;
+              << " is greater than reuse threshold " << reuse_unclosed_segment_threshold_bytes;
     RETURN_NOT_OK(recover_segment->RebuildFooterByScanning(read_entries));
     return false;
   }
@@ -1038,7 +1038,7 @@ Status Log::EnsureSegmentInitializedUnlocked() {
 
   bool reuse_last_segment = false;
   // For last segment that doesn't have a footer, if its file size (last readable offset)
-  // is within the reuse_unclosed_segment_threshold, we will reuse it as active_segment_.
+  // is within the reuse_unclosed_segment_threshold_bytes, we will reuse it as active_segment_.
   // Otherwise, close this segment by building a footer in memory.
   SegmentSequence segments;
   RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));

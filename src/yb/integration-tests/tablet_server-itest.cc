@@ -42,7 +42,7 @@ TEST_F(TabletServerITest, TestNumberOfSegmentInCrashloop) {
   FLAGS_num_tablet_servers = 1;
   FLAGS_num_replicas = 1;
   // Enable reuse log, threshold will be maximized in testing mode.
-  BuildAndStart(std::vector<string>{"--reuse_unclosed_segment_threshold=524288"});
+  BuildAndStart(std::vector<string>{"--reuse_unclosed_segment_threshold_bytes=524288"});
   ExternalTabletServer* ts = cluster_->tablet_server(0);
   itest::TServerDetails* ts_details = tablet_servers_[ts->instance_id().permanent_uuid()].get();
   string wal_dir = JoinPathSegments(cluster_->data_root(), ts->id(), "yb-data", "tserver", "wals",
