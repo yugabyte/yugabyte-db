@@ -66,7 +66,7 @@ DECLARE_int32(o_direct_block_alignment_bytes);
 DECLARE_int32(o_direct_block_size_bytes);
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_bool(TEST_skip_file_close);
-DECLARE_int64(reuse_unclosed_segment_threshold);
+DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
 
 namespace yb {
 namespace log {

@@ -35,7 +35,7 @@ DECLARE_bool(TEST_simulate_abrupt_server_restart);
 
 DECLARE_bool(log_enable_background_sync);
 
-DECLARE_int64(reuse_unclosed_segment_threshold);
+DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
 
 namespace yb {
 namespace integration_tests {
@@ -86,7 +86,7 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   FLAGS_TEST_simulate_abrupt_server_restart = true;
   // Disable reuse unclosed segment feature to prevent log from reusing
   // the last segment and skipping building footer.
-  FLAGS_reuse_unclosed_segment_threshold = -1;
+  FLAGS_reuse_unclosed_segment_threshold_bytes = -1;
   auto timestamp_before_write = GetCurrentTimeMicros();
   PutKeyValue("key", "value");
   auto timestamp_after_write = GetCurrentTimeMicros();
