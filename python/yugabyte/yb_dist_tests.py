@@ -33,7 +33,10 @@ from yugabyte.common_util import get_build_type_from_build_root, \
                            get_compiler_type_from_build_root, \
                            is_macos  # nopep8
 from yugabyte.postgres_build_util import POSTGRES_BUILD_SUBDIR
+from yugabyte import artifact_upload
 from typing import Optional, List, Set, Dict, cast
+
+import dataclasses
 
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
 # a "test descriptor" (a string that identifies a particular test).
@@ -230,14 +233,23 @@ class GlobalTestConfig:
             os.environ[env_var_name] = env_var_value
 
 
-TestResult = collections.namedtuple(
-        'TestResult',
-        ['test_descriptor',
-         'exit_code',
-         'elapsed_time_sec',
-         'failed_without_output',
-         'artifact_paths',
-         'num_errors_copying_artifacts'])
+@dataclasses.dataclass
+class TestResult:
+    test_descriptor: TestDescriptor
+    exit_code: int
+    elapsed_time_sec: float
+    failed_without_output: bool
+
+    # Paths of artifacts relative to the source root.
+    artifact_paths: Optional[List[str]]
+
+    artifact_copy_result: Optional[artifact_upload.FileTransferResult]
+    spark_error_copy_result: Optional[artifact_upload.FileTransferResult]
+
+    def log_artifact_upload_errors(self) -> None:
+        for copy_result in [self.artifact_copy_result, self.spark_error_copy_result]:
+            if copy_result is not None and copy_result.has_errors():
+                logging.info("Had errors during artifact upload: %s", copy_result)
 
 
 def set_global_conf_from_args(args: argparse.Namespace) -> GlobalTestConfig:
