@@ -1827,7 +1827,7 @@ yb-admin \
 }
 ```
 
-* *namespace_id*: Id of the stream.
+* *namespace_id*: ID of the stream.
 * *namespace_name*: Name of the stream.
 * *safe_time*: Safe time in timestamp format.
 * *safe_time_epoch*: The `epoch` of the safe time.
