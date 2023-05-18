@@ -34,7 +34,7 @@ Learn the basic steps required for connecting to the YugabyteDB database using L
 composer create-project --prefer-dist laravel/laravel yb-laravel-example
 ```
 
-Note: Review the [prerequisites](../../orms/php/ysql-laravel//#prerequisites) for working with a Laravel project.
+Note: Review the [prerequisites](../../orms/php/ysql-laravel/#prerequisites) for working with a Laravel project.
 
 ### Step 2: Configure the datasource in Laravel project
 
@@ -84,20 +84,20 @@ Update the `app\Models\Employees.php` file to map the columns of the `Employees`
 ```php
 class Employees extends Model
 {
-	public $timestamps = false;
+    public $timestamps = false;
     use HasFactory;
 
     protected $fillable = [
-    	'name',
-    	'age',
-    	'email',
+        'name',
+        'age',
+        'email',
     ];
 }
 ```
 
 ### Step 4: Create a seeder for Employees table
 
-Laravel provides the ability to load a table with data using [seed](https://laravel.com/docs/10.x/seeding) and [Eloquent Factories](Eloquent: Factories). Create the files required for seeding the `Employees` model as follows:
+Laravel provides the ability to load a table with data using [seed](https://laravel.com/docs/10.x/seeding) and [Eloquent Factories](https://laravel.com/docs/10.x/eloquent-factories). Create the files required for seeding the `Employees` model as follows:
 
 ```txt
 php artisan make:factory EmployeesFactory

@@ -114,7 +114,7 @@ Unlike with, say, the \\_echo_ meta-command, you can direct the output from \\_d
 
 ### '\df'
 
-The \\_df_ meta-command, when you use it bare, lists pre-determined metadata for every subprogram in the database. This is rarely useful because the number of results is typically large and often uninteresting. You can restrict the results. But you don't use SQL syntax. The rules are explained in the [ysqlsh](../../../../admin/ysqlsh/) section in the dedicated subsection for _[\df](../../../../admin/ysqlsh-meta-commands/#df-antws-pattern-patterns)_. This example lists the subprograms in the schema _s2_:
+The \\_df_ meta-command, when you use it bare, lists pre-determined metadata for every subprogram in the database. This is rarely useful because the number of results is typically large and often uninteresting. You can restrict the results. But you don't use SQL syntax. The rules are explained in the [ysqlsh](../../../../admin/ysqlsh/) section in the dedicated subsection for [\\_df_](../../../../admin/ysqlsh-meta-commands/#df-antws-pattern-patterns). This example lists the subprograms in the schema _s2_:
 
 ```plpgsql
 \df s2.*
