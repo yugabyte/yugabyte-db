@@ -325,7 +325,7 @@ $body$;
 execute q;
 ```
 
-You might have expected to see _"39"_—but the result is unchanged! The reason is that PostgreSQL (and therefore YSQL) do not track what the human sees as the dependency of _f2()_ upon _f1()_. This outcome is a consequence of how PL/pgSQL source text is interpreted and executed. This is explained in the section [PL/pgSQL's execution model](../../../plpgsql-execution-model/).
+You might have expected to see _"39"_—but the result is unchanged! The reason is that PostgreSQL (and therefore YSQL) do not track what the human sees as the dependency of _f2()_ upon _f1()_. This outcome is a consequence of how PL/pgSQL source text is interpreted and executed. This is explained in the section [PL/pgSQL's execution model](../../../language-plpgsql-subprograms/plpgsql-execution-model/).
 
 You must therefore track functional dependencies like _f2()_ upon _f1()_ manually in external documentation. And you must understand that you must intervene manually after changing the definition of _f1()_ by dropping and re-creating _f2()_—even though you use the same source text and other attributes for the new _f2()_ as defined the old _f2()_.
 

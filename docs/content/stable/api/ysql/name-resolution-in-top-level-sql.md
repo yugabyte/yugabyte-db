@@ -107,7 +107,7 @@ The name resolution algorithm is specified to execute thus:
 The test shows that the _pg_catalog_ schema is understood, implicitly, to be to the left of everything that _search_path_ specifies when the _search_path_ doesn't mention this explicitly—in other words, the _effective_ path always includes _pg_catalog_.
 
 {{< note title="The algorithm needs to be more precisely stated to be properly general." >}}
-For example, the context of the use of the unqualified identifier might establish the fact that the match must be a function. In this case, the search is satisfied only by finding a function with the matching name _and_ with the correct [subprogram_signature](../../syntax_resources/grammar_diagrams/#subprogram-signature).
+For example, the context of the use of the unqualified identifier might establish the fact that the match must be a function. In this case, the search is satisfied only by finding a function with the matching name _and_ with the correct [subprogram_signature](../syntax_resources/grammar_diagrams/#subprogram-signature).
 {{< /note >}}
 
 You might wonder if you could tell name resolution never to try to resolve an unqualified identifier but, rather, simply to fail by not finding the object whose name is denoted. But there's no syntax for this. You might be tempted to try this:
