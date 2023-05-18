@@ -417,19 +417,32 @@ public class TestPrepareExecute extends BaseCQLTest {
     assertEquals("Row[a, 1, NULL]", row.toString());
 
     // Run a new "application" = new driver instance = new cluster object & connection.
-    try (Session s3 = connectWithTestDefaults().getSession()) {
-      s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
-      prepared = s3.prepare(insertStmt);
-      assertEquals(3, prepared.getVariables().size());
-      assertEquals("map<int, int>", prepared.getVariables().getType(2).toString());
+    // The cached schema can be updated after several seconds.
+    final long startTimeMs = System.currentTimeMillis();
+    boolean schemaIsUpdated = false;
+    while (!schemaIsUpdated && (System.currentTimeMillis() - startTimeMs) < 60000) {
+      try (Session s3 = connectWithTestDefaults().getSession()) {
+        s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
+        prepared = s3.prepare(insertStmt);
+        assertEquals(3, prepared.getVariables().size());
+        final String typeName = prepared.getVariables().getType(2).toString();
 
-      // Ensure the new driver instance knows the new column.
-      s3.execute(prepared.bind(new String("a"), new Integer(1),
-          new HashMap<Integer, Integer>() {{ put(9, 9); }}));
-      row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
-      assertEquals(3, row.getColumnDefinitions().size());
-      assertEquals("Row[a, 1, {9=9}]", row.toString());
+        if (typeName.equals("map<int, int>")) {
+          schemaIsUpdated = true;
+          // Ensure the new driver instance knows the new column.
+          s3.execute(prepared.bind(new String("a"), new Integer(1),
+              new HashMap<Integer, Integer>() {{ put(9, 9); }}));
+          row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
+          assertEquals(3, row.getColumnDefinitions().size());
+          assertEquals("Row[a, 1, {9=9}]", row.toString());
+        } else {
+          LOG.warn("Got type: '" + typeName + "' Sleep...");
+          Thread.sleep(500);
+        }
+      }
     }
+
+    assertTrue(schemaIsUpdated);
   }
 
   @Test
@@ -480,18 +493,31 @@ public class TestPrepareExecute extends BaseCQLTest {
     assertEquals("Row[a, 1, 4.936E-321]", row.toString());
 
     // Run a new "application" = new driver instance = new cluster object & connection.
-    try (Session s3 = connectWithTestDefaults().getSession()) {
-      s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
-      prepared = s3.prepare(insertStmt);
-      assertEquals(3, prepared.getVariables().size());
-      assertEquals("double", prepared.getVariables().getType(2).toString());
+    // The cached schema can be updated after several seconds.
+    final long startTimeMs = System.currentTimeMillis();
+    boolean schemaIsUpdated = false;
+    while (!schemaIsUpdated && (System.currentTimeMillis() - startTimeMs) < 60000) {
+      try (Session s3 = connectWithTestDefaults().getSession()) {
+        s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
+        prepared = s3.prepare(insertStmt);
+        assertEquals(3, prepared.getVariables().size());
+        final String typeName = prepared.getVariables().getType(2).toString();
 
-      // Ensure the new driver instance knows the new column.
-      s3.execute(prepared.bind(new String("a"), new Integer(1), new Double(3.14)));
-      row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
-      assertEquals(3, row.getColumnDefinitions().size());
-      assertEquals("Row[a, 1, 3.14]", row.toString());
+        if (typeName.equals("double")) {
+          schemaIsUpdated = true;
+          // Ensure the new driver instance knows the new column.
+          s3.execute(prepared.bind(new String("a"), new Integer(1), new Double(3.14)));
+          row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
+          assertEquals(3, row.getColumnDefinitions().size());
+          assertEquals("Row[a, 1, 3.14]", row.toString());
+        } else {
+          LOG.warn("Got type: '" + typeName + "' Sleep...");
+          Thread.sleep(500);
+        }
+      }
     }
+
+    assertTrue(schemaIsUpdated);
   }
 
   protected class AlterDropAddThreadBody extends TestThreadBody {
