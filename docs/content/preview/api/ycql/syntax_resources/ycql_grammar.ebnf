@@ -4,13 +4,13 @@ column_type ::= '<type>';
 
 create_index ::= 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'IF' 'NOT' 'EXISTS' ] index_name 'ON' \
                      table_name '(' partition_key_columns ',' [ clustering_key_columns ] ')' \
-                     [ clustering_key_column_ordering ] [ covering_columns ] [ 'WHERE' index_predicate];
+                     [ index_properties ] [ covering_columns ] [ 'WHERE' index_predicate];
 
 partition_key_columns = ( index_column | '(' index_column { ',' index_column } ')' );
 
 clustering_key_columns = index_column { ',' index_column };
 
-clustering_key_column_ordering = 'WITH' 'CLUSTERING' 'ORDER' 'BY' '(' ( index_column [ ( 'ASC' | 'DESC' ) ] ) {',' ( index_column [ ( 'ASC' | 'DESC' ) ] ) } ')';
+index_properties = 'WITH' ( property_name '=' property_literal | 'CLUSTERING' 'ORDER' 'BY' '(' ( index_column [ 'ASC' | 'DESC' ] ) { ',' ( index_column [ 'ASC' | 'DESC' ] ) } ')' ) { 'AND' ( property_name '=' property_literal | 'CLUSTERING' 'ORDER' 'BY' '(' ( index_column [ 'ASC' | 'DESC' ] ) { ',' ( index_column [ 'ASC' | 'DESC' ] ) } ')') } ;
 
 index_column = column_name | jsonb_attribute;
 
