@@ -192,7 +192,8 @@ class YBInboundCall : public InboundCall {
   size_t ObjectSize() const override { return sizeof(*this); }
 
   size_t DynamicMemoryUsage() const override {
-    return InboundCall::DynamicMemoryUsage() + DynamicMemoryUsageOf(response_buf_);
+    return InboundCall::DynamicMemoryUsage() +
+           response_data_memory_usage_.load(std::memory_order_acquire);
   }
 
  protected:
@@ -221,6 +222,7 @@ class YBInboundCall : public InboundCall {
 
   // The buffers for serialized response. Set by SerializeResponseBuffer().
   RefCntBuffer response_buf_;
+  std::atomic<size_t> response_data_memory_usage_{0};
 
   ScopedTrackedConsumption consumption_;
 

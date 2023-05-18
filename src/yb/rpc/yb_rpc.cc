@@ -276,7 +276,6 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   DVLOG(4) << "Parsed YBInboundCall header: " << header_.call_id;
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
-  request_data_memory_usage_.store(call_data->size(), std::memory_order_release);
   request_data_ = std::move(*call_data);
 
   // Adopt the service/method info from the header as soon as it's available.
@@ -361,6 +360,8 @@ Status YBInboundCall::SerializeResponseBuffer(AnyMessageConstPtr response, bool 
 
   response_buf_ = VERIFY_RESULT(SerializeRequest(
       body_size, total_sidecars_size_, resp_hdr, response));
+  response_data_memory_usage_ = response_buf_.size();
+
   return Status::OK();
 }
 

@@ -163,7 +163,6 @@ Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallDat
   consumption_ = ScopedTrackedConsumption(call_tracker, call_data->size());
 
   // Parsing of CQL message is deferred to CQLServiceImpl::Handle. Just save the serialized data.
-  request_data_memory_usage_.store(call_data->size(), std::memory_order_release);
   request_data_ = std::move(*call_data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
