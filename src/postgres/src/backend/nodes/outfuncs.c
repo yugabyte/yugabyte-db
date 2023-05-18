@@ -559,7 +559,7 @@ _outYbSeqScan(StringInfo str, const YbSeqScan *node)
 	WRITE_NODE_TYPE("YBSEQSCAN");
 
 	_outScanInfo(str, (const Scan *) node);
-	WRITE_NODE_FIELD(remote.qual);
+	WRITE_NODE_FIELD(remote.quals);
 	WRITE_NODE_FIELD(remote.colrefs);
 }
 
@@ -588,9 +588,9 @@ _outIndexScan(StringInfo str, const IndexScan *node)
 	WRITE_NODE_FIELD(indexorderbyops);
 	WRITE_NODE_FIELD(indextlist);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
-	WRITE_NODE_FIELD(index_remote.qual);
+	WRITE_NODE_FIELD(index_remote.quals);
 	WRITE_NODE_FIELD(index_remote.colrefs);
-	WRITE_NODE_FIELD(rel_remote.qual);
+	WRITE_NODE_FIELD(rel_remote.quals);
 	WRITE_NODE_FIELD(rel_remote.colrefs);
 }
 
@@ -606,7 +606,7 @@ _outIndexOnlyScan(StringInfo str, const IndexOnlyScan *node)
 	WRITE_NODE_FIELD(indexorderby);
 	WRITE_NODE_FIELD(indextlist);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
-	WRITE_NODE_FIELD(remote.qual);
+	WRITE_NODE_FIELD(remote.quals);
 	WRITE_NODE_FIELD(remote.colrefs);
 }
 

@@ -374,7 +374,7 @@ typedef Scan SeqScan;
 
 typedef struct PushdownExprs
 {
-	List *qual;
+	List *quals;
 	List *colrefs;
 } PushdownExprs;
 

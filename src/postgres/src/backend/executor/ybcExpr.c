@@ -191,13 +191,13 @@ PushdownExprs *
 YbInstantiateRemoteParams(PushdownExprs *remote, EState *estate)
 {
 	PushdownExprs *result;
-	if (remote->qual == NIL)
+	if (remote->quals == NIL)
 		return NULL;
 	/* Make new instance for the scan state. */
 	result = (PushdownExprs *) palloc(sizeof(PushdownExprs));
 	/* Store mutated list of expressions. */
-	result->qual = (List *)
-		YbExprInstantiateParams((Expr *) remote->qual, estate);
+	result->quals = (List *)
+		YbExprInstantiateParams((Expr *) remote->quals, estate);
 	/*
 	 * Column references are not modified by the executor, so it is OK to copy
 	 * the reference.
