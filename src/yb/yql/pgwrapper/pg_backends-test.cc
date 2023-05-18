@@ -47,6 +47,11 @@ class PgBackendsTest : public LibPqTestBase {
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     conn_ = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB("yugabyte")));
+
+    const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(conn_.get(), "yugabyte"));
+    catalog_version_db_oid_ = ASSERT_RESULT(conn_->FetchValue<PGOid>(Format(
+        "SELECT db_oid FROM pg_yb_catalog_version "
+        "WHERE db_oid in ($0, 1) ORDER BY db_oid DESC LIMIT 1", yugabyte_db_oid)));
   }
 
   int GetNumMasters() const override {
@@ -86,6 +91,8 @@ class PgBackendsTest : public LibPqTestBase {
   }
 
  protected:
+  PgOid catalog_version_db_oid_ = kPgInvalidOid;
+
   void BumpCatalogVersion(int num_versions) {
     BumpCatalogVersion(num_versions, conn_.get());
   }
@@ -100,8 +107,11 @@ class PgBackendsTest : public LibPqTestBase {
     return GetCatalogVersion(conn_.get());
   }
   Result<uint64_t> GetCatalogVersion(PGConn* conn) {
-    return VERIFY_RESULT(conn->FetchValue<PGUint64>(
-        "SELECT current_version FROM pg_yb_catalog_version"));
+    // The use of catalog_version_db_oid_ makes the query work for both global catalog version
+    // mode and per-db catalog version mode. We assume conn is connected to database 'yugabyte'.
+    return conn->FetchValue<PGUint64>(
+        Format("SELECT current_version FROM pg_yb_catalog_version WHERE "
+               "db_oid = $0", catalog_version_db_oid_));
   }
 
   Result<std::string> GetJobs(ExternalMaster* master = nullptr) {
@@ -609,14 +619,16 @@ Status PgBackendsTestRf3::TestConcurrentAlterFunc(
             LOG(INFO) << "Thread " << i << " sleeping for " << sleep_sec << "s";
             ASSERT_OK(conn.FetchFormat("SELECT pg_sleep($0)", sleep_sec));
             // Selecting directly from pg_yb_catalog_version will always make a master RPC, so it is
-            // the "true" version.
+            // the "true" version. The use of catalog_version_db_oid_ makes the query work for both
+            // global catalog version mode and per-db catalog version mode. We assume conn is
+            // connected to database 'yugabyte'.
             Status s = conn.ExecuteFormat(
                 "INSERT INTO $0"
                 " SELECT $1, v.current_version, yb_pg_stat_get_backend_catalog_version(beid), $2(),"
                 " $3"
                 " FROM pg_yb_catalog_version v, pg_stat_get_backend_idset() beid"
-                " WHERE pg_stat_get_backend_pid(beid) = pg_backend_pid()",
-                kTableName, i, kFuncName, sleep_sec);
+                " WHERE pg_stat_get_backend_pid(beid) = pg_backend_pid() AND db_oid = $4",
+                kTableName, i, kFuncName, sleep_sec, catalog_version_db_oid_);
             if (should_fail && !s.ok()) {
               LOG(INFO) << "Found failure on thread " << i;
               stop.store(true, std::memory_order_release);
@@ -651,9 +663,8 @@ Status PgBackendsTestRf3::TestConcurrentAlterFunc(
               "CREATE OR REPLACE FUNCTION should cause catalog version bump");
   }
 
+  thread_holder.Stop();
   if (VLOG_IS_ON(1)) {
-    thread_holder.Stop();
-
     PGResultPtr res = VERIFY_RESULT(conn_->FetchFormat(
         "SELECT * FROM $0 ORDER BY true_version ASC, backend_version ASC, func_version ASC",
         kTableName));
