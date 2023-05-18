@@ -629,13 +629,23 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 Data: []models.NodeData{},
         }
         tabletServersFuture := make(chan helpers.TabletServersFuture)
+        clusterConfigFuture := make(chan helpers.ClusterConfigFuture)
         go helpers.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
+        go helpers.GetClusterConfigFuture(helpers.HOST, clusterConfigFuture)
         tabletServersResponse := <-tabletServersFuture
         if tabletServersResponse.Error != nil {
                 return ctx.String(http.StatusInternalServerError,
                         tabletServersResponse.Error.Error())
         }
-
+        // Use the cluster config API to get the read-replica (If any) placement UUID
+        clusterConfigResponse := <-clusterConfigFuture
+        readReplicaUuid := ""
+        if clusterConfigResponse.Error == nil {
+                for _, replica := range clusterConfigResponse.
+                                             ClusterConfig.ReplicationInfo.ReadReplicas {
+                        readReplicaUuid = replica.PlacementUuid
+                }
+        }
         mastersFuture := make(chan helpers.MastersFuture)
         go helpers.GetMastersFuture(helpers.HOST, mastersFuture)
 
@@ -675,7 +685,12 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
         }
         currentTime := time.Now().UnixMicro()
         hostToUuid, errHostToUuidMap := helpers.GetHostToUuidMap(helpers.HOST)
-        for _, obj := range tabletServersResponse.Tablets {
+        for placementUuid, obj := range tabletServersResponse.Tablets {
+                // Cross check the placement UUID of the node with that of read-replica cluster
+                isReadReplica := false
+                if readReplicaUuid == placementUuid {
+                        isReadReplica = true
+                }
                 for hostport, nodeData := range obj {
                         host, _, err := net.SplitHostPort(hostport)
                         // If we can split hostport, just use host as name.
@@ -764,6 +779,7 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                                 IsNodeUp:        nodeData.Status == "ALIVE",
                                 IsMaster:        true,
                                 IsTserver:       true,
+                                IsReadReplica:   isReadReplica,
                                 IsMasterUp:      isMasterUp,
                                 IsBootstrapping: isBootstrapping,
                                 Metrics: models.NodeDataMetrics{
