@@ -1856,7 +1856,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 }
 
 /*
- * ybSetupScanQual
+ * ybSetupScanQuals
  *
  * Add remote filter expressions to the YbScanDesc.
  * The expression are pushed down to DocDB and used to filter rows early to
@@ -1867,10 +1867,10 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
  * For primary key scan or sequential scan is_primary should be true.
  */
 static void
-ybSetupScanQual(YbScanDesc ybScan, List *qual, bool is_primary)
+ybSetupScanQuals(YbScanDesc ybScan, List *quals, bool is_primary)
 {
 	ListCell   *lc;
-	foreach(lc, qual)
+	foreach(lc, quals)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
 		/* Create new PgExpr wrapper for the expression */
@@ -2001,14 +2001,14 @@ ybcBeginScan(Relation relation,
 		*/
 		if (rel_remote != NULL)
 		{
-			ybSetupScanQual(ybScan, rel_remote->qual, true /* is_primary */);
+			ybSetupScanQuals(ybScan, rel_remote->quals, true /* is_primary */);
 			ybSetupScanColumnRefs(ybScan, rel_remote->colrefs,
 								  true /* is_primary */);
 		}
 
 		if (idx_remote != NULL)
 		{
-			ybSetupScanQual(ybScan, idx_remote->qual, false /* is_primary */);
+			ybSetupScanQuals(ybScan, idx_remote->quals, false /* is_primary */);
 			ybSetupScanColumnRefs(ybScan, idx_remote->colrefs,
 								  false /* is_primary */);
 		}

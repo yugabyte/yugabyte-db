@@ -464,8 +464,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				YbSeqScan    *splan = (YbSeqScan *) plan;
 
 				splan->scan.scanrelid += rtoffset;
-				splan->remote.qual =
-					fix_scan_list(root, splan->remote.qual, rtoffset);
+				splan->remote.quals =
+					fix_scan_list(root, splan->remote.quals, rtoffset);
 				splan->scan.plan.targetlist =
 					fix_scan_list(root, splan->scan.plan.targetlist, rtoffset);
 				splan->scan.plan.qual =
@@ -496,11 +496,11 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					fix_scan_list(root, splan->scan.plan.targetlist, rtoffset);
 				splan->scan.plan.qual =
 					fix_scan_list(root, splan->scan.plan.qual, rtoffset);
-				splan->rel_remote.qual =
-					fix_scan_list(root, splan->rel_remote.qual, rtoffset);
-				splan->index_remote.qual = (List *)
+				splan->rel_remote.quals =
+					fix_scan_list(root, splan->rel_remote.quals, rtoffset);
+				splan->index_remote.quals = (List *)
 					fix_upper_expr(root,
-								   (Node *) splan->index_remote.qual,
+								   (Node *) splan->index_remote.quals,
 								   index_itlist,
 								   INDEX_VAR,
 								   rtoffset);
@@ -1066,9 +1066,9 @@ set_indexonlyscan_references(PlannerInfo *root,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset);
-	plan->remote.qual = (List *)
+	plan->remote.quals = (List *)
 		fix_upper_expr(root,
-					   (Node *) plan->remote.qual,
+					   (Node *) plan->remote.quals,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset);
