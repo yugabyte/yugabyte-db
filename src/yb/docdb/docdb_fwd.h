@@ -45,6 +45,7 @@ class PgsqlWriteOperation;
 class QLWriteOperation;
 class RedisWriteOperation;
 class ScanChoices;
+class SchemaPackingProvider;
 class SharedLockManager;
 class TransactionStatusCache;
 class WaitQueue;
