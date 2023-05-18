@@ -13,7 +13,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../ysql-gorm/" class="nav-link active">
+    <a href="../ysql-laravel/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       Laravel ORM
     </a>
@@ -31,7 +31,7 @@ This tutorial assumes that you have:
 - YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
 - PHP 7.3+
 - Laravel 8.40+
-- Composer (Depedency Manager for PHP)
+- Composer (Dependency Manager for PHP)
 
 ## Clone the "orm-examples" repository
 
