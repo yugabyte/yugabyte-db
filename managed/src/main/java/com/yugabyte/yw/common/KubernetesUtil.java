@@ -184,7 +184,7 @@ public class KubernetesUtil {
       Map<String, String> azConfig,
       boolean newNamingStyle,
       boolean isReadOnlyCluster) {
-    String namespace = azConfig.get("KUBENAMESPACE");
+    String namespace = azConfig != null ? azConfig.get("KUBENAMESPACE") : "";
     if (StringUtils.isBlank(namespace)) {
       int suffixLen = isMultiAZ ? azName.length() + 1 : 0;
       // Avoid using "-readcluster" so user has more room for

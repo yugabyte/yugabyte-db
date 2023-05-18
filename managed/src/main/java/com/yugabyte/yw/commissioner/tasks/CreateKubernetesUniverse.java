@@ -57,6 +57,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
   @Override
   public void run() {
+    Throwable th = null;
     try {
       if (isFirstTry()) {
         // Verify the task params.
@@ -205,14 +206,16 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       }
 
       createConfigureUniverseTasks(primaryCluster);
-
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      th = t;
       throw t;
     } finally {
+      updateYBUniverseStatus(getUniverse(), th);
       unlockUniverseForUpdate();
+      updateYBUniverseStatusAfterUnlock();
     }
     log.info("Finished {} task.", getName());
   }

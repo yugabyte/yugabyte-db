@@ -51,6 +51,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   @Override
   public void run() {
+    Throwable th = null;
     try {
       checkUniverseVersion();
       // Verify the task params.
@@ -153,9 +154,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      th = t;
       throw t;
     } finally {
+      updateYBUniverseStatus(getUniverse(), th);
       unlockUniverseForUpdate();
+      updateYBUniverseStatusAfterUnlock();
     }
     log.info("Finished {} task.", getName());
   }

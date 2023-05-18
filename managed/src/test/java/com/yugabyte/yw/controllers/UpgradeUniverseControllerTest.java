@@ -277,7 +277,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
-    assertBadRequest(result, "Missing required creator property");
+    assertBadRequest(result, "Invalid Yugabyte software version: null");
 
     ArgumentCaptor<SoftwareUpgradeParams> argCaptor =
         ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
