@@ -1324,7 +1324,7 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
 }
 
 Status PrimitiveValue::DecodeToQLValuePB(
-    const Slice& rocksdb_slice, const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_value) {
+    const Slice& rocksdb_slice, DataType data_type, QLValuePB* ql_value) {
 
   RSTATUS_DCHECK(!rocksdb_slice.empty(), Corruption, "Cannot decode a value from an empty slice");
   Slice slice(rocksdb_slice);
@@ -1339,7 +1339,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
 
     case ValueEntryType::kFalse: FALLTHROUGH_INTENDED;
     case ValueEntryType::kTrue:
-      if (ql_type->main() != DataType::BOOL) {
+      if (data_type != DataType::BOOL) {
         break;
       }
       ql_value->set_bool_value(IsTrue(value_type));
@@ -1353,13 +1353,13 @@ Status PrimitiveValue::DecodeToQLValuePB(
             value_type, slice.size());
       }
       int32_t int32_val = BigEndian::Load32(slice.data());
-      if (ql_type->main() == DataType::INT8) {
+      if (data_type == DataType::INT8) {
         ql_value->set_int8_value(static_cast<int8_t>(int32_val));
-      } else if (ql_type->main() == DataType::INT16) {
+      } else if (data_type == DataType::INT16) {
         ql_value->set_int16_value(static_cast<int16_t>(int32_val));
-      } else if (ql_type->main() == DataType::INT32) {
+      } else if (data_type == DataType::INT32) {
         ql_value->set_int32_value(int32_val);
-      } else if (ql_type->main() == DataType::FLOAT) {
+      } else if (data_type == DataType::FLOAT) {
         ql_value->set_float_value(bit_cast<float>(int32_val));
       } else {
         break;
@@ -1375,9 +1375,9 @@ Status PrimitiveValue::DecodeToQLValuePB(
             value_type, slice.size());
       }
       uint32_t uint32_val = BigEndian::Load32(slice.data());
-      if (ql_type->main() == DataType::UINT32) {
+      if (data_type == DataType::UINT32) {
         ql_value->set_uint32_value(uint32_val);
-      } else if (ql_type->main() == DataType::DATE) {
+      } else if (data_type == DataType::DATE) {
         ql_value->set_date_value(uint32_val);
       } else {
         break;
@@ -1393,11 +1393,11 @@ Status PrimitiveValue::DecodeToQLValuePB(
             value_type, slice.size());
       }
       int64_t int64_val = BigEndian::Load64(slice.data());
-      if (ql_type->main() == DataType::INT64) {
+      if (data_type == DataType::INT64) {
         ql_value->set_int64_value(int64_val);
-      } else if (ql_type->main() == DataType::TIME) {
+      } else if (data_type == DataType::TIME) {
         ql_value->set_time_value(int64_val);
-      } else if (ql_type->main() == DataType::DOUBLE) {
+      } else if (data_type == DataType::DOUBLE) {
         ql_value->set_double_value(bit_cast<double>(int64_val));
       } else {
         break;
@@ -1410,7 +1410,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
             value_type, slice.size());
       }
-      if (ql_type->main() != DataType::UINT64) {
+      if (data_type != DataType::UINT64) {
         break;
       }
 
@@ -1423,7 +1423,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
       util::Decimal decimal;
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(decimal.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
-      if (ql_type->main() != DataType::DECIMAL) {
+      if (data_type != DataType::DECIMAL) {
         break;
       }
 
@@ -1437,7 +1437,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
       util::VarInt varint;
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(varint.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
-      if (ql_type->main() != DataType::VARINT) {
+      if (data_type != DataType::VARINT) {
         break;
       }
 
@@ -1451,7 +1451,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
             value_type, slice.size());
       }
       Timestamp timestamp_val = Timestamp(BigEndian::Load64(slice.data()));
-      if (ql_type->main() == DataType::TIMESTAMP) {
+      if (data_type == DataType::TIMESTAMP) {
         ql_value->set_timestamp_value(timestamp_val.ToInt64());
       } else {
         break;
@@ -1461,9 +1461,9 @@ Status PrimitiveValue::DecodeToQLValuePB(
 
     case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
     case ValueEntryType::kString:
-      if (ql_type->main() == DataType::STRING) {
+      if (data_type == DataType::STRING) {
         ql_value->set_string_value(slice.cdata(), slice.size());
-      } else if (ql_type->main() == DataType::BINARY) {
+      } else if (data_type == DataType::BINARY) {
         ql_value->set_binary_value(slice.cdata(), slice.size());
       } else {
         break;
@@ -1480,7 +1480,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
       Slice slice_temp(slice.data(), slice.size());
       InetAddress inetaddress_val;
       RETURN_NOT_OK(inetaddress_val.FromSlice(slice_temp));
-      if (ql_type->main() != DataType::INET) {
+      if (data_type != DataType::INET) {
         break;
       }
 
@@ -1496,9 +1496,9 @@ Status PrimitiveValue::DecodeToQLValuePB(
             slice.size(), kUuidSize);
       }
       Uuid uuid = VERIFY_RESULT(Uuid::FromComparable(slice));
-      if (ql_type->main() == DataType::UUID) {
+      if (data_type == DataType::UUID) {
         QLValue::set_uuid_value(uuid, ql_value);
-      } else if (ql_type->main() == DataType::TIMEUUID) {
+      } else if (data_type == DataType::TIMEUUID) {
         QLValue::set_timeuuid_value(uuid, ql_value);
       } else {
         break;
@@ -1515,7 +1515,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
       int64_t jsonb_flags = BigEndian::Load64(slice.data());
       slice.remove_prefix(sizeof(jsonb_flags));
 
-      if (ql_type->main() != DataType::JSONB) {
+      if (data_type != DataType::JSONB) {
         break;
       }
 
@@ -1546,7 +1546,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
 
   RSTATUS_DCHECK(
       false, Corruption, "Wrong value type $0 in $1 OR unsupported datatype $2",
-      value_type, rocksdb_slice.ToDebugHexString(), ql_type->main());
+      value_type, rocksdb_slice.ToDebugHexString(), data_type);
 }
 
 POD_FACTORY(Double, double);

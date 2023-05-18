@@ -709,11 +709,9 @@ void IntentAwareIterator::DebugDump() {
   LOG(INFO) << "iter_.Valid(): " << iter_.Valid();
   if (iter_.Valid()) {
     LOG(INFO) << "iter_.key(): " << DebugDumpKeyToStr(iter_.key());
-  } else {
-    if (!iter_.status().ok()) {
-      LOG(INFO) << "iter_.status(): " << AsString(iter_.status());
-      HandleStatus(iter_.status());
-    }
+  } else if (!iter_.status().ok()) {
+    LOG(INFO) << "iter_.status(): " << AsString(iter_.status());
+    HandleStatus(iter_.status());
   }
   if (intent_iter_.Initialized()) {
     LOG(INFO) << "intent_iter_.Valid(): " << intent_iter_.Valid();

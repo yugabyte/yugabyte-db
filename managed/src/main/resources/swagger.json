@@ -25,7 +25,7 @@
         },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
-          "enum" : [ "EXISTING", "NEW" ],
+          "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
           "readOnly" : true,
           "type" : "string"
         }
@@ -1508,7 +1508,7 @@
         },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
-          "enum" : [ "EXISTING", "NEW" ],
+          "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
           "readOnly" : true,
           "type" : "string"
         }
@@ -4377,7 +4377,7 @@
         },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
-          "enum" : [ "EXISTING", "NEW" ],
+          "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -8886,6 +8886,18 @@
         "frequencyTimeUnit" : {
           "description" : "Time unit of frequency",
           "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
+        "incrementBacklogStatus" : {
+          "description" : "Backlog status of schedule of incremental backups arose due to conflicts",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "nextIncrementScheduleTaskTime" : {
+          "description" : "Time on which schedule is expected to run for incremental backups",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
           "type" : "string"
         },
         "nextScheduleTaskTime" : {

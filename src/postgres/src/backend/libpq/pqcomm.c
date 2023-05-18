@@ -1057,17 +1057,29 @@ pq_getbyte(void)
  *	 Same as pq_getbyte() except we don't advance the pointer.
  * --------------------------------
  */
-int
-pq_peekbyte(void)
+static int
+pq_peekbyte_impl(void)
 {
-	Assert(PqCommReadingMsg);
-
 	while (PqRecvPointer >= PqRecvLength)
 	{
 		if (pq_recvbuf())		/* If nothing in buffer, then recv some */
 			return EOF;			/* Failed to recv data */
 	}
 	return (unsigned char) PqRecvBuffer[PqRecvPointer];
+}
+
+int
+pq_peekbyte(void)
+{
+	Assert(PqCommReadingMsg);
+
+	return pq_peekbyte_impl();
+}
+
+int
+yb_pq_peekbyte_no_msg_reading_status_check(void)
+{
+	return pq_peekbyte_impl();
 }
 
 /* --------------------------------

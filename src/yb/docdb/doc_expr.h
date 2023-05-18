@@ -22,11 +22,6 @@ class DocExprExecutor : public qlexpr::QLExprExecutor {
   DocExprExecutor();
   virtual ~DocExprExecutor();
 
-  // Evaluate column reference.
-  Status EvalColumnRef(ColumnIdRep col_id,
-                       const qlexpr::QLTableRow* table_row,
-                       qlexpr::QLExprResultWriter result_writer) override;
-
   // Evaluate call to tablet-server builtin operator.
   Status EvalTSCall(const QLBCallPB& ql_expr,
                     const qlexpr::QLTableRow& table_row,
@@ -34,7 +29,7 @@ class DocExprExecutor : public qlexpr::QLExprExecutor {
                     const Schema *schema = nullptr) override;
 
   Status EvalTSCall(const PgsqlBCallPB& ql_expr,
-                    const qlexpr::QLTableRow& table_row,
+                    const dockv::PgTableRow& table_row,
                     QLValuePB *result,
                     const Schema *schema) override;
 
@@ -46,14 +41,13 @@ class DocExprExecutor : public qlexpr::QLExprExecutor {
   template <class Val>
   Status EvalSum(const Val& val, Val *aggr_sum);
 
-  template <class Expr, class Val, class Extractor>
+  template <class Expr, class Row, class Val, class Extractor>
   Status EvalSumInt(
-      const Expr& expr, const qlexpr::QLTableRow& table_row, Val *aggr_sum,
-      const Extractor& extractor);
+      const Expr& expr, const Row& table_row, Val *aggr_sum, const Extractor& extractor);
 
-  template <class Expr, class Val, class Extractor, class Setter>
+  template <class Expr, class Row, class Val, class Extractor, class Setter>
   Status EvalSumReal(
-      const Expr& expr, const qlexpr::QLTableRow& table_row, Val *aggr_sum,
+      const Expr& expr, const Row& table_row, Val *aggr_sum,
       const Extractor& extractor, const Setter& setter);
 
   template <class Val>
@@ -69,7 +63,6 @@ class DocExprExecutor : public qlexpr::QLExprExecutor {
                                          const qlexpr::QLTableRow& table_row,
                                          const Schema *schema);
 
-  virtual Status GetTupleId(QLValuePB *result) const;
   std::vector<qlexpr::QLExprResult> aggr_result_;
 };
 

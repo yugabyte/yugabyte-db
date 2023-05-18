@@ -306,7 +306,7 @@ Result<bool> WriteQuery::PrepareExecute() {
 
 Status WriteQuery::InitExecute(ExecuteMode mode) {
   auto tablet = VERIFY_RESULT(tablet_safe());
-  scoped_read_operation_ = tablet->CreateNonAbortableScopedRWOperation();
+  scoped_read_operation_ = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   if (!scoped_read_operation_.ok()) {
     return MoveStatus(scoped_read_operation_);
   }
@@ -652,7 +652,7 @@ Status WriteQuery::DoCompleteExecute() {
       : docdb::InitMarkerBehavior::kOptional;
   for (;;) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
-        doc_ops_, deadline(), real_read_time, tablet->doc_db(),
+        doc_ops_, deadline(), real_read_time, tablet->doc_db(), scoped_read_operation_,
         request().mutable_write_batch(), init_marker_behavior,
         tablet->monotonic_counter(), &restart_read_ht_,
         tablet->metadata()->table_name()));

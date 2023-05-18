@@ -17,7 +17,8 @@
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<!-- Custom properties -->
 		<skipTests>false</skipTests>
-		<platformDependenciesOnly>false</platformDependenciesOnly>
+		<skipPrepare>false</skipPrepare>
+		<skipLocalRelease>true</skipLocalRelease>
 		<!-- Default version -->
 		<source.version>1.8</source.version>
 		<target.version>1.8</target.version>
@@ -37,6 +38,24 @@
 	<modules>
 		<module>../node-agent</module>
 	</modules>
+
+	<profiles>
+		<profile>
+			<id>buildDependenciesOnly</id>
+			<properties>
+				<skipPrepare>false</skipPrepare>
+				<skipLocalRelease>true</skipLocalRelease>
+				<skipTests>true</skipTests>
+			</properties>
+		</profile>
+		<profile>
+			<id>releaseLocally</id>
+			<properties>
+				<skipPrepare>true</skipPrepare>
+				<skipLocalRelease>false</skipLocalRelease>
+			</properties>
+		</profile>
+	</profiles>
 
 	<dependencyManagement>
 		<dependencies>

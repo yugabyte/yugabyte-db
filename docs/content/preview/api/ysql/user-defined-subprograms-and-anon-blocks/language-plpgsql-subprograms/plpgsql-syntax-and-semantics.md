@@ -8,7 +8,6 @@ menu:
     identifier: plpgsql-syntax-and-semantics
     parent: language-plpgsql-subprograms
     weight: 20
-aliases:
 type: docs
 ---
 

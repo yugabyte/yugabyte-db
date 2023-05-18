@@ -12,9 +12,9 @@
 //
 
 #include "yb/docdb/doc_rowwise_iterator.h"
-#include <iterator>
 
 #include <cstdint>
+#include <iterator>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -46,8 +46,8 @@ using std::string;
 DEFINE_RUNTIME_bool(ysql_use_flat_doc_reader, true,
     "Use DocDBTableReader optimization that relies on having at most 1 subkey for YSQL.");
 
-DEFINE_test_flag(int32, fetch_next_delay_ms, 0,
-                 "Amount of time to delay inside FetchNext");
+DEFINE_test_flag(int32, fetch_next_delay_ms, 0, "Amount of time to delay inside FetchNext");
+DEFINE_test_flag(string, fetch_next_delay_column, "", "Only delay when schema has specific column");
 
 using namespace std::chrono_literals;
 
@@ -61,12 +61,12 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
-          projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter),
-      statistics_(statistics) {}
+          projection, doc_read_context, txn_op_context, doc_db, deadline, read_time, pending_op),
+      statistics_(statistics) {
+}
 
 DocRowwiseIterator::DocRowwiseIterator(
     const dockv::ReaderProjection& projection,
@@ -75,12 +75,13 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter,
+    ScopedRWOperation&& pending_op,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter),
-      statistics_(statistics) {}
+          std::move(pending_op)),
+      statistics_(statistics) {
+}
 
 DocRowwiseIterator::~DocRowwiseIterator() = default;
 
@@ -189,11 +190,18 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     return false;
   }
 
+  RETURN_NOT_OK(pending_op_ref_.GetAbortedStatus());
+
   if (PREDICT_FALSE(FLAGS_TEST_fetch_next_delay_ms > 0)) {
-    YB_LOG_EVERY_N_SECS(INFO, 1)
-        << "Delaying read for " << FLAGS_TEST_fetch_next_delay_ms << " ms"
-        << ", schema column names: " << AsString(doc_read_context_.schema.column_names());
-    SleepFor(FLAGS_TEST_fetch_next_delay_ms * 1ms);
+    const auto column_names = schema().column_names();
+    if (FLAGS_TEST_fetch_next_delay_column.empty() ||
+        std::find(column_names.begin(), column_names.end(), FLAGS_TEST_fetch_next_delay_column) !=
+            column_names.end()) {
+      YB_LOG_EVERY_N_SECS(INFO, 1)
+          << "Delaying read for " << FLAGS_TEST_fetch_next_delay_ms << " ms"
+          << ", schema column names: " << AsString(column_names);
+      SleepFor(FLAGS_TEST_fetch_next_delay_ms * 1ms);
+    }
   }
 
   for (;;) {
@@ -231,7 +239,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
 
     // e.g in cotable, row may point outside table bounds.
-    if (!dockv::DocKeyBelongsTo(key_data.key, doc_read_context_.schema)) {
+    if (!dockv::DocKeyBelongsTo(key_data.key, schema())) {
       done_ = true;
       return false;
     }
@@ -281,11 +289,11 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
           db_iter_.get(), deadline_, &projection_, table_type_,
-          doc_read_context_.schema_packing_storage);
+          schema_packing_storage());
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
           VERIFY_RESULT(GetTableTombstoneTime(doc_key))));
       if (!ignore_ttl_) {
-        doc_reader_->SetTableTtl(doc_read_context_.schema);
+        doc_reader_->SetTableTtl(schema());
       }
     }
 
@@ -384,13 +392,14 @@ Status DocRowwiseIterator::FillRow(
   }
 
   DVLOG_WITH_FUNC(4) << "subdocument: " << AsString(*row_);
+  const auto& schema = this->schema();
   for (const auto& column : projection.value_columns()) {
     const auto* source = row_->GetChild(column.subkey);
     if (!source) {
       continue;
     }
     auto& dest = table_row->AllocColumn(column.id);
-    source->ToQLValuePB(column.type, &dest.value);
+    source->ToQLValuePB(VERIFY_RESULT_REF(schema.column_by_id(column.id)).type(), &dest.value);
     dest.ttl_seconds = source->GetTtl();
     if (source->IsWriteTimeSet()) {
       dest.write_time = source->GetWriteTime();

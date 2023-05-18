@@ -12,8 +12,12 @@ menu:
 aliases:
   - /preview/api/ysql/commands/
 type: indexpage
+cascade:
+  rightNav:
+    hideH4: true
 ---
-The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by catagory.
+
+The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by category.
 
 ## Data definition language (DDL)
 
@@ -77,7 +81,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | Statement | Description |
 | :-------- | :---------- |
 | [`DELETE`](dml_delete/) | Delete rows from a table |
-| [`INSERT`](dml_insert) | Insert rows into a table |
+| [`INSERT`](dml_insert/) | Insert rows into a table |
 | [`SELECT`](dml_select/) | Select rows from a table |
 | [`UPDATE`](dml_update/) | Update rows in a table |
 

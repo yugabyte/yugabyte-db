@@ -134,7 +134,7 @@ namespace {
 internal::BatcherPtr CreateBatcher(const YBSession::BatcherConfig& config) {
   auto batcher = std::make_shared<internal::Batcher>(
       config.client, config.session.lock(), config.transaction, config.read_point(),
-      config.force_consistent_read);
+      config.force_consistent_read, config.leader_term);
   batcher->SetRejectionScoreSource(config.rejection_score_source);
   return batcher;
 }

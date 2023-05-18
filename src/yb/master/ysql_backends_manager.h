@@ -276,12 +276,8 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   typedef YsqlBackendsManager::DbVersion DbVersion;
 
   BackendsCatalogVersionJob(
-      Master* master,
-      ThreadPool* callback_pool,
-      PgOid database_oid,
-      Version target_version)
-      : start_timestamp_(MonoTime::Now()),
-        master_(master),
+      Master* master, ThreadPool* callback_pool, PgOid database_oid, Version target_version)
+      : master_(master),
         callback_pool_(callback_pool),
         state_cv_(&state_mutex_),
         database_oid_(database_oid),
@@ -297,12 +293,7 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
     return server::MonitoredTaskType::kBackendsCatalogVersion;
   }
   std::string type_name() const override { return "Backends Catalog Version"; }
-  MonoTime start_timestamp() const override { return start_timestamp_; }
-  MonoTime completion_timestamp() const override { return completion_timestamp_; }
   std::string description() const override;
-  server::MonitoredTaskState state() const override {
-    return state_.load(std::memory_order_acquire);
-  }
   server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override
       EXCLUDES(mutex_);
   bool CompareAndSwapState(server::MonitoredTaskState old_state,
@@ -348,13 +339,6 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   std::string LogPrefix() const;
 
  private:
-  // task vars
-  const MonoTime start_timestamp_;
-  // No need to guard completion_timestamp_ with mutex because it can only be set once in
-  // CompareAndSwapState.
-  MonoTime completion_timestamp_;
-  std::atomic<server::MonitoredTaskState> state_{server::MonitoredTaskState::kWaiting};
-
   // dependency vars
   Master* master_;
   ThreadPool* callback_pool_;

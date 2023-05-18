@@ -506,6 +506,31 @@ SocketBackend(StringInfo inBuf)
 	{
 		if (pq_getmessage(inBuf, 0))
 			return EOF;			/* suitable message already logged */
+		if (IsYugaByteEnabled())
+		{
+			switch(qtype)
+			{
+				case 'E':
+					switch (yb_pg_batch_detection_mechanism)
+					{
+						case ASSUME_ALL_BATCH_EXECUTIONS:
+							YbSetIsBatchedExecution(true);
+							break;
+						case DETECT_BY_PEEKING:
+							if (!YbIsBatchedExecution() && 
+								yb_pq_peekbyte_no_msg_reading_status_check() != 
+									'S')
+								YbSetIsBatchedExecution(true);
+							break;
+					}
+					break;
+				case 'S':
+					YbSetIsBatchedExecution(false);
+					break;
+				default:
+					break;
+			}
+		}
 	}
 	else
 		pq_endmsgread();
@@ -529,7 +554,9 @@ ReadCommand(StringInfo inBuf)
 	if (whereToSendOutput == DestRemote)
 		result = SocketBackend(inBuf);
 	else
+	{
 		result = InteractiveBackend(inBuf);
+	}
 	return result;
 }
 

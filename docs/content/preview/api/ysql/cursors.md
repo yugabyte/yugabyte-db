@@ -8,7 +8,6 @@ menu:
     identifier: cursors
     parent: api-ysql
     weight: 50
-aliases:
 type: docs
 ---
 
@@ -42,11 +41,11 @@ where pid = pg_backend_pid();
 {{< note title="The internal implementation of a cursor." >}}
 &nbsp;
 
-You don't need to understand this. But it might help you to see how _cursors_ fit into the bigger picture of how  the processing of SQL statements like _select_, _values_, _insert_, _update_, and _delete_ is implemented. (These statements can all be used as the argument of the _prepare_ statement—and for this reason, they will be referred to here as _preparable_ statements.
+You don't need to understand this. But it might help you to see how _cursors_ fit into the bigger picture of how  the processing of SQL statements like _select_, _values_, _insert_, _update_, and _delete_ is implemented. (These statements can all be used as the argument of the _prepare_ statement—and for this reason, they will be referred to here as _preparable_ statements.)
 
 At the lowest level, the implementation of all of SQL processing is implemented in PostgreSQL using C. And YSQL uses the same C code. The execution of a preparable statement uses C structure(s) that hold information, in the backend server process, like the SQL statement text, its parsed representation, its execution plan, and so on. Further, when the statement is currently being executed, other information is held, like the values of actual arguments that have been bound to placeholders in the SQL text and the position of the current row in the result set (when the statement produces one). You can manipulate these internal structures, from client side code, using the _[libpq - C Library](https://www.postgresql.org/docs/11/libpq.html)_ API or, at a level of abstraction above that, the _[Embedded SQL in C](https://www.postgresql.org/docs/11/ecpg.html)_ API (a.k.a. the _ECPG_). Moreover, engineers who implement PostgreSQL itself can use the [Server Programming Interface](https://www.postgresql.org/docs/current/spi.html). These APIs have schemes that let the programmer ask for the entire result set from a _subquery_ in a single round trip. And they also have schemes that let you ask for the result set row-by-row, or in batches of a specified size. See, for example, the _libpq_ subsection [Retrieving Query Results Row-By-Row](https://www.postgresql.org/docs/11/libpq-single-row-mode.html).
 
-In a more abstract, RDBMS-independent, discussion of the SQL processing of the statements that correspond to PostgreSQL's preparable statements, the term "cursor" is used to denote these internal structures. (You'll notice this, for example, with Oracle Database.) 
+In a more abstract, RDBMS-independent, discussion of the SQL processing of the statements that correspond to PostgreSQL's preparable statements, the term "cursor" is used to denote these internal structures. (You'll notice this, for example, with Oracle Database.)
 
 But in PostgreSQL, and therefore in YSQL, a _cursor_ is a direct exposure into SQL and PL/pgSQL (as _language features_) of just a _subset_ of the internal mechanisms for the processing of preparable statements: the _values_ statement and the _select_ statement when it has no data-modifying side-effects.
 
@@ -147,7 +146,7 @@ select v from s.ten_rows;
 
 It takes about ten seconds before you see any results—and then you see all ten rows effectively instantaneously. (Use the \\_timing on_ meta-command to time it.) In other words, all ten rows were first materialized in the backend server process's memory before being passed, in a single round trip, to the application.
 
-Create another helper function to fetch one row from a _cursor_ and to return its value together with the time taken to fetch it;
+Create another helper function to fetch one row from a _cursor_ and to return its value together with the time taken to fetch it:
 
 ```plpgsql
 create function s.next_row(cur in refcursor)
@@ -213,7 +212,7 @@ Now you see the rows delivered one by one, every second. This is the result. (Bl
 
 When you execute _"select v from ten_rows"_ ordinarily using _ysqlsh_, you have to wait until the entire result set has been materialized in the memory of its backend server process before it's delivered to the client application as a unit. This incurs a memory usage cost as well as a time-delay irritation. But when you declare a _cursor_ for that _select_ statement, you materialize the results one row at a time and deliver each to the client as soon as its available. When you use this approach, no more than a single row needs ever to be concurrently materialized in the backend server process's memory.
 
-In real applications, you'll use the piecewise result set delivery that a _cursor_ supports only when the result set is vast; and you'll fetch it in batches of a suitable size: small enough that the backend server process's memory isn't over-consumed; but large enough that the round-trip time doesn't dominate the overall cost of fetching a batch. 
+In real applications, you'll use the piecewise result set delivery that a _cursor_ supports only when the result set is vast; and you'll fetch it in batches of a suitable size: small enough that the backend server process's memory isn't over-consumed; but large enough that the round-trip time doesn't dominate the overall cost of fetching a batch.
 
 ## Transactional behavior — holdable and non-holdable cursors
 
@@ -280,7 +279,7 @@ select name from pg_prepared_statements;
 Like is the case for _cursors_, an invocation of _"select count(*) from pg_prepared_statements"_, immediately after starting a session, will inevitably report that no prepared statements exist. But even when a statement is prepared within a transaction that is rolled back, it continues to exist after that until either the session ends or it is _deallocated_. (If you create a _holdable cursor_, within an on going transaction and then roll back the transaction, then it vanishes.)
 
 {{< tip title="Open a holdable cursor in its own transaction and close it as soon as you have finished using it." >}}
-When, as is the normal practice, you don't subvert the behavior that automatically commits a SQL statement that is not executed within an explicitly started transaction, you'll probably _declare_,  _move in_ and _fetch from_ a _holdable cursor_ "ordinarily"—i.e. without explicitly starting, and ending, transactions.
+When, as is the normal practice, you don't subvert the behavior that automatically commits a SQL statement that is not executed within an explicitly started transaction, you'll probably _declare_, _move in_ and _fetch from_ a _holdable cursor_ "ordinarily"-i.e. without explicitly starting, and ending, transactions.
 
 A _holdable cursor_ consumes resources because it always caches its defining _subquery_'s entire result set. Therefore (and especially in a connection-pooling scheme, you should close a _holdable cursor_ as soon as you have finished using it.
 {{< /tip >}}
@@ -424,7 +423,7 @@ Now every _fetch_ and _move_ statement succeeds. These are the results:
 
   - But if the plan can be executed only in the forward direction, then the result set must be cached if you specify _scroll_ when you create the cursor.
 
-PostgreSQL, and therefore YSQL, do not expose metadata to report whether or not a _cursor_'s result set is cached. Nor does the documentation for either RDBMS attempt to specify the rules that determine whether caching will be done. However, it's possible to reason, about certain specific _select_ statements, that their plans cannot be executed backward. For example the plan for a query that includes _row_number()_ in the _select_ list cannot be run backward because the semantics of _row_number()_ is to assign an incrementing rank to each new row in the result set as it is produced when the plan is executed in the forward direction—and the planner cannot predict how many rows will be produced to allow _row_number()_ to be calculated by decrementing from this for each successive row when the plan is run backward. (If the _select_ statement has no _order by_, then the rows are produced in _physical order_ (i.e. in an order that's determined by how the table data is stored).
+PostgreSQL, and therefore YSQL, do not expose metadata to report whether or not a _cursor_'s result set is cached. Nor does the documentation for either RDBMS attempt to specify the rules that determine whether caching will be done. However, it's possible to reason, about certain specific _select_ statements, that their plans cannot be executed backward. For example the plan for a query that includes _row_number()_ in the _select_ list cannot be run backward because the semantics of _row_number()_ is to assign an incrementing rank to each new row in the result set as it is produced when the plan is executed in the forward direction—and the planner cannot predict how many rows will be produced to allow _row_number()_ to be calculated by decrementing from this for each successive row when the plan is run backward. (If the _select_ statement has no _order by_, then the rows are produced in _physical order_ (i.e. in an order that's determined by how the table data is stored).)
 
 <a name="physical-order-cannot-be-predicted"></a>
 {{< note title="The physical order cannot be predicted." >}}
@@ -469,7 +468,6 @@ start transaction;
 
 It completes silently without error. Now do this:
 
-
 ```plpgsql
 commit;
 ```
@@ -505,7 +503,7 @@ The _fetch all_ statement brings this SQL output:
 
 Do this:
 
-```
+```plpgsql
 start transaction;
   declare cur no scroll cursor without hold for
     select pos, v from s.v where s.f(v);
@@ -518,7 +516,7 @@ start transaction;
 rollback;
 ```
 
-It's easier to distinguish the _raise info_ output and the SQL output from the statements that bring these if you save this code to, say, _t.sql_, and then execute it at the _ysqlsh_ prompt. This is what you see. 
+It's easier to distinguish the _raise info_ output and the SQL output from the statements that bring these if you save this code to, say, _t.sql_, and then execute it at the _ysqlsh_ prompt. This is what you see:
 
 ```output
 INFO:  f() invoked
@@ -543,7 +541,7 @@ Notice that the same _v_ values are paired with the same _pos_ values as with th
 
 Do this:
 
-```
+```plpgsql
 start transaction;
   declare cur scroll cursor without hold for
     select pos, v from s.v where s.f(v);
@@ -643,7 +641,7 @@ We don't see any _raise info_ output when we fetch the rows with _pos = 2_ and _
 
 It causes this output:
 
-```
+```output
 INFO:  f() invoked
 INFO:  f() invoked
 INFO:  f() invoked
@@ -691,7 +689,7 @@ rollback;
 
 It causes this output:
 
-```outpit
+```output
 INFO:  f() invoked
 INFO:  f() invoked
    4 | 10
@@ -722,7 +720,7 @@ These are the _only_ _fetch_ flavors that do not draw a warning:
 - bare _fetch_
 - _fetch :N_
 - bare _fetch forward_
--  _fetch forward :N_
+- _fetch forward :N_
 - _fetch all_
 - and _fetch forward all_
 

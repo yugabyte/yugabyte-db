@@ -8,7 +8,6 @@ menu:
     identifier: subprogram-overloading
     parent: user-defined-subprograms-and-anon-blocks
     weight: 40
-aliases:
 type: docs
 ---
 

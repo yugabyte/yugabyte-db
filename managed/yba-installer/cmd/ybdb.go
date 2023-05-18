@@ -14,6 +14,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/runner"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
 )
 
@@ -55,14 +56,19 @@ type Ybdb struct {
 	name    string
 	version string
 	ybdbDirectories
+	runStep
 }
 
 // NewYbdb creates a new ybdb service struct at installRoot with specific version.
-func NewYbdb(version string) Ybdb {
+func NewYbdb(version string, run runStep) Ybdb {
+	if run == nil {
+		run = runner.New("ybdb")
+	}
 	return Ybdb{
 		name:            "ybdb",
 		version:         version,
 		ybdbDirectories: newYbdbDirectories(),
+		runStep:         run,
 	}
 }
 
@@ -239,19 +245,36 @@ func (ybdb Ybdb) Upgrade() error {
 
 // Install ybdb and create the yugaware DB for YBA.
 func (ybdb Ybdb) Install() error {
-	config.GenerateTemplate(ybdb)
-	ybdb.extractYbdbPackage()
-	ybdb.Start()
-	ybdb.WaitForYbdbReadyOrFatal(5)
-	ybdb.createYugawareDatabase()
+	ybdb.StartSection("ybdb install")
+	defer ybdb.EndSection()
+
+	ybdb.RunStep(func() error {
+		config.GenerateTemplate(ybdb)
+		return nil
+	})
+	if err := ybdb.RunStep(ybdb.extractYbdbPackage); err != nil {
+		return err
+	}
+	if err := ybdb.RunStep(ybdb.Start); err != nil {
+		return err
+	}
+	ybdb.RunStep(func() error {
+		ybdb.WaitForYbdbReadyOrFatal(5)
+		return nil
+	})
+	if err := ybdb.RunStep(ybdb.createYugawareDatabase); err != nil {
+		return err
+	}
 	if !common.HasSudoAccess() {
-		ybdb.CreateCronJob()
+		if err := ybdb.RunStep(ybdb.CreateCronJob); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 // Install ybdb and create the yugaware DB for YBA.
-func (ybdb Ybdb) createYugawareDatabase() {
+func (ybdb Ybdb) createYugawareDatabase() error {
 	cmd := ybdb.ysqlBin
 	args := []string{
 		"-U", ybdb.getYbdbUsername(),
@@ -269,13 +292,14 @@ func (ybdb Ybdb) createYugawareDatabase() {
 	if !out.Succeeded() {
 		if strings.Contains(out.Error.Error(), "already exists") {
 			// db already existing is fine because this may be a resumed failed install
-			return
+			return nil
 		}
 		log.Fatal(fmt.Sprintf("Could not create yugaware database: %s", out.Error.Error()))
 	}
+	return nil
 }
 
-func (ybdb Ybdb) extractYbdbPackage() {
+func (ybdb Ybdb) extractYbdbPackage() error {
 	// Download stable YBDB version from download.yugabyte.com
 	// when it doesn't come packaged with yba-installer.
 	ybdbPackagePath := common.MaybeGetYbdbPackagePath()
@@ -294,6 +318,7 @@ func (ybdb Ybdb) extractYbdbPackage() {
 	userName := viper.GetString("service_username")
 	shell.Run("tar", "-zxf", ybdbPackagePath, "-C", ybdb.ybdbInstallDir, "--strip-components", "1")
 	common.Chown(ybdb.ybdbInstallDir, userName, userName, true)
+	return nil
 }
 
 func (ybdb Ybdb) WaitForYbdbReadyOrFatal(retryCount int) {
@@ -344,10 +369,10 @@ func (ybdb Ybdb) queryYsql(query string) (string, error) {
 }
 
 //TODO: Create Cron Job for non-sudo sceanrios.
-func (ybdb Ybdb) CreateCronJob() {
+func (ybdb Ybdb) CreateCronJob() error {
 	// TODO: Handle non-sudo case
 	log.Fatal("Cannot create cron job for YBDB.")
-	return
+	return nil
 }
 
 func (ybdb Ybdb) CreateBackup(backupPath ...string) {

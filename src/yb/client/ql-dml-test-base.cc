@@ -515,9 +515,9 @@ Status CheckOp(YBqlOp* op) {
   return Status::OK();
 }
 
-Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table) {
+Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table, MonoDelta timeout) {
   LOG(INFO) << "Running full scan on table " << table.name().ToString() << "...";
-  session->SetTimeout(5s * kTimeMultiplier);
+  session->SetTimeout(timeout);
   QLPagingStatePB paging_state;
   bool has_paging_state = false;
   size_t row_count = 0;

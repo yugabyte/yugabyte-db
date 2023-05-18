@@ -72,11 +72,13 @@ TTL is not applicable to transactional tables and hence is not supported in that
 
 ### Use YugabyteDB drivers
 
-Use YugabyteDB-specific [client drivers](../../develop/build-apps/) because they are cluster and partition aware and support `jsonb` columns.
+Use YugabyteDB-specific [client drivers](../../drivers-orms/) because they are cluster and partition aware and support `jsonb` columns.
 
 ### Leverage connection pooling in the YCQL client
 
-A single client (for example, a multi-threaded application) should ideally use a single cluster object. The single cluster object typically holds underneath the covers a configurable number of connections to yb-tservers. Typically 1 or 2 per TServer suffices to serve even 64-128 application threads. The same connection can be used for multiple outstanding requests, also known as multiplexing.
+A single client (for example, a multi-threaded application) should ideally use a single cluster object. The single cluster object typically holds underneath the covers a configurable number of connections to YB-TServers. Typically 1 or 2 connections per YB-TServer suffices to serve even 64-128 application threads. The same connection can be used for multiple outstanding requests, also known as multiplexing.
+
+See also [Connection pooling](https://docs.datastax.com/en/developer/java-driver/4.6/manual/core/pooling/) in the DataStax Java Driver documentation.
 
 ### Use prepared statements
 

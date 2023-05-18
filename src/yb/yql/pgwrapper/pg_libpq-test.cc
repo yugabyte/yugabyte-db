@@ -76,6 +76,8 @@ using std::string;
 
 using namespace std::literals;
 
+DEFINE_NON_RUNTIME_int32(num_iter, 10000, "Number of iterations to run StaleMasterReads test");
+
 DECLARE_int64(external_mini_cluster_max_log_bytes);
 
 METRIC_DECLARE_entity(tablet);
@@ -957,6 +959,31 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(InTxnDelete)) {
   ASSERT_OK(conn.Execute("COMMIT"));
 
   ASSERT_NO_FATALS(AssertRows(&conn, 1));
+}
+
+class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_get_ysql_catalog_version_from_sys_catalog=true");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(StaleMasterReads), PgLibPqReadFromSysCatalogTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  uint64_t ver_orig;
+  ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
+  for (int i = 1; i <= FLAGS_num_iter; i++) {
+    LOG(INFO) << "ITERATION " << i;
+    LOG(INFO) << "Creating user " << i;
+    ASSERT_OK(conn.ExecuteFormat("CREATE USER user$0", i));
+    LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
+    uint64_t ver;
+    ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver));
+    ASSERT_EQ(ver_orig + i, ver);
+  }
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {

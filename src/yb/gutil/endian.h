@@ -223,7 +223,7 @@ class BigEndian {
     UNALIGNED_STORE64(p, FromHost64(v));
   }
 
-  static uint64_t Load64VariableLength(const void* p, int len) {
+  static uint64_t Load64VariableLength(const void* p, size_t len) {
     uint64_t x = 0;
     auto buf = reinterpret_cast<char*>(&x);
     memcpy(buf + 8 - len, p, len);

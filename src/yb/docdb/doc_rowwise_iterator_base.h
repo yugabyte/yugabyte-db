@@ -47,7 +47,16 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
       const DocDB& doc_db,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      RWOperationCounter* pending_op_counter = nullptr);
+      std::reference_wrapper<const ScopedRWOperation> pending_op);
+
+  DocRowwiseIteratorBase(
+      const dockv::ReaderProjection& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      const DocDB& doc_db,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      ScopedRWOperation&& pending_op);
 
   DocRowwiseIteratorBase(
       const dockv::ReaderProjection& projection,
@@ -56,9 +65,11 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
       const DocDB& doc_db,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      RWOperationCounter* pending_op_counter = nullptr);
+      ScopedRWOperation&& pending_op);
 
   ~DocRowwiseIteratorBase() override;
+
+  void SetSchema(const Schema& schema);
 
   // Init scan iterator.
   void Init(TableType table_type, const Slice& sub_doc_key = Slice());
@@ -84,6 +95,12 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) override;
 
   void set_debug_dump(bool value) { debug_dump_ = value; }
+
+  const Schema& schema() const {
+    return *schema_;
+  }
+
+  const dockv::SchemaPackingStorage& schema_packing_storage();
 
  private:
   virtual void InitIterator(
@@ -129,11 +146,14 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   bool is_initialized_ = false;
 
+ private:
   // The schema for all columns, not just the columns we're scanning.
   const std::shared_ptr<DocReadContext> doc_read_context_holder_;
   // Used to maintain ownership of doc_read_context_.
   const DocReadContext& doc_read_context_;
+  const Schema* schema_;
 
+ protected:
   const TransactionOperationContext txn_op_context_;
 
   bool is_forward_scan_ = true;
@@ -154,7 +174,8 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   // We keep the "pending operation" counter incremented for the lifetime of this iterator so that
   // RocksDB does not get destroyed while the iterator is still in use.
-  ScopedRWOperation pending_op_;
+  ScopedRWOperation pending_op_holder_;
+  const ScopedRWOperation& pending_op_ref_;
 
   // Indicates whether we've already finished iterating.
   bool done_ = false;

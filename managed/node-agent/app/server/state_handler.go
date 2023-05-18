@@ -71,15 +71,11 @@ func HandleRestart(ctx context.Context, config *util.Config) error {
 			config.Remove(util.PlatformVersionUpdateKey)
 		}
 	} else {
+		// Continue to restart as the state in the platform is not known until it polls.
 		util.FileLogger().
 			Infof(ctx, "Node Agent was not upgraded, thus continuing the restart")
-		err := cleanUpConfigAfterIncompleteUpdate(ctx, config)
-		if err != nil {
-			util.FileLogger().Errorf(ctx, "Error in cleaning up config after restart - %s", err)
-			return err
-		}
 	}
-	// Remove previous releases and report error to retry.
+	// Remove previous releases if any and report error to retry.
 	if err := removeReleasesExceptCurrent(ctx); err != nil {
 		util.FileLogger().
 			Errorf(ctx, "Error in cleaning up the releases directory - %s", err.Error())
