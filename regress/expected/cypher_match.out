@@ -545,13 +545,282 @@ $$) AS (a agtype);
 ERROR:  multiple labels for variable 'a' are not supported
 LINE 2:  MATCH (a) MATCH (a:invalid_label) RETURN a
                          ^
---Valid variable reuse, although why would you want to do it this way?
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a:v1)-[]-()-[a]-() RETURN a
 $$) AS (a agtype);
 ERROR:  variable 'a' is for a vertex
 LINE 2:  MATCH (a:v1)-[]-()-[a]-() RETURN a
                             ^
+-- valid variable reuse for edge labels across clauses
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0]->() MATCH ()-[r0]->() RETURN r0
+$$) AS (r0 agtype);
+                                                            r0                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 2533274790395905, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685251, "properties": {}}::edge
+ {"id": 2533274790395906, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685249, "properties": {}}::edge
+(6 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0:e1]->() MATCH ()-[r0:e1]->() RETURN r0
+$$) AS (r0 agtype);
+                                                            r0                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+(2 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0:e2]->() MATCH ()-[r0:e2]->() RETURN r0
+$$) AS (r0 agtype);
+                                                            r0                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+(2 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0:e1]->()-[r1]->() RETURN r0,r1
+$$) AS (r0 agtype, r1 agtype);
+                                                            r0                                                             |                                                            r1                                                             
+---------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge | {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+(1 row)
+
+SELECT * FROM cypher('cypher_match', $$
+        MATCH p0=()-[:e1]->() MATCH p1=()-[:e2]->() RETURN p1
+$$) AS (p1 agtype);
+                                                                                                                                                  p1                                                                                                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path
+ [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path
+ [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex]::path
+ [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex]::path
+(4 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0:e1]->()-[r1]->() MATCH ()-[r0:e1]->()-[r1]->() RETURN r0,r1
+$$) AS (r0 agtype, r1 agtype);
+                                                            r0                                                             |                                                            r1                                                             
+---------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge | {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+(1 row)
+
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[]->() MATCH ()-[r1:e2]->() RETURN r1
+$$) AS (r1 agtype);
+                                                            r1                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+(12 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0:e1]->() MATCH ()-[r1:e2]->() RETURN r0,r1
+$$) AS (r0 agtype, r1 agtype);
+                                                            r0                                                             |                                                            r1                                                             
+---------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge | {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge | {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge | {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge | {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+(4 rows)
+
+-- valid variable reuse for vertex labels across clauses
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1:invalid), (r1:invalid) return r1
+$$) AS (r1 agtype);
+ r1 
+----
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1), (r1) return r1
+$$) AS (r1 agtype);
+                                                                                   r1                                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"int_key": 1, "map_key": {"key": "value"}, "list_key": [1, 2, 3], "float_key": 3.14, "string_key": "test"}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"lst": [1, null, 3.14, "string", {"key": "value"}, []]}}::vertex
+ {"id": 844424930131969, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "v", "properties": {"i": 0}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex
+ {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
+ {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+ {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+ {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex
+ {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex
+ {"id": 2251799813685249, "label": "v3", "properties": {"id": "initial"}}::vertex
+ {"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex
+ {"id": 2251799813685251, "label": "v3", "properties": {"id": "end"}}::vertex
+(14 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1:invalid), (r1) return r1
+$$) AS (r1 agtype);
+ r1 
+----
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1:invalid), (r1), (r1), (r1:invalid) return r1
+$$) AS (r1 agtype);
+ r1 
+----
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1:invalid)-[]->(r1)-[]->(r1:invalid)-[]->(r1) return r1
+$$) AS (r1 agtype);
+ r1 
+----
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1:invalid)-[]->()-[]->()-[]->(r1:invalid) return r1
+$$) AS (r1 agtype);
+ r1 
+----
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0:e1]->()-[r1]->() MATCH ()-[r0:e1]->()-[r0]->() RETURN r0
+$$) AS (r0 agtype);
+ r0 
+----
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0:e1]->() MATCH ()-[r0]->() RETURN r0
+$$) AS (r0 agtype);
+                                                            r0                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+(2 rows)
+
+-- invalid variable reuse for vertex
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1:invalid)-[]->(r1)-[]->(r1)-[]->(r1:invalids) return r1
+$$) AS (r1 agtype);
+ERROR:  multiple labels for variable 'r1' are not supported
+LINE 2:          MATCH (r1:invalid)-[]->(r1)-[]->(r1)-[]->(r1:invali...
+                                                          ^
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1:invalid)-[]->(r1)-[]->(r1)-[]->(r1)-[r1]->() return r1
+$$) AS (r1 agtype);
+ERROR:  variable 'r1' is for a vertex
+LINE 2: ...    MATCH (r1:invalid)-[]->(r1)-[]->(r1)-[]->(r1)-[r1]->() r...
+                                                             ^
+-- invalid variable reuse for labels across clauses
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1:e1), (r1:e2) return r1
+$$) AS (r1 agtype);
+ERROR:  multiple labels for variable 'r1' are not supported
+LINE 2:          MATCH (r1:e1), (r1:e2) return r1
+                                ^
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1:invalid), (r1:e2) return r1
+$$) AS (r1 agtype);
+ERROR:  multiple labels for variable 'r1' are not supported
+LINE 2:          MATCH (r1:invalid), (r1:e2) return r1
+                                     ^
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1:e1), (r1:invalid) return r1
+$$) AS (r1 agtype);
+ERROR:  multiple labels for variable 'r1' are not supported
+LINE 2:          MATCH (r1:e1), (r1:invalid) return r1
+                                ^
+SELECT * FROM cypher('cypher_match', $$
+         MATCH (r1:e1), (r1), (r1:invalid) return r1
+$$) AS (r1 agtype);
+ERROR:  multiple labels for variable 'r1' are not supported
+LINE 2:          MATCH (r1:e1), (r1), (r1:invalid) return r1
+                                      ^
+SELECT * FROM cypher('cypher_match', $$
+        MATCH (r0)-[r0]->() MATCH ()-[]->() RETURN r0
+$$) AS (r0 agtype);
+ERROR:  variable 'r0' is for a vertex
+LINE 2:         MATCH (r0)-[r0]->() MATCH ()-[]->() RETURN r0
+                           ^
+SELECT * FROM cypher('cypher_match', $$
+        MATCH (r0)-[]->() MATCH ()-[r0]->() RETURN r0
+$$) AS (r0 agtype);
+ERROR:  variable 'r0' is for a vertex
+LINE 2:         MATCH (r0)-[]->() MATCH ()-[r0]->() RETURN r0
+                                           ^
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0]->() MATCH ()-[]->(r0) RETURN r0
+$$) AS (r0 agtype);
+ERROR:  variable 'r0' is for a edge
+LINE 2:         MATCH ()-[r0]->() MATCH ()-[]->(r0) RETURN r0
+                                               ^
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0:e1]->() MATCH ()-[r0:e2]->() RETURN r0
+$$) AS (r0 agtype);
+ERROR:  multiple labels for variable 'r0' are not supported
+LINE 2:         MATCH ()-[r0:e1]->() MATCH ()-[r0:e2]->() RETURN r0
+                                              ^
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0]->() MATCH ()-[r0:e2]->() RETURN r0
+$$) AS (r0 agtype);
+ERROR:  multiple labels for variable 'r0' are not supported
+LINE 2:         MATCH ()-[r0]->() MATCH ()-[r0:e2]->() RETURN r0
+                                           ^
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0:e1]->() MATCH ()-[r0:e2]->() RETURN r0
+$$) AS (r0 agtype);
+ERROR:  multiple labels for variable 'r0' are not supported
+LINE 2:         MATCH ()-[r0:e1]->() MATCH ()-[r0:e2]->() RETURN r0
+                                              ^
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0:e1]->()-[r0]->() MATCH ()-[r0:e2]->() RETURN r0
+$$) AS (r0 agtype);
+ERROR:  duplicate edge variable 'r0' within a clause
+LINE 2:         MATCH ()-[r0:e1]->()-[r0]->() MATCH ()-[r0:e2]->() R...
+                                     ^
+SELECT * FROM cypher('cypher_match', $$
+        MATCH ()-[r0:e1]->()-[r1]->() MATCH ()-[r1:e1]->()-[r0]->() RETURN r0
+$$) AS (r0 agtype);
+ERROR:  multiple labels for variable 'r1' are not supported
+LINE 2:         MATCH ()-[r0:e1]->()-[r1]->() MATCH ()-[r1:e1]->()-[...
+                                                       ^
+-- Labels that don't exist but do match
+SELECT * FROM cypher('cypher_match', $$
+        MATCH (r0)-[r1:related]->() MATCH ()-[r1:related]->() RETURN r0
+$$) AS (r0 agtype);
+ r0 
+----
+(0 rows)
+
+-- Labels that don't exist and don't match
+SELECT * FROM cypher('cypher_match', $$
+        MATCH (r0)-[r1]->() MATCH ()-[r1:related]->() RETURN r0
+$$) AS (r0 agtype);
+ERROR:  multiple labels for variable 'r1' are not supported
+LINE 2:         MATCH (r0)-[r1]->() MATCH ()-[r1:related]->() RETURN...
+                                             ^
+SELECT * FROM cypher('cypher_match', $$
+        MATCH (r0)-[r1:related]->() MATCH ()-[r1:relateds]->() RETURN r0
+$$) AS (r0 agtype);
+ERROR:  multiple labels for variable 'r1' are not supported
+LINE 2:         MATCH (r0)-[r1:related]->() MATCH ()-[r1:relateds]->...
+                                                     ^
+--Valid variable reuse, although why would you want to do it this way?
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a:v1)-[]-()-[]-(a {id:'will_not_fail'}) RETURN a
 $$) AS (a agtype);
@@ -725,15 +994,6 @@ AS (u agtype, e agtype, v agtype);
 ------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------
  {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex | {"id": 3096224743817217, "label": "self", "end_id": 2814749767106561, "start_id": 2814749767106561, "properties": {}}::edge | {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
 (1 row)
-
--- Exists checks for a loop. There should be none because of edge uniqueness
--- requirement.
-SELECT * FROM cypher('cypher_match',
- $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(u)-[e]->(u)) RETURN u, e, v $$)
-AS (u agtype, e agtype, v agtype);
- u | e | v 
----+---+---
-(0 rows)
 
 -- Multiple exists
 SELECT * FROM cypher('cypher_match',
@@ -1770,13 +2030,13 @@ SELECT * FROM cypher('cypher_match', $$ MATCH p=(a {name: "John"})-[]->()-[]->(a
 (1 row)
 
 -- these are illegal and should fail
-SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[b]->()-[b]->(a) RETURN p $$)as (p agtype);
-ERROR:  duplicate edge variable 'b' within a clause
-LINE 1: ...ROM cypher('cypher_match', $$ MATCH p=(a)-[b]->()-[b]->(a) R...
-                                                             ^
 SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[b]->()-[b:knows]->(a) RETURN p $$)as (p agtype);
 ERROR:  duplicate edge variable 'b' within a clause
 LINE 1: ...ROM cypher('cypher_match', $$ MATCH p=(a)-[b]->()-[b:knows]-...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[b]->()-[b]->(a) RETURN p $$)as (p agtype);
+ERROR:  duplicate edge variable 'b' within a clause
+LINE 1: ...ROM cypher('cypher_match', $$ MATCH p=(a)-[b]->()-[b]->(a) R...
                                                              ^
 SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[b:knows]->()-[b:knows]->(a) RETURN p $$)as (p agtype);
 ERROR:  duplicate edge variable 'b' within a clause

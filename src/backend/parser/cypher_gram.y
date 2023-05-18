@@ -1180,6 +1180,7 @@ path_node:
             n = make_ag_node(cypher_node);
             n->name = $2;
             n->label = $3;
+            n->parsed_label = $3;
             n->props = $4;
             n->location = @1;
 
@@ -1225,6 +1226,7 @@ path_relationship_body:
             n = make_ag_node(cypher_relationship);
             n->name = $2;
             n->label = $3;
+            n->parsed_label = $3;
             n->varlen = $4;
             n->props = $5;
 
@@ -1238,6 +1240,7 @@ path_relationship_body:
             n = make_ag_node(cypher_relationship);
             n->name = NULL;
             n->label = NULL;
+            n->parsed_label = NULL;
             n->varlen = NULL;
             n->props = NULL;
 

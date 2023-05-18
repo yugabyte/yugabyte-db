@@ -142,6 +142,7 @@ typedef struct cypher_node
     ExtensibleNode extensible;
     char *name;
     char *label;
+    char *parsed_label;
     Node *props; // map or parameter
     int location;
 } cypher_node;
@@ -159,6 +160,7 @@ typedef struct cypher_relationship
     ExtensibleNode extensible;
     char *name;
     char *label;
+    char *parsed_label;
     Node *props; // map or parameter
     Node *varlen; // variable length relationships (A_Indices)
     cypher_rel_dir dir;
