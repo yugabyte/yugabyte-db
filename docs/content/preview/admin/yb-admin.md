@@ -1819,7 +1819,7 @@ yb-admin \
     wait_for_replication_drain 000033f1000030008000000000000000,200033f1000030008000000000000002 minus 1m
 ```
 
-If all streams are caught-up, the API prints `All replications are caught-up.` to the console.  
+If all streams are caught-up, the API outputs `All replications are caught-up.` to the console.  
 Otherwise, it outputs the non-caught-up streams in the following format:
 ```
 Found undrained replications:
