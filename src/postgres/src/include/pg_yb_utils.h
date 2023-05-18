@@ -483,7 +483,6 @@ extern int yb_wait_for_backends_catalog_version_timeout;
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
-extern int *YBCStatementTimeoutPtr;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -552,6 +551,7 @@ extern const char* YbBitmapsetToString(Bitmapset *bms);
 bool YBIsInitDbAlreadyDone();
 
 int YBGetDdlNestingLevel();
+void YbSetIsGlobalDDL();
 void YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
 								bool is_breaking_catalog_change);
 void YBDecrementDdlNestingLevel();
@@ -762,6 +762,9 @@ void GetStatusMsgAndArgumentsByCode(
 	const uint32_t pg_err_code, uint16_t txn_err_code, YBCStatus s,
 	const char **msg_buf, size_t *msg_nargs, const char ***msg_args,
 	const char **detail_buf, size_t *detail_nargs, const char ***detail_args);
+
+bool YbIsBatchedExecution();
+void YbSetIsBatchedExecution(bool value);
 
 #define HandleYBStatus(status) \
 	HandleYBStatusAtErrorLevel(status, ERROR)

@@ -33,9 +33,74 @@ namespace tserver {
 
 typedef std::multimap<HybridTime, tablet::TabletPeerPtr> PeerNextCompactList;
 
+// Contains metrics readings related to docdb key accesses.
+// Can represent either a snapshot of metrics, or a delta between two snapshots (e.g. delta
+// within a window of time).
+struct KeyStatistics {
+  // Total keys accessed.
+  int64_t total;
+  // Obsolete keys accessed that are past their history retention cutoff (i.e. eligible
+  // for compation).
+  int64_t obsolete_cutoff;
+
+  // Calculates the percentage of obsolete keys read (that are past their history
+  // cutoff) vs the total number of keys read in the window.
+  double obsolete_key_percentage() const {
+    return total == 0 ? 0 : 100.0 * obsolete_cutoff / total;
+  }
+};
+
+// KeyStatsSlidingWindow tracks a sliding window of docdb key statistics over a window of time
+// dictated by tserver flag auto_compact_stat_window_seconds (and can be changed).
+// The slide interval is dicteded by check_interval_sec, determined when the window is created
+// (should not be changed).
+class KeyStatsSlidingWindow {
+ public:
+  explicit KeyStatsSlidingWindow(tablet::TabletPeerPtr peer, int32_t check_interval_sec);
+
+  // Records the current docdb key statistics into the sliding window, removing any statistics
+  // that have expired from the window.
+  // If the tablet has been fully compacted since last run, the sliding window will be reset.
+  void RecordCurrentStats();
+
+  // Determines whether or not a compaction is warranted based on the docdb key statistics
+  // stored in the window. Looks at the total number of keys seen, the obsolete keys percentage,
+  // and the minimum time period between compactions.
+  bool ShouldCompact(const HybridTime& now);
+
+  // Returns the current statistics readings held by the window.
+  // If the window does not yet have enough stored intervals (or if expected_intervals_ is 0),
+  // will return a default KeyStatistics with 0 for all values.
+  KeyStatistics current_stats() const;
+
+ private:
+  void ComputeWindowSizeAndIntervals();
+
+  // Resets the sliding window and its internal variables, including the baseline number of keys
+  // seen and the last compaction time.
+  // Called every time the tablet is fully compacted.
+  void ResetWindow();
+
+  const tablet::TabletPeerPtr tablet_peer_;
+  const tablet::TabletMetrics* metrics_;
+  const int32_t check_interval_sec_;
+
+  // Stores the statistics readings for each "check_interval_sec" interval.
+  // Deque size is expected to be (expected_intervals + 1), with the first value being
+  // the baseline and all other values representing an interval.
+  std::deque<KeyStatistics> key_stats_window_;
+
+  // Number of intervals stored in the window deques, calculated by the
+  // (window size in seconds / the interval size in seconds), rounded up.
+  uint32_t expected_intervals_;
+
+  // The last full compaction time of the tablet when the window was last reset.
+  uint64_t last_compaction_time_;
+};
+
 class FullCompactionManager {
  public:
-  explicit FullCompactionManager(TSTabletManager* ts_tablet_manager);
+  explicit FullCompactionManager(TSTabletManager* ts_tablet_manager, int32_t check_interval_sec);
 
   // Checks if the gflag values for the compaction frequency and jitter factor have changed
   // since the last runs, and resets to those values if so. Then, runs DoScheduleFullCompactions().
@@ -48,6 +113,8 @@ class FullCompactionManager {
   // Indicates the number of full compactions that were scheduled during the last execution of
   // DoScheduleFullCompactions().
   int num_scheduled_last_execution() const { return num_scheduled_last_execution_.load(); }
+
+  int32_t check_interval_sec() const { return check_interval_sec_; }
 
   // Provides public access to DetermineNextCompactTime() for tests.
   // Clears all precomputed next compaction times.
@@ -65,6 +132,10 @@ class FullCompactionManager {
     DoScheduleFullCompactions();
   }
 
+  void TEST_SetCheckIntervalSec(int32_t check_interval_sec) {
+    check_interval_sec_ = check_interval_sec;
+  }
+
  private:
   FRIEND_TEST(TsTabletManagerTest, FullCompactionCalculateNextCompaction);
   FRIEND_TEST(TsTabletManagerTest, CompactionsEvenlySpreadByJitter);
@@ -74,6 +145,18 @@ class FullCompactionManager {
   // the tablet is removed from the in-memory map of next compaction times
   // (next_compact_time_per_tablet_).
   void DoScheduleFullCompactions();
+
+  // Collects docdb key access statistics from all tablet peers, creating and storing a
+  // sliding window of stats.
+  void CollectDocDBStats();
+
+  // Checks whether the tablet peer has been compacted too recently to be fully compacted
+  // again (based on the auto_compact_min_wait_between_seconds flag).
+  bool CompactedTooRecently(const tablet::TabletPeerPtr peer, const HybridTime& now);
+
+  // Checks whether the tablet peer should be fully compacted based on its recent
+  // docdb key access statistics.
+  bool ShouldCompactBasedOnStats(const TabletId& tablet_id);
 
   // Iterates through all peers, determining the next compaction time for each peer
   // eligible for scheduled full compactions. Returns a list of peers that are currently
@@ -123,8 +206,14 @@ class FullCompactionManager {
   // Maximum amount of jitter that modifies the expected compaction time.
   MonoDelta max_jitter_;
 
+  // Frequency with which to check for compactions to schedule, in seconds.
+  int32_t check_interval_sec_;
+
   // In-memory map of pre-calculated next compaction times per tablet.
   std::unordered_map<TabletId, HybridTime> next_compact_time_per_tablet_;
+
+  // Sliding windows that keep track of docdb key read statistics per tablet.
+  std::unordered_map<TabletId, KeyStatsSlidingWindow> tablet_stats_window_;
 
   // Number of compactions that were scheduled during the previous execution.
   // -1 indicates that there is no information about the previous execution.

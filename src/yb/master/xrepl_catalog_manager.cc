@@ -101,11 +101,11 @@ DEFINE_RUNTIME_int32(cdc_parent_tablet_deletion_task_retry_secs, 30,
     "Frequency at which the background task will verify parent tablets retained for xCluster or "
     "CDCSDK replication and determine if they can be cleaned up.");
 
+DEFINE_RUNTIME_bool(disable_auto_add_index_to_xcluster, false,
+    "Disables the automatic addition of indexes to transactional xCluster replication.");
+
 DEFINE_test_flag(bool, hang_wait_replication_drain, false,
     "Used in tests to temporarily block WaitForReplicationDrain.");
-
-DEFINE_test_flag(bool, fail_setup_system_universe_replication, false,
-    "Cause the setup of system universe replication to fail.");
 
 DEFINE_test_flag(bool, exit_unfinished_deleting, false,
     "Whether to exit part way through the deleting universe process.");
@@ -115,11 +115,6 @@ DEFINE_test_flag(bool, exit_unfinished_merging, false,
 
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
-
-DEFINE_test_flag(bool, xcluster_fail_table_create_during_bootstrap, false,
-    "Fail the table or index creation during xcluster bootstrap stage.");
-
-DECLARE_bool(TEST_enable_replicate_transaction_status_table);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -2018,7 +2013,9 @@ Status CatalogManager::SetupUniverseReplication(
     }
   }
 
-  std::unordered_map<TableId, std::string> table_id_to_bootstrap_id;
+  SetupReplicationInfo setup_info;
+  setup_info.transactional = req->transactional();
+  auto& table_id_to_bootstrap_id = setup_info.table_bootstrap_ids;
 
   if (!req->producer_bootstrap_ids().empty()) {
     if (req->producer_table_ids().size() != req->producer_bootstrap_ids_size()) {
@@ -2035,7 +2032,7 @@ Status CatalogManager::SetupUniverseReplication(
 
   auto ri = VERIFY_RESULT(CreateUniverseReplicationInfoForProducer(
       req->producer_id(), req->producer_master_addresses(), req->producer_table_ids(),
-      req->transactional()));
+      setup_info.transactional));
 
   // Initialize the CDC Stream by querying the Producer server for RPC sanity checks.
   auto result = ri->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
@@ -2055,7 +2052,7 @@ Status CatalogManager::SetupUniverseReplication(
           req->producer_table_ids(i), tables_info,
           Bind(
               &CatalogManager::GetColocatedTabletSchemaCallback, Unretained(this), ri->id(),
-              tables_info, table_id_to_bootstrap_id));
+              tables_info, setup_info));
     } else if (IsTablegroupParentTableId(req->producer_table_ids(i))) {
       auto tablegroup_id = GetTablegroupIdFromParentTableId(req->producer_table_ids(i));
       auto tables_info = std::make_shared<std::vector<client::YBTableInfo>>();
@@ -2063,14 +2060,14 @@ Status CatalogManager::SetupUniverseReplication(
           tablegroup_id, tables_info,
           Bind(
               &CatalogManager::GetTablegroupSchemaCallback, Unretained(this), ri->id(), tables_info,
-              tablegroup_id, table_id_to_bootstrap_id));
+              tablegroup_id, setup_info));
     } else {
       auto table_info = std::make_shared<client::YBTableInfo>();
       s = cdc_rpc->client()->GetTableSchemaById(
           req->producer_table_ids(i), table_info,
           Bind(
               &CatalogManager::GetTableSchemaCallback, Unretained(this), ri->id(), table_info,
-              table_id_to_bootstrap_id));
+              setup_info));
     }
 
     if (!s.ok()) {
@@ -2325,7 +2322,8 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
 
 void CatalogManager::GetTableSchemaCallback(
     const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& producer_info,
-    const std::unordered_map<TableId, std::string>& table_bootstrap_ids, const Status& s) {
+    const SetupReplicationInfo& setup_info,
+    const Status& s) {
   // First get the universe.
   scoped_refptr<UniverseReplicationInfo> universe;
   {
@@ -2343,7 +2341,7 @@ void CatalogManager::GetTableSchemaCallback(
   auto status = s;
   if (status.ok()) {
     action = "validating table schema and creating CDC stream";
-    status = ValidateTableAndCreateCdcStreams(universe, producer_info, table_bootstrap_ids);
+    status = ValidateTableAndCreateCdcStreams(universe, producer_info, setup_info);
   }
 
   if (!status.ok()) {
@@ -2356,10 +2354,9 @@ void CatalogManager::GetTableSchemaCallback(
 Status CatalogManager::ValidateTableAndCreateCdcStreams(
     scoped_refptr<UniverseReplicationInfo> universe,
     const std::shared_ptr<client::YBTableInfo>& producer_info,
-    const std::unordered_map<TableId, std::string>& producer_bootstrap_ids) {
+      const SetupReplicationInfo& setup_info) {
   auto l = universe->LockForWrite();
-  if (producer_info->table_name.namespace_name() == master::kSystemNamespaceName &&
-      PREDICT_FALSE(FLAGS_TEST_fail_setup_system_universe_replication)) {
+  if (producer_info->table_name.namespace_name() == master::kSystemNamespaceName) {
     auto status = STATUS(IllegalState, "Cannot replicate system tables.");
     MarkUniverseReplicationFailed(status, &l, universe);
     return status;
@@ -2370,19 +2367,17 @@ Status CatalogManager::ValidateTableAndCreateCdcStreams(
   l.Commit();
 
   GetTableSchemaResponsePB consumer_schema;
-  RETURN_NOT_OK(ValidateTableSchema(producer_info, producer_bootstrap_ids, &consumer_schema));
+  RETURN_NOT_OK(ValidateTableSchema(producer_info, setup_info, &consumer_schema));
 
   // If Bootstrap Id is passed in then it must be provided for all tables.
+  const auto& producer_bootstrap_ids = setup_info.table_bootstrap_ids;
   SCHECK(
       producer_bootstrap_ids.empty() || producer_bootstrap_ids.contains(producer_info->table_id),
       NotFound,
       Format("Bootstrap id not found for table $0", producer_info->table_name.ToString()));
 
-  if (producer_info->table_name.namespace_name() != master::kSystemNamespaceName ||
-      producer_bootstrap_ids.contains(producer_info->table_id)) {
-    RETURN_NOT_OK(
-        IsBootstrapRequiredOnProducer(universe, producer_info->table_id, producer_bootstrap_ids));
-  }
+  RETURN_NOT_OK(
+      IsBootstrapRequiredOnProducer(universe, producer_info->table_id, producer_bootstrap_ids));
 
   SchemaVersion producer_schema_version = producer_info->schema.version();
   SchemaVersion consumer_schema_version = consumer_schema.version();
@@ -2398,7 +2393,7 @@ void CatalogManager::GetTablegroupSchemaCallback(
     const std::string& universe_id,
     const std::shared_ptr<std::vector<client::YBTableInfo>>& infos,
     const TablegroupId& producer_tablegroup_id,
-    const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
+    const SetupReplicationInfo& setup_info,
     const Status& s) {
   // First get the universe.
   scoped_refptr<UniverseReplicationInfo> universe;
@@ -2437,7 +2432,7 @@ void CatalogManager::GetTablegroupSchemaCallback(
     // Validate each of the member table in the tablegroup.
     GetTableSchemaResponsePB resp;
     Status table_status = ValidateTableSchema(
-        std::make_shared<client::YBTableInfo>(info), table_bootstrap_ids, &resp);
+        std::make_shared<client::YBTableInfo>(info), setup_info, &resp);
 
     if (!table_status.ok()) {
       MarkUniverseReplicationFailed(universe, table_status);
@@ -2522,8 +2517,8 @@ void CatalogManager::GetTablegroupSchemaCallback(
     return;
   }
 
-  Status status =
-      IsBootstrapRequiredOnProducer(universe, producer_tablegroup_id, table_bootstrap_ids);
+  Status status = IsBootstrapRequiredOnProducer(
+      universe, producer_tablegroup_id, setup_info.table_bootstrap_ids);
   if (!status.ok()) {
     MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table "
@@ -2552,7 +2547,7 @@ void CatalogManager::GetTablegroupSchemaCallback(
 
   status = AddValidatedTableAndCreateCdcStreams(
       universe,
-      table_bootstrap_ids,
+      setup_info.table_bootstrap_ids,
       producer_parent_table_id,
       consumer_parent_table_id,
       colocated_schema_versions);
@@ -2565,7 +2560,8 @@ void CatalogManager::GetTablegroupSchemaCallback(
 
 void CatalogManager::GetColocatedTabletSchemaCallback(
     const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& infos,
-    const std::unordered_map<TableId, std::string>& table_bootstrap_ids, const Status& s) {
+    const SetupReplicationInfo& setup_info,
+    const Status& s) {
   // First get the universe.
   scoped_refptr<UniverseReplicationInfo> universe;
   {
@@ -2611,7 +2607,7 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     // Validate each table, and get the parent colocated table id for the consumer.
     GetTableSchemaResponsePB resp;
     Status table_status = ValidateTableSchema(
-        std::make_shared<client::YBTableInfo>(info), table_bootstrap_ids, &resp);
+        std::make_shared<client::YBTableInfo>(info), setup_info, &resp);
     if (!table_status.ok()) {
       MarkUniverseReplicationFailed(universe, table_status);
       LOG(ERROR) << "Found error while validating table schema for table " << info.table_id << ": "
@@ -2622,9 +2618,8 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     producer_parent_table_ids.insert(GetColocatedDbParentTableId(info.table_name.namespace_id()));
     consumer_parent_table_ids.insert(
         GetColocatedDbParentTableId(resp.identifier().namespace_().id()));
-    colocated_schema_versions.emplace_back(resp.schema().colocated_table_id().colocation_id(),
-                                           info.schema.version(),
-                                           resp.version());
+    colocated_schema_versions.emplace_back(
+        resp.schema().colocated_table_id().colocation_id(), info.schema.version(), resp.version());
   }
 
   // Verify that we only found one producer and one consumer colocated parent table id.
@@ -2672,7 +2667,7 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
   }
 
   Status status = IsBootstrapRequiredOnProducer(
-      universe, *producer_parent_table_ids.begin(), table_bootstrap_ids);
+      universe, *producer_parent_table_ids.begin(), setup_info.table_bootstrap_ids);
   if (!status.ok()) {
     MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table "
@@ -2681,7 +2676,7 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
 
   status = AddValidatedTableAndCreateCdcStreams(
       universe,
-      table_bootstrap_ids,
+      setup_info.table_bootstrap_ids,
       *producer_parent_table_ids.begin(),
       *consumer_parent_table_ids.begin(),
       colocated_schema_versions);
@@ -3023,12 +3018,6 @@ Status CatalogManager::InitXClusterConsumer(
   auto cluster_config = ClusterConfig();
   auto l = cluster_config->LockForWrite();
   auto* consumer_registry = l.mutable_data()->pb.mutable_consumer_registry();
-  std::string transaction_status_table_id;
-  auto transaction_status_table_result = GetGlobalTransactionStatusTable();
-  WARN_NOT_OK(transaction_status_table_result, "Could not open transaction status table");
-  if (transaction_status_table_result) {
-    transaction_status_table_id = (*transaction_status_table_result)->id();
-  }
   auto transactional = universe_l->pb.transactional();
   if (!cdc::IsAlterReplicationUniverseId(universe->id())) {
     consumer_registry->set_transactional(transactional);
@@ -3066,14 +3055,6 @@ Status CatalogManager::InitXClusterConsumer(
     }
 
     (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
-    if (stream_info.consumer_table_id == transaction_status_table_id) {
-      RSTATUS_DCHECK(
-          transactional && FLAGS_TEST_enable_replicate_transaction_status_table, InvalidArgument,
-          "Transaction status table replication is not allowed.");
-      // The replication group includes the transaction status table, enable consistent
-      // transactions.
-      consumer_registry->set_enable_replicate_transaction_status_table(true);
-    }
   }
 
   // Log the Network topology of the Producer Cluster
@@ -5726,40 +5707,12 @@ Status CatalogManager::BumpVersionAndStoreClusterConfig(
   return Status::OK();
 }
 
-Result<bool> CatalogManager::ScheduleBootstrapForXclusterIfNeeded(
-    const TableInfoPtr& table, const SysTablesEntryPB& pb) {
-  if (table->GetBootstrappingXClusterReplication()) {
-    return true;
-  }
-
-  // TODO(Hari): #16469 Schedule the job as part of CreateTable.
-  if (!VERIFY_RESULT(ShouldAddTableToXClusterReplication(*table, pb))) {
+bool CatalogManager::ShouldAddTableToXClusterReplication(
+    const TableInfo& table, const SysTablesEntryPB& pb) {
+  if (FLAGS_disable_auto_add_index_to_xcluster) {
     return false;
   }
 
-  // Submit a async task to bootstrap the table.
-  if (!table->SetBootstrappingXClusterReplication(true)) {
-    LOG(INFO) << "Adding index " << table->id() << " to xCluster replication";
-    auto submit_status = background_tasks_thread_pool_->SubmitFunc([this, table]() {
-      auto s = AddYsqlIndexToXClusterReplication(*table);
-      if (!s.ok()) {
-        LOG(WARNING) << "Failed to add index " << table->id() << " to xCluster replication: " << s;
-        table->SetCreateTableErrorStatus(s);
-      }
-      table->SetBootstrappingXClusterReplication(false);
-    });
-    if (!submit_status.ok()) {
-      table->SetBootstrappingXClusterReplication(false);
-      LOG(WARNING) << "Failed to submit task to add index to xCluster replication: "
-                   << submit_status;
-      return submit_status;
-    }
-  }
-  return true;
-}
-
-Result<bool> CatalogManager::ShouldAddTableToXClusterReplication(
-    const TableInfo& table, const SysTablesEntryPB& pb) {
   // Only user created YSQL Indexes should be automatically added to xCluster replication.
   if (pb.colocated() || pb.table_type() != PGSQL_TABLE_TYPE || !IsIndex(pb) ||
       !IsUserCreatedTable(table)) {
@@ -5774,8 +5727,11 @@ Result<bool> CatalogManager::ShouldAddTableToXClusterReplication(
     return false;
   }
 
-  auto indexed_table = GetTableInfo(GetIndexedTableId(table.LockForRead()->pb));
-  SCHECK(indexed_table, NotFound, "Indexed table not found");
+  auto indexed_table = GetTableInfo(GetIndexedTableId(pb));
+  if (!indexed_table) {
+    LOG(WARNING) << "Indexed table for " << table.id() << " not found";
+    return false;
+  }
 
   XClusterConsumerTableStreamInfoMap stream_infos =
       GetXClusterStreamInfoForConsumerTable(indexed_table->id());
@@ -5839,41 +5795,9 @@ Result<bool> CatalogManager::ShouldAddTableToXClusterReplication(
   return true;
 }
 
-Status CatalogManager::AddYsqlIndexToXClusterReplication(const TableInfo& index_info) {
-  {
-    TRACE("Locking table");
-    auto l = index_info.LockForRead();
-    RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l));
-  }
-
-  XClusterConsumerTableStreamInfoMap stream_ids =
-      GetXClusterStreamInfoForConsumerTable(index_info.id());
-  if (!stream_ids.empty()) {
-    LOG(INFO) << "Index " << index_info.ToString() << " is already part of xcluster replication "
-              << yb::ToString(stream_ids);
-    return Status::OK();
-  }
-
-  auto bootstrap_time = VERIFY_RESULT(BootstrapAndAddIndexToXClusterReplication(index_info));
-
-  VLOG_WITH_PREFIX(1) << "Waiting for xcluster safe time of namespace " << index_info.namespace_id()
-                      << " to get past bootstrap_time " << bootstrap_time;
-  RETURN_NOT_OK(WaitForAllXClusterConsumerTablesToCatchUpToSafeTime(
-      index_info.namespace_id(), bootstrap_time));
-
-  LOG(INFO) << "Index " << index_info.ToString()
-            << " successfully added to xcluster universe replication";
-
-  return Status::OK();
-}
-
-Result<HybridTime> CatalogManager::BootstrapAndAddIndexToXClusterReplication(
-    const TableInfo& index_info) {
+Result<std::string> CatalogManager::GetIndexesTableReplicationGroup(const TableInfo& index_info) {
   const auto indexed_table_id = GetIndexedTableId(index_info.LockForRead()->pb);
   SCHECK(!indexed_table_id.empty(), IllegalState, "Indexed table id is empty");
-  SCHECK(
-      !FLAGS_TEST_xcluster_fail_table_create_during_bootstrap, IllegalState,
-      "FLAGS_TEST_xcluster_fail_table_create_during_bootstrap");
 
   XClusterConsumerTableStreamInfoMap indexed_table_stream_ids =
       GetXClusterStreamInfoForConsumerTable(indexed_table_id);
@@ -5882,55 +5806,33 @@ Result<HybridTime> CatalogManager::BootstrapAndAddIndexToXClusterReplication(
       indexed_table_stream_ids.size(), 1, IllegalState,
       Format("Expected table $0 to be part of only one replication", indexed_table_id));
 
-  const string& universe_id = indexed_table_stream_ids.begin()->first;
+  return indexed_table_stream_ids.begin()->first;
+}
+
+Status CatalogManager::BootstrapTable(
+    const string& replication_group, const TableInfo& table_info,
+    client::BootstrapProducerCallback callback) {
+  VLOG_WITH_FUNC(1) << "Bootstrapping table " << table_info.ToString();
 
   scoped_refptr<UniverseReplicationInfo> universe;
   google::protobuf::RepeatedPtrField<HostPortPB> master_addresses;
   {
     TRACE("Acquired catalog manager lock");
     SharedLock lock(mutex_);
-    universe = FindPtrOrNull(universe_replication_map_, universe_id);
-    SCHECK(universe != nullptr, NotFound, Format("Universe $0 not found", universe_id));
+    universe = FindPtrOrNull(universe_replication_map_, replication_group);
+    SCHECK(universe != nullptr, NotFound, Format("Universe $0 not found", replication_group));
     master_addresses = universe->LockForRead()->pb.producer_master_addresses();
   }
 
   auto cdc_rpc = VERIFY_RESULT(universe->GetOrCreateCDCRpcTasks(master_addresses));
 
-  std::vector<string> producer_table_ids;
-  std::vector<string> bootstrap_ids;
-  HybridTime bootstrap_time;
   std::vector<PgSchemaName> pg_schema_names;
-  if (index_info.has_pgschema_name()) {
-    pg_schema_names.emplace_back(index_info.pgschema_name());
+  if (table_info.has_pgschema_name()) {
+    pg_schema_names.emplace_back(table_info.pgschema_name());
   }
-  RETURN_NOT_OK(cdc_rpc->client()->BootstrapProducer(
-      YQLDatabase::YQL_DATABASE_PGSQL, index_info.namespace_name(), pg_schema_names,
-      {index_info.name()}, &producer_table_ids, &bootstrap_ids, &bootstrap_time));
-  CHECK_EQ(producer_table_ids.size(), 1);
-  CHECK_EQ(bootstrap_ids.size(), 1);
-  SCHECK(!bootstrap_time.is_special(), IllegalState, "Failed to get a valid bootstrap time");
-
-  auto& producer_table_id = producer_table_ids[0];
-  auto& bootstrap_id = bootstrap_ids[0];
-
-  LOG(INFO) << "Adding index " << index_info.ToString() << " to xcluster universe replication "
-            << universe_id << " with bootstrap_id " << bootstrap_id << " and bootstrap_time "
-            << bootstrap_time;
-  AlterUniverseReplicationRequestPB alter_universe_req;
-  AlterUniverseReplicationResponsePB alter_universe_resp;
-  alter_universe_req.set_producer_id(universe_id);
-  alter_universe_req.add_producer_table_ids_to_add(producer_table_id);
-  alter_universe_req.add_producer_bootstrap_ids_to_add(bootstrap_id);
-  RETURN_NOT_OK(
-      AlterUniverseReplication(&alter_universe_req, &alter_universe_resp, nullptr /* rpc */));
-
-  if (alter_universe_resp.has_error()) {
-    return StatusFromPB(alter_universe_resp.error().status());
-  }
-
-  RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(universe_id, CoarseTimePoint::max()));
-
-  return bootstrap_time;
+  return cdc_rpc->client()->BootstrapProducer(
+      YQLDatabase::YQL_DATABASE_PGSQL, table_info.namespace_name(), pg_schema_names,
+      {table_info.name()}, std::move(callback));
 }
 
 Status CatalogManager::WaitForAllXClusterConsumerTablesToCatchUpToSafeTime(

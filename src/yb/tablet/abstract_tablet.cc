@@ -38,13 +38,14 @@ Result<HybridTime> AbstractTablet::SafeTime(RequireLease require_lease,
   return DoGetSafeTime(require_lease, min_allowed, deadline);
 }
 
-Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
-                                           const ReadHybridTime& read_time,
-                                           const QLReadRequestPB& ql_read_request,
-                                           const TransactionOperationContext& txn_op_context,
-                                           QLReadRequestResult* result,
-                                           WriteBuffer* rows_data) {
-
+Status AbstractTablet::HandleQLReadRequest(
+    CoarseTimePoint deadline,
+    const ReadHybridTime& read_time,
+    const QLReadRequestPB& ql_read_request,
+    const TransactionOperationContext& txn_op_context,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
+    QLReadRequestResult* result,
+    WriteBuffer* rows_data) {
   // TODO(Robert): verify that all key column values are provided
   docdb::QLReadOperation doc_op(ql_read_request, txn_op_context);
 
@@ -56,7 +57,8 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
 
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
-      QLStorage(), deadline, read_time, *doc_read_context, &resultset, &result->restart_read_ht);
+      QLStorage(), deadline, read_time, *doc_read_context, pending_op, &resultset,
+      &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {
     if (s.IsQLError()) {
@@ -76,14 +78,16 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
   return Status::OK();
 }
 
-Status AbstractTablet::ProcessPgsqlReadRequest(CoarseTimePoint deadline,
-                                               const ReadHybridTime& read_time,
-                                               bool is_explicit_request_read_time,
-                                               const PgsqlReadRequestPB& pgsql_read_request,
-                                               const std::shared_ptr<TableInfo>& table_info,
-                                               const TransactionOperationContext& txn_op_context,
-                                               const docdb::DocDBStatistics* statistics,
-                                               PgsqlReadRequestResult* result) {
+Status AbstractTablet::ProcessPgsqlReadRequest(
+    CoarseTimePoint deadline,
+    const ReadHybridTime& read_time,
+    bool is_explicit_request_read_time,
+    const PgsqlReadRequestPB& pgsql_read_request,
+    const std::shared_ptr<TableInfo>& table_info,
+    const TransactionOperationContext& txn_op_context,
+    const docdb::DocDBStatistics* statistics,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
+    PgsqlReadRequestResult* result) {
   docdb::PgsqlReadOperation doc_op(pgsql_read_request, txn_op_context);
 
   // Form a schema of columns that are referenced by this query.
@@ -94,7 +98,8 @@ Status AbstractTablet::ProcessPgsqlReadRequest(CoarseTimePoint deadline,
   TRACE("Start Execute");
   auto fetched_rows = doc_op.Execute(
       QLStorage(), deadline, read_time, is_explicit_request_read_time, *doc_read_context,
-      index_doc_read_context.get(), result->rows_data, &result->restart_read_ht, statistics);
+      index_doc_read_context.get(), pending_op, result->rows_data, &result->restart_read_ht,
+      statistics);
   TRACE("Done Execute");
   if (!fetched_rows.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);

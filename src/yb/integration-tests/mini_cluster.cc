@@ -995,6 +995,21 @@ tserver::MiniTabletServer* GetLeaderForTablet(MiniCluster* cluster, const std::s
   return nullptr;
 }
 
+Result<tablet::TabletPeerPtr> GetLeaderPeerForTablet(
+    MiniCluster* cluster, const std::string& tablet_id) {
+  auto leaders = ListTabletPeers(cluster, [&tablet_id](const auto& peer) {
+    auto consensus = peer->shared_consensus();
+    return tablet_id == peer->tablet_id() && consensus &&
+           consensus->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+  });
+
+  SCHECK_EQ(
+      leaders.size(), 1, IllegalState,
+      Format("Expected exactly one leader for tablet $0", tablet_id));
+
+  return std::move(leaders[0]);
+}
+
 Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
     MiniCluster* cluster, const TableId& table_id,
     const size_t num_active_leaders, const MonoDelta timeout) {
@@ -1041,35 +1056,35 @@ Status WaitForLeaderOfSingleTablet(
   }, duration, description);
 }
 
-Status StepDown(
-    tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
-    ForceStepDown force_step_down) {
-  consensus::LeaderStepDownRequestPB req;
-  req.set_tablet_id(leader->tablet_id());
-  req.set_new_leader_uuid(new_leader_uuid);
-  if (force_step_down) {
+  Status StepDown(
+      tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
+      ForceStepDown force_step_down) {
+    consensus::LeaderStepDownRequestPB req;
+    req.set_tablet_id(leader->tablet_id());
+    req.set_new_leader_uuid(new_leader_uuid);
+    if (force_step_down) {
     req.set_force_step_down(true);
-  }
-  consensus::LeaderStepDownResponsePB resp;
-  RETURN_NOT_OK(leader->consensus()->StepDown(&req, &resp));
-  if (resp.has_error()) {
-    return STATUS_FORMAT(RuntimeError, "Step down failed: $0", resp);
-  }
-  return Status::OK();
-}
-
-std::thread RestartsThread(
-    MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag) {
-  return std::thread([cluster, interval, stop_flag] {
-    CDSAttacher attacher;
-    SetFlagOnExit set_stop_on_exit(stop_flag);
-    int it = 0;
-    while (!stop_flag->load(std::memory_order_acquire)) {
-      std::this_thread::sleep_for(interval);
-      ASSERT_OK(cluster->mini_tablet_server(++it % cluster->num_tablet_servers())->Restart());
     }
-  });
-}
+    consensus::LeaderStepDownResponsePB resp;
+    RETURN_NOT_OK(leader->consensus()->StepDown(&req, &resp));
+    if (resp.has_error()) {
+    return STATUS_FORMAT(RuntimeError, "Step down failed: $0", resp);
+    }
+    return Status::OK();
+  }
+
+  std::thread RestartsThread(
+      MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag) {
+    return std::thread([cluster, interval, stop_flag] {
+      CDSAttacher attacher;
+      SetFlagOnExit set_stop_on_exit(stop_flag);
+      int it = 0;
+      while (!stop_flag->load(std::memory_order_acquire)) {
+        std::this_thread::sleep_for(interval);
+        ASSERT_OK(cluster->mini_tablet_server(++it % cluster->num_tablet_servers())->Restart());
+      }
+    });
+  }
 
 Status WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout) {
   return WaitAllReplicasRunning(

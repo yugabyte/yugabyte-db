@@ -3,7 +3,7 @@ title: Prerequisites - YBA Installer
 headerTitle: Prerequisites for YBA
 linkTitle: YBA prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere using YBA Installer
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+earlyAccess: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-platform:
     identifier: prerequisites-installer
@@ -47,9 +47,15 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
 
 You can install YugabyteDB Anywhere using YBA Installer on the following Linux distributions:
 
-- CentOS (default)
-- RHEL 7 and later
-- Ubuntu 18 and 20
+- CentOS 7
+- Alma Linux 8
+- Alma Linux 9
+- Ubuntu 18
+- Ubuntu 20
+- RedHat Enterprise Linux 7
+- RedHat Enterprise Linux 8
+
+YugabyteDB Anywhere may also work on other Linux distributions; contact your YugabyteDB support representative if you need added support.
 
 ## Software requirements
 
@@ -65,9 +71,10 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 
 ## Other
 
-- Ensure that the following ports are available:
-  - 443
-  - 5432
-  - 9080
+Ensure that the following ports are available:
+
+- 443
+- 5432
+- 9080
 
 These are configurable. If custom ports are used, those must be available instead.

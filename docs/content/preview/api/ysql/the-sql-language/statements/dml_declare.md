@@ -18,7 +18,7 @@ See the subsection [Beware Issue #6514](../../../cursors/#beware-issue-6514) in 
 
 Use the `DECLARE` statement to create a _[cursor](../../../cursors/)_. The `DECLARE` statement is used jointly with the [`MOVE`](../dml_move), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements.
 
-The term _cursor_ is _both_ a SQL keyword that's used in the `DECLARE` statement (but nowhere else) _and_ a term of art that denotes the implementation phenomenon that handles everything to do with executing a `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE` statement—for example, representing its execution plan and, for a `SELECT` or `VALUES` statement, or a DML statement that uses the `RETURNING` keyword, representing the current, next-to-be-fetched row. Some tools (most notably _psql_ and therefore _ysqlsh_ (and, for that matter, the [PL/pgSQL language](../../../user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/)) allow you to issue `SELECT` and DML statements without yourself doing the _cursor_ management. But, if the use case calls for it, you can do the _cursor_ management explicitly using the SQL API that the `DECLARE`,  [`MOVE`](../dml_move), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements jointly expose. There's also a PL/pgSQL API for explicit cursor management.
+The term _cursor_ is _both_ a SQL keyword that's used in the `DECLARE` statement (but nowhere else) _and_ a term of art that denotes the implementation phenomenon that handles everything to do with executing a `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE` statement—for example, representing its execution plan and, for a `SELECT` or `VALUES` statement, or a DML statement that uses the `RETURNING` keyword, representing the current, next-to-be-fetched row. Some tools (most notably _psql_ and therefore _ysqlsh_ and, for that matter, the [PL/pgSQL language](../../../user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/)) allow you to issue `SELECT` and DML statements without yourself doing the _cursor_ management. But, if the use case calls for it, you can do the _cursor_ management explicitly using the SQL API that the `DECLARE`, [`MOVE`](../dml_move), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements jointly expose. There's also a PL/pgSQL API for explicit cursor management.
 
 See the generic section [Cursors](../../../cursors/).
 
@@ -90,14 +90,13 @@ Choose the mode that you want explicitly to honor the requirements that you must
 
 ### *WITHOUT HOLD and WITH HOLD*
 
-`WITHOUT HOLD` specifies that the _cursor_ cannot be used after the transaction that created it ends (even it it ends with a successful _commit_).
+`WITHOUT HOLD` specifies that the _cursor_ cannot be used after the transaction that created it ends (even if it ends with a successful _commit_).
 
-`WITH HOLD` specifies that the _cursor_ can continue to be used after the transaction that created it successfully commits.  (Of course, it vanishes if the transaction that created it rolls back.)
+`WITH HOLD` specifies that the _cursor_ can continue to be used after the transaction that created it successfully commits. (Of course, it vanishes if the transaction that created it rolls back.)
 
 Specifying neither `WITHOUT HOLD` nor `WITH HOLD` is the same as specifying `WITHOUT HOLD`.
 
 ## Simple example
-
 
 ```plpgsql
 drop table if exists t cascade;

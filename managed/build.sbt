@@ -94,6 +94,7 @@ lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
+lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
@@ -119,7 +120,7 @@ lazy val root = (project in file("."))
   })
 
 scalaVersion := "2.12.10"
-javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
+javacOptions ++= Seq("-source", "17", "-target", "17")
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 // These are needed to prevent (reduce possibility?) or incremental compilation infinite loop issue:
@@ -151,7 +152,7 @@ libraryDependencies ++= Seq(
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "2.0",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
-  "org.springframework.security" % "spring-security-core" % "5.8.1",
+  "org.springframework.security" % "spring-security-core" % "5.8.3",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.129",
@@ -208,12 +209,12 @@ libraryDependencies ++= Seq(
   "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
   // Prod dependency temporary as we use HSQLDB as a dummy perf_advisor DB for YBM scenario
   // Remove once YBM starts using real PG DB.
-  "org.hsqldb" % "hsqldb" % "2.3.4",
+  "org.hsqldb" % "hsqldb" % "2.7.1",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
-  "org.mockito" % "mockito-core" % "2.13.0" % Test,
-  "org.mockito" % "mockito-inline" % "3.8.0" % Test,
+  "org.mockito" % "mockito-core" % "5.3.1" % Test,
+  "org.mockito" % "mockito-inline" % "5.2.0" % Test,
   "org.mindrot" % "jbcrypt" % "0.4" % Test,
   "com.h2database" % "h2" % "2.1.212" % Test,
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
@@ -311,8 +312,11 @@ externalResolvers := {
 (Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
 
 (Compile / compilePlatform) := {
-  ((Compile / compile) dependsOn buildModules).value
-  buildVenv.value
+  (Compile / compile).value
+  Def.sequential(
+      buildVenv,
+      releaseModulesLocally
+    ).value
   buildUI.value
   versionGenerate.value
 }
@@ -355,15 +359,15 @@ buildUI := {
   status
 }
 
-buildModules := {
+releaseModulesLocally := {
   ybLog("Building modules...")
-  val status = Process("mvn install -DskipTests=true", baseDirectory.value / "parent-module").!
+  val status = Process("mvn install -DskipTests=true -P releaseLocally", baseDirectory.value / "parent-module").!
   status
 }
 
 buildDependentArtifacts := {
   ybLog("Building dependencies...")
-  val status = Process("mvn install -DskipTests=true -DplatformDependenciesOnly=true", baseDirectory.value / "parent-module").!
+  val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
   status
 }
 
@@ -380,7 +384,7 @@ cleanUI := {
 }
 
 cleanModules := {
-  ybLog("Cleaning Node Agent...")
+  ybLog("Cleaning modules...")
   val status = Process("mvn clean", baseDirectory.value / "parent-module").!
   status
 }
@@ -446,8 +450,8 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b1"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.51-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b28"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.52-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

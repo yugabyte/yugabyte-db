@@ -323,7 +323,7 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
 
 ### import data file
 
-[Load all your data files](../../migrate-steps/#import-data-file) in CSV or text format directly to the target YugabyteDB.
+[Load all your data files](../../migrate-steps/#import-data-file) in CSV or text format directly to the target YugabyteDB. These data files can be located either on a local filesystem or an AWS S3 bucket.
 
 #### Syntax
 
@@ -336,7 +336,7 @@ The valid *arguments* for import data file are described in the following table:
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
-| [--data-dir](#data-dir) <path> | Path to the directory containing the data files to import. |
+| [--data-dir](#data-dir) <path> | Path to the directory or S3-prefixed URI of the bucket containing the data files to import. |
 | [--delimiter](#delimiter) | Default: comma (,); can be changed to '\t' (tab), pipe(\|), or any other character. |
 | [--disable-pb](#disable-pb) | Hide progress bars. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
@@ -526,7 +526,9 @@ yb-voyager import data file .... \
 --data-dir s3://voyager-data
 ```
 
-Refer to [Configuring the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html) for more details.
+The authentication mechanism for accessing an S3 bucket using yb-voyager is the same as that used by the AWS CLI.
+
+Refer to [Configuring the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html) for additional details to set up your S3 bucket.
 
 ### --file-table-map
 

@@ -13,6 +13,7 @@
 #include "yb/cdc/cdc_producer.h"
 
 #include "yb/cdc/cdc_common_util.h"
+#include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
@@ -122,8 +123,8 @@ DatumMessagePB* AddTuple(RowMessage* row_message, const StreamMetadata& metadata
     row_message->add_new_tuple();
   } else {
     tuple = row_message->add_new_tuple();
-    if ((metadata.record_type == cdc::CDCRecordType::CHANGE) ||
-        ((metadata.record_type == cdc::CDCRecordType::ALL) &&
+    if ((metadata.GetRecordType() == cdc::CDCRecordType::CHANGE) ||
+        ((metadata.GetRecordType() == cdc::CDCRecordType::ALL) &&
          (row_message->op() == RowMessage_Op_INSERT)))
       row_message->add_old_tuple();
   }
@@ -223,17 +224,19 @@ Status PopulateBeforeImage(
     const Schema& schema, const SchemaVersion schema_version, const ColocationId& colocation_id) {
   auto tablet = tablet_peer->shared_tablet();
   auto docdb = tablet->doc_db();
+  auto pending_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
 
   const auto log_prefix = tablet->LogPrefix();
   docdb::DocReadContext doc_read_context(log_prefix, tablet->table_type(), schema, schema_version);
   dockv::ReaderProjection projection(schema);
-  docdb::DocRowwiseIterator iter(
+  auto iter = docdb::DocRowwiseIterator(
       projection,
       colocation_id == kColocationIdNotSet
           ? *tablet->GetDocReadContext()
           : *(VERIFY_RESULT(tablet_peer->tablet_metadata()->GetTableInfo("", colocation_id))
                   ->doc_read_context),
-      TransactionOperationContext(), docdb, CoarseTimePoint::max() /* deadline */, read_time);
+      TransactionOperationContext(), docdb, CoarseTimePoint::max() /* deadline */, read_time,
+      pending_op);
 
   const dockv::DocKey& doc_key = decoded_primary_key.doc_key();
   docdb::DocQLScanSpec spec(schema, doc_key, rocksdb::kDefaultQueryId);
@@ -531,7 +534,7 @@ Status PopulateCDCSDKIntentRecord(
 
         if (proto_record.IsInitialized() && row_message->IsInitialized() &&
             row_message->op() == RowMessage_Op_UPDATE) {
-          if (metadata.record_type == cdc::CDCRecordType::ALL) {
+          if (metadata.GetRecordType() == cdc::CDCRecordType::ALL) {
             VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
                     << " with read time: " << ReadHybridTime::FromUint64(commit_time)
                     << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
@@ -618,7 +621,7 @@ Status PopulateCDCSDKIntentRecord(
       row_message->set_commit_time(commit_time);
       row_message->set_record_time(intent.intent_ht.hybrid_time().ToUint64());
 
-      if ((metadata.record_type == cdc::CDCRecordType::ALL) &&
+      if ((metadata.GetRecordType() == cdc::CDCRecordType::ALL) &&
           (row_message->op() == RowMessage_Op_DELETE)) {
         VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
                 << " with read time: " << ReadHybridTime::FromUint64(commit_time)
@@ -712,7 +715,7 @@ Status PopulateCDCSDKIntentRecord(
       if ((row_message->op() == RowMessage_Op_INSERT && col_count == schema.num_columns()) ||
           (row_message->op() == RowMessage_Op_UPDATE ||
            row_message->op() == RowMessage_Op_DELETE)) {
-        if ((metadata.record_type == cdc::CDCRecordType::ALL) &&
+        if ((metadata.GetRecordType() == cdc::CDCRecordType::ALL) &&
             (row_message->op() == RowMessage_Op_UPDATE)) {
           VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
                   << " with read time: " << ReadHybridTime::FromUint64(commit_time)
@@ -754,7 +757,7 @@ Status PopulateCDCSDKIntentRecord(
   if (FLAGS_enable_single_record_update && proto_record.IsInitialized() &&
       row_message->IsInitialized() && row_message->op() == RowMessage_Op_UPDATE) {
     row_message->set_table(table_name);
-    if (metadata.record_type == cdc::CDCRecordType::ALL) {
+    if (metadata.GetRecordType() == cdc::CDCRecordType::ALL) {
       VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
               << " with read time: " << ReadHybridTime::FromUint64(commit_time)
               << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
@@ -868,7 +871,7 @@ Status PopulateCDCSDKWriteRecord(
       }
 
       if (row_message != nullptr && row_message->op() == RowMessage_Op_UPDATE) {
-        if (metadata.record_type == cdc::CDCRecordType::ALL) {
+        if (metadata.GetRecordType() == cdc::CDCRecordType::ALL) {
           VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
                   << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
                   << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
@@ -923,7 +926,7 @@ Status PopulateCDCSDKWriteRecord(
         }
       }
 
-      if ((metadata.record_type == cdc::CDCRecordType::ALL) &&
+      if ((metadata.GetRecordType() == cdc::CDCRecordType::ALL) &&
           (row_message->op() == RowMessage_Op_DELETE)) {
         VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
                 << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
@@ -997,7 +1000,7 @@ Status PopulateCDCSDKWriteRecord(
   }
 
   if (row_message && row_message->op() == RowMessage_Op_UPDATE) {
-    if (metadata.record_type == cdc::CDCRecordType::ALL) {
+    if (metadata.GetRecordType() == cdc::CDCRecordType::ALL) {
       VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
               << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
               << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()

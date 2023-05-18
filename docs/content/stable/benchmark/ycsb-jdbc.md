@@ -1,9 +1,9 @@
 ---
-title: Benchmark YSQL performance with YCSB
+title: Benchmark YSQL performance using YCSB and JDBC
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YSQL performance with YCSB using the standard JDBC binding.
-headcontent: Benchmark YSQL performance with YCSB using the standard JDBC binding.
+description: Learn how to test the YSQL API using the YCSB benchmark.
+headcontent: Benchmark YSQL performance using YCSB with standard JDBC binding
 menu:
   stable:
     identifier: ycsb-1-ysql

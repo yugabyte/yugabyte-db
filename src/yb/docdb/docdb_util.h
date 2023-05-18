@@ -141,6 +141,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
   Status AddExternalIntents(
       const TransactionId& txn_id,
+      SubTransactionId subtransaction_id,
       const std::vector<ExternalIntent>& intents,
       const Uuid& involved_tablet,
       HybridTime hybrid_time);
@@ -258,6 +259,11 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   std::atomic<int64_t> monotonic_counter_{0};
   std::optional<DocWriteBatch> doc_write_batch_;
   std::shared_ptr<DocReadContext> doc_read_context_;
+  // Dummy ScopedRWOperation. It doesn't prevent underlying RocksDB from being closed, that is
+  // rather guaranteed by DocDBRocksDBUtil usage patterns.
+  // If we want to support concurrent closing of RocksDB, we can use RWOperationCounter
+  // (see tablet.cc).
+  ScopedRWOperation dummy_scoped_rw_operation_;
 };
 
 }  // namespace docdb

@@ -43,8 +43,8 @@
 using std::string;
 using namespace std::chrono_literals;
 
-DECLARE_bool(enable_load_balancing);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
+DECLARE_bool(enable_load_balancing);
 DECLARE_uint32(xcluster_safe_time_log_outliers_interval_secs);
 DECLARE_uint32(xcluster_safe_time_slow_tablet_delta_secs);
 

@@ -54,7 +54,7 @@ type: indexpage
     <a class="section-link icon-offset" href="yb-pg-stat-get-queries/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">View terminated queries with yb_pg_stat_get_queries</div>
+        <div class="title">View terminated queries with yb_terminated_queries</div>
       </div>
       <div class="body">
         Identify terminated queries with the get queries function.

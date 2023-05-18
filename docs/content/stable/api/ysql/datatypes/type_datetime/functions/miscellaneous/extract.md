@@ -59,7 +59,7 @@ This is the result:
 
 The _extract()_ function is specified in the SQL Standard and seems to be supported in all SQL database systems. The list of keywords, though, is database-system-specific. (For example, Oracle Database supports only about ten of these while PostgreSQL, and therefore YSQL, support about twenty.) In contrast, the _date_part()_ function is specific to PostgreSQL (and any system like YSQL that aims to support the identical syntax and semantics).
 
-The \\_df_ metacommand produces output for _date_part()_ in the normal way; but it produces no output for _extract()_. Here is the interesting part of the output from \\_df date_part()_:
+The \\_df_ meta-command produces output for _date_part()_ in the normal way; but it produces no output for _extract()_. Here is the interesting part of the output from \\_df date_part()_:
 
 ```output
  Result data type |        Argument data types

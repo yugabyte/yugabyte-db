@@ -71,7 +71,30 @@ public abstract class KubernetesManager {
       String helmReleaseName,
       String namespace,
       String overridesFile) {
+
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+
+    // List Helm releases to check if the release already exists
+    List<String> listCmd = ImmutableList.of("helm", "list", "--short", "--namespace", namespace);
+
+    ShellResponse responseList = execCommand(config, listCmd);
+    responseList.processErrors();
+
+    boolean helmReleaseExists = false;
+    String output = responseList.getMessage();
+    LOG.info("helm list command output {} ", output);
+    if (output.contains(helmReleaseName)) {
+      // The release already exists
+      helmReleaseExists = true;
+    }
+    if (helmReleaseExists) {
+      List<String> deleteCmd =
+          ImmutableList.of(
+              "helm", "uninstall", helmReleaseName, "--wait", "--namespace", namespace);
+      ShellResponse responseDelete = execCommand(config, deleteCmd);
+      responseDelete.processErrors();
+    }
+
     List<String> commandList =
         ImmutableList.of(
             "helm",

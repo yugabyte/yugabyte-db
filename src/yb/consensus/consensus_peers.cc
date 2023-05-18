@@ -523,11 +523,22 @@ void Peer::ProcessRemoteBootstrapResponse() {
       queue_->NotifyPeerIsResponsiveDespiteError(peer_pb_.permanent_uuid());
       YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
         << ":::Unable to begin remote bootstrap on peer: " << rb_response_.ShortDebugString();
-    } else {
-      LOG_WITH_PREFIX(WARNING) << "Unable to begin remote bootstrap on peer: "
-                               << rb_response_.ShortDebugString();
+      return;
+    }
+
+    LOG_WITH_PREFIX(WARNING) << "Unable to begin remote bootstrap on peer: "
+                             << rb_response_.ShortDebugString();
+
+    // If an attempt to bootstrap with a non-leader peer as rbs source resulted in a failure,
+    // increment the corresponding count.
+    if (!rb_request_.is_served_by_tablet_leader()) {
+      queue_->IncrementFailedBootstrapAttemptsFromNonLeader(peer_pb_.permanent_uuid());
     }
   }
+  // If the bootstrap of a new peer resulted in a success, we wouldn't reach here as the exisiting
+  // connection with the new PRE_VOTER peer would have been closed, and a new entry of type VOTER
+  // would have been made for the peer. It happens as part of ChangeConfig request initiated by
+  // the new peer at the end of RBS.
 }
 
 void Peer::ProcessResponseError(const Status& status) {

@@ -41,6 +41,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -137,10 +138,10 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
   @Test
   public void testDescribeSecurityGroup() {
-    defaultRegion.setVnetName("sg_id");
+    defaultRegion.setSecurityGroupId("sg_id, sg_id_2");
     DescribeSecurityGroupsResult result = new DescribeSecurityGroupsResult();
-    SecurityGroup sg = new SecurityGroup();
-    result.setSecurityGroups(Collections.singletonList(sg));
+    List<SecurityGroup> securityGroupList = Arrays.asList(new SecurityGroup(), new SecurityGroup());
+    result.setSecurityGroups(securityGroupList);
     when(mockEC2Client.describeSecurityGroups(any()))
         .thenThrow(new AmazonServiceException("Not found"))
         .thenReturn(result);
@@ -154,7 +155,8 @@ public class AWSCloudImplTest extends FakeDBApplication {
         "Security group extraction failed: Not found " + AMAZON_COMMON_ERROR_MSG,
         exception.getMessage());
     assertEquals(
-        sg, awsCloudImpl.describeSecurityGroupsOrBadRequest(defaultProvider, defaultRegion));
+        securityGroupList,
+        awsCloudImpl.describeSecurityGroupsOrBadRequest(defaultProvider, defaultRegion));
   }
 
   @Test

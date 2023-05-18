@@ -46,8 +46,8 @@ using std::string;
 DEFINE_RUNTIME_bool(ysql_use_flat_doc_reader, true,
     "Use DocDBTableReader optimization that relies on having at most 1 subkey for YSQL.");
 
-DEFINE_test_flag(int32, fetch_next_delay_ms, 0,
-                 "Amount of time to delay inside FetchNext");
+DEFINE_test_flag(int32, fetch_next_delay_ms, 0, "Amount of time to delay inside FetchNext");
+DEFINE_test_flag(string, fetch_next_delay_column, "", "Only delay when schema has specific column");
 
 using namespace std::chrono_literals;
 
@@ -61,12 +61,12 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
-          projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter),
-      statistics_(statistics) {}
+          projection, doc_read_context, txn_op_context, doc_db, deadline, read_time, pending_op),
+      statistics_(statistics) {
+}
 
 DocRowwiseIterator::DocRowwiseIterator(
     const dockv::ReaderProjection& projection,
@@ -75,12 +75,13 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter,
+    ScopedRWOperation&& pending_op,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter),
-      statistics_(statistics) {}
+          std::move(pending_op)),
+      statistics_(statistics) {
+}
 
 DocRowwiseIterator::~DocRowwiseIterator() = default;
 
@@ -189,11 +190,18 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     return false;
   }
 
+  RETURN_NOT_OK(pending_op_ref_.GetAbortedStatus());
+
   if (PREDICT_FALSE(FLAGS_TEST_fetch_next_delay_ms > 0)) {
-    YB_LOG_EVERY_N_SECS(INFO, 1)
-        << "Delaying read for " << FLAGS_TEST_fetch_next_delay_ms << " ms"
-        << ", schema column names: " << AsString(doc_read_context_.schema.column_names());
-    SleepFor(FLAGS_TEST_fetch_next_delay_ms * 1ms);
+    const auto column_names = doc_read_context_.schema.column_names();
+    if (FLAGS_TEST_fetch_next_delay_column.empty() ||
+        std::find(column_names.begin(), column_names.end(), FLAGS_TEST_fetch_next_delay_column) !=
+            column_names.end()) {
+      YB_LOG_EVERY_N_SECS(INFO, 1)
+          << "Delaying read for " << FLAGS_TEST_fetch_next_delay_ms << " ms"
+          << ", schema column names: " << AsString(column_names);
+      SleepFor(FLAGS_TEST_fetch_next_delay_ms * 1ms);
+    }
   }
 
   for (;;) {

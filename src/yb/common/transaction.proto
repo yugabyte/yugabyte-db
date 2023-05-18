@@ -75,6 +75,12 @@ enum RowMarkType {
 }
 
 message SubtxnSetPB {
+  // This is not a simple set representation, but rather the encoded output of a
+  // yb::UnsignedIntSet<uint32_t>.
+  //
+  // An ascending nonoverlapping series of integer ranges [a,b) [c,d) ... (a<=b<c<=d...) are encoded
+  // as taking a,b, c,d, ...  then compressing it by storing the set of deltas starting from 0.
+  // This gives: a-0, b-a, c-b,c-d, ...
   repeated uint32 set = 1;
 }
 

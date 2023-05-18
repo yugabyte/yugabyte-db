@@ -208,7 +208,8 @@ export const KubernetesProviderTypeLabel = {
 export const RegionOperationLabel = {
   [RegionOperation.ADD]: 'Add',
   [RegionOperation.EDIT_EXISTING]: 'Edit',
-  [RegionOperation.EDIT_NEW]: 'Edit'
+  [RegionOperation.EDIT_NEW]: 'Edit',
+  [RegionOperation.VIEW]: 'View'
 };
 
 export const InstanceTypeOperationLabel = {

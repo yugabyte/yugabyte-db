@@ -40,8 +40,8 @@ PG_BINARY_NAME ?= postgres-linux-14.6.tar.gz
 PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/postgres-linux-14.6.tar.gz
 
 # https://adoptium.net/temurin/releases/
-JDK_BINARY_NAME ?= OpenJDK8U-jdk_x64_linux_hotspot_8u362b09.tar.gz
-JDK_BINARY_URL ?= https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u362-b09/OpenJDK8U-jdk_x64_linux_hotspot_8u362b09.tar.gz
+JDK_BINARY_NAME ?= OpenJDK17U-jdk_x64_linux_hotspot_17.0.7_7.tar.gz
+JDK_BINARY_URL ?= https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.7%2B7/OpenJDK17U-jdk_x64_linux_hotspot_17.0.7_7.tar.gz
 # Package stable ybdb release in yba-installer.
 # Currently disabled.
 YBDB_BINARY_NAME ?= yugabyte-2.17.2.0-b216-linux-x86_64.tar.gz

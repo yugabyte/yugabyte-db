@@ -328,6 +328,7 @@ Status DocDBRocksDBUtil::SetPrimitive(
 
 Status DocDBRocksDBUtil::AddExternalIntents(
     const TransactionId& txn_id,
+    SubTransactionId subtransaction_id,
     const std::vector<ExternalIntent>& intents,
     const Uuid& involved_tablet,
     HybridTime hybrid_time) {
@@ -392,7 +393,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
   };
 
   Provider provider(&intents, involved_tablet, hybrid_time);
-  CombineExternalIntents(txn_id, &provider);
+  CombineExternalIntents(txn_id, subtransaction_id, &provider);
 
   rocksdb::WriteBatch rocksdb_write_batch;
   provider.Apply(&rocksdb_write_batch);
@@ -499,12 +500,14 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch() {
   return DocWriteBatch(
-      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior_, &monotonic_counter_);
+      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior_,
+      dummy_scoped_rw_operation_, &monotonic_counter_);
 }
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch(InitMarkerBehavior init_marker_behavior) {
   return DocWriteBatch(
-      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior, &monotonic_counter_);
+      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior,
+      dummy_scoped_rw_operation_, &monotonic_counter_);
 }
 
 DocWriteBatch& DocDBRocksDBUtil::DefaultDocWriteBatch() {

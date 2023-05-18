@@ -2,7 +2,7 @@
 title: System configuration
 headerTitle: System configuration
 linkTitle: 1. System configuration
-description: Configure NTP and ulimits on your YugabyteDB cluster
+description: How to configure system parameters to get the YugabyteDB database cluster to run correctly.
 menu:
   preview:
     identifier: deploy-manual-deployment-system-config

@@ -1,8 +1,8 @@
 ---
-title: Explore follower reads in YSQL
+title: Explore follower reads - YSQL
 headerTitle: Follower reads
 linkTitle: Follower reads
-description: Learn how you can use follower reads to lower read latencies in local YugabyteDB clusters.
+description: Learn how to use follower reads to lower read latencies in local YugabyteDB clusters in YSQL.
 menu:
   stable:
     identifier: follower-reads-ysql
@@ -23,12 +23,13 @@ type: docs
   </li>
 </ul>
 
-## Leader leases
+## Leaders and leader leases
 
-In a distributed environment, when one node in a cluster is elected as the leader holding the latest data, it is possible that another node may assume that it is the leader, and that it holds the latest data. This could result in serving stale reads to a client. To avoid this confusion, YugabyteDB provides a _leader lease_ mechanism where an elected node member is guaranteed to be the leader until its lease expires.
+In a distributed environment, when one node in a cluster is elected as the leader holding the latest data, it is possible that another node may assume that it is the leader, and that it holds the latest data. This could result in serving stale reads to a client. To avoid this confusion, YugabyteDB provides a [leader lease mechanism](../../../../architecture/transactions/single-row-transactions/#leader-leases-reading-the-latest-data-in-case-of-a-network-partition) where an elected node member is guaranteed to be the leader until its lease expires.
 
 The leader lease mechanism guarantees to serve strongly consistent reads where a client can fetch reads directly from the leader, because the leader under lease will have the latest data.
-The interactive animations in this [blog post](https://www.yugabyte.com/blog/low-latency-reads-in-geo-distributed-sql-with-raft-leader-leases/) explain the performance improvements using leader leases.
+
+For an illustration of the performance improvements using leader leases, see [Low Latency Reads in Geo-Distributed SQL with Raft Leader Leases](https://www.yugabyte.com/blog/low-latency-reads-in-geo-distributed-sql-with-raft-leader-leases/).
 
 ## Follower reads
 
