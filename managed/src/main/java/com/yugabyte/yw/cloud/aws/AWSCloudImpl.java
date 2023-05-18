@@ -13,12 +13,17 @@ import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
+import com.amazonaws.services.ec2.model.AuthorizeSecurityGroupIngressRequest;
+import com.amazonaws.services.ec2.model.CreateKeyPairRequest;
+import com.amazonaws.services.ec2.model.CreateSecurityGroupRequest;
 import com.amazonaws.services.ec2.model.DeleteKeyPairRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesResult;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsRequest;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsResult;
+import com.amazonaws.services.ec2.model.DescribeInstanceTypesRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
+import com.amazonaws.services.ec2.model.DescribeKeyPairsRequest;
 import com.amazonaws.services.ec2.model.DescribeSecurityGroupsRequest;
 import com.amazonaws.services.ec2.model.DescribeSecurityGroupsResult;
 import com.amazonaws.services.ec2.model.DescribeSubnetsRequest;
@@ -694,6 +699,129 @@ public class AWSCloudImpl implements CloudAPI {
       LOG.error("AWS Provider validation dry run failed: ", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Dry run of AWS DescribeInstances failed: " + e.getMessage());
+    }
+  }
+
+  public boolean dryRunDescribeImageOrBadRequest(Provider provider, String regionCode) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
+      DryRunResult<DescribeImagesRequest> dryRunResult =
+          ec2Client.dryRun(new DescribeImagesRequest());
+      if (!dryRunResult.isSuccessful()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, dryRunResult.getDryRunResponse().getMessage());
+      }
+      return true;
+    } catch (AmazonServiceException | PlatformServiceException e) {
+      LOG.error("AWS Provider image dry run validation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Dry run of AWS DescribeImages failed: " + e.getMessage());
+    }
+  }
+
+  public boolean dryRunDescribeInstanceTypesOrBadRequest(Provider provider, String regionCode) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
+      DryRunResult<DescribeInstanceTypesRequest> dryRunResult =
+          ec2Client.dryRun(new DescribeInstanceTypesRequest());
+      if (!dryRunResult.isSuccessful()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, dryRunResult.getDryRunResponse().getMessage());
+      }
+      return true;
+    } catch (AmazonServiceException | PlatformServiceException e) {
+      LOG.error("AWS Provider instance types dry run validation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Dry run of AWS DescribeInstanceTypes failed: " + e.getMessage());
+    }
+  }
+
+  public boolean dryRunDescribeVpcsOrBadRequest(Provider provider, String regionCode) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
+      DryRunResult<DescribeVpcsRequest> dryRunResult = ec2Client.dryRun(new DescribeVpcsRequest());
+      if (!dryRunResult.isSuccessful()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, dryRunResult.getDryRunResponse().getMessage());
+      }
+      return true;
+    } catch (AmazonServiceException | PlatformServiceException e) {
+      LOG.error("AWS Provider vpc dry run validation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Dry run of AWS DescribeVpcs failed: " + e.getMessage());
+    }
+  }
+
+  public boolean dryRunDescribeSubnetOrBadRequest(Provider provider, String regionCode) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
+      DryRunResult<DescribeSubnetsRequest> dryRunResult =
+          ec2Client.dryRun(new DescribeSubnetsRequest());
+      if (!dryRunResult.isSuccessful()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, dryRunResult.getDryRunResponse().getMessage());
+      }
+      return true;
+    } catch (AmazonServiceException | PlatformServiceException e) {
+      LOG.error("AWS Provider Subnet dry run validation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Dry run of AWS DescribeSubnets failed: " + e.getMessage());
+    }
+  }
+
+  public boolean dryRunSecurityGroupOrBadRequest(Provider provider, String regionCode) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
+      DryRunResult<DescribeSecurityGroupsRequest> describeDryRunResult =
+          ec2Client.dryRun(new DescribeSecurityGroupsRequest());
+      DryRunResult<CreateSecurityGroupRequest> createDryRunResult =
+          ec2Client.dryRun(new CreateSecurityGroupRequest());
+      if (!describeDryRunResult.isSuccessful() && !createDryRunResult.isSuccessful()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, describeDryRunResult.getDryRunResponse().getMessage());
+      }
+      return true;
+    } catch (AmazonServiceException | PlatformServiceException e) {
+      LOG.error("AWS Provider SecurityGroup dry run validation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Dry run of AWS SecurityGroup failed: " + e.getMessage());
+    }
+  }
+
+  public boolean dryRunKeyPairOrBadRequest(Provider provider, String regionCode) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
+      DryRunResult<DescribeKeyPairsRequest> describeDryRunResult =
+          ec2Client.dryRun(new DescribeKeyPairsRequest());
+      DryRunResult<CreateKeyPairRequest> createDryRunResult =
+          ec2Client.dryRun(new CreateKeyPairRequest());
+      if (!describeDryRunResult.isSuccessful() && !createDryRunResult.isSuccessful()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, describeDryRunResult.getDryRunResponse().getMessage());
+      }
+      return true;
+    } catch (AmazonServiceException | PlatformServiceException e) {
+      LOG.error("AWS Provider KeyPair dry run validation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Dry run of AWS KeyPair failed: " + e.getMessage());
+    }
+  }
+
+  public boolean dryRunAuthorizeSecurityGroupIngressOrBadRequest(
+      Provider provider, String regionCode) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
+      DryRunResult<AuthorizeSecurityGroupIngressRequest> describeDryRunResult =
+          ec2Client.dryRun(new AuthorizeSecurityGroupIngressRequest());
+      if (!describeDryRunResult.isSuccessful()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, describeDryRunResult.getDryRunResponse().getMessage());
+      }
+      return true;
+    } catch (AmazonServiceException | PlatformServiceException e) {
+      LOG.error("AWS Provider authorizeSecurityGroupIngress dry run validation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Dry run of AWS AuthorizeSecurityGroupIngress failed: " + e.getMessage());
     }
   }
 
