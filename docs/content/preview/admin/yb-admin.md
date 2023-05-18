@@ -1795,7 +1795,7 @@ yb-admin \
 
 #### wait_for_replication_drain
 
-Verify when the Producer & Consumer are in sync for a given list of stream_ids at a given timestamp. 
+Verify when the producer and consumer are in sync for a given list of `stream_ids` at a given timestamp. 
 
 **Syntax**
 
