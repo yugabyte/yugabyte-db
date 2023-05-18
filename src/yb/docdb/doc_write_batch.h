@@ -380,7 +380,9 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
       StorageDbType storage_db_type,
       BinaryOutputFormat binary_output_format,
       WriteBatchOutputFormat batch_output_format,
-      std::string line_prefix);
+      std::string line_prefix,
+      SchemaPackingProvider* schema_packing_provider);
+
  protected:
   std::string FormatKey(const Slice& key) override;
 
@@ -388,6 +390,7 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
 
  private:
   StorageDbType storage_db_type_;
+  SchemaPackingProvider* schema_packing_provider_;
 };
 
 // Converts a RocksDB WriteBatch to a string.
@@ -397,7 +400,8 @@ Result<std::string> WriteBatchToString(
     StorageDbType storage_db_type,
     BinaryOutputFormat binary_output_format,
     WriteBatchOutputFormat batch_output_format,
-    const std::string& line_prefix);
+    std::string line_prefix,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/);
 
 }  // namespace docdb
 }  // namespace yb
