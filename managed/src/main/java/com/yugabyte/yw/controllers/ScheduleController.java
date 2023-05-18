@@ -149,6 +149,8 @@ public class ScheduleController extends AuthenticatedController {
               params.incrementalBackupFrequency, schedulingFrequency);
           schedule.updateIncrementalBackupFrequencyAndTimeUnit(
               params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit);
+          schedule.updateNextIncrementScheduleTaskTime(
+              ScheduleUtil.nextExpectedIncrementTaskTime(schedule));
         } else {
           throw new PlatformServiceException(
               BAD_REQUEST,

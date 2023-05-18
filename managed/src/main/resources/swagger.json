@@ -6950,6 +6950,17 @@
           "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
           "type" : "string"
         },
+        "incrementBacklogStatus" : {
+          "description" : "Backlog status of schedule of incremental backups arose due to conflicts",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "nextIncrementScheduleTaskTime" : {
+          "description" : "Time on which schedule is expected to run for incremental backups",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "nextScheduleTaskTime" : {
           "description" : "Time on which schedule is expected to run",
           "format" : "date-time",
