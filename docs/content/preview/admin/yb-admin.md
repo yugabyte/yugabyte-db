@@ -1803,12 +1803,14 @@ Sets the xCluster role to `STANDBY` or `ACTIVE`.
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
+    -master_addresses <master_addresses> \
     change_xcluster_role \
     <role> 
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`. 
+These are the addresses of the master nodes where the role has to be applied. Example: if we want to change target to `STANDBY` we have to use target universe master addresses, 
+and if we want to change source universe role then we have to use source universe master addresses.
 * *role*: Can be `STANDBY` or `ACTIVE`.
 
 **Example**
