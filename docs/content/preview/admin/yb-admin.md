@@ -1808,7 +1808,7 @@ yb-admin \
     <role> 
 ```
 
-* *master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`. 
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. 
 These are the addresses of the master nodes where the role has to be applied. Example: if we want to change target to `STANDBY` we have to use target universe master addresses, 
 and if we want to change source universe role then we have to use source universe master addresses.
 * *role*: Can be `STANDBY` or `ACTIVE`.
