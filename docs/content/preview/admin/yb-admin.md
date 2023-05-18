@@ -1808,7 +1808,7 @@ yb-admin \
 
 * *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *comma_separated_list_of_stream_ids*: Comma-separated list of stream IDs.
-* *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the master API.
+* *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
 * *minus <interval>*: The `minus <interval>` is the same format as in <a href="{{< relref "../explore/cluster-management/point-in-time-recovery-ycql.md" >}}">PITR documentation</a>, or see `yb-admin restore_snapshot_schedule` command).
 
 **Example**
