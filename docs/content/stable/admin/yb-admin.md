@@ -1795,6 +1795,32 @@ yb-admin \
 * *replication_name*: The name of the replication to be enabled or disabled.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
+#### change_xcluster_role
+
+Sets the xCluster role to `STANDBY` or `ACTIVE`.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master_addresses> \
+    change_xcluster_role \
+    <role> 
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. 
+These are the addresses of the master nodes where the role has to be applied. Example: if we want to change target to `STANDBY` we have to use target universe master addresses, 
+and if we want to change source universe role then we have to use source universe master addresses.
+* *role*: Can be `STANDBY` or `ACTIVE`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    change_xcluster_role STANDBY
+```
+
 #### list_cdc_streams
 
 Lists the CDC streams for the specified YB-Master servers.
