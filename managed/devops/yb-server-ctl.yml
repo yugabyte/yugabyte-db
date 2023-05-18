@@ -13,10 +13,28 @@
     - "{{ vars_file | default(placeholder_vars_file) }}"
   vars:
     script_to_run: "{{ yb_home_dir | default('/home/yugabyte') }}/bin/yb-server-ctl.sh"
+    systemd_option: "{{ systemd_services | default(false) }}"
   tasks:
     - name: Call the ctl script with appropriate args
       shell: "{{ script_to_run }} {{ process }} {{ command }}"
-      when: process != "thirdparty" and process != "platform-services"
+      when: not systemd_option and process != "thirdparty" and process != "platform-services"
+
+    - name: Control the master and tserver with systemd
+      block:
+        - name: Reload daemon
+          shell: "sudo systemctl daemon-reload"
+        - name: Enable the {{ process }}
+          shell: "sudo systemctl enable yb-{{ process }}"
+          when: command == 'start'
+        - name: Perform {{ command }} on the {{ process }}
+          shell: "sudo systemctl {{ command }} yb-{{ process }}"
+        - name: Disable the {{ process }}
+          shell: "sudo systemctl disable yb-{{ process }}"
+          when: command == 'stop'
+        - name: Reload daemon
+          shell: "sudo systemctl daemon-reload"
+      when: systemd_option and process != "thirdparty" and process != "platform-services"
+
 
 - name: Stopping thirdparty services
   hosts: "{{ instance_search_pattern }}"

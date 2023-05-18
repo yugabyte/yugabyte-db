@@ -33,8 +33,6 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     public int sleepAfterCmdMills = 0;
     public boolean isForceDelete = false;
 
-    // Systemd vs Cron Option (Default: Cron)
-    public boolean useSystemd = false;
     public boolean checkVolumesAttached = false;
   }
 
@@ -60,8 +58,6 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     try {
       // Execute the ansible command.
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-      taskParams().useSystemd =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
       getNodeManager()
           .nodeCommand(NodeManager.NodeCommandType.Control, taskParams())
           .processErrors();
