@@ -75,6 +75,10 @@ struct TabletMetrics {
   scoped_refptr<Counter> docdb_keys_found;
   scoped_refptr<Counter> docdb_obsolete_keys_found;
   scoped_refptr<Counter> docdb_obsolete_keys_found_past_cutoff;
+
+  // Keeps track of the number of instances created for verification that the metrics belong
+  // to the same tablet instance.
+  const uint64_t instance_id;
 };
 
 class ScopedTabletMetricsTracker {
