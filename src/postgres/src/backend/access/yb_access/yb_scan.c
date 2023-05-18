@@ -1864,6 +1864,27 @@ heaptuple_matches_key(HeapTuple tup,
 }
 
 static bool
+is_index_functional(Relation index)
+{
+	if (!index->rd_indexprs)
+		return false;
+
+	ListCell   *indexpr_item;
+
+	foreach(indexpr_item, index->rd_indexprs)
+	{
+		Expr    *indexvar = (Expr *) lfirst(indexpr_item);
+		if (IsA(indexvar, FuncExpr))
+		{
+			return true;
+		}
+
+	}
+	return false;
+}
+
+
+static bool
 indextuple_matches_key(IndexTuple tup,
 					   TupleDesc tupdesc,
 					   int nkeys,
@@ -1929,23 +1950,36 @@ HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *r
 
 	if (ybScan->quit_scan)
 		return NULL;
+
+	/* In case of yb_hash_code pushdown tuple must be rechecked. */
+	bool tuple_recheck_required = (ybScan->nhash_keys > 0);
+
+	/* If the index is on a function, we need to recheck. */
+	if (ybScan->index)
+		tuple_recheck_required |= is_index_functional(ybScan->index);
+
 	/*
 	 * YB Scan may not be able to push down the scan key condition so we may
 	 * need additional filtering here.
 	 */
 	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, is_forward_scan)))
 	{
-		if (heaptuple_matches_key(tup, ybScan->target_desc, nkeys, keys, sk_attno, recheck))
+		if (tuple_recheck_required)
+			break;
+
+		bool recheck = false;
+		if (heaptuple_matches_key(tup, ybScan->target_desc, nkeys, keys, sk_attno, &recheck))
 		{
-			/* In case of yb_hash_code pushdown tuple must be rechecked */
-			*recheck |= (ybScan->nhash_keys > 0);
-			return tup;
+			tuple_recheck_required = recheck;
+			break;
 		}
 
 		heap_freetuple(tup);
 	}
-
-	return NULL;
+	Assert(!tuple_recheck_required || recheck);
+	if (recheck)
+		*recheck = tuple_recheck_required;
+	return tup;
 }
 
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)

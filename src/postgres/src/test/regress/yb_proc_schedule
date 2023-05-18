@@ -5,3 +5,5 @@
 ####################################################################################################
 test: yb_hash_code
 test: yb_function
+test: yb_functional_indexes
+test: yb_functional_index_multiple_column

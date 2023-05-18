@@ -102,13 +102,6 @@ INSERT INTO text_table SELECT i::TEXT, i::TEXT, i::TEXT, i, i FROM generate_seri
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM text_table WHERE yb_hash_code(hr) = 30;
 SELECT * FROM text_table WHERE yb_hash_code(hr) = 30;
 
--- pushdown should not occur in this case but it should
--- operate as a normal index expression
-CREATE INDEX ybhashtjidx ON text_table (yb_hash_code(tj));
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM text_table WHERE yb_hash_code(tj) = 63;
-SELECT * FROM text_table WHERE yb_hash_code(tj) = 63;
-DROP INDEX ybhashtjidx;
-
 -- testing pushdown on a secondary index with a text hash column
 CREATE INDEX textidx ON text_table (tj);
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM text_table WHERE yb_hash_code(tj) = 63;
