@@ -77,7 +77,6 @@ DECLARE_int64(log_stop_retaining_min_disk_mb);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(update_metrics_interval_ms);
 DECLARE_bool(enable_collect_cdc_metrics);
-DECLARE_bool(cdc_enable_replicate_intents);
 DECLARE_bool(get_changes_honor_deadline);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(TEST_get_changes_read_loop_delay_ms);
