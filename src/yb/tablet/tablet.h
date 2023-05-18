@@ -805,10 +805,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::string LogPrefix() const;
 
   // Populate tablet_locks_info with lock information pertaining to locks persisted in intents_db of
-  // this tablet. If txn_id is not Nil, restrict returned information to locks which are held or
-  // requested by the given txn_id.
+  // this tablet. If transaction_ids is not empty, restrict returned information to locks which are
+  // held or requested by the given set of transaction_ids.
   Status GetLockStatus(
-      const TransactionId& txn_id, SubTransactionId subtxn_id,
+      const std::set<TransactionId>& transaction_ids,
       TabletLockInfoPB* tablet_lock_info) const;
 
  private:

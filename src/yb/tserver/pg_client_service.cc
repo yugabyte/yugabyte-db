@@ -341,7 +341,9 @@ class PgClientServiceImpl::Impl {
       auto remote_tserver = VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid));
       auto proxy = remote_tserver->proxy();
       GetLockStatusRequestPB node_req;
-      node_req.set_transaction_id(req.transaction_id());
+      // GetLockStatusRequestPB supports providing multiple transaction ids, but postgres sends
+      // only one transaction id in PgGetLockStatusRequestPB for now.
+      node_req.add_transaction_ids(req.transaction_id());
       GetLockStatusResponsePB node_resp;
       controller.Reset();
       RETURN_NOT_OK(proxy->GetLockStatus(node_req, &node_resp, &controller));
