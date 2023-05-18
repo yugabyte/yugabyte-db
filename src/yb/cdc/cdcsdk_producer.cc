@@ -12,31 +12,38 @@
 
 #include "yb/cdc/cdc_producer.h"
 
-#include "yb/cdc/cdc_common_util.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/colocated_util.h"
-#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/schema_pbutil.h"
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/log_cache.h"
+#include "yb/consensus/replicate_msgs_holder.h"
 
-#include "yb/docdb/docdb_util.h"
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
-#include "yb/server/hybrid_clock.h"
+#include "yb/docdb/docdb_util.h"
+#include "yb/docdb/docdb.h"
+#include "yb/dockv/doc_key.h"
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
 
-#include "yb/util/flags.h"
-#include "yb/util/logging.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/transaction_participant.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
 
 using std::string;
 
@@ -68,7 +75,26 @@ using consensus::ReplicateMsgs;
 using dockv::PrimitiveValue;
 using dockv::SchemaPackingStorage;
 
+namespace {
 YB_DEFINE_ENUM(OpType, (INSERT)(UPDATE)(DELETE));
+
+Result<TransactionStatusResult> GetTransactionStatus(
+    const TransactionId& txn_id,
+    const HybridTime& hybrid_time,
+    tablet::TransactionParticipant* txn_participant) {
+  static const std::string reason = "cdc";
+
+  std::promise<Result<TransactionStatusResult>> txn_status_promise;
+  auto future = txn_status_promise.get_future();
+  auto callback = [&txn_status_promise](Result<TransactionStatusResult> result) {
+    txn_status_promise.set_value(std::move(result));
+  };
+
+  txn_participant->RequestStatusAt(
+      {&txn_id, hybrid_time, hybrid_time, 0, &reason, TransactionLoadFlags{}, callback});
+  future.wait();
+  return future.get();
+}
 
 void SetOperation(RowMessage* row_message, OpType type, const Schema& schema) {
   switch (type) {
@@ -1303,6 +1329,7 @@ bool VerifyTabletSplitOnParentTablet(
 
   return (children_tablet_count == 2);
 }
+}  // namespace
 
 // CDC get changes is different from xCluster as it doesn't need
 // to read intents from WAL.
@@ -1419,8 +1446,8 @@ Status GetChangesForCDCSDK(
       std::vector<qlexpr::QLTableRow> rows;
       qlexpr::QLTableRow row;
       dockv::ReaderProjection projection(*schema_details.schema);
-      auto iter = VERIFY_RESULT(tablet_ptr->CreateCDCSnapshotIterator(
-          projection, time, nextKey, colocated_table_id));
+      auto iter = VERIFY_RESULT(
+          tablet_ptr->CreateCDCSnapshotIterator(projection, time, nextKey, colocated_table_id));
       while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {
         RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
             resp, &row, *schema_details.schema, table_name, time, enum_oid_label_map,
