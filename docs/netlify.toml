@@ -676,10 +676,6 @@
   from = "/v2.8/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
   to = "/v2.8/yugabyte-platform/troubleshoot/"
   force = true
-[[redirects]]
-  from = "/v2.6/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
-  to = "/v2.6/yugabyte-platform/troubleshoot/"
-  force = true
 
 [[redirects]]
   from = "/v2.12/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
@@ -689,10 +685,6 @@
   from = "/v2.8/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
   to = "/v2.8/yugabyte-platform/upgrade/"
   force = true
-[[redirects]]
-  from = "/v2.6/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
-  to = "/v2.6/yugabyte-platform/upgrade/"
-  force = true
 
 [[redirects]]
   from = "/v2.12/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
@@ -701,10 +693,6 @@
 [[redirects]]
   from = "/v2.8/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
   to = "/v2.8/yugabyte-platform/install-yugabyte-platform/"
-  force = true
-[[redirects]]
-  from = "/v2.6/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
-  to = "/v2.6/yugabyte-platform/install-yugabyte-platform/"
   force = true
 
 [[redirects]]
@@ -722,10 +710,6 @@
 [[redirects]]
   from = "/v2.8/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   to = "/v2.8/yugabyte-platform/manage-deployments/high-availability/"
-  force = true
-[[redirects]]
-  from = "/v2.6/yugabyte-platform/administer-yugabyte-platform/high-availability/"
-  to = "/v2.6/yugabyte-platform/manage-deployments/high-availability/"
   force = true
 
 # Redirect old cloud docs to root of current
