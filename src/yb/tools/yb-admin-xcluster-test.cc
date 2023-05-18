@@ -95,7 +95,11 @@ class XClusterAdminCliTest : public AdminCliTestBase {
 
   void SetUp() override {
     // Setup the default cluster as the consumer cluster.
-    AdminCliTestBase::SetUp();
+    {
+      TEST_SetThreadPrefixScoped prefix_se("C");
+      AdminCliTestBase::SetUp();
+    }
+
     // Only create a table on the consumer, producer table may differ in tests.
     CreateTable(Transactional::kTrue);
     FLAGS_check_bootstrap_required = false;
@@ -104,15 +108,22 @@ class XClusterAdminCliTest : public AdminCliTestBase {
     opts.num_tablet_servers = num_tablet_servers();
     opts.cluster_id = kProducerClusterId;
     producer_cluster_ = std::make_unique<MiniCluster>(opts);
-    ASSERT_OK(producer_cluster_->StartSync());
+    {
+      TEST_SetThreadPrefixScoped prefix_se("P");
+      ASSERT_OK(producer_cluster_->StartSync());
+    }
+
     ASSERT_OK(producer_cluster_->WaitForTabletServerCount(num_tablet_servers()));
     producer_cluster_client_ = ASSERT_RESULT(producer_cluster_->CreateClient());
   }
 
   void DoTearDown() override {
     if (producer_cluster_) {
+      TEST_SetThreadPrefixScoped prefix_se("P");
       producer_cluster_->Shutdown();
     }
+
+    TEST_SetThreadPrefixScoped prefix_se("C");
     AdminCliTestBase::DoTearDown();
   }
 
