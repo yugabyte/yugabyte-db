@@ -711,7 +711,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // the Universe state. It simply sets updateInProgress flag to false.
     executionContext.universe = Universe.saveDetails(universeUUID, updater, false);
     executionContext.unlockUniverse(universeUUID);
-    log.trace("Unlocked universe {} for updates.", universeUUID);
+    log.info("Unlocked universe {} for updates.", universeUUID);
     return executionContext.universe;
   }
 

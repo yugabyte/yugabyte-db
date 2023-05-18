@@ -154,16 +154,16 @@ public abstract class KubernetesManager {
             "--is-upgrade",
             "--no-hooks",
             "--skip-crds",
-            " > ",
+            ">",
             tempOutputPath);
 
     ShellResponse response = execCommand(config, templateCommandList);
     if (response != null && !response.isSuccess()) {
       try {
         String templateOutput = Files.readAllLines(tempOutputFile).get(0);
-        LOG.error("Output from the template command %s", templateOutput);
+        LOG.error("Output from the template command {}", templateOutput);
       } catch (Exception ex) {
-        LOG.error("Got exception in reading template output %s", ex.getMessage());
+        LOG.error("Got exception in reading template output {}", ex.getMessage());
       }
 
       return null;
