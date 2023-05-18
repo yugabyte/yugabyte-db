@@ -358,4 +358,8 @@ std::string SchemaPackingStorage::VersionsToString() const {
   return AsString(versions);
 }
 
+std::string SchemaPackingStorage::ToString() const {
+  return YB_CLASS_TO_STRING(table_type, version_to_schema_packing);
+}
+
 } // namespace yb::dockv

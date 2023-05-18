@@ -1498,7 +1498,7 @@ void Tablet::WriteToRocksDB(
   if (FLAGS_TEST_docdb_log_write_batches) {
     formatter.emplace(
         storage_db_type, BinaryOutputFormat::kEscapedAndHex, WriteBatchOutputFormat::kArrow,
-        "  " + LogPrefix(storage_db_type));
+        "  " + LogPrefix(storage_db_type), &GetSchemaPackingProvider());
     write_batch->SetHandlerForLogging(&*formatter);
   }
 
@@ -4140,6 +4140,10 @@ Status Tablet::CheckOperationAllowed(const OpId& op_id, consensus::OperationType
 void Tablet::RegisterOperationFilter(OperationFilter* filter) {
   std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
   operation_filters_.push_back(*filter);
+}
+
+docdb::SchemaPackingProvider& Tablet::GetSchemaPackingProvider() {
+  return *metadata_.get();
 }
 
 std::shared_ptr<dockv::SchemaPackingStorage> Tablet::PrimarySchemaPackingStorage() {
