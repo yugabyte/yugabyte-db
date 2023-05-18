@@ -29,7 +29,6 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(flush_rocksdb_on_shutdown);
-DECLARE_bool(cdc_enable_replicate_intents);
 
 DECLARE_int32(replication_factor);
 DECLARE_int32(cdc_max_apply_batch_num_records);

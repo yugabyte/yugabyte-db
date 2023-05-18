@@ -1677,7 +1677,7 @@ void CDCServiceImpl::GetChanges(
         stream_id, req->tablet_id(), from_op_id, tablet_peer, session,
         std::bind(
             &CDCServiceImpl::UpdateChildrenTabletsOnSplitOp, this, producer_tablet, _1, session),
-        mem_tracker, &record, &msgs_holder, resp, &last_readable_index, get_changes_deadline);
+        mem_tracker, get_changes_deadline, &record, &msgs_holder, resp, &last_readable_index);
   } else {
     uint64_t commit_timestamp;
     OpId last_streamed_op_id;
