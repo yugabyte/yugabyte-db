@@ -23,9 +23,7 @@ PgAutoAnalyzeService::PgAutoAnalyzeService(
     const std::shared_future<client::YBClient*>& client_future)
     : StatefulRpcServiceBase(StatefulServiceKind::PG_AUTO_ANALYZE, metric_entity, client_future) {}
 
-void PgAutoAnalyzeService::Activate(const int64_t leader_term) {
-  LOG(INFO) << "PgAutoAnalyzeService activated on term: " << leader_term;
-}
+void PgAutoAnalyzeService::Activate() { LOG(INFO) << "PgAutoAnalyzeService activated"; }
 
 void PgAutoAnalyzeService::Deactivate() { LOG(INFO) << "PgAutoAnalyzeService de-activated"; }
 

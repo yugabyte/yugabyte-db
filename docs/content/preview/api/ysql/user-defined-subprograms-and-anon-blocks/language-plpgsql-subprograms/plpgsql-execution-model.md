@@ -8,7 +8,6 @@ menu:
     identifier: plpgsql-execution-model
     parent: language-plpgsql-subprograms
     weight: 10
-aliases:
 type: docs
 ---
 
@@ -136,7 +135,7 @@ invalid type name "s.t.v%type"
 select s.prosrc('f2');
 ```
 
-If _create [or replace]_ fails, then the statement has no effect. In particular, the content of _pg_proc_ remains unchanged. Only an error-free _create [or replace]_ will store the subprogram's definition in the catalog as its source text and other attributes spread among suitable dedicated columns in _[pg_proc](../pg-proc-catalog-table/)_.
+If _create [or replace]_ fails, then the statement has no effect. In particular, the content of _pg_proc_ remains unchanged. Only an error-free _create [or replace]_ will store the subprogram's definition in the catalog as its source text and other attributes spread among suitable dedicated columns in _[pg_proc](../../pg-proc-catalog-table/)_.
 
 {{< tip title="Don't try to understand what errors are detected already at 'create' time and what errors are detected only at runtime." >}}
 You must accept that an error-free _create [or replace]_ doesn't guarantee the correctness of the function or procedure. This is hardly a new realization. As ever, you must design your tests so that they exercise every possible code path.
@@ -252,7 +251,7 @@ CREATE OR REPLACE FUNCTION s.f(k_in integer, dummy integer DEFAULT 0)
 
 You can see that the user's intention, that the data type of the _dummy_ formal argument should be whatever the column _s.t.dummy_ has, is no longer honored. It's clear how this happened: it flows from the PostgreSQL design concept, inherited by YSQL, that parses out the meaning of all the user text that follows _create [or replace]_, apart from the PL/pgSQL source text, at the time that the DDL is issued and stores this as atomic facts in _pg_proc_. The net effect is that using _%type_ to define the datatype of a subprogram's formal argument has only documentation value.
 
-Notice that _%type_ works differently in PL/pgSQL source text. See the section [How PL/pgSQL's "create" time and execution model informs the approach to patching a database application's artifacts](##how-pl-pgsql-s-create-time-and-execution-model-informs-the-approach-to-patching-a-database-application-s-artifacts).
+Notice that _%type_ works differently in PL/pgSQL source text. See the section [How PL/pgSQL's "create" time and execution model informs the approach to patching a database application's artifacts](#how-pl-pgsql-s-create-time-and-execution-model-informs-the-approach-to-patching-a-database-application-s-artifacts).
 
 {{< tip title="You must re-create a subroutine with a formal argument that uses %type when the data type of the column to which this refers is changed." >}}
 You may decide to avoid using _%type_ for formal arguments and to specify the data type explicitly. However,  whichever choice you make, you face the same maintenance challenge if the data type of the column that you want the formal argument to match is changed. You must maintain your own dependency documentation that will inform you when subprogram(s) need changes to accommodate data type changes in table columns. And, when called for, you must explicitly _create or replace_ the affected subprograms. If you use _%type_, then you won't need to change the spelling of the _create or replace_ statement; and if you don't use _%type_, then you will need to change the spelling of the _create or replace_ statement. And this is the extent of the benefit that using _%type_ for a subprogram's formal argument brings.

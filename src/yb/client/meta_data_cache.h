@@ -26,6 +26,7 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/gutil/thread_annotations.h"
+#include "yb/util/mem_tracker.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
@@ -50,12 +51,14 @@ struct YBMetaDataCacheEntry {
 
   CacheEntryFetchStatus fetch_status_ = {CacheEntryFetchStatus::NOT_FETCHING};
   std::shared_ptr<YBTable> table_;
+  ScopedTrackedConsumption consumption_;
 };
 
 class YBMetaDataCache {
  public:
-  YBMetaDataCache(client::YBClient* client,
-                  bool create_roles_permissions_cache = false);
+  YBMetaDataCache(
+      client::YBClient* client, bool create_roles_permissions_cache = false,
+      const MemTrackerPtr& mem_tracker = MemTrackerPtr());
   ~YBMetaDataCache();
 
   // Opens the table with the given name or id. If the table has been opened before, returns the
@@ -156,6 +159,8 @@ class YBMetaDataCache {
                              std::shared_ptr<QLType>,
                              boost::hash<std::pair<std::string, std::string>>> YBTypeMap;
   YBTypeMap cached_types_ GUARDED_BY(cached_types_mutex_);
+
+  MemTrackerPtr mem_tracker_;
 };
 
 } // namespace client

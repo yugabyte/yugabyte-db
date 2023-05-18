@@ -982,9 +982,9 @@ public class CloudProviderHandler {
         LOG.error(
             "Received validation error,  ignoreValidationErrors=" + ignoreValidationErrors, e);
         newErrors = e.getContentJson();
+        provider.setLastValidationErrors(newErrors);
+        provider.save();
         if (!ignoreValidationErrors) {
-          provider.setLastValidationErrors(newErrors);
-          provider.save();
           throw e;
         }
       }
@@ -1311,6 +1311,7 @@ public class CloudProviderHandler {
           // host VPC as for both hostVpcId and destVpcId.
           if (gcpCloudInfo.getDestVpcId() == null) {
             gcpCloudInfo.setDestVpcId(network);
+            gcpCloudInfo.setVpcType(CloudInfoInterface.VPCType.HOSTVPC);
           }
           if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
             gcpCloudInfo.setGceProject(currentHostInfo.get("project").asText());

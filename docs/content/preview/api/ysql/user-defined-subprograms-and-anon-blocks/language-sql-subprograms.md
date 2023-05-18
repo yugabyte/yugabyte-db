@@ -8,7 +8,6 @@ menu:
     identifier: language-sql-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 20
-aliases:
 type: docs
 
 ---

@@ -12,11 +12,9 @@ menu:
 type: docs
 ---
 
-YugabyteDB Managed uses volume encryption for all data at rest, including your account data and your clusters and their backups. Data is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, and server-side and persistent disk encryption for GCP. Volume encryption keys are managed by the cloud provider and anchored by hardware security appliances.
+For added security, you can encrypt your clusters (including backups) using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). You grant YugabyteDB Managed access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
 
-In addition to cloud provider volume encryption, you can enable YugabyteDB encryption at rest (EAR) for clusters. When enabled, your cluster (including backups) is encrypted using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). (Currently, only AWS KMS is supported.) You can grant YugabyteDB Managed access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
-
-You enable YugabyteDB EAR for a cluster when you create it. See [Create your cluster](../../cloud-basics/create-clusters/).
+You enable YugabyteDB cluster encryption at rest (EAR) when you create it. See [Create your cluster](../../cloud-basics/create-clusters/).
 
 <!-- You can enable YugabyteDB EAR for a cluster as follows:
 
@@ -25,14 +23,16 @@ You enable YugabyteDB EAR for a cluster when you create it. See [Create your clu
 -->
 You must be signed in as an [Admin user](../../cloud-admin/manage-access/) to enable cluster EAR.
 
+Note that, regardless of whether you enable YugabyteDB EAR for a cluster, YugabyteDB Managed uses volume encryption for all data at rest, including your account data, your clusters, and their backups. Data is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, and server-side and persistent disk encryption for GCP. Volume encryption keys are managed by the cloud provider and anchored by hardware security appliances.
+
 ## Limitations
 
-- Currently, EAR is only supported for [AWS KMS](https://docs.aws.amazon.com/kms/).
+- Currently, only CMKs in [AWS KMS](https://docs.aws.amazon.com/kms/) are supported.
 - Currently, you cannot enable cluster EAR for existing clusters.
 - You cannot remove encryption from clusters that have EAR enabled.
 - After EAR is enabled for a cluster, you cannot change keys.
 
-Enabling encryption at rest can impact cluster performance. You should monitor your workload after enabling this feature.
+Enabling EAR can impact cluster performance. You should monitor your workload after enabling this feature.
 
 ## Prerequisites
 

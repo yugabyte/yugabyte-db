@@ -42,10 +42,6 @@ Use the `CREATE VIEW` statement to create a view in a database. It defines the v
 
 ## Semantics
 
-### *create_view*
-
-#### CREATE [ OR REPLACE ] VIEW *qualified_name* [ (*column_list* ) ] AS select
-
 Create a view.
 
 ##### *qualified_name*
@@ -59,6 +55,10 @@ Specify a comma-separated list of columns. If not specified, the column names ar
 ###### *select*
 
 Specify a `SELECT` or `VALUES` statement that will provide the columns and rows of the view.
+
+###### TEMPORARY or TEMP
+
+Using this qualifier will create a temporary view. Temporary views are visible only in the current client session in which they are created and are automatically dropped at the end of the session. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
 ## Examples
 

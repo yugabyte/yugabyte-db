@@ -1,4 +1,5 @@
 ---
+title: Configure backup storage
 headerTitle: Configure backup storage
 linkTitle: Configure backup storage
 description: Configure backup storage
@@ -102,14 +103,14 @@ You can configure Azure as your backup target, as follows:
     - Navigate to **Portal > Storage Account** and click **Add** (+).
     - Complete the mandatory fields, such as **Resource group**, **Storage account name**, and **Location**, as per the following illustration:
 
-    ![Azure storage account creation](/images/yp/cloud-provider-configuration-backup-azure-account.png)
+        ![Azure storage account creation](/images/yp/cloud-provider-configuration-backup-azure-account.png)
 
 1. Create a blob container, as follows:
 
     - Open the storage account (for example, **storagetestazure**, as shown in the following illustration).
     - Navigate to **Blob service > Containers > + Container** and then click **Create**.
 
-    ![Azure blob container creation](/images/yp/cloud-provider-configuration-backup-azure-blob-container.png)
+        ![Azure blob container creation](/images/yp/cloud-provider-configuration-backup-azure-blob-container.png)
 
 1. Obtain the container URL by navigating to **Container > Properties**, as shown in the following illustration:
 
@@ -121,14 +122,14 @@ You can configure Azure as your backup target, as follows:
     - Under **Allowed resource types**, select **Container** and **Object**.
     - Click **Generate SAS and connection string** and copy the SAS token. Note that the token should start with `?sv=`.
 
-    ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
+        ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
 
 1. On your YugabyteDB Anywhere instance, provide the container URL and SAS token for creating a backup, as follows:
 
     - Navigate to **Configs** > **Backup** > **Azure Storage**.
     - Click **Create AZ Backup** to access the configuration form shown in the following illustration:
 
-    ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)
+        ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)
 
     - Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
     - Enter values for the **Container URL** and **SAS Token** fields, and then click **Save**.

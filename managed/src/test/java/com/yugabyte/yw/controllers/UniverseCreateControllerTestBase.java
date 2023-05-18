@@ -76,7 +76,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Matchers;
+import org.mockito.ArgumentMatchers;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
@@ -164,7 +164,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testUniverseCreateWithRuntimeFlagsSet() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -224,7 +225,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testUniverseCreateWithSingleAvailabilityZones() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -274,7 +276,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testUniverseCreateWithYsqlEnabled() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -324,7 +327,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testUniverseCreateWithoutYsqlPasswordAndYsqlEnabled() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -365,7 +369,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testUniverseCreateWithoutYcqlPasswordAndYcqlEnabled() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -406,7 +411,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testUniverseCreateWithContradictoryGflags() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -456,7 +462,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testUniverseCreateWithBothEndPointsDisabled() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -510,7 +517,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
       boolean enableClientToNodeEncrypt) {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -617,7 +625,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
         ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(TaskType.class), expectedTaskParams.capture()))
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
         .thenReturn(fakeTaskUUID);
     when(mockReleaseManager.getReleaseByVersion(ybVersion))
         .thenReturn(
@@ -656,7 +665,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testUniverseCreateWithDisabledYedis() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -717,7 +727,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
       String errorMessage) {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     when(mockReleaseManager.getReleaseByVersion("1.0.0.0"))
         .thenReturn(
@@ -793,7 +804,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testCreateUniverseEncryptionAtRestNoKMSConfig() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Provider p = ModelFactory.awsProvider(customer);
     String accessKeyCode = "someKeyCode";
@@ -863,7 +875,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testCreateUniverseEncryptionAtRestWithKMSConfigExists() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Provider p = ModelFactory.awsProvider(customer);
     String accessKeyCode = "someKeyCode";
@@ -1316,7 +1329,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testCustomConfigureCreateWithMultiAZMultiRegion() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -1415,7 +1429,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   public void testUniverseCreateWithIncorrectNodes() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);

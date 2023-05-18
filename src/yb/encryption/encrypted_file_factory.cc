@@ -108,6 +108,39 @@ class EncryptedFileFactory : public FileFactoryWrapper {
     return EncryptedWritableFile::Create(result, header_manager_.get(), std::move(underlying));
   }
 
+  Status NewWritableFile(const WritableFileOptions& opts,
+                         const std::string& fname,
+                         std::unique_ptr<WritableFile>* result) override {
+    // Currently, only WAL reuse feature is using the NewWritableFile encryption.
+    if (opts.initial_offset.has_value() &&
+        opts.mode == EnvWrapper::OPEN_EXISTING) {
+      std::unique_ptr<yb::RandomAccessFile> underlying_r;
+      RETURN_NOT_OK(FileFactoryWrapper::NewRandomAccessFile(fname, &underlying_r));
+      std::unique_ptr<BlockAccessCipherStream> stream;
+      uint32_t header_size;
+      std::string universe_key_id;
+      const auto file_encrypted = VERIFY_RESULT(GetEncryptionInfoFromFile<uint8_t>(
+          header_manager_.get(), underlying_r.get(), &stream, &header_size, &universe_key_id));
+      if (file_encrypted != VERIFY_RESULT(header_manager_->IsEncryptionEnabled())) {
+        return STATUS(NotSupported,
+            "File's encryption state doesn't match with tserver's encryption state");
+      }
+      if (file_encrypted) {
+        if (universe_key_id != VERIFY_RESULT(header_manager_->GetLatestUniverseKeyId())) {
+          return STATUS(NotSupported, "File's universe key id is not the latest universe key id");
+        }
+        auto new_opts = opts;
+        new_opts.initial_offset = opts.initial_offset.value() + header_size;
+        std::unique_ptr<WritableFile> underlying;
+        RETURN_NOT_OK(FileFactoryWrapper::NewWritableFile(new_opts, fname, &underlying));
+        result->reset(new EncryptedWritableFile(
+            std::move(underlying), std::move(stream), header_size));
+        return Status::OK();
+      }
+    }
+    return FileFactoryWrapper::NewWritableFile(opts, fname, result);
+  }
+
   bool IsEncrypted() const override {
     return true;
   }

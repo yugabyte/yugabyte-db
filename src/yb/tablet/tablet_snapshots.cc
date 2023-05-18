@@ -107,7 +107,7 @@ Status TabletSnapshots::Create(SnapshotOperation* operation) {
 Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   LongOperationTracker long_operation_tracker("Create snapshot", 5s);
 
-  ScopedRWOperation scoped_read_operation(&pending_op_counter());
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
   Status s = regular_db().Flush(rocksdb::FlushOptions());
@@ -283,8 +283,9 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
 }
 
 Status TabletSnapshots::RestorePartialRows(SnapshotOperation* operation) {
+  ScopedRWOperation pending_op(&pending_op_counter_blocking_rocksdb_shutdown_start());
   docdb::DocWriteBatch write_batch(
-      tablet().doc_db(), docdb::InitMarkerBehavior::kOptional, nullptr);
+      tablet().doc_db(), docdb::InitMarkerBehavior::kOptional, pending_op, nullptr);
 
   auto restore_patch = VERIFY_RESULT(GenerateRestoreWriteBatch(
       operation->request()->ToGoogleProtobuf(), &write_batch));
@@ -346,7 +347,7 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
-  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(!dir.empty()));
+  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(!dir.empty()), AbortOps::kTrue);
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
 
@@ -441,7 +442,7 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
-  s = tablet().EnableCompactions(&op_pauses.non_abortable);
+  s = tablet().EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start);
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions after restoring a checkpoint";
     return s;
@@ -519,7 +520,7 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
 
 Status TabletSnapshots::CreateCheckpoint(
     const std::string& dir, const CreateIntentsCheckpointIn create_intents_checkpoint_in) {
-  ScopedRWOperation scoped_read_operation(&pending_op_counter());
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
   auto temp_intents_dir = dir + kIntentsDBSuffix;

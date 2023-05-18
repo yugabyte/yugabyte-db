@@ -625,8 +625,10 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     else
       log "  Not using Linuxbrew."
     fi
-    log "  Contents of /etc/os-release:"
-    cat /etc/os-release >&2
+    if [[ -f /etc/os-release ]]; then
+      log "  Contents of /etc/os-release:"
+      cat /etc/os-release >&2
+    fi  
   fi
 else
   log "Skipping creating distribution package. Build type: $build_type, OSTYPE: ${OSTYPE}," \

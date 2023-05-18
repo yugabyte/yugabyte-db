@@ -43,7 +43,6 @@
 using std::string;
 
 using namespace yb::size_literals;
-using yb::consensus::MakeOpIdPB;
 
 DEFINE_UNKNOWN_int32(
     remote_bootstrap_anchor_session_timeout_ms, 5000,
@@ -62,10 +61,11 @@ RemoteBootstrapAnchorClient::RemoteBootstrapAnchorClient(
   proxy_.reset(new RemoteBootstrapServiceProxy(proxy_cache, tablet_leader_peer_addr));
 }
 
-Status RemoteBootstrapAnchorClient::RegisterLogAnchor(const string& tablet_id, const OpId& op_id) {
+Status RemoteBootstrapAnchorClient::RegisterLogAnchor(const string& tablet_id,
+                                                      const int64_t& log_index) {
   RegisterLogAnchorRequestPB req;
   req.set_tablet_id(tablet_id);
-  *req.mutable_op_id() = MakeOpIdPB(op_id);
+  req.set_log_index(log_index);
   req.set_owner_info(owner_info_);
 
   RegisterLogAnchorResponsePB resp;
@@ -107,12 +107,12 @@ void RemoteBootstrapAnchorClient::SetLogAnchorRefreshStatus(
   }
 }
 
-Status RemoteBootstrapAnchorClient::UpdateLogAnchorAsync(const OpId& op_id) {
+Status RemoteBootstrapAnchorClient::UpdateLogAnchorAsync(const int64_t& log_index) {
   // Check if the last call to update log anchor failed. if so, return the status.
   RETURN_NOT_OK(ProcessLogAnchorRefreshStatus());
 
   UpdateLogAnchorRequestPB req;
-  *req.mutable_op_id() = MakeOpIdPB(op_id);
+  req.set_log_index(log_index);
   req.set_owner_info(owner_info_);
 
   const std::shared_ptr<UpdateLogAnchorResponsePB>

@@ -2,12 +2,13 @@
 title: ycqlsh - YCQL shell for YugabyteDB
 headerTitle: ycqlsh
 linkTitle: ycqlsh
-description: Use the YCQL shell (ycqlsh) to interact with YugabyteDB.
+description: Shell for interacting with the YugabyteDB YCQL API.
+headcontent: Shell for interacting with the YugabyteDB YCQL API
 menu:
   stable:
     identifier: ycqlsh
     parent: admin
-    weight: 2460
+    weight: 20
 type: docs
 ---
 
@@ -20,6 +21,8 @@ The YCQL shell (`ycqlsh`) is a CLI for interacting with YugabyteDB using [YCQL](
 The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is available in the `bin` directory, it is deprecated and will be removed in a future release.
 
 {{< /note >}}
+
+### Installation
 
 `ycqlsh` is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. You can also download it from the [cqlsh GitHub repository](https://github.com/yugabyte/cqlsh/releases).
 

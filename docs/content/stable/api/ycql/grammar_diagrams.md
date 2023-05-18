@@ -1,5 +1,5 @@
 ---
-title: Grammar diagrams
+title: Grammar diagrams YCQL
 summary: Diagrams of the grammar rules.
 ---
 

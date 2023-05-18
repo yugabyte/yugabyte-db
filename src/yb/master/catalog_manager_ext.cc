@@ -148,6 +148,10 @@ DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
     "after which PITR restore can be performed.");
 TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
+DEFINE_RUNTIME_bool(
+    allow_ycql_transactional_xcluster, false,
+    "Determines if xCluster transactional replication on YCQL tables is allowed.");
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -2333,6 +2337,9 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
 Status CatalogManager::RestoreSysCatalog(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
+
+  auto tablet_pending_op = tablet->CreateScopedRWOperationBlockingRocksDbShutdownStart();
+
   bool restore_successful = false;
   // If sys catalog restoration fails then unblock other RPCs.
   auto scope_exit = ScopeExit([this, &restore_successful] {
@@ -2350,20 +2357,22 @@ Status CatalogManager::RestoreSysCatalog(
   // Remove ": " to patch suffix.
   log_prefix.erase(log_prefix.size() - 2);
   tablet->InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
-  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
 
+  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
+  // db can't be closed concurrently, so it is ok to use dummy ScopedRWOperation.
+  auto db_pending_op = ScopedRWOperation();
   auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
   // Load objects to restore and determine obsolete objects.
   RestoreSysCatalogState state(restoration);
-  RETURN_NOT_OK(state.LoadRestoringObjects(doc_read_context(), doc_db));
+  RETURN_NOT_OK(state.LoadRestoringObjects(doc_read_context(), doc_db, db_pending_op));
   // Load existing objects from RocksDB because on followers they are NOT present in loaded sys
   // catalog state.
-  RETURN_NOT_OK(state.LoadExistingObjects(doc_read_context(), tablet->doc_db()));
+  RETURN_NOT_OK(state.LoadExistingObjects(doc_read_context(), tablet->doc_db(), tablet_pending_op));
   RETURN_NOT_OK(state.Process());
 
   docdb::DocWriteBatch write_batch(
-      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
+      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
 
   // Restore the pg_catalog tables.
   if (FLAGS_enable_ysql && state.IsYsqlRestoration()) {
@@ -3055,8 +3064,17 @@ Status CatalogManager::GetUDTypeMetadata(
 
 Status CatalogManager::ValidateTableSchema(
     const std::shared_ptr<client::YBTableInfo>& info,
-    const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
+    const SetupReplicationInfo& setup_info,
     GetTableSchemaResponsePB* resp) {
+  bool is_ysql_table = info->table_type == client::YBTableType::PGSQL_TABLE_TYPE;
+  if (setup_info.transactional && !GetAtomicFlag(&FLAGS_allow_ycql_transactional_xcluster) &&
+      !is_ysql_table) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Transactional replication is not supported for non-YSQL tables: $0",
+        info->table_name.ToString());
+  }
+
   // Get corresponding table schema on local universe.
   GetTableSchemaRequestPB req;
 
@@ -3078,7 +3096,6 @@ Status CatalogManager::ValidateTableSchema(
          Substitute("Error while listing table: $0", status.ToString()));
 
   const auto& source_schema = client::internal::GetSchema(info->schema);
-  bool is_ysql_table = info->table_type == client::YBTableType::PGSQL_TABLE_TYPE;
   for (const auto& t : list_resp.tables()) {
     // Check that table name and namespace both match.
     if (t.name() != info->table_name.table_name() ||

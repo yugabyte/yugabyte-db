@@ -274,7 +274,7 @@ export function ReplicationDetails({
     for (const tableLagQuery of tableLagQueries) {
       if (tableLagQuery.isSuccess) {
         const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
-        if (maxNodeLag === undefined || maxNodeLag > maxAcceptableLag) {
+        if (maxNodeLag && maxNodeLag > maxAcceptableLag) {
           numTablesAboveLagThreshold += 1;
         }
       }

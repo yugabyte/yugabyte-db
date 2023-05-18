@@ -12,6 +12,7 @@
 
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_common_util.h"
+#include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/session.h"
@@ -43,7 +44,6 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/gutil/map-util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -60,11 +60,11 @@ DEFINE_test_flag(bool, xcluster_simulate_have_more_records, false,
 DEFINE_test_flag(bool, xcluster_skip_meta_ops, false,
                  "Whether GetChanges should skip processing meta operations ");
 
-DEFINE_test_flag(bool, enable_replicate_transaction_status_table, false,
-    "Enable replication of transaction status table. This is only used in tests.");
-
 DEFINE_RUNTIME_uint32(xcluster_consistent_wal_safe_time_frequency_ms, 250,
                       "Frequency in milliseconds at which apply safe time is computed.");
+
+DEFINE_RUNTIME_AUTO_bool(xcluster_enable_subtxn_abort_propagation, kExternal, false, true,
+    "Enable including information about which subtransactions aborted in CDC changes");
 
 namespace yb {
 namespace cdc {
@@ -74,26 +74,6 @@ using consensus::ReplicateMsgPtr;
 using consensus::ReplicateMsgs;
 using dockv::PrimitiveValue;
 using tablet::TransactionParticipant;
-
-std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletMetadata(
-    const TabletId& tablet_id) {
-  {
-    std::shared_lock l(tablet_metadata_map_mutex_);
-    auto metadata = FindPtrOrNull(tablet_metadata_map_, tablet_id);
-    if (metadata) {
-      return metadata;
-    }
-  }
-
-  std::lock_guard l(tablet_metadata_map_mutex_);
-  auto metadata = FindPtrOrNull(tablet_metadata_map_, tablet_id);
-  if (!metadata) {
-    metadata = std::make_shared<StreamTabletMetadata>();
-    EmplaceOrDie(&tablet_metadata_map_, tablet_id, metadata);
-  }
-
-  return metadata;
-}
 
 void AddColumnToMap(const ColumnSchema& col_schema,
                     const dockv::KeyEntryValue& col,
@@ -372,7 +352,7 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
       dockv::SubDocKey decoded_key;
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
 
-      if (metadata.record_format == CDCRecordFormat::WAL) {
+      if (metadata.GetRecordFormat() == CDCRecordFormat::WAL) {
         // For xCluster, populate serialized data from WAL, to avoid unnecessary deserializing on
         // producer and re-serializing on consumer.
         auto kv_pair = record->add_key();
@@ -399,8 +379,8 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
       record->set_time(msg->hybrid_time());
       if (batch.has_transaction()) {
         if (!replicate_intents) {
-          auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
-              batch.transaction().transaction_id()));
+          auto txn_id =
+              VERIFY_RESULT(FullyDecodeTransactionId(batch.transaction().transaction_id()));
           // If we're not replicating intents, set record time using the transaction map.
           RETURN_NOT_OK(SetRecordTime(txn_id, txn_map, record));
         } else {
@@ -409,13 +389,17 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
           transaction_state->add_tablets(tablet_peer->tablet_id());
           transaction_state->set_external_status_tablet_id(
               batch.transaction().status_tablet().ToBuffer());
+          if (GetAtomicFlag(&FLAGS_xcluster_enable_subtxn_abort_propagation) &&
+              batch.subtransaction().has_subtransaction_id()) {
+            record->set_subtransaction_id(batch.subtransaction().subtransaction_id());
+          }
         }
       }
     }
     prev_key = primary_key;
     DCHECK(record);
 
-    if (metadata.record_format == CDCRecordFormat::WAL) {
+    if (metadata.GetRecordFormat() == CDCRecordFormat::WAL) {
       auto kv_pair = record->add_changes();
       kv_pair->set_key(write_pair.key().ToBuffer());
       kv_pair->mutable_value()->set_binary_value(write_pair.value().ToBuffer());
@@ -472,6 +456,11 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
     case TransactionStatus::APPLYING: {
       record->set_operation(CDCRecordPB::APPLY);
       txn_state->set_commit_hybrid_time(transaction_state.commit_hybrid_time());
+      if (GetAtomicFlag(&FLAGS_xcluster_enable_subtxn_abort_propagation)) {
+        auto aborted_subtransactions =
+            VERIFY_RESULT(SubtxnSet::FromPB(transaction_state.aborted().set()));
+        aborted_subtransactions.ToPB(txn_state->mutable_aborted()->mutable_set());
+      }
       auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
       tablet->metadata()->partition()->ToPB(record->mutable_partition());
       break;
@@ -483,7 +472,8 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
       }
       break;
     }
-    case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
+    case TransactionStatus::PENDING:
+      FALLTHROUGH_INTENDED;
     // If transaction status tablet log is GCed, or we bootstrap it is possible that that first
     // record we see for the transaction is the PENDING record. This can be treated as a CREATED
     // record which is idempotent.
@@ -492,8 +482,9 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
       break;
     }
     default: {
-      return STATUS(IllegalState, Format("Processing unexpected op type $0",
-                                          msg->transaction_state().status()));
+      return STATUS(
+          IllegalState,
+          Format("Processing unexpected op type $0", msg->transaction_state().status()));
     }
   }
   return Status::OK();
@@ -568,8 +559,7 @@ Status GetChangesForXCluster(
   auto now = MonoTime::Now();
   auto* txn_participant = tablet->transaction_participant();
   // Check if both the table and stream are transactional.
-  bool transactional = (txn_participant != nullptr) && stream_metadata->transactional &&
-                       !FLAGS_TEST_enable_replicate_transaction_status_table;
+  bool transactional = (txn_participant != nullptr) && stream_metadata->IsTransactional();
 
   // In order to provide a transactionally consistent WAL, we need to perform the below steps:
   // If last_apply_safe_time is kInvalid
