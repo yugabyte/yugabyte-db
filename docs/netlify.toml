@@ -696,6 +696,14 @@
   force = true
 
 [[redirects]]
+  from = "/preview/yugabyte-platform/manage-deployments/high-availability/"
+  to = "/preview/yugabyte-platform/administer-yugabyte-platform/high-availability/"
+  force = true
+[[redirects]]
+  from = "/stable/yugabyte-platform/manage-deployments/high-availability/"
+  to = "/stable/yugabyte-platform/administer-yugabyte-platform/high-availability/"
+  force = true
+[[redirects]]
   from = "/v2.16/yugabyte-platform/manage-deployments/high-availability/"
   to = "/v2.16/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   force = true
