@@ -271,7 +271,7 @@ Each process needs to have the following command issued, for example, issuing th
 yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
 ```
 
-* *host*:*port*: The *host* and *port* of the yb-tablet/yb-master server. Default is `localhost:9100`.
+* *host*:*port*: The *host* and *port* of the YB-Master or YB-TServer. Default is `localhost:9100`.
 
 ## Flags
 
