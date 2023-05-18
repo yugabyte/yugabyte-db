@@ -3,8 +3,6 @@ title: Enable high availability
 headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Enable high availability
-aliases:
-  - /v2.16/yugabyte-platform/manage-deployments/high-availability/
 menu:
   v2.16_yugabyte-platform:
     identifier: platform-high-availability

@@ -707,6 +707,27 @@
   to = "/v2.6/yugabyte-platform/install-yugabyte-platform/"
   force = true
 
+[[redirects]]
+  from = "/v2.16/yugabyte-platform/manage-deployments/high-availability/"
+  to = "/v2.16/yugabyte-platform/administer-yugabyte-platform/high-availability/"
+  force = true
+[[redirects]]
+  from = "/v2.14/yugabyte-platform/administer-yugabyte-platform/high-availability/"
+  to = "/v2.14/yugabyte-platform/manage-deployments/high-availability/"
+  force = true
+[[redirects]]
+  from = "/v2.12/yugabyte-platform/administer-yugabyte-platform/high-availability/"
+  to = "/v2.12/yugabyte-platform/manage-deployments/high-availability/"
+  force = true
+[[redirects]]
+  from = "/v2.8/yugabyte-platform/administer-yugabyte-platform/high-availability/"
+  to = "/v2.8/yugabyte-platform/manage-deployments/high-availability/"
+  force = true
+[[redirects]]
+  from = "/v2.6/yugabyte-platform/administer-yugabyte-platform/high-availability/"
+  to = "/v2.6/yugabyte-platform/manage-deployments/high-availability/"
+  force = true
+
 # Redirect old cloud docs to root of current
 
 #[[redirects]]

@@ -3,8 +3,6 @@ title: High availability of YugabyteDB Anywhere
 headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Make YugabyteDB Anywhere highly available
-aliases:
-  - /stable/yugabyte-platform/manage-deployments/high-availability/
 menu:
   stable_yugabyte-platform:
     identifier: platform-high-availability
