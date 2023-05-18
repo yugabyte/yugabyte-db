@@ -1823,7 +1823,7 @@ and if we want to change source universe role then we have to use source univers
 
 #### get_xcluster_safe_time
 
-Reports the skew in xCluster Safe time between the laggiest tablet and the most caught up tablet. 
+Reports the current xCluster safe time for each namespace, which is the time at which reads will be performed.
 
 **Syntax**
 
