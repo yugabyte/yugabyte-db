@@ -14,15 +14,21 @@ import hashlib
 import os
 import pathlib
 
-from typing import Optional, List, Dict, Tuple, Any
+from typing import Optional, List, Dict, Tuple, Any, Union
 
 
-def mkdir_p(dir_path: str) -> None:
+def to_path(path: Union[str, pathlib.Path]) -> pathlib.Path:
+    if isinstance(path, pathlib.Path):
+        return path
+    return pathlib.Path(path)
+
+
+def mkdir_p(dir_path: Union[str, pathlib.Path]) -> None:
     """
     Similar to the "mkdir -p ..." shell command. Creates the given directory and all enclosing
     directories. No-op if the directory already exists.
     """
-    pathlib.Path(dir_path).mkdir(parents=True, exist_ok=True)
+    to_path(dir_path).mkdir(parents=True, exist_ok=True)
 
 
 def delete_file_if_exists(path: str) -> None:
@@ -39,13 +45,19 @@ def assert_absolute_path(dir_path: str) -> None:
     assert os.path.isabs(dir_path), "Expected an absolute path, got %s" % dir_path
 
 
-def read_file(file_path: str) -> str:
-    with open(file_path) as input_file:
+def path_to_str(path: Union[str, pathlib.Path]) -> str:
+    if isinstance(path, str):
+        return path
+    return str(path)
+
+
+def read_file(file_path: Union[str, pathlib.Path]) -> str:
+    with open(path_to_str(file_path)) as input_file:
         return input_file.read()
 
 
-def write_file(content: str, output_file_path: str) -> None:
-    with open(output_file_path, 'w') as output_file:
+def write_file(content: str, output_file_path: Union[str, pathlib.Path]) -> None:
+    with open(path_to_str(output_file_path), 'w') as output_file:
         output_file.write(content)
 
 
