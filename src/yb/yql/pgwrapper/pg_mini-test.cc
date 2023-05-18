@@ -1019,6 +1019,31 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MoveMaster)) {
   }, 15s, "Create table"));
 }
 
+TEST_F(PgMiniTest, PartialHashKeyColumnsProjection) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (k INT, v INT, PRIMARY KEY((k, v) HASH)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
+  ASSERT_OK(conn.Fetch("SELECT k from test"));
+}
+
+TEST_F(PgMiniTest, PartialHashKeyColumnsProjectionWithRangeColumn) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test (k INT, v INT, r INT, PRIMARY KEY((k, v) HASH, r ASC)) SPLIT "
+                   "INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1, 1)"));
+  // Hash columns projection.
+  ASSERT_OK(conn.Fetch("SELECT k from test"));
+  ASSERT_OK(conn.Fetch("SELECT k, v from test"));
+
+  // Range column.
+  ASSERT_OK(conn.Fetch("SELECT r from test"));
+
+  // All columns.
+  ASSERT_OK(conn.Fetch("SELECT k, v, r from test"));
+}
+
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
   SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability);
   FLAGS_TEST_force_master_leader_resolution = true;
