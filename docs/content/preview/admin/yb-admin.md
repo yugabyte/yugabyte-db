@@ -1820,7 +1820,7 @@ yb-admin \
 ```
 
 If all streams are caught-up, the API prints `All replications are caught-up.` to the console.  
-Otherwise, it prints the non-caught-up streams in the following format:
+Otherwise, it outputs the non-caught-up streams in the following format:
 ```
 Found undrained replications:
 - Under Stream <stream_id>:
