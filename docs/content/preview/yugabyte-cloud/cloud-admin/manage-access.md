@@ -1,6 +1,6 @@
 ---
 title: Manage account access
-linkTitle: Manage account access
+linkTitle: Manage account users
 description: Manage access to your YugabyteDB Managed account and your clusters.
 headcontent: Invite team members to your YugabyteDB Managed account
 image: /images/section_icons/secure/create-roles.png
@@ -14,32 +14,13 @@ type: docs
 
 Invite team members to your account so that they can create, manage, and connect to clusters. You can also manage the login methods available to users for signing in to your YugabyteDB Managed account.
 
+To access a cluster database, you need to ask a user with administrative privileges on the database for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).
+
 You must be signed in as an Admin user to invite other users, change roles, and manage login methods.
 
 The **Users** tab displays a list of users that are either active or have been invited, including their email, display name, role, and status.
 
 ![Admin Users page](/images/yb-cloud/managed-admin-users.png)
-
-## User roles
-
-A YugabyteDB Managed user is either an Admin or a Developer.
-
-### Admin
-
-Admin users have full access to all features. There must always be at least one Admin user. The primary account user (the user who created the YugabyteDB Managed account) is automatically assigned an Admin role.
-
-### Developer
-
-Developer users have access to all features, with the exception of the following administrative tasks:
-
-- invite users
-- delete or change the role of other users
-- change login methods
-- create or revoke API keys
-- create a billing profile
-- view account activity
-
-To access a cluster database, you need to ask a user with administrative privileges on the database for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).
 
 ## Manage login methods
 
@@ -79,6 +60,8 @@ To delete a user, click **Delete** next to the username in the list, then click 
 Only an Admin user can change the role of other users. You cannot change your own role.
 
 To change a user's role, in the **User Role** column, select a role for the user.
+
+To create and manage roles, refer to [Manage account roles](../managed-roles/).
 
 ## Reset your password
 
