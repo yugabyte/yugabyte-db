@@ -52,7 +52,7 @@ The following commands are available:
 * [remote_bootstrap](#remote-bootstrap)
 * [set_flag](#set-flag)
 * [status](#status)
-* [refresh_flags](#refresh_flags)
+* [refresh_flags](#refresh-flags)
 
 ##### are_tablets_running
 
