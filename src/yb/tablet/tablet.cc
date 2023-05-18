@@ -3370,6 +3370,15 @@ Status Tablet::ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reas
   return Status::OK();
 }
 
+docdb::DocDB Tablet::doc_db() const {
+  return {
+      regular_db_.get(),
+      intents_db_.get(),
+      &key_bounds_,
+      retention_policy_.get(),
+      metrics_.get() };
+}
+
 std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
   if (!regular_db_) return "";
 

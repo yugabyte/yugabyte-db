@@ -116,6 +116,8 @@ const char* MetricUnit::Name(Type unit) {
       return "messages";
     case kContextSwitches:
       return "context switches";
+    case kKeys:
+      return "keys";
     default:
       return "UNKNOWN UNIT";
   }

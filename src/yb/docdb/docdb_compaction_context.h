@@ -99,6 +99,7 @@ class HistoryRetentionPolicy {
  public:
   virtual ~HistoryRetentionPolicy() = default;
   virtual HistoryRetentionDirective GetRetentionDirective() = 0;
+  virtual HybridTime ProposedHistoryCutoff() = 0;
 };
 
 using DeleteMarkerRetentionTimeProvider = std::function<HybridTime(
@@ -115,6 +116,8 @@ std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactor
 class ManualHistoryRetentionPolicy : public HistoryRetentionPolicy {
  public:
   HistoryRetentionDirective GetRetentionDirective() override;
+
+  HybridTime ProposedHistoryCutoff() override;
 
   void SetHistoryCutoff(HybridTime history_cutoff);
 
