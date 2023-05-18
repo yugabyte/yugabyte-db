@@ -60,8 +60,8 @@ DEFINE_test_flag(bool, xcluster_simulate_have_more_records, false,
 DEFINE_test_flag(bool, xcluster_skip_meta_ops, false,
                  "Whether GetChanges should skip processing meta operations ");
 
-DEFINE_RUNTIME_bool(xcluster_consistent_wal, false,
-                    "Replicates a WAL that is safe_time consistent.");
+DEFINE_test_flag(bool, enable_replicate_transaction_status_table, false,
+    "Enable replication of transaction status table. This is only used in tests.");
 
 DEFINE_RUNTIME_uint32(xcluster_consistent_wal_safe_time_frequency_ms, 250,
                       "Frequency in milliseconds at which apply safe time is computed.");
@@ -592,7 +592,8 @@ Status GetChangesForXCluster(
   //    b. Reset last_apply_safe_time and apply_safe_time_checkpoint_op_id
   //  5. Else don't set any response.apply_safe_time. The next GetChanges RPC will reuse the
   //     computed last_apply_safe_time and apply_safe_time_checkpoint_op_id
-  if (FLAGS_xcluster_consistent_wal && tablet && tablet->transaction_participant() &&
+  if (stream_metadata->transactional && !FLAGS_TEST_enable_replicate_transaction_status_table &&
+      tablet && tablet->transaction_participant() &&
       !stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
     // See if its time to update the apply safe time.
     if (!stream_tablet_metadata->last_apply_safe_time_update_time_ ||
@@ -710,9 +711,9 @@ Status GetChangesForXCluster(
     consumption.Add(resp->SpaceUsedLong());
   }
 
-  if (FLAGS_xcluster_consistent_wal) {
-    // We can set the apply_safe_time if no messages were read from the WAL and there is nothing to
-    // send. Or, the apply_safe_time_checkpoint_op_id_ was included in the response.
+  if (stream_metadata->transactional && !FLAGS_TEST_enable_replicate_transaction_status_table) {
+    // We can set the apply_safe_time if no messages were read from the WAL and there is nothing
+    // to send. Or, the apply_safe_time_checkpoint_op_id_ was included in the response.
     if ((checkpoint.index == 0 && !read_ops.have_more_messages) ||
         checkpoint.index >= stream_tablet_metadata->apply_safe_time_checkpoint_op_id_) {
       resp->set_safe_hybrid_time(stream_tablet_metadata->last_apply_safe_time_.ToUint64());
@@ -721,7 +722,6 @@ Status GetChangesForXCluster(
       stream_tablet_metadata->last_apply_safe_time_ = HybridTime::kInvalid;
     }
   } else {
-    // This is used for enable_replicate_transaction_status_table.
     auto safe_time =
         GetSafeTimeForTarget(leader_safe_time, ht_of_last_returned_message, have_more_messages);
     resp->set_safe_hybrid_time(safe_time.ToUint64());

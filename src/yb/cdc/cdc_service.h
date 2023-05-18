@@ -291,13 +291,14 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<NamespaceId> GetNamespaceId(const std::string& ns_name);
 
   Result<std::shared_ptr<StreamMetadata>> GetStream(
-      const std::string& stream_id, bool ignore_cache = false);
+      const std::string& stream_id, RefreshStreamMapOption ops = RefreshStreamMapOption::kNone)
+      EXCLUDES(mutex_);
 
   void RemoveStreamFromCache(const CDCStreamId& stream_id);
 
-  std::shared_ptr<StreamMetadata> GetStreamMetadataFromCache(const std::string& stream_id);
   void AddStreamMetadataToCache(
-      const std::string& stream_id, const std::shared_ptr<StreamMetadata>& stream_metadata);
+      const std::string& stream_id, const std::shared_ptr<StreamMetadata>& stream_metadata)
+      EXCLUDES(mutex_);
 
   Status CheckTabletValidForStream(const ProducerTabletInfo& producer_info);
 

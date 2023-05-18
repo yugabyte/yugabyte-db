@@ -122,7 +122,6 @@ DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_uint32(external_transaction_retention_window_secs);
-DECLARE_bool(xcluster_consistent_wal);
 
 namespace yb {
 
@@ -665,7 +664,6 @@ constexpr int kTransactionalConsistencyTestDurationSecs = 30;
 class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
  public:
   void SetUp() override {
-    FLAGS_xcluster_consistent_wal = true;
     XClusterYsqlTest::SetUp();
   }
 
@@ -3269,7 +3267,6 @@ class XClusterYsqlTestReadOnly : public XClusterYsqlTest {
 
  protected:
   void SetUp() override {
-    FLAGS_xcluster_consistent_wal = true;
     XClusterYsqlTest::SetUp();
   }
 

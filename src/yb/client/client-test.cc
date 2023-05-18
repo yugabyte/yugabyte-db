@@ -1642,7 +1642,7 @@ TEST_F(ClientTest, TestCreateCDCStreamAsync) {
   std::promise<Result<CDCStreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
-      client_table_.table()->id(), options,
+      client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse,
       [&promise](const auto& stream) { promise.set_value(stream); });
   auto stream = promise.get_future().get();
   ASSERT_OK(stream);
@@ -1653,7 +1653,7 @@ TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
   std::promise<Result<CDCStreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
-      "MissingTableId", options,
+      "MissingTableId", options, cdc::StreamModeTransactional::kFalse,
       [&promise](const auto& stream) { promise.set_value(stream); });
   auto stream = promise.get_future().get();
   ASSERT_NOK(stream);
@@ -1662,7 +1662,8 @@ TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
 
 TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
   std::unordered_map<std::string, std::string> options;
-  auto result = client_->CreateCDCStream(client_table_.table()->id(), options);
+  auto result = client_->CreateCDCStream(
+      client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse);
   ASSERT_TRUE(result.ok());
 
   // Delete the created CDC stream.

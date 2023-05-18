@@ -49,6 +49,7 @@ DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(ysql_yb_xcluster_consistency_level);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
+DECLARE_bool(TEST_enable_replicate_transaction_status_table);
 
 namespace yb {
 using client::YBSchema;
@@ -121,6 +122,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
     ASSERT_OK(producer_cluster_.client_->GetTablets(
         global_tran_table_name, 0 /* max_tablets */, &global_tran_tablet_ids_, NULL));
 
+    FLAGS_TEST_enable_replicate_transaction_status_table = true;
     ASSERT_OK(SetupUniverseReplication(
         {producer_table_, global_tran_table}, {LeaderOnly::kTrue, Transactional::kTrue}));
 
@@ -404,6 +406,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
     ASSERT_OK(PreReplicationSetup());
 
+    FLAGS_TEST_enable_replicate_transaction_status_table = true;
     ASSERT_OK(SetupUniverseReplication({producer_table1_, producer_table2_, producer_tran_table_},
                                        {LeaderOnly::kTrue, Transactional::kTrue}));
 

@@ -294,6 +294,7 @@ class YBClient::Data {
   void CreateCDCStream(YBClient* client,
                        const TableId& table_id,
                        const std::unordered_map<std::string, std::string>& options,
+                       cdc::StreamModeTransactional transactional,
                        CoarseTimePoint deadline,
                        CreateCDCStreamCallback callback);
 

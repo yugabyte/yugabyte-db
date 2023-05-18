@@ -128,6 +128,7 @@ message CreateCDCStreamRequestPB {
   optional string namespace_name = 4;
   optional CDCRequestSource source_type = 5 [default = XCLUSTER];
   optional CDCCheckpointType checkpoint_type = 6 [default = IMPLICIT];
+  optional bool transactional = 7; // [default = false]
 }
 
 message CreateCDCStreamResponsePB {

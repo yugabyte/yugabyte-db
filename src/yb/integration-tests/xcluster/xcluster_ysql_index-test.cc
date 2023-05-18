@@ -25,7 +25,6 @@
 #include "yb/util/test_thread_holder.h"
 
 DECLARE_string(vmodule);
-DECLARE_bool(xcluster_consistent_wal);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_xcluster_fail_table_create_during_bootstrap);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
@@ -51,7 +50,6 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
   void SetUp() override {
     YB_SKIP_TEST_IN_TSAN();
     XClusterYsqlTestBase::SetUp();
-    FLAGS_xcluster_consistent_wal = true;
     ASSERT_OK(SET_FLAG(vmodule, "backfill_index*=0,xrepl*=0,xcluster*=0"));
 
     FLAGS_TEST_user_ddl_operation_timeout_sec = 30 * kTimeMultiplier;

@@ -44,6 +44,7 @@
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_bool(allow_ycql_transactional_xcluster);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(TEST_enable_replicate_transaction_status_table);
 DECLARE_bool(parallelize_bootstrap_producer);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 
@@ -865,6 +866,7 @@ TEST_F(XClusterAdminCliTest, DisallowAddTransactionTablet) {
   // implementation isn't quite complete yet.  It's fine to use it in tests, however.
   FLAGS_allow_ycql_transactional_xcluster = true;
 
+  FLAGS_TEST_enable_replicate_transaction_status_table = true;
   // Create an identical table on the producer.
   client::TableHandle producer_table;
   client::kv_table_test::CreateTable(

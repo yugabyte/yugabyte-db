@@ -4964,7 +4964,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnEmptyNamespace)
   NamespaceId ns_id;
   std::vector<TableId> stream_table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+  StreamModeTransactional transactional(false);
+  ASSERT_OK(
+      test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options, &transactional));
 
   const std::string& stream_state = options.at(kStreamState);
   ASSERT_EQ(
@@ -5007,7 +5009,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnNamespaceNoPKTa
   NamespaceId ns_id;
   std::vector<TableId> stream_table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+  StreamModeTransactional transactional(false);
+  ASSERT_OK(
+      test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options, &transactional));
 
   const std::string& stream_state = options.at(kStreamState);
   ASSERT_EQ(

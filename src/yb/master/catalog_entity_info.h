@@ -38,6 +38,7 @@
 
 #include <boost/bimap.hpp>
 
+#include "yb/cdc/cdc_util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
@@ -1163,6 +1164,10 @@ struct PersistentCDCStreamInfo : public Persistent<
 
   const google::protobuf::RepeatedPtrField<CDCStreamOptionsPB> options() const {
     return pb.options();
+  }
+
+  cdc::StreamModeTransactional transactional() const {
+    return cdc::StreamModeTransactional(pb.transactional());
   }
 };
 
