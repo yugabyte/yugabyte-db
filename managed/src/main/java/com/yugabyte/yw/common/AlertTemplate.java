@@ -981,7 +981,34 @@ public enum AlertTemplate {
       0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build());
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+
+  NEW_YSQL_TABLES_ADDED(
+      "New Ysql Tables Added",
+      "New ysql tables added to source universe in db associated with existing xcluster"
+          + " replication config but not added to replication",
+      "((count by (namespace_name, node_prefix)"
+          + "(count by(namespace_name, table_id, node_prefix)"
+          + "(rocksdb_current_version_sst_files_size{node_prefix=\"__nodePrefix__\","
+          + "table_type=\"PGSQL_TABLE_TYPE\"})))"
+          + " - count by(namespace_name, node_prefix)"
+          + "(count by(namespace_name, node_prefix, table_id)"
+          + "(async_replication_sent_lag_micros{node_prefix=\"__nodePrefix__\","
+          + "table_type=\"PGSQL_TABLE_TYPE\"})))"
+          + " {{ query_condition }} {{ query_threshold }}",
+      "New ysql tables are added to the source universe '{{ $labels.source_name }} "
+          + "in db with existing xcluster config but not added to the xcluster replication.",
+      120,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdCondition(Condition.NOT_EQUAL)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("table(s)")
+          .thresholdConditionReadOnly(true)
+          .thresholdReadOnly(true)
+          .build());
 
   // @formatter:on
 
