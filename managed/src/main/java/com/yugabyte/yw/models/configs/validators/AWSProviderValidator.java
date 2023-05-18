@@ -146,7 +146,33 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       Provider provider, Region region, SetMultimap<String, String> validationErrorsMap) {
     String fieldDetails = "REGION." + region.getCode() + ".DRY_RUN";
     try {
-      awsCloudImpl.dryRunDescribeInstanceOrBadRequest(provider, region.getCode());
+      List<DryRunValidators> dryRunValidators = new ArrayList<>();
+      dryRunValidators.add(
+          () -> awsCloudImpl.dryRunDescribeInstanceOrBadRequest(provider, region.getCode()));
+      dryRunValidators.add(
+          () -> awsCloudImpl.dryRunDescribeImageOrBadRequest(provider, region.getCode()));
+      dryRunValidators.add(
+          () -> awsCloudImpl.dryRunDescribeInstanceTypesOrBadRequest(provider, region.getCode()));
+      dryRunValidators.add(
+          () -> awsCloudImpl.dryRunDescribeVpcsOrBadRequest(provider, region.getCode()));
+      dryRunValidators.add(
+          () -> awsCloudImpl.dryRunDescribeSubnetOrBadRequest(provider, region.getCode()));
+      dryRunValidators.add(
+          () -> awsCloudImpl.dryRunSecurityGroupOrBadRequest(provider, region.getCode()));
+      dryRunValidators.add(
+          () -> awsCloudImpl.dryRunKeyPairOrBadRequest(provider, region.getCode()));
+      dryRunValidators.add(
+          () ->
+              awsCloudImpl.dryRunAuthorizeSecurityGroupIngressOrBadRequest(
+                  provider, region.getCode()));
+      // Run each dry run validators.
+      for (DryRunValidators dryRunValidator : dryRunValidators) {
+        try {
+          dryRunValidator.execute();
+        } catch (PlatformServiceException e) {
+          validationErrorsMap.put(fieldDetails, e.getMessage());
+        }
+      }
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {
         validationErrorsMap.put(fieldDetails, e.getMessage());
@@ -313,5 +339,10 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
             () ->
                 new PlatformServiceException(
                     BAD_REQUEST, "Could not find AZ for subnet: " + subnet));
+  }
+
+  @FunctionalInterface
+  interface DryRunValidators {
+    void execute();
   }
 }
