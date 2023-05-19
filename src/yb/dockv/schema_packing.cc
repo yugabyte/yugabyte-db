@@ -125,7 +125,7 @@ bool SchemaPacking::SkippedColumn(ColumnId column_id) const {
 }
 
 void SchemaPacking::GetBounds(
-    const Slice& packed, boost::container::small_vector_base<const uint8_t*>* bounds) const {
+    Slice packed, boost::container::small_vector_base<const uint8_t*>* bounds) const {
   bounds->clear();
   bounds->reserve(columns_.size() + 1);
   const auto prefix_len = this->prefix_len();
@@ -143,7 +143,7 @@ void SchemaPacking::GetBounds(
   }
 }
 
-Slice SchemaPacking::GetValue(size_t idx, const Slice& packed) const {
+Slice SchemaPacking::GetValue(size_t idx, Slice packed) const {
   const auto& column_data = columns_[idx];
   size_t offset = column_data.num_varlen_columns_before
       ? LoadEnd(column_data.num_varlen_columns_before - 1, packed) : 0;
@@ -154,7 +154,7 @@ Slice SchemaPacking::GetValue(size_t idx, const Slice& packed) const {
   return Slice(packed.data() + offset, packed.data() + end);
 }
 
-std::optional<Slice> SchemaPacking::GetValue(ColumnId column_id, const Slice& packed) const {
+std::optional<Slice> SchemaPacking::GetValue(ColumnId column_id, Slice packed) const {
   auto index = column_to_idx_.get(column_id.rep());
   if (index == kSkippedColumnIdx) {
     return {};

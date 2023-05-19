@@ -40,14 +40,14 @@ namespace yb::dockv {
 namespace {
 
 bool IsNull(const Slice& slice) {
-  return slice.empty();
+  return slice.empty() || slice[0] == ValueEntryTypeAsChar::kTombstone;
 }
 
 using ValueSlicePair = std::pair<Slice, Slice>;
 using ValuePair = std::pair<Slice, const QLValuePB&>;
 
 bool IsNull(const ValueSlicePair& value) {
-  return value.first.empty() && value.second.empty();
+  return IsNull(value.second);
 }
 
 void PackValue(const QLValuePB& value, ValueBuffer* result) {
@@ -68,7 +68,7 @@ size_t PackedValueSize(const ValuePair& value) {
 }
 
 bool IsNull(const ValuePair& value) {
-  return value.first.empty() && IsNull(value.second);
+  return IsNull(value.second);
 }
 
 void PackValue(const Slice& value, ValueBuffer* result) {
@@ -273,8 +273,7 @@ ColumnId RowPacker::NextColumnId() const {
 }
 
 Result<const ColumnPackingData&> RowPacker::NextColumnData() const {
-  RSTATUS_DCHECK(
-      idx_ < packing_.columns(), IllegalState, "All columns already packed");
+  RSTATUS_DCHECK_LT(idx_, packing_.columns(), IllegalState, "All columns already packed");
   return packing_.column_packing_data(idx_);
 }
 
