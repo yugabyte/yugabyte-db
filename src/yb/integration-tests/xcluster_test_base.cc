@@ -200,31 +200,32 @@ Result<YBTableName> XClusterTestBase::CreateTable(
 
 Status XClusterTestBase::SetupUniverseReplication(const std::vector<string>& table_ids) {
   return SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, table_ids);
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId, table_ids);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
     const std::vector<std::shared_ptr<client::YBTable>>& tables, SetupReplicationOptions opts) {
-  return SetupUniverseReplication(kUniverseId, tables, opts);
+  return SetupUniverseReplication(kReplicationGroupId, tables, opts);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
-    const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
-    SetupReplicationOptions opts) {
+    const cdc::ReplicationGroupId& replication_group_id,
+    const std::vector<std::shared_ptr<client::YBTable>>& tables, SetupReplicationOptions opts) {
   return SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), universe_id, tables,
+      producer_cluster(), consumer_cluster(), consumer_client(), replication_group_id, tables,
       {} /* bootstrap_ids */, opts);
 }
 
 Status XClusterTestBase::SetupReverseUniverseReplication(
     const std::vector<std::shared_ptr<client::YBTable>>& tables) {
   return SetupUniverseReplication(
-      consumer_cluster(), producer_cluster(), producer_client(), kUniverseId, tables);
+      consumer_cluster(), producer_cluster(), producer_client(), kReplicationGroupId, tables);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
+    const cdc::ReplicationGroupId& replication_group_id,
+    const std::vector<std::shared_ptr<client::YBTable>>& tables,
     const std::vector<string>& bootstrap_ids, SetupReplicationOptions opts) {
   std::vector<string> table_ids;
   for (const auto& table : tables) {
@@ -232,13 +233,13 @@ Status XClusterTestBase::SetupUniverseReplication(
   }
 
   return SetupUniverseReplication(
-      producer_cluster, consumer_cluster, consumer_client, universe_id, table_ids, bootstrap_ids,
-      opts);
+      producer_cluster, consumer_cluster, consumer_client, replication_group_id, table_ids,
+      bootstrap_ids, opts);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const std::string& universe_id, const std::vector<string>& table_ids,
+    const cdc::ReplicationGroupId& replication_group_id, const std::vector<string>& table_ids,
     const std::vector<string>& bootstrap_ids, SetupReplicationOptions opts) {
   // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
   // universe_id subdirectory in FLAGS_certs_for_cdc_dir.
@@ -247,7 +248,8 @@ Status XClusterTestBase::SetupUniverseReplication(
     if (!env->DirExists(FLAGS_certs_for_cdc_dir)) {
       RETURN_NOT_OK(env->CreateDir(FLAGS_certs_for_cdc_dir));
     }
-    const auto universe_sub_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, universe_id);
+    const auto universe_sub_dir =
+        JoinPathSegments(FLAGS_certs_for_cdc_dir, replication_group_id.ToString());
     RETURN_NOT_OK(CopyDirectory(
         env, FLAGS_certs_dir, universe_sub_dir, UseHardLinks::kFalse, CreateIfMissing::kTrue,
         RecursiveCopy::kFalse));
@@ -257,7 +259,7 @@ Status XClusterTestBase::SetupUniverseReplication(
   master::SetupUniverseReplicationRequestPB req;
   master::SetupUniverseReplicationResponsePB resp;
 
-  req.set_producer_id(universe_id);
+  req.set_producer_id(replication_group_id.ToString());
   string master_addr = producer_cluster->GetMasterAddresses();
   if (opts.leader_only) {
     master_addr = VERIFY_RESULT(producer_cluster->GetLeaderMiniMaster())->bound_rpc_addr_str();
@@ -291,9 +293,10 @@ Status XClusterTestBase::SetupUniverseReplication(
   {
     // Verify that replication was setup correctly.
     master::GetUniverseReplicationResponsePB resp;
-    RETURN_NOT_OK(VerifyUniverseReplication(universe_id, &resp));
-    SCHECK_EQ(resp.entry().producer_id(), universe_id, IllegalState,
-              "Producer id does not match passed in value");
+    RETURN_NOT_OK(VerifyUniverseReplication(replication_group_id, &resp));
+    SCHECK_EQ(
+        resp.entry().producer_id(), replication_group_id, IllegalState,
+        "Producer id does not match passed in value");
     SCHECK_EQ(resp.entry().tables_size(), table_ids.size(), IllegalState,
               "Number of tables do not match");
   }
@@ -302,12 +305,11 @@ Status XClusterTestBase::SetupUniverseReplication(
 
 Status XClusterTestBase::SetupNSUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const std::string& universe_id, const std::string& producer_ns_name,
-    const YQLDatabase& producer_ns_type,
-    SetupReplicationOptions opts) {
+    const cdc::ReplicationGroupId& replication_group_id, const std::string& producer_ns_name,
+    const YQLDatabase& producer_ns_type, SetupReplicationOptions opts) {
   master::SetupNSUniverseReplicationRequestPB req;
   master::SetupNSUniverseReplicationResponsePB resp;
-  req.set_producer_id(universe_id);
+  req.set_producer_id(replication_group_id.ToString());
   req.set_producer_ns_name(producer_ns_name);
   req.set_producer_ns_type(producer_ns_type);
 
@@ -335,20 +337,23 @@ Status XClusterTestBase::SetupNSUniverseReplication(
 }
 
 Status XClusterTestBase::VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp) {
-  return VerifyUniverseReplication(kUniverseId, resp);
+  return VerifyUniverseReplication(kReplicationGroupId, resp);
 }
 
 Status XClusterTestBase::VerifyUniverseReplication(
-    const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp) {
-  return VerifyUniverseReplication(consumer_cluster(), consumer_client(), universe_id, resp);
+    const cdc::ReplicationGroupId& replication_group_id,
+    master::GetUniverseReplicationResponsePB* resp) {
+  return VerifyUniverseReplication(
+      consumer_cluster(), consumer_client(), replication_group_id, resp);
 }
 
 Status XClusterTestBase::VerifyUniverseReplication(
-    MiniCluster* consumer_cluster, YBClient* consumer_client, const std::string& universe_id,
+    MiniCluster* consumer_cluster, YBClient* consumer_client,
+    const cdc::ReplicationGroupId& replication_group_id,
     master::GetUniverseReplicationResponsePB* resp) {
   master::IsSetupUniverseReplicationDoneResponsePB setup_resp;
-  RETURN_NOT_OK(
-      WaitForSetupUniverseReplication(consumer_cluster, consumer_client, universe_id, &setup_resp));
+  RETURN_NOT_OK(WaitForSetupUniverseReplication(
+      consumer_cluster, consumer_client, replication_group_id, &setup_resp));
   if (setup_resp.has_replication_error()) {
     RETURN_NOT_OK(StatusFromPB(setup_resp.replication_error()));
   }
@@ -356,7 +361,7 @@ Status XClusterTestBase::VerifyUniverseReplication(
   return LoggedWaitFor(
       [=]() -> Result<bool> {
         master::GetUniverseReplicationRequestPB req;
-        req.set_producer_id(universe_id);
+        req.set_producer_id(replication_group_id.ToString());
         resp->Clear();
 
         auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -373,25 +378,24 @@ Status XClusterTestBase::VerifyUniverseReplication(
 }
 
 Status XClusterTestBase::VerifyNSUniverseReplication(
-      MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const std::string& universe_id, int num_expected_table) {
+    MiniCluster* consumer_cluster, YBClient* consumer_client,
+    const cdc::ReplicationGroupId& replication_group_id, int num_expected_table) {
   return LoggedWaitFor([&]() -> Result<bool> {
     master::GetUniverseReplicationResponsePB resp;
-    auto s = VerifyUniverseReplication(consumer_cluster, consumer_client, universe_id, &resp);
-    return s.ok() &&
-        resp.entry().producer_id() == universe_id &&
-        resp.entry().is_ns_replication() &&
-        resp.entry().tables_size() == num_expected_table;
+    auto s =
+        VerifyUniverseReplication(consumer_cluster, consumer_client, replication_group_id, &resp);
+    return s.ok() && resp.entry().producer_id() == replication_group_id &&
+           resp.entry().is_ns_replication() && resp.entry().tables_size() == num_expected_table;
   }, MonoDelta::FromSeconds(kRpcTimeout), "Verify namespace-level universe replication");
 }
 
 Status XClusterTestBase::ToggleUniverseReplication(
     MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const std::string& universe_id, bool is_enabled) {
+    const cdc::ReplicationGroupId& replication_group_id, bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
   master::SetUniverseReplicationEnabledResponsePB resp;
 
-  req.set_producer_id(universe_id);
+  req.set_producer_id(replication_group_id.ToString());
   req.set_is_enabled(is_enabled);
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -430,12 +434,13 @@ Status XClusterTestBase::ChangeXClusterRole(const cdc::XClusterRole role, Cluste
   return Status::OK();
 }
 
-Status XClusterTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
-    YBClient* consumer_client, const std::string& universe_id, int timeout) {
+Status XClusterTestBase::VerifyUniverseReplicationDeleted(
+    MiniCluster* consumer_cluster, YBClient* consumer_client,
+    const cdc::ReplicationGroupId& replication_group_id, int timeout) {
   return LoggedWaitFor([=]() -> Result<bool> {
     master::GetUniverseReplicationRequestPB req;
     master::GetUniverseReplicationResponsePB resp;
-    req.set_producer_id(universe_id);
+    req.set_producer_id(replication_group_id.ToString());
 
     auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
         &consumer_client->proxy_cache(),
@@ -449,12 +454,13 @@ Status XClusterTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_
 }
 
 Status XClusterTestBase::WaitForSetupUniverseReplication(
-    MiniCluster* consumer_cluster, YBClient* consumer_client, const std::string& universe_id,
+    MiniCluster* consumer_cluster, YBClient* consumer_client,
+    const cdc::ReplicationGroupId& replication_group_id,
     master::IsSetupUniverseReplicationDoneResponsePB* resp) {
   return LoggedWaitFor(
       [=]() -> Result<bool> {
         master::IsSetupUniverseReplicationDoneRequestPB req;
-        req.set_producer_id(universe_id);
+        req.set_producer_id(replication_group_id.ToString());
         resp->Clear();
 
         auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -501,16 +507,17 @@ uint32_t XClusterTestBase::GetSuccessfulWriteOps(MiniCluster* cluster) {
   return size;
 }
 
-Status XClusterTestBase::DeleteUniverseReplication(const std::string& universe_id) {
-  return DeleteUniverseReplication(universe_id, consumer_client(), consumer_cluster());
+Status XClusterTestBase::DeleteUniverseReplication(
+    const cdc::ReplicationGroupId& replication_group_id) {
+  return DeleteUniverseReplication(replication_group_id, consumer_client(), consumer_cluster());
 }
 
 Status XClusterTestBase::DeleteUniverseReplication(
-    const std::string& universe_id, YBClient* client, MiniCluster* cluster) {
+    const cdc::ReplicationGroupId& replication_group_id, YBClient* client, MiniCluster* cluster) {
   master::DeleteUniverseReplicationRequestPB req;
   master::DeleteUniverseReplicationResponsePB resp;
 
-  req.set_producer_id(universe_id);
+  req.set_producer_id(replication_group_id.ToString());
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &client->proxy_cache(),
@@ -524,13 +531,13 @@ Status XClusterTestBase::DeleteUniverseReplication(
 }
 
 Status XClusterTestBase::AlterUniverseReplication(
-    const std::string& universe_id,
+    const cdc::ReplicationGroupId& replication_group_id,
     const std::vector<std::shared_ptr<client::YBTable>>& tables,
     bool add_tables) {
   master::AlterUniverseReplicationRequestPB alter_req;
   master::AlterUniverseReplicationResponsePB alter_resp;
   rpc::RpcController rpc;
-  alter_req.set_producer_id(universe_id);
+  alter_req.set_producer_id(replication_group_id.ToString());
   for (const auto& table : tables) {
     if (add_tables) {
       alter_req.add_producer_table_ids_to_add(table->id());
@@ -547,12 +554,13 @@ Status XClusterTestBase::AlterUniverseReplication(
   RETURN_NOT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
   SCHECK(!alter_resp.has_error(), IllegalState, alter_resp.ShortDebugString());
   master::IsSetupUniverseReplicationDoneResponsePB setup_resp;
+  auto alter_replication_group_id = cdc::GetAlterReplicationGroupId(replication_group_id);
   RETURN_NOT_OK(WaitForSetupUniverseReplication(
-      consumer_cluster(), consumer_client(), universe_id + ".ALTER", &setup_resp));
+      consumer_cluster(), consumer_client(), alter_replication_group_id, &setup_resp));
   SCHECK(!setup_resp.has_error(), IllegalState, alter_resp.ShortDebugString());
-  RETURN_NOT_OK(WaitForSetupUniverseReplicationCleanUp(universe_id + ".ALTER"));
+  RETURN_NOT_OK(WaitForSetupUniverseReplicationCleanUp(alter_replication_group_id));
   master::GetUniverseReplicationResponsePB get_resp;
-  return VerifyUniverseReplication(universe_id, &get_resp);
+  return VerifyUniverseReplication(replication_group_id, &get_resp);
 }
 
 Status XClusterTestBase::CorrectlyPollingAllTablets(
@@ -561,20 +569,23 @@ Status XClusterTestBase::CorrectlyPollingAllTablets(
       cluster, num_producer_tablets, MonoDelta::FromSeconds(kRpcTimeout));
 }
 
-Status XClusterTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
+Status XClusterTestBase::WaitForSetupUniverseReplicationCleanUp(
+    const cdc::ReplicationGroupId& replication_group_id) {
   auto proxy = std::make_shared<master::MasterReplicationProxy>(
     &consumer_client()->proxy_cache(),
     VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
   master::GetUniverseReplicationRequestPB req;
   master::GetUniverseReplicationResponsePB resp;
-  return WaitFor([proxy, &req, &resp, producer_uuid]() -> Result<bool> {
-    req.set_producer_id(producer_uuid);
-    rpc::RpcController rpc;
-    Status s = proxy->GetUniverseReplication(req, &resp, &rpc);
+  return WaitFor(
+      [proxy, &req, &resp, replication_group_id]() -> Result<bool> {
+        req.set_producer_id(replication_group_id.ToString());
+        rpc::RpcController rpc;
+        Status s = proxy->GetUniverseReplication(req, &resp, &rpc);
 
-    return resp.has_error() && resp.error().code() == master::MasterErrorPB::OBJECT_NOT_FOUND;
-  }, MonoDelta::FromSeconds(kRpcTimeout), "Waiting for universe to delete");
+        return resp.has_error() && resp.error().code() == master::MasterErrorPB::OBJECT_NOT_FOUND;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "Waiting for universe to delete");
 }
 
 Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
@@ -715,7 +726,7 @@ void XClusterTestBase::VerifyReplicationError(
   master::GetReplicationStatusRequestPB req;
   master::GetReplicationStatusResponsePB resp;
 
-  req.set_universe_id(kUniverseId);
+  req.set_universe_id(kReplicationGroupId.ToString());
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client()->proxy_cache(),
@@ -750,7 +761,7 @@ void XClusterTestBase::VerifyReplicationError(
 
   // 2. Verify that the yb-admin output contains the expected error.
   auto admin_out =
-      ASSERT_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kUniverseId));
+      ASSERT_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kReplicationGroupId));
   if (expected_replication_error) {
     ASSERT_TRUE(
         admin_out.find(Format("error: $0", ReplicationErrorPb_Name(*expected_replication_error))) !=
