@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -27,7 +28,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -37,10 +37,11 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
   private static final String MIN_YSQL_UPGRADE_RELEASE = "2.8.0.0";
   private static final String NO_YSQL_UPGRADE_RELEASE = "2.9.0.0";
   private static final String NEXT_YSQL_UPGRADE_RELEASE = "2.11.0.0";
-  private static final long TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(30);
 
   private static final int MAX_ATTEMPTS = 3;
   private static final int DELAY_BETWEEN_ATTEMPTS_SEC = 60;
+
+  @Inject private RuntimeConfGetter confGetter;
 
   @VisibleForTesting
   public static final String USE_SINGLE_CONNECTION_PARAM =
@@ -90,7 +91,7 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
 
     try {
       int numAttempts = 0;
-      long timeout = TIMEOUT_SEC;
+      long timeout = confGetter.getConfForScope(universe, UniverseConfKeys.ysqlUpgradeTimeoutSec);
       while (numAttempts < MAX_ATTEMPTS) {
         numAttempts++;
         final String leaderMasterAddress = universe.getMasterLeaderHostText();
