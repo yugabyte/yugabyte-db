@@ -49,6 +49,14 @@
       "script-and-regex.regex":
         "/(?P<message>.*)/is"
     },
+    "ui-lint": {
+      "type": "script-and-regex",
+      "include": "(^managed/ui/.*\\.(tsx|ts|js)$)",
+      "script-and-regex.script":
+        "cd managed/ui; npm run lint; echo",
+      "script-and-regex.regex":
+        "/(?P<message>.*)/is"
+    },
     "text": {
       "type": "text",
       "text.max-line-length": 100,
