@@ -85,7 +85,7 @@ var upgradeCmd = &cobra.Command{
 
 		// Check if upgrading requires DB migration.
 
-		dbMigrateFlow := state.GetDbUpgradeWorkFlow()
+		/*dbMigrateFlow := state.GetDbUpgradeWorkFlow()
 
 		var newDbServiceName string
 		if dbMigrateFlow == ybactlstate.PgToYbdb {
@@ -101,6 +101,7 @@ var upgradeCmd = &cobra.Command{
 			state.Postgres.IsEnabled = true
 			state.Ybdb.IsEnabled = false
 		}
+		*/
 
 		for _, name := range serviceOrder {
 			log.Info("About to upgrade component " + name)
@@ -119,7 +120,7 @@ var upgradeCmd = &cobra.Command{
 		}
 
 		var statuses []common.Status
-		serviceOrder = append([]string{newDbServiceName}, serviceOrder...)
+		//serviceOrder = append([]string{newDbServiceName}, serviceOrder...)
 		for _, name := range serviceOrder {
 			service := services[name]
 			status, err := service.Status()
