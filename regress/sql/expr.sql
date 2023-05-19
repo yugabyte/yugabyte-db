@@ -2462,6 +2462,23 @@ SELECT * FROM cypher('case_statement', $$CREATE ({i: true, j: false})$$) AS (res
 SELECT * FROM cypher('case_statement', $$CREATE ({i: [], j: [0,1,2]})$$) AS (result agtype);
 SELECT * FROM cypher('case_statement', $$CREATE ({i: {}, j: {i:1}})$$) AS (result agtype);
 
+--standalone case & edge cases
+--base case
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN true THEN true END) $$) as (a agtype);
+--should return 1 empty row
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN false THEN true END) $$) as (a agtype);
+--should return 'false'
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN true THEN false END) $$) as (a agtype);
+--invalid case (WHEN should be boolean)
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN 1 THEN 'fail' END) $$) as (a agtype);
+
+-- booleans + logic gates
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN true THEN (true AND true) END) $$) as (a agtype);
+-- invalid mixed logic gate
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN true THEN (true AND 1) END) $$) as (a agtype);
+
+
+
 --CASE WHEN condition THEN result END
 SELECT * FROM cypher('case_statement', $$
 	MATCH (n)

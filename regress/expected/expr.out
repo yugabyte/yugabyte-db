@@ -5974,6 +5974,41 @@ SELECT * FROM cypher('case_statement', $$CREATE ({i: {}, j: {i:1}})$$) AS (resul
 --------
 (0 rows)
 
+--standalone case & edge cases
+--base case
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN true THEN true END) $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+--should return 1 empty row
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN false THEN true END) $$) as (a agtype);
+ a 
+---
+ 
+(1 row)
+
+--should return 'false'
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN true THEN false END) $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+--invalid case (WHEN should be boolean)
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN 1 THEN 'fail' END) $$) as (a agtype);
+ERROR:  cannot cast agtype integer to type boolean
+-- booleans + logic gates
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN true THEN (true AND true) END) $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+-- invalid mixed logic gate
+SELECT * FROM cypher('case_statement', $$ RETURN (CASE WHEN true THEN (true AND 1) END) $$) as (a agtype);
+ERROR:  cannot cast agtype integer to type boolean
 --CASE WHEN condition THEN result END
 SELECT * FROM cypher('case_statement', $$
 	MATCH (n)

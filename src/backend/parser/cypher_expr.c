@@ -1125,7 +1125,7 @@ static Node *transform_CoalesceExpr(cypher_parsestate *cpstate, CoalesceExpr
 /*
  * Code borrowed from PG's transformCaseExpr and updated for AGE
  */
-static Node *transform_CaseExpr(cypher_parsestate *cpstate,CaseExpr
+static Node *transform_CaseExpr(cypher_parsestate *cpstate, CaseExpr
                                 *cexpr)
 {
     ParseState *pstate = &cpstate->pstate;
@@ -1210,7 +1210,20 @@ static Node *transform_CaseExpr(cypher_parsestate *cpstate,CaseExpr
 
     resultexprs = lcons(newcexpr->defresult, resultexprs);
 
-    ptype = select_common_type(pstate, resultexprs, "CASE", NULL);
+    /*
+     * we pass a NULL context to select_common_type because the common types can
+     * only be AGTYPEOID or BOOLOID. If it returns invalidoid, we know there is a
+     * boolean involved.
+     */
+    ptype = select_common_type(pstate, resultexprs, NULL, NULL);
+
+    //InvalidOid shows that there is a boolean in the result expr.
+    if (ptype == InvalidOid)
+    {
+        //we manually set the type to boolean here to handle the bool casting.
+        ptype = BOOLOID;
+    }
+
     Assert(OidIsValid(ptype));
     newcexpr->casetype = ptype;
     /* casecollid will be set by parse_collate.c */
