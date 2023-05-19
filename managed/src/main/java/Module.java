@@ -67,6 +67,7 @@ import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
 import com.yugabyte.yw.controllers.MetricGrafanaController;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
+import com.yugabyte.yw.controllers.handlers.EnvProxySelector;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.HealthCheck;
@@ -75,6 +76,7 @@ import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
 import io.prometheus.client.CollectorRegistry;
+import java.net.ProxySelector;
 import java.security.Security;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.validator.routines.DomainValidator;
@@ -104,6 +106,7 @@ public class Module extends AbstractModule {
   public Module(Environment environment, Config config) {
     this.environment = environment;
     this.config = config;
+    ProxySelector.setDefault(new EnvProxySelector());
   }
 
   @Override
