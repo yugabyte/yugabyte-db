@@ -273,6 +273,7 @@ void StepDownAllTablets(MiniCluster* cluster);
 void StepDownRandomTablet(MiniCluster* cluster);
 
 YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
+YB_STRONGLY_TYPED_BOOL(IncludeTransactionStatusTablets);
 
 using TabletPeerFilter = std::function<bool(const tablet::TabletPeerPtr&)>;
 
@@ -283,7 +284,9 @@ std::unordered_set<std::string> ListActiveTabletIdsForTable(
     MiniCluster* cluster, const std::string& table_id);
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
-    MiniCluster* cluster, ListPeersFilter filter);
+    MiniCluster* cluster, ListPeersFilter filter,
+    IncludeTransactionStatusTablets include_transaction_status_tablets =
+        IncludeTransactionStatusTablets::kTrue);
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     MiniCluster* cluster, TabletPeerFilter filter);
@@ -401,5 +404,7 @@ Status WaitForTableIntentsApplied(
 void ActivateCompactionTimeLogging(MiniCluster* cluster);
 
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
+std::vector<std::string> DumpDocDBToStrings(
+    MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
 
 }  // namespace yb

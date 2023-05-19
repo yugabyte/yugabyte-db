@@ -684,8 +684,7 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   EXPECT_TRUE(subdoc_found_in_rocksdb);
   EXPECT_STR_EQ_VERBOSE_TRIMMED(R"#(
 {
-  "p1": "value",
-  "p2": DEL
+  "p1": "value"
 }
   )#", doc_from_rocksdb.ToString());
 }

@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <boost/algorithm/string.hpp>
+
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/packed_row_test_base.h"
 
@@ -266,6 +268,25 @@ TEST_F(CqlPackedRowTest, TimestampOverExpired) {
       "INSERT INTO t (h, r, v) values (1, 2, 4) USING TIMESTAMP " +
       std::to_string(write_time - 1)));
   ASSERT_OK(CheckTableContent(&session, ""));
+}
+
+TEST_F(CqlPackedRowTest, CompactUpdateToNull) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT) WITH tablets = 1"));
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1) VALUES (1, 1)"));
+  ASSERT_OK(session.ExecuteQuery("UPDATE t SET v1 = NULL WHERE key = 1"));
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  auto lines = DumpDocDBToStrings(cluster_.get(), ListPeersFilter::kLeaders);
+  ASSERT_EQ(lines.size(), 1);
+  ASSERT_TRUE(boost::algorithm::ends_with(
+      lines[0], Format("{ $0: NULL }\n", kFirstColumnId + 1))) << lines[0];
 }
 
 } // namespace yb

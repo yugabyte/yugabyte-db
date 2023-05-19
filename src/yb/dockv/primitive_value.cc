@@ -220,7 +220,14 @@ const PrimitiveValue PrimitiveValue::kObject = PrimitiveValue(ValueEntryType::kO
 const KeyEntryValue KeyEntryValue::kLivenessColumn = KeyEntryValue::SystemColumnId(
     SystemColumnIds::kLivenessColumn);
 
-std::string PrimitiveValue::ToString() const {
+std::string PrimitiveValue::ToString(bool render_options) const {
+  if (!render_options) {
+    return ValueToString();
+  }
+  return Format("$0; ttl: $1; write_time: $2", ValueToString(), ttl_seconds_, write_time_);
+}
+
+std::string PrimitiveValue::ValueToString() const {
   switch (type_) {
     case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
     case ValueEntryType::kNullLow:
