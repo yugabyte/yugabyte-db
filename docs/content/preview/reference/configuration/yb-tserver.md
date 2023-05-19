@@ -751,6 +751,12 @@ Threshold beyond which a compaction is considered large.
 
 Default: `2GB`
 
+##### --rocksdb_level0_file_num_compaction_trigger
+
+Number of files to trigger level-0 compaction. Set to `-1` if compaction should not be triggered by number of files at all.
+
+Default: `5`. 
+
 ##### --rocksdb_universal_compaction_size_ratio
 
 Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
