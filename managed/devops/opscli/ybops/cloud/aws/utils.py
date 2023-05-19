@@ -1080,8 +1080,11 @@ def create_instance(args):
 
     if args.use_spot_instance:
         options = {"MarketType": "spot"}
+        spotOptions = {"SpotInstanceType": "persistent",
+                       "InstanceInterruptionBehavior": "stop"}
         if args.spot_price is not None:
-            options["SpotOptions"] = {"MaxPrice": args.spot_price}
+            spotOptions["MaxPrice"] = args.spot_price
+        options["SpotOptions"] = spotOptions
         vars["InstanceMarketOptions"] = options
         logging.info(f"[app] Using AWS spot instances with {options} options")
 
@@ -1138,6 +1141,12 @@ def create_instance(args):
         logging.info("[app] Created Elastic IP address at {} in region {} for AWS VM {}"
                      .format(eip["PublicIp"], args.region, args.search_pattern))
 
+    if args.use_spot_instance:
+        logging.info(f"spot instance request id = {instance.spot_instance_request_id}")
+        client.create_tags(
+            Resources=[instance.spot_instance_request_id],
+            Tags=user_tags
+        )
     return instance.id
 
 

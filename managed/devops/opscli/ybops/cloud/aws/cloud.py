@@ -507,6 +507,26 @@ class AwsCloud(AbstractCloud):
                             AllocationId=elastic_ip["AllocationId"]
                         )
                 logging.info("[app] Deleted elastic ip {}".format(public_ip_address))
+
+        # persistent spot requests might have more than one instance associated with them
+        # so terminate them all
+        if(instance.spot_instance_request_id):
+            spot_request_id = instance.spot_instance_request_id
+            client = boto3.client('ec2', region)
+            response = client.describe_spot_instance_requests(
+                SpotInstanceRequestIds=[spot_request_id])
+            spot_requests = response['SpotInstanceRequests']
+            instance_ids = [request['InstanceId']
+                            for request in spot_requests if 'InstanceId' in request]
+            if instance_ids:
+                client.terminate_instances(InstanceIds=instance_ids)
+                logging.info(f"Terminated {len(instance_ids)} instances")
+
+            logging.info(f"[app] Deleting spot instance request {spot_request_id}")
+            client.cancel_spot_instance_requests(
+                SpotInstanceRequestIds=[spot_request_id]
+            )
+
         instance.terminate()
         instance.wait_until_terminated()
 
