@@ -15,12 +15,6 @@ type: indexpage
 
 Before you can add Dedicated clusters, you need to create a billing profile and add a payment method. You manage your billing profile and payment methods from the **Admin** page. You can also audit activity, view your monthly invoices, and invite team members so that they can create, manage, authorize network access, and connect to clusters.
 
-{{< note title="Note" >}}
-
-You must be signed in as an Admin user to perform Admin tasks. Developer users cannot invite other users, manage API keys, or view the billing profile.
-
-{{< /note >}}
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

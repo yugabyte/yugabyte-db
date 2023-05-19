@@ -13,7 +13,11 @@ menu:
 type: docs
 ---
 
-YugabyteDB Managed includes two built-in roles, Admin and Developer:
+Access to the features of your YugabyteDB Managed account is managed using roles. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
+
+Roles are also assigned to [API keys](../../managed-automation/managed-apikeys/) to delineate what functionality is available to users accessing your account using either the YugabyteDB Managed API or YBM CLI.
+
+YugabyteDB Managed includes two built-in roles for managing your account:
 
 - **Admin** - The Admin role provides full access to all features. There must always be at least one Admin user. The primary account user (the user who created the YugabyteDB Managed account) is automatically assigned an Admin role.
 
@@ -26,13 +30,13 @@ YugabyteDB Managed includes two built-in roles, Admin and Developer:
   - create a billing profile
   - view account activity
 
-You can also define custom roles for team members to restrict access to specific functions on your account.
+You can also define custom roles for team members to restrict access to specific account features.
 
-You must be signed in as an Admin user to create or modify roles.
+You must be signed in as a user with Role Management permissions to create or modify roles.
 
 The **Roles** tab displays a list of roles that are defined for your account, including the role name, description, type, the number of users assigned the role, and the number of API keys created for the role.
 
-![Admin Roles page](/images/yb-cloud/managed-admin-users.png)
+![Admin Roles page](/images/yb-cloud/managed-admin-roles.png)
 
 To view role details, select the role in the list.
 

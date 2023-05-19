@@ -68,7 +68,7 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 
 The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster.
 
-For security reasons, the admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
+For security reasons, the database admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
 
 After the cluster is provisioned, you can [add more users and change your password](../../../cloud-secure-clusters/add-users/).
 
