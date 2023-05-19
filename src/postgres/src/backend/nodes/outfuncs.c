@@ -3760,9 +3760,9 @@ _outPartitionRangeDatum(StringInfo str, const PartitionRangeDatum *node)
 }
 
 static void
-_outYbExprParamDesc(StringInfo str, const YbExprParamDesc *node)
+_outYbExprColrefDesc(StringInfo str, const YbExprColrefDesc *node)
 {
-	WRITE_NODE_TYPE("YBEXPRPARAMDESC");
+	WRITE_NODE_TYPE("YBEXPRCOLREFDESC");
 
 	WRITE_INT_FIELD(attno);
 	WRITE_INT_FIELD(typid);
@@ -4436,8 +4436,8 @@ outNode(StringInfo str, const void *obj)
 			case T_PartitionRangeDatum:
 				_outPartitionRangeDatum(str, obj);
 				break;
-			case T_YbExprParamDesc:
-				_outYbExprParamDesc(str, obj);
+			case T_YbExprColrefDesc:
+				_outYbExprColrefDesc(str, obj);
 				break;
 
 			default:

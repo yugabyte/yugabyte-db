@@ -4922,10 +4922,10 @@ _copyRowBounds(const RowBounds *from)
 	return newnode;
 }
 
-static YbExprParamDesc *
-_copyYbExprParamDesc(const YbExprParamDesc *from)
+static YbExprColrefDesc *
+_copyYbExprColrefDesc(const YbExprColrefDesc *from)
 {
-	YbExprParamDesc *newnode = makeNode(YbExprParamDesc);
+	YbExprColrefDesc *newnode = makeNode(YbExprColrefDesc);
 
 	COPY_SCALAR_FIELD(attno);
 	COPY_SCALAR_FIELD(typid);
@@ -5866,8 +5866,8 @@ copyObjectImpl(const void *from)
 			retval = _copyRowBounds(from);
 			break;
 
-		case T_YbExprParamDesc:
-			retval = _copyYbExprParamDesc(from);
+		case T_YbExprColrefDesc:
+			retval = _copyYbExprColrefDesc(from);
 			break;
 		
 		case T_YbBatchedExpr:

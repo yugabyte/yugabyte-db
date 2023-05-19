@@ -2562,9 +2562,9 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 	/* Special cases (apply only AFTER failing to match to lower tlist) */
 	if (IsA(node, Param))
 		return fix_param_node(context->root, (Param *) node);
-	if (IsA(node, YbExprParamDesc))
+	if (IsA(node, YbExprColrefDesc))
 	{
-		YbExprParamDesc *colref = castNode(YbExprParamDesc, node);
+		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, node);
 		AttrNumber	varattno = colref->attno;
 		tlist_vinfo *vinfo;
 		int			i;
@@ -2576,7 +2576,7 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 			if (vinfo->varattno == varattno)
 			{
 				/* Found a match */
-				YbExprParamDesc *newcolref = makeNode(YbExprParamDesc);
+				YbExprColrefDesc *newcolref = makeNode(YbExprColrefDesc);
 				*newcolref = *colref;
 				newcolref->attno = vinfo->resno;
 				return (Node *) newcolref;
