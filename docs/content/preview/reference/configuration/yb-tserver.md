@@ -731,7 +731,7 @@ Only change this flag to `three_shared_parts` after you migrate the whole cluste
 
 Used to control rate of memstore flush and SSTable file compaction.
 
-Default: `256MB` (256 MB/second)
+Default: `1GB` (1 GB/second)
 
 ##### --rocksdb_universal_compaction_min_merge_width
 
