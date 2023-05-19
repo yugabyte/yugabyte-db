@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
@@ -11,11 +12,15 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.models.filters.NodeAgentFilter;
+import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PersistenceContextScope;
 import io.ebean.annotation.DbJson;
-import io.ebean.annotation.UpdatedTimestamp;
+import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.ByteArrayInputStream;
@@ -46,6 +51,7 @@ import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http.Status;
@@ -190,7 +196,7 @@ public class NodeAgent extends Model {
   @ApiModelProperty(value = "Node agent state", accessMode = READ_ONLY)
   private State state;
 
-  @UpdatedTimestamp
+  @WhenModified
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
@@ -215,6 +221,30 @@ public class NodeAgent extends Model {
   @ApiModelProperty(value = "Node agent installation directory", accessMode = READ_ONLY)
   @Column(nullable = false)
   private String home;
+
+  public enum SortBy implements PagedQuery.SortByIF {
+    uuid("uuid"),
+    ip("ip"),
+    name("name"),
+    state("state"),
+    updatedAt("updatedAt"),
+    version("version");
+
+    private final String sortField;
+
+    SortBy(String sortField) {
+      this.sortField = sortField;
+    }
+
+    public String getSortField() {
+      return sortField;
+    }
+
+    @Override
+    public SortByIF getOrderField() {
+      return SortBy.uuid;
+    }
+  }
 
   public static Optional<NodeAgent> maybeGet(UUID uuid) {
     NodeAgent nodeAgent = finder.byId(uuid);
@@ -269,6 +299,20 @@ public class NodeAgent extends Model {
         .eq("customer_uuid", customerUuid)
         .ne("version", softwareVersion)
         .findSet();
+  }
+
+  public static ExpressionList<NodeAgent> createQueryByFilter(
+      UUID customerUuid, NodeAgentFilter filter) {
+    ExpressionList<NodeAgent> query =
+        finder
+            .query()
+            .setPersistenceContextScope(PersistenceContextScope.QUERY)
+            .where()
+            .eq("customer_uuid", customerUuid);
+    if (CollectionUtils.isNotEmpty(filter.getNodeIps())) {
+      appendInClause(query, "ip", filter.getNodeIps());
+    }
+    return query;
   }
 
   public static void delete(UUID uuid) {

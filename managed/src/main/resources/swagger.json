@@ -6156,6 +6156,68 @@
       },
       "type" : "object"
     },
+    "NodeAgentApiFilter" : {
+      "properties" : {
+        "nodeIps" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "nodeIps" ],
+      "type" : "object"
+    },
+    "NodeAgentPagedApiQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [ "ASC", "DESC" ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/NodeAgentApiFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [ "uuid", "ip", "name", "state", "updatedAt", "version" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "direction", "filter", "limit", "needTotalCount", "offset", "sortBy" ],
+      "type" : "object"
+    },
+    "NodeAgentPagedApiResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/NodeAgentResp"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "totalCount" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
+      "type" : "object"
+    },
     "NodeAgentResp" : {
       "description" : "Node agent details",
       "properties" : {
@@ -15826,6 +15888,43 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List Node Agents",
+        "tags" : [ "Node Agents" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/node_agents/page" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "PageListNodeAgents",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "in" : "body",
+          "name" : "PageNodeAgentRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NodeAgentPagedApiQuery"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NodeAgentPagedApiResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List Node Agents (paginated)",
         "tags" : [ "Node Agents" ]
       }
     },
