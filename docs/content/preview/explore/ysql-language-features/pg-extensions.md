@@ -207,7 +207,7 @@ CREATE TABLE up_and_down (up int primary key, down int);
 INSERT INTO up_and_down SELECT a AS up, 10001-a AS down FROM generate_series(1,10000) a;
 ```
 
-The `up_and_down` table has no indexes, but because it's defined with a primary key, it is ordered by, and the records can directly be retrieved using, the primary key:
+The `up_and_down` table has no indexes, but because it's defined with a primary key, it is ordered by, and the records can be directly retrieved using, the primary key:
 
 ```sql
 EXPLAIN SELECT * FROM up_and_down WHERE up = 999;
@@ -220,7 +220,7 @@ EXPLAIN SELECT * FROM up_and_down WHERE up = 999;
    Index Cond: (up = 999)
 ```
 
-To fetch a value from the second field results in a Seq Scan, because there is no index for the `down` field:
+To fetch a value from the `down` column results in a Seq Scan, because it does not have an index:
 
 ```sql
 EXPLAIN SELECT * FROM up_and_down WHERE down = 999;
@@ -233,7 +233,7 @@ EXPLAIN SELECT * FROM up_and_down WHERE down = 999;
    Filter: (down = 999)
 ```
 
-To see what would result if you created an index for the down field without actually creating the index, use HypoPG as follows:
+To see what would result if you created an index for the `down` column without actually creating the index, use HypoPG as follows:
 
 ```sql
 SELECT * FROM hypopg_create_index('create index on up_and_down(down)');
@@ -245,7 +245,7 @@ SELECT * FROM hypopg_create_index('create index on up_and_down(down)');
       13283 | <13283>lsm_up_and_down_down
 ```
 
-Explain shows that the planner would use the index:
+Explain now shows that the planner would use the index:
 
 ```sql
 EXPLAIN SELECT * FROM up_and_down WHERE down = 999;
