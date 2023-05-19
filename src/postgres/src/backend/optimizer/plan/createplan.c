@@ -2727,7 +2727,7 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
  * limited supports for Postgres expression evaluation, so we push supported
  * set clause expressions down to DocDB if pushdown is enabled in GUC. Those
  * expressions go to the modify_tlist. These may refer columns of the current
- * rows, and these references go to the column_refs list as YbExprParamDesc
+ * rows, and these references go to the column_refs list as YbExprColrefDesc
  * nodes. DocDB uses it to convert values from native format to Postgres before
  * evaluation.
  *
@@ -2739,7 +2739,7 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
  * extracted from the WHERE clause. Primary key values in the result_tlist are
  * defined in both UPDATE and DELETE cases.
  *
- * The returning_cols list contains YbExprParamDesc nodes that represent
+ * The returning_cols list contains YbExprColrefDesc nodes that represent
  * columns that need to be fetched from DocDB. The reason why we may need to
  * fetch some values is that the tuple produced by the Result node is generally
  * incomplete, it contains only the primary key values, and values from
@@ -3239,7 +3239,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		{
 			Var *var_expr = lfirst_node(Var, lc);
 			AttrNumber attno = var_expr->varattno;
-			YbExprParamDesc *reference;
+			YbExprColrefDesc *reference;
 
 			/* DocDB does not store system attributes */
 			if (!AttrNumberIsForUserDefinedAttr(attno))
@@ -3262,7 +3262,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			/*
 			 * Create column reference entry
 			 */
-			reference =  makeNode(YbExprParamDesc);
+			reference =  makeNode(YbExprColrefDesc);
 			reference->attno = attno;
 			reference->typid = var_expr->vartype;
 			reference->typmod = var_expr->vartypmod;
@@ -6217,13 +6217,13 @@ flatten_partitioned_rels(List *partitioned_rels)
  *		index described by the indexinfo.
  */
 static bool
-is_index_only_refs(List *expr_refs, IndexOptInfo *indexinfo)
+is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo)
 {
 	ListCell *lc;
-	foreach (lc, expr_refs)
+	foreach (lc, colrefs)
 	{
 		bool found = false;
-		YbExprParamDesc *colref = castNode(YbExprParamDesc, lfirst(lc));
+		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, lfirst(lc));
 		for (int i = 0; i < indexinfo->ncolumns; i++)
 		{
 			if (colref->attno == indexinfo->indexkeys[i])
@@ -6285,14 +6285,14 @@ extract_pushdown_clauses(List *restrictinfo_list,
 
 		if (ri->yb_pushable)
 		{
-			List *expr_refs = NIL;
+			List *colrefs = NIL;
 			bool pushable PG_USED_FOR_ASSERTS_ONLY;
 
 			/*
 			 * Find column references. It has already been determined that
 			 * the expression is pushable.
 			 */
-			pushable = YbCanPushdownExpr(ri->clause, &expr_refs);
+			pushable = YbCanPushdownExpr(ri->clause, &colrefs);
 			Assert(pushable);
 
 			/*
@@ -6302,14 +6302,14 @@ extract_pushdown_clauses(List *restrictinfo_list,
 			 * necessary columns.
 			 */
 			if (indexinfo == NULL ||
-				!is_index_only_refs(expr_refs, indexinfo))
+				!is_index_only_refs(colrefs, indexinfo))
 			{
-				*rel_colrefs = list_concat(*rel_colrefs, expr_refs);
+				*rel_colrefs = list_concat(*rel_colrefs, colrefs);
 				*rel_remote_qual = lappend(*rel_remote_qual, ri->clause);
 			}
 			else
 			{
-				*idx_colrefs = list_concat(*idx_colrefs, expr_refs);
+				*idx_colrefs = list_concat(*idx_colrefs, colrefs);
 				*idx_remote_qual = lappend(*idx_remote_qual, ri->clause);
 			}
 		}
