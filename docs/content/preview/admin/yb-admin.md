@@ -587,7 +587,7 @@ Flush the memstores of the specified table on all tablet servers to disk.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    flush_table <table> [timeout_in_seconds] (default 20) [ADD_INDEXES] (default false)
+    flush_table <table> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -596,7 +596,7 @@ yb-admin \
 * *table_name*: The name of the table to flush.
 * *table_id*: The unique UUID of the table to flush.
 * *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for flushing to end. Default value is `20`.
-* *ADD_INDEXES*: If the DB should also flush the secondary indexes associated with the table. Default is false.
+* *ADD_INDEXES*: If the DB should also flush the secondary indexes associated with the table. Default is `false`.
 
 
 **Example**
