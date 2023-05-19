@@ -85,9 +85,6 @@ class CloudInfoPB;
 class MemTracker;
 class MetricEntity;
 
-namespace cdc {
-struct StreamMetaData;
-}
 namespace master {
 class ReplicationInfoPB;
 class TabletLocationsPB;

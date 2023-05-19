@@ -12,6 +12,7 @@
 
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_common_util.h"
+#include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/session.h"
@@ -43,7 +44,6 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/gutil/map-util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -77,26 +77,6 @@ using consensus::ReplicateMsgPtr;
 using consensus::ReplicateMsgs;
 using docdb::PrimitiveValue;
 using tablet::TransactionParticipant;
-
-std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletMetadata(
-    const TabletId& tablet_id) {
-  {
-    std::shared_lock l(tablet_metadata_map_mutex_);
-    auto metadata = FindPtrOrNull(tablet_metadata_map_, tablet_id);
-    if (metadata) {
-      return metadata;
-    }
-  }
-
-  std::lock_guard l(tablet_metadata_map_mutex_);
-  auto metadata = FindPtrOrNull(tablet_metadata_map_, tablet_id);
-  if (!metadata) {
-    metadata = std::make_shared<StreamTabletMetadata>();
-    EmplaceOrDie(&tablet_metadata_map_, tablet_id, metadata);
-  }
-
-  return metadata;
-}
 
 void AddColumnToMap(const ColumnSchema& col_schema,
                     const docdb::KeyEntryValue& col,
@@ -375,7 +355,7 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
       docdb::SubDocKey decoded_key;
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
 
-      if (metadata.record_format == CDCRecordFormat::WAL) {
+      if (metadata.GetRecordFormat() == CDCRecordFormat::WAL) {
         // For xCluster, populate serialized data from WAL, to avoid unnecessary deserializing on
         // producer and re-serializing on consumer.
         auto kv_pair = record->add_key();
@@ -422,7 +402,7 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
     prev_key = primary_key;
     DCHECK(record);
 
-    if (metadata.record_format == CDCRecordFormat::WAL) {
+    if (metadata.GetRecordFormat() == CDCRecordFormat::WAL) {
       auto kv_pair = record->add_changes();
       kv_pair->set_key(write_pair.key().ToBuffer());
       kv_pair->mutable_value()->set_binary_value(write_pair.value().ToBuffer());
@@ -566,6 +546,7 @@ Status GetChangesForXCluster(
   consensus::ReadOpsResult read_ops;
 
   SCHECK(tablet_peer, NotFound, Format("Tablet id $0 not found", tablet_id));
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
 
   auto leader_safe_time = VERIFY_RESULT(tablet_peer->LeaderSafeTime());
   SCHECK(
@@ -579,7 +560,10 @@ Status GetChangesForXCluster(
 
   bool update_apply_safe_time = false;
   auto now = MonoTime::Now();
-  auto tablet = tablet_peer->shared_tablet();
+  auto* txn_participant = tablet->transaction_participant();
+  // Check if both the table and stream are transactional.
+  bool transactional = (txn_participant != nullptr) && stream_metadata->IsTransactional() &&
+                       !FLAGS_TEST_enable_replicate_transaction_status_table;
 
   // In order to provide a transactionally consistent WAL, we need to perform the below steps:
   // If last_apply_safe_time is kInvalid
@@ -592,9 +576,7 @@ Status GetChangesForXCluster(
   //    b. Reset last_apply_safe_time and apply_safe_time_checkpoint_op_id
   //  5. Else don't set any response.apply_safe_time. The next GetChanges RPC will reuse the
   //     computed last_apply_safe_time and apply_safe_time_checkpoint_op_id
-  if (stream_metadata->transactional && !FLAGS_TEST_enable_replicate_transaction_status_table &&
-      tablet && tablet->transaction_participant() &&
-      !stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
+  if (transactional && !stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
     // See if its time to update the apply safe time.
     if (!stream_tablet_metadata->last_apply_safe_time_update_time_ ||
         stream_tablet_metadata->last_apply_safe_time_update_time_ +
@@ -602,7 +584,7 @@ Status GetChangesForXCluster(
             now) {
       update_apply_safe_time = true;
       // Resolve and apply intents to make the leader_safe_time a valid apply_safe_time candidate.
-      RETURN_NOT_OK(tablet->transaction_participant()->ResolveIntents(leader_safe_time, deadline));
+      RETURN_NOT_OK(txn_participant->ResolveIntents(leader_safe_time, deadline));
     }
   }
 
@@ -632,8 +614,6 @@ Status GetChangesForXCluster(
   OpId checkpoint;
   TxnStatusMap txn_map;
   if (!replicate_intents) {
-    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-    auto txn_participant = tablet->transaction_participant();
     if (txn_participant) {
       request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
     }
@@ -711,7 +691,7 @@ Status GetChangesForXCluster(
     consumption.Add(resp->SpaceUsedLong());
   }
 
-  if (stream_metadata->transactional && !FLAGS_TEST_enable_replicate_transaction_status_table) {
+  if (transactional) {
     // We can set the apply_safe_time if no messages were read from the WAL and there is nothing
     // to send. Or, the apply_safe_time_checkpoint_op_id_ was included in the response.
     if ((checkpoint.index == 0 && !read_ops.have_more_messages) ||
