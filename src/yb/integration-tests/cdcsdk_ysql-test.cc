@@ -5170,7 +5170,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupportSafeTime)) {
-  FLAGS_update_min_cdc_indices_interval_secs = 60;
+  FLAGS_update_metrics_interval_ms = 1;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
   // We want to force every GetChanges to update the cdc_state table.
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
 
@@ -6931,7 +6932,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
   ASSERT_EQ(insert_count, expected_key2);
   ASSERT_EQ(ddl_count, 5);
 
-  for (int idx = 0; idx < 1; idx++) {
+  for (int idx = 0; idx < 3; idx++) {
     test_cluster()->mini_tablet_server(idx)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(idx)->Start());
     ASSERT_OK(test_cluster()->mini_tablet_server(idx)->WaitStarted());
