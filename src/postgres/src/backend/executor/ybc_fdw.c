@@ -174,7 +174,7 @@ ybcGetForeignPlan(PlannerInfo *root,
 	Index			scan_relid = baserel->relid;
 	List		   *local_clauses = NIL;
 	List		   *remote_clauses = NIL;
-	List		   *remote_params = NIL;
+	List		   *remote_colrefs = NIL;
 	ListCell	   *lc;
 
 	scan_clauses = extract_actual_clauses(scan_clauses, false);
@@ -183,26 +183,26 @@ ybcGetForeignPlan(PlannerInfo *root,
 	 * Split the expressions in the scan_clauses onto two lists:
 	 * - remote_clauses gets supported expressions to push down to DocDB, and
 	 * - local_clauses gets remaining to evaluate upon returned rows.
-	 * The remote_params list contains data type details of the columns
+	 * The remote_colrefs list contains data type details of the columns
 	 * referenced by the expressions in the remote_clauses list. DocDB needs it
 	 * to convert row values to Datum/isnull pairs consumable by Postgres
 	 * functions.
-	 * The remote_clauses and remote_params lists are sent with the protobuf
+	 * The remote_clauses and remote_colrefs lists are sent with the protobuf
 	 * read request.
 	 */
 	foreach(lc, scan_clauses)
 	{
-		List *params = NIL;
+		List *colrefs = NIL;
 		Expr *expr = (Expr *) lfirst(lc);
-		if (YbCanPushdownExpr(expr, &params))
+		if (YbCanPushdownExpr(expr, &colrefs))
 		{
 			remote_clauses = lappend(remote_clauses, expr);
-			remote_params = list_concat(remote_params, params);
+			remote_colrefs = list_concat(remote_colrefs, colrefs);
 		}
 		else
 		{
 			local_clauses = lappend(local_clauses, expr);
-			list_free_deep(params);
+			list_free_deep(colrefs);
 		}
 	}
 
@@ -273,7 +273,7 @@ ybcGetForeignPlan(PlannerInfo *root,
 							local_clauses,   /* local qual */
 							scan_relid,
 							target_attrs,    /* referenced attributes */
-							remote_params,   /* fdw_private data (attribute types) */
+							remote_colrefs,  /* fdw_private data (attribute types) */
 							NIL,             /* remote target list (none for now) */
 							remote_clauses,  /* remote qual */
 							outer_plan);
@@ -589,7 +589,7 @@ ybSetupScanColumnRefs(ForeignScanState *node)
 
 	foreach(lc, params)
 	{
-		YbExprParamDesc *param = (YbExprParamDesc *) lfirst(lc);
+		YbExprColrefDesc *param = (YbExprColrefDesc *) lfirst(lc);
 		YBCPgTypeAttrs type_attrs = { param->typmod };
 		/* Create new PgExpr wrapper for the column reference */
 		YBCPgExpr yb_expr = YBCNewColumnRef(yb_state->handle,

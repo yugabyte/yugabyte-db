@@ -112,7 +112,7 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 		}
 		foreach(lc, scan->yb_rel_pushdown->colrefs)
 		{
-			YbExprParamDesc *param = lfirst_node(YbExprParamDesc, lc);
+			YbExprColrefDesc *param = lfirst_node(YbExprColrefDesc, lc);
 			YBCPgTypeAttrs type_attrs = { param->typmod };
 			/* Create new PgExpr wrapper for the column reference */
 			YBCPgExpr yb_expr = YBCNewColumnRef(ybso->handle,
@@ -144,7 +144,7 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 		}
 		foreach(lc, scan->yb_idx_pushdown->colrefs)
 		{
-			YbExprParamDesc *param = lfirst_node(YbExprParamDesc, lc);
+			YbExprColrefDesc *param = lfirst_node(YbExprColrefDesc, lc);
 			YBCPgTypeAttrs type_attrs = { param->typmod };
 			/* Create new PgExpr wrapper for the column reference */
 			YBCPgExpr yb_expr = YBCNewColumnRef(ybso->handle,

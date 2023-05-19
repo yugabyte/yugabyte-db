@@ -1885,7 +1885,7 @@ ybSetupScanQual(YbScanDesc ybScan, List *qual, bool is_primary)
  *
  * Add the list of column references used by pushed down expressions to the
  * YbScanDesc.
- * The colref list is expected to be the list of YbExprParamDesc nodes.
+ * The colref list is expected to be the list of YbExprColrefDesc nodes.
  * Set is_primary to false if the filter expression is to apply to secondary
  * index. In this case attno field values must be properly adjusted to refer
  * the index columns rather than main relation columns.
@@ -1897,7 +1897,7 @@ ybSetupScanColumnRefs(YbScanDesc ybScan, List *colrefs, bool is_primary)
 	ListCell   *lc;
 	foreach(lc, colrefs)
 	{
-		YbExprParamDesc *param = lfirst_node(YbExprParamDesc, lc);
+		YbExprColrefDesc *param = lfirst_node(YbExprColrefDesc, lc);
 		YBCPgTypeAttrs type_attrs = { param->typmod };
 		/* Create new PgExpr wrapper for the column reference */
 		YBCPgExpr yb_expr = YBCNewColumnRef(ybScan->handle,
