@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -11,10 +13,15 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.forms.NodeAgentResp;
+import com.yugabyte.yw.forms.paging.NodeAgentPagedApiResponse;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.models.paging.NodeAgentPagedQuery;
+import com.yugabyte.yw.models.paging.NodeAgentPagedResponse;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -27,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -97,6 +105,21 @@ public class NodeAgentHandler {
     return nodeAgentManager.create(nodeAgent, true);
   }
 
+  private List<NodeAgentResp> transformNodeAgentResponse(Supplier<Collection<NodeAgent>> supplier) {
+    Date startTime =
+        Date.from(Instant.now().minusSeconds(NODE_AGENT_HEARTBEAT_TIMEOUT.getSeconds()));
+    String ybaVersion = nodeAgentManager.getSoftwareVersion();
+    return supplier.get().stream()
+        .map(n -> new NodeAgentResp(n))
+        .peek(
+            n -> {
+              n.setReachable(n.getNodeAgent().getUpdatedAt().after(startTime));
+              n.setVersionMatched(
+                  Util.compareYbVersions(ybaVersion, n.getNodeAgent().getVersion(), true) == 0);
+            })
+        .collect(Collectors.toList());
+  }
+
   /**
    * Returns the node agents for the customer with additional node agent IP filter.
    *
@@ -105,24 +128,27 @@ public class NodeAgentHandler {
    * @return the node agent.
    */
   public Collection<NodeAgentResp> list(UUID customerUuid, String nodeAgentIp) {
-    Map<String, String> labels = new HashMap<>();
-    if (StringUtils.isNotBlank(nodeAgentIp)) {
-      labels.put("host", nodeAgentIp);
+    return transformNodeAgentResponse(() -> NodeAgent.list(customerUuid, nodeAgentIp));
+  }
+
+  /**
+   * Returns a page of node agents for the customer with additional node agent IP filter.
+   *
+   * @param customerUuid the customer UUID.
+   * @param pagedQuery the page query with filter and page param.
+   * @return a page of node agents.
+   */
+  public NodeAgentPagedApiResponse pagedList(UUID customerUuid, NodeAgentPagedQuery pagedQuery) {
+    if (pagedQuery.getSortBy() == null) {
+      pagedQuery.setSortBy(NodeAgent.SortBy.ip);
+      pagedQuery.setDirection(SortDirection.DESC);
     }
-    Date startTime =
-        Date.from(Instant.now().minusSeconds(NODE_AGENT_HEARTBEAT_TIMEOUT.getSeconds()));
-    String ybaVersion = nodeAgentManager.getSoftwareVersion();
-    List<NodeAgentResp> nodeAgentRespList =
-        NodeAgent.list(customerUuid, nodeAgentIp).stream()
-            .map(n -> new NodeAgentResp(n))
-            .peek(
-                n -> {
-                  n.setReachable(n.getNodeAgent().getUpdatedAt().after(startTime));
-                  n.setVersionMatched(
-                      Util.compareYbVersions(ybaVersion, n.getNodeAgent().getVersion(), true) == 0);
-                })
-            .collect(Collectors.toList());
-    return nodeAgentRespList;
+    Query<NodeAgent> query =
+        NodeAgent.createQueryByFilter(customerUuid, pagedQuery.getFilter()).query();
+    NodeAgentPagedResponse response =
+        performPagedQuery(query, pagedQuery, NodeAgentPagedResponse.class);
+    return response.setData(
+        transformNodeAgentResponse(() -> response.getEntities()), new NodeAgentPagedApiResponse());
   }
 
   /**

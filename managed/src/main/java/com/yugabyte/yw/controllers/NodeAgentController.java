@@ -8,10 +8,15 @@ import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.forms.NodeAgentResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.paging.NodeAgentPagedApiQuery;
+import com.yugabyte.yw.forms.paging.NodeAgentPagedApiResponse;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.paging.NodeAgentPagedQuery;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
@@ -31,6 +36,12 @@ public class NodeAgentController extends AuthenticatedController {
       response = NodeAgent.class,
       hidden = true,
       nickname = "RegisterNodeAgent")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "NodeAgentForm",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.NodeAgentForm",
+          required = true))
   public Result register(UUID customerUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUuid);
     NodeAgentForm payload = parseJsonAndValidate(request, NodeAgentForm.class);
@@ -53,6 +64,25 @@ public class NodeAgentController extends AuthenticatedController {
     return PlatformResults.withData(nodeAgentHandler.list(customerUuid, nodeIp));
   }
 
+  @ApiOperation(
+      value = "List Node Agents (paginated)",
+      response = NodeAgentPagedApiResponse.class,
+      nickname = "PageListNodeAgents")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PageNodeAgentRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.paging.NodeAgentPagedApiQuery",
+          required = true))
+  public Result page(UUID customerUuid, Http.Request request) {
+    Customer.getOrBadRequest(customerUuid);
+    NodeAgentPagedApiQuery apiQuery = parseJsonAndValidate(request, NodeAgentPagedApiQuery.class);
+    NodeAgentPagedQuery query =
+        apiQuery.copyWithFilter(apiQuery.getFilter().toFilter(), NodeAgentPagedQuery.class);
+    NodeAgentPagedApiResponse response = nodeAgentHandler.pagedList(customerUuid, query);
+    return PlatformResults.withData(response);
+  }
+
   @ApiOperation(value = "Get Node Agent", response = NodeAgentResp.class, nickname = "GetNodeAgent")
   public Result get(UUID customerUuid, UUID nodeUuid) {
     return PlatformResults.withData(nodeAgentHandler.get(customerUuid, nodeUuid));
@@ -63,6 +93,12 @@ public class NodeAgentController extends AuthenticatedController {
       response = NodeAgent.class,
       hidden = true,
       nickname = "UpdateNodeAgentState")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "NodeAgentForm",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.NodeAgentForm",
+          required = true))
   public Result updateState(UUID customerUuid, UUID nodeUuid, Http.Request request) {
     NodeAgentForm payload = parseJsonAndValidate(request, NodeAgentForm.class);
     NodeAgent nodeAgent = nodeAgentHandler.updateState(customerUuid, nodeUuid, payload);
