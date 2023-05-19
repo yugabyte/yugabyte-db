@@ -111,8 +111,8 @@ class XClusterSafeTimeTest : public XClusterTestBase {
 
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
-    ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
-    ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+    ASSERT_OK(VerifyUniverseReplication(kReplicationGroupId, &resp));
+    ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
     ASSERT_EQ(resp.entry().tables_size(), 1);
 
     ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
@@ -224,7 +224,8 @@ TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
   // 4. Make sure safe time does not advance when we pause replication.
   auto ht_before_pause = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_before_pause));
-  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
+  ASSERT_OK(
+      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
   // Wait for Pollers to Stop.
   SleepFor(2s * kTimeMultiplier);
   auto ht_after_pause = GetProducerSafeTime();
@@ -236,7 +237,8 @@ TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
   ASSERT_LT(safe_time_after_pause, ht_after_pause);
 
   // 5.  Make sure safe time is reset when we resume replication.
-  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
+  ASSERT_OK(
+      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
   auto ht_4 = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_4));
 
@@ -252,7 +254,10 @@ TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
   // 8.  Make sure safe time is cleaned up when we delete replication.
   ASSERT_OK(DeleteUniverseReplication());
   ASSERT_OK(VerifyUniverseReplicationDeleted(
-      consumer_cluster(), consumer_client(), kUniverseId, FLAGS_cdc_read_rpc_timeout_ms * 2));
+      consumer_cluster(),
+      consumer_client(),
+      kReplicationGroupId,
+      FLAGS_cdc_read_rpc_timeout_ms * 2));
   ASSERT_OK(WaitForNotFoundSafeTime());
 }
 

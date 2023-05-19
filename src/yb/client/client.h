@@ -594,19 +594,20 @@ class YBClient {
       BootstrapProducerCallback callback);
 
   // Update consumer pollers after a producer side tablet split.
-  Status UpdateConsumerOnProducerSplit(const std::string& producer_id,
-                                       const TableId& table_id,
-                                       const master::ProducerSplitTabletInfoPB& split_info);
+  Status UpdateConsumerOnProducerSplit(
+      const cdc::ReplicationGroupId& replication_group_id,
+      const TableId& table_id,
+      const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
   Status UpdateConsumerOnProducerMetadata(
-      const std::string& producer_id,
+      const cdc::ReplicationGroupId& replication_group_id,
       const CDCStreamId& stream_id,
       const tablet::ChangeMetadataRequestPB& meta_info,
       uint32_t colocation_id,
       uint32_t producer_schema_version,
       uint32_t consumer_schema_version,
-      master::UpdateConsumerOnProducerMetadataResponsePB *resp);
+      master::UpdateConsumerOnProducerMetadataResponsePB* resp);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
