@@ -739,6 +739,12 @@ Compactions run only if there are at least `rocksdb_universal_compaction_min_mer
 
 Default: `4`
 
+##### --rocksdb_max_background_compactions
+
+Maximum number of threads to do background compactions (used when compactions need to catch up.) Unless `rocksdb_disable_compactions=true`, this cannot be set to zero.
+
+Default: `-1` (the value is calculated at runtime). For servers with up to 4 CPU cores, the default value is considered as `1`. For servers with up to 8 CPU cores, the default value is considered as `2`. For servers with up to 32 CPU cores, the default value is considered as `3`. Beyond 32 cores, the default value is considered as `4`.
+
 ##### --rocksdb_universal_compaction_size_ratio
 
 Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
