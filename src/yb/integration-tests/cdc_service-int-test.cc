@@ -683,7 +683,7 @@ TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-            {"" /* UUID */, stream_id_, tablet_id}));
+            {{}, stream_id_, tablet_id}));
         return metrics->async_replication_sent_lag_micros->value() > 0 &&
                metrics->async_replication_committed_lag_micros->value() > 0;
       },
@@ -694,7 +694,7 @@ TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-            {"" /* UUID */, stream_id_, tablet_id}));
+            {{}, stream_id_, tablet_id}));
         return metrics->async_replication_sent_lag_micros->value() == 0 &&
                metrics->async_replication_committed_lag_micros->value() == 0;
       },
@@ -703,7 +703,7 @@ TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
   // Now check that UpdateLagMetrics deletes the metric.
   cdc_service->UpdateCDCMetrics();
   auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-      {"" /* UUID */, stream_id_, tablet_id},
+      {{}, stream_id_, tablet_id},
       /* tablet_peer */ nullptr, XCLUSTER,
       CreateCDCMetricsEntity::kFalse));
   ASSERT_EQ(metrics, nullptr);
@@ -770,7 +770,7 @@ TEST_F(CDCServiceTest, TestGetChanges) {
     // Verify the CDC Service-level metrics match what we just did.
     auto cdc_service = CDCService(tserver);
     auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-        {"" /* UUID */, stream_id_, tablet_id}));
+        {{}, stream_id_, tablet_id}));
     ASSERT_EQ(metrics->last_read_opid_index->value(), metrics->last_readable_opid_index->value());
     ASSERT_EQ(metrics->last_read_opid_index->value(), change_resp.records_size() + 1 /* checkpt */);
     ASSERT_EQ(metrics->rpc_payload_bytes_responded->TotalCount(), 2);
@@ -1009,7 +1009,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
   auto cdc_service = CDCService(leader_tserver);
   cdc_service->UpdateCDCMetrics();
   auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-      {"" /* UUID */, stream_id_, tablet_id}));
+      {{}, stream_id_, tablet_id}));
   auto timestamp_after_write = GetCurrentTimeMicros();
   auto lag_after_write = metrics->async_replication_committed_lag_micros->value();
   ASSERT_GE(lag_after_write, 0);
@@ -1066,7 +1066,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     {
       // Leader metrics
       auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {"" /* UUID */, stream_id_, tablet_id}));
+          {{}, stream_id_, tablet_id}));
       if (!(metrics->async_replication_sent_lag_micros->value() == 0 &&
           metrics->async_replication_committed_lag_micros->value() == 0)) {
         return false;
@@ -1076,7 +1076,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
       // Follower metrics
       auto follower_metrics =
           std::static_pointer_cast<CDCTabletMetrics>(cdc_service_follower->GetCDCTabletMetrics(
-              {"" /* UUID */, stream_id_, tablet_id}));
+              {{}, stream_id_, tablet_id}));
       return follower_metrics->async_replication_sent_lag_micros->value() == 0 &&
           follower_metrics->async_replication_committed_lag_micros->value() == 0;
     }
@@ -1127,7 +1127,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-            {"" /* UUID */, stream_id_, tablet_id}));
+            {{}, stream_id_, tablet_id}));
         return metrics->async_replication_sent_lag_micros->value() > 0 &&
                metrics->async_replication_committed_lag_micros->value() > 0;
       },
@@ -1140,7 +1140,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     // should be 0 even if there are un-polled for records.
     auto metrics_follower =
         std::static_pointer_cast<CDCTabletMetrics>(cdc_service_follower->GetCDCTabletMetrics(
-            {"" /* UUID */, stream_id_, tablet_id}));
+            {{}, stream_id_, tablet_id}));
     ASSERT_TRUE(metrics_follower->async_replication_sent_lag_micros->value() == 0 &&
                 metrics_follower->async_replication_committed_lag_micros->value() == 0);
   }
@@ -1157,7 +1157,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-            {"" /* UUID */, stream_id_, tablet_id}));
+            {{}, stream_id_, tablet_id}));
         return metrics->async_replication_sent_lag_micros->value() == 0 &&
                metrics->async_replication_committed_lag_micros->value() > 0;
       },
@@ -1175,7 +1175,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-            {"" /* UUID */, stream_id_, tablet_id}));
+            {{}, stream_id_, tablet_id}));
         return metrics->async_replication_sent_lag_micros->value() == 0 &&
                metrics->async_replication_committed_lag_micros->value() == 0;
       },
@@ -1192,7 +1192,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadershi
   SetAtomicFlag(false, &FLAGS_enable_collect_cdc_metrics);
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   std::string tablet_id = GetTablet();
-  ProducerTabletInfo tablet_info = {"" /* universe_uuid */, stream_id_, tablet_id};
+  ProducerTabletInfo tablet_info = {{}, stream_id_, tablet_id};
   const auto& tservers = cluster_->mini_tablet_servers();
 
   // Will test with t0 as the first leader, so move to ts0.

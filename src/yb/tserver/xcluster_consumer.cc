@@ -323,18 +323,19 @@ void XClusterConsumer::UpdateInMemoryState(
   stream_colocated_schema_version_map_.clear();
   stream_to_schema_version_.clear();
 
-  for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
-    const auto& producer_entry_pb = producer_map.second;
+  for (const auto& [replication_group_id_str, producer_entry_pb] :
+       DCHECK_NOTNULL(consumer_registry)->producer_map()) {
+    const cdc::ReplicationGroupId replication_group_id(replication_group_id_str);
     // recreate the UUID connection information
-    if (!ContainsKey(uuid_master_addrs_, producer_map.first)) {
+    if (!ContainsKey(uuid_master_addrs_, replication_group_id)) {
       std::vector<HostPort> hp;
-      HostPortsFromPBs(producer_map.second.master_addrs(), &hp);
-      uuid_master_addrs_[producer_map.first] = HostPort::ToCommaSeparatedString(hp);
+      HostPortsFromPBs(producer_entry_pb.master_addrs(), &hp);
+      uuid_master_addrs_[replication_group_id] = HostPort::ToCommaSeparatedString(hp);
 
       // If master addresses changed, mark for YBClient update.
-      if (ContainsKey(old_uuid_master_addrs, producer_map.first) &&
-          uuid_master_addrs_[producer_map.first] != old_uuid_master_addrs[producer_map.first]) {
-        changed_master_addrs_.insert(producer_map.first);
+      if (ContainsKey(old_uuid_master_addrs, replication_group_id) &&
+          uuid_master_addrs_[replication_group_id] != old_uuid_master_addrs[replication_group_id]) {
+        changed_master_addrs_.insert(cdc::ReplicationGroupId(replication_group_id));
       }
     }
     // recreate the set of CDCPollers
@@ -387,7 +388,8 @@ void XClusterConsumer::UpdateInMemoryState(
         const auto& consumer_tablet_id = tablet_entry.first;
         for (const auto& producer_tablet_id : tablet_entry.second.tablets()) {
           ProducerTabletInfo producer_tablet_info(
-              {producer_map.first, stream_entry.first, producer_tablet_id});
+              {cdc::ReplicationGroupId(replication_group_id), stream_entry.first,
+               producer_tablet_id});
           cdc::ConsumerTabletInfo consumer_tablet_info(
               {consumer_tablet_id, stream_entry_pb.consumer_table_id()});
           auto xCluster_tablet_info = cdc::XClusterTabletInfo{
@@ -436,7 +438,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
     }
     const auto& producer_tablet_info = entry.producer_tablet_info;
     const auto& consumer_tablet_info = entry.consumer_tablet_info;
-    auto uuid = producer_tablet_info.universe_uuid;
+    const auto& replication_group_id = producer_tablet_info.replication_group_id;
     bool start_polling;
     {
       SharedLock<rw_spinlock> read_lock_pollers(producer_pollers_map_mutex_);
@@ -445,13 +447,15 @@ void XClusterConsumer::TriggerPollForNewTablets() {
           is_leader_for_tablet_(entry.consumer_tablet_info.tablet_id);
 
       // Update the Master Addresses, if altered after setup.
-      if (ContainsKey(remote_clients_, uuid) && changed_master_addrs_.count(uuid) > 0) {
-        auto status = remote_clients_[uuid]->client->SetMasterAddresses(uuid_master_addrs_[uuid]);
+      if (ContainsKey(remote_clients_, replication_group_id) &&
+          changed_master_addrs_.count(replication_group_id) > 0) {
+        auto status = remote_clients_[replication_group_id]->client->SetMasterAddresses(
+            uuid_master_addrs_[replication_group_id]);
         if (status.ok()) {
-          changed_master_addrs_.erase(uuid);
+          changed_master_addrs_.erase(replication_group_id);
         } else {
-          LOG_WITH_PREFIX(WARNING)
-              << "Problem Setting Master Addresses for " << uuid << ": " << status.ToString();
+          LOG_WITH_PREFIX(WARNING) << "Problem Setting Master Addresses for "
+                                   << replication_group_id << ": " << status.ToString();
         }
       }
     }
@@ -465,8 +469,8 @@ void XClusterConsumer::TriggerPollForNewTablets() {
       if (start_polling) {
         // This is a new tablet, trigger a poll.
         // See if we need to create a new client connection
-        if (!ContainsKey(remote_clients_, uuid)) {
-          CHECK(ContainsKey(uuid_master_addrs_, uuid));
+        if (!ContainsKey(remote_clients_, replication_group_id)) {
+          CHECK(ContainsKey(uuid_master_addrs_, replication_group_id));
 
           auto remote_client = std::make_unique<XClusterClient>();
           std::string dir;
@@ -474,13 +478,14 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             rpc::MessengerBuilder messenger_builder("cdc-consumer");
             if (!FLAGS_certs_for_cdc_dir.empty()) {
               dir = JoinPathSegments(
-                  FLAGS_certs_for_cdc_dir, cdc::GetOriginalReplicationUniverseId(uuid));
+                  FLAGS_certs_for_cdc_dir,
+                  cdc::GetOriginalReplicationGroupId(replication_group_id).ToString());
             }
 
             auto secure_context_result = server::SetupSecureContext(
                 dir, "", "", server::SecureContextType::kInternal, &messenger_builder);
             if (!secure_context_result.ok()) {
-              LOG(WARNING) << "Could not create secure context for " << uuid << ": "
+              LOG(WARNING) << "Could not create secure context for " << replication_group_id << ": "
                            << secure_context_result.status().ToString();
               return;  // Don't finish creation.  Try again on the next heartbeat.
             }
@@ -488,7 +493,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
 
             auto messenger_result = messenger_builder.Build();
             if (!messenger_result.ok()) {
-              LOG(WARNING) << "Could not build messenger for " << uuid << ": "
+              LOG(WARNING) << "Could not build messenger for " << replication_group_id << ": "
                            << secure_context_result.status().ToString();
               return;  // Don't finish creation.  Try again on the next heartbeat.
             }
@@ -498,18 +503,18 @@ void XClusterConsumer::TriggerPollForNewTablets() {
           auto client_result =
               yb::client::YBClientBuilder()
                   .set_client_name("CDCConsumerRemote")
-                  .add_master_server_addr(uuid_master_addrs_[uuid])
+                  .add_master_server_addr(uuid_master_addrs_[replication_group_id])
                   .skip_master_flagfile()
                   .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
                   .Build(remote_client->messenger.get());
           if (!client_result.ok()) {
-            LOG(WARNING) << "Could not create a new YBClient for " << uuid << ": "
+            LOG(WARNING) << "Could not create a new YBClient for " << replication_group_id << ": "
                          << client_result.status().ToString();
             return;  // Don't finish creation.  Try again on the next heartbeat.
           }
 
           remote_client->client = std::move(*client_result);
-          remote_clients_[uuid] = std::move(remote_client);
+          remote_clients_[replication_group_id] = std::move(remote_client);
         }
 
         SchemaVersion last_compatible_consumer_schema_version = cdc::kInvalidSchemaVersion;
@@ -524,7 +529,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             streams_with_local_tserver_optimization_.end();
         auto xcluster_poller = std::make_shared<XClusterPoller>(
             producer_tablet_info, consumer_tablet_info, thread_pool_.get(), rpcs_.get(),
-            local_client_, remote_clients_[uuid], this, use_local_tserver,
+            local_client_, remote_clients_[replication_group_id], this, use_local_tserver,
             global_transaction_status_tablets_, enable_replicate_transaction_status_table_,
             last_compatible_consumer_schema_version);
 
@@ -594,8 +599,8 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
       it = producer_pollers_map_.erase(it);
 
       // Check if no more objects with this UUID exist after registry refresh.
-      if (!ContainsKey(uuid_master_addrs_, producer_info.universe_uuid)) {
-        auto clients_it = remote_clients_.find(producer_info.universe_uuid);
+      if (!ContainsKey(uuid_master_addrs_, producer_info.replication_group_id)) {
+        auto clients_it = remote_clients_.find(producer_info.replication_group_id);
         if (clients_it != remote_clients_.end()) {
           clients_to_delete.emplace_back(clients_it->second);
           remote_clients_.erase(clients_it);
@@ -641,8 +646,7 @@ Status XClusterConsumer::ReloadCertificates() {
   }
 
   SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
-  for (const auto& entry : remote_clients_) {
-    const auto& client = entry.second;
+  for (const auto& [replication_group_id, client] : remote_clients_) {
     if (!client->secure_context) {
       continue;
     }
@@ -650,7 +654,8 @@ Status XClusterConsumer::ReloadCertificates() {
     std::string cert_dir;
     if (!FLAGS_certs_for_cdc_dir.empty()) {
       cert_dir = JoinPathSegments(
-          FLAGS_certs_for_cdc_dir, cdc::GetOriginalReplicationUniverseId(entry.first));
+          FLAGS_certs_for_cdc_dir,
+          cdc::GetOriginalReplicationGroupId(replication_group_id).ToString());
     }
     RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
         client->secure_context.get(), cert_dir, "" /* node_name */));
@@ -706,12 +711,12 @@ Status XClusterConsumer::PublishXClusterSafeTime() {
   for (auto& safe_time_info : safe_time_map) {
     const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
-    QLAddStringHashValue(req, safe_time_info.first.universe_uuid);
+    QLAddStringHashValue(req, safe_time_info.first.replication_group_id.ToString());
     QLAddStringHashValue(req, safe_time_info.first.tablet_id);
     safe_time_table_->AddInt64ColumnValue(
         req, master::kXCSafeTime, safe_time_info.second.ToUint64());
 
-    VLOG_WITH_FUNC(2) << "UniverseID: " << safe_time_info.first.universe_uuid
+    VLOG_WITH_FUNC(2) << "UniverseID: " << safe_time_info.first.replication_group_id
                       << ", TabletId: " << safe_time_info.first.tablet_id
                       << ", SafeTime: " << safe_time_info.second.ToDebugString();
     session->Apply(op);

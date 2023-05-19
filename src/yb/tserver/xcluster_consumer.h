@@ -209,12 +209,12 @@ class XClusterConsumer {
   std::string log_prefix_;
   std::shared_ptr<XClusterClient> local_client_;
 
-  // map: {universe_uuid : ...}.
-  std::unordered_map<std::string, std::shared_ptr<XClusterClient>> remote_clients_
+  // map: {replication_group_id : ...}.
+  std::unordered_map<cdc::ReplicationGroupId, std::shared_ptr<XClusterClient>> remote_clients_
       GUARDED_BY(producer_pollers_map_mutex_);
-  std::unordered_map<std::string, std::string> uuid_master_addrs_
-    GUARDED_BY(master_data_mutex_);
-  std::unordered_set<std::string> changed_master_addrs_ GUARDED_BY(master_data_mutex_);
+  std::unordered_map<cdc::ReplicationGroupId, std::string> uuid_master_addrs_
+      GUARDED_BY(master_data_mutex_);
+  std::unordered_set<cdc::ReplicationGroupId> changed_master_addrs_ GUARDED_BY(master_data_mutex_);
 
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
   std::atomic<cdc::XClusterRole> consumer_role_ = cdc::XClusterRole::ACTIVE;

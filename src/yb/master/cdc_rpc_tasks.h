@@ -17,6 +17,7 @@
 
 #include <google/protobuf/repeated_field.h>
 
+#include "yb/cdc/cdc_util.h"
 #include "yb/common/entity_ids.h"
 
 #include "yb/util/status_fwd.h"
@@ -38,14 +39,13 @@ class SecureContext;
 } // namespace rpc
 
 namespace master {
-
 class TableIdentifierPB;
 class TabletLocationsPB;
 
 class CDCRpcTasks {
  public:
   static Result<std::shared_ptr<CDCRpcTasks>> CreateWithMasterAddrs(
-      const std::string& producer_id, const std::string& master_addrs);
+      const cdc::ReplicationGroupId& producer_id, const std::string& master_addrs);
 
   ~CDCRpcTasks();
 
@@ -53,9 +53,7 @@ class CDCRpcTasks {
       const std::string& table_id);
   // Returns a list of (table id, table name).
   Result<std::vector<std::pair<TableId, client::YBTableName>>> ListTables();
-  client::YBClient* client() const {
-    return yb_client_.get();
-  }
+  client::YBClient* client() const { return yb_client_.get(); }
   Result<client::YBClient*> UpdateMasters(const std::string& master_addrs);
 
  private:
@@ -64,5 +62,5 @@ class CDCRpcTasks {
   std::unique_ptr<client::YBClient> yb_client_;
 };
 
-} // namespace master
+}  // namespace master
 } // namespace yb

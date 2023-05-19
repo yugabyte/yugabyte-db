@@ -321,7 +321,7 @@ class CDCServiceImpl::Impl {
       const TabletId& tablet_id,
       std::vector<ProducerTabletInfo>* producer_entries_modified) {
     ProducerTabletInfo producer_tablet{
-        .universe_uuid = "", .stream_id = stream_id, .tablet_id = tablet_id};
+        .replication_group_id = {}, .stream_id = stream_id, .tablet_id = tablet_id};
     CoarseTimePoint time;
     int64_t active_time;
 
@@ -528,7 +528,8 @@ class CDCServiceImpl::Impl {
       const OpId& split_op_id) {
     std::lock_guard<rw_spinlock> l(mutex_);
     for (const auto& tablet : tablets) {
-      ProducerTabletInfo producer_info{info.universe_uuid, info.stream_id, tablet->tablet_id()};
+      ProducerTabletInfo producer_info{
+          info.replication_group_id, info.stream_id, tablet->tablet_id()};
       tablet_checkpoints_.emplace(TabletCheckpointInfo{
           .producer_tablet_info = producer_info,
           .cdc_state_checkpoint =
@@ -559,7 +560,8 @@ class CDCServiceImpl::Impl {
       std::lock_guard<rw_spinlock> l(mutex_);
       for (const auto& tablet : tablets) {
         // Add every tablet in the stream.
-        ProducerTabletInfo producer_info{info.universe_uuid, info.stream_id, tablet.tablet_id()};
+        ProducerTabletInfo producer_info{
+            info.replication_group_id, info.stream_id, tablet.tablet_id()};
         tablet_checkpoints_.emplace(TabletCheckpointInfo{
             .producer_tablet_info = producer_info,
             .cdc_state_checkpoint =
@@ -1185,7 +1187,7 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
       CheckCanServeTabletData(*tablet_peer->tablet_metadata()),
       CDCError(CDCErrorPB::LEADER_NOT_READY));
 
-  ProducerTabletInfo producer_tablet{"" /* UUID */, req.stream_id(), req.tablet_id()};
+  ProducerTabletInfo producer_tablet{{}, req.stream_id(), req.tablet_id()};
   RETURN_NOT_OK_SET_CODE(
       CheckTabletValidForStream(producer_tablet), CDCError(CDCErrorPB::INVALID_REQUEST));
 
@@ -1344,8 +1346,7 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
     CDCSDKCheckpointPB parent_checkpoint_pb;
     {
       auto session = client()->NewSession();
-      ProducerTabletInfo parent_tablet = {
-          "" /* UUID */, req->table_info().stream_id(), req->tablet_id()};
+      ProducerTabletInfo parent_tablet = {{}, req->table_info().stream_id(), req->tablet_id()};
       auto result = GetLastCheckpoint(parent_tablet, session, CDCRequestSource::CDCSDK);
       RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
       (*result).ToPB(&parent_checkpoint_pb);
@@ -1353,8 +1354,7 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
 
     for (const auto& child_tablet_id : child_tablet_ids) {
       auto session = client()->NewSession();
-      ProducerTabletInfo cur_child_tablet = {
-          "" /* UUID */, req->table_info().stream_id(), child_tablet_id};
+      ProducerTabletInfo cur_child_tablet = {{}, req->table_info().stream_id(), child_tablet_id};
 
       auto tablet_checkpoint_pair_pb = resp->add_tablet_checkpoint_pairs();
       tablet_checkpoint_pair_pb->mutable_tablet_locations()->CopyFrom(
@@ -1519,7 +1519,7 @@ void CDCServiceImpl::GetChanges(
   session->SetDeadline(deadline);
 
   // Check that requested tablet_id is part of the CDC stream.
-  producer_tablet = {"" /* UUID */, stream_id, req->tablet_id()};
+  producer_tablet = {{}, stream_id, req->tablet_id()};
 
   auto status = CheckTabletValidForStream(producer_tablet);
   if (!status.ok()) {
@@ -2002,7 +2002,7 @@ void CDCServiceImpl::UpdateCDCMetrics() {
     StreamMetadata& record = **get_stream_metadata;
 
     bool is_leader = (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY);
-    ProducerTabletInfo tablet_info = {"" /* universe_uuid */, stream_id, tablet_id};
+    ProducerTabletInfo tablet_info = {{}, stream_id, tablet_id};
     tablets_in_cdc_state_table.insert(tablet_info);
 
     if (record.GetSourceType() == CDCSDK) {
@@ -2410,7 +2410,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     }
 
     // Check that requested tablet_id is part of the CDC stream.
-    ProducerTabletInfo producer_tablet = {"" /* UUID */, stream_id, tablet_id};
+    ProducerTabletInfo producer_tablet = {{}, stream_id, tablet_id};
 
     // Check stream associated with the tablet is active or not.
     // Don't consider those inactive stream for the min_checkpoint calculation.
@@ -2992,7 +2992,7 @@ void CDCServiceImpl::GetCheckpoint(
       CDCErrorPB::LEADER_NOT_READY, context);
 
   // Check that requested tablet_id is part of the CDC stream.
-  ProducerTabletInfo producer_tablet = {"" /* UUID */, req->stream_id(), req->tablet_id()};
+  ProducerTabletInfo producer_tablet = {{}, req->stream_id(), req->tablet_id()};
   auto s = CheckTabletValidForStream(producer_tablet);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
@@ -3552,7 +3552,7 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
     for (int i = 0; i < get_op_id_resp->op_ids_size(); i++) {
       const std::string bootstrap_id = leader_tablets.at(i).first;
       const std::string tablet_id = leader_tablets.at(i).second;
-      ProducerTabletInfo producer_tablet{"" /* Universe UUID */, bootstrap_id, tablet_id};
+      ProducerTabletInfo producer_tablet{{} /* Universe UUID */, bootstrap_id, tablet_id};
       auto op_id = OpId::FromPB(get_op_id_resp->op_ids(i));
 
       // Add op_id for tablet.
@@ -4226,7 +4226,7 @@ Status CDCServiceImpl::UpdateSnapshotDone(
 
   // Also update the active_time in the streaming row.
   if (!colocated_table_id.empty()) {
-    ProducerTabletInfo producer_tablet = {"" /* UUID */, stream_id, tablet_id};
+    ProducerTabletInfo producer_tablet = {{}, stream_id, tablet_id};
     auto streaming_safe_time = VERIFY_RESULT(GetSafeTime(producer_tablet, session));
     RETURN_NOT_OK(UpdateActiveTime(producer_tablet, session, current_time, streaming_safe_time));
   }
@@ -4415,7 +4415,7 @@ void CDCServiceImpl::IsBootstrapRequired(
 
     if (req->has_stream_id() && !req->stream_id().empty()) {
       // Check that requested tablet_id is part of the CDC stream.
-      ProducerTabletInfo producer_tablet = {"" /* UUID */, req->stream_id(), tablet_id};
+      ProducerTabletInfo producer_tablet = {{}, req->stream_id(), tablet_id};
       auto s = CheckTabletValidForStream(producer_tablet);
       RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
@@ -4576,7 +4576,7 @@ void CDCServiceImpl::CheckReplicationDrain(
         continue;
       }
 
-      ProducerTabletInfo producer_tablet = {"" /* UUID */, stream_id, tablet_id};
+      ProducerTabletInfo producer_tablet = {{}, stream_id, tablet_id};
       auto s = CheckTabletValidForStream(producer_tablet);
       if (!s.ok()) {
         LOG_WITH_FUNC(WARNING) << "Tablet not valid for stream: " << s << ". Skipping.";
