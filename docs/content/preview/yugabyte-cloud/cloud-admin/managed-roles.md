@@ -15,7 +15,17 @@ type: docs
 
 Access to the features of your YugabyteDB Managed account is managed using roles. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
 
-Roles are also assigned to [API keys](../../managed-automation/managed-apikeys/) to delineate what functionality is available to users accessing your account using either the YugabyteDB Managed API or YBM CLI.
+YugabyteDB Managed includes [built-in roles](#built-in-roles), and you can define custom roles for team members to restrict access to specific account features. For information on assigning roles to users, refer to [Change a user's role](../manage-access/#change-a-user-s-role).
+
+Roles are also assigned to [API keys](../../managed-automation/managed-apikeys/) to delineate what functionality is available to users accessing your account using either the YugabyteDB Managed API or YBM CLI. You assign roles to API keys when creating the key; refer to [Create an API key](../../managed-automation/managed-apikeys/#create-an-api-key).
+
+The **Roles** tab displays a list of roles that are defined for your account, including the role name, description, type, the number of users assigned the role, and the number of API keys created for the role.
+
+![Admin Roles page](/images/yb-cloud/managed-admin-roles.png)
+
+To view role details, select the role in the list.
+
+## Built-in roles
 
 YugabyteDB Managed includes two built-in roles for managing your account:
 
@@ -29,16 +39,6 @@ YugabyteDB Managed includes two built-in roles for managing your account:
   - create or revoke API keys
   - create a billing profile
   - view account activity
-
-You can also define custom roles for team members to restrict access to specific account features.
-
-You must be signed in as a user with Role Management permissions to create or modify roles.
-
-The **Roles** tab displays a list of roles that are defined for your account, including the role name, description, type, the number of users assigned the role, and the number of API keys created for the role.
-
-![Admin Roles page](/images/yb-cloud/managed-admin-roles.png)
-
-To view role details, select the role in the list.
 
 ## Create a role
 
