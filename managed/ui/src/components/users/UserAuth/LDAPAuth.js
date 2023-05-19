@@ -182,6 +182,7 @@ export const LDAPAuth = (props) => {
         key: `${LDAP_PATH}.use_ldap`,
         value: true
       });
+      fetchRunTimeConfigs();
       toast.success(`LDAP authentication is enabled`, TOAST_OPTIONS);
     }
   };
@@ -197,6 +198,7 @@ export const LDAPAuth = (props) => {
       key: `${LDAP_PATH}.use_ldap`,
       value: 'false'
     });
+    fetchRunTimeConfigs();
     toast.warn(`LDAP authentication is disabled`, TOAST_OPTIONS);
   };
 
