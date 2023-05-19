@@ -209,6 +209,10 @@ Drop the named constraint from the table.
 
 Rename a column to the specified name.
 
+#### RENAME CONSTRAINT *constraint_name* TO *constraint_name*
+
+Rename a constraint to the specified name.
+
 #### ENABLE / DISABLE ROW LEVEL SECURITY
 
 This enables or disables row level security for the table.
