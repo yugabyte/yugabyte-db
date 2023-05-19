@@ -269,7 +269,7 @@ constexpr inline bool IsSpecialKeyEntryType(KeyEntryType value_type) {
 }
 
 // Decode the first byte of the given slice as a ValueType.
-inline ValueEntryType DecodeValueEntryType(const Slice& value) {
+inline ValueEntryType DecodeValueEntryType(Slice value) {
   return value.empty() ? ValueEntryType::kInvalid : static_cast<ValueEntryType>(value.data()[0]);
 }
 

@@ -476,11 +476,15 @@ QLValuePB PgTableRow::GetQLValuePB(ColumnIdRep column_id) const {
   return value->ToQLValuePB(projection_->columns[idx].data_type);
 }
 
-void PgTableRow::Clear() {
+void PgTableRow::Reset() {
   buffer_.clear();
 }
 
-void PgTableRow::Clear(size_t column_idx) {
+void PgTableRow::SetNull() {
+  memset(is_null_.data(), 1, is_null_.size() * sizeof(is_null_[0]));
+}
+
+void PgTableRow::SetNull(size_t column_idx) {
   is_null_[column_idx] = true;
 }
 

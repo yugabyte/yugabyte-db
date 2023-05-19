@@ -160,7 +160,7 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) co
 
 Result<bool> DocRowwiseIterator::PgFetchNext(dockv::PgTableRow* table_row) {
   if (table_row) {
-    table_row->Clear();
+    table_row->Reset();
   }
   return FetchNextImpl(table_row);
 }
@@ -399,10 +399,11 @@ Status DocRowwiseIterator::FillRow(
   const auto& schema = this->schema();
   for (const auto& column : projection.value_columns()) {
     const auto* source = row_->GetChild(column.subkey);
+    auto& dest = table_row->AllocColumn(column.id);
     if (!source) {
+      dest.value.Clear();
       continue;
     }
-    auto& dest = table_row->AllocColumn(column.id);
     source->ToQLValuePB(VERIFY_RESULT_REF(schema.column_by_id(column.id)).type(), &dest.value);
     dest.ttl_seconds = source->GetTtl();
     if (source->IsWriteTimeSet()) {

@@ -221,7 +221,7 @@ Status GetSplitPoints(YBCPgTableDesc table_desc,
         column_bounds.consume_byte();
         split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MAX;
       } else {
-        table_row.Clear();
+        table_row.Reset();
         RETURN_NOT_OK(table_row.DecodeKey(col_idx, &column_bounds));
         split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_STANDARD_VALUE;
 

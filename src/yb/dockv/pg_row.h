@@ -92,8 +92,10 @@ class PgTableRow {
 
   std::optional<PgValue> GetValueByColumnId(ColumnIdRep column_id) const;
 
-  void Clear();
-  void Clear(size_t column_idx);
+  void Reset();
+
+  void SetNull();
+  void SetNull(size_t column_idx);
 
   Status DecodeKey(size_t column_idx, Slice* value);
   Status DecodeValue(size_t column_idx, const Slice& value);
