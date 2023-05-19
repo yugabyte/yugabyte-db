@@ -138,6 +138,14 @@ DEFINE_RUNTIME_int64(mem_tracker_tcmalloc_gc_release_bytes, -1,
     "page heap freelist. A higher value implies less aggressive GC, i.e. higher memory "
     "overhead, but more efficient in terms of runtime.");
 
+DEFINE_RUNTIME_bool(mem_tracker_include_pageheap_free_in_root_consumption, false,
+    "Whether to include tcmalloc.pageheap_free_bytes from the consumption of the root memtracker. "
+    "tcmalloc.pageheap_free_bytes tracks memory mapped by tcmalloc but not currently used. "
+    "If we do include this in consumption, it is possible that we reject requests due to soft "
+    "memory limits being hit when we actually have available memory in the pageheap. So we "
+    "exclude it by default.");
+TAG_FLAG(mem_tracker_include_pageheap_free_in_root_consumption, advanced);
+
 namespace yb {
 
 // NOTE: this class has been adapted from Impala, so the code style varies
@@ -327,6 +335,28 @@ void MemTracker::PrintTCMallocConfigs() {
             << tcmalloc::MallocExtension::GetMaxTotalThreadCacheBytes();
 #endif
 }
+
+#ifdef YB_TCMALLOC_ENABLED
+// This calculates the memory that is used by TCMalloc and is not available to us for allocation.
+// The thread, central, and transfer caches are not excluded from the consumption since only
+// requests smaller than 256 KiB are served from there. It is possible that a request larger than
+// this size is not servable from pageheap_free_bytes because of fragmentation, but that
+// fragmentation is bounded by GcTcmallocIfNeeded.
+int64_t MemTracker::GetTCMallocActualHeapSizeBytes() {
+  int64_t val = GetTCMallocCurrentHeapSizeBytes();
+#ifdef YB_GPERFTOOLS_TCMALLOC
+  // We only need to subtract unmapped bytes with gperftools tcmalloc. It is already being
+  // subtracted internally from generic.heap_size by Google tcmalloc.
+  val -= GetTCMallocProperty("tcmalloc.pageheap_unmapped_bytes");
+#endif  // YB_GPERFTOOLS_TCMALLOC
+  if (!PREDICT_FALSE(FLAGS_mem_tracker_include_pageheap_free_in_root_consumption)) {
+    // Set mem_tracker_include_pageheap_free_in_root_consumption to true to avoid this subtraction
+    // and get the same behavior as before D24883.
+    val -= GetPageHeapFreeBytes();
+  }
+  return val;
+}
+#endif // YB_TCMALLOC_ENABLED
 
 void MemTracker::SetTCMallocCacheMemory() {
 #ifdef YB_TCMALLOC_ENABLED
@@ -583,6 +613,8 @@ bool MemTracker::UpdateConsumption(bool force) {
     if (force || now > last_consumption_update_ + interval) {
       last_consumption_update_ = now;
       auto value = consumption_functor_();
+      VLOG(1) << "Setting consumption of tracker " << id_ << " to " << value
+              << "from consumption functor";
       consumption_.set_value(value);
       if (metrics_) {
         metrics_->metric_->set_value(value);
@@ -680,7 +712,7 @@ void MemTracker::Release(int64_t bytes) {
 
   if (PREDICT_FALSE(base::subtle::Barrier_AtomicIncrement(&released_memory_since_gc, bytes) >
                     GetAtomicFlag(&FLAGS_mem_tracker_tcmalloc_gc_release_bytes))) {
-    GcTcmalloc();
+    GcTcmallocIfNeeded();
     if (UpdateConsumption(true /* force */)) {
       return;
     }
@@ -846,14 +878,14 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
   return consumption() > max_consumption;
 }
 
-void MemTracker::GcTcmalloc() {
+void MemTracker::GcTcmallocIfNeeded() {
 #ifdef YB_TCMALLOC_ENABLED
   released_memory_since_gc = 0;
-  TRACE_EVENT0("process", "MemTracker::GcTcmalloc");
+  TRACE_EVENT0("process", "MemTracker::GcTcmallocIfNeeded");
 
   // Number of bytes in the 'NORMAL' free list (i.e reserved by tcmalloc but
   // not in use).
-  int64_t bytes_overhead = GetTCMallocProperty("tcmalloc.pageheap_free_bytes");
+  int64_t bytes_overhead = GetPageHeapFreeBytes();
   // Bytes allocated by the application.
   int64_t bytes_used = GetTCMallocCurrentAllocatedBytes();
 
@@ -909,7 +941,7 @@ void MemTracker::LogMemoryLimits() const {
 
 void MemTracker::LogUpdate(bool is_consume, int64_t bytes) const {
   stringstream ss;
-  ss << this << " " << (is_consume ? "Consume: " : "Release: ") << bytes
+  ss << id_ << " " << (is_consume ? "Consume: " : "Release: ") << bytes
      << " Consumption: " << consumption() << " Limit: " << limit_;
   if (log_stack_) {
     ss << std::endl << GetStackTrace();
@@ -933,6 +965,10 @@ void MemTracker::SetMetricEntity(
   }
   metrics_ = std::make_unique<TrackerMetrics>(metric_entity);
   metrics_->Init(*this, name_suffix);
+}
+
+void MemTracker::TEST_SetReleasedMemorySinceGC(int64_t value) {
+  released_memory_since_gc = value;
 }
 
 scoped_refptr<MetricEntity> MemTracker::metric_entity() const {
