@@ -17,9 +17,23 @@ YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) ma
 
 The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
-Using yugabyted, you can create single-node clusters. To create multi-node clusters, you would need to use the `--join` flag in the `start` command.
+For examples of using yugabyted to deploy single- and multi-node clusters, see [Examples](#examples).
 
+{{<note title="Not recommended for production">}}
 Note that yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly. Refer to [Deploy YugabyteDB](../../../deploy).
+{{</note>}}
+
+{{% note title="macOS Monterey" %}}
+
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](#advanced-flags) when you start the cluster to change the default port number, as follows:
+
+```sh
+./bin/yugabyted start --master_webserver_port=9999
+```
+
+Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+
+{{% /note %}}
 
 ## Syntax
 
@@ -112,7 +126,7 @@ Examples:
 : IP address or local hostname on which yugabyted will listen.
 
 --join *master-ip*
-: The IP address of the existing yugabyted server to which the new yugabyted server will join.
+: The IP address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin.
 
 --config *config-file*
 : Yugabyted configuration file path. Refer to [Advanced flags](#advanced-flags).
@@ -732,6 +746,8 @@ cp $HOME/var/generated_certs/127.0.0.3/* $HOME/yugabyte-{{< yb-version version="
 ```
 
 ### Create a local multi-node cluster
+
+To create a cluster with multiple nodes, you first create a single node, and then create additional nodes using the `--join` flag to add them to the cluster. If a node is restarted, you would also use the `--join` flag to rejoin the cluster.
 
 To create a secure multi-node cluster, ensure you have [generated and copied the certificates](#create-certificates-for-a-secure-local-multi-node-cluster) for each node.
 

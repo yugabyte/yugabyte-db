@@ -179,7 +179,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // Returns true if shutdown was just initiated, false if shutdown was already running.
   MUST_USE_RESULT bool StartShutdown();
   // Completes shutdown process and waits for it's completeness.
-  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown);
+  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
   // Abort active transactions on the tablet after shutdown is initiated.
   Status AbortSQLTransactions() const;

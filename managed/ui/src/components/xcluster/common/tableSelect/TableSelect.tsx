@@ -23,6 +23,7 @@ import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import {
   adaptTableUUID,
   formatBytes,
+  getAllXClusterConfigs,
   getSharedXClusterConfigs,
   tableSort
 } from '../../ReplicationUtils';
@@ -417,13 +418,19 @@ export const TableSelect = (props: TableSelectProps) => {
   );
   const ybSoftwareVersion = getPrimaryCluster(sourceUniverseQuery.data.universeDetails.clusters)
     ?.userIntent.ybSoftwareVersion;
+  const hasExisitingReplicationConfig =
+    [
+      ...getAllXClusterConfigs(sourceUniverseQuery.data),
+      ...getAllXClusterConfigs(targetUniverseQuery.data)
+    ].length > 0;
   const isTransactionalAtomicitySupported =
     !!ybSoftwareVersion &&
     compareYBSoftwareVersions(
       TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
       ybSoftwareVersion,
       true
-    ) < 0;
+    ) < 0 &&
+    !hasExisitingReplicationConfig;
   return (
     <>
       {isTransactionalAtomicityEnabled &&
@@ -448,6 +455,10 @@ export const TableSelect = (props: TableSelectProps) => {
                     </li>
                     <li>PITR must be enabled on the target universe.</li>
                     <li>enable_pg_savepoint must be set to false for both tserver and master</li>
+                    <li>
+                      Neither the source universe nor the target universe universe is a participant
+                      in any other xCluster configuration.
+                    </li>
                   </ol>
                   You may find further information on this feature on our{' '}
                   <a href={XCLUSTER_REPLICATION_DOCUMENTATION_URL}>public docs.</a>
@@ -678,10 +689,11 @@ const getTableIdentifier = (table: YBTable): string =>
 
 /**
  * A table is eligible for replication if all of the following holds true:
- * - there exists another table with same keyspace, table name, and schema name
- *   in target universe
- * - the table is NOT part of another existing xCluster config between the same universes
- *   in the same direction
+ * - There exists another table with same keyspace, table name, and schema name
+ *   in target universe OR the user is selecting tables for a new xCluster config (YBA will do a backup/restore
+ *   to handle it during xCluster config creation).
+ * - The table is NOT part of another existing xCluster config between the same universes
+ *   in the same direction.
  */
 function getXClusterTableEligibilityDetails(
   sourceTable: YBTable,
@@ -689,11 +701,15 @@ function getXClusterTableEligibilityDetails(
   sharedXClusterConfigs: XClusterConfig[],
   currentXClusterConfigUUID?: string
 ): EligibilityDetails {
-  const targetUniverseTableIds = new Set(
-    targetUniverseTables.map((table) => getTableIdentifier(table))
-  );
-  if (!targetUniverseTableIds.has(getTableIdentifier(sourceTable))) {
-    return { status: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+  if (currentXClusterConfigUUID) {
+    // Adding a table to an existing xCluster config requires that there exists another table
+    // with same keyspace, table name, and schema name on the target universe.
+    const targetUniverseTableIds = new Set(
+      targetUniverseTables.map((table) => getTableIdentifier(table))
+    );
+    if (!targetUniverseTableIds.has(getTableIdentifier(sourceTable))) {
+      return { status: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+    }
   }
 
   for (const xClusterConfig of sharedXClusterConfigs) {

@@ -8,7 +8,6 @@ menu:
     identifier: name-resolution-in-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 60
-aliases:
 type: docs
 ---
 

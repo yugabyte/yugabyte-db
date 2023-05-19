@@ -29,6 +29,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/monitored_task.h"
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -87,7 +88,7 @@ class CatalogManagerIf {
 
   virtual ThreadPool* AsyncTaskPool() = 0;
 
-  virtual Status ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) = 0;
+  virtual Status ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) = 0;
 
   virtual Status HandleTabletSchemaVersionReport(
       TabletInfo *tablet, uint32_t version, const scoped_refptr<TableInfo>& table = nullptr) = 0;
@@ -272,6 +273,8 @@ class CatalogManagerIf {
 
   virtual Status GetCompactionStatus(
       const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) = 0;
+
+  virtual Status PromoteTableToRunningState(TableInfoPtr table_info) = 0;
 
   virtual ~CatalogManagerIf() = default;
 };

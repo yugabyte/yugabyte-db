@@ -171,6 +171,7 @@ class RemoteBootstrapITest : public CreateTableITestBase {
   void LeaderCrashesBeforeChangeRole(YBTableType table_type);
   void LeaderCrashesAfterChangeRole(YBTableType table_type);
 
+  // Places tservers in different zones so as to test bootstrapping from the closest follower.
   void BootstrapFromClosestPeerSetUp(int bootstrap_idle_timeout_ms = 5000);
   // Verifies that the new peer gets bootstrapped from the closest non leader follower
   // despite leader crash during remote log anchor session.
@@ -182,7 +183,7 @@ class RemoteBootstrapITest : public CreateTableITestBase {
 
   void ClientCrashesBeforeChangeRole(YBTableType table_type);
 
-  void RBSWithLazySuperblockFlush(int num_tables, int iterations);
+  void RBSWithLazySuperblockFlush(int num_tables);
 
   void LongBootstrapTestSetUpAndVerify(
       const vector<string>& tserver_flags = vector<string>(),
@@ -1351,6 +1352,11 @@ void RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType table_type
   crash_test_timeout_ = MonoDelta::FromSeconds(40);
   CrashTestSetUp(table_type);
 
+  // Force leader to serve as bootstrap source.
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_leader_index_),
+                              "remote_bootstrap_from_leader_only",
+                              "true"));
+
   // Cause the leader to crash when a follower tries to fetch data from it.
   const string& fault_flag = "TEST_fault_crash_on_handle_rb_fetch_data";
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_leader_index_), fault_flag,
@@ -1806,108 +1812,107 @@ TEST_F(RemoteBootstrapITest, TestClientCrashesBeforeChangeRoleKeyValueTableType)
   RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType::YQL_TABLE_TYPE);
 }
 
-void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables, int iterations) {
+void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   const string database = "test_db";
   const string table_prefix = "foo";
   const MonoDelta timeout = MonoDelta::FromSeconds(kTimeMultiplier * 10);
 
-  for (int itr = 0; itr < iterations; ++itr) {
-    // Create tables and rows.
-    auto conn = ASSERT_RESULT(ConnectToDB(std::string()));
-    ASSERT_OK(conn.ExecuteFormat("DROP DATABASE IF EXISTS $0", database));
-    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", database));
-    auto db_conn = ASSERT_RESULT(ConnectToDB(database));
-    for (int i = 0; i < num_tables; ++i) {
-      ASSERT_OK(db_conn.ExecuteFormat("CREATE TABLE $0$1 (i int)", table_prefix, i));
-      ASSERT_OK(db_conn.Execute("BEGIN"));
-      ASSERT_OK(db_conn.ExecuteFormat("INSERT INTO $0$1 values (1)", table_prefix, i));
-      ASSERT_OK(db_conn.Execute("COMMIT"));
+  // Create tables and rows.
+  auto conn = ASSERT_RESULT(ConnectToDB(std::string()));
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", database));
+  auto db_conn = ASSERT_RESULT(ConnectToDB(database));
+  for (int i = 0; i < num_tables; ++i) {
+    ASSERT_OK(db_conn.ExecuteFormat("CREATE TABLE $0$1 (i int)", table_prefix, i));
+    ASSERT_OK(db_conn.Execute("BEGIN"));
+    ASSERT_OK(db_conn.ExecuteFormat("INSERT INTO $0$1 values (1)", table_prefix, i));
+    ASSERT_OK(db_conn.Execute("COMMIT"));
+  }
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(timeout));
+
+  // Flush rocksdb (but not superblock) so that superblock flush trails rocksdb.
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), database, table_prefix + "0"));
+  ASSERT_OK(
+      client->FlushTables({table_id}, /* add_indexes = */ false, 30, /* is_compaction = */ false));
+
+  const auto ts_idx_to_bootstrap = 2;
+
+  // Figure out the tablet id of the created tablet.
+  vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(ts_idx_to_bootstrap)->uuid()].get();
+
+  // Wait for 4 tablets - 3 transactions related and 1 user created colocated tablet.
+  ASSERT_OK(WaitForNumTabletsOnTS(ts, /* count = */ 4, timeout, &tablets));
+  vector<string> user_tablet_ids;
+  for (auto tablet : tablets) {
+    if (tablet.tablet_status().table_name().ends_with("parent.tablename")) {
+      user_tablet_ids.push_back(tablets[0].tablet_status().tablet_id());
     }
-    ASSERT_OK(cluster_->WaitForAllIntentsApplied(timeout));
+  }
 
-    // Flush rocksdb (but not superblock) so that superblock flush trails rocksdb.
-    auto client = ASSERT_RESULT(cluster_->CreateClient());
-    auto table_id =
-        ASSERT_RESULT(GetTableIdByTableName(client.get(), database, table_prefix + "0"));
-    ASSERT_OK(client->FlushTables(
-        {table_id}, /* add_indexes = */ false, 30, /* is_compaction = */ false));
+  ASSERT_EQ(user_tablet_ids.size(), 1);
+  string tablet_id = user_tablet_ids[0];
 
-    const auto ts_idx_to_bootstrap = 2;
+  // Delete tablet and shutdown one tserver.
+  auto* const ts_to_bootstrap = cluster_->tablet_server(ts_idx_to_bootstrap);
+  ASSERT_OK(WaitFor(
+      [&tablet_id, ts, timeout]() -> Result<bool> {
+        const auto s = itest::DeleteTablet(
+            ts, tablet_id, tablet::TABLET_DATA_TOMBSTONED, boost::none, timeout);
+        if (s.ok()) {
+          return true;
+        }
+        if (s.IsAlreadyPresent()) {
+          return false;
+        }
+        return s;
+      },
+      timeout, Format("Delete parent tablet on $0", ts_to_bootstrap->uuid())));
 
-    // Figure out the tablet id of the created tablet.
-    vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
-    TServerDetails* ts = ts_map_[cluster_->tablet_server(ts_idx_to_bootstrap)->uuid()].get();
+  ts_to_bootstrap->Shutdown();
+  ASSERT_OK(cluster_->WaitForTSToCrash(ts_to_bootstrap));
 
-    // Wait for 4 tablets - 3 transactions related and 1 user created colocated tablet.
-    ASSERT_OK(WaitForNumTabletsOnTS(ts, /* count = */ 4, timeout, &tablets));
-    vector<string> user_tablet_ids;
-    for (auto tablet : tablets) {
-      if (tablet.tablet_status().table_name().ends_with("parent.tablename")) {
-        user_tablet_ids.push_back(tablets[0].tablet_status().tablet_id());
-      }
-    }
+  // Restart tserver to trigger RBS.
+  LogWaiter log_waiter(ts_to_bootstrap, "Pausing due to flag TEST_pause_rbs_before_download_wal");
+  ASSERT_OK(ts_to_bootstrap->Restart(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {std::make_pair("TEST_pause_rbs_before_download_wal", "true")}));
+  ASSERT_OK(log_waiter.WaitFor(timeout));
 
-    ASSERT_EQ(user_tablet_ids.size(), 1);
-    string tablet_id = user_tablet_ids[0];
+  // Add more entries to WAL so that new segments are generated before downloading the WAL. New
+  // wal segments are generated as a result of the below operations because the wal size is
+  // very small (log_segment_size_bytes=1024).
+  for (int i = 0; i < num_tables; ++i) {
+    ASSERT_OK(db_conn.Execute("BEGIN"));
+    ASSERT_OK(db_conn.ExecuteFormat("INSERT INTO $0$1 values (1)", table_prefix, i));
+    ASSERT_OK(db_conn.Execute("COMMIT"));
+  }
 
-    // Delete tablet and shutdown one tserver.
-    auto* const ts_to_bootstrap = cluster_->tablet_server(ts_idx_to_bootstrap);
-    ASSERT_OK(WaitFor(
-        [&tablet_id, ts, timeout]() -> Result<bool> {
-          const auto s = itest::DeleteTablet(
-              ts, tablet_id, tablet::TABLET_DATA_TOMBSTONED, boost::none, timeout);
-          if (s.ok()) {
-            return true;
-          }
-          if (s.IsAlreadyPresent()) {
-            return false;
-          }
-          return s;
-        },
-        timeout, Format("Delete parent tablet on $0", ts_to_bootstrap->uuid())));
+  // Resume WAL download.
+  ASSERT_OK(cluster_->SetFlag(ts_to_bootstrap, "TEST_pause_rbs_before_download_wal", "false"));
 
-    ts_to_bootstrap->Shutdown();
-    ASSERT_OK(cluster_->WaitForTSToCrash(ts_to_bootstrap));
+  // Ensure the bootstrapped tablet becomes the leader.
+  ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(
+      cluster_->GetLeaderMaster(), cluster_->tablet_server(0)));
+  ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(
+      cluster_->GetLeaderMaster(), cluster_->tablet_server(1)));
 
-    // Restart tserver to trigger RBS.
-    LogWaiter log_waiter(ts_to_bootstrap, "Pausing due to flag TEST_pause_rbs_before_download_wal");
-    ASSERT_OK(ts_to_bootstrap->Restart(
-        ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-        {std::make_pair("TEST_pause_rbs_before_download_wal", "true")}));
-    ASSERT_OK(log_waiter.WaitFor(timeout));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto leader = cluster_->GetTabletLeaderIndex(tablet_id);
+        if (!leader.ok()) {
+          return false;
+        }
+        return leader.get() == ts_idx_to_bootstrap;
+      },
+      timeout, "Waiting for ts_idx_to_bootstrap to become leader"));
 
-    // Add more entries to WAL so that new segments are generated before downloading the WAL. New
-    // wal segments are generated as a result of the below operations because the wal size is
-    // very small (log_segment_size_bytes=1024).
-    for (int i = 0; i < num_tables; ++i) {
-      ASSERT_OK(db_conn.ExecuteFormat("CREATE TABLE $0$1 (i int)", table_prefix, num_tables + i));
-      ASSERT_OK(db_conn.Execute("BEGIN"));
-      ASSERT_OK(db_conn.ExecuteFormat("INSERT INTO $0$1 values (1)", table_prefix, num_tables + i));
-      ASSERT_OK(db_conn.Execute("COMMIT"));
-    }
-
-    // Resume WAL download.
-    ASSERT_OK(cluster_->SetFlag(ts_to_bootstrap, "TEST_pause_rbs_before_download_wal", "false"));
-
-    // Ensure the bootstrapped tablet becomes the leader.
-    ASSERT_OK(
-        cluster_->AddTServerToLeaderBlacklist(cluster_->master(), cluster_->tablet_server(0)));
-    ASSERT_OK(
-        cluster_->AddTServerToLeaderBlacklist(cluster_->master(), cluster_->tablet_server(1)));
-
-    ASSERT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          return VERIFY_RESULT(cluster_->GetTabletLeaderIndex(tablet_id)) == ts_idx_to_bootstrap;
-        },
-        timeout, "Waiting for ts_idx_to_bootstrap to become leader"));
-
-    // Check persistence of previously inserted data.
-    auto new_conn = ASSERT_RESULT(ConnectToDB(database));
-    for (int i = 0; i < 2 * num_tables; ++i) {
-      auto res = ASSERT_RESULT(
-          new_conn.FetchValue<int64_t>(Format("SELECT COUNT(*) FROM $0$1", table_prefix, i)));
-      ASSERT_EQ(res, 1);
-    }
+  // Check persistence of previously inserted data.
+  auto new_conn = ASSERT_RESULT(ConnectToDB(database));
+  for (int i = 0; i < num_tables; ++i) {
+    auto res = ASSERT_RESULT(
+        new_conn.FetchValue<int64_t>(Format("SELECT COUNT(*) FROM $0$1", table_prefix, i)));
+    ASSERT_EQ(res, 2);
   }
 }
 
@@ -1932,7 +1937,7 @@ TEST_F(RemoteBootstrapITest, YB_DISABLE_TEST_IN_TSAN(TestRBSWithLazySuperblockFl
 
   ASSERT_NO_FATALS(StartCluster(
       ts_flags, /* master_flags = */ {}, /* num_tablet_servers = */ 3, /* enable_ysql = */ true));
-  RBSWithLazySuperblockFlush(/* num_tables */ 20, /* iterations */ 4);
+  RBSWithLazySuperblockFlush(/* num_tables */ 20);
 }
 
 }  // namespace yb

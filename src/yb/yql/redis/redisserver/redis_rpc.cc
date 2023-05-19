@@ -218,7 +218,6 @@ Status RedisInboundCall::ParseFrom(
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, data->size());
 
-  request_data_memory_usage_.store(data->size(), std::memory_order_release);
   request_data_ = std::move(*data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 

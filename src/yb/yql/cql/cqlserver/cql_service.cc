@@ -157,9 +157,11 @@ client::YBClient* CQLServiceImpl::client() const {
   if (client && !is_metadata_initialized_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> l(metadata_init_mutex_);
     if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
+      auto meta_data_cache_mem_tracker =
+          MemTracker::FindOrCreateTracker(0, "CQL Metadata cache", server_->mem_tracker());
       // Create and save the metadata cache object.
-      metadata_cache_ = std::make_shared<YBMetaDataCache>(client,
-                                                          FLAGS_use_cassandra_authentication);
+      metadata_cache_ = std::make_shared<YBMetaDataCache>(
+          client, FLAGS_use_cassandra_authentication, meta_data_cache_mem_tracker);
       is_metadata_initialized_.store(true, std::memory_order_release);
     }
   }
@@ -262,10 +264,12 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
     // Allocate the prepared statement placeholder that multiple clients trying to prepare the same
     // statement to contend on. The statement will then be prepared by one client while the rest
     // wait for the results.
-    stmt = prepared_stmts_map_.emplace(
-        query_id, std::make_shared<CQLStatement>(
-            DCHECK_NOTNULL(ql_env)->CurrentKeyspace(),
-            query, prepared_stmts_list_.end())).first->second;
+    stmt = prepared_stmts_map_
+               .emplace(
+                   query_id, std::make_shared<CQLStatement>(
+                                 DCHECK_NOTNULL(ql_env)->CurrentKeyspace(), query,
+                                 prepared_stmts_list_.end(), prepared_stmts_mem_tracker_))
+               .first->second;
     InsertLruPreparedStatementUnlocked(stmt);
   } else {
     // Return existing statement if found.

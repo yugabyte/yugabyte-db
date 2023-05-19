@@ -674,8 +674,8 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   bool subdoc_found_in_rocksdb = false;
   dockv::ReaderProjection projection;
   projection.columns = {
-    { .id = ColumnId(1), .subkey = KeyEntryValue("p1"), .type = nullptr },
-    { .id = ColumnId(2), .subkey = KeyEntryValue("p2"), .type = nullptr },
+    { .id = ColumnId(1), .subkey = KeyEntryValue("p1"), .data_type = DataType::NULL_VALUE_TYPE },
+    { .id = ColumnId(2), .subkey = KeyEntryValue("p2"), .data_type = DataType::NULL_VALUE_TYPE },
   };
 
   GetSubDocQl(
@@ -3801,7 +3801,7 @@ TEST_P(DocDBTestWrapper, CompactionWithTransactions) {
       EncodeValue(QLValue::Primitive("value7")) }
   };
   Uuid status_tablet = ASSERT_RESULT(Uuid::FromString("4c3e1d91-5ea7-4449-8bb3-8b0a3f9ae903"));
-  ASSERT_OK(AddExternalIntents(txn3, intents, status_tablet, kTxn3HT));
+  ASSERT_OK(AddExternalIntents(txn3, kMinSubTransactionId, intents, status_tablet, kTxn3HT));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}

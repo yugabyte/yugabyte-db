@@ -673,11 +673,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   bool IsSystemTable(const TableInfo& table) const override;
 
   // Is the table a user created table?
-  bool IsUserTable(const TableInfo& table) const override;
+  bool IsUserTable(const TableInfo& table) const override EXCLUDES(mutex_);
   bool IsUserTableUnlocked(const TableInfo& table) const REQUIRES_SHARED(mutex_);
 
   // Is the table a user created index?
-  bool IsUserIndex(const TableInfo& table) const override;
+  bool IsUserIndex(const TableInfo& table) const override EXCLUDES(mutex_);
   bool IsUserIndexUnlocked(const TableInfo& table) const REQUIRES_SHARED(mutex_);
 
   // Is the table a special sequences system table?
@@ -688,7 +688,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Is the table created by user?
   // Note that table can be regular table or index in this case.
-  bool IsUserCreatedTable(const TableInfo& table) const override;
+  bool IsUserCreatedTable(const TableInfo& table) const override EXCLUDES(mutex_);
   bool IsUserCreatedTableUnlocked(const TableInfo& table) const REQUIRES_SHARED(mutex_);
 
   // Let the catalog manager know that we have received a response for a prepare delete
@@ -979,7 +979,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const PeerId& peer_id, int32_t num_retries, StdStatusCallback callback);
 
   // Schedule a task to run on the async task thread pool.
-  Status ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) override;
+  Status ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) override;
 
   // Time since this peer became master leader. Caller should verify that it is leader before.
   MonoDelta TimeSinceElectedLeader();
@@ -1360,6 +1360,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
 
+  // Promote the table from a PREPARING state to a RUNNING state, and persist in sys_catalog.
+  Status PromoteTableToRunningState(TableInfoPtr table_info) override;
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1379,6 +1382,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class XClusterConfigLoader;
   friend class YsqlBackendsManager;
   friend class BackendsCatalogVersionJob;
+  friend class AddTableToXClusterTask;
 
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
@@ -2499,16 +2503,21 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Helper functions for GetTableSchemaCallback, GetTablegroupSchemaCallback
   // and GetColocatedTabletSchemaCallback.
 
-  // Helper container to track colocationid and the producer to consumer schema version mapping.
+  // Helper container to track colocationId and the producer to consumer schema version mapping.
   typedef std::vector<std::tuple<ColocationId, SchemaVersion, SchemaVersion>>
       ColocationSchemaVersions;
+
+  struct SetupReplicationInfo {
+    std::unordered_map<TableId, std::string> table_bootstrap_ids;
+    bool transactional;
+  };
 
   // Validates a single table's schema with the corresponding table on the consumer side, and
   // updates consumer_table_id with the new table id. Return the consumer table schema if the
   // validation is successful.
   Status ValidateTableSchema(
       const std::shared_ptr<client::YBTableInfo>& info,
-      const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
+      const SetupReplicationInfo& setup_info,
       GetTableSchemaResponsePB* resp);
 
   // Adds a validated table to the sys catalog table map for the given universe
@@ -2522,7 +2531,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status AddSchemaVersionMappingToUniverseReplication(
       scoped_refptr<UniverseReplicationInfo> universe,
-      const ColocationId& consumer_table,
+      ColocationId consumer_table,
       const SchemaVersion& producer_schema_version,
       const SchemaVersion& consumer_schema_version);
 
@@ -2538,22 +2547,24 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableId& consumer_table,
       const ColocationSchemaVersions& colocated_schema_versions);
 
-  void GetTableSchemaCallback(
-      const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& producer_info,
-      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
-
   Status ValidateTableAndCreateCdcStreams(
       scoped_refptr<UniverseReplicationInfo> universe,
       const std::shared_ptr<client::YBTableInfo>& producer_info,
-      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids);
+      const SetupReplicationInfo& setup_info);
 
+  void GetTableSchemaCallback(
+      const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& producer_info,
+      const SetupReplicationInfo& setup_info,
+      const Status& s);
   void GetTablegroupSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
       const TablegroupId& producer_tablegroup_id,
-      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
+      const SetupReplicationInfo& setup_info,
+      const Status& s);
   void GetColocatedTabletSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
-      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
+      const SetupReplicationInfo& setup_info,
+      const Status& s);
   typedef std::vector<
       std::tuple<CDCStreamId, TableId, std::unordered_map<std::string, std::string>>>
       StreamUpdateInfos;
@@ -2622,7 +2633,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Gets the set of CDC stream info for an xCluster consumer table.
   XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(
-      const TableId& table_id) const;
+      const TableId& table_id) const EXCLUDES(mutex_);
 
   XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTableUnlocked(
       const TableId& table_id) const REQUIRES_SHARED(mutex_);
@@ -2742,17 +2753,20 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status DeleteCDCStreamsForTables(const std::vector<TableId>& table_ids) EXCLUDES(mutex_);
 
-  // Returns true if xCluster table bootstrap async task is running. Schedules the async task if
-  // needed.
-  Result<bool> ScheduleBootstrapForXclusterIfNeeded(
-      const TableInfoPtr& table, const SysTablesEntryPB& pb);
+  bool ShouldAddTableToXClusterReplication(const TableInfo& index_info, const SysTablesEntryPB& pb)
+      EXCLUDES(mutex_);
 
-  Result<bool> ShouldAddTableToXClusterReplication(
-      const TableInfo& index_info, const SysTablesEntryPB& pb);
+  // Schedule AddTableToXClusterTask if needed. Returns true if task is needed and false otherwise.
+  bool ScheduleAddTableToXClusterTaskIfNeeded(TableInfoPtr table_info, const SysTablesEntryPB& pb)
+      EXCLUDES(mutex_);
 
-  Status AddYsqlIndexToXClusterReplication(const TableInfo& index_info);
+  void ScheduleAddTableToXClusterTaskForAllTables() EXCLUDES(mutex_);
 
-  Result<HybridTime> BootstrapAndAddIndexToXClusterReplication(const TableInfo& index_info);
+  Result<std::string> GetIndexesTableReplicationGroup(const TableInfo& index_info);
+
+  Status BootstrapTable(
+      const std::string& replication_group, const TableInfo& index_info,
+      client::BootstrapProducerCallback callback);
 
   // Wait for all tables under xCluster replication to catch up to the current xCluster safe time.
   // When new tables\indexes are added to an existing replication group they will start at a
@@ -2768,6 +2782,24 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       ClusterConfigInfo* cluster_config, ClusterConfigInfo::WriteLock* l);
 
   Status RemoveTableFromXcluster(const std::vector<TabletId>& table_ids);
+
+  // Wait for all tables under xCluster replication to catch up to the current xCluster safe time.
+  // When new tables\indexes are added to an existing replication group they will start at a
+  // replication time less than the last computed xCluster safe time. Since the safe time cannot
+  // move backwards it wait until the new tables\indexes have moved past this time.
+  Status WaitForAllXClusterConsumerTablesToCatchUpToSafeTime(
+      const NamespaceId& namespace_id, const HybridTime& min_safe_time, MonoDelta timeout);
+
+  // For a table that is currently in PREPARING state, if all its tablets have transitioned to
+  // RUNNING state, either advance the table from PREPARING to RUNNING state, or start any async
+  // tasks if needed (ex: AddTableToXClusterTask).
+  // new_running_tablets is the new set of tablets that are being transitioned to RUNNING state
+  // (dirty copy is modified) and yet to be persisted. Returns true if the table state has changed.
+  // Note:
+  //    WriteLock on the table is required.
+  //    Caller is responsible for persisting the table to sys_catalog if its state has changed.
+  Result<bool> HandleNewRunningTabletsForTable(
+      TableInfoPtr table_info, const std::set<TabletId>& new_running_tablets);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

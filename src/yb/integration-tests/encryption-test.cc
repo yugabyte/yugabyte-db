@@ -346,6 +346,71 @@ TEST_F(EncryptionTest, AutoFlags) {
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
+class WALReuseEncryptionTest : public EncryptionTest {
+ public:
+  size_t num_tablet_servers() override {
+    return 1;
+  }
+
+  size_t num_masters() override {
+    return 1;
+  }
+
+  int num_tablets() override {
+    return 1;
+  }
+
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->extra_tserver_flags.push_back("--reuse_unclosed_segment_threshold=524288");
+    opts->extra_master_flags.push_back("--reuse_unclosed_segment_threshold=524288");
+    opts->extra_master_flags.push_back("--replication_factor=1");
+  }
+
+  void TestEncryptWALDataAfterWALReuse(bool rotate_key);
+};
+
+void WALReuseEncryptionTest::TestEncryptWALDataAfterWALReuse(bool rotate_key) {
+  constexpr uint32_t kNumInsert = 100;
+  auto* tablet_server = external_mini_cluster()->tablet_server(0);
+  WriteWorkload(0, kNumInsert);
+  tablet_server->Shutdown();
+  ASSERT_OK(tablet_server->Restart());
+  ASSERT_OK(external_mini_cluster()->WaitForTabletsRunning(
+      tablet_server, MonoDelta::FromSeconds(30)));
+  ClusterVerifier cv(external_mini_cluster());
+  ASSERT_NO_FATALS(cv.CheckCluster());
+  // Insert data after reuse log.
+  WriteWorkload(kNumInsert, 2 * kNumInsert);
+  auto current_segment_size =
+      ASSERT_RESULT(external_mini_cluster()->GetSegmentCounts(tablet_server));
+  ASSERT_EQ(1, current_segment_size);
+  tablet_server->Shutdown();
+  if (rotate_key) {
+    ASSERT_NO_FATALS(AddUniverseKeys());
+    ASSERT_NO_FATALS(RotateKey());
+  }
+  ASSERT_OK(tablet_server->Restart());
+  // Verify the tablet can successfully finish boostrapping.
+  ASSERT_OK(external_mini_cluster()->WaitForTabletsRunning(
+      tablet_server, MonoDelta::FromSeconds(30)));
+  ASSERT_NO_FATALS(cv.CheckCluster());
+  // Verify number of WAL segment. If the key is changed, WAL will not be reused after restart.
+  // Instead, it allocates a new segment to obtain the lastest universe key id.
+  current_segment_size =
+      ASSERT_RESULT(external_mini_cluster()->GetSegmentCounts(tablet_server));
+  auto expect_segment_size = rotate_key ? 2 : 1;
+  ASSERT_EQ(expect_segment_size, current_segment_size);
+}
+
+TEST_F_EX(EncryptionTest, EncryptWALDataAfterWALReuse,
+    WALReuseEncryptionTest) {
+  TestEncryptWALDataAfterWALReuse(false);
+}
+
+TEST_F_EX(EncryptionTest, EncryptWALDataAfterWALReuseWithRotateKey,
+    WALReuseEncryptionTest) {
+  TestEncryptWALDataAfterWALReuse(true);
+}
 
 } // namespace integration_tests
 } // namespace yb

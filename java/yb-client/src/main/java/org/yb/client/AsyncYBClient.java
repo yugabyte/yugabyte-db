@@ -41,6 +41,8 @@
 //
 package org.yb.client;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
@@ -54,7 +56,11 @@ import com.stumbleupon.async.Deferred;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.PooledByteBufAllocator;
-import io.netty.channel.*;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.EpollChannelOption;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
@@ -65,8 +71,9 @@ import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
 import io.netty.util.concurrent.FutureListener;
-
-import java.io.*;
+import java.io.FileInputStream;
+import java.io.FileReader;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -118,32 +125,11 @@ import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes.MasterErrorPB;
-import org.yb.util.*;
-
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.TrustManagerFactory;
-import java.io.FileInputStream;
-import java.io.FileReader;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.net.UnknownHostException;
-import java.nio.charset.Charset;
-import java.security.KeyFactory;
-import java.security.KeyStore;
-import java.security.PrivateKey;
-import java.security.Security;
-import java.security.cert.Certificate;
-import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.*;
-import java.util.concurrent.*;
-
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import org.yb.util.AsyncUtil;
+import org.yb.util.NetUtil;
+import org.yb.util.Pair;
+import org.yb.util.Slice;
+import org.yb.util.SystemUtil;
 
 /**
  * A fully asynchronous and thread-safe client for YB.
@@ -666,6 +652,26 @@ public class AsyncYBClient implements AutoCloseable {
 
     Deferred<IsServerReadyResponse> d = rpc.getDeferred();
     rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
+   * Gets the list of Tablets for a TServer.
+   * @param hp host and port of the TServer.
+   * @return a deferred object containing the tablet ids that exist on the TServer.
+   */
+  public Deferred<ListTabletsForTabletServerResponse> listTabletsForTabletServer(
+            final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+
+    ListTabletsForTabletServerRequest rpc = new ListTabletsForTabletServerRequest();
+    rpc.setTimeoutMillis(DEFAULT_OPERATION_TIMEOUT_MS);
+    Deferred<ListTabletsForTabletServerResponse> d = rpc.getDeferred();
     client.sendRpc(rpc);
     return d;
   }
@@ -1354,6 +1360,26 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     DeleteCDCStreamRequest request =
         new DeleteCDCStreamRequest(this.masterTable, streamIds, ignoreErrors, forceDelete);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Gets the schema for the locations of the tablet peers for a list of tablets.
+   * @param tabletIds the list of tablet ids to find the locations of its peers.
+   * @param tableId (optional) table we would like this table's partition list version to return.
+   * @param includeInactive (optional) whether to include hidden tablets.
+   * @param includeDeleted (optional) whether to include deleted tablets.
+   * @return A deferred object containing the schema for the locations of tablet peers.
+   */
+  public Deferred<GetTabletLocationsResponse> getTabletLocations(List<String> tabletIds,
+                                                                String tableId,
+                                                                boolean includeInactive,
+                                                                boolean includeDeleted) {
+    checkIsClosed();
+    GetTabletLocationsRequest request =
+        new GetTabletLocationsRequest(this.masterTable, tabletIds, tableId,
+                                      includeInactive, includeDeleted);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

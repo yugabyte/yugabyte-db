@@ -221,6 +221,12 @@ Default: `900` (15 minutes)
 
 The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
 
+##### --evict_failed_followers
+
+Failed followers will be evicted from the Raft group and the data will be re-replicated.
+
+Default: `true`
+
 ##### --leader_failure_max_missed_heartbeat_periods
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
@@ -305,21 +311,61 @@ Default: `64`
 
 The number of shards per YB-TServer for each YCQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `4`. For three or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+Default: `-1` (the value is calculated at runtime). For servers with up to two CPU cores, the default value is considered as `4`. For three or more CPU cores, the default value is considered as `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+
+{{< note title="Important" >}}
 
 This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
 
+{{< /note >}}
+
+{{< note title="Important" >}}
+
+When the value is set to *Default* (`-1`), then the server internally *updates* the flag with intended value during startup prior to version `2.18` and the flag remains *unchanged* starting from version `2.18`.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
 On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used to override the `yb_num_shards_per_tserver` value.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+If [`enable_automatic_tablet_splitting`](#enable-automatic-tablet-splitting) is `true`: the default value is considered as `1` and tables will begin with 1 tablet *per node*; from version `2.18` for servers with up to 4 CPU cores, the value *is not defined* and tables will begin with 1 tablet (for servers with up to 2 CPU cores) or 2 tablets (for servers with up to 4 CPU cores) *per cluster*.
+
+{{< /note >}}
 
 ##### --ysql_num_shards_per_tserver
 
 The number of shards per YB-TServer for each YSQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `2`. For servers with three or four CPU cores, the default value is `4`. Beyond four cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+Default: `-1` (the value is calculated at runtime). For servers with up to two CPU cores, the default value is considered as `2`. For servers with three or four CPU cores, the default value is considered as `4`. Beyond four cores, the default value is considered as `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+
+{{< note title="Important" >}}
 
 This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
 
+{{< /note >}}
+
+{{< note title="Important" >}}
+
+When the value is set to *Default* (`-1`), then the server internally *updates* the flag with intended value during startup prior to version `2.18` and the flag remains *unchanged* starting from version `2.18`.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
 On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+If [`enable_automatic_tablet_splitting`](#enable-automatic-tablet-splitting) is `true`: the default value is considered as `1` and tables will begin with 1 tablet *per node*; from version `2.18` for servers with up to 4 CPU cores, the value *is not defined* and tables will begin with 1 tablet (for servers with up to 2 CPU cores) or 2 tablets (for servers with up to 4 CPU cores) *per cluster*.
+
+{{< /note >}}
 
 ##### --cleanup_split_tablets_interval_sec
 
@@ -327,49 +373,23 @@ Interval at which the tablet manager tries to cleanup split tablets that are no 
 
 Default: `60`
 
+##### --enable_automatic_tablet_splitting
+
+Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
+
+Default: `true`
+
 ##### --post_split_trigger_compaction_pool_max_threads
 
-Deprecated. Use [`full_compaction_pool_max_threads`](#full-compaction-pool-max-threads).
-
-##### --post_split_trigger_compaction_pool_max_queue_size
-
-Deprecated. Use [`full_compaction_pool_max_queue_size`](#full-compaction-pool-max-queue-size).
-
-##### --full_compaction_pool_max_threads
-
-The maximum number of threads allowed for full compactions triggered internally by YugabyteDB. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+The maximum number of threads allowed for post-split compactions (that is, compactions that remove irrelevant data from new tablets after splits).
 
 Default: `1`
 
-##### --full_compaction_pool_max_queue_size
+##### --post_split_trigger_compaction_pool_max_queue_size
 
-The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+The maximum number of post-split compaction tasks that can be queued simultaneously (compactions that remove irrelevant data from new tablets after splits).
 
-Default: `200`
-
-##### --scheduled_full_compaction_frequency_hours
-
-The frequency with which full compactions should be scheduled on tablets. A value of 0 (zero) indicates that the feature is disabled. Recommended value is 720 hours (30 days) or greater.
-
-Note: this feature is currently in beta.
-
-Default: `0`
-
-##### --scheduled_full_compaction_jitter_factor_percentage
-
-Percentage of [`scheduled_full_compaction_frequency_hours`](#scheduled-full-compaction-frequency-hours) to be used as maximum jitter when determining full compaction schedule per tablet. Must be a value between 0 and 100. Jitter is random amount of time (ranging from 0 to maximum jitter) introduced to prevent many tablets from being scheduled for full compactions at the same time.
-
-Jitter is deterministically computed when scheduling a compaction as a function of the tablet-id and the last full compaction time. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time. If no data is available about the tablet's last full compaction, then the jitter is instead used to schedule a full compaction as soon as possible while still preventing too many simultaneous full compactions.
-
-For example, if `scheduled_full_compaction_frequency_hours` is 720 hours (30 days), and `scheduled_full_compaction_jitter_factor_percentage` is 33 percent, each tablet's compaction schedule can range from 482 to 720 hours, and will be pseudorandomly generated again after each full compaction.
-
-Default: `33`
-
-##### --scheduled_full_compaction_check_interval_min
-
-The interval at which the scheduled full compaction task checks for tablets that are eligible for compaction, in minutes. 0 indicates that the background task is fully disabled.
-
-Default: `15`
+Default: `16`
 
 ##### --automatic_compaction_extra_priority
 
@@ -555,7 +575,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED`<sup>$</sup>
 
-<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -565,9 +585,21 @@ For details on how online index backfill works, see the [Online Index Backfill](
 
 Default: `false`
 
+##### --ysql_sequence_cache_method
+
+Specifies where to cache sequence values.
+
+Valid values are `connection` and `server`.
+
+This flag requires the YB-TServer `yb_enable_sequence_pushdown` flag to be true (the default). Otherwise, the default behavior will occur regardless of this flag's value.
+
+For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/func_nextval/) page.
+
+Default: `connection`
+
 ##### --ysql_sequence_cache_minval
 
-Specify the minimum number of sequence values to cache in the client for every sequence object.
+Specifies the minimum number of sequence values to cache in the client for every sequence object.
 
 To turn off the default size of cache flag, set the flag to `0`.
 
@@ -871,6 +903,40 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
 
+## Packed row flags (Beta)
+
+To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format-beta) in the architecture section.
+
+##### --ysql_enable_packed_row
+
+Whether packed row is enabled for YSQL.
+
+Default: `false`
+
+##### --ysql_packed_row_size_limit
+
+Packed row size limit for YSQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
+
+Default: `0`
+
+##### --ycql_enable_packed_row
+
+Whether packed row is enabled for YCQL.
+
+Default: `false`
+
+##### --ycql_packed_row_size_limit
+
+Packed row size limit for YCQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
+
+Default: `0`
+
+##### --ysql_enable_packed_row_for_colocated_table
+
+Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional flag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
+
+Default: `false`
+
 ## Change data capture (CDC) flags
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
@@ -958,6 +1024,12 @@ Default: `14400000` (4 hours)
 Enable each local peer to update its own log checkpoint instead of the leader updating all peers.
 
 Default: `false`
+
+##### --cdcsdk_table_processing_limit_per_run
+
+Number of tables to be added to the stream ID per run of the background thread which adds newly created tables to the active streams on its namespace.
+
+Default: `2`
 
 ## File expiration based on TTL flags
 

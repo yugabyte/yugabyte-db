@@ -435,6 +435,7 @@ export const AWSProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message ? (
                 <FormHelperText error={true}>
@@ -583,6 +584,7 @@ export const AWSProviderCreateForm = ({
         <ConfigureRegionModal
           configuredRegions={regions}
           isEditProvider={false}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}

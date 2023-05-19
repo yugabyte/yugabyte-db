@@ -9,7 +9,6 @@ menu:
     identifier: language-plpgsql-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 30
-aliases:
 type: indexpage
 showRightNav: false
 ---

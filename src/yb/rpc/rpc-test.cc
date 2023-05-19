@@ -631,6 +631,41 @@ TEST_F(TestRpc, TestServerShutsDown) {
   }
 }
 
+TEST_F(TestRpc, TestSendingReceivingMemTrackers) {
+  // Set up server.
+  HostPort server_addr;
+  StartTestServerWithGeneratedCode(&server_addr);
+
+  // Set up client.
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
+  Proxy p(client_messenger.get(), server_addr);
+
+  RpcController controller;
+  rpc_test::EchoRequestPB req;
+  req.set_data(std::string(1_MB, 'X'));
+  rpc_test::EchoResponsePB resp;
+  ASSERT_OK(p.SyncRequest(
+      CalculatorServiceMethods::EchoMethod(), /* method_metrics= */ nullptr, req, &resp,
+      &controller));
+  auto root_mem_tracker = MemTracker::GetRootTracker();
+
+  auto call_tracker = root_mem_tracker->FindChild("Call");
+  // Call tracker tracks input data, searialized PB and sidecars etc. Since we have two copies of
+  // the data, we are checking that the peak consumption is greater than 2 times of request input
+  // and 16K for other metadata.
+  ASSERT_LE(call_tracker->peak_consumption(), 1_MB * 2 + 16_KB);
+  ASSERT_GT(call_tracker->peak_consumption(), 1_MB * 2);
+
+  auto read_buffer_tracker = root_mem_tracker->FindChild("Read Buffer");
+  auto inbound_buffer_tracker = read_buffer_tracker->FindChild("Inbound RPC");
+  auto sending_tracker = inbound_buffer_tracker->FindChild("Sending");
+
+  // Make sure that sending buffer is only tracking the output buffer and additional metadata
+  // (16_KB)
+  ASSERT_LE(sending_tracker->peak_consumption(), 1_MB + 16_KB);
+  ASSERT_GT(sending_tracker->peak_consumption(), 1_MB);
+}
+
 Result<MetricPtr> GetMetric(
     const MetricEntityPtr& metric_entity, const MetricPrototype& prototype) {
   const auto& metric_map = metric_entity->UnsafeMetricsMapForTests();
@@ -1268,39 +1303,46 @@ TEST_P(TestRpcCompression, CantAllocateReadBuffer) {
   RunCompressionTest(&TestCantAllocateReadBuffer, SetupServerForTestCantAllocateReadBuffer());
 }
 
-void TestCompression(CalculatorServiceProxy* proxy, const MetricEntityPtr& metric_entity) {
-  constexpr size_t kStringLen = 4_KB;
+void TestCompression(
+    CalculatorServiceProxy* proxy, const MetricEntityPtr& metric_entity) {
+  CounterPtr sent_counter;
+  CounterPtr received_counter;
+  size_t string_len = 4_KB;
 
-  size_t prev_sent = 0;
-  size_t prev_received = 0;
   for (int i = 0;; ++i) {
+    auto prev_sent = sent_counter ? sent_counter->value() : 0;
+    auto prev_received = received_counter ? received_counter->value() : 0;
+
     RpcController controller;
     controller.set_timeout(5s * kTimeMultiplier);
     rpc_test::EchoRequestPB req;
-    req.set_data(std::string(kStringLen, 'Y'));
+    req.set_data(std::string(string_len, 'Y'));
     rpc_test::EchoResponsePB resp;
     ASSERT_OK(proxy->Echo(req, &resp, &controller));
     ASSERT_EQ(req.data(), resp.data());
 
-    auto sent_counter = ASSERT_RESULT(GetCounter(metric_entity, METRIC_tcp_bytes_sent));
-    auto received_counter = ASSERT_RESULT(GetCounter(metric_entity, METRIC_tcp_bytes_received));
+    if (!sent_counter) {
+      sent_counter = ASSERT_RESULT(GetCounter(metric_entity, METRIC_tcp_bytes_sent));
+      received_counter = ASSERT_RESULT(GetCounter(metric_entity, METRIC_tcp_bytes_received));
+    }
 
     // First FLAGS_num_connections_to_server runs were warmup.
     // To avoid counting handshake bytes.
-    if (i == FLAGS_num_connections_to_server) {
+    if (i >= FLAGS_num_connections_to_server) {
       auto sent = sent_counter->value() - prev_sent;
       auto received = received_counter->value() - prev_received;
-      LOG(INFO) << "Sent: " << sent << ", received: " << received;
+      LOG(INFO) << "Sent: " << sent << ", received: " << received << ", string len: " << string_len;
 
       ASSERT_GT(sent, 10); // Check that metric even work.
-      ASSERT_LE(sent, kStringLen / 5); // Check that compression work.
+      ASSERT_LE(sent, string_len / 5); // Check that compression work.
       ASSERT_GT(received, 10); // Check that metric even work.
-      ASSERT_LE(received, kStringLen / 5); // Check that compression work.
-      break;
-    }
+      ASSERT_LE(received, string_len / 5); // Check that compression work.
 
-    prev_sent = sent_counter->value();
-    prev_received = received_counter->value();
+      string_len += 1_KB;
+      if (string_len > 1_MB) {
+        break;
+      }
+    }
   }
 }
 

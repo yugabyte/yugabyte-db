@@ -1,8 +1,8 @@
 ---
-title: Start YB-TServer servers
+title: YB-TServer manual start
 headerTitle: Start YB-TServers
 linkTitle: 4. Start YB-TServers
-description: Steps to start YB-TServers when deploying for a single region or data center in a multi-zone/multi-rack configuration.
+description: How to manually start the YB-TServers when deploying YugabyteDB database in a single region or data center.
 menu:
   preview:
     identifier: deploy-manual-deployment-start-tservers
@@ -15,6 +15,7 @@ type: docs
 
 - The number of nodes in a cluster running YB-TServers **must** equal or exceed the replication factor in order for any table to get created successfully.
 - For running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to the [Multi-DC Deployments](../../../deploy/multi-dc/) section.
+- Read more about the [yb-tserver service architecture](../../../architecture/concepts/yb-tserver/).
 
 {{< /note >}}
 

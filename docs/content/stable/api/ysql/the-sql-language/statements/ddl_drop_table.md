@@ -74,7 +74,7 @@ create table children(
   constraint children_fk foreign key(parents_k) references parents(k));
 \d children
 ```
-The `\d` metacommand output includes this information:
+The `\d` meta-command output includes this information:
 
 ```
 Foreign-key constraints:
@@ -106,7 +106,7 @@ drop table parents cascade;
 \d children
 ```
 
-The 'DROP' now succeeds and the `\d` metacommand shows that the table _"children"_ still exists but that it now as no foreign key constraint to the now-dropped "_parents"_ table.
+The 'DROP' now succeeds and the `\d` meta-command shows that the table _"children"_ still exists but that it now as no foreign key constraint to the now-dropped "_parents"_ table.
 
 ## See also
 

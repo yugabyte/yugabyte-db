@@ -77,6 +77,7 @@ struct TransactionStatusInfo;
 
 YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
 YB_DEFINE_ENUM(RequireLease, (kFalse)(kTrue)(kFallbackToFollower));
+YB_STRONGLY_TYPED_BOOL(AbortOps);
 YB_STRONGLY_TYPED_BOOL(Destroy);
 YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);

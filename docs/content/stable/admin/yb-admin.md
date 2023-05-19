@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: yb-admin
     parent: admin
-    weight: 2465
+    weight: 30
 type: docs
 ---
 
@@ -22,12 +22,14 @@ To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-
 ```sh
 yb-admin \
     [ -master_addresses <master-addresses> ]  \
+    [ -init_master_addrs <master-address> ]  \
     [ -timeout_ms <millisec> ] \
     [ -certs_dir_name <dir_name> ] \
     <command> [ command_flags ]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *init_master_addrs*: Allows specifying a single YB-Master address from which the rest of the YB-Masters are discovered.
 * *timeout_ms*: The RPC timeout, in milliseconds. Default value is `60000`. A value of `0` means don't wait; `-1` means wait indefinitely.
 * *certs_dir_name*: The directory with certificates to use for secure server connections. Default value is `""`.
 
@@ -932,7 +934,7 @@ yb-admin create_snapshot_schedule \
 * *retention-time*: The number of minutes to keep a snapshot before deleting it.
 * *filter-expression*: The set of objects to include in the snapshot.
 
-The filter expression is a list of acceptable objects, which can be either raw tables, or keyspaces (YCQL) or databases (YSQL). For proper consistency guarantees, **set this up on a per-keyspace (YCQL) or per-database (YSQL) level**.
+The filter expression is a list of acceptable objects, which can be either raw tables, or keyspaces (YCQL) or databases (YSQL). For proper consistency guarantees, **it is recommended to set this up on a per-keyspace (YCQL) or per-database (YSQL) level**.
 
 **Example**
 
@@ -1157,11 +1159,11 @@ curl -s http://<any-master-ip>:7000/cluster-config
 
 Sets the preferred availability zones (AZs) and regions. Tablet leaders are placed in alive and healthy nodes of AZs in order of preference. When no healthy node is available in the most preferred AZs (preference value 1), then alive and healthy nodes from the next preferred AZs are picked. AZs with no preference are equally eligible to host tablet leaders.
 
+Having all tablet leaders reside in a single region reduces the number of network hops for the database to write transactions, which increases performance and reduces latency.
+
 {{< note title="Note" >}}
 
 * Make sure you've already run [`modify_placement_info`](#modify-placement-info) command beforehand.
-
-* Having all tablet leaders reside in a single region reduces the number of network hops for the database to write transactions, which increases performance and reduces latency.
 
 * By default, the transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
 
@@ -1170,6 +1172,8 @@ Sets the preferred availability zones (AZs) and regions. Tablet leaders are plac
 * Cluster configuration stores preferred zones in either affinitized_leaders or multi_affinitized_leaders object.
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
+
+* If the client application uses a smart driver, set the [topology keys](../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to target the preferred zones.
 
 {{< /note >}}
 
@@ -1497,6 +1501,23 @@ For example:
     create_change_data_stream ysql.yugabyte
 ```
 
+##### Enabling before image
+
+To create a change data capture (CDC) DB stream which also supports sending the before image of the record, use the following command.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_change_data_stream ysql.<namespace_name> IMPLICIT ALL
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *namespace_name*: The namespace on which the DB stream ID is to be created.
+* `IMPLICIT`: Checkpointing type on the server.
+* `ALL`: Record type indicating the server that the stream should send the before image too.
+
 A successful operation of the above command returns a message with a DB stream ID:
 
 ```output
@@ -1665,7 +1686,7 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 ```sh
 ./bin/yb-admin \
     -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 \
+    setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3_xClusterSetup1 \
     127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
 ```
@@ -1773,6 +1794,73 @@ yb-admin \
 * *source_universe_uuid*: The UUID of the source universe.
 * *replication_name*: The name of the replication to be enabled or disabled.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
+
+#### change_xcluster_role
+
+Sets the xCluster role to `STANDBY` or `ACTIVE`.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master_addresses> \
+    change_xcluster_role \
+    <role> 
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. 
+These are the addresses of the master nodes where the role has to be applied. Example: if we want to change target to `STANDBY` we have to use target universe master addresses, 
+and if we want to change source universe role then we have to use source universe master addresses.
+* *role*: Can be `STANDBY` or `ACTIVE`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    change_xcluster_role STANDBY
+```
+
+#### get_xcluster_safe_time
+
+Reports the current xCluster safe time for each namespace, which is the time at which reads will be performed.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <target_master_addresses> \
+    get_xcluster_safe_time \
+    [include_lag_and_skew] 
+```
+
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *include_lag_and_skew*: Set `include_lag_and_skew` option to show `safe_time_lag_sec` and `safe_time_skew_sec`, otherwise these are hidden by default.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    get_xcluster_safe_time
+```
+```output
+{
+    "namespace_id": "000033f1000030008000000000000000",
+    "namespace_name": "yugabyte",
+    "safe_time": "2023-04-14 18:34:18.429430",
+    "safe_time_epoch": "1681522458429430",
+    "safe_time_lag_sec": "15.66",
+    "safe_time_skew_sec": "14.95"
+}
+```
+
+* *namespace_id*: ID of the stream.
+* *namespace_name*: Name of the stream.
+* *safe_time*: Safe time in timestamp format.
+* *safe_time_epoch*: The `epoch` of the safe time.
+* *safe_time_lag_sec*: Safe time lag is computed as `(current time - current safe time)`.
+* *safe_time_skew_sec*: Safe time skew is computed as `(safe time of most caught up tablet - safe time of laggiest tablet)`.
 
 #### list_cdc_streams
 

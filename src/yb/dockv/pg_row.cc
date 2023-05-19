@@ -13,14 +13,12 @@
 
 #include "yb/dockv/pg_row.h"
 
-#include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/types.h"
 
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/util/decimal.h"
 
@@ -76,16 +74,8 @@ size_t FixedSize(DataType data_type) {
   FATAL_INVALID_ENUM_VALUE(DataType, data_type);
 }
 
-bool FixedSize(const QLTypePtr& type) {
-  return FixedSize(type->main());
-}
-
 bool StoreAsValue(DataType data_type) {
   return FixedSize(data_type) != 0;
-}
-
-bool StoreAsValue(const QLTypePtr& type) {
-  return StoreAsValue(type->main());
 }
 
 void AppendString(const Slice& slice, ValueBuffer* buffer, bool append_zero) {
@@ -100,7 +90,7 @@ void AppendString(const Slice& slice, ValueBuffer* buffer, bool append_zero) {
 }
 
 Status DoDecodeValue(
-    const Slice& rocksdb_slice, const QLTypePtr& ql_type,
+    const Slice& rocksdb_slice, DataType data_type,
     bool* is_null, PgValueDatum* value, ValueBuffer* buffer) {
   RSTATUS_DCHECK(!rocksdb_slice.empty(), Corruption, "Cannot decode a value from an empty slice");
   Slice slice(rocksdb_slice);
@@ -118,10 +108,10 @@ Status DoDecodeValue(
   switch (value_type) {
     case ValueEntryType::kFalse: FALLTHROUGH_INTENDED;
     case ValueEntryType::kTrue:
-      if (ql_type->main() != DataType::BOOL) {
+      if (data_type != DataType::BOOL) {
         return STATUS_FORMAT(
             Corruption, "Wrong datatype $0 for boolean value type $1",
-            DataType_Name(ql_type->main()), value_type);
+            DataType_Name(data_type), value_type);
       }
       *value = value_type != ValueEntryType::kFalse;
       return Status::OK();
@@ -157,7 +147,7 @@ Status DoDecodeValue(
     case ValueEntryType::kDecimal: FALLTHROUGH_INTENDED;
     case ValueEntryType::kString: {
       *value = buffer->size();
-      AppendString(slice, buffer, ql_type->main() != DataType::BINARY);
+      AppendString(slice, buffer, data_type != DataType::BINARY);
       return Status::OK();
     }
     default:
@@ -166,7 +156,7 @@ Status DoDecodeValue(
 
   RSTATUS_DCHECK(
       false, Corruption, "Wrong value type $0 in $1 OR unsupported datatype $2",
-      value_type, rocksdb_slice.ToDebugHexString(), DataType_Name(ql_type->main()));
+      value_type, rocksdb_slice.ToDebugHexString(), DataType_Name(data_type));
 }
 
 Result<const char*> ExtractPrefix(Slice* slice, size_t required, const char* name) {
@@ -179,7 +169,7 @@ Result<const char*> ExtractPrefix(Slice* slice, size_t required, const char* nam
 }
 
 Status DoDecodeKey(
-    Slice* slice, const QLTypePtr& ql_type,
+    Slice* slice, DataType data_type,
     bool* is_null, PgValueDatum* value, ValueBuffer* buffer) {
   // A copy for error reporting.
   const auto input_slice = *slice;
@@ -208,7 +198,7 @@ Status DoDecodeKey(
       *value = buffer->size();
       std::string result;
       RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &result)); // TODO GH #17267
-      AppendString(result, buffer, ql_type->main() != DataType::BINARY);
+      AppendString(result, buffer, data_type != DataType::BINARY);
       return Status::OK();
     }
 
@@ -217,7 +207,7 @@ Status DoDecodeKey(
       *value = buffer->size();
       std::string result;
       RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &result)); // TODO GH #17267
-      AppendString(result, buffer, ql_type->main() != DataType::BINARY);
+      AppendString(result, buffer, data_type != DataType::BINARY);
       return Status::OK();
     }
     case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
@@ -239,23 +229,22 @@ Status DoDecodeKey(
     }
 
     case KeyEntryType::kInt32Descending: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kInt32: {
-      *value = make_unsigned(util::DecodeInt32FromKey(
-          VERIFY_RESULT(ExtractPrefix(slice, sizeof(int32_t), "32-bit integer"))));
-      if (type != KeyEntryType::kInt32) {
-        *value = ~*value;
-      }
+      const auto temp = util::DecodeInt32FromKey(
+          VERIFY_RESULT(ExtractPrefix(slice, sizeof(int32_t), "32-bit integer")));
+      *value = bit_cast<uint32_t>(type == KeyEntryType::kInt32 ? temp : ~temp);
       return Status::OK();
     }
 
     case KeyEntryType::kColocationId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kSubTransactionId: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kUInt32:
-      *value = BigEndian::Load32(VERIFY_RESULT(ExtractPrefix(
+    case KeyEntryType::kUInt32Descending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kUInt32: {
+      const auto temp = BigEndian::Load32(VERIFY_RESULT(ExtractPrefix(
           slice, sizeof(uint32_t), "32-bit unsigned integer")));
+      *value = type != KeyEntryType::kUInt32Descending ? temp : ~temp;
       return Status::OK();
-
+    }
     case KeyEntryType::kUInt64Descending: {
       *value = ~BigEndian::Load64(VERIFY_RESULT(ExtractPrefix(
           slice, sizeof(uint64_t), "64-bit unsigned integer")));
@@ -341,17 +330,23 @@ bool PgValue::bool_value() const {
 }
 
 Slice PgValue::binary_value() const {
-  return vardata();
+  return Vardata();
 }
 
 Slice PgValue::string_value() const {
-  return vardata().WithoutSuffix(1);
+  return Vardata().WithoutSuffix(1);
 }
 
-Slice PgValue::vardata() const {
+Slice PgValue::Vardata() const {
   auto data = bit_cast<uint8_t*>(value_);
   auto len = BigEndian::Load64(data);
   return Slice(data + 8, len);
+}
+
+Slice PgValue::VardataWithLen() const {
+  const auto data = bit_cast<uint8_t*>(value_);
+  const auto len = BigEndian::Load64(data);
+  return Slice(data, len + 8);
 }
 
 QLValuePB PgValue::ToQLValuePB(DataType data_type) const {
@@ -401,13 +396,24 @@ QLValuePB PgValue::ToQLValuePB(DataType data_type) const {
   LOG(FATAL) << "Not supported type: " << data_type;
 }
 
-void PgValue::AppendTo(DataType data_type, WriteBuffer* out) const {
+template <class Buffer>
+void PgValue::DoAppendTo(DataType data_type, Buffer* out) const {
   const auto fixed_size = FixedSize(data_type);
   if (fixed_size) {
     auto big_endian_value = BigEndian::FromHost64(value_);
     Slice slice(pointer_cast<const uint8_t*>(&big_endian_value), 8);
     out->AppendWithPrefix(0, slice.Suffix(fixed_size));
+  } else {
+    out->AppendWithPrefix(0, VardataWithLen());
   }
+}
+
+void PgValue::AppendTo(DataType data_type, WriteBuffer* out) const {
+  DoAppendTo(data_type, out);
+}
+
+void PgValue::AppendTo(DataType data_type, ValueBuffer* out) const {
+  DoAppendTo(data_type, out);
 }
 
 PgTableRow::PgTableRow(std::reference_wrapper<const ReaderProjection> projection)
@@ -425,8 +431,8 @@ std::string PgTableRow::ToString() const {
     result += ": ";
     if (is_null_[i]) {
       result += "<NULL>";
-    } else if (StoreAsValue(projection_->columns[i].type)) {
-      result += values_[i];
+    } else if (StoreAsValue(projection_->columns[i].data_type)) {
+      result += std::to_string(values_[i]);
     } else {
       auto data = buffer_.data() + values_[i];
       auto len = BigEndian::Load64(data);
@@ -440,7 +446,7 @@ std::string PgTableRow::ToString() const {
 }
 
 PgValueDatum PgTableRow::GetDatum(size_t idx) const {
-  if (StoreAsValue(projection_->columns[idx].type)) {
+  if (StoreAsValue(projection_->columns[idx].data_type)) {
     return values_[idx];
   }
   return bit_cast<PgValueDatum>(buffer_.data() + values_[idx]);
@@ -467,7 +473,7 @@ QLValuePB PgTableRow::GetQLValuePB(ColumnIdRep column_id) const {
   if (!value) {
     return QLValuePB();
   }
-  return value->ToQLValuePB(projection_->columns[idx].type->main());
+  return value->ToQLValuePB(projection_->columns[idx].data_type);
 }
 
 void PgTableRow::Clear() {
@@ -480,14 +486,23 @@ void PgTableRow::Clear(size_t column_idx) {
 
 Status PgTableRow::DecodeValue(size_t column_idx, const Slice& value) {
   return DoDecodeValue(
-      value, projection_->columns[column_idx].type,
+      value, projection_->columns[column_idx].data_type,
       &is_null_[column_idx], &values_[column_idx], &buffer_);
 }
 
 Status PgTableRow::DecodeKey(size_t column_idx, Slice* value) {
   return DoDecodeKey(
-      value, projection_->columns[column_idx].type,
+      value, projection_->columns[column_idx].data_type,
       &is_null_[column_idx], &values_[column_idx], &buffer_);
+}
+
+PgValue PgTableRow::TrimString(size_t idx, size_t skip_prefix, size_t new_len) {
+  DCHECK_EQ(projection_->columns[idx].data_type, DataType::STRING);
+  auto& value = values_[idx];
+  value += skip_prefix;
+  auto* start = buffer_.mutable_data() + value;
+  BigEndian::Store64(start, new_len + 1);
+  return PgValue(bit_cast<PgValueDatum>(start));
 }
 
 Status PgTableRow::SetValue(ColumnId column_id, const QLValuePB& value) {
@@ -499,9 +514,9 @@ Status PgTableRow::SetValue(ColumnId column_id, const QLValuePB& value) {
   is_null_[idx] = false;
   const size_t old_size = buffer_.size();
   RETURN_NOT_OK(pggate::WriteColumn(value, &buffer_));
-  const auto fixed_size = FixedSize(projection_->columns[idx].type);
+  const auto fixed_size = FixedSize(projection_->columns[idx].data_type);
   if (fixed_size != 0) {
-    values_[idx] = BigEndian::Load64VariableLength(buffer_.data() + old_size, fixed_size);
+    values_[idx] = BigEndian::Load64VariableLength(buffer_.data() + old_size + 1, fixed_size);
     buffer_.Truncate(old_size);
   } else {
     values_[idx] = old_size;

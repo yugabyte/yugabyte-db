@@ -18,8 +18,11 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/value.messages.h"
 
+#include "yb/dockv/dockv_fwd.h"
+
 #include "yb/gutil/casts.h"
 
+#include "yb/qlexpr/qlexpr_fwd.h"
 
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -131,6 +134,7 @@ class QLTableRow {
 
   // Check if row is empty (no column).
   bool IsEmpty() const { return num_assigned_ == 0; }
+  bool Exists() const { return !IsEmpty(); }
 
   // Get column count.
   size_t ColumnCount() const;
@@ -276,14 +280,10 @@ class QLExprExecutor {
                        const QLTableRow& table_row,
                        QLExprResultWriter result_writer);
 
-  // Evaluate column reference.
-  virtual Status EvalColumnRef(ColumnIdRep col_id,
-                                       const QLTableRow* table_row,
-                                       QLExprResultWriter result_writer);
-
-  virtual Status EvalColumnRef(ColumnIdRep col_id,
-                                       const QLTableRow* table_row,
-                                       LWExprResultWriter result_writer);
+  template <class Row, class Writer>
+  Status EvalColumnRef(ColumnIdRep col_id,
+                       const Row* table_row,
+                       Writer result_writer);
 
   // Evaluate call to tablet-server builtin operator.
   virtual Status EvalTSCall(const QLBCallPB& ql_expr,
@@ -308,12 +308,12 @@ class QLExprExecutor {
 
   // Evaluate the given QLExpressionPB.
   Status EvalExpr(const PgsqlExpressionPB& ql_expr,
-                  const QLTableRow* table_row,
+                  const dockv::PgTableRow* table_row,
                   QLExprResultWriter result_writer,
                   const Schema *schema = nullptr);
 
   Status EvalExpr(const PgsqlExpressionPB& ql_expr,
-                  const QLTableRow& table_row,
+                  const dockv::PgTableRow& table_row,
                   QLExprResultWriter result_writer,
                   const Schema *schema = nullptr) {
     return EvalExpr(ql_expr, &table_row, result_writer, schema);
@@ -321,59 +321,59 @@ class QLExprExecutor {
 
   // Read evaluated value from an expression. This is only useful for aggregate function.
   Status ReadExprValue(const PgsqlExpressionPB& ql_expr,
-                       const QLTableRow& table_row,
+                       const dockv::PgTableRow& table_row,
                        QLExprResultWriter result_writer);
 
   // Evaluate call to tablet-server builtin operator.
   virtual Status EvalTSCall(const PgsqlBCallPB& ql_expr,
-                            const QLTableRow& table_row,
+                            const dockv::PgTableRow& table_row,
                             QLValuePB *result,
                             const Schema *schema = nullptr);
 
   virtual Status ReadTSCallValue(const PgsqlBCallPB& ql_expr,
-                                         const QLTableRow& table_row,
-                                         QLExprResultWriter result_writer);
+                                 const dockv::PgTableRow& table_row,
+                                 QLExprResultWriter result_writer);
 
   // Evaluate a boolean condition for the given row.
   Status EvalCondition(const PgsqlConditionPB& condition,
-                       const QLTableRow& table_row,
+                       const dockv::PgTableRow& table_row,
                        bool* result);
 
-  template <class PB, class Value>
+  template <class PB, class Row, class Value>
   Status EvalCondition(
-      const PB& condition, const QLTableRow& table_row, Value* result);
+      const PB& condition, const Row& table_row, Value* result);
+
+  virtual Status GetSpecialColumn(ColumnIdRep column_id, QLValuePB* out) {
+    return Status::OK();
+  }
 
  private:
-  template <class Writer>
-  Status DoEvalColumnRef(
-      ColumnIdRep col_id, const QLTableRow* table_row, Writer result_writer);
-
-  template <class PB, class Writer>
+  template <class PB, class Row, class Writer>
   Status DoEvalExpr(
-      const PB& ql_expr, const QLTableRow* table_row, Writer result_writer, const Schema* schema);
+      const PB& ql_expr, const Row* table_row, Writer result_writer, const Schema* schema);
 
   // Evaluate call to regular builtin operator.
-  template <class OpCode, class Expr>
-  Result<QLValuePB> EvalBFCall(const Expr& bfcall, const QLTableRow& table_row);
+  template <class OpCode, class Expr, class Row>
+  Result<QLValuePB> EvalBFCall(const Expr& bfcall, const Row& table_row);
 };
 
-template <class It>
+template <class It, class Row>
 Status EvalOperandsHelper(
-    QLExprExecutor* executor, It it, const QLTableRow& table_row) {
+    QLExprExecutor* executor, It it, const Row& table_row) {
   return Status::OK();
 }
 
-template <class It, class Writer, class... Args>
+template <class It, class Row, class Writer, class... Args>
 Status EvalOperandsHelper(
-    QLExprExecutor* executor, It it, const QLTableRow& table_row,
+    QLExprExecutor* executor, It it, const Row& table_row,
     Writer writer, Args&&... args) {
   RETURN_NOT_OK(executor->EvalExpr(*it, table_row, writer));
   return EvalOperandsHelper(executor, ++it, table_row, std::forward<Args>(args)...);
 }
 
-template <class Operands, class... Args>
+template <class Operands, class Row, class... Args>
 Status EvalOperands(
-    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row,
+    QLExprExecutor* executor, const Operands& operands, const Row& table_row,
     Args&&... args) {
   if (operands.size() != sizeof...(Args)) {
     return STATUS_FORMAT(InvalidArgument, "Wrong number of arguments, $0 expected but $1 found",

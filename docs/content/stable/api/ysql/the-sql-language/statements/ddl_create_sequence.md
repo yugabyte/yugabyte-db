@@ -42,15 +42,15 @@ Use the `CREATE SEQUENCE` statement to create a sequence in the current schema.
 
 ## Semantics
 
-### *create_sequence*
-
-#### CREATE SEQUENCE *sequence_name* [ IF NOT EXISTS ]
-
 Specify the name of the sequence (*sequence_name*). An error is raised if a sequence with that name already exists in the current schema and `IF NOT EXISTS` is not specified.
 
 The sequence name must be distinct from any other sequences, tables, indexes, views, or foreign tables in the same schema.
 
 ### *sequence_options*
+
+#### TEMPORARY or TEMP
+
+Using this qualifier will create a temporary sequence. Temporary sequences are visible only in the current client session in which they are created and are automatically dropped at the end of the session. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
 #### INCREMENT BY *increment*
 
@@ -173,7 +173,7 @@ Create a sequence that starts at 0. MINVALUE also has to be changed from its def
 CREATE SEQUENCE s3 START 0 MINVALUE 0;
 ```
 
-```sql
+```output
 CREATE SEQUENCE
 ```
 

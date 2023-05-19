@@ -514,9 +514,11 @@ class LZ4DecompressState {
       : input_buffer_(input_buffer), output_buffer_(output_buffer),
         prev_decompress_data_left_(prev_decompress_data_left) {}
 
-  Result<ReadBufferFull> Execute(StreamReadBuffer* inp, StreamReadBuffer* out) {
+  Result<ReadBufferFull> Decompress(StreamReadBuffer* inp, StreamReadBuffer* out) {
     outvecs_ = VERIFY_RESULT(out->PrepareAppend());
     out_it_ = outvecs_.begin();
+
+    VLOG_WITH_FUNC(4) << "prev_decompress_data_left: " << prev_decompress_data_left_->size();
 
     // Check if we previously decompressed some data that did not fit into output buffer.
     // So copy it now. See DecompressChunk for details.
@@ -538,6 +540,7 @@ class LZ4DecompressState {
     Slice prev_input_slice;
     for (const auto& input_vec : inp->AppendedVecs()) {
       Slice input_slice(static_cast<char*>(input_vec.iov_base), input_vec.iov_len);
+      VLOG_WITH_FUNC(4) << "input_slice: " << input_slice.size();
       if (!prev_input_slice.empty()) {
         size_t chunk_size;
         if (prev_input_slice.size() >= kLZ4HeaderLen) {
@@ -689,6 +692,9 @@ class LZ4Compressor : public Compressor {
       const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data)
       ON_REACTOR_THREAD override {
     // Increment iterator in loop body to be able to check whether it is last iteration or not.
+    VLOG_WITH_FUNC(4) << "input: " << CollectionToString(input, [](const auto& buf) {
+      return buf.size();
+    });
     for (auto input_it = input.begin(); input_it != input.end();) {
       Slice input_slice = input_it->AsSlice();
       ++input_it;
@@ -700,6 +706,7 @@ class LZ4Compressor : public Compressor {
         } else {
           chunk = input_slice;
         }
+        VLOG_WITH_FUNC(4) << "chunk: " << chunk.size();
         input_slice.remove_prefix(chunk.size());
         RefCntBuffer output(kHeaderLen + LZ4_compressBound(narrow_cast<int>(chunk.size())));
         int res = LZ4_compress(
@@ -723,7 +730,7 @@ class LZ4Compressor : public Compressor {
   Result<ReadBufferFull> Decompress(StreamReadBuffer* inp, StreamReadBuffer* out) override {
     LZ4DecompressState state(
         decompress_input_buf_, decompress_output_buf_, &prev_decompress_data_left_);
-    return state.Execute(inp, out);
+    return state.Decompress(inp, out);
   }
 
  private:

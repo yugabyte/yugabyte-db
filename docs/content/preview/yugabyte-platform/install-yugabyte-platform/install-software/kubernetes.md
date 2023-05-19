@@ -1,8 +1,9 @@
 ---
 title: Install YugabyteDB Anywhere software - Kubernetes
-headerTitle: Install YugabyteDB Anywhere - Kubernetes
+headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software in your Kubernetes environment.
+headContent: Install YBA software in a Kubernetes environment
 menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform

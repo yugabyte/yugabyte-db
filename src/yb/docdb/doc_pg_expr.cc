@@ -130,7 +130,7 @@ class TSCallExecutor {
   }
 
   Result<bool> Exec(
-      const qlexpr::QLTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
+      const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
     // early exit if there are no operations to process
     if(where_clause_.empty() && targets_.empty()) {
       return true;
@@ -197,7 +197,7 @@ class TSCallExecutor {
     return prepared_expr;
   }
 
-  Status PreparePgRowData(const qlexpr::QLTableRow& row) {
+  Status PreparePgRowData(const dockv::PgTableRow& row) {
     if (var_map_.empty()) {
       return Status::OK();
     }
@@ -262,7 +262,7 @@ class ConditionFilter {
     conditions_.push_back(&condition);
   }
 
-  Result<bool> IsMatch(const qlexpr::QLTableRow& row) {
+  Result<bool> IsMatch(const dockv::PgTableRow& row) {
     auto match = false;
     for (const auto* condition : conditions_) {
       RETURN_NOT_OK(executor_.EvalCondition(*condition, row, &match));
@@ -302,7 +302,7 @@ class DocPgExprExecutor::State {
   }
 
   Result<bool> Exec(
-      const qlexpr::QLTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
+      const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
     return (!condition_filter_ || VERIFY_RESULT(condition_filter_->IsMatch(row))) &&
            (!tscall_executor_ || VERIFY_RESULT(tscall_executor_->Exec(row, results)));
   }
@@ -349,7 +349,7 @@ DocPgExprExecutor::DocPgExprExecutor(std::unique_ptr<State> state)
 DocPgExprExecutor::~DocPgExprExecutor() = default;
 
 Result<bool> DocPgExprExecutor::Exec(
-    const qlexpr::QLTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
+    const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
   return state_->Exec(row, results);
 }
 

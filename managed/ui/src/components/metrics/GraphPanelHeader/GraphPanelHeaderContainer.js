@@ -61,8 +61,7 @@ function mapStateToProps(state, ownProps) {
     prometheusQueryEnabled: state.graph.prometheusQueryEnabled,
     customer: state.customer,
     visibleModal: state.modal.visibleModal,
-    enableNodeComparisonModal: test.enableNodeComparisonModal || released.enableNodeComparisonModal,
-    isTopKMetricsEnabled: ownProps.isTopKMetricsEnabled
+    enableNodeComparisonModal: test.enableNodeComparisonModal || released.enableNodeComparisonModal
   };
 }
 

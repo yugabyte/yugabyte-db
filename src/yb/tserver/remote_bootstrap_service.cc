@@ -102,20 +102,10 @@ DEFINE_test_flag(bool, skip_change_role, false,
                  "When set, we don't call ChangeRole after successfully finishing a remote "
                  "bootstrap.");
 
-DEFINE_test_flag(double, fault_crash_leader_before_changing_role, 0.0,
-                 "The leader will crash before changing the role (from PRE_VOTER or PRE_OBSERVER "
-                 "to VOTER or OBSERVER respectively) of the tablet server it is remote "
-                 "bootstrapping.");
-
-DEFINE_test_flag(double, fault_crash_leader_after_changing_role, 0.0,
-                 "The leader will crash after successfully sending a ChangeConfig (CHANGE_ROLE "
-                 "from PRE_VOTER or PRE_OBSERVER to VOTER or OBSERVER respectively) for the tablet "
-                 "server it is remote bootstrapping, but before it sends a success response.");
-
 DEFINE_test_flag(
     double, fault_crash_on_rbs_anchor_register, 0.0,
     "Fraction of the time when the peer will crash while "
-    "servicing a RemoteBootstrapAnchorService RegisterLogAnchor() RPC call.");
+    "servicing a RemoteBootstrapServiceImpl::RegisterLogAnchor() RPC call.");
 
 DEFINE_UNKNOWN_uint64(remote_bootstrap_change_role_timeout_ms, 15000,
               "Timeout for change role operation during remote bootstrap.");
@@ -472,8 +462,6 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
       return Status::OK();
     }
 
-    MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_before_changing_role);
-
     MonoTime deadline =
         MonoTime::Now() +
         MonoDelta::FromMilliseconds(FLAGS_remote_bootstrap_change_role_timeout_ms);
@@ -481,7 +469,6 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
       Status status = session->ChangeRole();
       if (status.ok()) {
         LOG(INFO) << "ChangeRole succeeded for bootstrap session " << session_id;
-        MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_after_changing_role);
         break;
       }
       LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id
@@ -539,10 +526,10 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
     min_available_log_index = tablet_peer->log()->GetMinReplicateIndex();
   }
 
-  if (req->op_id().index() < min_available_log_index) {
+  if (req->log_index() < min_available_log_index) {
     RPC_RETURN_APP_ERROR(
         RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
-        Substitute("Cannot register LogAnchor for index $0", req->op_id().index()),
+        Substitute("Cannot register LogAnchor for index $0", req->log_index()),
         STATUS(NotSupported, "Not Supported: Requested LogAnchor index < MinReplicateIndex"));
   }
 
@@ -554,7 +541,7 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
     if (it == log_anchors_map_.end()) {
       std::shared_ptr<log::LogAnchor> log_anchor_ptr(new log::LogAnchor());
       tablet_peer->log_anchor_registry()->Register(
-          req->op_id().index(), req->owner_info(), log_anchor_ptr.get());
+          req->log_index(), req->owner_info(), log_anchor_ptr.get());
       std::shared_ptr<LogAnchorSessionData> anchor_session_data(
           new LogAnchorSessionData(tablet_peer, log_anchor_ptr));
       log_anchors_map_[req->owner_info()] = anchor_session_data;
@@ -564,11 +551,11 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       it->second->ResetExpiration();
       RPC_RETURN_NOT_OK(
           tablet_peer->log_anchor_registry()->UpdateRegistration(
-              req->op_id().index(), log_anchor_ptr.get()),
+              req->log_index(), log_anchor_ptr.get()),
           RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
           Substitute(
               "Cannot Update LogAnchor for tablet $0 to index $1", tablet_peer->tablet_id(),
-              req->op_id().index()));
+              req->log_index()));
     }
   }
 
@@ -591,11 +578,11 @@ void RemoteBootstrapServiceImpl::UpdateLogAnchor(
   it->second->ResetExpiration();
   RPC_RETURN_NOT_OK(
       tablet_peer->log_anchor_registry()->UpdateRegistration(
-          req->op_id().index(), log_anchor_ptr.get()),
+          req->log_index(), log_anchor_ptr.get()),
       RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
       Substitute(
           "Cannot Update LogAnchor for tablet $0 to $1", tablet_peer->tablet_id(),
-          req->op_id().index()));
+          req->log_index()));
 
   context.RespondSuccess();
 }

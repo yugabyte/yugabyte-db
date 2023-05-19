@@ -10,8 +10,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -253,7 +253,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     if (!instanceType.getInstanceTypeCode().equals("xsmall")
         && !instanceType.getInstanceTypeCode().equals("dev")) {
-      masterResource.put("cpu", 2);
+      masterResource.put("cpu", 2.0);
       masterResource.put("memory", "4Gi");
       masterLimit.put("cpu", 2 * burstVal);
       masterLimit.put("memory", "4Gi");

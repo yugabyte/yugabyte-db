@@ -132,6 +132,10 @@ export const CurrentReplicationLag = ({
   const formattedLag = formatLagMetric(maxNodeLag);
   const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
 
+  if (maxNodeLag === undefined) {
+    return <span className="replication-lag-value warning">{formattedLag}</span>;
+  }
+
   return (
     <span
       className={`replication-lag-value ${
@@ -206,6 +210,10 @@ export const CurrentTableReplicationLag = ({
   const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
   const formattedLag = formatLagMetric(maxNodeLag);
   const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
+
+  if (maxNodeLag === undefined) {
+    return <span className="replication-lag-value warning">{formattedLag}</span>;
+  }
 
   return (
     <span
@@ -350,7 +358,15 @@ export const getEnabledConfigActions = (
 };
 
 /**
- * Returns the UUID for all xCluster configs with the provided source and target universe.
+ * Returns the UUIDs for all xCluster configs associated with the provided universe.
+ */
+export const getAllXClusterConfigs = (universe: Universe) => [
+  ...(universe.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? []),
+  ...(universe.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? [])
+];
+
+/**
+ * Returns the UUIDs for all xCluster configs with the provided source and target universe.
  */
 export const getSharedXClusterConfigs = (sourceUniverse: Universe, targetUniverse: Universe) => {
   const sourceXClusterConfigs = sourceUniverse.universeDetails?.xclusterInfo?.sourceXClusterConfigs;
