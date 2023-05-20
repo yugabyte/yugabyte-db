@@ -614,10 +614,6 @@ PostmasterMain(int argc, char *argv[])
 
 	IsPostmasterEnvironment = true;
 
-	if (YBIsEnabledInPostgresEnvVar()) {
-		YBCStatementTimeoutPtr = &StatementTimeout;
-	}
-
 	/*
 	 * Start our win32 signal implementation
 	 */

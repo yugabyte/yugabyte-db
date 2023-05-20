@@ -38,6 +38,8 @@
  */
 Portal		ActivePortal = NULL;
 
+int			yb_pg_batch_detection_mechanism;
+
 static void ProcessQuery(PlannedStmt *plan,
 						 const char *sourceText,
 						 ParamListInfo params,
@@ -1236,13 +1238,13 @@ PortalRunMulti(Portal portal,
 	if (altdest->mydest == DestRemoteExecute)
 		altdest = None_Receiver;
 
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() &&
+		!IsTransactionBlock() &&
+		!YbIsBatchedExecution() &&
+		list_length(portal->stmts) == 1)
 	{
-		if (!IsTransactionBlock() && list_length(portal->stmts) == 1)
-		{
-			PlannedStmt *pstmt = linitial_node(PlannedStmt, portal->stmts);
-			is_single_row_modify_txn = YBCIsSingleRowModify(pstmt);
-		}
+		PlannedStmt *pstmt = linitial_node(PlannedStmt, portal->stmts);
+		is_single_row_modify_txn = YBCIsSingleRowModify(pstmt);
 	}
 
 	/*

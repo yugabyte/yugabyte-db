@@ -16,6 +16,8 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "catalog/catalog.h"
+#include "catalog/namespace.h"
+#include "catalog/pg_authid_d.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace_d.h"
 #include "catalog/pg_proc.h"
@@ -79,10 +81,67 @@ uint64_t YbGetMasterCatalogVersion()
 /* Modify Catalog Version */
 
 static void
+YbCallSQLIncrementCatalogVersions(bool is_breaking_change)
+{
+	List* names =
+		list_make2(makeString("pg_catalog"),
+				   makeString("yb_increment_all_db_catalog_versions"));
+	FuncCandidateList clist = FuncnameGetCandidates(
+		names,
+		-1 /* nargs */,
+		NIL /* argnames */,
+		false /* expand_variadic */,
+		false /* expand_defaults */,
+		false /* include_out_arguments */,
+		false /* missing_ok */);
+	/* We expect exactly one candidate. */
+	Assert(clist && clist->next == NULL);
+	Oid functionId = clist->oid;
+	FmgrInfo    flinfo;
+	FunctionCallInfoBaseData fcinfo;
+	fmgr_info(functionId, &flinfo);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 1, InvalidOid, NULL, NULL);
+	fcinfo.args[0].value = BoolGetDatum(is_breaking_change);
+	fcinfo.args[0].isnull = false;
+
+	// Save old values and set new values to enable the call.
+	bool saved = yb_non_ddl_txn_for_sys_tables_allowed;
+	yb_non_ddl_txn_for_sys_tables_allowed = true;
+	Oid save_userid;
+	int save_sec_context;
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
+						   SECURITY_RESTRICTED_OPERATION);
+	PG_TRY();
+	{
+		FunctionCallInvoke(&fcinfo);
+		/* Restore old values. */
+		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+	}
+	PG_CATCH();
+	{
+		/* Restore old values. */
+		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+}
+
+static void
 YbIncrementMasterDBCatalogVersionTableEntryImpl(
-	Oid db_oid, bool is_breaking_change)
+	Oid db_oid, bool is_breaking_change, bool is_global_ddl)
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
+
+	if (is_global_ddl)
+	{
+		Assert(YBIsDBCatalogVersionMode());
+		/* Call yb_increment_all_db_catalog_versions(is_breaking_change). */
+		YbCallSQLIncrementCatalogVersions(is_breaking_change);
+		return;
+	}
 
 	YBCPgStatement update_stmt    = NULL;
 	YBCPgTypeAttrs type_attrs = { 0 };
@@ -166,7 +225,8 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 	RelationClose(rel);
 }
 
-bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
+bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
+											   bool is_global_ddl)
 {
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
@@ -175,7 +235,7 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	 */
 	YbIncrementMasterDBCatalogVersionTableEntryImpl(
 		YBIsDBCatalogVersionMode() ? MyDatabaseId : Template1DbOid,
-		is_breaking_change);
+		is_breaking_change, is_global_ddl);
 	return true;
 }
 

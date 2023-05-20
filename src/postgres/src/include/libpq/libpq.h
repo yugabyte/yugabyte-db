@@ -87,6 +87,8 @@ extern bool pq_check_connection(void);
 extern bool pq_buffer_has_data(void);
 extern int	pq_putbytes(const char *s, size_t len);
 
+extern int  yb_pq_peekbyte_no_msg_reading_status_check(void);
+
 /*
  * prototypes for functions in be-secure.c
  */
