@@ -46,6 +46,7 @@ public class NodeUniverseManager extends DevopsBase {
 
   private final KeyLock<UUID> universeLock = new KeyLock<>();
 
+  @Inject NodeAgentClient nodeAgentClient;
   @Inject NodeAgentPoller nodeAgentPoller;
 
   @Override
@@ -312,7 +313,7 @@ public class NodeUniverseManager extends DevopsBase {
         if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
           nodeAgent.refresh();
         }
-        NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+        nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
       } else {
         commandArgs.add("ssh");
         String sshPort = String.valueOf(providerDetails.sshPort);

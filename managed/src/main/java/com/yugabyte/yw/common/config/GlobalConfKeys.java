@@ -611,4 +611,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "for the configurable part of the path (like storage or releases path)",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> nodeAgentTokenLifetime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.client.token_lifetime",
+          ScopeType.GLOBAL,
+          "Node Agent Token Lifetime",
+          "Lifetime oftoken used by node agent clients",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> nodeAgentServerPort =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.port",
+          ScopeType.GLOBAL,
+          "Node Agent Server Port",
+          "Listening port for node agent servers",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -10,6 +10,7 @@ import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
@@ -59,7 +60,6 @@ import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -104,7 +104,10 @@ public class NodeAgentClient {
     this.confGetter = confGetter;
     this.channelFactory =
         channelFactory == null
-            ? config -> ChannelFactory.getDefaultChannel(config)
+            ? config ->
+                ChannelFactory.getDefaultChannel(
+                    config,
+                    new GrpcClientRequestInterceptor(config.getNodeAgent().getUuid(), confGetter))
             : channelFactory;
     this.cachedChannels =
         CacheBuilder.newBuilder()
@@ -134,12 +137,13 @@ public class NodeAgentClient {
   }
 
   /** This class intercepts the client request to add the authorization token header. */
-  @Slf4j
   public static class GrpcClientRequestInterceptor implements ClientInterceptor {
     private final UUID nodeAgentUuid;
+    private final RuntimeConfGetter confGetter;
 
-    GrpcClientRequestInterceptor(UUID nodeAgentUuid) {
+    GrpcClientRequestInterceptor(UUID nodeAgentUuid, RuntimeConfGetter confGetter) {
       this.nodeAgentUuid = nodeAgentUuid;
+      this.confGetter = confGetter;
     }
 
     public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(
@@ -151,7 +155,8 @@ public class NodeAgentClient {
         @Override
         public void start(ClientCall.Listener<RespT> responseListener, Metadata headers) {
           log.trace("Setting authorizaton token in header for node agent {}", nodeAgentUuid);
-          String token = NodeAgentClient.getNodeAgentJWT(nodeAgentUuid);
+          Duration tokenLifetime = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentTokenLifetime);
+          String token = NodeAgentClient.getNodeAgentJWT(nodeAgentUuid, tokenLifetime);
           headers.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), token);
           super.start(responseListener, headers);
         }
@@ -163,7 +168,7 @@ public class NodeAgentClient {
   public interface ChannelFactory {
     ManagedChannel get(ChannelConfig config);
 
-    static ManagedChannel getDefaultChannel(ChannelConfig config) {
+    static ManagedChannel getDefaultChannel(ChannelConfig config, ClientInterceptor interceptor) {
       NodeAgent nodeAgent = config.nodeAgent;
       NettyChannelBuilder channelBuilder =
           NettyChannelBuilder.forAddress(nodeAgent.getIp(), nodeAgent.getPort())
@@ -177,7 +182,7 @@ public class NodeAgentClient {
                   .trustManager(CertificateHelper.getCertsFromFile(certPath))
                   .build();
           channelBuilder = channelBuilder.sslContext(sslcontext);
-          channelBuilder.intercept(new GrpcClientRequestInterceptor(nodeAgent.getUuid()));
+          channelBuilder.intercept(interceptor);
         } catch (SSLException e) {
           throw new RuntimeException("SSL context creation for gRPC client failed", e);
         }
@@ -340,28 +345,29 @@ public class NodeAgentClient {
     }
   }
 
-  public static String getNodeAgentJWT(NodeAgent nodeAgent) {
+  public static String getNodeAgentJWT(NodeAgent nodeAgent, Duration tokenLifetime) {
     PrivateKey privateKey = nodeAgent.getPrivateKey();
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject("Platform")
         .setIssuedAt(new Date())
-        .setExpiration(Date.from(Instant.now().plus(15, ChronoUnit.MINUTES)))
+        .setExpiration(Date.from(Instant.now().plusSeconds(tokenLifetime.getSeconds())))
         .signWith(SignatureAlgorithm.RS512, privateKey)
         .compact();
   }
 
-  public static String getNodeAgentJWT(UUID nodeAgentUuid) {
+  public static String getNodeAgentJWT(UUID nodeAgentUuid, Duration tokenLifetime) {
     Optional<NodeAgent> nodeAgentOp = NodeAgent.maybeGet(nodeAgentUuid);
     if (!nodeAgentOp.isPresent()) {
       throw new RuntimeException(String.format("Node agent %s does not exist", nodeAgentUuid));
     }
-    return getNodeAgentJWT(nodeAgentOp.get());
+    return getNodeAgentJWT(nodeAgentOp.get(), tokenLifetime);
   }
 
-  public static void addNodeAgentClientParams(
+  public void addNodeAgentClientParams(
       NodeAgent nodeAgent, List<String> cmdParams, Map<String, String> redactedVals) {
-    String token = getNodeAgentJWT(nodeAgent);
+    Duration tokenLifetime = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentTokenLifetime);
+    String token = getNodeAgentJWT(nodeAgent, tokenLifetime);
     cmdParams.add("--node_agent_ip");
     cmdParams.add(nodeAgent.getIp());
     cmdParams.add("--node_agent_port");

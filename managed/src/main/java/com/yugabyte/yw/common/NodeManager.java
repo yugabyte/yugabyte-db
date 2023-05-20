@@ -139,6 +139,8 @@ public class NodeManager extends DevopsBase {
 
   @Inject ReleaseManager releaseManager;
 
+  @Inject NodeAgentClient nodeAgentClient;
+
   @Inject NodeAgentPoller nodeAgentPoller;
 
   @Override
@@ -1298,7 +1300,7 @@ public class NodeManager extends DevopsBase {
                 }
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
-                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+                nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
     commandArgs.add(nodeTaskParam.getNodeName());
@@ -1420,7 +1422,7 @@ public class NodeManager extends DevopsBase {
                 if (getNodeAgentClient().isAnsibleOffloadingEnabled(nodeAgent, provider)) {
                   commandArgs.add("--offload_ansible");
                 }
-                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+                nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
   }
