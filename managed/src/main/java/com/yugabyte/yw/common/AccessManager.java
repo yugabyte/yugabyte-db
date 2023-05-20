@@ -289,7 +289,7 @@ public class AccessManager extends DevopsBase {
     Path tempFile = null;
 
     try {
-      tempFile = Files.createTempFile(keyCode, keyType.getExtension());
+      tempFile = fileHelperService.createTempFile(keyCode, keyType.getExtension());
       Files.write(tempFile, keyContents.getBytes());
 
       // Initially set delete to false because we don't know if this KeyPair exists in AWS

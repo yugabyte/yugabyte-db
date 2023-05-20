@@ -138,6 +138,7 @@ public class GFlagsUtil {
   public static final String YBC_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
   public static final String YBC_PER_DOWNLOAD_OBJECTS = "per_download_num_objects";
+  public static final String TMP_DIRECTORY = "tmp_dir";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -329,6 +330,8 @@ public class GFlagsUtil {
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
+    // Append the custom_tmp gflag to the YBC gflag.
+    ybcFlags.put(TMP_DIRECTORY, GFlagsUtil.getCustomTmpDirectory(node, universe));
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
@@ -441,6 +444,29 @@ public class GFlagsUtil {
       gflags.put(POSTMASTER_CGROUP, YSQL_CGROUP_PATH);
     }
     return gflags;
+  }
+
+  public static String getCustomTmpDirectory(NodeDetails node, Universe universe) {
+    Map<String, String> res = new HashMap<>();
+    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+    if (node.isMaster) {
+      res.putAll(
+          getGFlagsForNode(
+              node,
+              UniverseTaskBase.ServerType.MASTER,
+              cluster,
+              universe.getUniverseDetails().clusters));
+    }
+    if (node.isTserver) {
+      res.putAll(
+          getGFlagsForNode(
+              node,
+              UniverseTaskBase.ServerType.TSERVER,
+              cluster,
+              universe.getUniverseDetails().clusters));
+    }
+
+    return res.getOrDefault(TMP_DIRECTORY, "/tmp");
   }
 
   private static Map<String, String> getYSQLGFlags(

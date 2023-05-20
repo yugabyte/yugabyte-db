@@ -29,7 +29,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class HookInserter {
 
-  private static String HOOK_ROOT_PATH = "/tmp";
   private static final String ENABLE_CUSTOM_HOOKS_PATH =
       "yb.security.custom_hooks.enable_custom_hooks";
   private static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
@@ -55,7 +54,12 @@ public class HookInserter {
         RunHooks.Params taskParams = new RunHooks.Params();
         taskParams.creatingUser = universeParams.creatingUser;
         taskParams.hook = hook;
-        taskParams.hookPath = HOOK_ROOT_PATH + "/" + node.nodeUuid + "-" + hook.getName();
+        taskParams.hookPath =
+            task.confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath)
+                + "/"
+                + node.nodeUuid
+                + "-"
+                + hook.getName();
         taskParams.trigger = trigger;
         taskParams.nodeName = node.nodeName;
         taskParams.nodeUuid = node.nodeUuid;

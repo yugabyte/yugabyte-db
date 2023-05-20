@@ -62,8 +62,6 @@ node_agent_dir_setup() {
   echo "* Creating Node Agent Directory."
   #Create node-agent directory.
   mkdir -p "$NODE_AGENT_HOME"
-  #Copy installer script to the node-agent directory.
-  cp "$0" "$NODE_AGENT_HOME/$INSTALLER_NAME"
   #Change permissions.
   chmod 754 "$NODE_AGENT_HOME"
   echo "* Changing directory to node agent."

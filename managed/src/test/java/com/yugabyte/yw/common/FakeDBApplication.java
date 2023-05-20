@@ -77,6 +77,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public AWSCloudImpl mockAWSCloudImpl = mock(AWSCloudImpl.class);
   public YBClient mockYBClient = mock(YBClient.class);
   public SwamperHelper mockSwamperHelper = mock(SwamperHelper.class);
+  public FileHelperService mockFileHelperService = mock(FileHelperService.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -141,6 +142,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(YbcUpgrade.class).toInstance(mockYbcUpgrade))
                 .overrides(bind(AWSCloudImpl.class).toInstance(mockAWSCloudImpl))
                 .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper)))
+        .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .build();
   }
 
