@@ -79,7 +79,7 @@ update ::= 'UPDATE' table_name
               [ 'USING' using_expression ]
               'SET' assignment { ',' assignment } \
               'WHERE' where_expression
-              [ 'IF' ( [ 'NOT' ] 'EXISTS' | if_expression ) ]
+              [ 'IF' ( if_expression | [ 'NOT' ] 'EXISTS' | if_expression 'OR' [ 'NOT' ] 'EXISTS') ]
               [ 'RETURNS STATUS AS ROW' ];
 
 transaction_block ::= 'BEGIN' 'TRANSACTION' \
