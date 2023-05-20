@@ -118,6 +118,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.ybc.YbcBackupNodeRetriever;
@@ -1156,6 +1157,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
     NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
+    int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
     for (NodeDetails node : nodes) {
       if (node.cloudInfo == null) {
@@ -1181,6 +1183,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         params.azUuid = node.azUuid;
         params.setUniverseUUID(universe.getUniverseUUID());
         params.nodeAgentHome = NodeAgent.ROOT_NODE_AGENT_HOME;
+        params.nodeAgentPort = serverPort;
         InstallNodeAgent task = createTask(InstallNodeAgent.class);
         task.initialize(params);
         subTaskGroup.addSubTask(task);
