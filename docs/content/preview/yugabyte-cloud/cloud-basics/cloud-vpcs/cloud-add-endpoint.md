@@ -4,7 +4,6 @@ headerTitle:
 linkTitle: Private service endpoints
 description: Manage private service endpoints to your VPCs.
 headcontent: Manage private service endpoints for your VPCs
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-add-endpoint
