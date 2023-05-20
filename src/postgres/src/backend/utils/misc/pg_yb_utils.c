@@ -653,6 +653,7 @@ YBInitPostgresBackend(
 		 * TODO: do we really need to DB name / username here?
 		 */
 		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name));
+		YBCSetTimeout(StatementTimeout, NULL);
 	}
 }
 
@@ -1248,6 +1249,7 @@ typedef struct DdlTransactionState {
 	MemoryContext mem_context;
 	bool is_catalog_version_increment;
 	bool is_breaking_catalog_change;
+	bool is_global_ddl;
 	NodeTag original_node_tag;
 } DdlTransactionState;
 
@@ -1315,6 +1317,10 @@ YBGetDdlNestingLevel()
 	return ddl_transaction_state.nesting_level;
 }
 
+void YbSetIsGlobalDDL() {
+	ddl_transaction_state.is_global_ddl = true;
+}
+
 void
 YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
 						   bool is_breaking_catalog_change)
@@ -1361,18 +1367,21 @@ YBDecrementDdlNestingLevel()
 		YBResetEnableNonBreakingDDLMode();
 		bool is_catalog_version_increment = ddl_transaction_state.is_catalog_version_increment;
 		bool is_breaking_catalog_change = ddl_transaction_state.is_breaking_catalog_change;
+		bool is_global_ddl = ddl_transaction_state.is_global_ddl;
 		/*
-		 * Reset the two flags to false prior to executing
+		 * Reset these flags to false prior to executing
 		 * YbIncrementMasterCatalogVersionTableEntry() such that
 		 * even when it throws an exception we still reset the flags.
 		 */
 		ddl_transaction_state.is_catalog_version_increment = false;
 		ddl_transaction_state.is_breaking_catalog_change = false;
+		ddl_transaction_state.is_global_ddl = false;
+
 		const bool increment_done =
 			is_catalog_version_increment &&
 			YBCPgHasWriteOperationsInDdlTxnMode() &&
 			YbIncrementMasterCatalogVersionTableEntry(
-					is_breaking_catalog_change);
+					is_breaking_catalog_change, is_global_ddl);
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
 
@@ -3302,4 +3311,14 @@ uint32_t YbGetNumberOfDatabases()
 	HandleYBStatus(YBCGetNumberOfDatabases(&num_databases));
 	Assert(num_databases > 0);
 	return num_databases;
+}
+
+static bool yb_is_batched_execution = false;
+
+bool YbIsBatchedExecution() {
+	return yb_is_batched_execution;
+}
+
+void YbSetIsBatchedExecution(bool value) {
+	yb_is_batched_execution = value;
 }

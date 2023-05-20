@@ -118,6 +118,7 @@
 /* Yugabyte includes */
 #include "commands/copy.h"
 #include "executor/ybcModifyTable.h"
+#include "tcop/pquery.h"
 #include "pg_yb_utils.h"
 
 #ifndef PG_KRB_SRVTAB
@@ -580,6 +581,13 @@ static struct config_enum_entry recovery_init_sync_method_options[] = {
 	{"syncfs", RECOVERY_INIT_SYNC_METHOD_SYNCFS, false},
 #endif
 	{NULL, 0, false}
+};
+
+const struct config_enum_entry yb_pg_batch_detection_mechanism_options[] = {
+  {"detect_by_peeking", DETECT_BY_PEEKING, false},
+  {"assume_all_batch_executions", ASSUME_ALL_BATCH_EXECUTIONS, false},
+  {"ignore_batch_delete_and_update_may_fail", IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL, false},
+  {NULL, 0, false}
 };
 
 static struct config_enum_entry shared_memory_options[] = {
@@ -5717,6 +5725,28 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&recovery_init_sync_method,
 		RECOVERY_INIT_SYNC_METHOD_FSYNC, recovery_init_sync_method_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_pg_batch_detection_mechanism", PGC_SIGHUP, COMPAT_OPTIONS_CLIENT,
+			gettext_noop("The drivers use message protocol to communicate "
+						 "with PG. The driver does not inform PG in advance "
+						 "about a Batch execution. We need to identify a batch " 
+						 "because in that case the single-shard optimization "
+						 "should be disabled. Postgres drivers pipeline "
+						 "messages and we exploit this to peek the message "
+						 "following 'Execute' to detect a batch. This may "
+						 "lead to some unforeseen bugs, so this GUC provides "
+						 "a way to disable the single-shard optimization "
+						 "completely or go back to the behavior before "
+						 "#16446 was fixed."),
+			NULL,
+			GUC_SUPERUSER_ONLY
+		},
+		&yb_pg_batch_detection_mechanism,
+		DETECT_BY_PEEKING,
+		yb_pg_batch_detection_mechanism_options,
 		NULL, NULL, NULL
 	},
 
