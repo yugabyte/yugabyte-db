@@ -43,7 +43,6 @@ const (
 	GetCustomersApiEndpoint = "/api/customers"
 	GetVersionEndpoint      = "/api/app_version"
 	UpgradeScript           = "node-agent-installer.sh"
-	InstallScript           = "node-agent-installer.sh"
 	RequestIdHeader         = "X-REQUEST-ID"
 
 	// Cert names.

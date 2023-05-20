@@ -1352,6 +1352,8 @@ public class NodeManager extends DevopsBase {
     ((ObjectNode) nodeDetails).put("nodeName", DetachedNodeTaskParams.DEFAULT_NODE_NAME);
 
     List<String> cloudArgs = Arrays.asList("--node_metadata", Json.stringify(nodeDetails));
+    commandArgs.add("--remote_tmp_dir");
+    commandArgs.add(confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
 
     return execCommand(
         DevopsCommand.builder()
@@ -1365,27 +1367,23 @@ public class NodeManager extends DevopsBase {
 
   private Path addBootscript(
       String bootScript, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
-    Path bootScriptFile;
     commandArgs.add("--boot_script");
+    Path bootScriptFile = fileHelperService.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
 
     // treat the contents as script body if it starts with a shebang line
     // otherwise consider the contents to be a path
     if (bootScript.startsWith("#!")) {
       try {
-        bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
         Files.write(bootScriptFile, bootScript.getBytes());
         Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
-
       } catch (IOException e) {
         LOG.error(e.getMessage(), e);
         throw new RuntimeException(e);
       }
     } else {
       try {
-        bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
         Files.write(bootScriptFile, Files.readAllBytes(Paths.get(bootScript)));
         Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
-
       } catch (IOException e) {
         LOG.error(e.getMessage(), e);
         throw new RuntimeException(e);
@@ -1468,6 +1466,13 @@ public class NodeManager extends DevopsBase {
                 NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
+  }
+
+  public void addCustomTmpDirectoryCommandArgs(
+      Universe universe, NodeTaskParams nodeTaskParam, List<String> commandArgs) {
+    NodeDetails node = universe.getNode(nodeTaskParam.getNodeName());
+    commandArgs.add("--remote_tmp_dir");
+    commandArgs.add(GFlagsUtil.getCustomTmpDirectory(node, universe));
   }
 
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
@@ -2166,6 +2171,7 @@ public class NodeManager extends DevopsBase {
         break;
     }
     addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, redactedVals);
+    addCustomTmpDirectoryCommandArgs(universe, nodeTaskParam, commandArgs);
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       return execCommand(

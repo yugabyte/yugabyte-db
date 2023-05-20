@@ -19,6 +19,7 @@ yb_home_dir="/home/yugabyte"
 result_kvs=""
 YB_SUDO_PASS=""
 ports_to_check=""
+tmp_dir="/tmp"
 PROMETHEUS_FREE_SPACE_MB=100
 HOME_FREE_SPACE_MB=2048
 VM_MAX_MAP_COUNT=262144
@@ -64,7 +65,7 @@ preflight_provision_check() {
     done
 
     check_free_space "/opt/prometheus" $PROMETHEUS_FREE_SPACE_MB
-    check_free_space "/tmp" $PROMETHEUS_FREE_SPACE_MB # for downloading folder
+    check_free_space $tmp_dir $PROMETHEUS_FREE_SPACE_MB # for downloading folder
   fi
 
   # Check ulimit settings.
@@ -247,6 +248,8 @@ Options:
     Bash file containing the sudo password variable.
   --ports_to_check PORTS_TO_CHECK
     Comma-separated list of ports to check availability
+  --tmp_dir TMP_DIRECTORY
+    Tmp Directory on the specified node.
   --cleanup
     Deletes this script after being run. Allows `scp` commands to port over new preflight scripts.
   -h, --help
@@ -294,6 +297,10 @@ while [[ $# -gt 0 ]]; do
     ;;
     --yb_home_dir)
       yb_home_dir="$2"
+      shift
+    ;;
+    --tmp_dir)
+      tmp_dir="$2"
       shift
     ;;
     --sudo_pass_file)

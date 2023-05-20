@@ -8,6 +8,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 
@@ -18,16 +19,20 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerLicense;
 import com.yugabyte.yw.models.Users;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Http;
@@ -38,10 +43,19 @@ public class CustomerLicenseControllerTest extends FakeDBApplication {
   Customer defaultCustomer;
   Users defaultUser;
 
+  @Mock RuntimeConfGetter mockConfGetter;
+
   @Before
-  public void before() {
+  public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
+    when(mockFileHelperService.createTempFile(anyString(), anyString()))
+        .thenAnswer(
+            i -> {
+              String fileName = i.getArgument(0);
+              String fileExtension = i.getArgument(1);
+              return Files.createTempFile(Paths.get("/tmp"), fileName, fileExtension);
+            });
   }
 
   private Result uploadLicenseFile(

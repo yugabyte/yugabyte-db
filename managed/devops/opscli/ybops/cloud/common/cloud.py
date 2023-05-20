@@ -208,24 +208,24 @@ class AbstractCloud(AbstractCommandParser):
         else:
             self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
 
-    def initYSQL(self, master_addresses, connect_options):
+    def initYSQL(self, master_addresses, connect_options, args):
         # TODO Looks like this is not used.
         remote_shell = RemoteShell(connect_options)
         init_db_path = os.path.join(YB_HOME_DIR, "tserver/postgres/bin/initdb")
         remote_shell.run_command(
             "bash -c \"YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses={} "
-            "{} -D /tmp/yb_pg_initdb_tmp_data_dir "
-            "-U postgres\"".format(master_addresses, init_db_path)
+            "{} -D {}/yb_pg_initdb_tmp_data_dir "
+            "-U postgres\"".format(master_addresses, init_db_path, args.remote_tmp_dir)
         )
 
     def execute_boot_script(self, args, extra_vars):
-        dest_path = os.path.join("/tmp", os.path.basename(args.boot_script))
+        dest_path = os.path.join(args.remote_tmp_dir, os.path.basename(args.boot_script))
 
         # Make it executable, in case it isn't one.
         st = os.stat(args.boot_script)
         os.chmod(args.boot_script, st.st_mode | stat.S_IEXEC)
 
-        copy_to_tmp(extra_vars, args.boot_script)
+        copy_to_tmp(extra_vars, args.boot_script, remote_tmp_dir=args.remote_tmp_dir)
 
         cmd = "sudo {}".format(dest_path)
         rc, stdout, stderr = remote_exec_command(extra_vars, cmd)
@@ -237,10 +237,10 @@ class AbstractCloud(AbstractCommandParser):
         logging.info("[app] Configuring second NIC")
         subnet_network, subnet_netmask = subnet_cidr.split('/')
         # Copy and run script to configure routes
-        copy_to_tmp(extra_vars, get_datafile_path('configure_nic.sh'))
-        cmd = ("sudo /tmp/configure_nic.sh "
-               "--subnet_network {} --subnet_netmask {} --cloud {}").format(
-            subnet_network, subnet_netmask, self.name)
+        copy_to_tmp(extra_vars, get_datafile_path('configure_nic.sh'), remote_tmp_dir=args.remote_tmp_dir)
+        cmd = ("sudo {}/configure_nic.sh "
+               "--subnet_network {} --subnet_netmask {} --cloud {} --tmp_dir {}").format(
+            args.remote_tmp_dir, subnet_network, subnet_netmask, self.name, args.remote_tmp_dir)
         rc, stdout, stderr = remote_exec_command(extra_vars, cmd)
         if rc:
             raise YBOpsRecoverableError(
@@ -259,7 +259,8 @@ class AbstractCloud(AbstractCommandParser):
                 "Could not connect to node {}".format(', '.join(server_ports)))
 
         # Verify that the command ran successfully:
-        rc, stdout, stderr = remote_exec_command(extra_vars, 'ls /tmp/dhclient-script-*')
+        rc, stdout, stderr = remote_exec_command(extra_vars,
+                                                 'ls {}/dhclient-script-*'.format(args.remote_tmp_dir))
         if rc:
             raise YBOpsRecoverableError(
                 "Second nic not configured at start up")
