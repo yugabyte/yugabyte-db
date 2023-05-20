@@ -10,6 +10,7 @@ NODE_AGENT_HOME=""
 NODE_AGENT_PKG_DIR=""
 NODE_AGENT_RELEASE_DIR=""
 NODE_AGENT_PKG_TGZ_PATH=""
+NODE_AGENT_CONFIG_FILEPATH=""
 
 # Yugabyte Anywhere SSL cert verification option.
 SKIP_VERIFY_CERT=""
@@ -20,7 +21,7 @@ FORCE_INSTALL="false"
 CERT_DIR=""
 CUSTOMER_ID=""
 NODE_IP=""
-NODE_PORT="9070"
+NODE_PORT=""
 API_TOKEN=""
 PLATFORM_URL=""
 COMMAND=""
@@ -262,6 +263,8 @@ Options:
     Yugabyte Anywhere URL.
   -t, --api_token (REQUIRED with install command)
     Api token to download the build files.
+  -p, --node_port (OPTIONAL with install command)
+    Server port.
   --user (REQUIRED only for install_service command)
     Username of the installation. A sudo user can install service for a non-sudo user.
   --skip_verify_cert (OPTIONAL)
@@ -464,6 +467,19 @@ NODE_AGENT_PKG_DIR="$NODE_AGENT_HOME/pkg"
 NODE_AGENT_RELEASE_DIR="$NODE_AGENT_HOME/release"
 NODE_AGENT_PKG_TGZ_PATH="$NODE_AGENT_RELEASE_DIR/$NODE_AGENT_PKG_TGZ"
 NODE_AGRNT_CERT_PATH="$NODE_AGENT_HOME/cert/$CERT_DIR"
+NODE_AGENT_CONFIG_PATH="$NODE_AGENT_HOME/config/config.yml"
+
+if [ -z "$NODE_PORT" ]; then
+  if [ -f "$NODE_AGENT_CONFIG_PATH" ]; then
+    NODE_PORT=$(cat "$NODE_AGENT_CONFIG_PATH" | awk -F":" '/port/{gsub(/[" ]/, "", $2); print $2}')
+  fi
+fi
+
+if [ -z "$NODE_PORT" ]; then
+  NODE_PORT=9070
+fi
+
+echo "Using node agent port $NODE_PORT."
 
 if [ "$COMMAND" = "install" ]; then
   HEADER="$API_TOKEN_HEADER"
