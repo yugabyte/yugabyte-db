@@ -676,4 +676,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Path to the tmp directory to be used by YBA",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentTokenLifetime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.client.token_lifetime",
+          ScopeType.GLOBAL,
+          "Node Agent Token Lifetime",
+          "Lifetime oftoken used by node agent clients",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> nodeAgentServerPort =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.port",
+          ScopeType.GLOBAL,
+          "Node Agent Server Port",
+          "Listening port for node agent servers",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
