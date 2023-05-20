@@ -72,9 +72,9 @@ ok 69 - rule_is_on(schema, table, rule, insert, desc) should have the proper dia
 ok 70 - rule_is_on(schema, table, rule, update, desc) should pass
 ok 71 - rule_is_on(schema, table, rule, update, desc) should have the proper description
 ok 72 - rule_is_on(schema, table, rule, update, desc) should have the proper diagnostics
-ok 73 - rule_is_on(schema, table, rule, SELECT, desc) should pass
-ok 74 - rule_is_on(schema, table, rule, SELECT, desc) should have the proper description
-ok 75 - rule_is_on(schema, table, rule, SELECT, desc) should have the proper diagnostics
+ok 73 - rule_is_on(schema, table, rule, insert, desc) should pass
+ok 74 - rule_is_on(schema, table, rule, insert, desc) should have the proper description
+ok 75 - rule_is_on(schema, table, rule, insert, desc) should have the proper diagnostics
 ok 76 - rule_is_on(schema, table, rule, delete, desc) should pass
 ok 77 - rule_is_on(schema, table, rule, delete, desc) should have the proper description
 ok 78 - rule_is_on(schema, table, rule, delete, desc) should have the proper diagnostics
@@ -105,9 +105,9 @@ ok 102 - rule_is_on(table, rule, insert, desc) should have the proper diagnostic
 ok 103 - rule_is_on(table, rule, update, desc) should pass
 ok 104 - rule_is_on(table, rule, update, desc) should have the proper description
 ok 105 - rule_is_on(table, rule, update, desc) should have the proper diagnostics
-ok 106 - rule_is_on(table, rule, SELECT, desc) should pass
-ok 107 - rule_is_on(table, rule, SELECT, desc) should have the proper description
-ok 108 - rule_is_on(table, rule, SELECT, desc) should have the proper diagnostics
+ok 106 - rule_is_on(table, rule, insert, desc) should pass
+ok 107 - rule_is_on(table, rule, insert, desc) should have the proper description
+ok 108 - rule_is_on(table, rule, insert, desc) should have the proper diagnostics
 ok 109 - rule_is_on(table, rule, delete, desc) should pass
 ok 110 - rule_is_on(table, rule, delete, desc) should have the proper description
 ok 111 - rule_is_on(table, rule, delete, desc) should have the proper diagnostics

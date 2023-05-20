@@ -15,8 +15,9 @@ CREATE TABLE public.sometab(
 CREATE RULE ins_me AS ON INSERT TO public.sometab DO NOTHING;
 CREATE RULE upd_me AS ON UPDATE TO public.sometab DO ALSO SELECT now();
 
-CREATE TABLE public.toview ( id INT );
-CREATE RULE "_RETURN" AS ON SELECT TO public.toview DO INSTEAD SELECT 42 AS id;
+CREATE TABLE public.sprockets ( id INT );
+CREATE RULE ins_me AS ON INSERT TO public.sprockets DO INSTEAD NOTHING;
+CREATE RULE del_me AS ON delete TO public.sprockets DO INSTEAD NOTHING;
 
 CREATE TABLE public.widgets (id int);
 CREATE RULE del_me AS ON DELETE TO public.widgets DO NOTHING;
@@ -127,7 +128,7 @@ SELECT * FROM check_test(
 -- Test rule_is_instead().
 
 SELECT * FROM check_test(
-    rule_is_instead( 'public', 'toview', '_RETURN', 'whatever' ),
+    rule_is_instead( 'public', 'sprockets', 'ins_me', 'whatever' ),
     true,
     'rule_is_instead(schema, table, rule, desc)',
     'whatever',
@@ -135,10 +136,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    rule_is_instead( 'public', 'toview', '_RETURN'::name ),
+    rule_is_instead( 'public', 'sprockets', 'ins_me'::name ),
     true,
     'rule_is_instead(schema, table, rule)',
-    'Rule "_RETURN" on relation public.toview should be an INSTEAD rule',
+    'Rule ins_me on relation public.sprockets should be an INSTEAD rule',
     ''
 );
 
@@ -159,7 +160,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    rule_is_instead( 'toview', '_RETURN', 'whatever' ),
+    rule_is_instead( 'sprockets', 'ins_me', 'whatever' ),
     true,
     'rule_is_instead(table, rule, desc)',
     'whatever',
@@ -167,10 +168,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    rule_is_instead( 'toview', '_RETURN'::name ),
+    rule_is_instead( 'sprockets', 'ins_me'::name ),
     true,
     'rule_is_instead(table, rule)',
-    'Rule "_RETURN" on relation toview should be an INSTEAD rule',
+    'Rule ins_me on relation sprockets should be an INSTEAD rule',
     ''
 );
 
@@ -226,9 +227,9 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    rule_is_on( 'public', 'toview', '_RETURN', 'SELECT', 'whatever' ),
+    rule_is_on( 'public', 'sprockets', 'ins_me', 'insert', 'whatever' ),
     true,
-    'rule_is_on(schema, table, rule, SELECT, desc)',
+    'rule_is_on(schema, table, rule, insert, desc)',
     'whatever',
     ''
 );
@@ -315,9 +316,9 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    rule_is_on( 'toview', '_RETURN', 'SELECT', 'whatever' ),
+    rule_is_on( 'sprockets', 'ins_me', 'insert', 'whatever' ),
     true,
-    'rule_is_on(table, rule, SELECT, desc)',
+    'rule_is_on(table, rule, insert, desc)',
     'whatever',
     ''
 );
