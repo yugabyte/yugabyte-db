@@ -213,6 +213,16 @@ Rename a column to the specified name.
 
 Rename a constraint to the specified name.
 
+##### Example
+
+Create a table with a constraint and rename the constraint:
+
+```sql
+CREATE TABLE test(id BIGSERIAL PRIMARY KEY, a TEXT);
+ALTER TABLE test ADD constraint vague_name unique (a);
+ALTER TABLE test RENAME CONSTRAINT vague_name TO unique_a_constraint;
+```
+
 #### ENABLE / DISABLE ROW LEVEL SECURITY
 
 This enables or disables row level security for the table.
