@@ -668,4 +668,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Cooldown after disk resize in aws (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> ybTmpDirectoryPath =
+      new ConfKeyInfo<>(
+          "yb.filepaths.tmpDirectory",
+          ScopeType.GLOBAL,
+          "tmp directory path",
+          "Path to the tmp directory to be used by YBA",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

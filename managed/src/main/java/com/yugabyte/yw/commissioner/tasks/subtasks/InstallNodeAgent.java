@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
@@ -100,8 +101,9 @@ public class InstallNodeAgent extends AbstractTaskBase {
       }
       nodeAgentManager.purge(nodeAgent);
     }
+    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
     NodeAgent nodeAgent = createNodeAgent(universe, node);
-    Path baseTargetDir = Paths.get("/tmp", "node-agent-" + System.currentTimeMillis());
+    Path baseTargetDir = Paths.get(customTmpDirectory, "node-agent-" + System.currentTimeMillis());
     InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, baseTargetDir);
     Set<String> dirs =
         installerFiles.getCreateDirs().stream()
@@ -139,22 +141,32 @@ public class InstallNodeAgent extends AbstractTaskBase {
                       shellContext)
                   .processErrors();
             });
+    Path nodeAgentSourcePath = baseTargetDir.resolve("node-agent");
+    Path nodeAgentInstallerPath = Paths.get(taskParams().nodeAgentHome, "node-agent-installer.sh");
     sb.setLength(0);
-    sb.append("rm -rf /tmp/node-agent-installer.sh /root/node-agent");
+    // Remove existing node agent folder.
+    sb.append("rm -rf ").append(taskParams().nodeAgentHome);
+    // Extract only the installer file.
     sb.append(" && tar -zxf ").append(installerFiles.getPackagePath());
-    sb.append(" --strip-components=3 -C /tmp --wildcards */node-agent-installer.sh");
-    sb.append(" && chmod +x /tmp/node-agent-installer.sh");
-    sb.append(" && mv -f ").append(baseTargetDir).append("/node-agent");
+    sb.append(" --strip-components=3 -C ").append(nodeAgentSourcePath);
+    sb.append(" --wildcards */node-agent-installer.sh");
+    // Move the node-agent source folder to the right location.
+    sb.append(" && mv -f ").append(nodeAgentSourcePath);
     sb.append(" ").append(taskParams().nodeAgentHome);
-    sb.append(" && rm -rf ").append(baseTargetDir);
-    sb.append(" && /tmp/node-agent-installer.sh -c install");
-    sb.append(" --skip_verify_cert --disable_egress");
+    // Give executable permission to the installer script.
+    sb.append(" && chmod +x ").append(nodeAgentInstallerPath);
+    // Run the installer script.
+    sb.append(" && ").append(nodeAgentInstallerPath);
+    sb.append(" -c install --skip_verify_cert --disable_egress");
     sb.append(" --id ").append(nodeAgent.getUuid());
     sb.append(" --customer_id ").append(nodeAgent.getCustomerUuid());
     sb.append(" --cert_dir ").append(installerFiles.getCertDir());
     sb.append(" --node_ip ").append(node.cloudInfo.private_ip);
     sb.append(" --node_port ").append(String.valueOf(taskParams().nodeAgentPort));
+    // Give executable permission to node-agent path.
     sb.append(" && chmod 755 /root ").append(taskParams().nodeAgentHome);
+    // Remove the unused installer script.
+    sb.append(" && rm -rf ").append(nodeAgentInstallerPath);
     String installCommand = sb.toString();
     log.debug("Running node agent installation command: {}", installCommand);
     command = ImmutableList.of("sudo", "-H", "/bin/bash", "-c", installCommand);

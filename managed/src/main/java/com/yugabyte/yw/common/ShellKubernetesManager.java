@@ -30,7 +30,6 @@ import io.fabric8.kubernetes.api.model.events.v1.EventList;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -336,7 +335,8 @@ public class ShellKubernetesManager extends KubernetesManager {
     Yaml yaml = new Yaml();
 
     try {
-      Path tempFile = Files.createTempFile(UUID.randomUUID().toString() + "-namespace", ".yml");
+      Path tempFile =
+          fileHelperService.createTempFile(UUID.randomUUID().toString() + "-namespace", ".yml");
       BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile()));
       yaml.dump(namespace, bw);
       return tempFile.toAbsolutePath().toString();

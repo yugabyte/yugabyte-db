@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -160,14 +161,18 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
   private final ReleaseManager releaseManager;
 
+  private final FileHelperService fileHelperService;
+
   @Inject
   protected KubernetesCommandExecutor(
       BaseTaskDependencies baseTaskDependencies,
       KubernetesManagerFactory kubernetesManagerFactory,
-      ReleaseManager releaseManager) {
+      ReleaseManager releaseManager,
+      FileHelperService fileHelperService) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.releaseManager = releaseManager;
+    this.fileHelperService = fileHelperService;
   }
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
@@ -382,7 +387,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 taskParams().getUniverseUUID(), taskParams().ybcServerName);
         try {
           Path confFilePath =
-              Files.createTempFile(
+              fileHelperService.createTempFile(
                   taskParams().getUniverseUUID().toString() + "_" + taskParams().ybcServerName,
                   ".conf");
           Files.write(
@@ -1144,7 +1149,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     try {
-      Path tempFile = Files.createTempFile(taskParams().getUniverseUUID().toString(), ".yml");
+      Path tempFile =
+          fileHelperService.createTempFile(taskParams().getUniverseUUID().toString(), ".yml");
       try (BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile())); ) {
         yaml.dump(overrides, bw);
         return tempFile.toAbsolutePath().toString();
