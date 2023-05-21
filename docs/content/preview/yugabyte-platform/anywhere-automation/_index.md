@@ -48,22 +48,6 @@ For some REST API commands, you may need one or more of the following account de
     https://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe
     ```
 
-<!--div class="row">
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="managed-apikeys/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/checklist.png" aria-hidden="true" />
-        <div class="title">Manage API keys</div>
-      </div>
-      <div class="body">
-        Create and revoke API keys for authenticating access using automation.
-      </div>
-    </a>
-  </div>
-
-</div> -->
-
 ### Automation
 
 <div class="row">
