@@ -2001,6 +2001,31 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MoveMaster)) {
   }, 15s, "Create table"));
 }
 
+TEST_F(PgMiniTest, PartialHashKeyColumnsProjection) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (k INT, v INT, PRIMARY KEY((k, v) HASH)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
+  ASSERT_OK(conn.Fetch("SELECT k from test"));
+}
+
+TEST_F(PgMiniTest, PartialHashKeyColumnsProjectionWithRangeColumn) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test (k INT, v INT, r INT, PRIMARY KEY((k, v) HASH, r ASC)) SPLIT "
+                   "INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1, 1)"));
+  // Hash columns projection.
+  ASSERT_OK(conn.Fetch("SELECT k from test"));
+  ASSERT_OK(conn.Fetch("SELECT k, v from test"));
+
+  // Range column.
+  ASSERT_OK(conn.Fetch("SELECT r from test"));
+
+  // All columns.
+  ASSERT_OK(conn.Fetch("SELECT k, v, r from test"));
+}
+
 void PgMiniTest::SetupColocatedTableAndRunBenchmark(
     const std::string& create_table_cmd, const std::string& insert_cmd,
     const std::string& select_cmd, int rows, int block_size, int reads, bool compact,

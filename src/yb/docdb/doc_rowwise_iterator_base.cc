@@ -413,7 +413,8 @@ Status DocRowwiseIteratorBase::CopyKeyColumnsToQLTableRow(QLTableRow* row) {
         doc_read_context_.schema, 0, doc_read_context_.schema.num_hash_key_columns(), "hash",
         end_referenced_key_column_index_, &decoder, row));
   }
-  if (!decoder.GroupEnded()) {
+  if (!decoder.GroupEnded() &&
+      end_referenced_key_column_index_ > doc_read_context_.schema.num_hash_key_columns()) {
     RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
         doc_read_context_.schema, doc_read_context_.schema.num_hash_key_columns(),
         doc_read_context_.schema.num_range_key_columns(), "range", end_referenced_key_column_index_,
