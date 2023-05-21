@@ -753,7 +753,7 @@ To create a secure multi-node cluster, ensure you have [generated and copied the
 
 To create a cluster without encryption and authentication, omit the `--secure` flag.
 
-To create the cluster:
+To create the cluster, do the following:
 
 1. Start the first node by running the following command:
 
@@ -763,14 +763,14 @@ To create the cluster:
         --cloud_location=aws.us-east-1.us-east-1a
     ```
 
-1. On macOS, the additional nodes need loopback addresses configured, as follows:
+1. On macOS, configure loopback addresses for the additional nodes as follows:
 
     ```sh
     sudo ifconfig lo0 alias 127.0.0.2
     sudo ifconfig lo0 alias 127.0.0.3
     ```
 
-1. Add two more nodes to the cluster using the `join` option, as follows:
+1. Add two more nodes to the cluster using the `--join` flag, as follows:
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=127.0.0.2 \
@@ -789,7 +789,7 @@ To create the cluster:
 
   {{% tab header="Secure" lang="secure" %}}
 
-To create a secure multi-zone cluster
+To create a secure multi-zone cluster:
 
 1. Start the first node by running the `yugabyted start` command, using the `--secure` flag and passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
 
@@ -811,7 +811,7 @@ To create a secure multi-zone cluster
 
     - Copy the certificates for the third VM from `$HOME/var/generated_certs/<IP_of_VM_3>` in first VM to `$HOME/var/certs` in the third VM.
 
-1. Start the second and the third node on two separate VMs, as follows:
+1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
@@ -841,7 +841,7 @@ To create a multi-zone cluster:
         --fault_tolerance=zone
     ```
 
-1. Start the second and the third node on two separate VMs as follows:
+1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
 
     ```sh
     ./bin/yugabyted start --advertise_address=<host-ip> \
@@ -913,7 +913,7 @@ To create a secure multi-region cluster:
     - Copy the certificates for the second VM from `$HOME/var/generated_certs/<IP_of_VM_2>` in the first VM to `$HOME/var/certs` in the second VM.
     - Copy the certificates for third VM from `$HOME/var/generated_certs/<IP_of_VM_3>` in first VM to `$HOME/var/certs` in the third VM.
 
-1. Start the second and the third node on two separate VMs, as follows:
+1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
@@ -943,7 +943,7 @@ To create a multi-region cluster:
         --fault_tolerance=region
     ```
 
-1. Start the second and the third nodes on two separate VMs as follows:
+1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
 
     ```sh
     ./bin/yugabyted start --advertise_address=<host-ip> \
