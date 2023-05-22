@@ -776,6 +776,26 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(UpdateToNull)) {
   ASSERT_EQ(content, "NULL");
 }
 
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(UpdateToNullWithPK)) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
+  ASSERT_OK(conn.Execute("UPDATE t SET value = NULL WHERE key = 1"));
+
+  DumpDocDB(cluster_.get(), ListPeersFilter::kLeaders);
+  auto value = ASSERT_RESULT(conn.FetchRowAsString("SELECT value FROM t"));
+  ASSERT_EQ(value, "NULL");
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  DumpDocDB(cluster_.get(), ListPeersFilter::kLeaders);
+
+  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT value FROM t"));
+  ASSERT_EQ(value, "NULL");
+}
+
 class TestKVFormatter : public tablet::KVFormatter {
  public:
   std::string Format(
