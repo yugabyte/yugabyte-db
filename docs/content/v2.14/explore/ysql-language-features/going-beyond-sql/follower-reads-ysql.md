@@ -75,7 +75,8 @@ To mark a transaction as read only, a user can do one of the following:
 - `SET TRANSACTION READ ONLY` applies only to the current transaction block.
 - `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` applies the read-only setting to all statements and transaction blocks that follow.
 - `SET default_transaction_read_only = TRUE` applies the read-only setting to all statements and transaction blocks that follow.
-- Use the **pg_hint_plan** mechanism to embed the hint along with the `SELECT` statement. For example, `/*+ Set(transaction_read_only true) */ SELECT ...` applies only to the current `SELECT` statement.
+
+Note: The use of `pg_hint_plan` to mark a statement as read-only is not recommended. It may work in some cases, but relies on side effects and has known issues (see [GH17024](https://github.com/yugabyte/yugabyte-db/issues/17024) and  [GH17135](https://github.com/yugabyte/yugabyte-db/issues/17135)).
 
 ## Examples
 
@@ -109,56 +110,7 @@ SELECT * from t WHERE k='k1';
 (1 row)
 ```
 
-The following examples use follower reads because the **pg_hint_plan** mechanism is used during SELECT, PREPARE, and CREATE FUNCTION to perform follower reads.
-
-{{< note title="Note" >}}
-The pg_hint_plan hint needs to be applied at the prepare/function-definition stage and not at the `execute` stage.
-{{< /note >}}
-
-```sql
-set yb_read_from_followers = true;
-/*+ Set(transaction_read_only on) */
-SELECT * from t WHERE k='k1';
-```
-
-```output
-----+----
- k1 | v1
-(1 row)
-```
-
-```sql
-set yb_read_from_followers = true;
-PREPARE select_stmt(text) AS
-/*+ Set(transaction_read_only on) */
-SELECT * from t WHERE k=$1;
-EXECUTE select_stmt('k1');
-```
-
-```output
- k  | v
-----+----
- k1 | v1
-(1 row)
-```
-
-```sql
-set yb_read_from_followers = true;
-CREATE FUNCTION func() RETURNS text AS
-$$ /*+ Set(transaction_read_only on) */
-SELECT * from t WHERE k=1 $$ LANGUAGE SQL;
-CREATE FUNCTION
-SELECT func();
-```
-
-```output
- k  | v
-----+----
- k1 | v1
-(1 row)
-```
-
-A **join** example that uses follower reads.
+The following is a `JOIN` example that uses follower reads:
 
 ```sql
 create table table1(k int primary key, v int);
