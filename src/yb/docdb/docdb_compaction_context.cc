@@ -228,13 +228,6 @@ class PackedRowData {
       }
     }
 
-    if (!value.empty() && value[0] == ValueEntryTypeAsChar::kTombstone &&
-        new_packing_.table_type == TableType::PGSQL_TABLE_TYPE) {
-      // In a YSQL table, a tombstone for a specific column could be added only during PITR,
-      // and we should just ignore all column updates for it.
-      // Do not forget that we see only most recent entry to specified key.
-      return true;
-    }
     VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
             << tail_size;
     if (new_packing_.keep_write_time() && !control_fields.has_timestamp()) {

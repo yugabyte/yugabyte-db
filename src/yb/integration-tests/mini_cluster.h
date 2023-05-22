@@ -395,6 +395,8 @@ Status WaitForTableIntentsApplied(
 // Multiple calls will result in duplicate logging.
 void ActivateCompactionTimeLogging(MiniCluster* cluster);
 
+void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
+
 }  // namespace yb
 
 #endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */
