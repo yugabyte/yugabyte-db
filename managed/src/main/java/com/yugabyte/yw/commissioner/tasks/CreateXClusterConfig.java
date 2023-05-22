@@ -153,6 +153,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 getTableIds(requestedTableInfoList),
                 requestedTableInfoList,
                 mainTableIndexTablesMap,
+                taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
                 txnTableInfo);
 
     // Replication for tables that do NOT need bootstrapping.
@@ -321,6 +322,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
           Set<String> tableIds,
           List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
           Map<String, List<String>> mainTableIndexTablesMap,
+          Set<String> sourceTableIdsWithNoTableOnTargetUniverse,
           @Nullable MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo) {
     if (requestedTableInfoList.isEmpty()) {
       log.warn("requestedTablesInfoList is empty");
@@ -335,6 +337,10 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       tableIdsToCheckNeedBootstrap.add(getTableId(txnTableInfo));
     }
     checkBootstrapRequiredForReplicationSetup(tableIdsToCheckNeedBootstrap);
+
+    // If a table does not exist on the target universe, bootstrapping will be required for it.
+    xClusterConfig.updateNeedBootstrapForTables(
+        sourceTableIdsWithNoTableOnTargetUniverse, true /* needBootstrap */);
 
     Set<String> tableIdsNeedBootstrap = getTableIdsNeedBootstrap(tableIds);
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>> dbToTableInfoListMap =
