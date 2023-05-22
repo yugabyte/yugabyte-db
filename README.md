@@ -55,7 +55,7 @@ YugabyteDB supports many languages and client drivers, including Java, Go, NodeJ
 
 # What's being worked on?
 
-> This section was last updated in **April, 2023**.
+> This section was last updated in **May, 2023**.
 
 ## Current roadmap
 
