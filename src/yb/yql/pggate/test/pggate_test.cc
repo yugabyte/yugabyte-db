@@ -129,9 +129,11 @@ void PggateTest::TearDown() {
   YBTest::TearDown();
 }
 
-Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
+Status PggateTest::Init(const char *test_name,
+                        int num_tablet_servers,
+                        int replication_factor) {
   // Create cluster before setting client API.
-  RETURN_NOT_OK(CreateCluster(num_tablet_servers));
+  RETURN_NOT_OK(CreateCluster(num_tablet_servers, replication_factor));
 
   // Init PgGate API.
   CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
@@ -168,11 +170,14 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   return Status::OK();
 }
 
-Status PggateTest::CreateCluster(int num_tablet_servers) {
+Status PggateTest::CreateCluster(int num_tablet_servers, int replication_factor) {
   // Start mini-cluster with given number of tservers (default: 3).
   ExternalMiniClusterOptions opts;
   opts.num_tablet_servers = num_tablet_servers;
   opts.data_root_counter = 0;
+  if (replication_factor > 0) {
+    opts.replication_factor = replication_factor;
+  }
   cluster_ = std::make_shared<ExternalMiniCluster>(opts);
   CHECK_OK(cluster_->Start());
 
