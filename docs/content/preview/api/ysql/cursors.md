@@ -112,7 +112,7 @@ Tautologically, then, a _cursor_ is an artifact that (in general, in PostgreSQL)
 - It is defined by its name, its _subquery_ and some other boolean attributes.
 - Its name and its other attributes are listed in the _pg_cursors_ catalog view.
 - It lets you fetch consecutive rows, either one at a time, or in batches whose size you choose, from the result set that its _subquery_ defines.
-- It supports the _move_ SQL statement, and the same-spelled PL/pgSQL statement, to let you specify any row, by its position, within the result set as the current row\*.
+- It supports the _move_ SQL statement, and the same-spelled PL/pgSQL statement, to let you specify any row, by its position, within the result set as the current row.\*
 - It supports the _fetch_ SQL statement, and the same-spelled PL/pgSQL statement, that, in one variant, lets you fetch the row at the current position or a row at any other position relative to the current position (_either_ ahead of it _or_ behind\* it).
 - It supports another variant of the _fetch_ statement (but here only in SQL) that lets you fetch  a specified number of rows _either_ forward from and including the row immediately after the current position _or_ backward\* from and including the row immediately before the current position.
 
@@ -346,7 +346,7 @@ Notice that your choice with the _move_[\*](#beware-issue-6514) statement, to ch
 
 <a name="specify-no-scroll-or-scroll-explicitly"></a>
 {{< tip title="Always specify either 'no scroll' or 'scroll' explicitly." >}}
-If you specify neither _no scroll_ nor _scroll_ when you create a _cursor_, then you don't get an error. However, the outcome is that sometimes _backwards_ movement in the result set is allowed, and sometimes it causes the _55000_ error: _cursor can only scan forward_[\*](#beware-issue-6514).
+If you specify neither _no scroll_ nor _scroll_ when you create a _cursor_, then you don't get an error. However, the outcome is that sometimes _backwards_ movement in the result set is allowed, and sometimes it causes the _55000_ error: _cursor can only scan forward_.[\*](#beware-issue-6514)
 
 Yugabyte recommends that you always specify your scrollability choice explicitly to honor the requirements that you must meet. Notice that while [Issue #6514](https://github.com/yugabyte/yugabyte-db/issues/6514) remains open, your only viable choice is _no scroll_.
 {{< /tip >}}
@@ -388,7 +388,7 @@ This runs without error and produces these results, as expected:
 
   - But if the plan can be executed only in the forward direction, then the result set must be cached if you specify _scroll_ when you create the cursor.
 
-PostgreSQL, and therefore YSQL, do not expose metadata to report whether or not a _cursor_'s result set is cached. Nor does the documentation for either RDBMS attempt to specify the rules that determine whether caching will be done. However, it's possible to reason, about certain specific _select_ statements, that their plans cannot be executed backward. For example the plan for a query that includes _row_number()_ in the _select_ list cannot be run backward because the semantics of _row_number()_ is to assign an incrementing rank to each new row in the result set as it is produced when the plan is executed in the forward direction—and the planner cannot predict how many rows will be produced to allow _row_number()_ to be calculated by decrementing from this for each successive row when the plan is run backward. If the _select_ statement has no _order by_, then the rows are produced in _physical order_ (i.e. in an order that's determined by how the table data is stored.)
+PostgreSQL, and therefore YSQL, do not expose metadata to report whether or not a _cursor_'s result set is cached. Nor does the documentation for either RDBMS attempt to specify the rules that determine whether caching will be done. However, it's possible to reason, about certain specific _select_ statements, that their plans cannot be executed backward. For example the plan for a query that includes _row_number()_ in the _select_ list cannot be run backward because the semantics of _row_number()_ is to assign an incrementing rank to each new row in the result set as it is produced when the plan is executed in the forward direction—and the planner cannot predict how many rows will be produced to allow _row_number()_ to be calculated by decrementing from this for each successive row when the plan is run backward. If the _select_ statement has no _order by_, then the rows are produced in _physical order_ (i.e. in an order that's determined by how the table data is stored).
 
 <a name="physical-order-cannot-be-predicted"></a>
 {{< note title="The physical order cannot be predicted." >}}
