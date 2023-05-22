@@ -883,7 +883,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @return A list of {@link MasterDdlOuterClass.ListTablesResponsePB.TableInfo} containing table
    *     info of the tables whose id is specified at {@code requestedTableIds}
    */
-  public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
+  // Todo: Break down this method.
+  public static Pair<List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>, Set<String>>
       getRequestedTableInfoListAndVerify(
           YBClientService ybService,
           Set<String> requestedTableIds,
@@ -969,6 +970,31 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     Map<String, String> sourceTableIdTargetTableIdMap =
         getSourceTableIdTargetTableIdMap(requestedTableInfoList, targetTablesInfoList);
 
+    // If some tables do not exist on the target universe, bootstrapping is required.
+    Set<String> sourceTableIdsWithNoTableOnTargetUniverse =
+        sourceTableIdTargetTableIdMap.entrySet().stream()
+            .filter(entry -> Objects.isNull(entry.getValue()))
+            .map(Entry::getKey)
+            .collect(Collectors.toSet());
+    if (!sourceTableIdsWithNoTableOnTargetUniverse.isEmpty()) {
+      if (Objects.isNull(bootstrapParams)) {
+        throw new IllegalArgumentException(
+            String.format(
+                "Table ids %s do not have corresponding tables on the target universe and "
+                    + "they must be bootstrapped but bootstrapParams is null",
+                sourceTableIdsWithNoTableOnTargetUniverse));
+      }
+      if (Objects.isNull(bootstrapParams.tables)
+          || !bootstrapParams.tables.containsAll(sourceTableIdsWithNoTableOnTargetUniverse)) {
+        throw new IllegalArgumentException(
+            String.format(
+                "Table ids %s do not have corresponding tables on the target universe and "
+                    + "they must be bootstrapped but the set of tables in bootstrapParams (%s) "
+                    + "does not contain all of them",
+                sourceTableIdsWithNoTableOnTargetUniverse, bootstrapParams.tables));
+      }
+    }
+
     if (bootstrapParams != null && bootstrapParams.tables != null) {
       // Ensure tables in bootstrapParams is a subset of requestedTableIds.
       if (!requestedTableIds.containsAll(bootstrapParams.tables)) {
@@ -985,7 +1011,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       Map<String, String> sourceTableIdTargetTableIdWithBootstrapMap =
           sourceTableIdTargetTableIdMap.entrySet().stream()
               .filter(entry -> bootstrapParams.tables.contains(entry.getKey()))
-              .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+              .collect(
+                  HashMap::new,
+                  (map, entry) -> map.put(entry.getKey(), entry.getValue()),
+                  HashMap::putAll);
       bootstrapParams.tables =
           getTableIdsWithoutTablesOnTargetInReplication(
               ybService,
@@ -1059,7 +1088,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
 
     log.debug("requestedTableInfoList is {}", requestedTableInfoList);
-    return requestedTableInfoList;
+    log.debug(
+        "sourceTableIdsWithNoTableOnTargetUniverse is {}",
+        sourceTableIdsWithNoTableOnTargetUniverse);
+    return new Pair<>(requestedTableInfoList, sourceTableIdsWithNoTableOnTargetUniverse);
   }
 
   private static Set<String> getTableIdsInReplicationOnTargetUniverse(
@@ -1072,12 +1104,11 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     List<XClusterConfig> xClusterConfigsAsSource =
         XClusterConfig.getBySourceUniverseUUID(targetUniverse.getUniverseUUID());
     xClusterConfigsAsSource.forEach(
-        xClusterConfig -> {
-          tableIdsInReplicationOnTargetUniverse.addAll(
-              xClusterConfig.getTableIds().stream()
-                  .filter(tableIds::contains)
-                  .collect(Collectors.toSet()));
-        });
+        xClusterConfig ->
+            tableIdsInReplicationOnTargetUniverse.addAll(
+                xClusterConfig.getTableIds().stream()
+                    .filter(tableIds::contains)
+                    .collect(Collectors.toSet())));
     // In replication as target.
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
@@ -1159,22 +1190,28 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                       schemaNameTableInfoListOnTargetMap =
                           groupByPgSchemaName(tableInfoListOnTarget);
                   schemaNameTableInfoListOnSourceMap.forEach(
-                      (schemaName, TableInfoListInSchemaOnSource) -> {
+                      (schemaName, tableInfoListInSchemaOnSource) -> {
                         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
                             tableInfoListInSchemaOnTarget =
                                 schemaNameTableInfoListOnTargetMap.get(schemaName);
                         if (tableInfoListInSchemaOnTarget != null) {
                           Pair<Map<String, String>, Set<String>> tableIdMapNotFoundTableIdsSetPair =
                               getSourceTableIdTargetTableIdMapUnique(
-                                  TableInfoListInSchemaOnSource, tableInfoListInSchemaOnTarget);
+                                  tableInfoListInSchemaOnSource, tableInfoListInSchemaOnTarget);
                           sourceTableIdTargetTableIdMap.putAll(
                               tableIdMapNotFoundTableIdsSetPair.getFirst());
+                          tableIdMapNotFoundTableIdsSetPair
+                              .getSecond()
+                              .forEach(
+                                  sourceTableId ->
+                                      sourceTableIdTargetTableIdMap.put(sourceTableId, null));
                           notFoundTables.addAll(tableIdMapNotFoundTableIdsSetPair.getSecond());
                         } else {
-                          notFoundTables.addAll(
-                              TableInfoListInSchemaOnSource.stream()
-                                  .map(tableInfo -> tableInfo.getId().toStringUtf8())
-                                  .collect(Collectors.toSet()));
+                          tableInfoListInSchemaOnSource.forEach(
+                              sourceTableInfo ->
+                                  sourceTableIdTargetTableIdMap.put(
+                                      getTableId(sourceTableInfo), null));
+                          notFoundTables.addAll(getTableIds(tableInfoListInSchemaOnSource));
                         }
                       });
                 } else {
@@ -1183,18 +1220,25 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                           tableInfoListOnSource, tableInfoListOnTarget);
                   sourceTableIdTargetTableIdMap.putAll(
                       tableIdMapNotFoundTableIdsSetPair.getFirst());
+                  tableIdMapNotFoundTableIdsSetPair
+                      .getSecond()
+                      .forEach(
+                          sourceTableId -> sourceTableIdTargetTableIdMap.put(sourceTableId, null));
                   notFoundTables.addAll(tableIdMapNotFoundTableIdsSetPair.getSecond());
                 }
               } else {
+                tableInfoListOnSource.forEach(
+                    sourceTableInfo ->
+                        sourceTableIdTargetTableIdMap.put(getTableId(sourceTableInfo), null));
                 notFoundNamespaces.add(namespaceName);
               }
             });
     if (!notFoundNamespaces.isEmpty() || !notFoundTables.isEmpty()) {
-      throw new IllegalStateException(
-          String.format(
-              "Not found namespaces on the target universe: %s, not found tables on the "
-                  + "target universe: %s",
-              notFoundNamespaces, notFoundTables));
+      log.warn(
+          "Not found namespaces on the target universe: {}, not found tables on the "
+              + "target universe: {}",
+          notFoundNamespaces,
+          notFoundTables);
     }
     log.debug("sourceTableIdTargetTableIdMap is {}", sourceTableIdTargetTableIdMap);
     return sourceTableIdTargetTableIdMap;

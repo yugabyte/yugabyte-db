@@ -245,15 +245,20 @@ public class XClusterConfigController extends AuthenticatedController {
         mainTableIndexTablesMap.values().stream().flatMap(List::stream).collect(Collectors.toSet());
     createFormData.tables.addAll(indexTableIdSet);
 
+    Pair<List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>, Set<String>>
+        requestedTableInfoList_sourceTableIdsWithNoTableOnTargetUniverse =
+            XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
+                this.ybService,
+                createFormData.tables,
+                createFormData.bootstrapParams,
+                sourceUniverse,
+                targetUniverse,
+                null /* currentReplicationGroupName */,
+                createFormData.configType);
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-        XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            this.ybService,
-            createFormData.tables,
-            createFormData.bootstrapParams,
-            sourceUniverse,
-            targetUniverse,
-            null /* currentReplicationGroupName */,
-            createFormData.configType);
+        requestedTableInfoList_sourceTableIdsWithNoTableOnTargetUniverse.getFirst();
+    Set<String> sourceTableIdsWithNoTableOnTargetUniverse =
+        requestedTableInfoList_sourceTableIdsWithNoTableOnTargetUniverse.getSecond();
 
     // PITR must be configured for the DBs in case of txn.
     if (createFormData.configType.equals(ConfigType.Txn)) {
@@ -296,7 +301,8 @@ public class XClusterConfigController extends AuthenticatedController {
             xClusterConfig,
             createFormData.bootstrapParams,
             requestedTableInfoList,
-            mainTableIndexTablesMap);
+            mainTableIndexTablesMap,
+            sourceTableIdsWithNoTableOnTargetUniverse);
     UUID taskUUID = commissioner.submit(TaskType.CreateXClusterConfig, taskParams);
     CustomerTask.create(
         customer,
@@ -497,15 +503,18 @@ public class XClusterConfigController extends AuthenticatedController {
             xClusterConfig.getSourceUniverseUUID(),
             xClusterConfig.getTargetUniverseUUID());
 
+        Pair<List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>, Set<String>>
+            requestedTableInfoList_sourceTableIdsWithNoTableOnTargetUniverse =
+                XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
+                    this.ybService,
+                    allTableIds,
+                    editFormData.bootstrapParams,
+                    sourceUniverse,
+                    targetUniverse,
+                    xClusterConfig.getReplicationGroupName(),
+                    xClusterConfig.getType());
         requestedTableToAddInfoList =
-            XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-                this.ybService,
-                allTableIds,
-                editFormData.bootstrapParams,
-                sourceUniverse,
-                targetUniverse,
-                xClusterConfig.getReplicationGroupName(),
-                xClusterConfig.getType());
+            requestedTableInfoList_sourceTableIdsWithNoTableOnTargetUniverse.getFirst();
 
         CommonTypes.TableType tableType = requestedTableToAddInfoList.get(0).getTableType();
         if (!xClusterConfig.getTableType().equals(XClusterConfig.TableType.UNKNOWN)) {
@@ -666,15 +675,20 @@ public class XClusterConfigController extends AuthenticatedController {
       bootstrapParams.tables = tableIds;
     }
 
+    Pair<List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>, Set<String>>
+        requestedTableInfoList_sourceTableIdsWithNoTableOnTargetUniverse =
+            XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
+                this.ybService,
+                tableIds,
+                bootstrapParams,
+                sourceUniverse,
+                targetUniverse,
+                xClusterConfig.getReplicationGroupName(),
+                xClusterConfig.getType());
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-        XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            this.ybService,
-            tableIds,
-            bootstrapParams,
-            sourceUniverse,
-            targetUniverse,
-            xClusterConfig.getReplicationGroupName(),
-            xClusterConfig.getType());
+        requestedTableInfoList_sourceTableIdsWithNoTableOnTargetUniverse.getFirst();
+    Set<String> sourceTableIdsWithNoTableOnTargetUniverse =
+        requestedTableInfoList_sourceTableIdsWithNoTableOnTargetUniverse.getSecond();
 
     if (restartFormData.dryRun) {
       return YBPSuccess.withMessage("The pre-checks are successful");
@@ -687,6 +701,7 @@ public class XClusterConfigController extends AuthenticatedController {
             bootstrapParams,
             requestedTableInfoList,
             mainTableIndexTablesMap,
+            sourceTableIdsWithNoTableOnTargetUniverse,
             isForceDelete);
     UUID taskUUID = commissioner.submit(TaskType.RestartXClusterConfig, params);
     CustomerTask.create(
