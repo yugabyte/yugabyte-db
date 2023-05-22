@@ -29,6 +29,7 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -38,6 +39,7 @@
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
+#include "yb/yql/cql/cqlserver/statement_metrics.h"
 #include "yb/yql/cql/cqlserver/system_query_cache.h"
 #include "yb/yql/cql/ql/parser/parser.h"
 #include "yb/util/flags.h"
@@ -63,6 +65,8 @@ DEFINE_UNKNOWN_int64(cql_processors_limit, -4000,
 DEFINE_UNKNOWN_bool(cql_check_table_schema_in_paging_state, true,
             "Return error for prepared SELECT statement execution if the table was altered "
             "during the prepared statement execution.");
+DEFINE_RUNTIME_int64(cql_dump_statement_metrics_limit, 5000,
+            "Limit the number of statements that are dumped at the /statements endpoint.");
 
 namespace yb {
 namespace cqlserver {
@@ -423,6 +427,32 @@ server::Clock* CQLServiceImpl::clock() {
 
 void CQLServiceImpl::FillEndpoints(const rpc::RpcServicePtr& service, rpc::RpcEndpointMap* map) {
   map->emplace(CQLInboundCall::static_serialized_remote_method(), std::make_pair(service, 0ULL));
+}
+
+void CQLServiceImpl::DumpStatementMetricsAsJson(JsonWriter* jw) {
+  std::vector<shared_ptr<StatementMetrics>> metrics;
+  GetPreparedStatementMetrics(&metrics);
+  jw->StartObject();
+  jw->String("prepared_statements");
+  jw->StartArray();
+  for (auto const & metric : metrics) {
+    metric->WriteAsJson(jw);
+  }
+  jw->EndArray();
+  jw->EndObject();
+}
+
+void CQLServiceImpl::GetPreparedStatementMetrics(
+    std::vector<std::shared_ptr<StatementMetrics>>* metrics) {
+  auto const statement_limit = FLAGS_cql_dump_statement_metrics_limit;
+  int64_t num_statements = 0;
+  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  for (auto stmt : prepared_stmts_map_) {
+    metrics->push_back(std::make_shared<StatementMetrics>(stmt.second->text(), stmt.first));
+    if (++num_statements >= statement_limit) {
+      break;
+    }
+  }
 }
 
 }  // namespace cqlserver
