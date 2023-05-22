@@ -240,7 +240,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             xClusterConfig,
             createFormData.bootstrapParams,
             requestedTableInfoList,
-            Collections.emptyMap());
+            Collections.emptyMap(),
+            Collections.emptySet());
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateXClusterConfig, taskParams);
 
@@ -386,13 +387,14 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            createFormData.tables,
-            createFormData.bootstrapParams,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                createFormData.tables,
+                createFormData.bootstrapParams,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
@@ -430,13 +432,14 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            createFormData.tables,
-            createFormData.bootstrapParams,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                createFormData.tables,
+                createFormData.bootstrapParams,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
@@ -477,13 +480,14 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            createFormData.tables,
-            createFormData.bootstrapParams,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                createFormData.tables,
+                createFormData.bootstrapParams,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
@@ -528,13 +532,14 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            createFormData.tables,
-            createFormData.bootstrapParams,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                createFormData.tables,
+                createFormData.bootstrapParams,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
