@@ -34,6 +34,8 @@
 
 namespace yb {
 
+class JsonWriter;
+
 namespace cqlserver {
 
 extern const char* const kRoleColumnNameSaltedHash;
@@ -42,6 +44,7 @@ extern const char* const kRoleColumnNameCanLogin;
 class CQLMetrics;
 class CQLProcessor;
 class CQLServer;
+class StatementMetrics;
 
 class CQLServiceImpl : public CQLServerServiceIf,
                        public GarbageCollector,
@@ -114,6 +117,11 @@ class CQLServiceImpl : public CQLServerServiceIf,
   server::Clock* clock();
 
   std::shared_ptr<SystemQueryCache> system_cache() { return system_cache_; }
+
+  void DumpStatementMetricsAsJson(JsonWriter* jw);
+
+  // Get the list of prepared statements and metrics in an inmemory vector.
+  void GetPreparedStatementMetrics(std::vector<std::shared_ptr<StatementMetrics>>* metrics);
 
  private:
   constexpr static int kRpcTimeoutSec = 5;

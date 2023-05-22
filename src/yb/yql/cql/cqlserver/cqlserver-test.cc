@@ -26,6 +26,7 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/result.h"
@@ -33,15 +34,19 @@
 #include "yb/util/test_util.h"
 
 #include "yb/yql/cql/cqlserver/cql_server.h"
+#include "yb/yql/cql/cqlserver/cql_service.h"
+#include "yb/yql/cql/cqlserver/statement_metrics.h"
 
 DECLARE_bool(cql_server_always_send_events);
 DECLARE_bool(use_cassandra_authentication);
+DECLARE_int64(cql_dump_statement_metrics_limit);
 
 namespace yb {
 namespace cqlserver {
 
 using namespace yb::ql; // NOLINT
 using std::string;
+using std::shared_ptr;
 using std::unique_ptr;
 using strings::Substitute;
 using yb::integration_tests::YBTableTestBase;
@@ -58,14 +63,19 @@ class TestCQLService : public YBTableTestBase {
 
   void SendRequestAndExpectResponse(const string& cmd, const string& expected_resp);
 
+  Endpoint GetWebServerAddress();
+
   int server_port() { return cql_server_port_; }
+
+  shared_ptr<CQLServer> server() { return server_; }
+
  private:
   Status SendRequestAndGetResponse(
       const string& cmd, size_t expected_resp_length, int timeout_in_millis = 60000);
 
   Socket client_sock_;
   unique_ptr<boost::asio::io_service> io_;
-  unique_ptr<CQLServer> server_;
+  shared_ptr<CQLServer> server_;
   int cql_server_port_ = 0;
   unique_ptr<FileLock> cql_port_lock_;
   unique_ptr<FileLock> cql_webserver_lock_;
@@ -167,6 +177,13 @@ void TestCQLService::SendRequestAndExpectResponse(const string& cmd, const strin
 
   // Verify that the response is as expected.
   CHECK_EQ(expected_resp, resp);
+}
+
+Endpoint TestCQLService::GetWebServerAddress() {
+  std::vector<Endpoint> addrs;
+  CHECK_OK(server_->web_server()->GetBoundAddresses(&addrs));
+  CHECK_EQ(addrs.size(), 1);
+  return addrs[0];
 }
 
 // The following test cases test the CQL protocol marshalling/unmarshalling with hand-coded
@@ -568,6 +585,43 @@ TEST_F(TestCQLServiceWithCassAuth, TestReadSystemTableAuthenticated) {
                     "\x00\x0d"             // type id: 0x000D = Varchar
                     "\x00\x00\x00\x01"     // row count
                     "\x00\x00\x00\x05" "local"));
+}
+
+TEST_F(TestCQLService, TestCQLStatementEndpoint) {
+  shared_ptr<CQLServiceImpl> cql_service = server()->TEST_cql_service();
+  faststring buf;
+  EasyCurl curl;
+  QLEnv ql_env(cql_service->client(),
+               cql_service->metadata_cache(),
+               cql_service->clock(),
+               std::bind(&CQLServiceImpl::TransactionPool, cql_service));
+
+  cql_service->AllocatePreparedStatement("dummyqueryid", "dummyquery", &ql_env);
+
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
+                                               ToString(GetWebServerAddress())), &buf));
+  string result = buf.ToString();
+  ASSERT_STR_CONTAINS(result, "prepared_statements");
+  ASSERT_STR_CONTAINS(result, "dummyquery");
+  ASSERT_STR_CONTAINS(result, b2a_hex("dummyqueryid"));
+}
+
+TEST_F(TestCQLService, TestCQLDumpStatementLimit) {
+  FLAGS_cql_dump_statement_metrics_limit = 1;
+  shared_ptr<CQLServiceImpl> cql_service = server()->TEST_cql_service();
+  std::vector<shared_ptr<StatementMetrics>> metrics;
+  QLEnv ql_env(cql_service->client(),
+             cql_service->metadata_cache(),
+             cql_service->clock(),
+             std::bind(&CQLServiceImpl::TransactionPool, cql_service));
+  // Create two prepared statements.
+  cql_service->AllocatePreparedStatement("dummyqueryid1", "dummyquery1", &ql_env);
+  cql_service->AllocatePreparedStatement("dummyqueryid2", "dummyquery2", &ql_env);
+  // Dump should only return one prepared statement.
+  cql_service->GetPreparedStatementMetrics(&metrics);
+  ASSERT_EQ(1, metrics.size());
+  ASSERT_TRUE(metrics[0]->query_id() == "dummyqueryid1"
+    ||  metrics[0]->query_id() == "dummyqueryid2");
 }
 
 }  // namespace cqlserver
