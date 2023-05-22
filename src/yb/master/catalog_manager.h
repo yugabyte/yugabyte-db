@@ -2760,6 +2760,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       EXCLUDES(mutex_);
 
   // Schedule AddTableToXClusterTask if needed. Returns true if task is needed and false otherwise.
+  // Write lock is required on the table.
   bool ScheduleAddTableToXClusterTaskIfNeeded(TableInfoPtr table_info, const SysTablesEntryPB& pb)
       EXCLUDES(mutex_);
 
