@@ -1337,8 +1337,6 @@ Status CatalogManager::VisitSysCatalog(int64_t term, SysCatalogLoadingState* sta
     }
   }  // Exclusive mutex_ scope.
 
-  ScheduleAddTableToXClusterTaskForAllTables();
-
   return Status::OK();
 }
 
@@ -13181,6 +13179,7 @@ void CatalogManager::SysCatalogLoaded(int64_t term, const SysCatalogLoadingState
   StartXClusterSafeTimeServiceIfStopped();
   StartPostLoadTasks(state);
   snapshot_coordinator_.SysCatalogLoaded(term);
+  ScheduleAddTableToXClusterTaskForAllTables();
 }
 
 Status CatalogManager::UpdateLastFullCompactionRequestTime(const TableId& table_id) {
@@ -13291,11 +13290,16 @@ void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
 
 bool CatalogManager::ScheduleAddTableToXClusterTaskIfNeeded(
     TableInfoPtr table_info, const SysTablesEntryPB& pb) {
+  DCHECK(table_info->mutable_metadata()->is_dirty());
+  if (table_info->HasTasks(server::MonitoredTaskType::kAddTableToXClusterReplication)) {
+    // Task already scheduled.
+    return true;
+  }
+
   if (!ShouldAddTableToXClusterReplication(*table_info, pb)) {
     return false;
   }
 
-  DCHECK(!table_info->HasTasks(server::MonitoredTaskType::kAddTableToXClusterReplication));
   VLOG(1) << "Scheduling AddTableToXClusterTask for " << table_info->id();
   auto call = std::make_shared<AddTableToXClusterTask>(this, table_info);
   table_info->AddTask(call);
@@ -13360,7 +13364,9 @@ void CatalogManager::ScheduleAddTableToXClusterTaskForAllTables() {
     auto& table_info = *table_info_result;
     auto l = table_info->LockForRead();
     if (l->IsPreparing() && table_info->AreAllTabletsRunning()) {
-      ScheduleAddTableToXClusterTaskIfNeeded(table_info, l->pb);
+      l.Unlock();
+      auto wl = table_info->LockForWrite();
+      ScheduleAddTableToXClusterTaskIfNeeded(table_info, wl.mutable_data()->pb);
     }
   }
 }
