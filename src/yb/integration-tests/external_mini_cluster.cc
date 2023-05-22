@@ -369,7 +369,8 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   CHECK(tablet_servers_.empty()) << "Tablet servers are not empty (size: "
       << tablet_servers_.size() << "). Maybe you meant Restart()?";
   RETURN_NOT_OK(HandleOptions());
-  FLAGS_replication_factor = narrow_cast<int>(opts_.num_masters);
+  FLAGS_replication_factor =
+    opts_.replication_factor > 0 ? opts_.replication_factor : narrow_cast<int>(opts_.num_masters);
 
   if (messenger == nullptr) {
     rpc::MessengerBuilder builder("minicluster-messenger");
@@ -1228,6 +1229,9 @@ Status ExternalMiniCluster::StartMasters() {
   // Disable WAL fsync for tests
   flags.push_back("--durable_wal_write=false");
   flags.push_back("--enable_leader_failure_detection=true");
+  if (opts_.replication_factor > 0) {
+    flags.push_back(Format("--replication_factor=$0", opts_.replication_factor));
+  }
   // Limit number of transaction table tablets to help avoid timeouts.
   int num_transaction_table_tablets = NumTabletsPerTransactionTable(opts_);
   flags.push_back(Format("--transaction_table_num_tablets=$0", num_transaction_table_tablets));
