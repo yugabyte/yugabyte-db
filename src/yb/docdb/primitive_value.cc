@@ -1641,6 +1641,11 @@ float PrimitiveValue::GetFloat() const {
   return float_val_;
 }
 
+bool PrimitiveValue::GetBoolean() const {
+  DCHECK(type_ == ValueEntryType::kTrue || type_ == ValueEntryType::kFalse);
+  return type_ == ValueEntryType::kTrue ? true : false;
+}
+
 const std::string& PrimitiveValue::GetDecimal() const {
   DCHECK_EQ(ValueEntryType::kDecimal, type_);
   return str_val_;
