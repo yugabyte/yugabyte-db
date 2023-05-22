@@ -11,12 +11,12 @@ type: docs
 ---
 
 {{< warning title="YSQL currently supports only fetching rows from a cursor consecutively in the forward direction." >}}
-See the subsection [Beware Issue #6514](../../../cursors/#beware-issue-6514) in the generic section [Cursors](../../../cursors/).
+See the subsection [Beware Issue #6514](../../../cursors/#beware-issue-6514) in the generic section [Cursors](../../../cursors/). In particular, every `MOVE` variant causes the _0A000_ with a message like "MOVE not supported yet".
 {{< /warning >}}
 
 ## Synopsis
 
-Use the `MOVE` statement to change the position of the current row in a _[cursor](../../../cursors/)_. The `MOVE` statement is used jointly with the [`DECLARE`](../dml_declare), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements.
+Use the `MOVE` statement to change the position of the current row in a _cursor_. See the generic section [Cursors](../../../cursors/). The `MOVE` statement is used jointly with the [`DECLARE`](../dml_declare), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements.
 
 ## Syntax
 

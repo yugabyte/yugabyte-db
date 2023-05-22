@@ -16,7 +16,7 @@ See the subsection [Beware Issue #6514](../../../cursors/#beware-issue-6514) in 
 
 ## Synopsis
 
-Use the `CLOSE` statement to "drop" a _[cursor](../../../cursors/)_. The `CLOSE` statement is used jointly with the [`DECLARE`](../dml_declare), [`MOVE`](../dml_move), and [`FETCH`](../dml_fetch) statements.
+Use the `CLOSE` statement to "drop" a _cursor_. See the generic section [Cursors](../../../cursors/). The `CLOSE` statement is used jointly with the [`DECLARE`](../dml_declare), [`MOVE`](../dml_move), and [`FETCH`](../dml_fetch) statements.
 
 ## Syntax
 
