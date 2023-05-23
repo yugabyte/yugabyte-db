@@ -57,6 +57,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP AGGREGATE`](ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP CAST`](ddl_drop_cast) | Delete a cast |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
+| [`DROP SCHEMA`](ddl_drop_schema) | Delete a schema from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP EXTENSION`](ddl_drop_extension) | Delete an extension |
 | [`DROP FOREIGN DATA WRAPPER`](ddl_drop_foreign_data_wrapper) | Drop a foreign-data wrapper |
