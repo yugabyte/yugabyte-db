@@ -372,7 +372,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.start_master_on_stop_node",
           ScopeType.GLOBAL,
           "Start Master On Stop Node",
-          "TODO",
+          "Auto-start master process on a similar available node on stopping a master node",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> startMasterOnRemoveNode =
+      new ConfKeyInfo<>(
+          "yb.start_master_on_remove_node",
+          ScopeType.GLOBAL,
+          "Start Master On Remove Node",
+          "Auto-start master process on a similar available node on removal of a master node",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Boolean> useLdap =
