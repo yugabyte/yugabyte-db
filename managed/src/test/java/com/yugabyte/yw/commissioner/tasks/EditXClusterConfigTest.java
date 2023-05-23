@@ -795,13 +795,14 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            Collections.singleton(exampleTableID3),
-            null,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                Collections.singleton(exampleTableID3),
+                null,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
@@ -859,13 +860,14 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            Collections.singleton(exampleTableID3),
-            null,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                Collections.singleton(exampleTableID3),
+                null,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
@@ -921,13 +923,14 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            Collections.singleton(exampleTableID3),
-            null,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                Collections.singleton(exampleTableID3),
+                null,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
@@ -999,13 +1002,14 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            Collections.singleton(exampleTableID3),
-            null,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                Collections.singleton(exampleTableID3),
+                null,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
@@ -1218,13 +1222,14 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            Collections.singleton(exampleTableID3),
-            null,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                Collections.singleton(exampleTableID3),
+                null,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
@@ -1290,13 +1295,14 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            Collections.singleton(exampleTableID3),
-            null,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                Collections.singleton(exampleTableID3),
+                null,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;

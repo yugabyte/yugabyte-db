@@ -96,13 +96,10 @@ import play.Environment;
  */
 @Slf4j
 public class Module extends AbstractModule {
-
-  private final Environment environment;
   private final Config config;
   private final String[] TLD_OVERRIDE = {"local"};
 
   public Module(Environment environment, Config config) {
-    this.environment = environment;
     this.config = config;
   }
 

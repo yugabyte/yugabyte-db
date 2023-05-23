@@ -48,6 +48,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
@@ -1540,21 +1541,34 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
-   * It is the same as {@link AsyncYBClient#setupUniverseReplication(String, Map, Set)}
+   * It is the same as {@link AsyncYBClient#setupUniverseReplication(String, Map, Set, Boolean)}
    * except that it is synchronous.
    *
-   * @see AsyncYBClient#setupUniverseReplication(String, Map, Set)
+   * @see AsyncYBClient#setupUniverseReplication(String, Map, Set, Boolean)
    */
   public SetupUniverseReplicationResponse setupUniverseReplication(
     String replicationGroupName,
     Map<String, String> sourceTableIdsBootstrapIdMap,
-    Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
+    Set<CommonNet.HostPortPB> sourceMasterAddresses,
+    @Nullable Boolean isTransactional) throws Exception {
     Deferred<SetupUniverseReplicationResponse> d =
       asyncClient.setupUniverseReplication(
         replicationGroupName,
         sourceTableIdsBootstrapIdMap,
-        sourceMasterAddresses);
+        sourceMasterAddresses,
+        isTransactional);
     return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetupUniverseReplicationResponse setupUniverseReplication(
+    String replicationGroupName,
+    Map<String, String> sourceTableIdsBootstrapIdMap,
+    Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
+    return setupUniverseReplication(
+      replicationGroupName,
+      sourceTableIdsBootstrapIdMap,
+      sourceMasterAddresses,
+      null /* isTransactional */);
   }
 
   public IsSetupUniverseReplicationDoneResponse isSetupUniverseReplicationDone(

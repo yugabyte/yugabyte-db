@@ -69,7 +69,7 @@ import play.libs.Json;
 public class CommonUtils {
 
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
-  public static final String DEFAULT_YBC_DIR = "/tmp/yugabyte";
+  public static final String DEFAULT_YBC_DIR = "%s/yugabyte";
 
   private static final Pattern RELEASE_REGEX =
       Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+).*$");

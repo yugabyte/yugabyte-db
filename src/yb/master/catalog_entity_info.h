@@ -1214,10 +1214,11 @@ struct PersistentUniverseReplicationInfo :
 class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationInfo>,
                                 public MetadataCowWrapper<PersistentUniverseReplicationInfo> {
  public:
-  explicit UniverseReplicationInfo(std::string producer_id)
-      : producer_id_(std::move(producer_id)) {}
+  explicit UniverseReplicationInfo(cdc::ReplicationGroupId replication_group_id)
+      : replication_group_id_(std::move(replication_group_id)) {}
 
-  const std::string& id() const override { return producer_id_; }
+  const std::string& id() const override { return replication_group_id_.ToString(); }
+  const cdc::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
 
   std::string ToString() const override;
 
@@ -1252,7 +1253,7 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;
   ~UniverseReplicationInfo() = default;
 
-  const std::string producer_id_;
+  const cdc::ReplicationGroupId replication_group_id_;
 
   std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks_;
   std::string master_addrs_;

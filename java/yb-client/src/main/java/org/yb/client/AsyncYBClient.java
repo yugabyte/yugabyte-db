@@ -103,6 +103,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -1066,14 +1067,16 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<SetupUniverseReplicationResponse> setupUniverseReplication(
     String replicationGroupName,
     Map<String, String> sourceTableIdsBootstrapIdMap,
-    Set<CommonNet.HostPortPB> sourceMasterAddresses) {
+    Set<CommonNet.HostPortPB> sourceMasterAddresses,
+    @Nullable Boolean isTransactional) {
     checkIsClosed();
     SetupUniverseReplicationRequest request =
       new SetupUniverseReplicationRequest(
         this.masterTable,
         replicationGroupName,
         sourceTableIdsBootstrapIdMap,
-        sourceMasterAddresses);
+        sourceMasterAddresses,
+        isTransactional);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

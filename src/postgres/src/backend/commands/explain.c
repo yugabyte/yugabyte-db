@@ -1590,9 +1590,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			 */
 			show_scan_qual(((IndexScan *) plan)->indexorderbyorig,
 						   "Order By", planstate, ancestors, es);
-			show_scan_qual(((IndexScan *) plan)->index_remote.qual,
+			show_scan_qual(((IndexScan *) plan)->index_remote.quals,
 						   "Remote Index Filter", planstate, ancestors, es);
-			show_scan_qual(((IndexScan *) plan)->rel_remote.qual,
+			show_scan_qual(((IndexScan *) plan)->rel_remote.quals,
 						   "Remote Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
@@ -1612,7 +1612,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			/*
 			 * Remote filter is applied first, so it is output first.
 			 */
-			show_scan_qual(((IndexOnlyScan *) plan)->remote.qual,
+			show_scan_qual(((IndexOnlyScan *) plan)->remote.quals,
 						   "Remote Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
@@ -1663,7 +1663,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			/*
 			 * Remote filter is applied first, so it is output first.
 			 */
-			show_scan_qual(((YbSeqScan *) plan)->remote.qual, "Remote Filter",
+			show_scan_qual(((YbSeqScan *) plan)->remote.quals, "Remote Filter",
 						   planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)

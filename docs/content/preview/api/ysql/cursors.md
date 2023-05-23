@@ -33,7 +33,7 @@ A _cursor_ is an artifact that you create with the _[declare](../the-sql-languag
 A _cursor_ is defined by a _subquery_ (typically a _select_ statement, but you can use a _values_ statement) and it lets you fetch the rows from the result set that the _subquery_ defines one-at-a-time without (in favorable cases) needing ever to materialize the entire result set in your application's client backend server process—i.e. the process that this query lists:
 
 ```plpgsql
-select application_name, backend_type
+select pid, application_name, backend_type
 from pg_stat_activity
 where pid = pg_backend_pid();
 ```
@@ -49,29 +49,45 @@ In a more abstract, RDBMS-independent, discussion of the SQL processing of the s
 
 But in PostgreSQL, and therefore in YSQL, a _cursor_ is a direct exposure into SQL and PL/pgSQL (as _language features_) of just a _subset_ of the internal mechanisms for the processing of preparable statements: the _values_ statement and the _select_ statement when it has no data-modifying side-effects.
 
-Here's a counter-example where the _select_ statement _does_ modify data. You can begin a _select_ statement using a [_with_ clause](../the-sql-language/with-clause/) that can include a data-modifying statement like _insert_ as long as it has a _returning_ clause. (This ability lets you implement, for example, multi-table insert.) First create a temporary table as the destination for an _insert_:
+Here's a counter-example where the _select_ statement _does_ modify data. You can begin a _select_ statement using a [_with_ clause](../the-sql-language/with-clause/) that can include a data-modifying statement like _insert_ as long as it has a _returning_ clause. (This ability lets you implement, for example, multi-table insert.) Set the _psql_ variables _db_ and _u_ to, respectively, a convenient sandbox database and a convenient test role that has _connect_ and _create_ on that database. Then create two tables and demonstrate the data-modifying _select_ statement ordinarily:
 
 ```plpgsql
-create table pg_temp.count(n int not null);
-```
+\c :db :u
+drop schema if exists s cascade;
+create schema s;
+set search_path = pg_catalog, pg_temp;
 
-Prepare and execute a _subquery_ thus:
+create table s.t(k int primary key, v text not null);
+insert into s.t(k, v) values (1, 'cat'), (2, 'dog'), (3, 'mouse');
+create table s.count(k serial primary key, n int not null);
 
-```plpgsql
-prepare stmt as
 with
   c(n) as (
-    insert into pg_temp.count(n)
-    select count(*)
-    from pg_class
-    where relkind = 'v'
+    insert into s.count(n)
+    select count(*) from s.t
     returning n)
-select relname from pg_class where relkind = 'v';
-
-execute stmt;
+select v from s.t order by v;
 ```
 
-This works fine—so far. It shows lots of view names and populates the _pg_temp.count_ table with the count. Now try to declare a cursor using the same _subquery_:
+This is the result set from the final _select_, as expected:
+
+```output
+   v   
+-------
+ cat
+ dog
+ mouse
+```
+
+Now check that _s.count_ was populated as expected:
+
+```plpgsql
+select n from s.count;
+```
+
+It does indeed show _3_.
+
+Now try to declare a cursor using the same _subquery_:
 
 ```plpgsql
 declare cur cursor for
@@ -88,17 +104,19 @@ select relname from pg_class where relkind = 'v';
 It fails with the _0A000_  error: _DECLARE CURSOR must not contain data-modifying statements in WITH_.
 {{< /note >}}
 
-Tautologically, then, a _cursor_ is an artifact that is characterized thus:
+Tautologically, then, a _cursor_ is an artifact that (in general, in PostgreSQL) is characterized thus:
 
 - It is created with the _declare_ SQL statement (or the equivalent _open_ PL/pgSQL statement).
 - Its maximum duration is _either_ the session in which it's created _or_ the transaction in which it's created, according to a choice that you make when you create it.
 - Its lifetime can be terminated deliberately with the _close_ SQL statement or the same-spelled PL/pgSQL statement.
 - It is defined by its name, its _subquery_ and some other boolean attributes.
 - Its name and its other attributes are listed in the _pg_cursors_ catalog view.
-- It lets you fetch consecutive rows, either one at a time, or in batches whose size you choose, from the result set that its _subquery_ defines;
-- It supports the _move_ SQL statement, and the same-spelled PL/pgSQL statement, to let you specify any row, by its position, within the result set as the current row.
-- It supports the _fetch_ SQL statement, and the same-spelled PL/pgSQL statement, that, in one variant, lets you fetch the row at the current position or a row at any other position relative to the current position (_either_ ahead of it _or_ behind it).
-- It supports another variant of the _fetch_ statement (but here only in SQL) that lets you fetch  a specified number of rows _either_ forward from and including the row immediately after the current position _or_ backward from and including the row immediately before the current position.
+- It lets you fetch consecutive rows, either one at a time, or in batches whose size you choose, from the result set that its _subquery_ defines.
+- It supports the _move_ SQL statement, and the same-spelled PL/pgSQL statement, to let you specify any row, by its position, within the result set as the current row.\*
+- It supports the _fetch_ SQL statement, and the same-spelled PL/pgSQL statement, that, in one variant, lets you fetch the row at the current position or a row at any other position relative to the current position (_either_ ahead of it _or_ behind\* it).
+- It supports another variant of the _fetch_ statement (but here only in SQL) that lets you fetch  a specified number of rows _either_ forward from and including the row immediately after the current position _or_ backward\* from and including the row immediately before the current position.
+
+**\[\*\]** Notice that YSQL doesn't yet support all of all of these operations. See the section [Beware Issue #6514](#beware-issue-6514) below..
 
 The "current position" notion is defined by imagining that the cursor's defining _subquery_ always includes this _select_ list item:
 
@@ -106,13 +124,13 @@ The "current position" notion is defined by imagining that the cursor's defining
 row_number() over() as current_position
 ```
 
-Here, _over()_ spans the entire result set. If the overall query has no _order by_ clause, then _over()_ has no such clause either. But if the overall query does have an _order by_ clause, then _over()_ has the same _order by_ clause within its parentheses.
+Here, _over()_ spans the entire result set. If the overall query has no _order by_ clause, then the hypothetical _over()_ has no such clause either. But if the overall query does have an _order by_ clause, then the hypothetical _over()_ has the same _order by_ clause within its parentheses.
 
-When you execute the _move_ statement, the current position is left at the result to which you moved. And execute the _fetch_ statement (fetching one or several rows in either the forward or the backward direction) the current position is left at the last-fetched result.
+When you execute the _move_[\*](#beware-issue-6514) statement, the current position is left at the result to which you moved. And when you execute the _fetch_ statement (fetching one or several rows in either the forward or the backward[\*](#beware-issue-6514) direction) the current position is left at the last-fetched result.
 
 ## Simple demonstration
 
-Set the _psql_ variables _db_ and _u_ to, respectively, a convenient sandbox database and a convenient test role that has _connect_ and _create_ on that database. Then create a trivial helper that will delay the delivery of each row from a _subquery_'s result set:
+Create a trivial helper that will delay the delivery of each row from a _subquery_'s result set:
 
 ```plpgsql
 \c :db :u
@@ -250,7 +268,7 @@ And the _pg_cursors_ query immediately after committing the transaction produces
  Is Holdable  | true
 ```
 
-In other words, a _non-holdable_ _cursor_ will vanish when the transaction within which it was declared ends—even if the transaction is committed. Because a _non-holdable_ _cursor_ cannot exist outside of an ongoing transaction, this attempt:
+In other words, a _non-holdable_ _cursor_ will vanish when the transaction within which it was declared ends—even if the transaction is committed. Because a _non-holdable_ _cursor_ cannot exist outside of an ongoing transaction, this stand-alone attempt:
 
 ```plpgsql
 declare "Not Holdable" cursor without hold for select 17;
@@ -279,16 +297,16 @@ select name from pg_prepared_statements;
 Like is the case for _cursors_, an invocation of _"select count(*) from pg_prepared_statements"_, immediately after starting a session, will inevitably report that no prepared statements exist. But even when a statement is prepared within a transaction that is rolled back, it continues to exist after that until either the session ends or it is _deallocated_. (If you create a _holdable cursor_, within an on going transaction and then roll back the transaction, then it vanishes.)
 
 {{< tip title="Open a holdable cursor in its own transaction and close it as soon as you have finished using it." >}}
-When, as is the normal practice, you don't subvert the behavior that automatically commits a SQL statement that is not executed within an explicitly started transaction, you'll probably _declare_, _move in_ and _fetch from_ a _holdable cursor_ "ordinarily"-i.e. without explicitly starting, and ending, transactions.
+When, as is the normal practice, you don't subvert the behavior that automatically commits a SQL statement that is not executed within an explicitly started transaction, you'll probably _declare_, _move in_[\*](#beware-issue-6514) and _fetch from_ a _holdable cursor_ "ordinarily"—i.e. without explicitly starting, and ending, transactions.
 
-A _holdable cursor_ consumes resources because it always caches its defining _subquery_'s entire result set. Therefore (and especially in a connection-pooling scheme, you should close a _holdable cursor_ as soon as you have finished using it.
+A _holdable cursor_ consumes resources because it always caches its defining _subquery_'s entire result set. Therefore (and especially in a connection-pooling scheme), you should close a _holdable cursor_ as soon as you have finished using it.
 {{< /tip >}}
 
 {{< note title="A holdable cursor is most useful when you intend to move or to fetch in the backward direction — but YSQL does not yet support this." >}}
 See the section [Beware Issue #6514](#beware-issue-6514) below.
 {{< /note >}}
 
-## Scrollable cursors
+## Scrollable cursors\*
 
 When you choose, at _cursor_ creation time, either the _scroll_ or the _no scroll_ options, the result of your choice is shown in the _is_scrollable_ column in the _pg_cursors_ view. Try this:
 
@@ -314,7 +332,7 @@ This is the result:
 
 The term of art _scrollable_ reflects a rather unusual meaning of scrollability. In, for example, discussions about GUIs, scrolling means moving forwards or backwards within a window or, say, a list. However:
 
-- When _pg_cursors.is_scrollable_ is _false_, this means that you can change the current position in the _cursor_'s result set (using either _move_ or as a consequence of _fetch_) only in the _forward_ direction.
+- When _pg_cursors.is_scrollable_ is _false_, this means that you can change the current position in the _cursor_'s result set (using either _move_[\*](#beware-issue-6514) or as a consequence of _fetch_) only in the _forward_ direction.
 - When _pg_cursors.is_scrollable_ is _true_, this means that you can change the current position in the _cursor_'s result set both in the _forward_ direction and in the _backward_ direction.
 
 In other words:
@@ -322,13 +340,13 @@ In other words:
 - When you create a cursor and specify _no scroll_, you're saying that you will allow changing the current position in the result set in only the _forward_ direction.
 - When you create a cursor and specify _scroll_, you're saying that you will allow changing the current position in the result set in both the _forward_ direction and the _backward_ direction.
 
-Notice that your choice with the _move_ statement, to change the current position by just a single row or by many rows is an orthogonal choice to the direction in which you move. Similarly, your choice with the _fetch_ statement, to fetch just a single row or many rows is an orthogonal choice to the direction in which you fetch. 
+Notice that your choice with the _move_[\*](#beware-issue-6514) statement, to change the current position by just a single row or by many rows is an orthogonal choice to the direction in which you move. Similarly, your choice with the _fetch_ statement, to fetch just a single row or many rows is an orthogonal choice to the direction[\*](#beware-issue-6514) in which you fetch. 
 
 - There is no way to create a _cursor_ so that changing the current position in the result set by more than one row, except by consecutive fetches, is prevented.
 
 <a name="specify-no-scroll-or-scroll-explicitly"></a>
 {{< tip title="Always specify either 'no scroll' or 'scroll' explicitly." >}}
-If you specify neither _no scroll_ nor _scroll_ when you create a _cursor_, then you don't get an error. However, the outcome is that sometimes _backwards_ movement in the result set is allowed, and sometimes it causes the _55000_ error: _cursor can only scan forward_.
+If you specify neither _no scroll_ nor _scroll_ when you create a _cursor_, then you don't get an error. However, the outcome is that sometimes _backwards_ movement in the result set is allowed, and sometimes it causes the _55000_ error: _cursor can only scan forward_.[\*](#beware-issue-6514)
 
 Yugabyte recommends that you always specify your scrollability choice explicitly to honor the requirements that you must meet. Notice that while [Issue #6514](https://github.com/yugabyte/yugabyte-db/issues/6514) remains open, your only viable choice is _no scroll_.
 {{< /tip >}}
@@ -338,79 +356,26 @@ Yugabyte recommends that you always specify your scrollability choice explicitly
 Do this:
 
 ```plpgsql
-set client_min_messages = error;
 start transaction;
   declare cur no scroll cursor without hold for
-    select g.v from generate_series(1, 5) as g(v);
+    select g.v from generate_series(1, 10) as g(v);
   fetch next       from cur;
-  move relative 2  in   cur;
   fetch forward 2  from cur;
+  fetch forward 3  from cur;
+rollback;
 ```
 
-So far, this runs without error and produces these results, as expected:
+This runs without error and produces these results, as expected:
 
 ```output
  1
 
- 4
- 5
-```
-
-Now do this:
-
-```plpgsql
-  fetch relative 0 from cur;
-rollback;
-```
-
-The _fetch_ causes the _55000_ error: _cursor can only scan forward_ because fetching a _cursor_'s current row tautologically does not move the current position forward and is therefore not allowed when you create the _cursor_ using _no scroll_.
-
-### "scroll" cursor demonstration
-
-Now do this:
-
-```plpgsql
-set client_min_messages = error;
-start transaction;
-  declare cur scroll cursor without hold for
-    select g.v from generate_series(1, 5) as g(v);
-
-  -- These are the same four statements that the "no scroll" demo used.
-  -- But now, "fetch relative 0" succeeds.
-  fetch next         from cur;
-  move  relative 2   in   cur;
-  fetch forward 2    from cur;
-  fetch relative 0   from cur;
-
-  -- Add these statements.
-  fetch backward     from cur;
-  fetch backward all from cur;
-  move  last         in  cur;
-  fetch relative 0   from cur;
-  move  first        in   cur;
-  fetch relative 0   from cur;
-rollback;
-```
-
-Now every _fetch_ and _move_ statement succeeds. These are the results:
-
-```output
- 1
-
- 4
- 5
-
- 5
-
- 4
-
- 3
  2
- 1
+ 3
 
+ 4
  5
-
- 1
+ 6
 ```
 
 ## Caching a cursor's result set
@@ -423,7 +388,7 @@ Now every _fetch_ and _move_ statement succeeds. These are the results:
 
   - But if the plan can be executed only in the forward direction, then the result set must be cached if you specify _scroll_ when you create the cursor.
 
-PostgreSQL, and therefore YSQL, do not expose metadata to report whether or not a _cursor_'s result set is cached. Nor does the documentation for either RDBMS attempt to specify the rules that determine whether caching will be done. However, it's possible to reason, about certain specific _select_ statements, that their plans cannot be executed backward. For example the plan for a query that includes _row_number()_ in the _select_ list cannot be run backward because the semantics of _row_number()_ is to assign an incrementing rank to each new row in the result set as it is produced when the plan is executed in the forward direction—and the planner cannot predict how many rows will be produced to allow _row_number()_ to be calculated by decrementing from this for each successive row when the plan is run backward. (If the _select_ statement has no _order by_, then the rows are produced in _physical order_ (i.e. in an order that's determined by how the table data is stored).)
+PostgreSQL, and therefore YSQL, do not expose metadata to report whether or not a _cursor_'s result set is cached. Nor does the documentation for either RDBMS attempt to specify the rules that determine whether caching will be done. However, it's possible to reason, about certain specific _select_ statements, that their plans cannot be executed backward. For example the plan for a query that includes _row_number()_ in the _select_ list cannot be run backward because the semantics of _row_number()_ is to assign an incrementing rank to each new row in the result set as it is produced when the plan is executed in the forward direction—and the planner cannot predict how many rows will be produced to allow _row_number()_ to be calculated by decrementing from this for each successive row when the plan is run backward. If the _select_ statement has no _order by_, then the rows are produced in _physical order_ (i.e. in an order that's determined by how the table data is stored).
 
 <a name="physical-order-cannot-be-predicted"></a>
 {{< note title="The physical order cannot be predicted." >}}
@@ -435,7 +400,6 @@ You can, however, support pedagogy by including a user-defined function in the _
 First, do this set-up. All the caching tests will use it:
 
 ```plpgsql
-set client_min_messages = error;
 drop schema if exists s cascade;
 create schema s;
 
@@ -537,184 +501,18 @@ INFO:  f() invoked
 
 Notice that the same _v_ values are paired with the same _pos_ values as with the _"with hold", "no scroll" cursor_ test. But here, nothing suggests that results are cached—and they don't need to be because the _cursor_ doesn't allow moving backwards in the result set. (However, you can't design a test to demonstrate that results are not cached.)
 
-### "without hold", "scroll" cursor
-
-Do this:
-
-```plpgsql
-start transaction;
-  declare cur scroll cursor without hold for
-    select pos, v from s.v where s.f(v);
-
-  -- Moving forward.
-  fetch next       from cur;
-  fetch next       from cur;
-  fetch next       from cur;
-  fetch next       from cur;
-  fetch next       from cur;
-
-  -- Moving backward.
-  fetch prior      from cur;
-  move  absolute 3 in   cur;
-  fetch relative 0 from cur;
-  move  absolute 1 in   cur;
-  fetch relative 0 from cur;
-rollback;
-```
-
-Apart from replacing _no scroll_ with _scroll_ in the declaration of the _cursor_, the code is identical, through all the _"Moving forward_ fetches, to that for the _"without hold", "no scroll" cursor_ test. And the output is identical, too.
-
-Now continue with the tests that move backwards: You no longer see any _raise info_ output because the entire result set is now cached. Here are the SQL results:
-
-```output
-   4 | 2
-
-   3 | 4
-
-   1 | 5
-```
-
-Notice that you see the same _v_ values for the same _pos_ values as before. This is required by the semantics of moving forward and backward through the unique result set that the _cursor_'s subquery defines.
-
-### "without hold", "scroll" cursor — variant
-
-The output from the previous test shows that the result set is cached incrementally. This variant demonstrates it more vividly by interleaving forward and backward fetches and moves. First, increase the number of rows in _s.t_ and inspect _s.v_:
-
-```plpgsql
-delete from s.t;
-insert into s.t(v) select generate_series(1, 10);
-select pos, v from s.v;
-```
-
-This is the result:
-
-```output
-   1 |  6
-   2 |  8
-   3 |  7
-   4 | 10
-   5 |  1
-   6 |  2
-   7 |  4
-   8 |  5
-   9 |  3
-  10 |  9
-```
-
-You might see the _v_ values in a different order. See the note [The physical order cannot be predicted](#physical-order-cannot-be-predicted) above.
-
-Now do this:
-
-```plpgsql
-start transaction;
-  declare cur scroll cursor without hold for
-    select pos, v from s.v where s.f(v);
-```
-
-This succeeds silently without error. Now do this:
-
-```plpgsql
-  fetch forward  3 from cur;
-  fetch backward 2 from cur;
-```
-
-It causes this output:
-
-```output
-INFO:  f() invoked
-INFO:  f() invoked
-INFO:  f() invoked
-   1 | 6
-   2 | 8
-   3 | 7
-
-   2 | 8
-   1 | 6
-```
-
-We don't see any _raise info_ output when we fetch the rows with _pos = 2_ and _pos = 1_ again because they're already cached. Now do this:
-
-```plpgsql
-  fetch forward  5 from cur;
-  fetch backward 3 from cur;
-```
-
-It causes this output:
-
-```output
-INFO:  f() invoked
-INFO:  f() invoked
-INFO:  f() invoked
-   2 |  8
-   3 |  7
-   4 | 10
-   5 |  1
-   6 |  2
-
-   5 |  1
-   4 | 10
-   3 |  7
-```
-
-Because we're now seeing the three rows with _pos = 4_, _pos = 5_, and _pos = 6_ for the first time, we see the _raise info_ output three times. Then, when we revisit the rows with _pos = 5_, _pos = 4_, and _pos = 3_, we don't see any _raise info_ output because, again, they're already cached. Now do this:
-
-```plpgsq
-  fetch forward  5 from cur;
-  fetch backward 1 from cur;
-```
-
-It causes this output:
-
-```plpgsql
-INFO:  f() invoked
-INFO:  f() invoked
-   4 | 10
-   5 |  1
-   6 |  2
-   7 |  4
-   8 |  5
-
-   7 | 4
-```
-
-Here, we're seeing the rows with _pos = 7_ and _pos = 8_ for the first time—which brings the _raise info_ output twice. And then, because we've already (just) seen the row with _pos 7_, there's now no _raise info_ output.
-
-Finally, do this:
-
-```plpgsql
-  move  absolute 3 in cur;
-  fetch forward  7 from cur;
-rollback;
-```
-
-It causes this output:
-
-```output
-INFO:  f() invoked
-INFO:  f() invoked
-   4 | 10
-   5 |  1
-   6 |  2
-   7 |  4
-   8 |  5
-   9 |  3
-  10 |  9
-```
-
-At this stage, we've seen all rows in the result set but those with _pos = 9_ and _pos = 10_, so we see the _raise info_ for just each of those two rows.
-
-## Beware Issue #6514
+## \* Beware Issue #6514
 
 {{< warning title="YSQL currently supports only fetching rows from a cursor consecutively in the forward direction." >}}
 &nbsp;
 
-[Issue 6514](https://github.com/yugabyte/yugabyte-db/issues/6514) tracks the problem that the SQL statements _fetch_ and _move_, together with their PL/pgSQL counterparts, don't work reliably. This is reflected by warnings that are drawn under these circumstances:
+[Issue 6514](https://github.com/yugabyte/yugabyte-db/issues/6514) tracks the problem that the SQL statements _fetch_ and _move_, together with their PL/pgSQL counterparts, are not yet fully functional. This is reflected by errors that occur under these circumstances:
 
-- Every _move_ flavor causes the _0A000_ warning with messages like _"MOVE not supported yet"_.
+- Every _move_ flavor causes the _0A000_ error with messages like _"MOVE not supported yet"_.
 
-- Many _fetch_ flavors draw the _0A000_ warning with messages like _"FETCH FIRST not supported yet"_, _"FETCH LAST not supported yet"_, _"FETCH BACKWARD not supported yet"_, and the like.
+- Many _fetch_ flavors draw the _0A000_ error with messages like _"FETCH FIRST not supported yet"_, _"FETCH LAST not supported yet"_, _"FETCH BACKWARD not supported yet"_, and the like.
 
-These are the _only_ _fetch_ flavors that do not draw a warning:
+These are the _only_ _fetch_ flavors that do not cause an error:
 
 - _fetch next_
 - bare _fetch_
@@ -726,7 +524,7 @@ These are the _only_ _fetch_ flavors that do not draw a warning:
 
 _:N_ must be a positive integer.
 
-Notice that in many tests, and warning messages notwithstanding, the code has exactly the same effect in YSQL as it does in vanilla PostgreSQL. And if you set the _client_min_messages_ run-time parameter to _error_, then the apparently spurious warnings are suppressed. This is the case for all the tests shown on this page. However, you must not trust this for production code while [Issue 6514](https://github.com/yugabyte/yugabyte-db/issues/6514) remains open.
+Until [Issue 6514](https://github.com/yugabyte/yugabyte-db/issues/6514) is fixed, there is no point in declaring a _cursor_ using _scroll_ (i.e. so that _pg_cursors.is_scrollable_ is _true_). And doing this can harm performance and memory consumption because it can cause a _cursor_'s result set to be cached when the execution plan cannot be run backward.
 
-**You should not suppress warnings, and you should not use any operation that draws the _0A000_  warning.**
+While [Issue 6514](https://github.com/yugabyte/yugabyte-db/issues/6514) is open, **you should therefore always declare a _cursor_ with _no scroll_.**
 {{< /warning >}}

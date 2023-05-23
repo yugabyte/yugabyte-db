@@ -20,7 +20,6 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/runner"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
 )
 
@@ -71,20 +70,15 @@ type Postgres struct {
 	name    string
 	version string
 	postgresDirectories
-
-	runStep
 }
 
 // NewPostgres creates a new postgres service struct at installRoot with specific version.
-func NewPostgres(version string, run runStep) Postgres {
-	if run == nil {
-		run = runner.New("Postgres")
-	}
+func NewPostgres(version string) Postgres {
+
 	return Postgres{
 		name:                "postgres",
 		version:             version,
 		postgresDirectories: newPostgresDirectories(),
-		runStep:             run,
 	}
 }
 
@@ -104,47 +98,28 @@ func (pg Postgres) getPgUserName() string {
 
 // Install postgres and create the yugaware DB for YBA.
 func (pg Postgres) Install() error {
-	pg.StartSection("postgres install")
-	defer pg.EndSection()
-	pg.RunStep(func() error {
-		config.GenerateTemplate(pg)
-		return nil
-	})
-
-	if err := pg.RunStep(pg.extractPostgresPackage); err != nil {
+	config.GenerateTemplate(pg)
+	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}
 
 	// First let initdb create its config and data files in the software/pg../conf location
-	if err := pg.RunStep(pg.runInitDB); err != nil {
+	if err := pg.runInitDB(); err != nil {
 		return nil
 	}
 	// Then copy over data files to the intended data dir location
-	pg.RunStep(func() error {
-		pg.setUpDataDir()
-		return nil
-	})
-	// Finally update the conf file location to match this new data dir location
-	pg.RunStep(func() error {
-		pg.modifyPostgresConf()
-		return nil
-	})
+	pg.setUpDataDir()
 
-	pg.RunStep(func() error {
-		pg.Start()
-		return nil
-	})
+	// Finally update the conf file location to match this new data dir location
+	pg.modifyPostgresConf()
+	pg.Start()
+
 	if viper.GetBool("postgres.install.enabled") {
-		pg.RunStep(func() error {
-			pg.createYugawareDatabase()
-			return nil
-		})
+		pg.createYugawareDatabase()
 	}
+
 	if !common.HasSudoAccess() {
-		pg.RunStep(func() error {
-			pg.CreateCronJob()
-			return nil
-		})
+		pg.CreateCronJob()
 	}
 	return nil
 }

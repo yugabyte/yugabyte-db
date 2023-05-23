@@ -161,6 +161,17 @@ func interactiveConfigHandler(ctx context.Context, cmd *cobra.Command) {
 		util.ConsoleLogger().
 			Fatalf(ctx, "Need Platform URL during interactive config setup - %s", err.Error())
 	}
+	_, err = config.StoreCommandFlagString(
+		ctx,
+		cmd,
+		"node_port",
+		util.NodePortKey,
+		true, /* isRequired */
+		nil,  /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent port - %s", err.Error())
+	}
 	_, err = config.StoreCommandFlagBool(
 		ctx,
 		cmd,

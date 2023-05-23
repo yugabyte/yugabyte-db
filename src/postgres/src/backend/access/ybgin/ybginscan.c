@@ -97,12 +97,12 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 
 	/*
 	 * Add any pushdown expression to the main table scan
-	 * TODO dedup with YbSetupScanQual
+	 * TODO dedup with YbSetupScanQuals
 	 */
 	if (scan->yb_rel_pushdown != NULL)
 	{
 		ListCell   *lc;
-		foreach(lc, scan->yb_rel_pushdown->qual)
+		foreach(lc, scan->yb_rel_pushdown->quals)
 		{
 			Expr *expr = (Expr *) lfirst(lc);
 			YBCPgExpr yb_expr = YBCNewEvalExprCall(ybso->handle, expr);
@@ -112,7 +112,7 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 		}
 		foreach(lc, scan->yb_rel_pushdown->colrefs)
 		{
-			YbExprParamDesc *param = lfirst_node(YbExprParamDesc, lc);
+			YbExprColrefDesc *param = lfirst_node(YbExprColrefDesc, lc);
 			YBCPgTypeAttrs type_attrs = { param->typmod };
 			/* Create new PgExpr wrapper for the column reference */
 			YBCPgExpr yb_expr = YBCNewColumnRef(ybso->handle,
@@ -134,7 +134,7 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	if (scan->yb_idx_pushdown != NULL)
 	{
 		ListCell   *lc;
-		foreach(lc, scan->yb_idx_pushdown->qual)
+		foreach(lc, scan->yb_idx_pushdown->quals)
 		{
 			Expr *expr = (Expr *) lfirst(lc);
 			YBCPgExpr yb_expr = YBCNewEvalExprCall(ybso->handle, expr);
@@ -144,7 +144,7 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 		}
 		foreach(lc, scan->yb_idx_pushdown->colrefs)
 		{
-			YbExprParamDesc *param = lfirst_node(YbExprParamDesc, lc);
+			YbExprColrefDesc *param = lfirst_node(YbExprColrefDesc, lc);
 			YBCPgTypeAttrs type_attrs = { param->typmod };
 			/* Create new PgExpr wrapper for the column reference */
 			YBCPgExpr yb_expr = YBCNewColumnRef(ybso->handle,

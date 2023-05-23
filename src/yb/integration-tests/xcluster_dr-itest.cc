@@ -134,12 +134,12 @@ class XClusterDRTest : public XClusterYsqlTestBase {
   Status SetupReplication(std::vector<string> bootstrap_ids) {
     RETURN_NOT_OK(SetupUniverseReplication(
         source_cluster_->mini_cluster_.get(), target_cluster_->mini_cluster_.get(), target_client_,
-        kUniverseId, source_tables_for_bootstrap_, bootstrap_ids,
+        kReplicationGroupId, source_tables_for_bootstrap_, bootstrap_ids,
         {LeaderOnly::kTrue, Transactional::kTrue}));
 
     master::GetUniverseReplicationResponsePB resp;
     RETURN_NOT_OK(VerifyUniverseReplication(
-        target_cluster_->mini_cluster_.get(), target_client_, kUniverseId, &resp));
+        target_cluster_->mini_cluster_.get(), target_client_, kReplicationGroupId, &resp));
 
     RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY, target_cluster_));
 
@@ -261,7 +261,8 @@ TEST_F(XClusterDRTest, Failover) {
 
   // 3. Disable replication.
   ASSERT_OK(ToggleUniverseReplication(
-      target_cluster_->mini_cluster_.get(), target_client_, kUniverseId, false /* is_enabled */));
+      target_cluster_->mini_cluster_.get(), target_client_, kReplicationGroupId,
+      false /* is_enabled */));
 
   // 4. Swap the source and target clusters.
   SetReplicationDirection(ReplicationDirection::ConsumerToProducer);

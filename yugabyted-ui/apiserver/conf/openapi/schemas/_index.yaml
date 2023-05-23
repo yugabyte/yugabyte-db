@@ -180,6 +180,8 @@ NodeData:
       type: boolean
     is_tserver:
       type: boolean
+    is_read_replica:
+      type: boolean
     is_master_up:
       type: boolean
     is_bootstrapping:
@@ -311,6 +313,7 @@ NodeData:
     - is_node_up
     - is_master
     - is_tserver
+    - is_read_replica
     - is_master_up
     - is_bootstrapping
     - cloud_info
@@ -454,6 +457,11 @@ ClusterInfo:
       default: 3
     fault_tolerance:
       $ref: '#/ClusterFaultTolerance'
+    replication_factor:
+      description: The replication factor applied on the cluster
+      type: integer
+      minimum: 1
+      maximum: 24
     node_info:
       $ref: '#/ClusterNodeInfo'
     is_production:

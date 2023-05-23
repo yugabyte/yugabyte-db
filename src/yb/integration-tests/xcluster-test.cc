@@ -321,7 +321,7 @@ class XClusterTest : public XClusterTestBase,
     master::GetReplicationStatusRequestPB req;
     master::GetReplicationStatusResponsePB resp;
 
-    req.set_universe_id(kUniverseId);
+    req.set_universe_id(kReplicationGroupId.ToString());
 
     auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
         &consumer_client()->proxy_cache(),
@@ -355,7 +355,7 @@ class XClusterTest : public XClusterTestBase,
 
     // 2. Verify that the yb-admin output contains the expected error.
     auto admin_out =
-      ASSERT_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kUniverseId));
+      ASSERT_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kReplicationGroupId));
     if (expected_replication_error) {
       ASSERT_TRUE(admin_out.find(
         Format("error: $0", ReplicationErrorPb_Name(*expected_replication_error))) !=
@@ -416,7 +416,7 @@ class XClusterTest : public XClusterTestBase,
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
     RETURN_NOT_OK(VerifyUniverseReplication(&resp));
-    CHECK_EQ(resp.entry().producer_id(), kUniverseId);
+    CHECK_EQ(resp.entry().producer_id(), kReplicationGroupId);
     CHECK_EQ(resp.entry().tables_size(), producer_tables.size());
     for (uint32_t i = 0; i < producer_tables.size(); i++) {
       CHECK_EQ(resp.entry().tables(i), producer_tables[i]->id());
@@ -518,7 +518,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     rpc.Reset();
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
     master::SetupUniverseReplicationRequestPB setup_universe_req;
-    setup_universe_req.set_producer_id(kUniverseId);
+    setup_universe_req.set_producer_id(kReplicationGroupId.ToString());
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
     ASSERT_OK(master_proxy->SetupUniverseReplication(
       setup_universe_req, &setup_universe_resp, &rpc));
@@ -531,7 +531,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     rpc.Reset();
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
     master::SetupUniverseReplicationRequestPB setup_universe_req;
-    setup_universe_req.set_producer_id(kUniverseId);
+    setup_universe_req.set_producer_id(kReplicationGroupId.ToString());
     string master_addr = producer_cluster()->GetMasterAddresses();
     auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
     HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
@@ -552,7 +552,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
 
     master::SetupUniverseReplicationRequestPB setup_universe_req;
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
-    setup_universe_req.set_producer_id(kUniverseId);
+    setup_universe_req.set_producer_id(kReplicationGroupId.ToString());
     string master_addr = consumer_cluster()->GetMasterAddresses();
     auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
     HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
@@ -689,7 +689,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
   // 2. Setup replication.
   master::SetupUniverseReplicationRequestPB setup_universe_req;
   master::SetupUniverseReplicationResponsePB setup_universe_resp;
-  setup_universe_req.set_producer_id(kUniverseId);
+  setup_universe_req.set_producer_id(kReplicationGroupId.ToString());
   string master_addr = producer_cluster()->GetMasterAddresses();
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
@@ -781,7 +781,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationMultipleTables) {
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
   for (uint32_t i = 0; i < producer_tables.size(); i++) {
     ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
@@ -832,7 +832,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationLargeTableCount) {
       // Verify that universe was setup on consumer.
       master::GetUniverseReplicationResponsePB resp;
       ASSERT_OK(VerifyUniverseReplication(&resp));
-      ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+      ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
       ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
       for (uint32_t i = 0; i < producer_tables.size(); i++) {
         ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
@@ -911,7 +911,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationBootstrapStateUpdate) {
   {
     master::SetupUniverseReplicationRequestPB setup_universe_req;
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
-    setup_universe_req.set_producer_id(kUniverseId);
+    setup_universe_req.set_producer_id(kReplicationGroupId.ToString());
     string master_addrs = producer_cluster()->GetMasterAddresses();
     auto hps = ASSERT_RESULT(HostPort::ParseStrings(master_addrs, 0));
     HostPortsToPBs(hps, setup_universe_req.mutable_producer_master_addresses());
@@ -1083,7 +1083,7 @@ TEST_P(XClusterTest, BootstrapAndSetupLargeTableCount) {
         // Calling the SetupUniverse API directly so we can use producer_bootstrap_ids.
         master::SetupUniverseReplicationRequestPB req;
         master::SetupUniverseReplicationResponsePB resp;
-        req.set_producer_id(kUniverseId);
+        req.set_producer_id(kReplicationGroupId.ToString());
         auto master_addrs = producer_cluster()->GetMasterAddresses();
         auto vec = ASSERT_RESULT(HostPort::ParseStrings(master_addrs, 0));
         HostPortsToPBs(vec, req.mutable_producer_master_addresses());
@@ -1115,7 +1115,7 @@ TEST_P(XClusterTest, BootstrapAndSetupLargeTableCount) {
         {
           master::GetUniverseReplicationResponsePB resp;
           ASSERT_OK(VerifyUniverseReplication( &resp));
-          ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+          ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
           ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
           for (uint32_t i = 0; i < producer_tables.size(); i++) {
             ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
@@ -1320,9 +1320,8 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   // Find the CDCTabletMetric associated with the above pair.
   auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
     cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
-  std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-      std::static_pointer_cast<cdc::CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {"", stream_id, tablet_id}));
+  std::shared_ptr<cdc::CDCTabletMetrics> metrics = std::static_pointer_cast<cdc::CDCTabletMetrics>(
+      cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
 
   /***********************************
    * Setup Complete.  Starting test. *
@@ -1705,10 +1704,10 @@ TEST_P(XClusterTestTransactionalOnly, WithBootstrap) {
 
   // 5. Setup replication.
   ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table},
-      {bootstrap_id}, {LeaderOnly::kTrue, Transactional::kTrue}));
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
+      {producer_table}, {bootstrap_id}, {LeaderOnly::kTrue, Transactional::kTrue}));
   master::GetUniverseReplicationResponsePB verify_repl_resp;
-  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &verify_repl_resp));
+  ASSERT_OK(VerifyUniverseReplication(kReplicationGroupId, &verify_repl_resp));
   ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
 
   // 6. Verify we got the rows from step 3 but not 1.
@@ -1820,7 +1819,7 @@ TEST_P(XClusterTest, AlterUniverseReplicationMasters) {
   {
     master::AlterUniverseReplicationRequestPB alter_req;
     master::AlterUniverseReplicationResponsePB alter_resp;
-    alter_req.set_producer_id(kUniverseId);
+    alter_req.set_producer_id(kReplicationGroupId.ToString());
 
     // GetMasterAddresses returns 3 masters.
     string master_addr = producer_cluster()->GetMasterAddresses();
@@ -1859,7 +1858,7 @@ TEST_P(XClusterTest, AlterUniverseReplicationMasters) {
   {
     master::AlterUniverseReplicationRequestPB alter_req;
     master::AlterUniverseReplicationResponsePB alter_resp;
-    alter_req.set_producer_id(kUniverseId);
+    alter_req.set_producer_id(kReplicationGroupId.ToString());
     alter_req.add_producer_table_ids_to_add(producer_tables[1]->id());
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -1895,7 +1894,7 @@ TEST_P(XClusterTest, AlterUniverseReplicationTables) {
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB v_resp;
   ASSERT_OK(VerifyUniverseReplication(&v_resp));
-  ASSERT_EQ(v_resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(v_resp.entry().producer_id(), kReplicationGroupId);
   ASSERT_EQ(v_resp.entry().tables_size(), 1);
   ASSERT_EQ(v_resp.entry().tables(0), producer_tables[0]->id());
 
@@ -1905,7 +1904,7 @@ TEST_P(XClusterTest, AlterUniverseReplicationTables) {
   {
     master::AlterUniverseReplicationRequestPB alter_req;
     master::AlterUniverseReplicationResponsePB alter_resp;
-    alter_req.set_producer_id(kUniverseId);
+    alter_req.set_producer_id(kReplicationGroupId.ToString());
     alter_req.add_producer_table_ids_to_add(producer_tables[1]->id());
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -1933,7 +1932,7 @@ TEST_P(XClusterTest, AlterUniverseReplicationTables) {
   {
     master::AlterUniverseReplicationRequestPB alter_req;
     master::AlterUniverseReplicationResponsePB alter_resp;
-    alter_req.set_producer_id(kUniverseId);
+    alter_req.set_producer_id(kReplicationGroupId.ToString());
     alter_req.add_producer_table_ids_to_remove(producer_tables[0]->id());
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -2017,7 +2016,7 @@ TEST_P(XClusterTest, AlterUniverseReplicationBootstrapStateUpdate) {
   {
     master::SetupUniverseReplicationRequestPB setup_universe_req;
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
-    setup_universe_req.set_producer_id(kUniverseId);
+    setup_universe_req.set_producer_id(kReplicationGroupId.ToString());
     string master_addrs = producer_cluster()->GetMasterAddresses();
     auto hps = ASSERT_RESULT(HostPort::ParseStrings(master_addrs, 0));
     HostPortsToPBs(hps, setup_universe_req.mutable_producer_master_addresses());
@@ -2037,7 +2036,7 @@ TEST_P(XClusterTest, AlterUniverseReplicationBootstrapStateUpdate) {
   {
     master::AlterUniverseReplicationRequestPB alter_req;
     master::AlterUniverseReplicationResponsePB alter_resp;
-    alter_req.set_producer_id(kUniverseId);
+    alter_req.set_producer_id(kReplicationGroupId.ToString());
     for (size_t i = 1; i < kNumTables; i++) {
       alter_req.add_producer_table_ids_to_add(producer_tables[i]->id());
       const auto& it = table_bootstrap_ids.find(producer_tables[i]->id());
@@ -2116,11 +2115,13 @@ TEST_P(XClusterTest, ToggleReplicationEnabled) {
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
 
   // Disable the replication and ensure no tablets are being polled
-  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
+  ASSERT_OK(
+      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
 
   // Enable replication and ensure that all the tablets start being polled again
-  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
+  ASSERT_OK(
+      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
 }
 
@@ -2140,7 +2141,8 @@ TEST_P(XClusterTest, TestDeleteUniverse) {
 
   ASSERT_OK(DeleteUniverseReplication());
 
-  ASSERT_OK(VerifyUniverseReplicationDeleted(consumer_cluster(), consumer_client(), kUniverseId,
+  ASSERT_OK(VerifyUniverseReplicationDeleted(
+      consumer_cluster(), consumer_client(), kReplicationGroupId,
       FLAGS_cdc_read_rpc_timeout_ms * 2));
 
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
@@ -2232,7 +2234,8 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
   producer_tables.reserve(1);
   producer_tables.push_back(tables[0]);
   ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
+      producer_tables));
 
   // After creating the cluster, make sure all producer tablets are being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
@@ -2293,7 +2296,7 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
   VerifyReplicationError(tables[1]->id(), stream_id, boost::optional<ReplicationErrorPb>());
 
   // Stop replication on the Consumer.
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
 }
 
 TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
@@ -2304,7 +2307,8 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables = {tables[0]};
   ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
+      producer_tables));
 
   // After creating the cluster, make sure all producer tablets are being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
@@ -2392,7 +2396,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   // Stop replication on the Consumer.
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
 }
 
 
@@ -2434,7 +2438,7 @@ TEST_P(XClusterTest, ApplyOperationsRandomFailures) {
   ASSERT_OK(DeleteUniverseReplication());
 
   // Stop replication on producer
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId, producer_client(), producer_cluster()));
+  ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId, producer_client(), producer_cluster()));
 }
 
 TEST_P(XClusterTest, TestInsertDeleteWorkloadWithRestart) {
@@ -2521,7 +2525,7 @@ TEST_P(XClusterTest, TestDeleteCDCStreamWithMissingStreams) {
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
   master::DeleteUniverseReplicationRequestPB delete_universe_req;
   master::DeleteUniverseReplicationResponsePB delete_universe_resp;
-  delete_universe_req.set_producer_id(kUniverseId);
+  delete_universe_req.set_producer_id(kReplicationGroupId.ToString());
   delete_universe_req.set_ignore_errors(false);
   ASSERT_OK(
       master_proxy->DeleteUniverseReplication(delete_universe_req, &delete_universe_resp, &rpc));
@@ -2541,7 +2545,8 @@ TEST_P(XClusterTest, TestDeleteCDCStreamWithMissingStreams) {
       master_proxy->DeleteUniverseReplication(delete_universe_req, &delete_universe_resp, &rpc));
 
   // Ensure that the delete is now succesful.
-  ASSERT_OK(VerifyUniverseReplicationDeleted(consumer_cluster(), consumer_client(), kUniverseId,
+  ASSERT_OK(VerifyUniverseReplicationDeleted(
+      consumer_cluster(), consumer_client(), kReplicationGroupId,
       FLAGS_cdc_read_rpc_timeout_ms * 2));
 
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
@@ -2562,7 +2567,7 @@ TEST_P(XClusterTest, TestAlterWhenProducerIsInaccessible) {
   // Try to alter replication.
   master::AlterUniverseReplicationRequestPB alter_req;
   master::AlterUniverseReplicationResponsePB alter_resp;
-  alter_req.set_producer_id(kUniverseId);
+  alter_req.set_producer_id(kReplicationGroupId.ToString());
   alter_req.add_producer_table_ids_to_add("123");  // Doesn't matter as we cannot connect.
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -2597,7 +2602,7 @@ TEST_P(XClusterTest, TestFailedUniverseDeletionOnRestart) {
   string master_addr = producer_cluster()->GetMasterAddresses();
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
-  req.set_producer_id(kUniverseId);
+  req.set_producer_id(kReplicationGroupId.ToString());
   req.mutable_producer_table_ids()->Reserve(1);
   req.add_producer_table_ids("Fake Table Id");
 
@@ -2608,7 +2613,7 @@ TEST_P(XClusterTest, TestFailedUniverseDeletionOnRestart) {
   std::this_thread::sleep_for(2s);
 
   master::GetUniverseReplicationRequestPB new_req;
-  new_req.set_producer_id(kUniverseId);
+  new_req.set_producer_id(kReplicationGroupId.ToString());
   master::GetUniverseReplicationResponsePB new_resp;
   rpc.Reset();
   ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
@@ -2618,7 +2623,7 @@ TEST_P(XClusterTest, TestFailedUniverseDeletionOnRestart) {
   ASSERT_OK(consumer_cluster()->RestartSync());
 
   // Should delete on restart
-  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kUniverseId));
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kReplicationGroupId));
   rpc.Reset();
   Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
   ASSERT_OK(s);
@@ -2650,7 +2655,7 @@ TEST_P(XClusterTest, TestFailedDeleteOnRestart) {
   // Delete The Table
   master::DeleteUniverseReplicationRequestPB alter_req;
   master::DeleteUniverseReplicationResponsePB alter_resp;
-  alter_req.set_producer_id(kUniverseId);
+  alter_req.set_producer_id(kReplicationGroupId.ToString());
   rpc::RpcController rpc;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_exit_unfinished_deleting) = true;
@@ -2658,7 +2663,7 @@ TEST_P(XClusterTest, TestFailedDeleteOnRestart) {
 
   // Check that deletion was incomplete
   master::GetUniverseReplicationRequestPB new_req;
-  new_req.set_producer_id(kUniverseId);
+  new_req.set_producer_id(kReplicationGroupId.ToString());
   master::GetUniverseReplicationResponsePB new_resp;
   rpc.Reset();
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -2671,11 +2676,11 @@ TEST_P(XClusterTest, TestFailedDeleteOnRestart) {
   ASSERT_OK(consumer_cluster()->RestartSync());
 
   // Wait for incomplete delete universe to be deleted on start up
-  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kUniverseId));
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kReplicationGroupId));
 
   // Check that the unfinished alter universe was deleted on start up
   rpc.Reset();
-  new_req.set_producer_id(kUniverseId);
+  new_req.set_producer_id(kReplicationGroupId.ToString());
   Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
   ASSERT_OK(s);
   ASSERT_TRUE(new_resp.has_error());
@@ -2701,7 +2706,7 @@ TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
 
   // Make sure only 1 table is included in replication
   master::GetUniverseReplicationRequestPB new_req;
-  new_req.set_producer_id(kUniverseId);
+  new_req.set_producer_id(kReplicationGroupId.ToString());
   master::GetUniverseReplicationResponsePB new_resp;
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -2711,7 +2716,7 @@ TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
   // Add the other table
   master::AlterUniverseReplicationRequestPB alter_req;
   master::AlterUniverseReplicationResponsePB alter_resp;
-  alter_req.set_producer_id(kUniverseId);
+  alter_req.set_producer_id(kReplicationGroupId.ToString());
   alter_req.add_producer_table_ids_to_add(producer_tables[1]->id());
   rpc.Reset();
 
@@ -2721,17 +2726,18 @@ TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
   ASSERT_OK(consumer_cluster()->RestartSync());
 
   // Wait for alter universe to be deleted on start up
-  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kUniverseId + ".ALTER"));
+  ASSERT_OK(
+      WaitForSetupUniverseReplicationCleanUp(GetAlterReplicationGroupId(kReplicationGroupId)));
 
   // Change should not have gone through
-  new_req.set_producer_id(kUniverseId);
+  new_req.set_producer_id(kReplicationGroupId.ToString());
   rpc.Reset();
   ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
   ASSERT_NE(new_resp.entry().tables_size(), 2);
 
   // Check that the unfinished alter universe was deleted on start up
   rpc.Reset();
-  new_req.set_producer_id(kUniverseId + ".ALTER");
+  new_req.set_producer_id(GetAlterReplicationGroupId(kReplicationGroupId).ToString());
   Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
   ASSERT_OK(s);
   ASSERT_TRUE(new_resp.has_error());
@@ -2756,7 +2762,7 @@ TEST_P(XClusterTest, TestAlterUniverseRemoveTableAndDrop) {
   master::AlterUniverseReplicationRequestPB alter_req;
   master::AlterUniverseReplicationResponsePB alter_resp;
   rpc::RpcController rpc;
-  alter_req.set_producer_id(kUniverseId);
+  alter_req.set_producer_id(kReplicationGroupId.ToString());
   alter_req.add_producer_table_ids_to_remove(producer_tables[0]->id());
 
   ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
@@ -2819,7 +2825,7 @@ TEST_P(XClusterTest, TestNonZeroLagMetricsWithoutGetChange) {
   ASSERT_OK(WaitFor(
       [&]() {
         metrics = std::static_pointer_cast<cdc::CDCTabletMetrics>(
-            cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id}));
+            cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
         if (!metrics) {
           return false;
         }
@@ -2902,7 +2908,7 @@ TEST_P(XClusterTest, DeleteTableChecksCQL) {
         consumer_leader_mini_master->bound_rpc_addr());
     master::AlterUniverseReplicationRequestPB alter_req;
     master::AlterUniverseReplicationResponsePB alter_resp;
-    alter_req.set_producer_id(kUniverseId);
+    alter_req.set_producer_id(kReplicationGroupId.ToString());
     alter_req.add_producer_table_ids_to_add(producer_alter_table->id());
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -2985,10 +2991,10 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraConsumerTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ns_replication_sync_retry_secs) = 1;
   ASSERT_OK(SetupNSUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(),
-      kUniverseId, kNamespaceName, YQLDatabase::YQL_DATABASE_CQL));
+      kReplicationGroupId, kNamespaceName, YQLDatabase::YQL_DATABASE_CQL));
   ASSERT_OK(VerifyNSUniverseReplication(
       consumer_cluster(), consumer_client(),
-      kUniverseId, narrow_cast<int>(producer_tables.size())));
+      kReplicationGroupId, narrow_cast<int>(producer_tables.size())));
 
   // Create the additional 2 tables on producer. Verify that they are added automatically.
   for (int i = 2; i < 4; i++) {
@@ -2999,7 +3005,7 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraConsumerTables) {
   }
   ASSERT_OK(VerifyNSUniverseReplication(
       consumer_cluster(), consumer_client(),
-      kUniverseId, narrow_cast<int>(consumer_tables.size())));
+      kReplicationGroupId, narrow_cast<int>(consumer_tables.size())));
 
   // Write some data and verify replication.
   for (size_t i = 0; i < producer_tables.size(); i++) {
@@ -3009,7 +3015,7 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraConsumerTables) {
     WriteWorkload(0, narrow_cast<int>(10 * (i + 1)), producer_client(), producer_table->name());
     ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   }
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
 }
 
 TEST_P(XClusterTest, SetupNSUniverseReplicationExtraProducerTables) {
@@ -3041,10 +3047,10 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraProducerTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ns_replication_sync_backoff_secs) = 1;
   ASSERT_OK(SetupNSUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(),
-      kUniverseId, kNamespaceName, YQLDatabase::YQL_DATABASE_CQL));
+      kReplicationGroupId, kNamespaceName, YQLDatabase::YQL_DATABASE_CQL));
   ASSERT_OK(VerifyNSUniverseReplication(
       consumer_cluster(), consumer_client(),
-      kUniverseId, narrow_cast<int>(consumer_tables.size())));
+      kReplicationGroupId, narrow_cast<int>(consumer_tables.size())));
 
   // Create the additional 2 tables on consumer. Verify that they are added automatically.
   for (int i = 2; i < 4; i++) {
@@ -3055,7 +3061,7 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraProducerTables) {
   }
   ASSERT_OK(VerifyNSUniverseReplication(
       consumer_cluster(), consumer_client(),
-      kUniverseId, narrow_cast<int>(producer_tables.size())));
+      kReplicationGroupId, narrow_cast<int>(producer_tables.size())));
 
   // Write some data and verify replication.
   for (size_t i = 0; i < producer_tables.size(); i++) {
@@ -3065,7 +3071,7 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraProducerTables) {
     WriteWorkload(0, narrow_cast<int>(10 * (i + 1)), producer_client(), producer_table->name());
     ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   }
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
 }
 
 TEST_P(XClusterTest, SetupNSUniverseReplicationTwoNamespace) {
@@ -3097,11 +3103,11 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationTwoNamespace) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ns_replication_sync_backoff_secs) = 1;
   ASSERT_OK(SetupNSUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(),
-      kUniverseId, kNamespaceName2, YQLDatabase::YQL_DATABASE_CQL));
+      kReplicationGroupId, kNamespaceName2, YQLDatabase::YQL_DATABASE_CQL));
   SleepFor(MonoDelta::FromSeconds(5)); // Let the bg thread run a few times.
   ASSERT_OK(VerifyNSUniverseReplication(
       consumer_cluster(), consumer_client(),
-      kUniverseId, narrow_cast<int>(producer_tables.size())));
+      kReplicationGroupId, narrow_cast<int>(producer_tables.size())));
 
   // Write some data and verify replication.
   for (size_t i = 0; i < producer_tables.size(); i++) {
@@ -3111,7 +3117,7 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationTwoNamespace) {
     WriteWorkload(0, narrow_cast<int>(10 * (i + 1)), producer_client(), producer_table->name());
     ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   }
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
 }
 
 class XClusterTestWaitForReplicationDrain : public XClusterTest {
@@ -3148,7 +3154,7 @@ class XClusterTestWaitForReplicationDrain : public XClusterTest {
     master::GetUniverseReplicationResponsePB resp;
     ASSERT_OK(SetupUniverseReplication(*producer_tables));
     ASSERT_OK(VerifyUniverseReplication(
-        consumer_cluster(), consumer_client(), kUniverseId, &resp));
+        consumer_cluster(), consumer_client(), kReplicationGroupId, &resp));
   }
 
   void TearDown() override {
@@ -3321,7 +3327,8 @@ TEST_P(XClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPrematureLogGC)) {
   std::shared_ptr<client::YBTable> consumer_table = tables[1];
 
   ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
+      {producer_table}));
 
   // Write enough records to the producer to populate multiple WAL segments.
   constexpr int kNumWriteRecords = 100;
@@ -3398,7 +3405,7 @@ TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerSingleTable) {
   ASSERT_OK(SetupUniverseReplication(producer_tables));
   master::IsSetupUniverseReplicationDoneResponsePB is_resp;
   ASSERT_OK(WaitForSetupUniverseReplication(
-      consumer_cluster(), consumer_client(), kUniverseId, &is_resp));
+      consumer_cluster(), consumer_client(), kReplicationGroupId, &is_resp));
 
   std::vector<std::string> stream_ids;
 
@@ -3449,7 +3456,7 @@ TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerMultiTable) {
   ASSERT_OK(SetupUniverseReplication(producer_tables));
   master::IsSetupUniverseReplicationDoneResponsePB is_resp;
   ASSERT_OK(WaitForSetupUniverseReplication(
-      consumer_cluster(), consumer_client(), kUniverseId, &is_resp));
+      consumer_cluster(), consumer_client(), kReplicationGroupId, &is_resp));
 
   SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 0, 10, false);
   // Test pausing all streams (by passing empty streams list) when there are multiple streams.

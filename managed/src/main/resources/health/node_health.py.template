@@ -1188,7 +1188,7 @@ class NodeChecker():
             # If YSQL-auth is enabled, we'll try connecting over the UNIX domain socket in the hopes
             # that we can circumvent md5 authentication (assumption made:
             # "local all yugabyte trust" is in the hba file)
-            socket_fds_output = self._check_output("ls /tmp/.yb.*/.s.PGSQL.*").strip()
+            socket_fds_output = self._check_output('ls {{TMP_DIR}}/.yb.*/.s.PGSQL.*').strip()
             socket_fds = socket_fds_output.split()
             if ("Error" not in socket_fds_output) and len(socket_fds):
                 host = os.path.dirname(socket_fds[0])
