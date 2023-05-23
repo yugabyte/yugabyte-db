@@ -665,9 +665,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   int64_t snapshot_schedules_version_ = 0;
   HybridTime last_restorations_update_ht_;
 
-  // Background task for periodically scheduling major compactions.
-  std::unique_ptr<BackgroundTask> scheduled_full_compaction_bg_task_;
-
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
 
   std::shared_mutex service_registration_mutex_;
