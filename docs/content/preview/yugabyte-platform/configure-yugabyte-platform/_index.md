@@ -8,7 +8,7 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
-    weight: 642
+    weight: 610
 type: indexpage
 ---
 

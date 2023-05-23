@@ -73,8 +73,8 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 
 Ensure that the following ports are available:
 
-- 443
-- 5432
-- 9080
+- 443 (HTTPS)
+- 5432 (PostgreSQL)
+- 9090 (Prometheus)
 
 These are configurable. If custom ports are used, those must be available instead.
