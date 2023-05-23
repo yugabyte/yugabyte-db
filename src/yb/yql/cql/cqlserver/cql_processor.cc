@@ -99,6 +99,7 @@ METRIC_DEFINE_counter(server, cql_parsers_created,
                       yb::MetricUnit::kUnits,
                       "Number of created CQL Parsers.");
 
+DECLARE_bool(ycql_enable_stat_statements);
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -309,10 +310,12 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   cql_metrics_->time_to_queue_cql_response_->Increment(
       response_done.GetDeltaSince(response_begin).ToMicroseconds());
 
-  if(!prep_stmt_query_id_.empty()) {
-    service_impl_->UpdateCounters(prep_stmt_query_id_,
-      response_done.GetDeltaSince(execute_begin_).ToSeconds());
-    prep_stmt_query_id_.clear();
+  if(FLAGS_ycql_enable_stat_statements) {
+    if(!prep_stmt_query_id_.empty()) {
+      service_impl_->UpdateCounters(prep_stmt_query_id_,
+        response_done.GetDeltaSince(execute_begin_).ToSeconds());
+      prep_stmt_query_id_.clear();
+    }
   }
 
   Release();
