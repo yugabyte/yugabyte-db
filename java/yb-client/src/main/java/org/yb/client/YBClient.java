@@ -35,37 +35,36 @@ import com.google.common.net.HostAndPort;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 import java.util.ArrayList;
-import java.util.function.Function;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
-import java.util.*;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.*;
+import org.yb.ColumnSchema;
+import org.yb.CommonNet;
+import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
+import org.yb.Schema;
+import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.MasterBackupOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
-import org.yb.util.ServerInfo;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -1531,21 +1530,34 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
-   * It is the same as {@link AsyncYBClient#setupUniverseReplication(String, Map, Set)}
+   * It is the same as {@link AsyncYBClient#setupUniverseReplication(String, Map, Set, Boolean)}
    * except that it is synchronous.
    *
-   * @see AsyncYBClient#setupUniverseReplication(String, Map, Set)
+   * @see AsyncYBClient#setupUniverseReplication(String, Map, Set, Boolean)
    */
   public SetupUniverseReplicationResponse setupUniverseReplication(
     String replicationGroupName,
     Map<String, String> sourceTableIdsBootstrapIdMap,
-    Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
+    Set<CommonNet.HostPortPB> sourceMasterAddresses,
+    @Nullable Boolean isTransactional) throws Exception {
     Deferred<SetupUniverseReplicationResponse> d =
       asyncClient.setupUniverseReplication(
         replicationGroupName,
         sourceTableIdsBootstrapIdMap,
-        sourceMasterAddresses);
+        sourceMasterAddresses,
+        isTransactional);
     return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetupUniverseReplicationResponse setupUniverseReplication(
+    String replicationGroupName,
+    Map<String, String> sourceTableIdsBootstrapIdMap,
+    Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
+    return setupUniverseReplication(
+      replicationGroupName,
+      sourceTableIdsBootstrapIdMap,
+      sourceMasterAddresses,
+      null /* isTransactional */);
   }
 
   public IsSetupUniverseReplicationDoneResponse isSetupUniverseReplicationDone(
