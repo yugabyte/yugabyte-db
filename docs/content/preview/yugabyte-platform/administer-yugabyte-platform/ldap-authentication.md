@@ -27,13 +27,13 @@ type: docs
 
 </ul>
 
-<br>LDAP provides means for querying directory services. A directory typically stores credentials and permissions assigned to a user, therefore allowing to maintain a single repository of user information for all applications across the organization. In addition, having a hierarchical structure, LDAP allows creation of user groups requiring the same credentials.
+LDAP provides means for querying directory services. A directory typically stores credentials and permissions assigned to a user, therefore allowing to maintain a single repository of user information for all applications across the organization. In addition, having a hierarchical structure, LDAP allows creation of user groups requiring the same credentials.
 
 LDAP authentication is similar to a direct password authentication, except that it employs the LDAP protocol to verify the password. This means that only users who already exist in the database and have appropriate permissions can be authenticated via LDAP.
 
-YugabyteDB Anywhere's integration with LDAP enables you to use your LDAP server for authentication purposes instead of having to create user accounts on YugabyteDB Anywhere.
+YugabyteDB Anywhere integration with LDAP enables you to use your LDAP server for authentication purposes instead of having to create user accounts on YugabyteDB Anywhere.
 
-Since YugabyteDB Anywhere and the LDAP server are synchronized during login, YugabyteDB Anywhere always uses the up-to-date credentials and roles information, such as role and password changes, as well as removal of users deleted in the LDAP server.
+Because YugabyteDB Anywhere and the LDAP server are synchronized during login, YugabyteDB Anywhere always uses the up-to-date credentials and roles information, such as role and password changes, as well as removal of users deleted in the LDAP server.
 
 If configured by the LDAP server, YugabyteDB Anywhere can prevent the user from being able to change their password.
 
@@ -43,11 +43,9 @@ You can use the YugabyteDB Anywhere UI to enable LDAP authentication for Yugabyt
 
 - Navigate to **Admin > User Management > User Authentication**.
 
-- Complete the fields in the **LDAP Configuration** page shown in the following illustration:<br>
+- Complete the fields in the **LDAP Configuration** page shown in the following illustration:
 
-  ![LDAP authentication](/images/yb-platform/ldap-auth-1.png)<br>
-
-  
+  ![LDAP authentication](/images/yb-platform/ldap-auth-1.png)
 
   With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api).
 
@@ -102,7 +100,7 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --data-raw '[LDAP DN]'
   ```
 
-  Replace `[LDAP DN]` with the actual value, as per the following example: <br>
+  Replace `[LDAP DN]` with the actual value, as per the following example:
 
   `DC=yugabyte,DC=com`
 
@@ -116,7 +114,7 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --data-raw '[LDAP DN PREFIX]'
   ```
 
-  Replace `[LDAP DN PREFIX]` with the actual value, as per the following example: <br>
+  Replace `[LDAP DN PREFIX]` with the actual value, as per the following example:
 
   `CN=`
 
@@ -132,7 +130,7 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --data-raw '[UUID]'
   ```
 
-  Replace `[UUID]` with the actual value.<br>
+  Replace `[UUID]` with the actual value.
 
   If the UUID is not specified, then single-tenant is assumed by YugabyteDB Anywhere.
 
@@ -196,7 +194,7 @@ The following is the runtime configuration to specify:
   --data-raw '[SERVICE ACCOUNT PASSWORD]'
   ```
 
-  Replace `[SERVICE ACCOUNT PASSWORD]` with the actual value.<br>
+  Replace `[SERVICE ACCOUNT PASSWORD]` with the actual value.
 
 ## Define the YugabyteDB Anywhere role
 
