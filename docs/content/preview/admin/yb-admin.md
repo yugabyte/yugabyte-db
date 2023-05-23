@@ -1870,7 +1870,7 @@ Verify when the producer and consumer are in sync for a given list of `stream_id
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
+    -master_addresses <source_master_addresses> \
     wait_for_replication_drain \
     <comma_separated_list_of_stream_ids> [<timestamp> | minus <interval>]
 ```
