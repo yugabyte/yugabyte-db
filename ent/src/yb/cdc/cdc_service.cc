@@ -1785,17 +1785,24 @@ void CDCServiceImpl::UpdateLagMetrics() {
       continue;
     }
 
+    bool is_leader = (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY);
     ProducerTabletInfo tablet_info = {"" /* universe_uuid */, stream_id, tablet_id};
     tablets_in_cdc_state_table.insert(tablet_info);
-    auto tablet_metric = GetCDCTabletMetrics(tablet_info, tablet_peer);
+    auto tablet_metric =
+        GetCDCTabletMetrics(tablet_info, tablet_peer, CreateCDCMetricsEntity{is_leader});
+    // If we aren't the leader and have already wiped the metric, can exit early.
     if (!tablet_metric) {
       continue;
     }
-    if (tablet_peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
-      // Set lag to 0 because we're not the leader for this tablet anymore, which means another peer
-      // is responsible for tracking this tablet's lag.
-      tablet_metric->async_replication_sent_lag_micros->set_value(0);
-      tablet_metric->async_replication_committed_lag_micros->set_value(0);
+
+    if (!is_leader) {
+      // Set all tablet level metrics to 0 since we're not the leader anymore.
+      // For certain metrics, such as last_*_physicaltime this leads to us using cdc_state
+      // checkpoint values the next time to become leader.
+      tablet_metric->ClearMetrics();
+      // Also remove this metric metadata so it can be removed by metrics gc.
+      RemoveCDCTabletMetrics(tablet_info, tablet_peer);
+      continue;
     } else {
       // Get the physical time of the last committed record on producer.
       auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
@@ -1835,8 +1842,7 @@ void CDCServiceImpl::UpdateLagMetrics() {
       if (!tablet_metric) {
         continue;
       }
-      tablet_metric->async_replication_sent_lag_micros->set_value(0);
-      tablet_metric->async_replication_committed_lag_micros->set_value(0);
+      tablet_metric->ClearMetrics();
       RemoveCDCTabletMetrics(checkpoint.producer_tablet_info, tablet_peer);
     }
   }
