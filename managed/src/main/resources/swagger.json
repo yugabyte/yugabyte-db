@@ -12354,20 +12354,12 @@
           "uniqueItems" : true
         },
         "targetActive" : {
-          "description" : "Whether the source is active in txn xCluster",
+          "description" : "Whether the target is active in txn xCluster",
           "type" : "boolean"
         },
         "targetUniverseUUID" : {
           "description" : "Target Universe UUID",
           "format" : "uuid",
-          "type" : "string"
-        },
-        "txnTableDetails" : {
-          "$ref" : "#/definitions/XClusterTableConfig",
-          "readOnly" : true
-        },
-        "txnTableReplicationGroupName" : {
-          "description" : "Replication group name that replicates the transaction status table",
           "type" : "string"
         },
         "type" : {
@@ -12541,20 +12533,12 @@
           "uniqueItems" : true
         },
         "targetActive" : {
-          "description" : "Whether the source is active in txn xCluster",
+          "description" : "Whether the target is active in txn xCluster",
           "type" : "boolean"
         },
         "targetUniverseUUID" : {
           "description" : "Target Universe UUID",
           "format" : "uuid",
-          "type" : "string"
-        },
-        "txnTableDetails" : {
-          "$ref" : "#/definitions/XClusterTableConfig",
-          "readOnly" : true
-        },
-        "txnTableReplicationGroupName" : {
-          "description" : "Replication group name that replicates the transaction status table",
           "type" : "string"
         },
         "type" : {
