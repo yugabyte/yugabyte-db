@@ -10,7 +10,7 @@ import { assertUnreachableCase, handleServerError } from '../../../../utils/erro
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { isYbcEnabledUniverse } from '../../../../utils/UniverseUtils';
-import { PARALLEL_THREADS_RANGE } from '../../../backupv2/common/BackupUtils';
+import { ParallelThreads } from '../../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../../common/forms';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import {
@@ -73,7 +73,7 @@ const FIRST_FORM_STEP = FormStep.SELECT_TABLES;
 const INITIAL_VALUES: Partial<AddTableFormValues> = {
   tableUUIDs: [],
   // Bootstrap fields
-  parallelThreads: PARALLEL_THREADS_RANGE.MIN
+  parallelThreads: ParallelThreads.XCLUSTER_DEFAULT
 };
 
 /**
@@ -297,7 +297,6 @@ export const AddTableModal = ({
         }
         // workaround for outdated version of Formik to access form methods outside of <Formik>
         formik.current = formikProps;
-        formik.current.values.parallelThreads = 8;
 
         switch (currentStep) {
           case FormStep.SELECT_TABLES: {
@@ -435,13 +434,10 @@ const validateForm = async (
       }
       const shouldValidateParallelThread =
         values.parallelThreads && isYbcEnabledUniverse(sourceUniverse?.universeDetails);
-      if (shouldValidateParallelThread && values.parallelThreads > PARALLEL_THREADS_RANGE.MAX) {
-        errors.parallelThreads = `Parallel threads must be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`;
-      } else if (
-        shouldValidateParallelThread &&
-        values.parallelThreads < PARALLEL_THREADS_RANGE.MIN
-      ) {
-        errors.parallelThreads = `Parallel threads must be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`;
+      if (shouldValidateParallelThread && values.parallelThreads > ParallelThreads.MAX) {
+        errors.parallelThreads = `Parallel threads must be less than or equal to ${ParallelThreads.MAX}`;
+      } else if (shouldValidateParallelThread && values.parallelThreads < ParallelThreads.MIN) {
+        errors.parallelThreads = `Parallel threads must be greater than or equal to ${ParallelThreads.MIN}`;
       }
 
       throw errors;
