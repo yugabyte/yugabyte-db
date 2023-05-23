@@ -523,9 +523,12 @@ public class AWSUtil implements CloudUtil {
 
     DescribeSpotPriceHistoryResult result = ec2Client.describeSpotPriceHistory(request);
     List<SpotPrice> prices = result.getSpotPriceHistory();
-    log.info(
-        "Current aws spot price for instance type {} in zone {} = {}", instanceType, zone, prices);
     Double spotPrice = Double.parseDouble(prices.get(0).getSpotPrice());
+    log.info(
+        "Current aws spot price for instance type {} in zone {} = {}",
+        instanceType,
+        zone,
+        spotPrice);
     return spotPrice;
   }
 }
