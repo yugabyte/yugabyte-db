@@ -57,16 +57,19 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -566,7 +569,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   // part of the automatic restart process of a master, if applicable, as well as in
   // StartMasterOnNode.java for any user-specified master starts.
   public void createStartMasterOnNodeTasks(
-      Universe universe, NodeDetails currentNode, @Nullable NodeDetails stoppedNode) {
+      Universe universe,
+      NodeDetails currentNode,
+      @Nullable NodeDetails stoppingNode,
+      boolean isStoppable) {
 
     Set<NodeDetails> nodeSet = ImmutableSet.of(currentNode);
 
@@ -605,16 +611,120 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Add master to the quorum.
     createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
 
-    if (stoppedNode != null && stoppedNode.isMaster) {
+    if (stoppingNode != null && stoppingNode.isMaster) {
       // Perform master change only after the new master is added.
-      createChangeConfigTask(stoppedNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+      createChangeConfigTask(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+      if (isStoppable) {
+        createStopMasterTasks(Collections.singleton(stoppingNode))
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        // TODO this may not be needed as change master config is already done.
+        createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
       // Update this so that it is not added as a master in config update.
-      createUpdateNodeProcessTask(stoppedNode.nodeName, ServerType.MASTER, false)
+      createUpdateNodeProcessTask(stoppingNode.nodeName, ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
     // Update all server conf files because there was a master change.
-    createMasterInfoUpdateTask(universe, currentNode, stoppedNode);
+    createMasterInfoUpdateTask(universe, currentNode, stoppingNode);
+  }
+
+  // Find a similar node on which a new master process can be started.
+  protected NodeDetails findReplacementMaster(Universe universe, NodeDetails currentNode) {
+    if ((currentNode.isMaster || currentNode.masterState == MasterState.ToStop)
+        && currentNode.dedicatedTo == null) {
+      List<NodeDetails> candidates =
+          universe.getNodes().stream()
+              .filter(
+                  n ->
+                      (n.dedicatedTo == null || n.dedicatedTo != ServerType.TSERVER)
+                          && Objects.equals(n.placementUuid, currentNode.placementUuid)
+                          && !n.getNodeName().equals(currentNode.getNodeName())
+                          && n.getZone().equals(currentNode.getZone()))
+              .collect(Collectors.toList());
+      // This takes care of picking up the node that was previously selected.
+      Optional<NodeDetails> optional =
+          candidates.stream()
+              .filter(
+                  n ->
+                      n.masterState == MasterState.ToStart
+                          || n.masterState == MasterState.Configured)
+              .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
+              .findFirst();
+      if (optional.isPresent()) {
+        return optional.get();
+      }
+      // This picks up an eligible node from the candidates.
+      return candidates.stream()
+          .filter(n -> NodeState.Live.equals(n.state) && !n.isMaster)
+          .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
+          .findFirst()
+          .orElse(null);
+    }
+    return null;
+  }
+
+  /**
+   * Creates tasks to start master process on a replacement node given by the supplier only if the
+   * current node is a master. Call this method after tserver on the current node is stopped.
+   *
+   * @param universe the universe to which the nodes belong.
+   * @param currentNode the current node being stopped.
+   * @param replacementSupplier the supplier for the replacement node.
+   * @param isStoppable true if the current node can stopped.
+   */
+  public void createMasterReplacementTasks(
+      Universe universe,
+      NodeDetails currentNode,
+      Supplier<NodeDetails> replacementSupplier,
+      boolean isStoppable) {
+    if (currentNode.masterState != MasterState.ToStop) {
+      log.info(
+          "Current node {} is not a master to be stopped. Ignoring master replacement",
+          currentNode.getNodeName());
+      return;
+    }
+    NodeDetails newMasterNode = replacementSupplier.get();
+    if (newMasterNode == null) {
+      log.info("No eligible node found to move master from node {}", currentNode.getNodeName());
+      createChangeConfigTask(
+          currentNode, false /* isAdd */, SubTaskGroupType.StoppingNodeProcesses);
+      // Stop the master process on this node after this current master is removed.
+      if (isStoppable) {
+        createStopMasterTasks(Collections.singleton(currentNode))
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        // TODO this may not be needed as change master config is already done.
+        createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      }
+      // Update this so that it is not added as a master in config update.
+      createUpdateNodeProcessTask(currentNode.getNodeName(), ServerType.MASTER, false)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      // Now isTserver and isMaster are both false for this stopped node.
+      createMasterInfoUpdateTask(universe, null, currentNode);
+      // Update the master addresses on the target universes whose source universe belongs to
+      // this task.
+      createXClusterConfigUpdateMasterAddressesTask();
+    } else if (newMasterNode.masterState == MasterState.ToStart
+        || newMasterNode.masterState == MasterState.Configured) {
+      log.info(
+          "Automatically bringing up master for under replicated universe {} ({}) on node {}.",
+          universe.getUniverseUUID(),
+          universe.getName(),
+          newMasterNode.getNodeName());
+      // Update node state to Starting Master.
+      createSetNodeStateTask(newMasterNode, NodeState.Starting)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+      // This method takes care of master config change.
+      createStartMasterOnNodeTasks(universe, newMasterNode, currentNode, isStoppable);
+      createSetNodeStateTask(newMasterNode, NodeDetails.NodeState.Live)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+    }
+    // This is automatically cleared when the task is successful. It is done
+    // proactively to not run this conditional block on re-run or retry.
+    createSetNodeStatusTasks(
+            Collections.singleton(currentNode),
+            NodeStatus.builder().masterState(MasterState.None).build())
+        .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
   }
 
   public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
