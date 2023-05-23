@@ -57,7 +57,7 @@ public class ConfDataType<T> {
           String.class,
           Config::getString,
           (s) -> {
-            return parseStringAndApply(s, Config::getString);
+            return parseString(s);
           });
   static ConfDataType<Long> LongType =
       new ConfDataType<>(
@@ -243,5 +243,10 @@ public class ConfDataType<T> {
       String failMsg = String.format("%s is not a valid value for desired key\n", s);
       throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
     }
+  }
+
+  private static String parseString(String s) {
+    if (s.isEmpty()) return s;
+    return parseStringAndApply(s, Config::getString);
   }
 }
