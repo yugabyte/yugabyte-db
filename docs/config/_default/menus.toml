@@ -561,12 +561,24 @@
 
 [[preview_yugabyte-platform]]
   name = "YugabyteDB Anywhere API"
+  parent = "anywhere-automation"
   weight = 3
   identifier = "yugabytedb-anywhere-api"
   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
   [preview_yugabyte-platform.params]
     showSection = true
     newTab = true
+
+[[preview_yugabyte-platform]]
+  name = "Terraform provider"
+  parent = "anywhere-automation"
+  weight = 30
+  identifier = "yba-terraform-provider"
+  url = "https://registry.terraform.io/providers/yugabyte/yba/latest/"
+  [preview_yugabyte-platform.params]
+    showSection = true
+    newTab = true
+
 
 ########## Menus (in preview) for YB Managed section
 
@@ -749,9 +761,20 @@
 
 [[stable_yugabyte-platform]]
   name = "YugabyteDB Anywhere API"
+  parent = "anywhere-automation"
   weight = 3
   identifier = "yugabytedb-anywhere-api"
   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  [stable_yugabyte-platform.params]
+    showSection = true
+    newTab = true
+
+[[stable_yugabyte-platform]]
+  name = "Terraform provider"
+  parent = "anywhere-automation"
+  weight = 30
+  identifier = "yba-terraform-provider"
+  url = "https://registry.terraform.io/providers/yugabyte/yba/latest/"
   [stable_yugabyte-platform.params]
     showSection = true
     newTab = true
