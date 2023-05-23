@@ -377,7 +377,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     try {
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", null);
-      when(mockClient.setupUniverseReplication(any(), any(), any())).thenReturn(mockSetupResponse);
+      when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
+          .thenReturn(mockSetupResponse);
       IsSetupUniverseReplicationDoneResponse mockIsSetupDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, null);
       when(mockClient.isSetupUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
@@ -422,7 +423,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     try {
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", null);
-      when(mockClient.setupUniverseReplication(any(), any(), any())).thenReturn(mockSetupResponse);
+      when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
+          .thenReturn(mockSetupResponse);
       IsSetupUniverseReplicationDoneResponse mockIsSetupDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, null);
       when(mockClient.isSetupUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
@@ -474,7 +476,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
               .setCode(Code.UNKNOWN_ERROR);
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", masterErrorBuilder.build());
-      when(mockClient.setupUniverseReplication(any(), any(), any())).thenReturn(mockSetupResponse);
+      when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
+          .thenReturn(mockSetupResponse);
     } catch (Exception ignore) {
     }
 
@@ -519,7 +522,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     try {
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", null);
-      when(mockClient.setupUniverseReplication(any(), any(), any())).thenReturn(mockSetupResponse);
+      when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
+          .thenReturn(mockSetupResponse);
 
       AppStatusPB.Builder appStatusBuilder =
           AppStatusPB.newBuilder().setMessage(isSetupDoneErrMsg).setCode(ErrorCode.UNKNOWN_ERROR);
