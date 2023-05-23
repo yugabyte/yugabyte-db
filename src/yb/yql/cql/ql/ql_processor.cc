@@ -33,7 +33,7 @@
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_require_drop_privs_for_truncate);
-DEFINE_RUNTIME_bool(ycql_enable_stat_statements, false,
+DEFINE_RUNTIME_bool(ycql_enable_stat_statements, true,
     "If enabled, it will track queries and dump their metrics on http endpoint 12000/statements");
 
 
