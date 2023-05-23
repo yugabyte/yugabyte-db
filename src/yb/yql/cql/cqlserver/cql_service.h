@@ -125,6 +125,8 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   void UpdateCounters(const ql::CQLMessage::QueryId& query_id, double execute_time);
 
+  // Executes the update counters for both prepared and unprepared statements.
+  // "prepared_stmts_mutex_" needs to be locked before this call.
   void UpdateCountersUnlocked(double execute_time, std::shared_ptr<ql::Counters> counters);
 
  private:
