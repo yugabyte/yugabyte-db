@@ -119,7 +119,7 @@ DEFINE_UNKNOWN_int32(update_min_cdc_indices_interval_secs, 60,
     "replicated index across all streams is sent to the other peers in the configuration. "
     "If flag enable_log_retention_by_op_idx is disabled, this flag has no effect.");
 
-DEFINE_UNKNOWN_int32(update_metrics_interval_ms, kUpdateIntervalMs,
+DEFINE_RUNTIME_int32(update_metrics_interval_ms, kUpdateIntervalMs,
     "How often to update xDC cluster metrics.");
 
 DEFINE_UNKNOWN_bool(enable_cdc_state_table_caching, true,
@@ -128,7 +128,7 @@ DEFINE_UNKNOWN_bool(enable_cdc_state_table_caching, true,
 DEFINE_RUNTIME_bool(enable_cdc_client_tablet_caching, true,
     "Enable caching the tablets found by client.");
 
-DEFINE_UNKNOWN_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
+DEFINE_RUNTIME_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
 
 DEFINE_UNKNOWN_double(cdc_read_safe_deadline_ratio, .10,
     "When the heartbeat deadline has this percentage of time remaining, "
@@ -2132,12 +2132,24 @@ void CDCServiceImpl::UpdateCDCMetrics() {
   }
 }
 
-bool CDCServiceImpl::ShouldUpdateCDCMetrics(MonoTime time_since_update_metrics) {
+bool CDCServiceImpl::ShouldUpdateCDCMetrics(MonoTime time_of_last_update_metrics) {
   // Only update metrics if cdc is enabled, which means we have a valid replication stream.
-  return GetAtomicFlag(&FLAGS_enable_collect_cdc_metrics) &&
-         (time_since_update_metrics == MonoTime::kUninitialized ||
-          MonoTime::Now() - time_since_update_metrics >=
-              MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_update_metrics_interval_ms)));
+  if (!GetAtomicFlag(&FLAGS_enable_collect_cdc_metrics)) {
+    return false;
+  }
+  if (time_of_last_update_metrics == MonoTime::kUninitialized) {
+    return true;
+  }
+
+  const auto delta_since_last_update = MonoTime::Now() - time_of_last_update_metrics;
+  const auto update_interval_ms = GetAtomicFlag(&FLAGS_update_metrics_interval_ms);
+  // Only log warning message if it has been more than 4 times the metrics update interval.
+  // By default, this is 15s * 4 = 1 minute.
+  if (delta_since_last_update >= update_interval_ms * 4ms) {
+    YB_LOG_EVERY_N_SECS(WARNING, 300)
+        << "UpdateCDCMetrics was delayed by " << delta_since_last_update << THROTTLE_MSG;
+  }
+  return delta_since_last_update >= MonoDelta::FromMilliseconds(update_interval_ms);
 }
 
 bool CDCServiceImpl::CDCEnabled() { return cdc_enabled_.load(std::memory_order_acquire); }
