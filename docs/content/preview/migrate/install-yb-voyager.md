@@ -30,6 +30,10 @@ You can install YugabyteDB Voyager on the following:
 - Disk space must be at least 1.5 times the estimated size of the source database.
 - 2 cores minimum (recommended)
 
+### Software requirement
+
+- Java 17 or later.
+
 ### Prepare the host
 
 The node where you'll run the yb-voyager command should:
