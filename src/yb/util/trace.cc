@@ -44,6 +44,7 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/random.h"
+#include "yb/util/threadlocal.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/object_pool.h"
@@ -285,12 +286,12 @@ scoped_refptr<Trace> Trace::NewTrace() {
   }
   const int32_t sampling_freq = GetAtomicFlag(&FLAGS_sampled_trace_1_in_n);
   if (sampling_freq <= 0) {
-    VLOG(2) << "Sampled tracing returns " << nullptr;
+    VLOG(2) << "Sampled tracing returns nullptr";
     return nullptr;
   }
-  static yb::ThreadSafeRandom rng(static_cast<uint32_t>(GetCurrentTimeMicros()));
 
-  auto ret = scoped_refptr<Trace>(rng.OneIn(sampling_freq) ? new Trace() : nullptr);
+  BLOCK_STATIC_THREAD_LOCAL(yb::Random, rng_ptr, static_cast<uint32_t>(GetCurrentTimeMicros()));
+  auto ret = scoped_refptr<Trace>(rng_ptr->OneIn(sampling_freq) ? new Trace() : nullptr);
   VLOG(2) << "Sampled tracing returns " << (ret ? "non-null" : "nullptr");
   if (ret) {
     TRACE_TO(ret.get(), "Sampled trace created probabilistically");
