@@ -444,7 +444,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: Specifies the database `ysql.db-name` or keyspace `ycql.keyspace-name`.
 * *table_name*: Specifies the table name.
-* *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for compaction to end. Default value is `20`.
+* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
 
 **Example**
 
@@ -459,6 +459,36 @@ Started compaction of table kong.test
 Compaction request id: 75c406c1d2964487985f9c852a8ef2a3
 Waiting for compaction...
 Compaction complete: SUCCESS
+```
+
+#### compact_table_by_id
+
+Triggers manual compaction on a table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    compact_table_by_id <table_id> \
+    [timeout_in_seconds] [ADD_INDEXES]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *table_id*: The unique UUID associated with the table to be compacted.
+* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    compact_table_by_id 000033f100003000800000000000410a
+```
+
+```output
+Compacted [000033f100003000800000000000410a] tables.
 ```
 
 #### modify_table_placement_info
