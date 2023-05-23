@@ -444,7 +444,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: Specifies the database `ysql.db-name` or keyspace `ycql.keyspace-name`.
 * *table_name*: Specifies the table name.
-* *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for compaction to end. Default value is `20`.
+* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
 
 **Example**
 
