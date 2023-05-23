@@ -58,7 +58,6 @@ import org.yb.CommonTypes.TableType;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.StreamEntryPB;
-import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
@@ -81,12 +80,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static final String ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG =
       "enable_replicate_transaction_status_table";
   public static final boolean ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_DEFAULT = false;
-  public static final String TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME = "system";
-  public static final String TRANSACTION_STATUS_TABLE_NAMESPACE = "system";
-  public static final String TRANSACTION_STATUS_TABLE_NAME = "transactions";
   public static final Boolean TRANSACTION_SOURCE_UNIVERSE_ROLE_ACTIVE_DEFAULT = true;
   public static final Boolean TRANSACTION_TARGET_UNIVERSE_ROLE_ACTIVE_DEFAULT = true;
   public static final String ENABLE_PG_SAVEPOINTS_GFLAG_NAME = "enable_pg_savepoints";
+  public static final String MINIMUN_VERSION_TRANSACTIONAL_XCLUSTER_SUPPORT = "2.18.1.0-b1";
 
   public static final List<XClusterConfig.XClusterConfigStatusType>
       X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST =
@@ -673,13 +670,11 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @param config The cluster config on the target universe
    * @param xClusterConfig The xCluster config object to sync
    * @param tableIds The list of tables in the {@code xClusterConfig} to sync
-   * @param skipSyncTxnTable Whether to skip syncing txn table
    */
   protected void syncXClusterConfigWithReplicationGroup(
       CatalogEntityInfo.SysClusterConfigEntryPB config,
       XClusterConfig xClusterConfig,
-      Set<String> tableIds,
-      boolean skipSyncTxnTable) {
+      Set<String> tableIds) {
     CdcConsumer.ProducerEntryPB replicationGroup =
         config
             .getConsumerRegistry()
@@ -744,65 +739,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           xClusterConfig.getUuid(),
           streamId);
     }
-
-    // Sync id and status for the txn table stream and the target universe role.
-    if (xClusterConfig.getType().equals(ConfigType.Txn) && !skipSyncTxnTable) {
-      CdcConsumer.ProducerEntryPB txnTableReplicationGroup =
-          config
-              .getConsumerRegistry()
-              .getProducerMapMap()
-              .get(xClusterConfig.getTxnTableReplicationGroupName());
-      if (txnTableReplicationGroup == null) {
-        throw new RuntimeException(
-            String.format(
-                "Xcluster type is ConfigType.Txn but no replication group found with name (%s) "
-                    + "in universe (%s) cluster config",
-                xClusterConfig.getTxnTableReplicationGroupName(),
-                xClusterConfig.getTargetUniverseUUID()));
-      }
-      Map<String, String> txnReplicationStreamMap =
-          txnTableReplicationGroup.getStreamMapMap().entrySet().stream()
-              .collect(Collectors.toMap(e -> e.getValue().getProducerTableId(), Map.Entry::getKey));
-      XClusterTableConfig txnTableConfig = xClusterConfig.getTxnTableDetails();
-      if (Objects.isNull(txnTableConfig)) {
-        throw new IllegalStateException(
-            "Xcluster type is ConfigType.Txn but txnTableConfig is null");
-      }
-      String streamId = txnReplicationStreamMap.get(txnTableConfig.getTableId());
-      if (Objects.isNull(streamId)) {
-        txnTableConfig.setStatus(XClusterTableConfig.Status.Failed);
-        txnTableConfig.update();
-        throw new IllegalStateException(
-            "Xcluster type is ConfigType.Txn but no stream id is set for the txn table in the "
-                + "target universe cluster config");
-      }
-      if (Objects.nonNull(txnTableConfig.getStreamId())
-          && !txnTableConfig.getStreamId().equals(streamId)) {
-        log.warn(
-            "Bootstrap id ({}) for table ({}) is different from stream id ({}) in the "
-                + "cluster config for xCluster config ({})",
-            txnTableConfig.getStreamId(),
-            txnTableConfig.getTableId(),
-            streamId,
-            xClusterConfig.getUuid());
-      }
-      txnTableConfig.setStreamId(streamId);
-      txnTableConfig.setStatus(XClusterTableConfig.Status.Running);
-      txnTableConfig.setReplicationSetupDone(true);
-      txnTableConfig.update();
-      log.info(
-          "StreamId for txn table {} in xCluster config {} is set to {}",
-          txnTableConfig.getTableId(),
-          xClusterConfig.getUuid(),
-          streamId);
-      xClusterConfig.setTargetActive(
-          config.getConsumerRegistry().getRole().equals(XClusterRole.ACTIVE));
-      xClusterConfig.update();
-      log.info(
-          "Universe role for universe {} was set to {}",
-          xClusterConfig.getTargetUniverseUUID(),
-          xClusterConfig.isTargetActive() ? XClusterRole.ACTIVE : XClusterRole.STANDBY);
-    }
   }
 
   public static boolean supportsMultipleTablesWithIsBootstrapRequired(Universe universe) {
@@ -818,7 +754,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static boolean supportsTxnXCluster(Universe universe) {
     // The minimum YBDB version that supports transactional xCluster is 2.17.3.0-b2.
     return Util.compareYbVersions(
-            "2.17.3.0-b1",
+            MINIMUN_VERSION_TRANSACTIONAL_XCLUSTER_SUPPORT,
             universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
             true /* suppressFormatError */)
         < 0;
@@ -900,20 +836,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       throw new IllegalArgumentException("requestedTableIds cannot be empty");
     }
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        getTableInfoList(ybService, sourceUniverse, false /* excludeSystemTables */);
-
-    // Remove the transactions table id from the list of user tables.
-    if (configType.equals(ConfigType.Txn)) {
-      getTxnTableInfoIfExists(sourceTableInfoList)
-          .ifPresent(
-              txnTableInfo -> {
-                String txnTableId = getTableId(txnTableInfo);
-                requestedTableIds.removeIf(tableId -> tableId.equals(txnTableId));
-                if (bootstrapParams != null && bootstrapParams.tables != null) {
-                  bootstrapParams.tables.removeIf(tableId -> tableId.equals(txnTableId));
-                }
-              });
-    }
+        getTableInfoList(ybService, sourceUniverse, true /* excludeSystemTables */);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         sourceTableInfoList.stream()
@@ -966,7 +889,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     // Make sure all the tables on the source universe have a corresponding table on the target
     // universe.
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesInfoList =
-        getTableInfoList(ybService, targetUniverse, false /* excludeSystemTables */);
+        getTableInfoList(ybService, targetUniverse, true /* excludeSystemTables */);
     Map<String, String> sourceTableIdTargetTableIdMap =
         getSourceTableIdTargetTableIdMap(requestedTableInfoList, targetTablesInfoList);
 
@@ -1027,12 +950,11 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         groupByNamespaceId(requestedTableInfoList)
             .forEach(
                 (namespaceId, tablesInfoList) -> {
-                  Set<String> selectedTableIdsInNamespace = getTableIds(tablesInfoList);
-                  Set<String> tableIdsNeedBootstrap =
-                      selectedTableIdsInNamespace.stream()
+                  Set<String> selectedTableIdsInNamespaceToBootstrap =
+                      getTableIds(tablesInfoList).stream()
                           .filter(bootstrapParams.tables::contains)
                           .collect(Collectors.toSet());
-                  if (!tableIdsNeedBootstrap.isEmpty()) {
+                  if (!selectedTableIdsInNamespaceToBootstrap.isEmpty()) {
                     Set<String> tableIdsInNamespace =
                         sourceTableInfoList.stream()
                             .filter(
@@ -1047,43 +969,21 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                                             .equals(namespaceId))
                             .map(tableInfo -> tableInfo.getId().toStringUtf8())
                             .collect(Collectors.toSet());
-                    if (tableIdsInNamespace.size() != selectedTableIdsInNamespace.size()) {
-                      throw new IllegalArgumentException(
-                          String.format(
-                              "For YSQL tables, all the tables in a keyspace must be selected: "
-                                  + "selected: %s, tables in the keyspace: %s",
-                              selectedTableIdsInNamespace, tableIdsInNamespace));
-                    }
+                    // Todo: uncomment the following code after
+                    //  https://yugabyte.atlassian.net/browse/PLAT-8950 is landed.
+                    //                    if (tableIdsInNamespace.size() !=
+                    // selectedTableIdsInNamespaceToBootstrap.size()) {
+                    //                      throw new IllegalArgumentException(
+                    //                          String.format(
+                    //                              "For YSQL tables, all the tables in a keyspace
+                    // must be selected: "
+                    //                                  + "selected: %s, tables in the keyspace:
+                    // %s",
+                    //                            selectedTableIdsInNamespaceToBootstrap,
+                    // tableIdsInNamespace));
+                    //                    }
                   }
                 });
-      }
-    }
-
-    // Add transactions table id to the end of requestedTableInfoList if required.
-    if (configType.equals(ConfigType.Txn)) {
-      if (Objects.isNull(bootstrapParams)) {
-        throw new IllegalArgumentException(
-            "To create a transactional xCluster, \"bootstrapParams\" are required");
-      }
-      Optional<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> txnTableInfoSourceOptional =
-          getTxnTableInfoIfExists(sourceTableInfoList);
-      Optional<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> txnTableInfoTargetOptional =
-          getTxnTableInfoIfExists(targetTablesInfoList);
-      if (txnTableInfoSourceOptional.isPresent()) {
-        requestedTableInfoList.add(txnTableInfoSourceOptional.get());
-      } else {
-        throw new IllegalArgumentException(
-            String.format(
-                "Transactional replication cannot be set up because %s.%s table does not "
-                    + "exist on the source universe",
-                TRANSACTION_STATUS_TABLE_NAMESPACE, TRANSACTION_STATUS_TABLE_NAME));
-      }
-      if (!txnTableInfoTargetOptional.isPresent()) {
-        throw new IllegalArgumentException(
-            String.format(
-                "Transactional replication cannot be set up because %s.%s table does not "
-                    + "exist on the target universe",
-                TRANSACTION_STATUS_TABLE_NAMESPACE, TRANSACTION_STATUS_TABLE_NAME));
       }
     }
 
@@ -1511,26 +1411,5 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
     return xClusterConfigs.size() != 1
         || !xClusterConfigs.get(0).getUuid().equals(xClusterConfigUuid);
-  }
-
-  /**
-   * It returns the {@code TableInfo} object for the transactions table from tableInfoList. It
-   * assumes the list of {@code TableInfo} includes system tables.
-   *
-   * @param tableInfoList The list of {@code TableInfo} objects including system tables
-   * @return An optional of {@link MasterDdlOuterClass.ListTablesResponsePB.TableInfo} for the
-   *     transactions table
-   */
-  public static Optional<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
-      getTxnTableInfoIfExists(
-          List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
-    return tableInfoList.stream().filter(XClusterConfigTaskBase::isTableInfoForTxnTable).findAny();
-  }
-
-  public static boolean isTableInfoForTxnTable(
-      MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo) {
-    return tableInfo.getTableType().equals(TableType.TRANSACTION_STATUS_TABLE_TYPE)
-        && tableInfo.getNamespace().getName().equals(TRANSACTION_STATUS_TABLE_NAMESPACE)
-        && tableInfo.getName().equals(TRANSACTION_STATUS_TABLE_NAME);
   }
 }

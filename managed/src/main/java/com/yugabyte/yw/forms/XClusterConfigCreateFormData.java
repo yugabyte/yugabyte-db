@@ -1,6 +1,7 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
@@ -78,5 +79,5 @@ public class XClusterConfigCreateFormData {
   }
 
   @ApiModelProperty(value = "configType", allowableValues = "Basic, Txn")
-  public XClusterConfig.ConfigType configType;
+  public XClusterConfig.ConfigType configType = ConfigType.Basic;
 }
