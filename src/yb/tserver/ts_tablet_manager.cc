@@ -242,11 +242,6 @@ DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_queue_size, 500,
 DEFINE_NON_RUNTIME_int32(scheduled_full_compaction_check_interval_min, 15,
              "DEPRECATED. Use auto_compact_check_interval_sec.");
 
-DEFINE_NON_RUNTIME_int32(auto_compact_check_interval_sec, 60,
-             "The interval at which the full compaction task checks for tablets "
-             "eligible for compaction, in seconds. 0 indicates that the background task "
-             "is fully disabled.");
-
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
 
@@ -477,8 +472,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       server_->metric_entity(),
       [this](){ return GetTabletPeers(); });
 
-  full_compaction_manager_ = std::make_unique<FullCompactionManager>(
-      this, FLAGS_auto_compact_check_interval_sec);
+  full_compaction_manager_ = std::make_unique<FullCompactionManager>(this);
 
   tablet_options_.priority_thread_pool_metrics =
       std::make_shared<rocksdb::RocksDBPriorityThreadPoolMetrics>(
@@ -584,16 +578,6 @@ Status TSTabletManager::Init() {
   }
 
   // Background task initiation.
-  const auto compaction_check_interval_sec = full_compaction_manager_->check_interval_sec();
-  if (compaction_check_interval_sec > 0) {
-    scheduled_full_compaction_bg_task_.reset(
-        new BackgroundTask(std::function<void()>([this]() {
-            full_compaction_manager_->ScheduleFullCompactions(); }),
-        "tablet manager", "full compaction manager",
-        MonoDelta::FromSeconds(compaction_check_interval_sec).ToChronoMilliseconds()));
-    RETURN_NOT_OK(scheduled_full_compaction_bg_task_->Init());
-  }
-
   const int32_t bg_superblock_flush_interval_secs = FLAGS_bg_superblock_flush_interval_secs;
   if (FLAGS_lazily_flush_superblock && bg_superblock_flush_interval_secs > 0) {
     superblock_flush_bg_task_.reset(new BackgroundTask(
@@ -609,6 +593,8 @@ Status TSTabletManager::Init() {
   }
 
   RETURN_NOT_OK(mem_manager_->Init());
+
+  RETURN_NOT_OK(full_compaction_manager_->Init());
 
   tablets_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupSplitTablets, this));
@@ -1735,6 +1721,8 @@ void TSTabletManager::StartShutdown() {
 
   mem_manager_->Shutdown();
 
+  full_compaction_manager_->Shutdown();
+
   // Wait for all RBS operations to finish.
   const MonoDelta kSingleWait = 10ms;
   const MonoDelta kReportInterval = 5s;
@@ -1809,9 +1797,6 @@ void TSTabletManager::CompleteShutdown() {
   }
   if (admin_triggered_compaction_pool_) {
     admin_triggered_compaction_pool_->Shutdown();
-  }
-  if (scheduled_full_compaction_bg_task_) {
-    scheduled_full_compaction_bg_task_->Shutdown();
   }
   if (superblock_flush_bg_task_) {
     superblock_flush_bg_task_->Shutdown();
