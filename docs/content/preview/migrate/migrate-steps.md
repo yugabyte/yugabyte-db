@@ -224,6 +224,18 @@ Refer to [export data](../reference/yb-voyager-cli/#export-data) for details abo
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
+#### Accelerate data export (Optional for MySQL/Oracle only)
+
+If you want to speed up the data export for MySQL/Oracle, you can set the environment variable `EXPERIMENTAL_FAST_EXPORT=1` when you run `export data`.
+
+Consider the following caveats before using the feature:
+
+- You need to perform additional steps when you [prepare the source database](#prepare-the-source-database).
+- Some data types are unsupported. For a detailed list, refer to [datatype mappings](../reference/datatype-mapping-mysql/).
+- [--parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument is unsupported.
+- SSL is unsupported.
+- With MySQL RDS, writes are not allowed during the export process.
+
 ### Import schema
 
 Import the schema using the `yb-voyager import schema` command.

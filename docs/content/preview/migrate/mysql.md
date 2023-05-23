@@ -26,6 +26,23 @@ Create a database user and provide the user with READ access to all the resource
    GRANT TRIGGER ON source_db_name.* TO 'ybvoyager'@'localhost';
    ```
 
+   Note that if you want to [accelerate data export](#accelerate-data-export-optional-for-mysql-oracle-only), include the following grants additionally as follows:
+
+   **For MYSQL**
+
+   ```sql
+   GRANT FLUSH_TABLES ON *.* TO 'ybvoyager'@'localhost';
+   GRANT REPLICATION CLIENT ON *.* TO 'ybvoyager'@'localhost';
+   ```
+
+   **For MYSQL RDS**
+
+   ```sql
+   GRANT FLUSH_TABLES ON *.* TO 'ybvoyager'@'localhost';
+   GRANT REPLICATION CLIENT ON *.* TO 'ybvoyager'@'localhost';
+   GRANT LOCK TABLES ON <source_db_name>.* TO 'ybvoyager'@'localhost';
+   ```
+
 1. If you are running MySQL version >= 8.0.20, grant the global `SHOW_ROUTINE` permission. For older versions, grant the global `SELECT` permission. These permissions are necessary to dump stored procedure/function definitions.
 
    ```sql
