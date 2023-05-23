@@ -476,7 +476,7 @@ yb-admin \
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *table_id*: The unique UUID associated with the table that we want to compact.
-* *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for compaction to end. Default value is `20`.
+* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
 * *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
 
 **Example**
