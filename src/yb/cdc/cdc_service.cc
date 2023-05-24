@@ -59,6 +59,9 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 
+#include "yb/rocksdb/rate_limiter.h"
+#include "yb/rocksdb/util/rate_limiter.h"
+
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
 
@@ -77,6 +80,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
@@ -166,6 +170,10 @@ DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
 
 DEFINE_test_flag(bool, force_get_checkpoint_from_cdc_state, false,
     "Always bypass the cache and fetch the checkpoint from the cdc state table");
+
+DEFINE_RUNTIME_int32(get_changes_max_send_rate_mbps, 100,
+                     "Server-wide max send rate in megabytes per second for GetChanges response "
+                     "traffic. Throttles both xcluster and cdc traffic.");
 
 DECLARE_bool(enable_log_retention_by_op_idx);
 
@@ -674,10 +682,14 @@ CDCServiceImpl::CDCServiceImpl(
       server_metrics_(std::make_shared<CDCServerMetrics>(metric_entity_server)),
       get_changes_rpc_sem_(std::max(
           1.0, floor(FLAGS_rpc_workers_limit * (1 - FLAGS_cdc_get_changes_free_rpc_ratio)))),
+      rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
+          GetAtomicFlag(&FLAGS_get_changes_max_send_rate_mbps) * 1_MB))),
       impl_(new Impl(context_.get(), &mutex_)) {
   CHECK_OK(Thread::Create(
       "cdc_service", "update_peers_and_metrics", &CDCServiceImpl::UpdatePeersAndMetrics, this,
       &update_peers_and_metrics_thread_));
+
+  rate_limiter_->EnableLoggingWithDescription("CDC Service");
 
   LOG_IF(WARNING, get_changes_rpc_sem_.GetValue() == 1) << "only 1 thread available for GetChanges";
 }
@@ -1893,6 +1905,10 @@ void CDCServiceImpl::GetChanges(
     return;
   }
 
+  LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, 1 /* n_secs */, 100 /* max_expected_millis */,
+      Format("Rate limiting GetChanges request for tablet $0", req->tablet_id())) {
+    rate_limiter_->Request(resp->ByteSizeLong(), IOPriority::kHigh);
+  };
   context.RespondSuccess();
 }
 
@@ -2806,6 +2822,9 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     WARN_NOT_OK(
         DeleteCDCStateTableMetadata(cdc_state_entries_to_delete, failed_tablet_ids),
         "Unable to cleanup CDC State table metadata");
+
+    rate_limiter_->SetBytesPerSecond(GetAtomicFlag(&FLAGS_get_changes_max_send_rate_mbps) * 1_MB);
+
   } while (sleep_while_not_stopped());
 }
 
