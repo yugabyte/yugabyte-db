@@ -807,9 +807,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp);
 
   Result<size_t> GetReplicationFactor() override;
-  Result<size_t> GetReplicationFactorForTablet(const scoped_refptr<TabletInfo>& tablet);
+  Result<size_t> GetNumTabletReplicas(const scoped_refptr<TabletInfo>& tablet);
 
-  void GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas);
+  // Lookup tablet by ID, then call GetExpectedNumberOfReplicasForTable below.
+  Status GetExpectedNumberOfReplicasForTablet(const TabletId& tablet_id,
+                                              int* num_live_replicas,
+                                              int* num_read_replicas);
+
+  // Get the number of live and read replicas for a given table.
+  void GetExpectedNumberOfReplicasForTable(const scoped_refptr<TableInfo>& table,
+                                           int* num_live_replicas,
+                                           int* num_read_replicas);
 
   // Get the percentage of tablets that have been moved off of the black-listed tablet servers.
   Status GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
