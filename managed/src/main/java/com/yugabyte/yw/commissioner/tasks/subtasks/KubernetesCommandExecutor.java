@@ -872,15 +872,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UniverseDefinitionTaskParams.UserIntent primaryClusterIntent =
         u.getUniverseDetails().getPrimaryCluster().userIntent;
 
-    if (u.getUniverseDetails().rootCA != null) {
+    if (u.getUniverseDetails().rootCA != null || u.getUniverseDetails().getClientRootCA() != null) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
       tlsInfo.put("nodeToNode", primaryClusterIntent.enableNodeToNodeEncrypt);
       tlsInfo.put("clientToServer", primaryClusterIntent.enableClientToNodeEncrypt);
       tlsInfo.put("insecure", u.getUniverseDetails().allowInsecure);
+      String rootCert;
+      String rootKey;
+      if (u.getUniverseDetails().rootCA != null) {
+        rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().rootCA);
+        rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().rootCA);
+      } else {
+        rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().getClientRootCA());
+        rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().getClientRootCA());
+      }
 
-      String rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().rootCA);
-      String rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().rootCA);
       if (rootKey != null && !rootKey.isEmpty()) {
         Map<String, Object> rootCA = new HashMap<>();
         rootCA.put("cert", rootCert);
@@ -889,7 +896,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       } else {
         // In case root cert key is null which will be the case with Hashicorp Vault certificates
         // Generate wildcard node cert and client cert and set them in override file
-        CertificateInfo certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
+        CertificateInfo certInfo;
+        if (u.getUniverseDetails().rootCA != null) {
+          certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
+        } else {
+          certInfo = CertificateInfo.get(u.getUniverseDetails().getClientRootCA());
+        }
 
         Map<String, Object> rootCA = new HashMap<>();
         rootCA.put("cert", rootCert);
