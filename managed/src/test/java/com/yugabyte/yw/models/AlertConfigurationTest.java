@@ -26,6 +26,8 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.AlertTemplateVariableServiceTest;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
@@ -76,6 +78,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
   private AlertDestination alertDestination;
 
   private MaintenanceService maintenanceService;
+  private AlertTemplateService alertTemplateService;
   private AlertTemplateVariableService alertTemplateVariableService;
 
   @Before
@@ -85,6 +88,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
     otherUniverse = ModelFactory.createUniverse("some other");
 
     maintenanceService = app.injector().instanceOf(MaintenanceService.class);
+    alertTemplateService = app.injector().instanceOf(AlertTemplateService.class);
     alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
 
     alertDestination =
@@ -264,7 +268,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
     assertFind(filter, configuration, configuration2, platformConfiguration);
 
     // Name filter
-    filter = AlertConfigurationFilter.builder().name(MEMORY_CONSUMPTION.getName()).build();
+    filter = AlertConfigurationFilter.builder().name("Memory Consumption").build();
     assertFind(filter, configuration);
 
     // Name starts with
@@ -506,7 +510,6 @@ public class AlertConfigurationTest extends FakeDBApplication {
     AlertDefinition duplicate =
         new AlertDefinition()
             .setCustomerUUID(customer.getUuid())
-            .setQuery(definition.getQuery())
             .setConfigurationUUID(definition.getConfigurationUUID())
             .setLabels(
                 definition.getLabels().stream()
@@ -740,13 +743,16 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
   private void assertTestConfiguration(AlertConfiguration configuration) {
     AlertTemplate template = MEMORY_CONSUMPTION;
+    AlertTemplateDescription templateDescription =
+        alertTemplateService.getTemplateDescription(template);
     assertThat(configuration.getCustomerUUID(), equalTo(customer.getUuid()));
-    assertThat(configuration.getName(), equalTo(template.getName()));
-    assertThat(configuration.getDescription(), equalTo(template.getDescription()));
+    assertThat(configuration.getName(), equalTo(templateDescription.getName()));
+    assertThat(configuration.getDescription(), equalTo(templateDescription.getDescription()));
     assertThat(configuration.getTemplate(), equalTo(template));
-    assertThat(configuration.getDurationSec(), equalTo(template.getDefaultDurationSec()));
+    assertThat(
+        configuration.getDurationSec(), equalTo(templateDescription.getDefaultDurationSec()));
     assertThat(configuration.getDestinationUUID(), equalTo(alertDestination.getUuid()));
-    assertThat(configuration.getTargetType(), equalTo(template.getTargetType()));
+    assertThat(configuration.getTargetType(), equalTo(templateDescription.getTargetType()));
     assertThat(configuration.getTarget(), equalTo(new AlertConfigurationTarget().setAll(true)));
     assertThat(
         configuration.getThresholds().get(AlertConfiguration.Severity.SEVERE),

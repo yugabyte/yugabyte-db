@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId.TargetType;
 import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -43,6 +44,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -77,6 +79,9 @@ public class UniverseMetricProvider implements MetricsProvider {
             .collect(Collectors.toMap(config -> config.getConfigUUID(), Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     for (Customer customer : Customer.getAll()) {
+      Map<UUID, NodeInstance> nodeInstances =
+          NodeInstance.listByCustomer(customer.getUuid()).stream()
+              .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
       for (Universe universe : Universe.getAllWithoutResources(customer)) {
         try {
           MetricSaveGroup.MetricSaveGroupBuilder universeGroup = MetricSaveGroup.builder();
@@ -94,6 +99,13 @@ public class UniverseMetricProvider implements MetricsProvider {
                   universe,
                   PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
                   statusValue(universe.getUniverseDetails().updateInProgress)));
+          universeGroup.metric(
+              createUniverseMetric(
+                  customer,
+                  universe,
+                  PlatformMetrics.UNIVERSE_IS_SYSTEMD,
+                  statusValue(
+                      universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd)));
           Double encryptionKeyExpiryDays =
               getEncryptionKeyExpiryDays(
                   activeEncryptionKeys.get(universe.getUniverseUUID()), kmsConfigMap);
@@ -138,14 +150,14 @@ public class UniverseMetricProvider implements MetricsProvider {
                 // Node IP is missing - node is being created
                 continue;
               }
-
-              String ipAddress = nodeDetails.cloudInfo.private_ip;
+              NodeInstance nodeInstance = nodeInstances.get(nodeDetails.nodeUuid);
               universeGroup.metric(
                   createNodeMetric(
                       customer,
                       universe,
                       PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                      ipAddress,
+                      nodeDetails,
+                      nodeInstance,
                       nodeDetails.masterHttpPort,
                       "master_export",
                       statusValue(nodeDetails.isMaster)));
@@ -154,7 +166,8 @@ public class UniverseMetricProvider implements MetricsProvider {
                       customer,
                       universe,
                       PlatformMetrics.UNIVERSE_NODE_PROCESS_STATUS,
-                      ipAddress,
+                      nodeDetails,
+                      nodeInstance,
                       nodeDetails.masterHttpPort,
                       "master_export",
                       statusValue(nodeDetails.isMaster && nodeDetails.isActive())));
@@ -163,7 +176,8 @@ public class UniverseMetricProvider implements MetricsProvider {
                       customer,
                       universe,
                       PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                      ipAddress,
+                      nodeDetails,
+                      nodeInstance,
                       nodeDetails.tserverHttpPort,
                       "tserver_export",
                       statusValue(nodeDetails.isTserver)));
@@ -172,7 +186,8 @@ public class UniverseMetricProvider implements MetricsProvider {
                       customer,
                       universe,
                       PlatformMetrics.UNIVERSE_NODE_PROCESS_STATUS,
-                      ipAddress,
+                      nodeDetails,
+                      nodeInstance,
                       nodeDetails.tserverHttpPort,
                       "tserver_export",
                       statusValue(nodeDetails.isTserver && nodeDetails.isActive())));
@@ -181,7 +196,8 @@ public class UniverseMetricProvider implements MetricsProvider {
                       customer,
                       universe,
                       PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                      ipAddress,
+                      nodeDetails,
+                      nodeInstance,
                       nodeDetails.ysqlServerHttpPort,
                       "ysql_export",
                       statusValue(nodeDetails.isYsqlServer)));
@@ -190,7 +206,8 @@ public class UniverseMetricProvider implements MetricsProvider {
                       customer,
                       universe,
                       PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                      ipAddress,
+                      nodeDetails,
+                      nodeInstance,
                       nodeDetails.yqlServerHttpPort,
                       "cql_export",
                       statusValue(nodeDetails.isYqlServer)));
@@ -199,7 +216,8 @@ public class UniverseMetricProvider implements MetricsProvider {
                       customer,
                       universe,
                       PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                      ipAddress,
+                      nodeDetails,
+                      nodeInstance,
                       nodeDetails.redisServerHttpPort,
                       "redis_export",
                       statusValue(nodeDetails.isRedisServer)));
@@ -210,7 +228,8 @@ public class UniverseMetricProvider implements MetricsProvider {
                       customer,
                       universe,
                       PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                      ipAddress,
+                      nodeDetails,
+                      nodeInstance,
                       nodeDetails.nodeExporterPort,
                       "node_export",
                       statusValue(hasNodeExporter)));
@@ -219,10 +238,21 @@ public class UniverseMetricProvider implements MetricsProvider {
                       customer,
                       universe,
                       PlatformMetrics.UNIVERSE_NODE_PROCESS_STATUS,
-                      ipAddress,
+                      nodeDetails,
+                      nodeInstance,
                       nodeDetails.nodeExporterPort,
                       "node_export",
                       statusValue(hasNodeExporter && nodeDetails.isActive())));
+              universeGroup.metric(
+                  createNodeMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_NODE_CRON_STATUS,
+                      nodeDetails,
+                      nodeInstance,
+                      nodeDetails.nodeExporterPort,
+                      "node_export",
+                      statusValue(nodeDetails.cronsActive)));
             }
           }
           universeGroup.cleanMetricFilter(
@@ -258,16 +288,24 @@ public class UniverseMetricProvider implements MetricsProvider {
       Customer customer,
       Universe universe,
       PlatformMetrics metric,
-      String ipAddress,
+      NodeDetails nodeDetails,
+      NodeInstance nodeInstance,
       int port,
       String exportType,
       double value) {
     String nodePrefix = universe.getUniverseDetails().nodePrefix;
-    return buildMetricTemplate(metric, customer, universe)
-        .setKeyLabel(KnownAlertLabels.NODE_PREFIX, nodePrefix)
-        .setKeyLabel(KnownAlertLabels.INSTANCE, ipAddress + ":" + port)
-        .setLabel(KnownAlertLabels.EXPORT_TYPE, exportType)
-        .setValue(value);
+    Metric template =
+        buildMetricTemplate(metric, customer, universe)
+            .setKeyLabel(KnownAlertLabels.NODE_PREFIX, nodePrefix)
+            .setKeyLabel(KnownAlertLabels.INSTANCE, nodeDetails.cloudInfo.private_ip + ":" + port)
+            .setLabel(KnownAlertLabels.EXPORT_TYPE, exportType)
+            .setLabel(KnownAlertLabels.NODE_NAME, nodeDetails.nodeName)
+            .setLabel(KnownAlertLabels.NODE_ADDRESS, nodeDetails.cloudInfo.private_ip)
+            .setValue(value);
+    if (nodeInstance != null && StringUtils.isNotEmpty(nodeInstance.getDetails().instanceName)) {
+      template.setLabel(KnownAlertLabels.NODE_IDENTIFIER, nodeInstance.getDetails().instanceName);
+    }
+    return template;
   }
 
   private Double getEncryptionKeyExpiryDays(KmsHistory activeKey, Map<UUID, KmsConfig> configMap) {

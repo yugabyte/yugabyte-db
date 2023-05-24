@@ -57,6 +57,7 @@ public enum PlatformMetrics {
   // Tasks
   CREATE_BACKUP_STATUS("Backup creation task status for universe", Unit.STATUS),
   SCHEDULE_BACKUP_STATUS("Backup schedule status for universe", Unit.STATUS),
+  @Deprecated
   UNIVERSE_INACTIVE_CRON_NODES("Count of nodes with inactive cronjob for universe", Unit.COUNT),
   SSH_KEY_ROTATION_STATUS("SSH Key rotation task status for universe", Unit.STATUS, false),
   PITR_CONFIG_STATUS("PITR Config Status for DB", Unit.STATUS),
@@ -99,7 +100,9 @@ public enum PlatformMetrics {
       "Remaining days to expiry for SSH key of the universe", Unit.DAY, false),
   UNIVERSE_METRIC_COLLECTION_STATUS("Metric Collection status for the universe", Unit.STATUS),
   UNIVERSE_PRIVATE_ACCESS_KEY_STATUS(
-      "Flag, indicating that private access key's permission is unchanged", Unit.STATUS);
+      "Flag, indicating that private access key's permission is unchanged", Unit.STATUS),
+  UNIVERSE_NODE_CRON_STATUS("Cron jobs status on the node", Unit.STATUS),
+  UNIVERSE_IS_SYSTEMD("Flag, indicating systemd universe", Unit.STATUS, false);
 
   private final String help;
   private final Unit unit;
