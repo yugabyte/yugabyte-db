@@ -523,7 +523,7 @@ CREATE TABLE test(id int, address json);
 ALTER TABLE test ADD CONSTRAINT add_ck CHECK ((json_valid(address)));
 ```
 
-The exported schema (failed.sql) is as follows:
+The contents of exported schema/failed.sql is as follows:
 
 ```sql
 ALTER TABLE test ADD CONSTRAINT add_ck CHECK ((json_valid(address)));
@@ -531,7 +531,7 @@ ALTER TABLE test ADD CONSTRAINT add_ck CHECK ((json_valid(address)));
 
 Suggested solution is as follows:
 
-1. Add the following function to the schema or functions or functions.sql file.
+1. Add the following function to the file "schema/functions/functions.sql" as follows:
 
     ```sql
     CREATE OR REPLACE FUNCTION json_valid(p_json text)

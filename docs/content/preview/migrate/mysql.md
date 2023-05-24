@@ -15,7 +15,7 @@ Create a database user and provide the user with READ access to all the resource
 1. Grant the global `PROCESS` permission.
 
    ```sql
-   GRANT PROCESS ON *.* TO 'ybvoyager'@'localhost';
+   GRANT PROCESS ON *.* TO 'ybvoyager'@'<client_IP>';
    ```
 
 1. Grant the `SELECT`, `SHOW VIEW`, and `TRIGGER` permissions on the source database:

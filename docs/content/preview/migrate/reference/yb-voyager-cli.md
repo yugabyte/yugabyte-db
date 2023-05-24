@@ -163,7 +163,6 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
-| [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
@@ -195,7 +194,6 @@ The valid *arguments* for export data status are described in the following tabl
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
-| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 

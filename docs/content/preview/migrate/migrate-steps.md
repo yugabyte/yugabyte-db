@@ -232,10 +232,21 @@ Consider the following caveats before using the feature:
 
 - You need to perform additional steps when you [prepare the source database](#prepare-the-source-database).
 - Some data types are unsupported. For a detailed list, refer to [datatype mappings](../reference/datatype-mapping-mysql/).
-- [--parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument is unsupported.
+- [--parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument will have no effect.
 - SSL is unsupported.
 - With MySQL RDS, writes are not allowed during the export process.
-- For Oracle or PostgreSQL, resuming values for sequences not attached to a column is unsupported.
+
+{{< note title="Sequence migration considerations" >}}
+
+Sequence migration consists of two steps: sequence creation and setting resume value (resume value refers to the `NEXTVAL` of a sequence on a source database). A sequence object is generated during export schema and the resume values for sequences are generated during export data. These resume values are then set on the target database just after the data is imported for all tables.
+
+Note that there are some special cases involving sequences such as the following:
+
+- In MySQL, auto-increment column is migrated as a normal column with a sequence attached to it.
+- In PostgreSQL, `SERIAL` datatype and `GENERATED AS IDENTITY` columns use sequence object internally, so resume values for them are also generated during data export.
+- For PostgreSQL and Oracle where sequences are not attached to a column, resume value generation is unsupported with EXPERIMENTAL_FAST_EXPORT=1 environment variable.
+
+{{< /note >}}
 
 ### Import schema
 
