@@ -969,19 +969,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                                             .equals(namespaceId))
                             .map(tableInfo -> tableInfo.getId().toStringUtf8())
                             .collect(Collectors.toSet());
-                    // Todo: uncomment the following code after
-                    //  https://yugabyte.atlassian.net/browse/PLAT-8950 is landed.
-                    //                    if (tableIdsInNamespace.size() !=
-                    // selectedTableIdsInNamespaceToBootstrap.size()) {
-                    //                      throw new IllegalArgumentException(
-                    //                          String.format(
-                    //                              "For YSQL tables, all the tables in a keyspace
-                    // must be selected: "
-                    //                                  + "selected: %s, tables in the keyspace:
-                    // %s",
-                    //                            selectedTableIdsInNamespaceToBootstrap,
-                    // tableIdsInNamespace));
-                    //                    }
+                    if (tableIdsInNamespace.size()
+                        != selectedTableIdsInNamespaceToBootstrap.size()) {
+                      throw new IllegalArgumentException(
+                          String.format(
+                              "For YSQL tables, all the tables in a keyspace must be selected: "
+                                  + "selected: %s, tables in the keyspace: %s",
+                              selectedTableIdsInNamespaceToBootstrap, tableIdsInNamespace));
+                    }
                   }
                 });
       }
