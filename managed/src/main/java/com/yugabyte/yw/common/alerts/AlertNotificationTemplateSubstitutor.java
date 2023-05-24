@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.alerts;
 import static com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor.ANNOTATIONS_PREFIX;
 import static com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor.LABELS_PREFIX;
 
+import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import com.yugabyte.yw.common.templates.PlaceholderSubstitutor;
 import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
 import com.yugabyte.yw.models.Alert;
@@ -41,6 +42,8 @@ public class AlertNotificationTemplateSubstitutor {
 
   private final PlaceholderSubstitutor placeholderSubstitutor;
 
+  private final JsonStringEncoder jsonStringEncoder;
+
   private final boolean escapeHtml;
 
   public AlertNotificationTemplateSubstitutor(
@@ -54,6 +57,7 @@ public class AlertNotificationTemplateSubstitutor {
     this.placeholderDefaultValues = labelDefaultValues;
     this.json = json;
     this.escapeHtml = escapeHtml;
+    jsonStringEncoder = JsonStringEncoder.getInstance();
     jsonStringSubstitutor =
         new PlaceholderSubstitutor("\"{{", "}}\"", key -> getPlaceholderValue(key, true));
     placeholderSubstitutor =
@@ -110,6 +114,9 @@ public class AlertNotificationTemplateSubstitutor {
     if (value != null) {
       if (escapeHtml) {
         value = StringEscapeUtils.escapeHtml4(value);
+      }
+      if (jsonString) {
+        value = new String(jsonStringEncoder.quoteAsString(value));
       }
       return jsonString ? "\"" + value + "\"" : value;
     }

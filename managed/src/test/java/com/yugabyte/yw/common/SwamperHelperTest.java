@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -69,8 +70,14 @@ public class SwamperHelperTest extends FakeDBApplication {
 
     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     Environment env = new Environment(new File("."), classLoader, Mode.TEST);
+    AlertTemplateService alertTemplateService =
+        app.injector().instanceOf(AlertTemplateService.class);
     swamperHelper =
-        new SwamperHelper(new DummyRuntimeConfigFactoryImpl(appConfig), env, mockConfGetter);
+        new SwamperHelper(
+            new DummyRuntimeConfigFactoryImpl(appConfig),
+            env,
+            mockConfGetter,
+            alertTemplateService);
   }
 
   @After
@@ -206,7 +213,6 @@ public class SwamperHelperTest extends FakeDBApplication {
     configuration.setName("[Possibly] wrong \"name\"");
     AlertDefinition definition = createAlertDefinition(defaultCustomer, universe, configuration);
     AlertTemplateSettings templateSettings = ModelFactory.createTemplateSettings(defaultCustomer);
-    definition.setQuery("query{label=\"value\"} {{ query_condition }} {{ query_threshold }}");
     definition.save();
 
     swamperHelper.writeAlertDefinition(configuration, definition, templateSettings);
@@ -217,12 +223,13 @@ public class SwamperHelperTest extends FakeDBApplication {
 
     String expectedContent = TestUtils.readResource("alert/test_alert_definition.yml");
     expectedContent =
-        expectedContent.replace("<configuration_uuid>", configuration.getUuid().toString());
-    expectedContent = expectedContent.replace("<definition_uuid>", definition.getUuid().toString());
+        expectedContent.replaceAll("<configuration_uuid>", configuration.getUuid().toString());
     expectedContent =
-        expectedContent.replace("<customer_uuid>", defaultCustomer.getUuid().toString());
+        expectedContent.replaceAll("<definition_uuid>", definition.getUuid().toString());
     expectedContent =
-        expectedContent.replace("<universe_uuid>", universe.getUniverseUUID().toString());
+        expectedContent.replaceAll("<customer_uuid>", defaultCustomer.getUuid().toString());
+    expectedContent =
+        expectedContent.replaceAll("<universe_uuid>", universe.getUniverseUUID().toString());
 
     assertThat(fileContent, equalTo(expectedContent));
   }

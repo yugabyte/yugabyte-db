@@ -217,6 +217,7 @@ public class UniverseInfoController extends AuthenticatedController {
       notes =
           "Checks the health of all tablet servers and masters in the universe, as well as certain conditions on the machines themselves, including disk utilization, presence of FATAL or core files, and more.",
       nickname = "healthCheckUniverse",
+      responseContainer = "List",
       response = Details.class)
   public Result healthCheck(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
