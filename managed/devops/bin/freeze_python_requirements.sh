@@ -32,6 +32,8 @@ fi
 delete_virtualenv
 activate_virtualenv
 
+run_pip install --upgrade pip > /dev/null
+
 if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
   # looks like there is some issue with setuptools and virtualenv on python2.
   # https://github.com/pypa/virtualenv/issues/1493, adding this requirement
