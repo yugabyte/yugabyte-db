@@ -438,13 +438,14 @@ Triggers manual compaction on a table.
 yb-admin \
     -master_addresses <master-addresses> \
     compact_table <keyspace> <table_name> \
-    [timeout_in_seconds]
+    [timeout_in_seconds] [ADD_INDEXES]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: Specifies the database `ysql.db-name` or keyspace `ycql.keyspace-name`.
 * *table_name*: Specifies the table name.
 * *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
 
 **Example**
 
