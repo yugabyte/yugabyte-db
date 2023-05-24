@@ -224,7 +224,7 @@ Refer to [export data](../reference/yb-voyager-cli/#export-data) for details abo
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
-#### Accelerate data export (Optional for MySQL/Oracle only)
+#### Accelerate data export for MySQL or Oracle
 
 If you want to speed up data export for MySQL/Oracle, you can set the environment variable `EXPERIMENTAL_FAST_EXPORT=1` when you run `export data` using yb-voyager.
 
