@@ -58,7 +58,8 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
       bool use_local_tserver,
       const std::vector<TabletId>& global_transaction_status_tablets,
       bool enable_replicate_transaction_status_table,
-      SchemaVersion last_compatible_consumer_schema_version);
+      SchemaVersion last_compatible_consumer_schema_version,
+      rocksdb::RateLimiter* rate_limiter);
   ~XClusterPoller();
 
   void Shutdown();
