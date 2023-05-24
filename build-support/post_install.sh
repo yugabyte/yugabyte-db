@@ -183,7 +183,8 @@ if [[ $install_mode == "true" ]]; then
   find "$distribution_dir" \( \
      -type f -and \
      -not -path "$distribution_dir/var/*" -and \
-     -not -name "post_install.sh" \
+     -not -name "post_install.sh" -and \
+     -not -name "yugabyted-ui" \
   \) -exec sed -i --binary "s%$ORIG_BREW_HOME%$BREW_HOME%g" {} \;
 
   touch "$completion_file"
