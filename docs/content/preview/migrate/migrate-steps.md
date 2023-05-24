@@ -235,6 +235,7 @@ Consider the following caveats before using the feature:
 - [--parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument is unsupported.
 - SSL is unsupported.
 - With MySQL RDS, writes are not allowed during the export process.
+- For Oracle or PostgreSQL, resuming values for sequences not attached to a column is unsupported.
 
 ### Import schema
 
