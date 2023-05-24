@@ -11714,7 +11714,7 @@ Status CatalogManager::GetTabletLocations(
   }
   Status s = GetTabletLocations(tablet_info, locs_pb, include_inactive);
 
-  auto num_replicas = GetReplicationFactorForTablet(tablet_info);
+  auto num_replicas = GetNumTabletReplicas(tablet_info);
   if (num_replicas.ok() && *num_replicas > 0 &&
       implicit_cast<size_t>(locs_pb->replicas().size()) != *num_replicas) {
     YB_LOG_EVERY_N_SECS(WARNING, 1)
@@ -11766,7 +11766,8 @@ Status CatalogManager::GetTableLocations(
 
   int expected_live_replicas = 0;
   int expected_read_replicas = 0;
-  GetExpectedNumberOfReplicas(&expected_live_replicas, &expected_read_replicas);
+  GetExpectedNumberOfReplicasForTable(table, &expected_live_replicas, &expected_read_replicas);
+
   resp->mutable_tablet_locations()->Reserve(narrow_cast<int32_t>(tablets.size()));
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
@@ -12193,8 +12194,7 @@ Result<size_t> CatalogManager::GetTableReplicationFactor(const TableInfoPtr& tab
   return FLAGS_replication_factor;
 }
 
-Result<size_t> CatalogManager::GetReplicationFactorForTablet(
-    const scoped_refptr<TabletInfo>& tablet) {
+Result<size_t> CatalogManager::GetNumTabletReplicas(const scoped_refptr<TabletInfo>& tablet) {
   // For system tables, the set of replicas is always the set of masters.
   if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
     consensus::ConsensusStatePB master_consensus;
@@ -12202,15 +12202,33 @@ Result<size_t> CatalogManager::GetReplicationFactorForTablet(
     return master_consensus.config().peers().size();
   }
   int num_live_replicas = 0, num_read_replicas = 0;
-  GetExpectedNumberOfReplicas(&num_live_replicas, &num_read_replicas);
+  RETURN_NOT_OK(
+      GetExpectedNumberOfReplicasForTablet(tablet->id(), &num_live_replicas, &num_read_replicas));
   return num_live_replicas + num_read_replicas;
 }
 
-void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas) {
+Status CatalogManager::GetExpectedNumberOfReplicasForTablet(
+    const TabletId& tablet_id, int* num_live_replicas, int* num_read_replicas) {
+  scoped_refptr<TabletInfo> tablet_info;
+  {
+    SharedLock lock(mutex_);
+    if (!FindCopy(*tablet_map_, tablet_id, &tablet_info)) {
+      return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
+    }
+  }
+  GetExpectedNumberOfReplicasForTable(tablet_info->table(), num_live_replicas, num_read_replicas);
+  return Status::OK();
+}
+
+void CatalogManager::GetExpectedNumberOfReplicasForTable(
+    const scoped_refptr<TableInfo>& table, int* num_live_replicas, int* num_read_replicas) {
   auto l = ClusterConfig()->LockForRead();
-  const ReplicationInfoPB& replication_info = l->pb.replication_info();
-  *num_live_replicas = narrow_cast<int>(GetNumReplicasFromPlacementInfo(
-      replication_info.live_replicas()));
+  auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
+      table,
+      GetTablespaceManager(),
+      ClusterConfig()->LockForRead()->pb.replication_info());
+  *num_live_replicas =
+      narrow_cast<int>(GetNumReplicasFromPlacementInfo(replication_info.live_replicas()));
   for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
     *num_read_replicas += read_replica_placement_info.num_replicas();
   }

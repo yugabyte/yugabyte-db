@@ -830,6 +830,111 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
   }
 }
 
+// Test for DB-6087. Previously, GetTabletLocations was not looking at the tablespace overrides for
+// number of replicas. This test follows some change in logic to make sure we are using checking
+// the tablespace first before defaulting to cluster config.
+TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
+  const TableName kTableName = "test";
+  Schema schema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  GetMasterClusterConfigRequestPB config_req;
+  GetMasterClusterConfigResponsePB config_resp;
+  ASSERT_OK(
+      proxy_cluster_->GetMasterClusterConfig(config_req, &config_resp, ResetAndGetController()));
+  ASSERT_FALSE(config_resp.has_error());
+  ASSERT_TRUE(config_resp.has_cluster_config());
+  auto cluster_config = config_resp.cluster_config();
+  auto replication_info = cluster_config.mutable_replication_info();
+
+  // update replication info
+  int kNumClusterLiveReplicas = 5;
+  auto* live_replicas = replication_info->mutable_live_replicas();
+  live_replicas->set_num_replicas(kNumClusterLiveReplicas);
+  UpdateMasterClusterConfig(&cluster_config);
+
+  // set tablespace replication info to be different than cluster config
+  int kNumTableLiveReplicas = 2;
+  CreateTableRequestPB req;
+  live_replicas = req.mutable_replication_info()->mutable_live_replicas();
+  live_replicas->set_num_replicas(kNumTableLiveReplicas);
+  ASSERT_OK(DoCreateTable(kTableName, schema, &req));
+
+  TableId table_id;
+  {
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
+    for (auto& t : *tables.mutable_tables()) {
+      if (t.name().compare(kTableName) == 0) {
+        table_id = t.id();
+      }
+    }
+  }
+
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
+  int num_live_replicas = 0, num_read_replicas = 0;
+  mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
+      table, &num_live_replicas, &num_read_replicas);
+  ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
+
+  for (auto& tablet : table->GetTablets()) {
+    num_live_replicas = 0, num_read_replicas = 0;
+    ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
+        tablet->id(), &num_live_replicas, &num_read_replicas));
+    ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
+  }
+}
+
+// Test for DB-6087. This case ensures the tablespace RF defaults to cluster RF when there are no
+// table level overrides.
+TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
+  const TableName kTableName = "test";
+  Schema schema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  GetMasterClusterConfigRequestPB config_req;
+  GetMasterClusterConfigResponsePB config_resp;
+  ASSERT_OK(
+      proxy_cluster_->GetMasterClusterConfig(config_req, &config_resp, ResetAndGetController()));
+  ASSERT_FALSE(config_resp.has_error());
+  ASSERT_TRUE(config_resp.has_cluster_config());
+  auto cluster_config = config_resp.cluster_config();
+  auto replication_info = cluster_config.mutable_replication_info();
+
+  // update replication info
+  int kNumClusterLiveReplicas = 5;
+  auto* live_replicas = replication_info->mutable_live_replicas();
+  live_replicas->set_num_replicas(kNumClusterLiveReplicas);
+  UpdateMasterClusterConfig(&cluster_config);
+
+  CreateTableRequestPB req;
+  ASSERT_OK(DoCreateTable(kTableName, schema, &req));
+
+  TableId table_id;
+  {
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
+    for (auto& t : *tables.mutable_tables()) {
+      if (t.name().compare(kTableName) == 0) {
+        table_id = t.id();
+      }
+    }
+  }
+
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
+  int num_live_replicas = 0, num_read_replicas = 0;
+  mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
+      table, &num_live_replicas, &num_read_replicas);
+  ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
+
+  for (auto& tablet : table->GetTablets()) {
+    num_live_replicas = 0, num_read_replicas = 0;
+    ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
+        tablet->id(), &num_live_replicas, &num_read_replicas));
+    ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
+  }
+}
+
 TEST_F(MasterTest, TestInvalidPlacementInfo) {
   const TableName kTableName = "test";
   Schema schema({ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST)});
