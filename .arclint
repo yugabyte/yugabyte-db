@@ -13,6 +13,7 @@
      "(^managed/src/main/public/swagger-ui/)",
      "(^managed/src/main/resources/swagger[.]json$)",
      "(^managed/src/main/resources/swagger-strict[.]json$)",
+     "(^managed/src/test/resources/metric/targets_normal.json$)",
      "(^managed/build[.]sbt$)",
      "(^managed/src/main/resources/aws_pricing/.*$)",
      "(^python/yugabyte/test_data/.*[.](log|out)$)",
@@ -46,6 +47,14 @@
       "include": "(^managed/.*[.]java$)",
       "script-and-regex.script":
       "managed/lint/lint-java.sh",
+      "script-and-regex.regex":
+        "/(?P<message>.*)/is"
+    },
+    "ui-lint": {
+      "type": "script-and-regex",
+      "include": "(^managed/ui/.*\\.(tsx|jsx|js)$)",
+      "script-and-regex.script":
+        "cd managed/ui; npm run lint; echo",
       "script-and-regex.regex":
         "/(?P<message>.*)/is"
     },

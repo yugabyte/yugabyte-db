@@ -77,6 +77,7 @@ public abstract class YRpc<R> {
   protected static final String GENERIC_SERVICE_NAME = "yb.server.GenericService";
   protected static final String MASTER_SERVICE_NAME = "yb.master.MasterService";
   protected static final String TABLET_SERVER_SERVICE_NAME = "yb.tserver.TabletServerService";
+  protected static final String TABLET_SERVER_ADMIN_SERVICE = "yb.tserver.TabletServerAdminService";
   protected static final String CONSENSUS_SERVICE_NAME = "yb.consensus.ConsensusService";
   protected static final String CDC_SERVICE_NAME = "yb.cdc.CDCService";
   protected static final String MASTER_BACKUP_SERVICE_NAME = "yb.master.MasterBackup";

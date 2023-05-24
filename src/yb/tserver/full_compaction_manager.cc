@@ -38,6 +38,10 @@ namespace {
 constexpr int32_t kDefaultJitterFactorPercentage = 33;
 // Indicates the maximum size for an abbreviated hash used for jitter.
 constexpr uint64_t kMaxSmallHash = 1000000000;
+// Indicates the factor at which we should force memory cleanup in FullCompactionManager.
+// Multiplier for the maximum number of peers we should ever store in FullCompactionManager
+// versus the number of peers stored in TsTabletManager.
+constexpr double kPeerCleanupFactor = 2;
 
 }; // namespace
 
@@ -75,6 +79,12 @@ DEFINE_RUNTIME_uint32(auto_compact_min_wait_between_seconds, 0,
               "Minimum wait time between automatic full compactions. Also applies to "
               "scheduled full compactions.");
 
+DEFINE_RUNTIME_int32(auto_compact_memory_cleanup_interval_sec, 3600,
+              "The frequency with which we should check whether cleanup is needed in the "
+              "full compaction manager. -1 indicates we should disable clean up.");
+
+using namespace std::literals;
+
 namespace yb {
 namespace tserver {
 
@@ -83,6 +93,7 @@ using tablet::TabletPeerPtr;
 FullCompactionManager::FullCompactionManager(TSTabletManager* ts_tablet_manager)
     : ts_tablet_manager_(ts_tablet_manager),
       check_interval_sec_(ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_check_interval_sec)) {
+  last_cleanup_time_ = CoarseMonoClock::Now();
   SetFrequencyAndJitterFromFlags();
   LOG(INFO) << "Initialized full compaction manager"
       << " check_interval_sec: " << check_interval_sec_
@@ -96,6 +107,7 @@ void FullCompactionManager::ScheduleFullCompactions() {
   SetFrequencyAndJitterFromFlags();
   CollectDocDBStats(peers);
   DoScheduleFullCompactions(peers);
+  CleanupIfNecessary(peers);
 }
 
 Status FullCompactionManager::Init() {
@@ -130,6 +142,48 @@ void FullCompactionManager::CollectDocDBStats(
       tablet_stats_window_.erase(tablet_id);
     }
   }
+}
+
+namespace {
+
+struct TabletIdPtrHasher {
+  std::size_t operator()(const TabletId* tablet_id) const {
+    return std::hash<TabletId>{}(*tablet_id);
+  }
+};
+
+struct TabletIdPtrEq {
+  bool operator()(const TabletId* id1, const TabletId* id2) const {
+    return std::equal_to<void>{}(*id1, *id2);
+  }
+};
+
+}  // namespace
+
+void FullCompactionManager::CleanupIfNecessary(
+    const std::vector<tablet::TabletPeerPtr>& peers) {
+  const auto cleanup_frequency_sec =
+      ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_memory_cleanup_interval_sec);
+  // If cleanup_frequency_sec is negative, then cleanup is disabled.
+  // Cleanup isn't needed if it hasn't been enough time since the last cleanup
+  // and if we don't have too many entries.
+  if (cleanup_frequency_sec < 0 ||
+      (CoarseMonoClock::Now() < last_cleanup_time_ + cleanup_frequency_sec * 1s &&
+      tablet_stats_window_.size() <= peers.size() * kPeerCleanupFactor)) {
+    return;
+  }
+
+  std::unordered_set<const TabletId*, TabletIdPtrHasher, TabletIdPtrEq> in_tablet_manager;
+  for (const auto& peer : peers) {
+    in_tablet_manager.insert(&peer->tablet_id());
+  }
+  const auto peer_not_exists_fn = [&in_tablet_manager](const auto& item) {
+    return in_tablet_manager.find(&item.first) == in_tablet_manager.end();
+  };
+  // Erase any tablet entries that are not currently in the TsTabletManager's peers.
+  std::erase_if(next_compact_time_per_tablet_, peer_not_exists_fn);
+  std::erase_if(tablet_stats_window_, peer_not_exists_fn);
+  last_cleanup_time_ = CoarseMonoClock::Now();
 }
 
 bool FullCompactionManager::ShouldCompactBasedOnStats(const TabletId& tablet_id) {

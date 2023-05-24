@@ -288,7 +288,8 @@ class AwsCloud(AbstractCloud):
             response.raise_for_status()
             token = response.text
         except Exception as e:
-            logging.info("[app] Token retrieval via imdsv2 failed, falling back to imds.  {}".format(e))
+            logging.info("[app] Token retrieval via imdsv2 failed, falling back to imds, {}".
+                         format(e))
             token = None
 
         request = Request(url)

@@ -47,7 +47,10 @@ export class AlertsPolicy extends Component {
       Greater Than
     </option>,
     <option key={2} value="LESS_THAN">
-      Less than
+      Less Than
+    </option>,
+    <option key={3} value="NOT_EQUAL">
+      Not Equal
     </option>
   ];
 

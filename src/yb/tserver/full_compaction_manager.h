@@ -136,6 +136,11 @@ class FullCompactionManager {
     check_interval_sec_ = check_interval_sec;
   }
 
+  // Checks whether the key is in tablet_stats_window_.
+  bool TEST_TabletIdInStatsWindowMap(const TabletId& tablet_id) const {
+    return tablet_stats_window_.find(tablet_id) != tablet_stats_window_.end();
+  }
+
  private:
   FRIEND_TEST(TsTabletManagerTest, FullCompactionCalculateNextCompaction);
   FRIEND_TEST(TsTabletManagerTest, CompactionsEvenlySpreadByJitter);
@@ -149,6 +154,11 @@ class FullCompactionManager {
   // Collects docdb key access statistics from all tablet peers, creating and storing a
   // sliding window of stats.
   void CollectDocDBStats(const std::vector<tablet::TabletPeerPtr>& peers);
+
+  // Removes obsolete entries (i.e. entries that no longer exist in the TsTabletManager)
+  // from in-memory record-keeping maps, specifically next_compact_time_per_tablet_
+  // and tablet_stats_window_.
+  void CleanupIfNecessary(const std::vector<tablet::TabletPeerPtr>& peers);
 
   // Checks whether the tablet peer has been compacted too recently to be fully compacted
   // again (based on the auto_compact_min_wait_between_seconds flag).
@@ -222,6 +232,9 @@ class FullCompactionManager {
 
   // Background task for scheduling major compactions, called every check_interval_sec_.
   std::unique_ptr<BackgroundTask> bg_task_;
+
+  // Indicates the time of the most recent cleanup.
+  CoarseTimePoint last_cleanup_time_;
 };
 
 } // namespace tserver
