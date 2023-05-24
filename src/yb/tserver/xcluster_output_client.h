@@ -17,6 +17,12 @@
 
 #pragma once
 
+namespace rocksdb {
+
+class RateLimiter;
+
+}
+
 namespace yb {
 
 class ThreadPool;
@@ -37,7 +43,8 @@ std::shared_ptr<XClusterOutputClientIf> CreateXClusterOutputClient(
         apply_changes_clbk,
     bool use_local_tserver,
     const std::vector<TabletId>& global_transaction_status_tablets,
-    bool enable_replicate_transaction_status_table);
+    bool enable_replicate_transaction_status_table,
+    rocksdb::RateLimiter* rate_limiter);
 
 } // namespace tserver
 } // namespace yb

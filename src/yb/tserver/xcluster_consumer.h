@@ -30,6 +30,12 @@
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 
+namespace rocksdb {
+
+class RateLimiter;
+
+}
+
 namespace yb {
 
 class Thread;
@@ -240,6 +246,8 @@ class XClusterConsumer {
   mutable simple_spinlock tablet_replication_error_map_lock_;
   cdc::TabletReplicationErrorMap tablet_replication_error_map_
     GUARDED_BY(tablet_replication_error_map_lock_);
+
+  std::unique_ptr<rocksdb::RateLimiter> rate_limiter_;
 };
 
 } // namespace tserver

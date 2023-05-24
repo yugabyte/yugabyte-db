@@ -24,6 +24,8 @@
 #include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/env.h"
 #include <glog/logging.h>
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 using yb::IOPriority;
 
@@ -53,10 +55,14 @@ GenericRateLimiter::GenericRateLimiter(int64_t rate_bytes_per_sec,
       fairness_(fairness > 100 ? 100 : fairness),
       rnd_((uint32_t)time(nullptr)),
       leader_(nullptr) {
-  total_requests_[0] = 0;
-  total_requests_[1] = 0;
-  total_bytes_through_[0] = 0;
-  total_bytes_through_[1] = 0;
+  for (int q = 0; q < 2; ++q) {
+    total_requests_[q] = 0;
+    total_bytes_through_[q] = 0;
+    total_bytes_requested_per_second_[q] = 0;
+    total_request_per_second_[q] = 0;
+    allowed_request_per_second_[q] = 0;
+    throttled_request_per_second_[q] = 0;
+  }
 }
 
 GenericRateLimiter::~GenericRateLimiter() {
@@ -98,6 +104,21 @@ void GenericRateLimiter::Request(int64_t bytes, const yb::IOPriority priority) {
   }
 
   ++total_requests_[pri];
+  ++total_request_per_second_[pri];
+
+  if (yb::MonoTime::Now() - time_since_last_per_second_refresh_ >=
+      yb::MonoDelta::FromSeconds(1)) {
+    if (!description_.empty()) {
+      YB_LOG_EVERY_N_SECS(INFO, 5) << ToString();
+    }
+    for (int z = 0; z < 2; z++) {
+      total_bytes_requested_per_second_[z] = 0;
+      total_request_per_second_[z] = 0;
+      allowed_request_per_second_[z] = 0;
+      throttled_request_per_second_[z] = 0;
+    }
+    time_since_last_per_second_refresh_ = yb::MonoTime::Now();
+  }
 
   if (available_bytes_ >= bytes) {
     // Refill thread assigns quota and notifies requests waiting on
@@ -105,12 +126,15 @@ void GenericRateLimiter::Request(int64_t bytes, const yb::IOPriority priority) {
     // is waiting?
     available_bytes_ -= bytes;
     total_bytes_through_[pri] += bytes;
+    total_bytes_requested_per_second_[pri] += bytes;
+    allowed_request_per_second_[pri] += 1;
     return;
   }
 
   // Request cannot be satisfied at this moment, enqueue
   Req r(bytes, &request_mutex_);
   queue_[pri].push_back(&r);
+  throttled_request_per_second_[pri] += 1;
 
   do {
     bool timedout = false;
@@ -233,6 +257,7 @@ void GenericRateLimiter::Refill() {
       }
       available_bytes_ -= next_req->bytes;
       total_bytes_through_[priority_index] += next_req->bytes;
+      total_bytes_requested_per_second_[priority_index] += next_req->bytes;
       queue->pop_front();
 
       next_req->granted = true;
@@ -242,6 +267,38 @@ void GenericRateLimiter::Refill() {
       }
     }
   }
+}
+
+std::string GenericRateLimiter::ToString() const {
+  auto queue_size = queue_[yb::to_underlying(IOPriority::kHigh)].size() + 
+                    queue_[yb::to_underlying(IOPriority::kLow)].size();
+  auto total_bytes_requested_per_second =
+      total_bytes_requested_per_second_[yb::to_underlying(IOPriority::kHigh)] +
+      total_bytes_requested_per_second_[yb::to_underlying(IOPriority::kLow)];
+  auto total_request_per_second = 
+      total_request_per_second_[yb::to_underlying(IOPriority::kHigh)] +
+      total_request_per_second_[yb::to_underlying(IOPriority::kLow)];
+  auto allowed_request_per_second = 
+      allowed_request_per_second_[yb::to_underlying(IOPriority::kHigh)] +
+      allowed_request_per_second_[yb::to_underlying(IOPriority::kLow)];
+  auto throttled_request_per_second = 
+      throttled_request_per_second_[yb::to_underlying(IOPriority::kHigh)] +
+      throttled_request_per_second_[yb::to_underlying(IOPriority::kLow)];
+  
+  if (throttled_request_per_second > 0) {
+    LOG(INFO) << yb::Format("$0: THROTTLED REQUESTS", description_);
+  }
+    
+  return yb::Format(
+      "$0 rate limiter status:\navailable_bytes: $1\nqueue_size: $2\ntotal_bytes_requested_per_second: $3\n"
+      "total_request_per_second: $4\nallowed_request_per_second: $5\n"
+      "throttled_request_per_second: $6" ,
+      description_, available_bytes_, queue_size, total_bytes_requested_per_second, total_request_per_second,
+      allowed_request_per_second, throttled_request_per_second);
+}
+
+void GenericRateLimiter::EnableLoggingWithDescription(std::string description) {
+  description_ = description;
 }
 
 RateLimiter* NewGenericRateLimiter(

@@ -31,12 +31,17 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/rate_limiter.h"
 
+#include "yb/util/monotime.h"
+
+
 namespace rocksdb {
 
 class GenericRateLimiter : public RateLimiter {
  public:
-  GenericRateLimiter(int64_t refill_bytes,
-      int64_t refill_period_us, int32_t fairness);
+  GenericRateLimiter(
+      int64_t refill_bytes,
+      int64_t refill_period_us,
+      int32_t fairness);
 
   virtual ~GenericRateLimiter();
 
@@ -55,6 +60,10 @@ class GenericRateLimiter : public RateLimiter {
   int64_t GetTotalBytesThrough(const yb::IOPriority pri = yb::IOPriority::kTotal) const override;
 
   int64_t GetTotalRequests(const yb::IOPriority pri = yb::IOPriority::kTotal) const override;
+
+  std::string ToString() const override;
+
+  void EnableLoggingWithDescription(std::string description) override;
 
  private:
   void Refill();
@@ -76,6 +85,10 @@ class GenericRateLimiter : public RateLimiter {
 
   int64_t total_requests_[yb::kElementsInIOPriority];
   int64_t total_bytes_through_[yb::kElementsInIOPriority];
+  int64_t total_bytes_requested_per_second_[yb::kElementsInIOPriority];
+  int64_t total_request_per_second_[yb::kElementsInIOPriority];
+  int64_t allowed_request_per_second_[yb::kElementsInIOPriority];
+  int64_t throttled_request_per_second_[yb::kElementsInIOPriority];
   int64_t available_bytes_;
   int64_t next_refill_us_;
 
@@ -85,6 +98,10 @@ class GenericRateLimiter : public RateLimiter {
   struct Req;
   Req* leader_;
   std::deque<Req*> queue_[yb::kElementsInIOPriority];
+
+  yb::MonoTime time_since_last_per_second_refresh_ = yb::MonoTime::Now();
+
+  std::string description_;
 };
 
 }  // namespace rocksdb
