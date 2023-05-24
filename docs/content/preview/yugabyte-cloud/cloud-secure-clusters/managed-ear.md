@@ -27,7 +27,6 @@ Note that, regardless of whether you enable YugabyteDB EAR for a cluster, Yugaby
 
 ## Limitations
 
-- Currently, only CMKs in [AWS KMS](https://docs.aws.amazon.com/kms/) are supported.
 - Currently, you cannot enable cluster EAR for existing clusters.
 - You cannot remove encryption from clusters that have EAR enabled.
 - After EAR is enabled for a cluster, you cannot change keys.
@@ -36,7 +35,9 @@ Enabling EAR can impact cluster performance. You should monitor your workload af
 
 ## Prerequisites
 
-### AWS
+{{< tabpane text=true >}}
+
+  {{% tab header="AWS" lang="aws" %}}
 
 - Single-region [symmetric encryption key](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#symmetric-cmks) created in AWS KMS. The key resource should have the following permissions:
   - kms:Encrypt
@@ -48,6 +49,19 @@ Enabling EAR can impact cluster performance. You should monitor your workload af
 - An access key for an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permission to encrypt and decrypt using the CMK. An access key consists of an access key ID and the secret access key. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
 
 For more information on AWS KMS, refer to [AWS Key Management Service](https://docs.aws.amazon.com/kms/) in the AWS documentation.
+
+  {{% /tab %}}
+
+  {{% tab header="GCP" lang="gcp" %}}
+
+- Cloud KMS resource ID. For more information, refer to [Getting a Cloud KMS resource ID](https://cloud.google.com/kms/docs/getting-resource-ids) in the GCP documentation.
+- Service account credentials. This is the key file (JSON) that you downloaded when creating credentials for the service account. For more information, refer to [Create access credentials](https://developers.google.com/workspace/guides/create-credentials#create_credentials_for_a_service_account) in the GCP documentation.
+
+For more information on GCP KMS, refer to [Cloud Key Management Service overview](https://cloud.google.com/kms/docs/key-management-service/) in the GCP documentation.
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 <!--## Encrypt a cluster
 
