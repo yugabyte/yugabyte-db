@@ -41,7 +41,7 @@ export interface ClusterDataInfo  {
    */
   software_version?: string;
   /**
-   *
+   * 
    * @type {EntityMetadata}
    * @memberof ClusterDataInfo
    */
