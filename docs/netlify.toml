@@ -589,16 +589,6 @@
   force = true
 
 [[redirects]]
-  from = "/v2.12/migrate/*"
-  to = "/preview/migrate/:splat"
-  force = true
-
-[[redirects]]
-  from = "/v2.8/migrate/*"
-  to = "/preview/migrate/:splat"
-  force = true
-
-[[redirects]]
   from = "/:version/releases/*"
   to = "/preview/releases/"
   force = true
