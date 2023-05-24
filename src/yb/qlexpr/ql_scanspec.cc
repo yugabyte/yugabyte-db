@@ -155,12 +155,6 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
   switch (condition.op()) {
     // For relational conditions, the ranges are as follows. If the column is not a range column,
     // just return since it doesn't impose a bound on a range column.
-    //
-    // We are not distinguishing between < and <= currently but treat the bound as inclusive lower
-    // bound. After all, the bound is just a superset of the scan range and as a best-effort
-    // measure. There may be a some ways to optimize and distinguish the two in future, like using
-    // exclusive lower bound in DocRowwiseIterator or increment the bound value by "1" to become
-    // inclusive bound. Same for > and >=.
     case QL_OP_EQUAL: {
       if (has_range_column) {
         // - <column> = <value> --> min/max values = <value>
@@ -176,7 +170,6 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
       return;
     }
     case QL_OP_LESS_THAN:
-      // We can only process strict inequalities if we're using hybridscan
       is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_LESS_THAN_EQUAL: {
@@ -197,7 +190,6 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
       return;
     }
     case QL_OP_GREATER_THAN:
-      // We can only process strict inequalities if we're using hybridscan
       is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN_EQUAL: {
@@ -240,7 +232,6 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
             ranges_[column_id].max_bound = bound;
           }
 
-          // We can only process strict inequalities if we're using hybridscan
           if (operands.size() == 5) {
             ++it;
             if (it->expr_case() == ExprCase::kValue) {
