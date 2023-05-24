@@ -739,6 +739,24 @@ Compactions run only if there are at least `rocksdb_universal_compaction_min_mer
 
 Default: `4`
 
+##### --rocksdb_max_background_compactions
+
+Maximum number of threads to do background compactions (used when compactions need to catch up.) Unless `rocksdb_disable_compactions=true`, this cannot be set to zero.
+
+Default: `-1` (the value is calculated at runtime). For servers with up to 4 CPU cores, the default value is considered as `1`. For servers with up to 8 CPU cores, the default value is considered as `2`. For servers with up to 32 CPU cores, the default value is considered as `3`. Beyond 32 cores, the default value is considered as `4`.
+
+##### --rocksdb_compaction_size_threshold_bytes
+
+Threshold beyond which a compaction is considered large.
+
+Default: `2GB`
+
+##### --rocksdb_level0_file_num_compaction_trigger
+
+Number of files to trigger level-0 compaction. Set to `-1` if compaction should not be triggered by number of files at all.
+
+Default: `5`. 
+
 ##### --rocksdb_universal_compaction_size_ratio
 
 Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
@@ -1071,7 +1089,7 @@ Use of this flag can potentially result in expiration of live data. Use at your 
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
 
-You can modify these parameters on several levels by:
+You can modify these parameters in the following ways:
 
 - Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
 
