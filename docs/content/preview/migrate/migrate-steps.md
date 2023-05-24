@@ -226,7 +226,7 @@ The options passed to the command are similar to the [`yb-voyager export schema`
 
 #### Accelerate data export for MySQL or Oracle
 
-If you want to speed up data export for MySQL/Oracle, you can set the environment variable `EXPERIMENTAL_FAST_EXPORT=1` when you run `export data` using yb-voyager.
+For MySQL or Oracle, you can optionally speed up data export by setting the environment variable `EXPERIMENTAL_FAST_EXPORT=1` when you run `export data` using yb-voyager.
 
 Consider the following caveats before using the feature:
 
