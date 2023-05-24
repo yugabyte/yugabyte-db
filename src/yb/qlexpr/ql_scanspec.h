@@ -91,6 +91,9 @@ class QLScanRange {
   struct QLRange {
     boost::optional<QLBound> min_bound;
     boost::optional<QLBound> max_bound;
+    // Set to true only for an IS NOT NULL query, in which case the bounds (min_bound and max_bound)
+    // are not set.
+    bool is_not_null = false;
   };
 
   QLScanRange(const Schema& schema, const QLConditionPB& condition);

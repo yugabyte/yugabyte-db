@@ -425,6 +425,7 @@ class PgApiImpl {
                              YBCPgExpr lhs,
                              int n_attr_values,
                              YBCPgExpr *attr_values);
+  Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
 
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
