@@ -517,7 +517,16 @@ Status WriteQuery::DoExecute() {
   auto* transaction_participant = tablet->transaction_participant();
   docdb::WaitQueue* wait_queue = nullptr;
 
-  if (transaction_participant) {
+  if (transaction_participant && execute_mode_ != ExecuteMode::kCql) {
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17557
+    // For now, we disable this behavior in YCQL, both because many tests depend on FAIL_ON_CONFLICT
+    // behavior and because we do not want to change the behavior of existing CQL clusters. We may
+    // revisit this in the future in case there are performance benefits to enabling
+    // WAIT_ON_CONFLICT in YCQL as well.
+    //
+    // Note that we do not check execute_mode_ == ExecuteMode::kPgsql, since this condition is not
+    // sufficient to include all YSQL traffic -- some YSQL traffic may have ExecuteMode::kSimple,
+    // such as writes performed as part of an explicit lock read.
     wait_queue = transaction_participant->wait_queue();
   }
 
