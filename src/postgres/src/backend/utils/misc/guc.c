@@ -5355,7 +5355,13 @@ add_placeholder_variable(const char *name, int elevel)
 static struct config_generic *
 find_option(const char *name, bool create_placeholders, int elevel)
 {
+#ifdef ADDRESS_SANITIZER
+	struct config_generic config_placeholder;
+	config_placeholder.name = name;
+	const char **key = &config_placeholder.name;
+#else
 	const char **key = &name;
+#endif
 	struct config_generic **res;
 	int			i;
 
@@ -8816,7 +8822,13 @@ static void
 define_custom_variable(struct config_generic *variable)
 {
 	const char *name = variable->name;
+#ifdef ADDRESS_SANITIZER
+	struct config_generic config_placeholder;
+	config_placeholder.name = name;
+	const char **nameAddr = &config_placeholder.name;
+#else
 	const char **nameAddr = &name;
+#endif
 	struct config_string *pHolder;
 	struct config_generic **res;
 

@@ -173,7 +173,7 @@ def update_test_result_xml(args: argparse.Namespace) -> bool:
             for failure_node in xml_dom.getElementsByTagName(tag_name):
                 new_node = xml_dom.createTextNode(extra_text)
                 if len(failure_node.childNodes) > 0:
-                    failure_node.insertBefore(new_node, failure_node.firstChild)
+                    failure_node.insertBefore(new_node, failure_node.firstChild)  # type: ignore
                 else:
                     failure_node.appendChild(new_node)
 

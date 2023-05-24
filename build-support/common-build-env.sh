@@ -537,13 +537,19 @@ set_build_type_based_on_jenkins_job_name() {
 }
 
 set_default_compiler_type() {
+  expect_vars_to_be_set build_type
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     if is_mac; then
       YB_COMPILER_TYPE=clang
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      YB_COMPILER_TYPE=clang15
+      if [[ ${build_type} =~ ^(asan|debug|fastdebug)$ ]]; then
+        YB_COMPILER_TYPE=clang16
+      else
+        # Use Clang 15 for release builds and TSAN builds until perf evaluation and TSAN fixes.
+        YB_COMPILER_TYPE=clang15
+      fi
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -2747,8 +2753,9 @@ adjust_compiler_type_on_mac() {
   # A workaround for old macOS build workers where the default Clang version is 13 or older.
   if is_mac &&
     ! is_apple_silicon &&
-    [[ ${YB_COMPILER_TYPE:-clang} == "clang" ]] &&
-    [[ $(clang --version) =~ clang\ version\ ([0-9]+) ]]
+    [[ ${YB_COMPILER_TYPE:-clang} == "clang" &&
+       -f /usr/bin/clang &&
+       $(clang --version) =~ clang\ version\ ([0-9]+) ]]
   then
     clang_major_version=${BASH_REMATCH[1]}
     if [[ ${clang_major_version} -lt 14 ]]; then
