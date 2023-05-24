@@ -226,7 +226,7 @@ The options passed to the command are similar to the [`yb-voyager export schema`
 
 #### Accelerate data export (Optional for MySQL/Oracle only)
 
-If you want to speed up the data export for MySQL/Oracle, you can set the environment variable `EXPERIMENTAL_FAST_EXPORT=1` when you run `export data`.
+If you want to speed up data export for MySQL/Oracle, you can set the environment variable `EXPERIMENTAL_FAST_EXPORT=1` when you run `export data` using yb-voyager.
 
 Consider the following caveats before using the feature:
 
@@ -234,7 +234,7 @@ Consider the following caveats before using the feature:
 - Some data types are unsupported. For a detailed list, refer to [datatype mappings](../reference/datatype-mapping-mysql/).
 - [--parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument will have no effect.
 - SSL is unsupported.
-- With MySQL RDS, writes are not allowed during the export process.
+- In MySQL RDS, writes are not allowed during the data export process.
 
 {{< note title="Sequence migration considerations" >}}
 
