@@ -77,7 +77,6 @@
 #define HISTOGRAM_MAX_TIME		50000000
 #define MAX_RESPONSE_BUCKET 50
 #define INVALID_BUCKET_ID	-1
-#define MAX_BUCKETS			10
 #define TEXT_LEN			255
 #define ERROR_MESSAGE_LEN	100
 #define REL_TYPENAME_LEN	64
@@ -388,8 +387,6 @@ typedef struct pgsmSharedState
 	slock_t		mutex;			/* protects following fields only: */
 	pg_atomic_uint64 current_wbucket;
 	pg_atomic_uint64 prev_bucket_sec;
-	uint64		bucket_entry[MAX_BUCKETS];
-	TimestampTz bucket_start_time[MAX_BUCKETS]; /* start time of the bucket */
 	int			hash_tranche_id;
 	void	   *raw_dsa_area;	/* DSA area pointer to store query texts.
 								 * dshash also lives in this memory when
@@ -400,16 +397,9 @@ typedef struct pgsmSharedState
 	 * hash table handle. can be either classic shared memory hash or dshash
 	 * (if we are using USE_DYNAMIC_HASH)
 	 */
-	MemoryContext pgsm_mem_cxt;
 
-	/*
-	 * context to store stats in local memory until they are pushed to shared
-	 * hash
-	 */
-	int			resp_calls[MAX_RESPONSE_BUCKET + 2];	/* execution time's in
-														 * msec; including 2
-														 * outlier buckets */
 	bool		pgsm_oom;
+	TimestampTz bucket_start_time[]; /* start time of the bucket */
 }			pgsmSharedState;
 
 typedef struct pgsmLocalState
@@ -418,6 +408,8 @@ typedef struct pgsmLocalState
 	dsa_area   *dsa;			/* local dsa area for backend attached to the
 								 * dsa area created by postmaster at startup. */
 	PGSM_HASH_TABLE *shared_hash;
+    MemoryContext pgsm_mem_cxt;
+
 }			pgsmLocalState;
 
 #if PG_VERSION_NUM < 140000
@@ -479,6 +471,7 @@ void		pgsm_startup(void);
 
 /* hash_query.c */
 void		pgsm_startup(void);
+MemoryContext GetPgsmMemoryContext(void);
 
 /* guc.c */
 void		init_guc(void);

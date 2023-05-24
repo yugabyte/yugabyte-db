@@ -36,7 +36,7 @@ typedef enum pgsmVersion
 
 PG_MODULE_MAGIC;
 
-#define BUILD_VERSION                   "2.0.0"
+#define BUILD_VERSION                   "2.0.1"
 
 /* Number of output arguments (columns) for various API versions */
 #define PG_STAT_MONITOR_COLS_V1_0    52
@@ -692,9 +692,30 @@ pgsm_ExecutorEnd(QueryDesc *queryDesc)
 	/* Extract the plan information in case of SELECT statement */
 	if (queryDesc->operation == CMD_SELECT && pgsm_enable_query_plan)
 	{
-		plan_info.plan_len = snprintf(plan_info.plan_text, PLAN_TEXT_LEN, "%s", pgsm_explain(queryDesc));
-		plan_info.planid = pgsm_hash_string(plan_info.plan_text, plan_info.plan_len);
-		plan_ptr = &plan_info;
+		int rv;
+		MemoryContext oldctx;
+
+		/*
+		 * Making sure it is a per query context so that there's no memory
+		 * leak when executor ends.
+		 */
+		oldctx = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
+
+		rv = snprintf(plan_info.plan_text, PLAN_TEXT_LEN, "%s", pgsm_explain(queryDesc));
+
+		/*
+		 * If snprint didn't write anything or there was an error, let's keep
+		 * planinfo as NULL.
+		 */
+		if (rv > 0)
+		{
+			plan_info.plan_len = (rv < PLAN_TEXT_LEN) ? rv : PLAN_TEXT_LEN - 1;
+			plan_info.planid = pgsm_hash_string(plan_info.plan_text, plan_info.plan_len);
+			plan_ptr = &plan_info;
+		}
+
+		/* Switch back to old context */
+		MemoryContextSwitchTo(oldctx);
 	}
 
 	if (queryId != UINT64CONST(0) && queryDesc->totaltime && pgsm_enabled(exec_nested_level))
@@ -1569,7 +1590,7 @@ static void
 pgsm_add_to_list(pgsmEntry * entry, char *query_text, int query_len)
 {
 	/* Switch to pgsm memory context */
-	MemoryContext oldctx = MemoryContextSwitchTo(pgsm_get_ss()->pgsm_mem_cxt);
+	MemoryContext oldctx = MemoryContextSwitchTo(GetPgsmMemoryContext());
 
 	entry->query_text.query_pointer = pnstrdup(query_text, query_len);
 	lentries = lappend(lentries, entry);
@@ -1624,7 +1645,8 @@ static void
 pgsm_cleanup_callback(void *arg)
 {
 	/* Reset the memory context holding the list */
-	MemoryContextReset(pgsm_get_ss()->pgsm_mem_cxt);
+	MemoryContextReset(GetPgsmMemoryContext());
+
 	lentries = NIL;
 	callback_setup = false;
 }
@@ -1645,7 +1667,7 @@ pgsm_create_hash_entry(uint64 bucket_id, uint64 queryid, PlanInfo * plan_info)
 	char	   *username = NULL;
 
 	/* Create an entry in the pgsm memory context */
-	oldctx = MemoryContextSwitchTo(pgsm_get_ss()->pgsm_mem_cxt);
+	oldctx = MemoryContextSwitchTo(GetPgsmMemoryContext());
 	entry = palloc0(sizeof(pgsmEntry));
 
 	/*
