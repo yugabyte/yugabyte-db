@@ -141,6 +141,9 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Delete the least recently used prepared statement from the cache to free up memory.
   void CollectGarbage(size_t required) override;
 
+  // Get the list of prepared statements and metrics in an inmemory vector
+  void GetPreparedStatementsLocked(std::vector<std::shared_ptr<StatementMetrics>>* metrics);
+
   // CQLServer of this service.
   CQLServer* const server_;
 

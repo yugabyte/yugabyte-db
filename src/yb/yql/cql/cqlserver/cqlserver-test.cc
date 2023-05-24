@@ -68,6 +68,9 @@ class TestCQLService : public YBTableTestBase {
   int server_port() { return cql_server_port_; }
 
   shared_ptr<CQLServer> server() { return server_; }
+  EasyCurl curl_;
+  faststring buf_;
+  Endpoint addr_;
 
  private:
   Status SendRequestAndGetResponse(
@@ -111,6 +114,11 @@ void TestCQLService::SetUp() {
   LOG(INFO) << "Starting CQL server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "CQL server successfully started.";
+
+  std::vector<Endpoint> addrs;
+  ASSERT_OK(server_->web_server()->GetBoundAddresses(&addrs));
+  ASSERT_EQ(addrs.size(), 1);
+  addr_ = addrs[0];
 
   Endpoint remote(IpAddress(), server_port());
   CHECK_OK(client_sock_.Init(0));
@@ -589,18 +597,13 @@ TEST_F(TestCQLServiceWithCassAuth, TestReadSystemTableAuthenticated) {
 
 TEST_F(TestCQLService, TestCQLStatementEndpoint) {
   shared_ptr<CQLServiceImpl> cql_service = server()->TEST_cql_service();
-  faststring buf;
-  EasyCurl curl;
   QLEnv ql_env(cql_service->client(),
                cql_service->metadata_cache(),
                cql_service->clock(),
                std::bind(&CQLServiceImpl::TransactionPool, cql_service));
-
   cql_service->AllocatePreparedStatement("dummyqueryid", "dummyquery", &ql_env);
-
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
-                                               ToString(GetWebServerAddress())), &buf));
-  string result = buf.ToString();
+  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/statements", ToString(addr_)), &buf_));
+  std::string result = buf_.ToString();
   ASSERT_STR_CONTAINS(result, "prepared_statements");
   ASSERT_STR_CONTAINS(result, "dummyquery");
   ASSERT_STR_CONTAINS(result, b2a_hex("dummyqueryid"));
