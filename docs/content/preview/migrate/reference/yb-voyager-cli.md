@@ -501,7 +501,7 @@ Depending on the target YugabyteDB configuration, the value of `--parallel-jobs`
 
 Default: If yb-voyager can determine the total number of cores `N` in the target YugabyteDB cluster, it uses `N/2` as the default. Otherwise, it defaults to twice the number of nodes in the cluster.
 
-Note that the `--parallel-jobs` argument is unsupported with [EXPERIMENTAL_FAST_EXPORT](../../migrate-steps/#accelerate-data-export-optional-for-mysql-oracle-only).
+Note that the `--parallel-jobs` argument is unsupported with [EXPERIMENTAL_FAST_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-or-oracle).
 
 ### --batch-size
 
@@ -629,7 +629,7 @@ Default: false
 
 You can instruct yb-voyager to connect to the source or target database over an SSL connection. Connecting securely to PostgreSQL, MySQL, and YugabyteDB requires you to pass a similar set of arguments to yb-voyager. Oracle requires a different set of arguments.
 
-Note that the SSL arguments are unsupported with [EXPERIMENTAL_FAST_EXPORT](../../migrate-steps/#accelerate-data-export-optional-for-mysql-oracle-only).
+Note that the SSL arguments are unsupported with [EXPERIMENTAL_FAST_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-or-oracle).
 
 The following table summarizes the arguments and options you can pass to yb-voyager to establish an SSL connection.
 
