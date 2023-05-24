@@ -1856,9 +1856,9 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 }
 
 /*
- * ybSetupScanQuals
+ * YbDmlAppendQuals
  *
- * Add remote filter expressions to the YbScanDesc.
+ * Add remote filter expressions to the statement.
  * The expression are pushed down to DocDB and used to filter rows early to
  * avoid sending them across network.
  * Set is_primary to false if the filter expression is to apply to secondary
@@ -1866,49 +1866,49 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
  * columns rather than main relation columns.
  * For primary key scan or sequential scan is_primary should be true.
  */
-static void
-ybSetupScanQuals(YbScanDesc ybScan, List *quals, bool is_primary)
+void
+YbDmlAppendQuals(List *quals, bool is_primary, YBCPgStatement handle)
 {
 	ListCell   *lc;
+
 	foreach(lc, quals)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
 		/* Create new PgExpr wrapper for the expression */
-		YBCPgExpr yb_expr = YBCNewEvalExprCall(ybScan->handle, expr);
+		YBCPgExpr yb_expr = YBCNewEvalExprCall(handle, expr);
 		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendQual(ybScan->handle, yb_expr, is_primary));
+		HandleYBStatus(YbPgDmlAppendQual(handle, yb_expr, is_primary));
 	}
 }
 
 /*
- * ybSetupScanColumnRefs
+ * YbDmlAppendColumnRefs
  *
  * Add the list of column references used by pushed down expressions to the
- * YbScanDesc.
+ * statement.
  * The colref list is expected to be the list of YbExprColrefDesc nodes.
  * Set is_primary to false if the filter expression is to apply to secondary
  * index. In this case attno field values must be properly adjusted to refer
  * the index columns rather than main relation columns.
  * For primary key scan or sequential scan is_primary should be true.
  */
-static void
-ybSetupScanColumnRefs(YbScanDesc ybScan, List *colrefs, bool is_primary)
+void
+YbDmlAppendColumnRefs(List *colrefs, bool is_primary, YBCPgStatement handle)
 {
 	ListCell   *lc;
+
 	foreach(lc, colrefs)
 	{
 		YbExprColrefDesc *param = lfirst_node(YbExprColrefDesc, lc);
 		YBCPgTypeAttrs type_attrs = { param->typmod };
 		/* Create new PgExpr wrapper for the column reference */
-		YBCPgExpr yb_expr = YBCNewColumnRef(ybScan->handle,
+		YBCPgExpr yb_expr = YBCNewColumnRef(handle,
 											param->attno,
 											param->typid,
 											param->collid,
 											&type_attrs);
 		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendColumnRef(ybScan->handle,
-											  yb_expr,
-											  is_primary));
+		HandleYBStatus(YbPgDmlAppendColumnRef(handle, yb_expr, is_primary));
 	}
 }
 
@@ -2001,16 +2001,18 @@ ybcBeginScan(Relation relation,
 		*/
 		if (rel_remote != NULL)
 		{
-			ybSetupScanQuals(ybScan, rel_remote->quals, true /* is_primary */);
-			ybSetupScanColumnRefs(ybScan, rel_remote->colrefs,
-								  true /* is_primary */);
+			YbDmlAppendQuals(rel_remote->quals, true /* is_primary */,
+							 ybScan->handle);
+			YbDmlAppendColumnRefs(rel_remote->colrefs, true /* is_primary */,
+								  ybScan->handle);
 		}
 
 		if (idx_remote != NULL)
 		{
-			ybSetupScanQuals(ybScan, idx_remote->quals, false /* is_primary */);
-			ybSetupScanColumnRefs(ybScan, idx_remote->colrefs,
-								  false /* is_primary */);
+			YbDmlAppendQuals(idx_remote->quals, false /* is_primary */,
+							 ybScan->handle);
+			YbDmlAppendColumnRefs(idx_remote->colrefs, false /* is_primary */,
+								  ybScan->handle);
 		}
 
 		/*

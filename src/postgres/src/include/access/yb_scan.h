@@ -153,6 +153,13 @@ extern HeapScanDesc ybc_remote_beginscan(Relation relation,
 										 Scan *pg_scan_plan,
 										 PushdownExprs *remote);
 
+/* Add quals to the given statement. */
+extern void YbDmlAppendQuals(List *quals, bool is_primary,
+							 YBCPgStatement handle);
+/* Add column references to the given statement. */
+extern void YbDmlAppendColumnRefs(List *colrefs, bool is_primary,
+								  YBCPgStatement handle);
+
 /*
  * The ybc_idx API is used to process the following SELECT.
  *   SELECT data FROM heapRelation WHERE rowid IN
