@@ -51,6 +51,11 @@ extern bool yb_force_global_transaction;
 extern bool yb_pushdown_strict_inequality;
 
 /*
+ * Guc that toggles whether IS NOT NULL is pushed down.
+ */
+extern bool yb_pushdown_is_not_null;
+
+/*
  * Guc variable to suppress non-Postgres logs from appearing in Postgres log file.
  */
 extern bool suppress_nonpg_logs;

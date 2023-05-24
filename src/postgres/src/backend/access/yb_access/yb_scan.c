@@ -202,6 +202,12 @@ YbBindColumnCondBetween(YbScanDesc ybScan,
 												 ybc_expr_end, end_inclusive));
 }
 
+static void
+YbBindColumnNotNull(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum)
+{
+	HandleYBStatus(YBCPgDmlBindColumnCondIsNotNull(ybScan->handle, attnum));
+}
+
 /*
  * Bind an array of scan keys for a column.
  */
@@ -700,6 +706,15 @@ YbIsSearchNull(ScanKey key)
 }
 
 /*
+ * Is this a not-null search (c IS NOT NULL).
+ */
+static bool
+YbIsSearchNotNull(ScanKey key)
+{
+	return key->sk_flags == (SK_ISNULL | SK_SEARCHNOTNULL);
+}
+
+/*
  * Is this an array search (c = ANY(..) or c IN ..).
  */
 static bool
@@ -781,6 +796,13 @@ YbShouldPushdownScanPrimaryKey(Relation relation, YbScanPlan scan_plan,
 	if (YbIsSearchNull(key))
 	{
 		/* Always expect InvalidStrategy for NULL search. */
+		Assert(key->sk_strategy == InvalidStrategy);
+		return true;
+	}
+
+	if (yb_pushdown_is_not_null && YbIsSearchNotNull(key))
+	{
+		/* Always expect InvalidStrategy for IS NOT NULL search. */
 		Assert(key->sk_strategy == InvalidStrategy);
 		return true;
 	}
@@ -1347,7 +1369,8 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 								  &ybScan->handle));
 
 	ybScan->is_full_cond_bound = yb_bypass_cond_recheck &&
-								 yb_pushdown_strict_inequality;
+								 yb_pushdown_strict_inequality &&
+								 yb_pushdown_is_not_null;
 
 	/*
 	 * Set up the arrays to store the search intervals for each PG/YSQL
@@ -1376,6 +1399,9 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	bool end_valid[max_idx]; /* VLA - scratch space */
 	memset(end_valid, 0, sizeof(bool) * max_idx);
 
+	bool is_not_null[max_idx]; /* VLA - scratch space */
+	memset(is_not_null, 0, sizeof(bool) * max_idx);
+
 	Datum start[max_idx]; /* VLA - scratch space */
 	Datum end[max_idx]; /* VLA - scratch space */
 
@@ -1387,8 +1413,9 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 
 	/*
 	 * find an order of relevant keys such that for the same column, an EQUAL
-	 * condition is encountered before IN or BETWEEN. is_column_bound is then used
-	 * to establish priority order EQUAL > IN > BETWEEN.
+	 * condition is encountered before IN or BETWEEN. is_column_bound is then
+	 * used to establish priority order EQUAL > IN > BETWEEN. IS NOT NULL is
+	 * treated as a special case of BETWEEN.
 	 */
 	int noffsets = 0;
 	int offsets[ybScan->nkeys + 1]; /* VLA - scratch space: +1 to avoid zero elements */
@@ -1418,6 +1445,11 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		switch (key->sk_strategy)
 		{
 			case InvalidStrategy:
+				if (YbIsSearchNotNull(key))
+				{
+					offsets[noffsets++] = i;
+					break;
+				}
 				/* Should be ensured during planning. */
 				Assert(YbIsSearchNull(key));
 				/* fallthrough  -- treating IS NULL as (DocDB) = (null) */
@@ -1455,7 +1487,8 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		else
 			break;
 
-	/* Bind keys for EQUALS and IN */
+	/* Bind keys for EQUALS and IN, collecting info for ranges and IS NOT NULL
+	 */
 	for (int k = 0; k < noffsets; k++)
 	{
 		int i = offsets[k];
@@ -1479,7 +1512,13 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		switch (key->sk_strategy)
 		{
 			case InvalidStrategy:
-				/* c IS NULL -> c = NULL (checked above) */
+				if (YbIsSearchNotNull(key))
+				{
+					is_not_null[idx] = true;
+					break;
+				}
+				/* Otherwise this is an IS NULL search. c IS NULL -> c = NULL
+				 * (checked above) */
 				switch_fallthrough();
 			case BTEqualStrategyNumber:
 				/* Bind the scan keys */
@@ -1557,13 +1596,13 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		}
 	}
 
-	/* Bind keys for BETWEEN */
+	/* Bind keys for BETWEEN and IS NOT NULL */
 	int min_idx = bms_first_member(scan_plan->sk_cols);
 	min_idx = min_idx < 0 ? 0 : min_idx;
 	for (int idx = min_idx; idx < max_idx; idx++)
 	{
-		/* There's no range key for this index */
-		if (!start_valid[idx] && !end_valid[idx])
+		/* There's no range key or IS NOT NULL for this query */
+		if (!start_valid[idx] && !end_valid[idx] && !is_not_null[idx])
 		{
 			continue;
 		}
@@ -1575,10 +1614,20 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 			continue;
 		}
 
-		YbBindColumnCondBetween(
-			ybScan, scan_plan->bind_desc, YBBmsIndexToAttnum(relation, idx),
-			start_valid[idx], start_inclusive[idx], start[idx],
-			end_valid[idx], end_inclusive[idx], end[idx]);
+		if (start_valid[idx] || end_valid[idx])
+		{
+			YbBindColumnCondBetween(ybScan, scan_plan->bind_desc,
+									YBBmsIndexToAttnum(relation, idx),
+									start_valid[idx], start_inclusive[idx],
+									start[idx], end_valid[idx],
+									end_inclusive[idx], end[idx]);
+		}
+		else if (yb_pushdown_is_not_null)
+		{
+			/* is_not_null[idx] must be true */
+			YbBindColumnNotNull(ybScan, scan_plan->bind_desc,
+								YBBmsIndexToAttnum(relation, idx));
+		}
 	}
 	return true;
 }

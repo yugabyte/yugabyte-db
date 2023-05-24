@@ -342,6 +342,18 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
       }
       return;
     }
+    case QL_OP_IS_NOT_NULL: {
+      if (has_range_column) {
+        CHECK_EQ(operands.size(), 1);
+        auto it = operands.begin();
+        if (it->expr_case() == ExprCase::kColumnId) {
+          const ColumnId column_id(it->column_id());
+          auto& range = ranges_[column_id];
+          range.is_not_null = true;
+        }
+      }
+      return;
+    }
 
       // For logical conditions, the ranges are union/intersect/complement of the operands' ranges.
     case QL_OP_AND: {
@@ -368,7 +380,6 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
     }
 
     case QL_OP_IS_NULL:     FALLTHROUGH_INTENDED;
-    case QL_OP_IS_NOT_NULL: FALLTHROUGH_INTENDED;
     case QL_OP_IS_TRUE:     FALLTHROUGH_INTENDED;
     case QL_OP_IS_FALSE:    FALLTHROUGH_INTENDED;
     case QL_OP_NOT_EQUAL:   FALLTHROUGH_INTENDED;
@@ -446,6 +457,13 @@ QLScanRange& QLScanRange::operator&=(const QLScanRange& other) {
     } else if (other_range.max_bound) {
       range.max_bound = other_range.max_bound;
     }
+
+    if (!range.min_bound && !range.max_bound) {
+      range.is_not_null |= other_range.is_not_null;
+    } else {
+      // IS NOT NULL is covered by having a min_bound or a max_bound.
+      range.is_not_null = false;
+    }
   }
   has_in_range_options_ = has_in_range_options_ || other.has_in_range_options_;
   has_in_hash_options_ = has_in_hash_options_ || other.has_in_hash_options_;
@@ -472,6 +490,11 @@ QLScanRange& QLScanRange::operator|=(const QLScanRange& other) {
     } else if (!other_range.max_bound) {
       range.max_bound = boost::none;
     }
+
+    if (!range.min_bound && !range.max_bound) {
+      // A query that allows a null wins in an OR.
+      range.is_not_null = range.is_not_null && other_range.is_not_null;
+    }
   }
   has_in_range_options_ = has_in_range_options_ && other.has_in_range_options_;
   has_in_hash_options_ = has_in_hash_options_ && other.has_in_hash_options_;
@@ -487,9 +510,10 @@ QLScanRange& QLScanRange::operator~() {
     if (range.min_bound && range.max_bound) {
       // If the condition's min and max values are defined, the negation of it will be
       // disjoint ranges at the two ends, which is not representable as a simple range. So
-      // we will treat the result as unbounded.
+      // we will treat the result as unbounded, but omit NULLs.
       range.min_bound = boost::none;
       range.max_bound = boost::none;
+      range.is_not_null = true;
     } else {
       // Otherwise, for one-sided range or unbounded range, the resulting min/max bounds are
       // just the reverse of the bounds.
