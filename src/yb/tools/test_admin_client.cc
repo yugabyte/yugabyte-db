@@ -69,7 +69,7 @@ Status TestAdminClient::SplitTabletAndWait(
   RETURN_NOT_OK(SplitTablet(table, tablet_id));
   return (WaitFor(
       [&]() -> Result<bool> { return IsTabletSplittingComplete(wait_for_parent_deletion); },
-      30s * kTimeMultiplier, "Wait for ongoing splits to finish."));
+      60s * kTimeMultiplier, "Wait for ongoing splits to finish."));
 }
 
 Status TestAdminClient::SplitTabletAndWait(
@@ -139,21 +139,18 @@ Status TestAdminClient::FlushTable(const std::string& ns, const std::string& tab
 }
 
 Result<TxnSnapshotId> TestAdminClient::CreateSnapshotAndWait(
-    const std::optional<SnapshotScheduleId>& schedule_id) {
+    const SnapshotScheduleId& schedule_id) {
   TxnSnapshotId snapshot_id = VERIFY_RESULT(CreateSnapshot(schedule_id));
   RETURN_NOT_OK(WaitForSnapshotComplete(snapshot_id));
   return snapshot_id;
 }
 
-Result<TxnSnapshotId> TestAdminClient::CreateSnapshot(
-    const std::optional<SnapshotScheduleId>& schedule_id) {
+Result<TxnSnapshotId> TestAdminClient::CreateSnapshot(const SnapshotScheduleId& schedule_id) {
   master::CreateSnapshotRequestPB req;
   master::CreateSnapshotResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);
-  if (schedule_id) {
-    req.set_schedule_id(schedule_id->data(), schedule_id->size());
-  }
+  req.set_schedule_id(schedule_id.data(), schedule_id.size());
   auto proxy = cluster_->GetLeaderMasterProxy<master::MasterBackupProxy>();
   RETURN_NOT_OK(proxy.CreateSnapshot(req, &resp, &rpc));
   if (resp.has_error()) {

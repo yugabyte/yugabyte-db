@@ -236,7 +236,7 @@ Status SnapshotTestUtil::WaitAllSnapshotsDeleted() {
   RETURN_NOT_OK(WaitFor([this]() -> Result<bool> {
     auto snapshots = VERIFY_RESULT(ListSnapshots());
     SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
-    if (snapshots[0].entry().state(), master::SysSnapshotEntryPB::DELETED) {
+    if (snapshots[0].entry().state() == master::SysSnapshotEntryPB::DELETED) {
       return true;
     }
     SCHECK_EQ(snapshots[0].entry().state(), master::SysSnapshotEntryPB::DELETING, IllegalState,

@@ -27,6 +27,7 @@
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/backup.pb.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
@@ -204,16 +205,22 @@ bool SnapshotState::NeedCleanup() const {
          !cleanup_tracker_.Started();
 }
 
-bool SnapshotState::IsTerminalFailure(const Status& status) {
+std::optional<SysSnapshotEntryPB::State> SnapshotState::GetTerminalStateForStatus(
+    const Status& status) {
   // Table was removed.
   if (status.IsExpired()) {
-    return true;
+    return SysSnapshotEntryPB::FAILED;
   }
   // Would not be able to create snapshot at specific time, since history was garbage collected.
   if (TransactionError(status) == TransactionErrorCode::kSnapshotTooOld) {
-    return true;
+    return SysSnapshotEntryPB::FAILED;
   }
-  return false;
+  // Trying to delete a snapshot of an already deleted tablet.
+  if (tserver::TabletServerError(status) == tserver::TabletServerErrorPB::TABLET_NOT_FOUND &&
+      initial_state() == SysSnapshotEntryPB::DELETING) {
+    return SysSnapshotEntryPB::DELETED;
+  }
+  return std::nullopt;
 }
 
 bool SnapshotState::ShouldUpdate(const SnapshotState& other) const {
