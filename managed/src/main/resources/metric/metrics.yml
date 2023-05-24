@@ -151,7 +151,8 @@ memory_usage:
   range: true
   operator: "/ 1073741824"
   filters:
-    saved_name: "node_memory_Cached_bytes|node_memory_Buffers_bytes|node_memory_MemFree_bytes"
+    saved_name: "node_memory_Cached_bytes|node_memory_Buffers_bytes|node_memory_MemFree_bytes|\
+      node_memory_MemTotal_bytes"
   group_by: "saved_name"
   panel_group: "Node Metrics"
   layout:
@@ -163,6 +164,7 @@ memory_usage:
         "node_memory_Cached_bytes": "Cached"
         "node_memory_Buffers_bytes": "Buffered"
         "node_memory_MemFree_bytes": "Free"
+        "node_memory_MemTotal_bytes": "Total"
       ticksuffix: "&nbsp;GB"
 
 container_cpu_usage:
