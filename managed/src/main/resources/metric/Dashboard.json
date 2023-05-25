@@ -7950,7 +7950,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
-      "expr" : "sum(avg_over_time(compaction_tasks{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])) by (state)",
+      "expr" : "sum(avg_over_time(compaction_tasks{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])) by (state_type)",
       "refId" : "A"
     } ],
     "gridPos" : {
