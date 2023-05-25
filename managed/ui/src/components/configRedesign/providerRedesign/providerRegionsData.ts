@@ -21,6 +21,11 @@ export const AWS_REGIONS = {
   'us-east-2': { zones: ['us-east-2a', 'us-east-2b', 'us-east-2c'] },
   'us-west-1': { zones: ['us-west-1a', 'us-west-1b'] },
   'us-west-2': { zones: ['us-west-2a', 'us-west-2b', 'us-west-2c'] },
+  'af-south-1': { zones: ['af-south-1a', 'af-south-1b', 'af-south-1c'] },
+  'me-south-1': { zones: ['me-south-1a', 'me-south-1b', 'me-south-1c'] },
+  'ap-east-1': { zones: ['ap-east-1a', 'ap-east-1b', 'ap-east-1c'] },
+  'eu-south-1': { zones: ['eu-south-1a', 'eu-south-1b', 'eu-south-1c'] },
+  'eu-north-1': { zones: ['eu-north-1a', 'eu-north-1b', 'eu-north-1c'] },
   'us-gov-east-1': { zones: ['us-gov-east-1a', 'us-gov-east-1b', 'us-gov-east-1c'] },
   'us-gov-west-1': { zones: ['us-gov-west-1a', 'us-gov-west-1b', 'us-gov-west-1c'] }
 } as const;
