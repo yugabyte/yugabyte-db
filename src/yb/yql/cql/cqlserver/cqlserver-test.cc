@@ -646,7 +646,7 @@ TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
   double execute_time;
   const double lower_bound = 0.0005;
   const double upper_bound = 20;
-  const long max_rand = 1000000L;
+  const int64 max_rand = 1000000;
 
   // Used to ensure that allocate is done only once for every type of query
   bool create_first = true;
@@ -709,7 +709,7 @@ TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
   CreateTable();
 
   // Randomly choose between insert or select queries.
-  for(int i=0; i<10000; i++) {
+  for(int i = 0; i < 10000; i++) {
     if(random()%2) {
       SelectStmt();
     } else {
