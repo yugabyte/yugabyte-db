@@ -27,7 +27,7 @@ Use YugabyteDB Managed alerts and monitoring to monitor cluster performance and 
 
 - **Cluster properties**. View cluster activity, node status, and database properties:
 
-  - Database tables. Use the cluster **Tables** tab to see the tables, databases, and namespaces on the cluster.
+  - Database tables. Use the cluster **Tables** tab to see the tables, along with their size across all the nodes on the cluster.
   - Node status. Use the cluster **Nodes** tab to see the nodes in the cluster and their status.
   - [Activity log](monitor-activity/). The cluster **Activity** tab provides a running audit of changes made to the cluster.
 

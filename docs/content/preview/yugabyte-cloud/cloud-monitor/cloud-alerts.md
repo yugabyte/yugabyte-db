@@ -174,6 +174,17 @@ If the number of connections is continuously higher than 60%, your workload may 
 
 To add connection capacity, scale your cluster by adding vCPUs or nodes. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
+#### Fix CMK unavailable alerts
+
+YugabyteDB Managed sends a notification when the customer managed key (CMK) used to encrypt a cluster is unreachable.
+
+If your CMK is unreachable, check the following:
+
+- Verify the key is till available on the cloud provider.
+- Verify the credentials used to access the key are still valid, and update the credentials if needed.
+
+Refer to [Encryption at rest](../../cloud-secure-clusters/managed-ear/).
+
 #### Fix CPU alerts
 
 YugabyteDB Managed sends a notification when CPU use on any node in the cluster exceeds the threshold, as follows:

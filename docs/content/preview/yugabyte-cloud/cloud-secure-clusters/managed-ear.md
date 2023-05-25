@@ -54,8 +54,9 @@ For more information on AWS KMS, refer to [AWS Key Management Service](https://d
 
   {{% tab header="GCP" lang="gcp" %}}
 
-- Cloud KMS resource ID. For more information, refer to [Getting a Cloud KMS resource ID](https://cloud.google.com/kms/docs/getting-resource-ids) in the GCP documentation.
-- Service account credentials. This is the key file (JSON) that you downloaded when creating credentials for the service account. For more information, refer to [Create access credentials](https://developers.google.com/workspace/guides/create-credentials#create_credentials_for_a_service_account) in the GCP documentation.
+- Cloud KMS resource ID. You can copy the resource ID from KMS Management page in the Google Cloud console. Do not include the key version. For more information, refer to [Getting a Cloud KMS resource ID](https://cloud.google.com/kms/docs/getting-resource-ids) in the GCP documentation.
+- A service account that has been granted the CryptoKey Encrypter/Decrypter IAM role on the CMK.
+- Service account credentials. These credentials are used to authorize your use of the CMK. This is the key file (JSON) that you downloaded when creating credentials for the service account. For more information, refer to [Create access credentials](https://developers.google.com/workspace/guides/create-credentials#create_credentials_for_a_service_account) in the GCP documentation.
 
 For more information on GCP KMS, refer to [Cloud Key Management Service overview](https://cloud.google.com/kms/docs/key-management-service/) in the GCP documentation.
 
