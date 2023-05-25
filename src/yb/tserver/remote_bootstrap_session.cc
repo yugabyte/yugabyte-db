@@ -51,6 +51,7 @@
 #include "yb/tserver/remote_bootstrap_snapshots.h"
 
 #include "yb/util/env_util.h"
+#include "yb/util/fault_injection.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
@@ -60,6 +61,12 @@
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+
+DEFINE_test_flag(double, fault_crash_leader_after_changing_role, 0.0,
+                 "The leader will crash after successfully sending a ChangeConfig (CHANGE_ROLE "
+                 "from PRE_VOTER or PRE_OBSERVER to VOTER or OBSERVER respectively) for the tablet "
+                 "server it is remote bootstrapping, but before it sends a success response.");
+
 
 namespace yb {
 namespace tserver {
@@ -115,8 +122,12 @@ Status RemoteBootstrapSession::ChangeRole() {
 
   LOG(INFO) << "Attempting to ChangeRole for peer " << requestor_uuid_ << " in bootstrap session "
             << session_id_;
-  return rbs_anchor_client_ ? rbs_anchor_client_->ChangePeerRole()
-                            : tablet_peer_->ChangeRole(requestor_uuid_);
+  auto status = rbs_anchor_client_ ? rbs_anchor_client_->ChangePeerRole()
+                                   : tablet_peer_->ChangeRole(requestor_uuid_);
+  if (status.ok()) {
+    MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_after_changing_role);
+  }
+  return status;
 }
 
 Status RemoteBootstrapSession::SetInitialCommittedState() {
@@ -232,7 +243,7 @@ Status RemoteBootstrapSession::Init() {
 
   if (rbs_anchor_client_) {
     RETURN_NOT_OK(rbs_anchor_client_->RegisterLogAnchor(
-        tablet_peer_->tablet_id(), last_logged_opid));
+        tablet_peer_->tablet_id(), log_anchor_index_));
     rbs_anchor_session_created_ = true;
   }
   // Re-anchor on the highest OpId that was in the log right before we
@@ -506,11 +517,9 @@ Status RemoteBootstrapSession::OpenLogSegment(
       log_segment->footer().min_replicate_index() > log_anchor_index_) {
     log_anchor_index_ = log_segment->footer().min_replicate_index();
 
-    // Update log anchor on the tablet leader side
+    // Update log anchor on the tablet leader.
     if (rbs_anchor_client_) {
-      // return if the tablet leader is not able to anchor on the opid
-      RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(
-          OpId(tablet_peer_->LeaderTerm(), log_anchor_index_)));
+      RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(log_anchor_index_));
     }
 
     // Update log anchor, since we don't need older logs anymore.
