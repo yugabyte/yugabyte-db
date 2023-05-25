@@ -10,6 +10,7 @@ import os
 import re
 import resource
 import shutil
+from distutils.spawn import find_executable
 import subprocess
 import sys
 import time
@@ -1064,6 +1065,7 @@ class ControlScript(object):
         thp_mode = "disabled"
         if os.path.exists(thp_dir):
             with open(os.path.join(thp_dir, 'enabled'), 'r') as thp_enabled:
+                thp_enabled = thp_enabled.read()
                 thp_mode = re.search("\[(.*)\]", thp_enabled).group(1)
         return thp_mode == 'always'
 
@@ -1078,8 +1080,8 @@ class ControlScript(object):
             prereqs_warn.add('transparent_hugepages')
             prereqs_warn_flag = True
 
-        ntp_check = shutil.which('ntpd')
-        chrony_check = shutil.which('chrony')
+        ntp_check = find_executable('ntpd')
+        chrony_check = find_executable('chronyd')
         if not ntp_check and not chrony_check:
             prereqs_warn.add('ntp/chrony')
             prereqs_warn_flag = True
