@@ -70,7 +70,7 @@ CREATE TABLE t1(id BIGSERIAL PRIMARY KEY, v TEXT);
 CREATE INDEX i1 ON t1(v);
 ```
 
-Watch the newly created index:
+Verify the index was created:
 
 ```sql
 yugabyte=# \d t1
