@@ -98,6 +98,5 @@ Installing YugabyteDB Anywhere on airgapped hosts (without access to any Interne
   - `8800` – HTTP access to the Replicated UI
   - `80` – HTTP access to the YugabyteDB Anywhere UI
   - `22` – SSH
-- Ensuring that the attached disk storage (such as persistent EBS volumes on AWS) is 100 GB minimum.
 - Obtain the YugabyteDB Anywhere airgapped install package. Contact {{% support-platform %}} for more information.
 - Sign the Yugabyte license agreement. Contact {{% support-platform %}} for more information.
