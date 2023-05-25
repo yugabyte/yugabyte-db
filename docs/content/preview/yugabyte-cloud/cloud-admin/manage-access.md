@@ -52,7 +52,7 @@ For users that have not responded to their invitation (their status is Invited),
 
 You cannot delete your own account.
 
-To delete a user, click **Delete** next to the username in the list, then click **Confirm**.
+To delete a user, in the row of the user you want to delete, click the trash icon, then click **Confirm**.
 
 ## Change a user's role
 

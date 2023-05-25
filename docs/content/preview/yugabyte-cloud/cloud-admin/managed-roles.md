@@ -40,6 +40,8 @@ YugabyteDB Managed includes two built-in roles for managing your account:
   - create a billing profile
   - view account activity
 
+- **Viewer** - The Viewer role has _all_ view permissions, exclusively, and can't perform any tasks.
+
 ## Create a role
 
 To create a role, do the following:
@@ -49,12 +51,12 @@ To create a role, do the following:
 1. Enter a description for the role.
 1. Click **Select Permissions**.
 1. Select the permissions to assign to the role and click **Select** when you are done.
-1. Click **Save Changes**.
+1. Click **Save**.
 
 To create a role from an existing role, do the following:
 
 1. Navigate to **Admin > Access Control > Roles**, then select the role to modify to display the **Role Details** sheet.
-1. Click **Actions** and **Clone Role**.
+1. Click **Clone Role**.
 1. Enter a name for the role.
 1. Enter a description for the role.
 1. Click **Edit Permissions**.
