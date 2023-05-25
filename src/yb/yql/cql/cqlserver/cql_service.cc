@@ -494,5 +494,14 @@ void CQLServiceImpl::UpdateCountersUnlocked(
   }
 }
 
+shared_ptr<ql::Counters> CQLServiceImpl::GetCounters(const std::string& query_id) {
+  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  auto itr = prepared_stmts_map_.find(query_id);
+  if(itr == prepared_stmts_map_.end()) {
+    return nullptr;
+  }
+  return itr->second->counters;
+}
+
 }  // namespace cqlserver
 }  // namespace yb

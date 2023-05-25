@@ -129,6 +129,10 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // "prepared_stmts_mutex_" needs to be locked before this call.
   void UpdateCountersUnlocked(double execute_time, std::shared_ptr<ql::Counters> counters);
 
+  // Returns the counters corresponding to the query with the given query id. Returns
+  // nullptr if query doesn't exist in the prepared_stmt_map_
+  std::shared_ptr<ql::Counters> GetCounters(const std::string& query_id);
+
  private:
   constexpr static int kRpcTimeoutSec = 5;
 
