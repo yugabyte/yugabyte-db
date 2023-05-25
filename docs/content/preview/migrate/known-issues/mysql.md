@@ -523,7 +523,7 @@ CREATE TABLE test(id int, address json);
 ALTER TABLE test ADD CONSTRAINT add_ck CHECK ((json_valid(address)));
 ```
 
-The contents of exported schema/failed.sql is as follows:
+The contents of schema/failed.sql is as follows:
 
 ```sql
 ALTER TABLE test ADD CONSTRAINT add_ck CHECK ((json_valid(address)));

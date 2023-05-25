@@ -26,7 +26,7 @@ Create a database user and provide the user with READ access to all the resource
    GRANT TRIGGER ON source_db_name.* TO 'ybvoyager'@'<client_IP>';
    ```
 
-   Note that if you want to [accelerate data export](#accelerate-data-export-for-mysql-or-oracle), include the following grants additionally as follows:
+   Note that if you want to [accelerate data export](#accelerate-data-export-for-mysql-and-oracle), include the following grants additionally as follows:
 
    **For MYSQL**
 

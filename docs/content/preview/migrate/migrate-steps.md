@@ -224,9 +224,9 @@ Refer to [export data](../reference/yb-voyager-cli/#export-data) for details abo
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
-#### Accelerate data export for MySQL or Oracle
+#### Accelerate data export for MySQL and Oracle
 
-For MySQL or Oracle, you can optionally speed up data export by setting the environment variable `EXPERIMENTAL_FAST_EXPORT=1` when you run `export data` using yb-voyager.
+For MySQL and Oracle, you can optionally speed up data export by setting the environment variable `EXPERIMENTAL_FAST_EXPORT=1` when you run `export data` using yb-voyager.
 
 Consider the following caveats before using the feature:
 
@@ -235,6 +235,7 @@ Consider the following caveats before using the feature:
 - [--parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument will have no effect.
 - SSL is unsupported.
 - In MySQL RDS, writes are not allowed during the data export process.
+- For Oracle where sequences are not attached to a column, resume value generation is unsupported with EXPERIMENTAL_FAST_EXPORT=1 environment variable.
 
 {{< note title="Sequence migration considerations" >}}
 
@@ -244,7 +245,6 @@ Note that there are some special cases involving sequences such as the following
 
 - In MySQL, auto-increment column is migrated as a normal column with a sequence attached to it.
 - In PostgreSQL, `SERIAL` datatype and `GENERATED AS IDENTITY` columns use sequence object internally, so resume values for them are also generated during data export.
-- For PostgreSQL and Oracle where sequences are not attached to a column, resume value generation is unsupported with EXPERIMENTAL_FAST_EXPORT=1 environment variable.
 
 {{< /note >}}
 

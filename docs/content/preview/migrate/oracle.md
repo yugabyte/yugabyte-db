@@ -4,7 +4,7 @@ private=true
 +++
 -->
 
-Note that if you want to [accelerate data export](#accelerate-data-export-for-mysql-or-oracle), refer to [Database setup for accelerated data export](#database-setup-for-accelerated-data-export).
+Note that if you want to [accelerate data export](#accelerate-data-export-for-mysql-and-oracle), refer to [Database setup for accelerated data export](#database-setup-for-accelerated-data-export).
 
 Create a role and a database user, and provide the user with READ access to all the resources which need to be migrated.
 
@@ -49,13 +49,13 @@ Create a role and a database user, and provide the user with READ access to all 
    GRANT <SCHEMA_NAME>_reader_role TO ybvoyager;
    ```
 
-   If you're using [accelerated data export](../migrate-steps/#accelerate-data-export-for-mysql-or-oracle), run the additional grant as follows:
+   If you're using [accelerated data export](../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), run the additional grant as follows:
 
    ```sql
    GRANT FLASHBACK ANY TABLE TO ybvoyager;
    ```
 
-1. If you're using [accelerated data export](../migrate-steps/#accelerate-data-export-for-mysql-or-oracle), the `log_mode` should be archivelog.
+1. If you're using [accelerated data export](../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), the `log_mode` should be archivelog.
 
     1. Check the value for `log_mode` using the following command for Oracle/Oracle RDS:
 
