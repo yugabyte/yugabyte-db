@@ -4,6 +4,7 @@ import moment from 'moment';
 
 import { getAlertConfigurations } from '../../actions/universe';
 import {
+  isBootstrapRequired,
   queryLagMetricsForTable,
   queryLagMetricsForUniverse
 } from '../../actions/xClusterReplication';
@@ -14,7 +15,8 @@ import {
   XClusterConfigAction,
   XClusterConfigStatus,
   REPLICATION_LAG_ALERT_NAME,
-  BROKEN_XCLUSTER_CONFIG_STATUSES
+  BROKEN_XCLUSTER_CONFIG_STATUSES,
+  XClusterConfigType
 } from './constants';
 import { api } from '../../redesign/helpers/api';
 import { getUniverseStatus } from '../universes/helpers/universeHelpers';
@@ -32,8 +34,6 @@ import {
 import { TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
-
-export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 
 // TODO: Rename, refactor and pull into separate file
 export const MaxAcceptableLag = ({
@@ -462,4 +462,66 @@ export const augmentTablesWithXClusterDetails = (
     });
   }
   return tables;
+};
+
+/**
+ * Return the UUIDs for tables which require bootstrapping.
+ * May throw an error.
+ */
+export const getTablesForBootstrapping = async (
+  selectedTableUUIDs: string[],
+  sourceUniverseUUID: string,
+  sourceUniverseTables: YBTable[],
+  xClusterConfigType: XClusterConfigType
+) => {
+  // Check if bootstrap is required, for each selected table
+  let bootstrapTest: { [tableUUID: string]: boolean } = {};
+
+  bootstrapTest = await isBootstrapRequired(
+    sourceUniverseUUID,
+    selectedTableUUIDs.map(adaptTableUUID),
+    xClusterConfigType
+  );
+
+  const bootstrapRequiredTableUUIDs = new Set<string>();
+  if (bootstrapTest) {
+    const ysqlKeyspaceToTableUUIDs = new Map<string, Set<string>>();
+    const ysqlTableUUIDToKeyspace = new Map<string, string>();
+    sourceUniverseTables.forEach((table) => {
+      if (
+        table.tableType !== TableType.PGSQL_TABLE_TYPE ||
+        table.relationType === YBTableRelationType.INDEX_TABLE_RELATION
+      ) {
+        // Ignore all index tables and non-YSQL tables.
+        return;
+      }
+      const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(table.keySpace);
+      if (tableUUIDs !== undefined) {
+        tableUUIDs.add(adaptTableUUID(table.tableUUID));
+      } else {
+        ysqlKeyspaceToTableUUIDs.set(
+          table.keySpace,
+          new Set<string>([adaptTableUUID(table.tableUUID)])
+        );
+      }
+      ysqlTableUUIDToKeyspace.set(adaptTableUUID(table.tableUUID), table.keySpace);
+    });
+
+    Object.entries(bootstrapTest).forEach(([tableUUID, bootstrapRequired]) => {
+      if (bootstrapRequired) {
+        bootstrapRequiredTableUUIDs.add(tableUUID);
+        // YSQL ONLY: In addition to the current table, add all other tables in the same keyspace
+        //            for bootstrapping.
+        const keyspace = ysqlTableUUIDToKeyspace.get(tableUUID);
+        if (keyspace !== undefined) {
+          const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(keyspace);
+          if (tableUUIDs !== undefined) {
+            tableUUIDs.forEach((tableUUID) => bootstrapRequiredTableUUIDs.add(tableUUID));
+          }
+        }
+      }
+    });
+  }
+
+  return Array.from(bootstrapRequiredTableUUIDs);
 };

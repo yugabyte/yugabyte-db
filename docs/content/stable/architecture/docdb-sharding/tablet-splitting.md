@@ -163,7 +163,7 @@ Note that misuse or overuse of manual tablet splitting (for example, splitting t
 In order to verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../../admin/yb-admin/#list-tablets) command:
 
 ```bash
-.bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
+./bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
 ```
 
 Expect the following output:
@@ -175,12 +175,22 @@ Tablet UUID                       Range                         Leader
 
 Note the tablet UUID for later use.
 
+#### Manually flush the tablet
+
+The tablet should have some data persisted on the disk. In case of small amount of data inserted, the data can still exist in memory buffers only. To make sure SST data files exist on the disk the tablet of this table can be manually flushed by running the following [`yb-ts-cli`](../../../admin/yb-ts-cli/#flush-tablet) command:
+
+```sh
+./bin/yb-ts-cli \
+    --server_address=127.0.0.1:9100,127.0.0.2:9100,127.0.0.3:9100 \
+    flush_tablet 9991368c4b85456988303cd65a3c6503
+```
+
 #### Manually split the tablet
 
 The tablet of this table can be manually split into two tablets by running the following [`yb-admin split_tablet`](../../../admin/yb-admin/#split-tablet) command:
 
 ```sh
-.bin/yb-admin \
+./bin/yb-admin \
     --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     split_tablet 9991368c4b85456988303cd65a3c6503
 ```
@@ -294,6 +304,8 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
  For details on using YCSB with YugabyteDB, see [Benchmark: YCSB](../../../benchmark/ycsb-jdbc/).
 
 ## Limitations
+
+* Tablet splitting is disabled for index tables with range partitioning that are being restored in version `2.14.5` or later from a backup taken in any version prior to `2.14.5`. It is not recommended to use tablet splitting for range partitioned index tables prior to version `2.14.5` to prevent possible data loss for index tables. For details, see [#12190](https://github.com/yugabyte/yugabyte-db/issues/12190) and [#17169](https://github.com/yugabyte/yugabyte-db/issues/17169).
 
 The following known limitations are planned to be resolved in upcoming releases:
 

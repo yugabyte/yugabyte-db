@@ -11,8 +11,7 @@ export const MetricsComparisonModal = ({
   visible,
   onHide,
   origin,
-  selectedRegionClusterUUID,
-  isTopKMetricsEnabled
+  selectedRegionClusterUUID
 }) => {
   return (
     <ComparisonFilterContextProvider selectedUniverse={selectedUniverse}>
@@ -32,7 +31,6 @@ export const MetricsComparisonModal = ({
           <NodeSelectorHeader
             universe={selectedUniverse}
             selectedRegionClusterUUID={selectedRegionClusterUUID}
-            isTopKMetricsEnabled={isTopKMetricsEnabled}
           />
           <MetricsComparisonContent universe={selectedUniverse} visible={visible} />
         </YBModal>

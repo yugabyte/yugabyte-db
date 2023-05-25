@@ -157,7 +157,8 @@ YB_DEFINE_ENUM(
     (kSensitive_info)
     (kAuto)
     (kPg)
-    (kDeprecated));
+    (kDeprecated)
+    (kPreview));
 
 #define FLAG_TAG_stable ::yb::FlagTag::kStable
 #define FLAG_TAG_evolving ::yb::FlagTag::kEvolving
@@ -272,6 +273,64 @@ class FlagTagger {
 
 #define DEFINE_NON_RUNTIME_string(name, default_value, description) \
   DEFINE_string(name, default_value, description)
+
+// Runtime preview flags.
+#define DEFINE_RUNTIME_PREVIEW_bool(name, default_value, description) \
+  DEFINE_RUNTIME_bool(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_RUNTIME_PREVIEW_uint32(name, default_value, description) \
+  DEFINE_RUNTIME_uint32(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_RUNTIME_PREVIEW_int32(name, default_value, description) \
+  DEFINE_RUNTIME_int32(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_RUNTIME_PREVIEW_int64(name, default_value, description) \
+  DEFINE_RUNTIME_int64(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_RUNTIME_PREVIEW_uint64(name, default_value, description) \
+  DEFINE_RUNTIME_uint64(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_RUNTIME_PREVIEW_double(name, default_value, description) \
+  DEFINE_RUNTIME_double(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_RUNTIME_PREVIEW_string(name, default_value, description) \
+  DEFINE_RUNTIME_string(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+// Non Runtime preview flags.
+#define DEFINE_NON_RUNTIME_PREVIEW_bool(name, default_value, description) \
+  DEFINE_NON_RUNTIME_bool(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_NON_RUNTIME_PREVIEW_uint32(name, default_value, description) \
+  DEFINE_NON_RUNTIME_uint32(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_NON_RUNTIME_PREVIEW_int32(name, default_value, description) \
+  DEFINE_NON_RUNTIME_int32(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_NON_RUNTIME_PREVIEW_int64(name, default_value, description) \
+  DEFINE_NON_RUNTIME_int64(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_NON_RUNTIME_PREVIEW_uint64(name, default_value, description) \
+  DEFINE_NON_RUNTIME_uint64(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_NON_RUNTIME_PREVIEW_double(name, default_value, description) \
+  DEFINE_NON_RUNTIME_double(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_NON_RUNTIME_PREVIEW_string(name, default_value, description) \
+  DEFINE_NON_RUNTIME_string(name, default_value, description); \
+  _TAG_FLAG(name, ::yb::FlagTag::kPreview, preview)
 
 // Unknown flags. !!Not to be used!!
 // Older flags need to be reviewed in order to determine if they are runtime or non-runtime.

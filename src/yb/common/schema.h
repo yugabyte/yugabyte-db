@@ -54,6 +54,7 @@
 
 #include "yb/gutil/stl_util.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status.h"
 #include "yb/util/uuid.h"
@@ -95,6 +96,17 @@ struct DeletedColumn {
   friend bool operator==(const DeletedColumn&, const DeletedColumn&) = default;
 };
 
+// The string representation of values of this enum is used while rendering ColumnSchema to string.
+// So we use capitalized format to match other parts of string representation.
+YB_DEFINE_ENUM(ColumnKind,
+               (HASH)
+               (RANGE_ASC_NULL_FIRST)
+               (RANGE_DESC_NULL_FIRST)
+               (RANGE_ASC_NULL_LAST)
+               (RANGE_DESC_NULL_LAST)
+               (VALUE));
+YB_STRONGLY_TYPED_BOOL(Nullable);
+
 // The schema for a given column.
 //
 // Holds the data type as well as information about nullability & column name.
@@ -110,12 +122,8 @@ class ColumnSchema {
     return a.is_nullable_ == b.is_nullable_;
   }
 
-  static bool CompHashKey(const ColumnSchema &a, const ColumnSchema &b) {
-    return a.is_hash_key_ == b.is_hash_key_;
-  }
-
-  static bool CompSortingType(const ColumnSchema &a, const ColumnSchema &b) {
-    return a.sorting_type_ == b.sorting_type_;
+  static bool CompKind(const ColumnSchema &a, const ColumnSchema &b) {
+    return a.kind_ == b.kind_;
   }
 
   static bool CompTypeInfo(const ColumnSchema &a, const ColumnSchema &b);
@@ -126,8 +134,7 @@ class ColumnSchema {
 
   // Combined comparators.
   static bool CompareType(const ColumnSchema &a, const ColumnSchema &b) {
-    return CompNullable(a, b) && CompHashKey(a, b) &&
-        CompSortingType(a, b) && CompTypeInfo(a, b);
+    return CompNullable(a, b) && CompKind(a, b) && CompTypeInfo(a, b);
   }
 
   static bool CompareByDefault(const ColumnSchema &a, const ColumnSchema &b) {
@@ -148,33 +155,30 @@ class ColumnSchema {
   //   ColumnSchema col_d("d", STRING, false, &default_str);
   ColumnSchema(std::string name,
                const std::shared_ptr<QLType>& type,
-               bool is_nullable = false,
-               bool is_hash_key = false,
+               ColumnKind kind = ColumnKind::VALUE,
+               Nullable is_nullable = Nullable::kFalse,
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified,
                int32_t pg_type_oid = 0 /*kInvalidOid*/)
       : name_(std::move(name)),
         type_(type),
+        kind_(kind),
         is_nullable_(is_nullable),
-        is_hash_key_(is_hash_key),
         is_static_(is_static),
         is_counter_(is_counter),
         order_(order),
-        sorting_type_(sorting_type),
         pg_type_oid_(pg_type_oid) {
   }
 
   // convenience constructor for creating columns with simple (non-parametric) data types
   ColumnSchema(std::string name,
                DataType type,
-               bool is_nullable = false,
-               bool is_hash_key = false,
+               ColumnKind kind = ColumnKind::VALUE,
+               Nullable is_nullable = Nullable::kFalse,
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified,
                int32_t pg_type_oid = 0 /*kInvalidOid*/);
 
   const std::shared_ptr<QLType>& type() const {
@@ -191,8 +195,16 @@ class ColumnSchema {
     return is_nullable_;
   }
 
+  ColumnKind kind() const {
+    return kind_;
+  }
+
+  bool is_key() const {
+    return kind_ != ColumnKind::VALUE;
+  }
+
   bool is_hash_key() const {
-    return is_hash_key_;
+    return kind_ == ColumnKind::HASH;
   }
 
   bool is_static() const {
@@ -217,31 +229,9 @@ class ColumnSchema {
     pg_type_oid_ = pg_type_oid;
   }
 
-  SortingType sorting_type() const {
-    return sorting_type_;
-  }
+  SortingType sorting_type() const;
 
-  void set_sorting_type(SortingType sorting_type) {
-    sorting_type_ = sorting_type;
-  }
-
-  const std::string sorting_type_string() const {
-    switch (sorting_type_) {
-      case kNotSpecified:
-        return "none";
-      case kAscending:
-        return "asc";
-      case kDescending:
-        return "desc";
-      case kAscendingNullsLast:
-        return "asc nulls last";
-      case kDescendingNullsLast:
-        return "desc nulls last";
-    }
-    LOG(FATAL) << "Invalid sorting type: " << sorting_type_;
-  }
-
-  const std::string &name() const {
+  const std::string& name() const {
     return name_;
   }
 
@@ -301,12 +291,11 @@ class ColumnSchema {
 
   std::string name_;
   std::shared_ptr<QLType> type_;
+  ColumnKind kind_;
   bool is_nullable_;
-  bool is_hash_key_;
   bool is_static_;
   bool is_counter_;
   int32_t order_;
-  SortingType sorting_type_;
   int32_t pg_type_oid_;
 };
 
@@ -496,13 +485,10 @@ class Schema {
       cotable_id_(Uuid::Nil()),
       colocation_id_(kColocationIdNotSet),
       pgschema_name_("") {
-    UpdateKeyPrefixEncodedLen();
   }
 
   Schema(const Schema& other);
   Schema& operator=(const Schema& other);
-
-  void swap(Schema& other); // NOLINT(build/include_what_you_use)
 
   void CopyFrom(const Schema& other);
 
@@ -513,7 +499,6 @@ class Schema {
   // caught. If an invalid schema is passed to this constructor, an
   // assertion will be fired!
   Schema(const std::vector<ColumnSchema>& cols,
-         size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
          const ColocationId colocation_id = kColocationIdNotSet,
@@ -527,7 +512,6 @@ class Schema {
   // assertion will be fired!
   Schema(const std::vector<ColumnSchema>& cols,
          const std::vector<ColumnId>& ids,
-         size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
          const ColocationId colocation_id = kColocationIdNotSet,
@@ -536,7 +520,7 @@ class Schema {
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
-  Status Reset(const std::vector<ColumnSchema>& cols, size_t key_columns,
+  Status Reset(const std::vector<ColumnSchema>& cols,
                const TableProperties& table_properties = TableProperties(),
                const Uuid& cotable_id = Uuid::Nil(),
                const ColocationId colocation_id = kColocationIdNotSet,
@@ -547,7 +531,6 @@ class Schema {
   // state and may not be used.
   Status Reset(const std::vector<ColumnSchema>& cols,
                const std::vector<ColumnId>& ids,
-               size_t key_columns,
                const TableProperties& table_properties = TableProperties(),
                const Uuid& cotable_id = Uuid::Nil(),
                const ColocationId colocation_id = kColocationIdNotSet,
@@ -759,7 +742,6 @@ class Schema {
       DCHECK_EQ(colocation_id_, kColocationIdNotSet);
     }
     cotable_id_ = cotable_id;
-    UpdateKeyPrefixEncodedLen();
   }
 
   bool has_yb_hash_code() const {
@@ -789,7 +771,6 @@ class Schema {
       DCHECK(cotable_id_.IsNil());
     }
     colocation_id_ = colocation_id;
-    UpdateKeyPrefixEncodedLen();
   }
 
   bool is_colocated() const {
@@ -825,35 +806,23 @@ class Schema {
   // extra copy of the ColumnSchemas.
   // TODO this should probably be cached since the key projection
   // is not supposed to change, for a single schema.
-  Schema CreateKeyProjection() const {
-    std::vector<ColumnSchema> key_cols(cols_.begin(),
-                                  cols_.begin() + num_key_columns_);
-    std::vector<ColumnId> col_ids;
-    if (!col_ids_.empty()) {
-      col_ids.assign(col_ids_.begin(), col_ids_.begin() + num_key_columns_);
-    }
-
-    return Schema(key_cols, col_ids, num_key_columns_);
-  }
+  Schema CreateKeyProjection() const;
 
   // Initialize column IDs by default values.
   // Requires that this schema has no column IDs.
   void InitColumnIdsByDefault();
 
   // Create a new schema containing only the selected columns.
-  // The resulting schema will have no key columns defined.
   // If this schema has IDs, the resulting schema will as well.
-  Status CreateProjectionByNames(const std::vector<GStringPiece>& col_names,
-                                 Schema* out, size_t num_key_columns = 0) const;
+  Status TEST_CreateProjectionByNames(
+      const std::vector<GStringPiece>& col_names, Schema* out) const;
 
   // Create a new schema containing only the selected column IDs.
   //
   // If any column IDs are invalid, then they will be ignored and the
   // result will have fewer columns than requested.
-  //
-  // The resulting schema will have no key columns defined.
-  Status CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
-                                            Schema* out) const;
+  Status CreateProjectionByIdsIgnoreMissing(
+      const std::vector<ColumnId>& col_ids, Schema* out) const;
 
   // Stringify this Schema. This is not particularly efficient,
   // so should only be used when necessary for output.
@@ -917,11 +886,6 @@ class Schema {
   // - User columns non present in the tablet are considered errors
   // - Matching columns with different types, at the moment, are considered errors
   Status VerifyProjectionCompatibility(const Schema& projection) const;
-
-  // Returns the projection schema mapped on the current one
-  // If the project is invalid, return a non-OK status.
-  Status GetMappedReadProjection(const Schema& projection,
-                                 Schema *mapped_projection) const;
 
   // Loops through this schema (the projection) and calls the projector methods once for
   // each column.
@@ -1004,11 +968,6 @@ class Schema {
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
 
-  // The number of bytes before actual key values for all encoded keys in this table.
-  size_t key_prefix_encoded_len() const {
-    return key_prefix_encoded_len_;
-  }
-
   static ColumnId first_column_id();
 
   // Should account for every field in Schema.
@@ -1016,8 +975,6 @@ class Schema {
   static bool TEST_Equals(const Schema& lhs, const Schema& rhs);
 
  private:
-  void UpdateKeyPrefixEncodedLen();
-
   void ResetColumnIds(const std::vector<ColumnId>& ids);
 
   // Return a stringified version of the first 'num_columns' columns of the
@@ -1083,8 +1040,6 @@ class Schema {
   ColocationId colocation_id_;
 
   PgSchemaName pgschema_name_;
-
-  size_t key_prefix_encoded_len_ = 0;
   // NOTE: if you add more members, make sure to add the appropriate
   // code to swap() and CopyFrom() as well to prevent subtle bugs.
 };
@@ -1149,12 +1104,11 @@ class SchemaBuilder {
   }
 
   Schema Build() const {
-    return Schema(cols_, col_ids_, num_key_columns_, table_properties_, cotable_id_,
-                  colocation_id_, pgschema_name_);
+    return Schema(cols_, col_ids_, table_properties_, cotable_id_, colocation_id_, pgschema_name_);
   }
+
   Schema BuildWithoutIds() const {
-    return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,
-                  colocation_id_, pgschema_name_);
+    return Schema(cols_, table_properties_, cotable_id_, colocation_id_, pgschema_name_);
   }
 
   // assumes type is allowed in primary key -- this should be checked before getting here
@@ -1167,19 +1121,17 @@ class SchemaBuilder {
   Status AddHashKeyColumn(const std::string& name, const std::shared_ptr<QLType>& type);
   Status AddHashKeyColumn(const std::string& name, DataType type);
 
-  Status AddColumn(const ColumnSchema& column, bool is_key);
+  Status AddColumn(const ColumnSchema& column);
 
   Status AddColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
-    return AddColumn(name, type, false, false, false, false, 0,
-                     SortingType::kNotSpecified);
+    return AddColumn(name, type, Nullable::kFalse, false, false, 0);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
   Status AddColumn(const std::string& name, DataType type);
 
   Status AddNullableColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
-    return AddColumn(name, type, true, false, false, false, 0,
-                     SortingType::kNotSpecified);
+    return AddColumn(name, type, Nullable::kTrue, false, false, 0);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
@@ -1187,22 +1139,18 @@ class SchemaBuilder {
 
   Status AddColumn(const std::string& name,
                    const std::shared_ptr<QLType>& type,
-                   bool is_nullable,
-                   bool is_hash_key,
+                   Nullable is_nullable,
                    bool is_static,
                    bool is_counter,
-                   int32_t order,
-                   yb::SortingType sorting_type);
+                   int32_t order);
 
   // convenience function for adding columns with simple (non-parametric) data types
   Status AddColumn(const std::string& name,
                    DataType type,
-                   bool is_nullable,
-                   bool is_hash_key,
+                   Nullable is_nullable,
                    bool is_static,
                    bool is_counter,
-                   int32_t order,
-                   yb::SortingType sorting_type);
+                   int32_t order);
 
   Status RemoveColumn(const std::string& name);
   Status RenameColumn(const std::string& old_name, const std::string& new_name);
@@ -1222,6 +1170,8 @@ class SchemaBuilder {
 
   DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);
 };
+
+ColumnKind SortingTypeToColumnKind(SortingType sorting_type);
 
 } // namespace yb
 

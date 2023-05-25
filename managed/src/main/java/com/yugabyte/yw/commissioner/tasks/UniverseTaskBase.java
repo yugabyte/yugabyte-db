@@ -94,6 +94,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade;
@@ -117,6 +118,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.ybc.YbcBackupNodeRetriever;
@@ -138,6 +140,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeAgent;
@@ -167,6 +170,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -708,7 +712,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // the Universe state. It simply sets updateInProgress flag to false.
     executionContext.universe = Universe.saveDetails(universeUUID, updater, false);
     executionContext.unlockUniverse(universeUUID);
-    log.trace("Unlocked universe {} for updates.", universeUUID);
+    log.info("Unlocked universe {} for updates.", universeUUID);
     return executionContext.universe;
   }
 
@@ -1153,6 +1157,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
     NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
+    int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
     for (NodeDetails node : nodes) {
       if (node.cloudInfo == null) {
@@ -1178,6 +1183,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         params.azUuid = node.azUuid;
         params.setUniverseUUID(universe.getUniverseUUID());
         params.nodeAgentHome = NodeAgent.ROOT_NODE_AGENT_HOME;
+        params.nodeAgentPort = serverPort;
         InstallNodeAgent task = createTask(InstallNodeAgent.class);
         task.initialize(params);
         subTaskGroup.addSubTask(task);
@@ -2317,16 +2323,53 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return flatParamsList;
   }
 
+  protected void handleFailedBackupAndRestore(
+      List<Backup> backupList,
+      List<Restore> restoreList,
+      boolean isAbort,
+      boolean isLoadBalancerAltered) {
+    if (backupList != null && CollectionUtils.isEmpty(backupList)) {
+      for (Backup backup : backupList) {
+        if (!isAbort && backup.getState().equals(BackupState.InProgress)) {
+          backup.transitionState(BackupState.Failed);
+          backup.setCompletionTime(new Date());
+          backup.save();
+        }
+      }
+    }
+    if (restoreList != null && !CollectionUtils.isEmpty(restoreList)) {
+      for (Restore restore : restoreList) {
+        if (!isAbort && restore.getState().equals(Restore.State.InProgress)) {
+          restore.update(restore.getTaskUUID(), Restore.State.Failed);
+        }
+      }
+    }
+    if (isLoadBalancerAltered) {
+      setTaskQueueAndRun(
+          () ->
+              createLoadBalancerStateChangeTask(true)
+                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse));
+    }
+  }
+
   protected Backup createAllBackupSubtasks(
       BackupRequestParams backupRequestParams, SubTaskGroupType subTaskGroupType) {
-    return createAllBackupSubtasks(backupRequestParams, subTaskGroupType, null, false);
+    return createAllBackupSubtasks(backupRequestParams, subTaskGroupType, false /* ybcBackup */);
   }
 
   protected Backup createAllBackupSubtasks(
       BackupRequestParams backupRequestParams,
       SubTaskGroupType subTaskGroupType,
-      Set<String> tablesToBackup,
       boolean ybcBackup) {
+    return createAllBackupSubtasks(
+        backupRequestParams, subTaskGroupType, ybcBackup, null /* tablesToBackup */);
+  }
+
+  protected Backup createAllBackupSubtasks(
+      BackupRequestParams backupRequestParams,
+      SubTaskGroupType subTaskGroupType,
+      boolean ybcBackup,
+      @Nullable Set<String> tablesToBackup) {
     ObjectMapper mapper = new ObjectMapper();
     BackupTableParams backupTableParams = getBackupTableParams(backupRequestParams, tablesToBackup);
     Universe universe = Universe.getOrBadRequest(backupRequestParams.getUniverseUUID());
@@ -2396,6 +2439,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     if (backupRequestParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(subTaskGroupType);
+    }
+
+    if (ybcBackup) {
+      createMarkYBCBackupSucceeded(backup.getCustomerUUID(), backup.getBackupUUID())
+          .setSubTaskGroupType(subTaskGroupType);
     }
 
     return backup;
@@ -3511,6 +3559,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  /** Mark YBC backup state as completed and updates its expiry time. */
+  public SubTaskGroup createMarkYBCBackupSucceeded(UUID customerUUID, UUID backupUUID) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("MarkYBCBackupSucceed");
+    YBCBackupSucceeded.Params params = new YBCBackupSucceeded.Params();
+    params.customerUUID = customerUUID;
+    params.backupUUID = backupUUID;
+    YBCBackupSucceeded task = createTask(YBCBackupSucceeded.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public SubTaskGroup createResetUniverseVersionTask() {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ResetUniverseVersion");
     ResetUniverseVersion task = createTask(ResetUniverseVersion.class);
@@ -3811,19 +3872,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       XClusterConfig xClusterConfig,
       String replicationGroupName,
       File sourceRootCertDirPath,
-      boolean ignoreErrors,
-      boolean skipRemoveTransactionalCert) {
+      boolean ignoreErrors) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("TransferXClusterCerts");
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-
-    // If transactional replication is enabled and this subtask is going to delete the certificate
-    // for the last xCluster config on the target universe, delete the cert for transactional
-    // replication as well. It is assumed that xCluster replications can be deleted one by one only.
-    boolean removeTransactionalReplicationCert =
-        !skipRemoveTransactionalCert
-            && xClusterConfig.getType().equals(ConfigType.Txn)
-            && !XClusterConfigTaskBase.otherXClusterConfigsAsTargetExist(
-                targetUniverse.getUniverseUUID(), xClusterConfig.getUuid());
 
     for (NodeDetails node : targetUniverse.getNodes()) {
       TransferXClusterCerts.Params transferParams = new TransferXClusterCerts.Params();
@@ -3838,24 +3889,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);
       subTaskGroup.addSubTask(transferXClusterCertsTask);
-
-      if (removeTransactionalReplicationCert) {
-        TransferXClusterCerts.Params transferParamsForTransactionCert =
-            new TransferXClusterCerts.Params();
-        transferParamsForTransactionCert.setUniverseUUID(targetUniverse.getUniverseUUID());
-        transferParamsForTransactionCert.nodeName = node.nodeName;
-        transferParamsForTransactionCert.azUuid = node.azUuid;
-        transferParamsForTransactionCert.action = TransferXClusterCerts.Params.Action.REMOVE;
-        transferParamsForTransactionCert.replicationGroupName =
-            xClusterConfig.getTxnTableReplicationGroupName();
-        transferParamsForTransactionCert.producerCertsDirOnTarget = sourceRootCertDirPath;
-        transferParamsForTransactionCert.ignoreErrors = ignoreErrors;
-
-        TransferXClusterCerts transferXClusterCertsForTransactionTask =
-            createTask(TransferXClusterCerts.class);
-        transferXClusterCertsForTransactionTask.initialize(transferParamsForTransactionCert);
-        subTaskGroup.addSubTask(transferXClusterCertsForTransactionTask);
-      }
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -3910,15 +3943,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 sourceRootCertDirPath,
                 forceDelete
                     || xClusterConfig.getStatus()
-                        == XClusterConfig.XClusterConfigStatusType.DeletedUniverse,
-                false /* skipRemoveTransactionalCert */)
+                        == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
       }
 
       if (xClusterConfig.getType().equals(ConfigType.Txn)) {
         // Set back the target universe role to Active.
         createChangeXClusterRoleTask(
-            xClusterConfig, null /* sourceRole */, XClusterRole.ACTIVE /* targetRole */);
+                xClusterConfig, null /* sourceRole */, XClusterRole.ACTIVE /* targetRole */)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
       }
     }
 
@@ -4069,27 +4102,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);
       subTaskGroup.addSubTask(transferXClusterCertsTask);
-
-      // If transactional replication is enabled, transfer the cert for it as well. It assumes that
-      // the TransferXClusterCerts subtask for the same parameters is idempotent.
-      if (xClusterConfig.getType().equals(ConfigType.Txn)) {
-        TransferXClusterCerts.Params transferParamsForTransactionCert =
-            new TransferXClusterCerts.Params();
-        transferParamsForTransactionCert.setUniverseUUID(taskParams().getUniverseUUID());
-        transferParamsForTransactionCert.nodeName = node.nodeName;
-        transferParamsForTransactionCert.azUuid = node.azUuid;
-        transferParamsForTransactionCert.rootCertPath = certificate;
-        transferParamsForTransactionCert.action = TransferXClusterCerts.Params.Action.COPY;
-        transferParamsForTransactionCert.replicationGroupName =
-            xClusterConfig.getTxnTableReplicationGroupName();
-        transferParamsForTransactionCert.producerCertsDirOnTarget = sourceRootCertDirPath;
-        transferParamsForTransactionCert.ignoreErrors = false;
-
-        TransferXClusterCerts transferXClusterCertsForTransactionTask =
-            createTask(TransferXClusterCerts.class);
-        transferXClusterCertsForTransactionTask.initialize(transferParamsForTransactionCert);
-        subTaskGroup.addSubTask(transferXClusterCertsForTransactionTask);
-      }
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

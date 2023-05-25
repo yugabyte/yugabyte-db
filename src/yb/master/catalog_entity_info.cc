@@ -1276,7 +1276,8 @@ Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfo::GetOrCreateCDCRpcT
     return cdc_rpc_tasks_;
   }
 
-  auto rpc_task = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(producer_id_, master_addrs));
+  auto rpc_task =
+      VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(replication_group_id_, master_addrs));
   cdc_rpc_tasks_ = rpc_task;
   master_addrs_ = master_addrs;
   return rpc_task;

@@ -466,7 +466,7 @@ _copyYbSeqScan(const YbSeqScan *from)
 	 */
 	CopyScanFields((const Scan *) from, (Scan *) newnode);
 
-	COPY_NODE_FIELD(remote.qual);
+	COPY_NODE_FIELD(remote.quals);
 	COPY_NODE_FIELD(remote.colrefs);
 
 	return newnode;
@@ -517,9 +517,9 @@ _copyIndexScan(const IndexScan *from)
 	COPY_NODE_FIELD(indexorderbyops);
 	COPY_NODE_FIELD(indextlist);
 	COPY_SCALAR_FIELD(indexorderdir);
-	COPY_NODE_FIELD(index_remote.qual);
+	COPY_NODE_FIELD(index_remote.quals);
 	COPY_NODE_FIELD(index_remote.colrefs);
-	COPY_NODE_FIELD(rel_remote.qual);
+	COPY_NODE_FIELD(rel_remote.quals);
 	COPY_NODE_FIELD(rel_remote.colrefs);
 
 	return newnode;
@@ -546,7 +546,7 @@ _copyIndexOnlyScan(const IndexOnlyScan *from)
 	COPY_NODE_FIELD(indexorderby);
 	COPY_NODE_FIELD(indextlist);
 	COPY_SCALAR_FIELD(indexorderdir);
-	COPY_NODE_FIELD(remote.qual);
+	COPY_NODE_FIELD(remote.quals);
 	COPY_NODE_FIELD(remote.colrefs);
 	COPY_NODE_FIELD(yb_indexqual_for_recheck);
 
@@ -4922,10 +4922,10 @@ _copyRowBounds(const RowBounds *from)
 	return newnode;
 }
 
-static YbExprParamDesc *
-_copyYbExprParamDesc(const YbExprParamDesc *from)
+static YbExprColrefDesc *
+_copyYbExprColrefDesc(const YbExprColrefDesc *from)
 {
-	YbExprParamDesc *newnode = makeNode(YbExprParamDesc);
+	YbExprColrefDesc *newnode = makeNode(YbExprColrefDesc);
 
 	COPY_SCALAR_FIELD(attno);
 	COPY_SCALAR_FIELD(typid);
@@ -5866,8 +5866,8 @@ copyObjectImpl(const void *from)
 			retval = _copyRowBounds(from);
 			break;
 
-		case T_YbExprParamDesc:
-			retval = _copyYbExprParamDesc(from);
+		case T_YbExprColrefDesc:
+			retval = _copyYbExprColrefDesc(from);
 			break;
 		
 		case T_YbBatchedExpr:

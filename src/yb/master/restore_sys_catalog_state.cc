@@ -742,12 +742,12 @@ Status RestoreSysCatalogState::IterateSysCatalog(
     std::reference_wrapper<const ScopedRWOperation> pending_op, HybridTime read_time,
     std::unordered_map<std::string, PB>* map,
     std::unordered_map<std::string, PB>* sequences_data_map) {
-  dockv::ReaderProjection projection(doc_read_context.schema);
+  dockv::ReaderProjection projection(doc_read_context.schema());
   docdb::DocRowwiseIterator iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
       CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), pending_op, nullptr);
   return EnumerateSysCatalog(
-      &iter, doc_read_context.schema, GetEntryType<PB>::value, [map, sequences_data_map](
+      &iter, doc_read_context.schema(), GetEntryType<PB>::value, [map, sequences_data_map](
           const Slice& id, const Slice& data) -> Status {
     auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data));
     if (!ShouldLoadObject(pb)) {
@@ -906,13 +906,13 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
     docdb::DocWriteBatch* write_batch) {
   std::string config_type;
   SysConfigEntryPB catalog_meta;
-  dockv::ReaderProjection projection(doc_read_context.schema);
+  dockv::ReaderProjection projection(doc_read_context.schema());
   auto iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
       CoarseTimePoint::max(), ReadHybridTime::Max(), write_batch->pending_op(), nullptr);
 
   RETURN_NOT_OK(EnumerateSysCatalog(
-      &iter, doc_read_context.schema, SysRowEntryType::SYS_CONFIG,
+      &iter, doc_read_context.schema(), SysRowEntryType::SYS_CONFIG,
       [&](const Slice& id, const Slice& data) -> Status {
         if (id.ToBuffer() != kYsqlCatalogConfigType) {
           return Status::OK();
@@ -929,7 +929,7 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
   RETURN_NOT_OK(pb_util::SerializeToString(catalog_meta, &buffer));
   RETURN_NOT_OK(WriteEntry(
       SysRowEntryType::SYS_CONFIG, config_type, buffer, QLWriteRequestPB::QL_STMT_UPDATE,
-      doc_read_context.schema, write_batch));
+      doc_read_context.schema(), write_batch));
 
   LOG(INFO) << "PITR: Incrementing legacy catalog version to " << existing_version + 1;
 

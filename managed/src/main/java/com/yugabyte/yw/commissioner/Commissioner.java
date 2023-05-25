@@ -339,7 +339,8 @@ public class Commissioner {
   // Returns the TaskExecutionListener instance.
   private TaskExecutionListener getTaskExecutionListener() {
     final Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
-    Listener listener = new Listener(providerEditRestrictionManager, beforeTaskConsumer);
+    DefaultTaskExecutionListener listener =
+        new DefaultTaskExecutionListener(providerEditRestrictionManager, beforeTaskConsumer);
     return listener;
   }
 

@@ -38,6 +38,8 @@
 namespace yb {
 namespace cdc {
 
+YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
+
 // Maps a tablet id -> stream id -> replication error -> error detail.
 typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
 typedef std::unordered_map<CDCStreamId, ReplicationErrorMap> StreamReplicationErrorMap;
@@ -61,32 +63,34 @@ struct ConsumerTabletInfo {
 };
 
 struct ProducerTabletInfo {
-  std::string universe_uuid; /* needed on Consumer side for uniqueness. Empty on Producer */
-  CDCStreamId stream_id; /* unique ID on Producer, but not on Consumer. */
+  // Needed on Consumer side for uniqueness. Empty on Producer.
+  ReplicationGroupId replication_group_id;
+  // Unique ID on Producer, but not on Consumer.
+  CDCStreamId stream_id;
   std::string tablet_id;
 
   bool operator==(const ProducerTabletInfo& other) const {
-    return universe_uuid == other.universe_uuid &&
-           stream_id == other.stream_id &&
+    return replication_group_id == other.replication_group_id && stream_id == other.stream_id &&
            tablet_id == other.tablet_id;
   }
 
   std::string ToString() const {
-    return Format("{ universe_uuid: $0 stream_id: $1 tablet_id: $2 }",
-                  universe_uuid, stream_id, tablet_id);
+    return Format(
+        "{ replication_group_id: $0 stream_id: $1 tablet_id: $2 }", replication_group_id, stream_id,
+        tablet_id);
   }
 
   // String used as a descriptor id for metrics.
   std::string MetricsString() const {
     std::stringstream ss;
-    ss << universe_uuid << ":" << stream_id << ":" << tablet_id;
+    ss << replication_group_id << ":" << stream_id << ":" << tablet_id;
     return ss.str();
   }
 
   struct Hash {
     std::size_t operator()(const ProducerTabletInfo& p) const noexcept {
       std::size_t hash = 0;
-      boost::hash_combine(hash, p.universe_uuid);
+      boost::hash_combine(hash, p.replication_group_id);
       boost::hash_combine(hash, p.stream_id);
       boost::hash_combine(hash, p.tablet_id);
 
@@ -120,17 +124,29 @@ inline size_t hash_value(const ProducerTabletInfo& p) noexcept {
   return ProducerTabletInfo::Hash()(p);
 }
 
-inline bool IsAlterReplicationUniverseId(const std::string& universe_uuid) {
-  return GStringPiece(universe_uuid).ends_with(".ALTER");
+constexpr char kAlterReplicationGroupSuffix[] = ".ALTER";
+
+inline ReplicationGroupId GetAlterReplicationGroupId(const std::string& replication_group_id) {
+  return ReplicationGroupId(replication_group_id + kAlterReplicationGroupSuffix);
 }
 
-inline std::string GetOriginalReplicationUniverseId(const std::string& universe_uuid) {
+inline ReplicationGroupId GetAlterReplicationGroupId(
+    const ReplicationGroupId& replication_group_id) {
+  return GetAlterReplicationGroupId(replication_group_id.ToString());
+}
+
+inline bool IsAlterReplicationGroupId(const ReplicationGroupId& replication_group_id) {
+  return GStringPiece(replication_group_id.ToString()).ends_with(kAlterReplicationGroupSuffix);
+}
+
+inline ReplicationGroupId GetOriginalReplicationGroupId(
+    const ReplicationGroupId& replication_group_id) {
   // Remove the .ALTER suffix from universe_uuid if applicable.
-  GStringPiece clean_universe_id(universe_uuid);
-  if (clean_universe_id.ends_with(".ALTER")) {
-    clean_universe_id.remove_suffix(sizeof(".ALTER")-1 /* exclude \0 ending */);
+  GStringPiece clean_id(replication_group_id.ToString());
+  if (clean_id.ends_with(kAlterReplicationGroupSuffix)) {
+    clean_id.remove_suffix(sizeof(kAlterReplicationGroupSuffix) - 1 /* exclude \0 ending */);
   }
-  return clean_universe_id.ToString();
+  return ReplicationGroupId(clean_id.ToString());
 }
 
 Result<std::optional<qlexpr::QLRow>> FetchOptionalCdcStreamInfo(

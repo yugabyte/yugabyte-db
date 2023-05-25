@@ -10,6 +10,8 @@ alter_table_action ::= ADD [ COLUMN ] column_name data_type
                        | DROP CONSTRAINT constraint_name 
                          [ RESTRICT | CASCADE ]
                        | RENAME [ COLUMN ] column_name TO column_name
+                       | RENAME CONSTRAINT constraint_name TO 
+                         constraint_name
                        | DISABLE ROW LEVEL SECURITY
                        | ENABLE ROW LEVEL SECURITY
                        | FORCE ROW LEVEL SECURITY

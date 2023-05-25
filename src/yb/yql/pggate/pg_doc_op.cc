@@ -553,6 +553,15 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
     // Remember the order number for each request.
     batch_row_orders_.emplace_back(pgsql_ops_[partition], batch_row_ordering_counter_++);
 
+    // We must set "ybctid_column_value" in the request for the sake of rolling upgrades.
+    // Servers before 2.15 will read only "ybctid_column_value" as they are not aware
+    // of ybctid-batching.
+    if (!read_req.has_ybctid_column_value() ||
+        arg_value->binary_value() < read_req.ybctid_column_value().value().binary_value()) {
+      read_req.mutable_ybctid_column_value()->mutable_value()
+          ->ref_binary_value(arg_value->binary_value());
+    }
+
     // For every read operation set partition boundary. In case a tablet is split between
     // preparing requests and executing them, DocDB will return a paging state for pggate to
     // continue till the end of current tablet is reached.

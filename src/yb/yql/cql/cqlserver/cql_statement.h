@@ -40,7 +40,9 @@ using CQLStatementListPos = CQLStatementList::iterator;
 // A CQL statement that is prepared and cached.
 class CQLStatement : public ql::Statement {
  public:
-  CQLStatement(const std::string& keyspace, const std::string& query, CQLStatementListPos pos);
+  CQLStatement(
+      const std::string& keyspace, const std::string& query, CQLStatementListPos pos,
+      const MemTrackerPtr& mem_tracker);
   ~CQLStatement();
 
   // Return the query id.
@@ -65,6 +67,8 @@ class CQLStatement : public ql::Statement {
  private:
   // Position of the statement in the LRU.
   mutable CQLStatementListPos pos_;
+
+  ScopedTrackedConsumption consumption_;
 };
 
 }  // namespace cqlserver

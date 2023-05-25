@@ -438,13 +438,14 @@ Triggers manual compaction on a table.
 yb-admin \
     -master_addresses <master-addresses> \
     compact_table <keyspace> <table_name> \
-    [timeout_in_seconds]
+    [timeout_in_seconds] [ADD_INDEXES]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: Specifies the database `ysql.db-name` or keyspace `ycql.keyspace-name`.
 * *table_name*: Specifies the table name.
-* *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for compaction to end. Default value is `20`.
+* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
 
 **Example**
 
@@ -459,6 +460,36 @@ Started compaction of table kong.test
 Compaction request id: 75c406c1d2964487985f9c852a8ef2a3
 Waiting for compaction...
 Compaction complete: SUCCESS
+```
+
+#### compact_table_by_id
+
+Triggers manual compaction on a table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    compact_table_by_id <table_id> \
+    [timeout_in_seconds] [ADD_INDEXES]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *table_id*: The unique UUID associated with the table to be compacted.
+* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    compact_table_by_id 000033f100003000800000000000410a
+```
+
+```output
+Compacted [000033f100003000800000000000410a] tables.
 ```
 
 #### modify_table_placement_info
@@ -1861,6 +1892,43 @@ yb-admin \
 * *safe_time_epoch*: The `epoch` of the safe time.
 * *safe_time_lag_sec*: Safe time lag is computed as `(current time - current safe time)`.
 * *safe_time_skew_sec*: Safe time skew is computed as `(safe time of most caught up tablet - safe time of laggiest tablet)`.
+
+#### wait_for_replication_drain
+
+Verify when the producer and consumer are in sync for a given list of `stream_ids` at a given timestamp. 
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    wait_for_replication_drain \
+    <comma_separated_list_of_stream_ids> [<timestamp> | minus <interval>]
+```
+
+* *source_master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *comma_separated_list_of_stream_ids*: Comma-separated list of stream IDs.
+* *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
+* *minus <interval>*: The `minus <interval>` is the same format as in <a href="{{< relref "../explore/cluster-management/point-in-time-recovery-ycql.md#restore-from-a-relative-time" >}}">PITR documentation</a>, or see [`yb-admin restore_snapshot_schedule` command](#restore-snapshot-schedule)).
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+    wait_for_replication_drain 000033f1000030008000000000000000,200033f1000030008000000000000002 minus 1m
+```
+
+If all streams are caught-up, the API outputs `All replications are caught-up.` to the console.  
+Otherwise, it outputs the non-caught-up streams in the following format:
+```
+Found undrained replications:
+- Under Stream <stream_id>:
+  - Tablet: <tablet_id>
+  - Tablet: <tablet_id>
+  // ......
+// ......
+```
 
 #### list_cdc_streams
 

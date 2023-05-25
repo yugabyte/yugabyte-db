@@ -296,4 +296,10 @@ class PgsqlScanSpec : public YQLScanSpec {
       size_t prefix_length);
 };
 
+using ColumnListVector = std::vector<int>;
+
+std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
+    const QLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
+    const ColumnListVector& col_idxs);
+
 }  // namespace yb::qlexpr

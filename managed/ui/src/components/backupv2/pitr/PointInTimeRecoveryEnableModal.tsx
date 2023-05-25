@@ -44,7 +44,6 @@ const initialValues: Form_Values = {
   retention_interval: 7
 };
 
-const TOAST_AUTO_CLOSE_INTERVAL = 3000; //ms
 const REFETCH_CONFIGS_INTERVAL = 5000; //ms
 
 export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalProps> = ({
@@ -74,8 +73,7 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
               here
             </a>
             &nbsp; for task details.
-          </span>,
-          { autoClose: TOAST_AUTO_CLOSE_INTERVAL }
+          </span>
         );
         //refetch after 5 secs
         setTimeout(() => {
@@ -84,9 +82,7 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
         onHide();
       },
       onError: (err: any) => {
-        toast.error(err?.response?.data?.error ?? 'An Error occurred', {
-          autoClose: TOAST_AUTO_CLOSE_INTERVAL
-        });
+        toast.error(err?.response?.data?.error ?? 'An Error occurred');
         onHide();
       }
     }

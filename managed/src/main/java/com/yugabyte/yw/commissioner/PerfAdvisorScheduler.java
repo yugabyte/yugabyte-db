@@ -7,6 +7,8 @@ import com.google.common.collect.Iterables;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformUniverseNodeConfig;
@@ -259,13 +261,19 @@ public class PerfAdvisorScheduler {
               dbQueryRecommendationTypes,
               ysqlAuth,
               tlsClient);
+      // In K8S environment we may have no permissions to write to YB home dir
+      String perfAdvisorScriptDestPath =
+          (provider.getCloudCode().equals(CloudType.kubernetes)
+                  ? KubernetesTaskBase.K8S_NODE_YW_DATA_DIR
+                  : provider.getYbHome())
+              + "/bin";
       UniverseConfig uConfig =
           new UniverseConfig(
               customer.getUuid(),
               universe.getUniverseUUID(),
               universeNodeConfigList,
               scriptConfig,
-              provider.getYbHome() + "/bin",
+              perfAdvisorScriptDestPath,
               universeConfig);
       platformPerfAdvisor.run(uConfig);
       run.setEndTime(new Date()).setState(State.COMPLETED).save();

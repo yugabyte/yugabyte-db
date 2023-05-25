@@ -11,7 +11,7 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: administer-yugabyte-platform
-    weight: 649
+    weight: 690
 type: indexpage
 ---
 
@@ -48,7 +48,7 @@ type: indexpage
         <div class="title">Enable high availability</div>
       </div>
       <div class="body">
-        Enable YugabyteDB Anywhere's high-availability features.
+        Configure standby instances of YugabyteDB Anywhere.
       </div>
     </a>
   </div>

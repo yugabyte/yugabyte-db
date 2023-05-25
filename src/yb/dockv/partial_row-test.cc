@@ -44,11 +44,10 @@ namespace yb::dockv {
 class PartialRowTest : public YBTest {
  public:
   PartialRowTest()
-    : schema_({ ColumnSchema("key", INT32),
+    : schema_({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
                 ColumnSchema("int_val", INT32),
-                ColumnSchema("string_val", STRING, true),
-                ColumnSchema("binary_val", BINARY, true) },
-              1) {
+                ColumnSchema("string_val", STRING, ColumnKind::VALUE, Nullable::kTrue),
+                ColumnSchema("binary_val", BINARY, ColumnKind::VALUE, Nullable::kTrue) }) {
     SeedRandom();
   }
  protected:
@@ -106,7 +105,7 @@ TEST_F(PartialRowTest, UnitTest) {
 
   // Try to set a non-nullable entry to NULL
   s = row.SetNull("key");
-  EXPECT_EQ("Invalid argument: column not nullable: key[int32 NOT NULL NOT A PARTITION KEY]",
+  EXPECT_EQ("Invalid argument: column not nullable: key[int32 NOT NULL RANGE_ASC_NULL_FIRST]",
             s.ToString(false));
 
   // Set the NULL string back to non-NULL

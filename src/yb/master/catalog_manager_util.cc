@@ -78,8 +78,11 @@ ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
     auto table_lock = table->LockForRead();
     // Check that the replication info is present and is valid (could be set to invalid null value
     // due to restore issue, see #15698).
-    if (IsReplicationInfoSet(table_lock->pb.replication_info())) {
-      return table_lock->pb.replication_info();
+    auto replication_info = table_lock->pb.replication_info();
+    if (IsReplicationInfoSet(replication_info)) {
+      VLOG(3) << "Returning table replication info obtained from SysTablesEntryPB: "
+              << replication_info.ShortDebugString() << " for table " << table->id();
+      return replication_info;
     }
   }
 
@@ -87,14 +90,15 @@ ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
     auto result = tablespace_manager->GetTableReplicationInfo(table);
     if (!result.ok()) {
       LOG(WARNING) << result.status();
-      return cluster_replication_info;
-    }
-
-    if (*result) {
+    } else if (*result) {
+      VLOG(3) << "Returning table replication info obtained from pg_tablespace: "
+              << (*result)->ShortDebugString() << " for table " << table->id();
       return **result;
     }
   }
 
+  VLOG(3) << "Returning table replication info obtained from cluster config: "
+          << cluster_replication_info.ShortDebugString() << " for table " << table->id();
   return cluster_replication_info;
 }
 

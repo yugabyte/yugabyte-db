@@ -280,7 +280,8 @@ def generate_rsa_keypair(key_name, destination='/tmp'):
 
 def scp_to_tmp(filepath, host, user, port, private_key, retries=3,
                retry_delay=SSH_RETRY_DELAY, **kwargs):
-    dest_path = os.path.join("/tmp", os.path.basename(filepath))
+    remote_tmp_dir = kwargs.get("remote_tmp_dir", "/tmp")
+    dest_path = os.path.join(remote_tmp_dir, os.path.basename(filepath))
     logging.info("[app] Copying local '{}' to remote '{}'".format(
         filepath, dest_path))
     ssh2_enabled = kwargs.get('ssh2_enabled', False)

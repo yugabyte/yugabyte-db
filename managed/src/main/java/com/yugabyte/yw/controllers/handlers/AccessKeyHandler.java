@@ -8,6 +8,7 @@ import com.google.common.base.Strings;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.TemplateManager;
@@ -39,6 +40,8 @@ public class AccessKeyHandler {
   @Inject TemplateManager templateManager;
 
   @Inject ProviderEditRestrictionManager providerEditRestrictionManager;
+
+  @Inject FileHelperService fileHelperService;
 
   public AccessKey create(
       UUID customerUUID, Provider provider, AccessKeyFormData formData, RequestBody requestBody) {
@@ -105,7 +108,8 @@ public class AccessKeyHandler {
           throw new PlatformServiceException(BAD_REQUEST, "keyType params required.");
         }
         // Create temp file and fill with content
-        Path tempFile = Files.createTempFile(formData.keyCode, formData.keyType.getExtension());
+        Path tempFile =
+            fileHelperService.createTempFile(formData.keyCode, formData.keyType.getExtension());
         Files.write(tempFile, formData.keyContent.getBytes());
 
         // Upload temp file to create the access key and return success/failure

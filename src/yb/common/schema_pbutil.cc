@@ -41,6 +41,34 @@
 
 namespace yb {
 
+namespace {
+
+Status ColumnPBsToColumnTuple(
+    const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& column_pbs,
+    std::vector<ColumnSchema>* columns, std::vector<ColumnId>* column_ids) {
+  columns->reserve(column_pbs.size());
+  bool is_handling_key = true;
+  for (const ColumnSchemaPB& pb : column_pbs) {
+    columns->push_back(ColumnSchemaFromPB(pb));
+    if (pb.is_key()) {
+      if (!is_handling_key) {
+        return STATUS(InvalidArgument,
+                      "Got out-of-order key column", pb.ShortDebugString());
+      }
+    } else {
+      is_handling_key = false;
+    }
+    if (pb.has_id()) {
+      column_ids->push_back(ColumnId(pb.id()));
+    }
+  }
+
+  return Status::OK();
+}
+
+
+} // namespace
+
 void SchemaToColocatedTableIdentifierPB(
     const Schema& schema, ColocatedTableIdentifierPB* colocated_pb) {
   if (schema.has_colocation_id()) {
@@ -58,21 +86,15 @@ void SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
   pb->set_pgschema_name(schema.SchemaName());
 }
 
-void SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb) {
-  pb->Clear();
-  SchemaToColumnPBs(schema, pb->mutable_columns(), SCHEMA_PB_WITHOUT_IDS);
-}
-
 Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
   // Conver the columns.
   std::vector<ColumnSchema> columns;
   std::vector<ColumnId> column_ids;
-  int num_key_columns = 0;
-  RETURN_NOT_OK(ColumnPBsToColumnTuple(pb.columns(), &columns, &column_ids, &num_key_columns));
+  RETURN_NOT_OK(ColumnPBsToColumnTuple(pb.columns(), &columns, &column_ids));
 
   // Convert the table properties.
   TableProperties table_properties = TableProperties::FromTablePropertiesPB(pb.table_properties());
-  RETURN_NOT_OK(schema->Reset(columns, column_ids, num_key_columns, table_properties));
+  RETURN_NOT_OK(schema->Reset(columns, column_ids, table_properties));
 
   if(pb.has_pgschema_name()) {
     schema->SetSchemaName(pb.pgschema_name());
@@ -115,38 +137,13 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
   }
 }
 
-
 ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
-  // Only "is_hash_key" is used to construct ColumnSchema. The field "is_key" will be read when
-  // processing SchemaPB.
-  return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), pb.is_nullable(),
-                      pb.is_hash_key(), pb.is_static(), pb.is_counter(), pb.order(),
-                      SortingType(pb.sorting_type()), pb.pg_type_oid());
-}
-
-Status ColumnPBsToColumnTuple(
-    const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& column_pbs,
-    std::vector<ColumnSchema>* columns , std::vector<ColumnId>* column_ids, int* num_key_columns) {
-  columns->reserve(column_pbs.size());
-  bool is_handling_key = true;
-  for (const ColumnSchemaPB& pb : column_pbs) {
-    columns->push_back(ColumnSchemaFromPB(pb));
-    if (pb.is_key()) {
-      if (!is_handling_key) {
-        return STATUS(InvalidArgument,
-                      "Got out-of-order key column", pb.ShortDebugString());
-      }
-      (*num_key_columns)++;
-    } else {
-      is_handling_key = false;
-    }
-    if (pb.has_id()) {
-      column_ids->push_back(ColumnId(pb.id()));
-    }
-  }
-
-  DCHECK_LE((*num_key_columns), columns->size());
-  return Status::OK();
+  auto kind = pb.is_hash_key()
+      ? ColumnKind::HASH
+      : pb.is_key() ? SortingTypeToColumnKind(SortingType(pb.sorting_type()))
+                    : ColumnKind::VALUE;
+  return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), kind, Nullable(pb.is_nullable()),
+                      pb.is_static(), pb.is_counter(), pb.order(), pb.pg_type_oid());
 }
 
 Status ColumnPBsToSchema(const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& column_pbs,
@@ -154,13 +151,12 @@ Status ColumnPBsToSchema(const google::protobuf::RepeatedPtrField<ColumnSchemaPB
 
   std::vector<ColumnSchema> columns;
   std::vector<ColumnId> column_ids;
-  int num_key_columns = 0;
-  RETURN_NOT_OK(ColumnPBsToColumnTuple(column_pbs, &columns, &column_ids, &num_key_columns));
+  RETURN_NOT_OK(ColumnPBsToColumnTuple(column_pbs, &columns, &column_ids));
 
   // TODO(perf): could make the following faster by adding a
   // Reset() variant which actually takes ownership of the column
   // vector.
-  return schema->Reset(columns, column_ids, num_key_columns);
+  return schema->Reset(columns, column_ids);
 }
 
 void SchemaToColumnPBs(const Schema& schema,

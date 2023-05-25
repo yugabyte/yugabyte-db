@@ -75,15 +75,13 @@ public class SupportBundleController extends AuthenticatedController {
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    // Do not create support bundle when either backup, update, or universe is paused
+
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().universePaused) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "Cannot create support bundle since the universe %s"
-                  + "is currently in a locked/paused state or has backup running",
-              universe.getUniverseUUID()));
+      log.info(
+          "Trying to create support bundle while universe {} is "
+              + "in a locked/paused state or has backup running.",
+          universe.getUniverseUUID());
     }
 
     // Support bundle for onprem and k8s universes was originally behind a runtime flag.

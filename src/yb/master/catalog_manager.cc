@@ -573,6 +573,9 @@ DEFINE_test_flag(bool, create_table_in_running_state, false,
 DEFINE_test_flag(bool, pause_before_upsert_ysql_sys_table, false,
                  "Pause before upserting a table in CreateYsqlSysTable.");
 
+DEFINE_test_flag(bool, create_table_with_empty_pgschema_name, false,
+    "Create YSQL tables with an empty pgschema_name field in their schema.");
+
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
                  "Delay creating child tablets and upserting them to sys catalog");
 
@@ -1336,8 +1339,6 @@ Status CatalogManager::VisitSysCatalog(int64_t term, SysCatalogLoadingState* sta
           tables_->GetAllTables(), sys_catalog_.get(), ysql_catalog_config_.get(), term));
     }
   }  // Exclusive mutex_ scope.
-
-  ScheduleAddTableToXClusterTaskForAllTables();
 
   return Status::OK();
 }
@@ -4491,7 +4492,7 @@ Status CatalogManager::CreateTransactionStatusTableInternal(
   }
   req.mutable_schema()->mutable_table_properties()->set_num_tablets(num_tablets);
 
-  ColumnSchema hash(kRedisKeyColumnName, BINARY, /* is_nullable */ false, /* is_hash_key */ true);
+  ColumnSchema hash(kRedisKeyColumnName, BINARY, ColumnKind::HASH);
   ColumnSchemaToPB(hash, req.mutable_schema()->mutable_columns()->Add());
 
   Status s = CreateTable(&req, &resp, rpc);
@@ -4752,18 +4753,17 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
   // "metric" is the name of the metric and "value" is its val. "ts" is time at
   // which the snapshot was recorded. "details" is a json column for future extensibility.
 
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("node")->Type(STRING)->HashPrimaryKey()->NotNull();
-  schemaBuilder.AddColumn("entity_type")->Type(STRING)->PrimaryKey()->NotNull();
-  schemaBuilder.AddColumn("entity_id")->Type(STRING)->PrimaryKey()->NotNull();
-  schemaBuilder.AddColumn("metric")->Type(STRING)->PrimaryKey()->NotNull();
-  schemaBuilder.AddColumn("ts")->Type(TIMESTAMP)->PrimaryKey()->NotNull()->
-    SetSortingType(SortingType::kDescending);
-  schemaBuilder.AddColumn("value")->Type(INT64);
-  schemaBuilder.AddColumn("details")->Type(JSONB);
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("node")->Type(STRING)->HashPrimaryKey();
+  schema_builder.AddColumn("entity_type")->Type(STRING)->PrimaryKey();
+  schema_builder.AddColumn("entity_id")->Type(STRING)->PrimaryKey();
+  schema_builder.AddColumn("metric")->Type(STRING)->PrimaryKey();
+  schema_builder.AddColumn("ts")->Type(TIMESTAMP)->PrimaryKey(SortingType::kDescending);
+  schema_builder.AddColumn("value")->Type(INT64);
+  schema_builder.AddColumn("details")->Type(JSONB);
 
   YBSchema ybschema;
-  CHECK_OK(schemaBuilder.Build(&ybschema));
+  RETURN_NOT_OK(schema_builder.Build(&ybschema));
 
   auto schema = yb::client::internal::GetSchema(ybschema);
   SchemaToPB(schema, req.mutable_schema());
@@ -5090,6 +5090,10 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   // Use the Schema object passed in, since it has the column IDs already assigned,
   // whereas the user request PB does not.
   SchemaToPB(schema, metadata->mutable_schema());
+  if (FLAGS_TEST_create_table_with_empty_pgschema_name) {
+    // Use empty string (default proto val) so that this passes has_pgschema_name() checks.
+    metadata->mutable_schema()->set_pgschema_name("");
+  }
   partition_schema.ToPB(metadata->mutable_partition_schema());
   // For index table, set index details (indexed table id and whether the index is local).
   if (req.has_index_info()) {
@@ -6431,7 +6435,7 @@ Status ApplyAlterSteps(server::Clock* clock,
         }
         ColumnSchema new_col = ColumnSchemaFromPB(new_col_pb);
 
-        RETURN_NOT_OK(builder.AddColumn(new_col, false));
+        RETURN_NOT_OK(builder.AddColumn(new_col));
         ddl_log_entries->emplace_back(time, table_id, current_pb, Format("Add column $0", new_col));
         break;
       }
@@ -7079,7 +7083,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
   // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
   // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
   if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-      !resp->schema().has_pgschema_name() &&
+      resp->schema().pgschema_name().empty() &&
       !table->is_system() &&
       !IsSequencesSystemTable(*table) &&
       !table->IsColocationParentTable()) {
@@ -8335,10 +8339,10 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
   ctreq.set_tablegroup_id(req->id());
   ctreq.set_tablespace_id(req->tablespace_id());
 
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey();
   YBSchema ybschema;
-  CHECK_OK(schemaBuilder.Build(&ybschema));
+  CHECK_OK(schema_builder.Build(&ybschema));
   auto schema = yb::client::internal::GetSchema(ybschema);
   SchemaToPB(schema, ctreq.mutable_schema());
   if (!FLAGS_TEST_tablegroup_master_only) {
@@ -8596,10 +8600,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     req.set_table_type(GetTableTypeForDatabase(ns->database_type()));
     req.set_is_colocated_via_database(true);
 
-    YBSchemaBuilder schemaBuilder;
-    schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
+    YBSchemaBuilder schema_builder;
+    schema_builder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey();
     YBSchema ybschema;
-    CHECK_OK(schemaBuilder.Build(&ybschema));
+    CHECK_OK(schema_builder.Build(&ybschema));
     auto schema = yb::client::internal::GetSchema(ybschema);
     SchemaToPB(schema, req.mutable_schema());
     req.mutable_schema()->mutable_table_properties()->set_is_transactional(true);
@@ -13181,6 +13185,7 @@ void CatalogManager::SysCatalogLoaded(int64_t term, const SysCatalogLoadingState
   StartXClusterSafeTimeServiceIfStopped();
   StartPostLoadTasks(state);
   snapshot_coordinator_.SysCatalogLoaded(term);
+  ScheduleAddTableToXClusterTaskForAllTables();
 }
 
 Status CatalogManager::UpdateLastFullCompactionRequestTime(const TableId& table_id) {
@@ -13291,11 +13296,16 @@ void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
 
 bool CatalogManager::ScheduleAddTableToXClusterTaskIfNeeded(
     TableInfoPtr table_info, const SysTablesEntryPB& pb) {
+  DCHECK(table_info->mutable_metadata()->is_dirty());
+  if (table_info->HasTasks(server::MonitoredTaskType::kAddTableToXClusterReplication)) {
+    // Task already scheduled.
+    return true;
+  }
+
   if (!ShouldAddTableToXClusterReplication(*table_info, pb)) {
     return false;
   }
 
-  DCHECK(!table_info->HasTasks(server::MonitoredTaskType::kAddTableToXClusterReplication));
   VLOG(1) << "Scheduling AddTableToXClusterTask for " << table_info->id();
   auto call = std::make_shared<AddTableToXClusterTask>(this, table_info);
   table_info->AddTask(call);
@@ -13360,7 +13370,9 @@ void CatalogManager::ScheduleAddTableToXClusterTaskForAllTables() {
     auto& table_info = *table_info_result;
     auto l = table_info->LockForRead();
     if (l->IsPreparing() && table_info->AreAllTabletsRunning()) {
-      ScheduleAddTableToXClusterTaskIfNeeded(table_info, l->pb);
+      l.Unlock();
+      auto wl = table_info->LockForWrite();
+      ScheduleAddTableToXClusterTaskIfNeeded(table_info, wl.mutable_data()->pb);
     }
   }
 }

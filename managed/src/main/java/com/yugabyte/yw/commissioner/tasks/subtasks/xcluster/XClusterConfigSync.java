@@ -13,7 +13,6 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -29,7 +28,6 @@ import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.MasterDdlOuterClass;
 
 @Slf4j
 public class XClusterConfigSync extends XClusterConfigTaskBase {
@@ -73,11 +71,6 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     Map<String, ProducerEntryPB> replicationGroups =
         new HashMap<>(config.getConsumerRegistry().getProducerMapMap());
 
-    // Try to find the txn replication group.
-    Optional<ProducerEntryPB> txnReplicationGroupOptional =
-        Optional.ofNullable(
-            replicationGroups.remove(TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME));
-
     ProducerEntryPB replicationGroupEntry = replicationGroups.get(replicationGroupName);
     if (replicationGroupEntry == null) {
       throw new RuntimeException(
@@ -88,7 +81,6 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     Set<Universe> candidateUniverses = customer.getUniverses();
     Map<String, Universe> hostUniverseMap = new HashMap<>();
     for (Universe candidateUniverse : candidateUniverses) {
-      String masterAddresses = candidateUniverse.getMasterAddresses();
       Arrays.stream(candidateUniverse.getMasterAddresses().split(","))
           .map(HostAndPort::fromString)
           .map(hp -> hp.getHost())
@@ -120,7 +112,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
               replicationGroupName,
               sourceUniverse.getUniverseUUID(),
               targetUniverse.getUniverseUUID(),
-              txnReplicationGroupOptional.isPresent() ? ConfigType.Txn : ConfigType.Basic,
+              config.getConsumerRegistry().getTransactional() ? ConfigType.Txn : ConfigType.Basic,
               true /* imported */);
       log.info("Creating new XClusterConfig({})", xClusterConfig.getUuid());
     } else {
@@ -128,19 +120,13 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
       // config may or not conform to the YBA naming style.
       log.info("Updating existing XClusterConfig({})", xClusterConfig);
     }
-    updateAndSyncXClusterConfig(
-        xClusterConfig, replicationGroupEntry, config, sourceUniverse, txnReplicationGroupOptional);
+    updateAndSyncXClusterConfig(xClusterConfig, replicationGroupEntry, config);
   }
 
   private void syncXClusterConfigs(
       CatalogEntityInfo.SysClusterConfigEntryPB config, UUID targetUniverseUUID) {
     Map<String, ProducerEntryPB> replicationGroups =
         new HashMap<>(config.getConsumerRegistry().getProducerMapMap());
-
-    // Try to find the txn replication group.
-    Optional<ProducerEntryPB> txnReplicationGroupOptional =
-        Optional.ofNullable(
-            replicationGroups.remove(TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME));
 
     // Import all the xCluster configs on the target universe cluster config.
     Set<Pair<UUID, String>> foundXClusterConfigs = new HashSet<>();
@@ -183,17 +169,14 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
                     xClusterConfigName,
                     sourceUniverseUUID,
                     targetUniverseUUID,
-                    txnReplicationGroupOptional.isPresent() ? ConfigType.Txn : ConfigType.Basic);
+                    config.getConsumerRegistry().getTransactional()
+                        ? ConfigType.Txn
+                        : ConfigType.Basic);
             log.info("Creating new XClusterConfig({})", xClusterConfig.getUuid());
           } else {
             log.info("Updating existing XClusterConfig({})", xClusterConfig);
           }
-          updateAndSyncXClusterConfig(
-              xClusterConfig,
-              value,
-              config,
-              Universe.getOrBadRequest(sourceUniverseUUID),
-              txnReplicationGroupOptional);
+          updateAndSyncXClusterConfig(xClusterConfig, value, config);
         });
 
     List<XClusterConfig> currentXClusterConfigsForTarget =
@@ -211,9 +194,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
   private void updateAndSyncXClusterConfig(
       XClusterConfig xClusterConfig,
       ProducerEntryPB replicationGroupEntry,
-      CatalogEntityInfo.SysClusterConfigEntryPB config,
-      Universe sourceUniverse,
-      Optional<ProducerEntryPB> txnReplicationGroupOptional) {
+      CatalogEntityInfo.SysClusterConfigEntryPB config) {
     Map<String, CdcConsumer.StreamEntryPB> tableMap = replicationGroupEntry.getStreamMapMap();
     Set<String> xClusterConfigTables =
         tableMap.values().stream()
@@ -224,27 +205,6 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     xClusterConfig.setPaused(replicationGroupEntry.getDisableStream());
     xClusterConfig.addTablesIfNotExist(xClusterConfigTables);
 
-    // Set txn table id for txn configs. We assume the source universe is always in active
-    // role, and we do not sync it.
-    if (txnReplicationGroupOptional.isPresent()) {
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-          getTableInfoList(ybService, sourceUniverse, false /* excludeSystemTables */);
-      Optional<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> txnTableInfoSourceOptional =
-          getTxnTableInfoIfExists(sourceTableInfoList);
-      if (!txnTableInfoSourceOptional.isPresent()) {
-        throw new IllegalStateException(
-            String.format(
-                "The detected xCluster config type for %s is %s, but %s.%s on the "
-                    + "source universe is not found",
-                xClusterConfig.getUuid(),
-                ConfigType.Txn,
-                TRANSACTION_STATUS_TABLE_NAMESPACE,
-                TRANSACTION_STATUS_TABLE_NAME));
-      }
-      xClusterConfig.setTxnTableId(Collections.singletonList(txnTableInfoSourceOptional.get()));
-    }
-
-    syncXClusterConfigWithReplicationGroup(
-        config, xClusterConfig, xClusterConfigTables, false /* skipSyncTxnTable */);
+    syncXClusterConfigWithReplicationGroup(config, xClusterConfig, xClusterConfigTables);
   }
 }

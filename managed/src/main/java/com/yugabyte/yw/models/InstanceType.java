@@ -121,6 +121,10 @@ public class InstanceType extends Model {
   private static final Finder<InstanceTypeKey, InstanceType> find =
       new Finder<InstanceTypeKey, InstanceType>(InstanceType.class) {};
 
+  public static List<InstanceType> getAllInstanceTypes() {
+    return find.all();
+  }
+
   public static InstanceType get(UUID providerUuid, String instanceTypeCode) {
     return find.byId(InstanceTypeKey.create(instanceTypeCode, providerUuid));
   }

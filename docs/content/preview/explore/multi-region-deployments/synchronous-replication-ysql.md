@@ -45,7 +45,6 @@ This deployment provides the following advantages:
   </li>
 </ul>
 
-
 The example included in this document simulates AWS regions on a local machine. In order to use this example, you need to [destroy](#clean-up) any running local universes.
 
 You can also use the described steps for deploying universes in any public cloud, private data center, or in separate virtual machines. The following are the only differences:
@@ -141,7 +140,7 @@ If you are running the application locally, set the value to the cloud location 
 java -jar \
     -Dnode=127.0.0.1 \
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-west-2.us-west-2a \
-    ./yb-workload-sim-0.0.3.jar
+    ./yb-workload-sim-0.0.4.jar
 ```
 
 After the connection has been established, [start a workload](../../#start-a-read-and-write-workload).

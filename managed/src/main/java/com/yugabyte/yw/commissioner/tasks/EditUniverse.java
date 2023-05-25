@@ -389,15 +389,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     createPlacementInfoTask(null /* additional blacklist */)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
-    if (!newTservers.isEmpty()
-        || !newMasters.isEmpty()
-        || !tserversToBeRemoved.isEmpty()
-        || !removeMasters.isEmpty()
-        || !nodesToBeRemoved.isEmpty()) {
-      // Update the swamper target file.
-      createSwamperTargetUpdateTask(false /* removeFile */);
-    }
-
     if (!nodesToBeRemoved.isEmpty()) {
       // Wait for %age completion of the tablet move from master.
       createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
@@ -491,6 +482,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Update the master addresses on the target universes whose source universe belongs to
       // this task.
       createXClusterConfigUpdateMasterAddressesTask();
+    }
+
+    // Stop scrapping metrics from TServers that is set to be removed
+    if (!newTservers.isEmpty()
+        || !newMasters.isEmpty()
+        || !tserversToBeRemoved.isEmpty()
+        || !removeMasters.isEmpty()
+        || !nodesToBeRemoved.isEmpty()) {
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
     }
 
     // Finally send destroy to the old set of nodes and remove them from this universe.

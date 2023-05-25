@@ -946,59 +946,6 @@ bool BothNull(const QLValuePB& lhs, const QLValue& rhs) {
   return IsNull(lhs) && rhs.IsNull();
 }
 
-std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
-    const QLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
-    const ColumnListVector& col_idxs) {
-  std::vector<const QLValuePB*> options_elems;
-  options_elems.reserve(options.elems_size());
-  for (const auto& value : options.elems()) {
-    options_elems.push_back(&value);
-  }
-  std::sort(
-      options_elems.begin(), options_elems.end(),
-      [&schema, is_forward_scan, &col_idxs](const auto& t1, const auto& t2) {
-        DCHECK(t1->has_tuple_value());
-        DCHECK(t2->has_tuple_value());
-        const auto& tuple1 = t1->tuple_value();
-        const auto& tuple2 = t2->tuple_value();
-        DCHECK(tuple1.elems().size() == tuple2.elems().size());
-        auto li = tuple1.elems().begin();
-        auto ri = tuple2.elems().begin();
-        int i = 0;
-        int cmp = 0;
-        for (i = 0; i < tuple1.elems().size(); ++i, ++li, ++ri) {
-          if (IsNull(*li)) {
-            if (!IsNull(*ri)) {
-              cmp = 1;
-              break;
-            }
-          } else {
-            if (IsNull(*ri)) {
-              cmp = 0;
-              break;
-            }
-            int result = Compare(*li, *ri);
-            if (result != 0) {
-              cmp = (result < 0);
-              break;
-            }
-          }
-        }
-
-        if (i != tuple1.elems().size()) {
-          auto sorting_type =
-              col_idxs[i] == kYbHashCodeColId ? SortingType::kAscending
-                                              : schema.column(col_idxs[i]).sorting_type();
-          auto is_reverse_order = is_forward_scan ^ (sorting_type == SortingType::kAscending ||
-                                                     sorting_type == kAscendingNullsLast ||
-                                                     sorting_type == kNotSpecified);
-          cmp ^= is_reverse_order;
-        }
-        return cmp;
-      });
-  return options_elems;
-}
-
 template <class PB>
 int TupleCompare(const PB& lhs_tuple, const PB& rhs_tuple) {
   DCHECK(lhs_tuple.elems().size() == rhs_tuple.elems().size());

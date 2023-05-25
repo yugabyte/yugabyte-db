@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -48,6 +49,7 @@ public class NodeUniverseManager extends DevopsBase {
   private final KeyLock<UUID> universeLock = new KeyLock<>();
 
   @Inject ImageBundleUtil imageBundleUtil;
+  @Inject NodeAgentClient nodeAgentClient;
   @Inject NodeAgentPoller nodeAgentPoller;
 
   @Override
@@ -233,13 +235,16 @@ public class NodeUniverseManager extends DevopsBase {
     command.add("-c");
     List<String> bashCommand = new ArrayList<>();
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
     if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
       bashCommand.add("export sslmode=\"require\";");
     }
     bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     bashCommand.add("-h");
     if (cluster.userIntent.isYSQLAuthEnabled()) {
-      bashCommand.add("$(dirname \"$(ls -t /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
+      bashCommand.add(
+          String.format(
+              "$(dirname \"$(ls -t %s/.yb.*/.s.PGSQL.* | head -1)\")", customTmpDirectory));
     } else {
       bashCommand.add(node.cloudInfo.private_ip);
     }
@@ -350,7 +355,7 @@ public class NodeUniverseManager extends DevopsBase {
         if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
           nodeAgent.refresh();
         }
-        NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+        nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
       } else {
         commandArgs.add("ssh");
         // Default SSH port can be the custom port for custom images.

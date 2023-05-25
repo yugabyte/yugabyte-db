@@ -584,6 +584,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "It indicates whether YBA should support transactional xCluster configs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
+      new ConfKeyInfo<>(
+          "yb.xcluster.use_ybc",
+          ScopeType.GLOBAL,
+          "Enable YBC for xCluster",
+          "Enable YBC to take backup and restore during xClsuter bootstrap",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowDbVersionMoreThanYbaVersion =
       new ConfKeyInfo<>(
           "yb.allow_db_version_more_than_yba_version",
@@ -658,6 +666,30 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Cooldown after disk resize in aws (in hours)",
           "Cooldown after disk resize in aws (in hours)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> ybTmpDirectoryPath =
+      new ConfKeyInfo<>(
+          "yb.filepaths.tmpDirectory",
+          ScopeType.GLOBAL,
+          "tmp directory path",
+          "Path to the tmp directory to be used by YBA",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentTokenLifetime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.client.token_lifetime",
+          ScopeType.GLOBAL,
+          "Node Agent Token Lifetime",
+          "Lifetime oftoken used by node agent clients",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> nodeAgentServerPort =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.port",
+          ScopeType.GLOBAL,
+          "Node Agent Server Port",
+          "Listening port for node agent servers",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

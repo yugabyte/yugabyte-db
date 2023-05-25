@@ -7,8 +7,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,11 +16,11 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -38,6 +38,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.client.IsInitDbDoneResponse;
+import org.yb.client.UpgradeYsqlResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -97,10 +99,18 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
-    ShellResponse successResponse = new ShellResponse();
-    successResponse.message = "YSQL successfully upgraded to the latest version";
-    when(mockNodeUniverseManager.runYbAdminCommand(any(), any(), any(), anyList(), anyLong()))
-        .thenReturn(successResponse);
+    UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
+    IsInitDbDoneResponse mockIsInitDbDoneResponse =
+        new IsInitDbDoneResponse(1000, "", true, true, null, null);
+    mockClient = mock(YBClient.class);
+    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+
+    try {
+      when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(mockUpgradeYsqlResponse);
+      when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
+    } catch (Exception ignored) {
+    }
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams taskParams) {
