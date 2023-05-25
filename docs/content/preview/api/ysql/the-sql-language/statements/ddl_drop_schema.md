@@ -44,6 +44,8 @@ Use the `DROP SCHEMA` statement to remove a schema and all of its associated obj
 
 ## Semantics
 
+- `DROP SCHEMA` will execute in its own transaction and is an all or nothing operation.
+
 ### *drop_schema*
 
 #### DROP SCHEMA [ IF EXISTS ] *schema_name*
