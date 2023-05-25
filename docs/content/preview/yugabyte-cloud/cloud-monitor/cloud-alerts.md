@@ -180,8 +180,9 @@ YugabyteDB Managed sends a notification when the customer managed key (CMK) used
 
 If your CMK is unreachable, check the following:
 
-- Verify the key is till available on the cloud provider.
-- Verify the credentials used to access the key are still valid, and update the credentials if needed.
+- Verify the key is still enabled in your cloud provider KMS.
+- Verify the role or account used to access the key still has valid permissions.
+- Verify the credentials or access token are still valid, and generate new credentials if needed.
 
 Refer to [Encryption at rest](../../cloud-secure-clusters/managed-ear/).
 
