@@ -37,6 +37,7 @@ option java_package = "org.yb.cdc";
 
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_client.proto";
@@ -129,6 +130,7 @@ message CreateCDCStreamRequestPB {
   optional CDCRequestSource source_type = 5 [default = XCLUSTER];
   optional CDCCheckpointType checkpoint_type = 6 [default = IMPLICIT];
   optional bool transactional = 7; // [default = false]
+  optional YQLDatabase db_type = 8 [default = YQL_DATABASE_PGSQL] ;
 }
 
 message CreateCDCStreamResponsePB {

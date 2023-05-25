@@ -1683,12 +1683,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
         }
 
         const string namespace_name = args[0];
-
-        const TypedNamespaceName database =
-            VERIFY_RESULT(ParseNamespaceName(args[0], YQL_DATABASE_PGSQL));
-        SCHECK_EQ(
-            database.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
-            Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));
+        const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
         RETURN_NOT_OK_PREPEND(
             client->CreateCDCSDKDBStream(database, checkpoint_type, record_type),
