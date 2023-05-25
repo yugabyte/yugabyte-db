@@ -908,28 +908,36 @@ void CDCServiceImpl::CreateEntryInCdcStateTable(
   impl_->AddTabletCheckpoint(op_id, stream_id, tablet_id, producer_entries_modified);
 }
 
-Result<NamespaceId> CDCServiceImpl::GetNamespaceId(const std::string& ns_name) {
+Result<NamespaceId> CDCServiceImpl::GetNamespaceId(
+    const std::string& ns_name, YQLDatabase db_type) {
   master::GetNamespaceInfoResponsePB namespace_info_resp;
   RETURN_NOT_OK(
-      client()->GetNamespaceInfo(std::string(), ns_name, YQL_DATABASE_PGSQL, &namespace_info_resp));
+      client()->GetNamespaceInfo(std::string(), ns_name, db_type, &namespace_info_resp));
 
   return namespace_info_resp.namespace_().id();
 }
 
-Result<EnumOidLabelMap> CDCServiceImpl::GetEnumMapFromCache(const NamespaceName& ns_name) {
+Result<EnumOidLabelMap> CDCServiceImpl::GetEnumMapFromCache(
+    const NamespaceName& ns_name, bool cql_namespace) {
   {
     yb::SharedLock<decltype(mutex_)> l(mutex_);
     if (enumlabel_cache_.find(ns_name) != enumlabel_cache_.end()) {
       return enumlabel_cache_.at(ns_name);
     }
   }
-  return UpdateEnumCacheAndGetMap(ns_name);
+  return UpdateEnumCacheAndGetMap(ns_name, cql_namespace);
 }
 
-Result<EnumOidLabelMap> CDCServiceImpl::UpdateEnumCacheAndGetMap(const NamespaceName& ns_name) {
+Result<EnumOidLabelMap> CDCServiceImpl::UpdateEnumCacheAndGetMap(
+    const NamespaceName& ns_name, bool cql_namespace) {
   std::lock_guard<decltype(mutex_)> l(mutex_);
   if (enumlabel_cache_.find(ns_name) == enumlabel_cache_.end()) {
-    return UpdateEnumMapInCacheUnlocked(ns_name);
+    if (cql_namespace) {
+      EnumOidLabelMap empty_map;
+      enumlabel_cache_[ns_name] = empty_map;
+    } else {
+      return UpdateEnumMapInCacheUnlocked(ns_name);
+    }
   }
   return enumlabel_cache_.at(ns_name);
 }
@@ -941,21 +949,26 @@ Result<EnumOidLabelMap> CDCServiceImpl::UpdateEnumMapInCacheUnlocked(const Names
 }
 
 Result<CompositeAttsMap> CDCServiceImpl::GetCompositeAttsMapFromCache(
-    const NamespaceName& ns_name) {
+    const NamespaceName& ns_name, bool cql_namespace) {
   {
     yb::SharedLock<decltype(mutex_)> l(mutex_);
     if (composite_type_cache_.find(ns_name) != composite_type_cache_.end()) {
       return composite_type_cache_.at(ns_name);
     }
   }
-  return UpdateCompositeCacheAndGetMap(ns_name);
+  return UpdateCompositeCacheAndGetMap(ns_name, cql_namespace);
 }
 
 Result<CompositeAttsMap> CDCServiceImpl::UpdateCompositeCacheAndGetMap(
-    const NamespaceName& ns_name) {
+    const NamespaceName& ns_name, bool cql_namespace) {
   std::lock_guard<decltype(mutex_)> l(mutex_);
   if (composite_type_cache_.find(ns_name) == composite_type_cache_.end()) {
-    return UpdateCompositeMapInCacheUnlocked(ns_name);
+    if (cql_namespace) {
+      CompositeAttsMap empty_map;
+      composite_type_cache_[ns_name] = empty_map;
+    } else {
+      return UpdateCompositeMapInCacheUnlocked(ns_name);
+    }
   }
   return composite_type_cache_.at(ns_name);
 }
@@ -979,7 +992,7 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
   auto scope_exit = ScopeExit([this, &creation_state] { RollbackPartialCreate(creation_state); });
 
   auto ns_id = VERIFY_RESULT_OR_SET_CODE(
-      GetNamespaceId(req->namespace_name()), CDCError(CDCErrorPB::INVALID_REQUEST));
+      GetNamespaceId(req->namespace_name(), req->db_type()), CDCError(CDCErrorPB::INVALID_REQUEST));
 
   // Generate a stream id by calling CreateCDCStream, and also setup the stream in the master.
   std::unordered_map<std::string, std::string> options = GetCreateCDCStreamOptions(req);
@@ -1698,11 +1711,14 @@ void CDCServiceImpl::GetChanges(
               << ", get proper schema version from system catalog.";
       cached_schema_details.clear();
     }
-    auto enum_map_result = GetEnumMapFromCache(namespace_name);
+    bool cql_namespace = tablet_peer->tablet()->table_type() == YQL_TABLE_TYPE;
+    auto enum_map_result = GetEnumMapFromCache(namespace_name, cql_namespace);
+
     RPC_RESULT_RETURN_ERROR(
         enum_map_result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
-    auto composite_atts_map = GetCompositeAttsMapFromCache(namespace_name);
+    auto composite_atts_map = GetCompositeAttsMapFromCache(namespace_name, cql_namespace);
+
     RPC_CHECK_AND_RETURN_ERROR(
         composite_atts_map.ok(), composite_atts_map.status(), resp->mutable_error(),
         CDCErrorPB::INTERNAL_ERROR, context);

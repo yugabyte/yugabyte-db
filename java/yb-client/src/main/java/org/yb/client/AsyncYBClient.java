@@ -431,6 +431,32 @@ public class AsyncYBClient implements AutoCloseable {
     return d;
   }
 
+  public Deferred<CreateCDCStreamResponse> createCDCStream(YBTable table,
+                                                           String nameSpaceName,
+                                                           String format,
+                                                           String checkpointType,
+                                                           String recordType,
+                                                           CommonTypes.YQLDatabase dbType) {
+    checkIsClosed();
+    CreateCDCStreamRequest rpc = new CreateCDCStreamRequest(table,
+      table.getTableId(),
+      nameSpaceName,
+      format,
+      checkpointType,
+      recordType,
+      dbType);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<CreateCDCStreamResponse> d = rpc.getDeferred().addErrback(
+      new Callback<Object, Object>() {
+        @Override
+        public Object call(Object o) throws Exception {
+          return o;
+        }
+      });
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
   /**
    * Get changes for a given tablet and stream.
    * @param table the table to get changes for.
