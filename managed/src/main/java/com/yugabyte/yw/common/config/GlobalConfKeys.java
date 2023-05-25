@@ -51,6 +51,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+
+  public static final ConfKeyInfo<Boolean> usek8sCustomResources =
+      new ConfKeyInfo<>(
+          "yb.use_k8s_custom_resources",
+          ScopeType.GLOBAL,
+          "Specify custom CPU/memory values for k8s universes",
+          "Use custom CPU/Memory for kubernetes nodes. Once enabled, shouldn't be disabled.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> useOauth =
       new ConfKeyInfo<>(
           "yb.security.use_oauth",
