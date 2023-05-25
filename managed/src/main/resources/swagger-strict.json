@@ -4956,6 +4956,20 @@
       "required" : [ "idKey" ],
       "type" : "object"
     },
+    "K8SNodeResourceSpec" : {
+      "properties" : {
+        "cpuCoreCount" : {
+          "format" : "double",
+          "type" : "number"
+        },
+        "memoryGib" : {
+          "format" : "double",
+          "type" : "number"
+        }
+      },
+      "required" : [ "cpuCoreCount", "memoryGib" ],
+      "type" : "object"
+    },
     "KeyInfo" : {
       "properties" : {
         "airGapInstall" : {
@@ -11742,6 +11756,9 @@
         "masterInstanceType" : {
           "type" : "string"
         },
+        "masterK8SNodeResourceSpec" : {
+          "$ref" : "#/definitions/K8SNodeResourceSpec"
+        },
         "numNodes" : {
           "format" : "int32",
           "type" : "integer"
@@ -11780,6 +11797,9 @@
             "type" : "string"
           },
           "type" : "object"
+        },
+        "tserverK8SNodeResourceSpec" : {
+          "$ref" : "#/definitions/K8SNodeResourceSpec"
         },
         "universeName" : {
           "type" : "string"
