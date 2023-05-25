@@ -114,7 +114,12 @@ class TransactionStatusResolver::Impl {
     // transaction statuses, which is NOT concurrent.
     // So we could avoid doing synchronization here.
     auto& tablet_id_and_queue = *queues_.begin();
-    auto client = participant_context_.client_future().get();
+    auto client_result = participant_context_.client();
+    if (!client_result.ok()) {
+      Complete(client_result.status());
+      return;
+    }
+    auto client = client_result.get();
     if (!client) {
       Complete(STATUS(Aborted, "Aborted because cannot start RPC"));
     }

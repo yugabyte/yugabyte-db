@@ -1471,6 +1471,21 @@ scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {
       tablet_->table_type()));
 }
 
+Result<client::YBClient*> TabletPeer::client() const {
+  auto cached_value = client_cache_.load(std::memory_order_acquire);
+  if (cached_value != nullptr) {
+    return cached_value;
+  }
+  auto future_status = client_future_.wait_for(
+      TransactionRpcTimeout().ToSteadyDuration());
+  if (future_status != std::future_status::ready) {
+    return STATUS(TimedOut, "Client not ready");
+  }
+  auto result = client_future_.get();
+  client_cache_.store(result, std::memory_order_release);
+  return result;
+}
+
 int64_t TabletPeer::LeaderTerm() const {
   shared_ptr<consensus::Consensus> consensus;
   {
