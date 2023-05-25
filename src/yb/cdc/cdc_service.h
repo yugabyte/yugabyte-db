@@ -288,7 +288,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void RollbackPartialCreate(const CDCCreationState& creation_state);
 
-  Result<NamespaceId> GetNamespaceId(const std::string& ns_name);
+  Result<NamespaceId> GetNamespaceId(const std::string& ns_name, YQLDatabase db_type);
 
   Result<std::shared_ptr<StreamMetadata>> GetStream(
       const std::string& stream_id, RefreshStreamMapOption ops = RefreshStreamMapOption::kNone)
@@ -446,20 +446,23 @@ class CDCServiceImpl : public CDCServiceIf {
   Status UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTabletInfo& info);
 
   // Get enum map from the cache.
-  Result<EnumOidLabelMap> GetEnumMapFromCache(const NamespaceName& ns_name);
+  Result<EnumOidLabelMap> GetEnumMapFromCache(const NamespaceName& ns_name, bool cql_namespace);
 
   // Update enum map in cache if required and get it.
-  Result<EnumOidLabelMap> UpdateEnumCacheAndGetMap(const NamespaceName& ns_name);
+  Result<EnumOidLabelMap> UpdateEnumCacheAndGetMap(
+      const NamespaceName& ns_name, bool cql_namespace);
 
   // Update enum map in cache.
   Result<EnumOidLabelMap> UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name)
       REQUIRES(mutex_);
 
   // Get composite attributes map from the cache.
-  Result<CompositeAttsMap> GetCompositeAttsMapFromCache(const NamespaceName& ns_name);
+  Result<CompositeAttsMap> GetCompositeAttsMapFromCache(
+      const NamespaceName& ns_name, bool cql_namespace);
 
   // Update composite attributes map in cache if required and get it.
-  Result<CompositeAttsMap> UpdateCompositeCacheAndGetMap(const NamespaceName& ns_name);
+  Result<CompositeAttsMap> UpdateCompositeCacheAndGetMap(
+      const NamespaceName& ns_name, bool cql_namespace);
 
   // Update composite map in cache.
   Result<CompositeAttsMap> UpdateCompositeMapInCacheUnlocked(const NamespaceName& ns_name)
