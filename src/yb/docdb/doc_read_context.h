@@ -26,18 +26,19 @@ struct DocReadContext {
   explicit DocReadContext(const std::string& log_prefix, TableType table_type);
 
   DocReadContext(
-      const std::string& log_prefix, TableType table_type, const Schema& schema_,
+      const std::string& log_prefix, TableType table_type, const Schema& schema,
       SchemaVersion schema_version);
 
-  DocReadContext(const DocReadContext& rhs, const Schema& schema_, SchemaVersion schema_version);
+  DocReadContext(const DocReadContext& rhs, const Schema& schema, SchemaVersion schema_version);
 
   DocReadContext(const DocReadContext& rhs, SchemaVersion min_schema_version);
 
   template <class PB>
   Status LoadFromPB(const PB& pb) {
-    RETURN_NOT_OK(SchemaFromPB(pb.schema(), &schema));
+    RETURN_NOT_OK(SchemaFromPB(pb.schema(), &schema_));
     RETURN_NOT_OK(schema_packing_storage.LoadFromPB(pb.old_schema_packings()));
-    schema_packing_storage.AddSchema(pb.schema_version(), schema);
+    schema_packing_storage.AddSchema(pb.schema_version(), schema_);
+    UpdateKeyPrefix();
     LogAfterLoad();
     return Status::OK();
   }
@@ -47,19 +48,39 @@ struct DocReadContext {
     RETURN_NOT_OK(schema_packing_storage.MergeWithRestored(
         pb.schema_version(), pb.schema(), pb.old_schema_packings(), overwrite));
     LogAfterMerge(overwrite);
+    UpdateKeyPrefix();
     return Status::OK();
   }
 
   template <class PB>
-  void ToPB(SchemaVersion schema_version, PB* out) {
-    DCHECK(schema.has_column_ids());
-    SchemaToPB(schema, out->mutable_schema());
+  void ToPB(SchemaVersion schema_version, PB* out) const {
+    DCHECK(schema_.has_column_ids());
+    SchemaToPB(schema_, out->mutable_schema());
     schema_packing_storage.ToPB(schema_version, out->mutable_old_schema_packings());
+  }
+
+  const Schema& schema() const {
+    return schema_;
+  }
+
+  void SetCotableId(const Uuid& cotable_id);
+
+  // The number of bytes before actual key values for all encoded keys in this table.
+  size_t key_prefix_encoded_len() const {
+    return key_prefix_encoded_len_;
+  }
+
+  Slice shared_key_prefix() const {
+    return Slice(shared_key_prefix_buffer_.data(), shared_key_prefix_len_);
+  }
+
+  void TEST_SetDefaultTimeToLive(uint64_t ttl_msec) {
+    schema_.SetDefaultTimeToLive(ttl_msec);
   }
 
   // Should account for every field in DocReadContext.
   static bool TEST_Equals(const DocReadContext& lhs, const DocReadContext& rhs) {
-    return Schema::TEST_Equals(lhs.schema, rhs.schema) &&
+    return Schema::TEST_Equals(lhs.schema_, rhs.schema_) &&
         lhs.schema_packing_storage == rhs.schema_packing_storage;
   }
 
@@ -67,16 +88,35 @@ struct DocReadContext {
     return DocReadContext("TEST: ", TableType::YQL_TABLE_TYPE, schema, 0);
   }
 
-  Schema schema;
   dockv::SchemaPackingStorage schema_packing_storage;
 
  private:
   void LogAfterLoad();
   void LogAfterMerge(dockv::OverwriteSchemaPacking overwrite);
+  void UpdateKeyPrefix();
 
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
+
+  Schema schema_;
+
+  // The data about key prefix shared by all entries of this table.
+  // shared_key_prefix_* fields store prefix bytes common to all keys in this table.
+  // I.e. if table has cotable id or colocation id, then it will be placed in shared_key_prefix_*.
+  // Also in case of non empty hash part, it will contain kUInt16Hash byte.
+  // When hash part is empty and first byte of encoded range column is the same for all entries
+  // in the table, then it will also be present here.
+  size_t shared_key_prefix_len_ = 0;
+  std::array<uint8_t, 0x20> shared_key_prefix_buffer_;
+
+  // This field contains number of bytes in encoded key before column values.
+  // I.e. it is sum of sizes of cotable id, colocation id, hash code.
+  // It is very close to shared_key_prefix_len_ with exception that shared_key_prefix_len_
+  // has only one byte for hash code, i.e. shared key entry value type. But not the value of
+  // hash code itself.
+  // While key_prefix_encoded_len_ will have 3 bytes for it, i.e. full encoded hash code.
+  size_t key_prefix_encoded_len_ = 0;
 
   std::string log_prefix_;
 };

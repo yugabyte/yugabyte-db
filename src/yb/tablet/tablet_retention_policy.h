@@ -63,9 +63,6 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   // and returns most close value that satisfies them.
   HybridTime SanitizeHistoryCutoff(HybridTime proposed_history_cutoff) REQUIRES(mutex_);
 
-  // Helper function to get the history directive with or without committed history update.
-  docdb::HistoryRetentionDirective DoGetRetentionDirective(bool update_committed_history);
-
   const std::string& LogPrefix() const {
     return log_prefix_;
   }

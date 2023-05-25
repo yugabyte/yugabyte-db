@@ -1249,7 +1249,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const auto& tserver = test_cluster()->mini_tablet_server(i)->server();
       auto cdc_service = dynamic_cast<CDCServiceImpl*>(
           tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
-      auto status = cdc_service->TEST_GetTabletInfoFromCache({"" /* UUID */, stream_id, tablet_id});
+      auto status = cdc_service->TEST_GetTabletInfoFromCache({{}, stream_id, tablet_id});
       if (status.ok()) {
         count += 1;
       }

@@ -671,9 +671,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   int64_t snapshot_schedules_version_ = 0;
   HybridTime last_restorations_update_ht_;
 
-  // Background task for periodically scheduling major compactions.
-  std::unique_ptr<BackgroundTask> scheduled_full_compaction_bg_task_;
-
   // Background task for periodically flushing the superblocks.
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
 

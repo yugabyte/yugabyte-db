@@ -502,7 +502,7 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
   FATAL_INVALID_ENUM_VALUE(KeyEntryType, type_);
 }
 
-size_t KeyEntryValue::GetEncodedKeyEntryValueSize(const DataType& data_type) {
+size_t KeyEntryValue::GetEncodedKeyEntryValueSize(DataType data_type) {
   constexpr size_t key_entry_type_size = 1;
   switch (data_type) {
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;

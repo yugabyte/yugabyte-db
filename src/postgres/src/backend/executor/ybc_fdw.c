@@ -172,37 +172,37 @@ ybcGetForeignPlan(PlannerInfo *root,
 {
 	YbFdwPlanState *yb_plan_state = (YbFdwPlanState *) baserel->fdw_private;
 	Index			scan_relid = baserel->relid;
-	List		   *local_clauses = NIL;
-	List		   *remote_clauses = NIL;
-	List		   *remote_params = NIL;
+	List		   *local_quals = NIL;
+	List		   *remote_quals = NIL;
+	List		   *remote_colrefs = NIL;
 	ListCell	   *lc;
 
 	scan_clauses = extract_actual_clauses(scan_clauses, false);
 
 	/*
 	 * Split the expressions in the scan_clauses onto two lists:
-	 * - remote_clauses gets supported expressions to push down to DocDB, and
-	 * - local_clauses gets remaining to evaluate upon returned rows.
-	 * The remote_params list contains data type details of the columns
-	 * referenced by the expressions in the remote_clauses list. DocDB needs it
+	 * - remote_quals gets supported expressions to push down to DocDB, and
+	 * - local_quals gets remaining to evaluate upon returned rows.
+	 * The remote_colrefs list contains data type details of the columns
+	 * referenced by the expressions in the remote_quals list. DocDB needs it
 	 * to convert row values to Datum/isnull pairs consumable by Postgres
 	 * functions.
-	 * The remote_clauses and remote_params lists are sent with the protobuf
+	 * The remote_quals and remote_colrefs lists are sent with the protobuf
 	 * read request.
 	 */
 	foreach(lc, scan_clauses)
 	{
-		List *params = NIL;
+		List *colrefs = NIL;
 		Expr *expr = (Expr *) lfirst(lc);
-		if (YbCanPushdownExpr(expr, &params))
+		if (YbCanPushdownExpr(expr, &colrefs))
 		{
-			remote_clauses = lappend(remote_clauses, expr);
-			remote_params = list_concat(remote_params, params);
+			remote_quals = lappend(remote_quals, expr);
+			remote_colrefs = list_concat(remote_colrefs, colrefs);
 		}
 		else
 		{
-			local_clauses = lappend(local_clauses, expr);
-			list_free_deep(params);
+			local_quals = lappend(local_quals, expr);
+			list_free_deep(colrefs);
 		}
 	}
 
@@ -216,8 +216,8 @@ ybcGetForeignPlan(PlannerInfo *root,
 								baserel->min_attr);
 	}
 
-	/* Get the target columns that are needed to evaluate local clauses */
-	foreach(lc, local_clauses)
+	/* Get the target columns that are needed to evaluate local quals */
+	foreach(lc, local_quals)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
 		pull_varattnos_min_attr((Node *) expr,
@@ -270,12 +270,12 @@ ybcGetForeignPlan(PlannerInfo *root,
 
 	/* Create the ForeignScan node */
 	return make_foreignscan(tlist,           /* local target list */
-							local_clauses,   /* local qual */
+							local_quals,
 							scan_relid,
 							target_attrs,    /* referenced attributes */
-							remote_params,   /* fdw_private data (attribute types) */
+							remote_colrefs,  /* fdw_private data (attribute types) */
 							NIL,             /* remote target list (none for now) */
-							remote_clauses,  /* remote qual */
+							remote_quals,
 							outer_plan);
 }
 
@@ -539,22 +539,22 @@ ybcSetupScanTargets(ForeignScanState *node)
 }
 
 /*
- * ybSetupScanQual
+ * ybSetupScanQuals
  *		Add the pushable qual expressions to the DocDB statement.
  */
 static void
-ybSetupScanQual(ForeignScanState *node)
+ybSetupScanQuals(ForeignScanState *node)
 {
 	EState	   *estate = node->ss.ps.state;
 	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
 	YbFdwExecState *yb_state = (YbFdwExecState *) node->fdw_state;
-	List	   *qual = foreignScan->fdw_recheck_quals;
+	List	   *quals = foreignScan->fdw_recheck_quals;
 	ListCell   *lc;
 
 	MemoryContext oldcontext =
 		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
 
-	foreach(lc, qual)
+	foreach(lc, quals)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
 		/*
@@ -589,7 +589,7 @@ ybSetupScanColumnRefs(ForeignScanState *node)
 
 	foreach(lc, params)
 	{
-		YbExprParamDesc *param = (YbExprParamDesc *) lfirst(lc);
+		YbExprColrefDesc *param = (YbExprColrefDesc *) lfirst(lc);
 		YBCPgTypeAttrs type_attrs = { param->typmod };
 		/* Create new PgExpr wrapper for the column reference */
 		YBCPgExpr yb_expr = YBCNewColumnRef(yb_state->handle,
@@ -622,7 +622,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 */
 	if (!ybc_state->is_exec_done) {
 		ybcSetupScanTargets(node);
-		ybSetupScanQual(node);
+		ybSetupScanQuals(node);
 		ybSetupScanColumnRefs(node);
 		HandleYBStatus(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params));
 		ybc_state->is_exec_done = true;

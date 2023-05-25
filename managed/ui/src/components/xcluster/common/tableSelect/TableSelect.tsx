@@ -140,23 +140,16 @@ const NOTE_EXPAND_CONTENT = (
   <div>
     <b>Which tables are considered eligible for xCluster replication?</b>
     <p>
-      We have 2 criteria for <b>eligible tables</b>:
-      <ol>
-        <li>
+      We have the following criteria for <b>eligible tables</b>:
+      <ul>
+        <li style={{ listStyle: 'disc' }}>
           <b>Table not already in use</b>
           <p>
             The table is not involved in another xCluster configuration between the same two
             universes in the same direction.
           </p>
         </li>
-        <li>
-          <b>Matching table exists on target universe</b>
-          <p>
-            A table with the same name in the same keyspace and schema exists on the target
-            universe.
-          </p>
-        </li>
-      </ol>
+      </ul>
       If a table fails to meet any of the above criteria, then it is considered an <b>ineligible</b>{' '}
       table for xCluster purposes.
     </p>

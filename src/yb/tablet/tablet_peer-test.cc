@@ -100,7 +100,7 @@ using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 
 static Schema GetTestSchema() {
-  return Schema({ ColumnSchema("key", INT32) }, 1);
+  return Schema({ ColumnSchema("key", INT32, ColumnKind::HASH) });
 }
 
 class TabletPeerTest : public YBTabletTest {
@@ -341,6 +341,7 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
   ASSERT_NO_FATALS(AssertLogAnchorEarlierThanLogLatest());
 
   // Ensure nothing gets deleted.
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   int64_t min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(2, num_gced) << "Earliest needed: " << min_log_index;
@@ -417,8 +418,11 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
   // Ensure the delta and last insert remain in the logs, anchored by the delta.
   // Note that this will allow GC of the 2nd insert done above.
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   earliest_needed = 4;
-  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
+  std::string details;
+  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex(&details));
+  LOG(INFO) << details;
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
@@ -467,9 +471,9 @@ TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
   table_info.set_table_id("00004000000030008000000000004020");
   table_info.set_table_name("test");
   table_info.set_table_type(PGSQL_TABLE_TYPE);
-  ColumnSchema col("a", UINT32);
+  ColumnSchema col("a", UINT32, ColumnKind::RANGE_ASC_NULL_FIRST);
   ColumnId col_id(1);
-  Schema schema({col}, {col_id}, 1);
+  Schema schema({col}, {col_id});
   SchemaToPB(schema, table_info.mutable_schema());
   OpId op_id(100, 5);
   ASSERT_OK(tablet->AddTable(table_info, op_id));

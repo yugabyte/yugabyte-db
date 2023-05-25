@@ -327,7 +327,8 @@ Status SchemaPackingStorage::InsertSchemas(
 }
 
 void SchemaPackingStorage::ToPB(
-    SchemaVersion skip_schema_version, google::protobuf::RepeatedPtrField<SchemaPackingPB>* out) {
+    SchemaVersion skip_schema_version,
+    google::protobuf::RepeatedPtrField<SchemaPackingPB>* out) const {
   for (const auto& version_and_packing : version_to_schema_packing_) {
     if (version_and_packing.first == skip_schema_version) {
       continue;

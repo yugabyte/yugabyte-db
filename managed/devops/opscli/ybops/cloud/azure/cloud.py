@@ -18,6 +18,7 @@ from ybops.cloud.azure.command import AzureNetworkCommand, AzureInstanceCommand,
     AzureAccessCommand, AzureQueryCommand, AzureDnsCommand
 from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin, \
     create_resource_group
+from ybops.utils.remote_shell import RemoteShell
 
 
 class AzureCloud(AbstractCloud):
@@ -127,6 +128,9 @@ class AzureCloud(AbstractCloud):
         logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
         return output
 
+    def change_instance_type(self, host_info, new_instance_type):
+        self.get_admin().change_instance_type(host_info['name'], new_instance_type)
+
     def destroy_instance(self, args):
         host_info = self.get_host_info(args)
         if host_info is None:
@@ -185,7 +189,10 @@ class AzureCloud(AbstractCloud):
         return self.get_admin().get_ultra_instances(regions, args.folder)
 
     def update_disk(self, args):
-        raise YBOpsRuntimeError("Update Disk not implemented for Azure")
+        instance = self.get_host_info(args)
+        if not instance:
+            raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
+        self.get_admin().update_disk(instance["name"], args.volume_size)
 
     def list_dns_record_set(self, dns_zone_id):
         return self.get_admin().list_dns_record_set(dns_zone_id)
@@ -205,34 +212,45 @@ class AzureCloud(AbstractCloud):
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         modify_tags(args.region, instance["id"], args.instance_tags, args.remove_tags)
 
-    def start_instance(self, args, server_ports):
-        host_info = self.get_host_info(args)
-        if host_info is None:
-            raise YBOpsRuntimeError("Host {} does not exist".format(args.search_pattern))
-
-        vm_status = self.get_admin().get_vm_status(args.search_pattern)
+    def start_instance(self, host_info, server_ports):
+        vm_name = host_info['name']
+        vm_status = self.get_admin().get_vm_status(vm_name)
         if vm_status != 'VM deallocated':
             logging.warning("Host {} is not stopped, VM status is {}".format(
-                args.search_pattern, vm_status))
+                vm_name, vm_status))
         else:
             self.get_admin().start_instance(host_info['name'])
 
         # Refreshing private IP address.
-        host_info = self.get_host_info(args)
+        host_info = self.get_admin().get_host_info(vm_name, False)
         if not host_info:
             logging.error("Error restarting VM {} - unable to get host info.".format(
-                args.search_pattern))
+                vm_name))
             return
 
-        self.wait_for_server_ports(host_info['private_ip'], host_info['name'], server_ports)
+        self.wait_for_server_ports(host_info['private_ip'], vm_name, server_ports)
         return host_info
 
-    def stop_instance(self, args):
-        host_info = self.get_host_info(args)
-        if host_info is None:
-            raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
-
+    def stop_instance(self, host_info):
         return self.get_admin().deallocate_instance(host_info['name'])
+
+    def expand_file_system(self, args, connect_options):
+        remote_shell = RemoteShell(connect_options)
+        mount_points = self.get_mount_points_csv(args).split(',')
+        for mount_point in mount_points:
+            # need to rescan disks to see changes
+            cmd1 = "df | awk '($6 == \"" + mount_point + "\") {print $1}' | grep -o 'sd\\w*$'"
+            resp = remote_shell.run_command(cmd1)
+            if resp.exited == 1:
+                raise YBOpsRuntimeError("Failed to get fs for mount point {}".format(mount_point))
+            fsname = resp.stdout.replace('\n', '')
+            cmd2 = "sudo bash -c 'echo 1 > /sys/class/block/{}/device/rescan' " \
+                "&& sudo fdisk -l /dev/{}".format(fsname, fsname)
+            resp2 = remote_shell.run_command(cmd2)
+            if resp2.exited == 1:
+                raise YBOpsRuntimeError("Failed to do rescan for {}".format(mount_point))
+            logging.info("Expanding file system with mount point: {}".format(mount_point))
+            remote_shell.run_command('sudo xfs_growfs {}'.format(mount_point))
 
     def normalize_instance_state(self, instance_state):
         if instance_state:

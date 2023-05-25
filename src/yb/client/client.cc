@@ -1610,18 +1610,14 @@ Status YBClient::BootstrapProducer(
 }
 
 Status YBClient::UpdateConsumerOnProducerSplit(
-    const string& producer_id,
+    const cdc::ReplicationGroupId& replication_group_id,
     const CDCStreamId& stream_id,
     const master::ProducerSplitTabletInfoPB& split_info) {
-  if (producer_id.empty()) {
-    return STATUS(InvalidArgument, "Producer id is required.");
-  }
-  if (stream_id.empty()) {
-    return STATUS(InvalidArgument, "Stream id is required.");
-  }
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Producer id is required.");
+  SCHECK(!stream_id.empty(), InvalidArgument, "Stream id is required.");
 
   UpdateConsumerOnProducerSplitRequestPB req;
-  req.set_producer_id(producer_id);
+  req.set_producer_id(replication_group_id.ToString());
   req.set_stream_id(stream_id);
   req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
 
@@ -1631,25 +1627,19 @@ Status YBClient::UpdateConsumerOnProducerSplit(
 }
 
 Status YBClient::UpdateConsumerOnProducerMetadata(
-    const string& producer_id,
+    const cdc::ReplicationGroupId& replication_group_id,
     const CDCStreamId& stream_id,
     const tablet::ChangeMetadataRequestPB& meta_info,
     uint32_t colocation_id,
     uint32_t producer_schema_version,
     uint32_t consumer_schema_version,
-    master::UpdateConsumerOnProducerMetadataResponsePB *resp) {
-  if (producer_id.empty()) {
-    return STATUS(InvalidArgument, "Producer id is required.");
-  }
-  if (stream_id.empty()) {
-    return STATUS(InvalidArgument, "Stream id is required.");
-  }
-  if (resp == nullptr) {
-    return STATUS(InvalidArgument, "Response pointer is required.");
-  }
+    master::UpdateConsumerOnProducerMetadataResponsePB* resp) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "ReplicationGroup id is required.");
+  SCHECK(!stream_id.empty(), InvalidArgument, "Stream id is required.");
+  SCHECK(resp != nullptr, InvalidArgument, "Response pointer is required.");
 
   master::UpdateConsumerOnProducerMetadataRequestPB req;
-  req.set_producer_id(producer_id);
+  req.set_producer_id(replication_group_id.ToString());
   req.set_stream_id(stream_id);
   req.set_colocation_id(colocation_id);
   req.set_producer_schema_version(producer_schema_version);

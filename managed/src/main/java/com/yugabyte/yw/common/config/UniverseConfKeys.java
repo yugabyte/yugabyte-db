@@ -644,4 +644,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Postgres logs regex pattern in support bundle",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ysqlUpgradeTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.upgrade.ysql_upgrade_timeout_sec",
+          ScopeType.UNIVERSE,
+          "YSQL Upgrade Timeout in seconds",
+          "Controls the yb-client admin operation timeout when performing the runUpgradeYSQL "
+              + "subtask rpc calls.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

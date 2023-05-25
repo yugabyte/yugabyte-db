@@ -50,31 +50,33 @@ Run Java tests satisfying a particular regex:
 """
 
 import argparse
+import errno
 import getpass
 import glob
 import gzip
 import json
 import logging
 import os
+import platform
 import pwd
 import random
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
 import threading
 import time
 import traceback
-import errno
-import signal
+
 from datetime import datetime
+
+from yugabyte import file_util
 
 from collections import defaultdict
 
 from typing import List, Dict, Set, Tuple, Optional, Any, cast
-
-BUILD_SUPPORT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 # An upper bound on a single test's running time. In practice there are multiple other timeouts
 # that should be triggered earlier.
@@ -90,8 +92,8 @@ TIME_SEC_TO_START_RUNNING_TEST = 5 * 60
 DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 150
 DEFAULT_MAX_NUM_TEST_FAILURES = 100
 
-# Default for test artifact size limit, in bytes
-MAX_ARTIFACT_SIZE_BYTES = 100*1024*1024  # 10 MB
+# Default for test artifact size limit to copy back to the build host, in bytes.
+MAX_ARTIFACT_SIZE_BYTES = 100 * 1024 * 1024
 
 
 def wait_for_path_to_exist(target_path: str) -> None:
@@ -123,6 +125,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'python'))
 from yugabyte import yb_dist_tests  # noqa
 from yugabyte import command_util  # noqa
 from yugabyte.common_util import set_to_comma_sep_str, is_macos  # noqa
+from yugabyte import artifact_upload  # noqa
 
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
 # on Spark.
@@ -276,12 +279,42 @@ def set_global_conf_for_spark_jobs() -> None:
 
 
 def get_bash_path() -> str:
+    candidates = []
     if sys.platform == 'darwin':
-        return '/usr/local/bin/bash'
-    return '/bin/bash'
+        # Try to use Homebrew bash on macOS.
+        arch = platform.machine()
+        if arch == 'arm64':
+            candidates.append('/opt/homebrew/bin/bash')
+        else:
+            candidates.append('/usr/local/bin/bash')
+    candidates.append('/bin/bash')  # This exists on both macOS and RHEL.
+    candidates.append('/usr/bin/bash')
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    raise ValueError("Could not find Bash in any of the following locations: %s" % candidates)
 
 
-def copy_spark_stderr(test_descriptor_str: str, build_host: str) -> None:
+def copy_to_host(artifact_paths: List[str], dest_host: str) -> artifact_upload.FileTransferResult:
+
+    # A function to transform source paths to destination paths.
+    def path_transformer(artifact_path: str) -> str:
+        if is_macos():
+            return get_mac_shared_nfs(artifact_path)
+        else:
+            return yb_dist_tests.to_real_nfs_path(artifact_path)
+
+    return artifact_upload.copy_artifacts_to_host(
+        artifact_paths=artifact_paths,
+        dest_host=dest_host,
+        method=artifact_upload.UploadMethod.from_env(),
+        max_file_size=MAX_ARTIFACT_SIZE_BYTES,
+        path_transformer=path_transformer)
+
+
+def copy_spark_stderr(
+        test_descriptor_str: str,
+        build_host: str) -> artifact_upload.FileTransferResult:
     """
     If the initialization or the test fails, copy the Spark worker stderr log back to build host.
     :param test_descriptor_str: Test descriptor to figure out the correct name for the log file.
@@ -297,15 +330,19 @@ def copy_spark_stderr(test_descriptor_str: str, build_host: str) -> None:
         spark_stderr_dest = error_output_path.replace('__error.log', '__spark_stderr.log')
 
         error_log_dir_path = os.path.dirname(spark_stderr_dest)
-        if not os.path.isdir(error_log_dir_path):
-            subprocess.check_call(['mkdir', '-p', error_log_dir_path])
+        file_util.mkdir_p(error_log_dir_path)
 
         logging.info(f"Copying spark stderr {spark_stderr_src} to {spark_stderr_dest}")
         shutil.copyfile(spark_stderr_src, spark_stderr_dest)
-        copy_to_host([spark_stderr_dest], build_host)
+        return copy_to_host(
+            artifact_paths=[spark_stderr_dest],
+            dest_host=build_host)
 
     except Exception as e:
-        logging.exception("Error copying spark stderr log}")
+        logging.exception("Error copying spark stderr log")
+        result = artifact_upload.FileTransferResult()
+        result.exception_traceback = traceback.format_exc()
+        return result
 
 
 def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_tests.TestResult:
@@ -428,6 +465,9 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
 
     # End of the local run_test() function.
 
+    artifact_copy_result: Optional[artifact_upload.FileTransferResult] = None
+    spark_error_copy_result: Optional[artifact_upload.FileTransferResult] = None
+
     try:
         exit_code, elapsed_time_sec = run_test()
         error_output_path = test_descriptor.error_output_path
@@ -465,21 +505,22 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
 
             build_host = os.environ.get('YB_BUILD_HOST')
             assert build_host is not None
-            num_errors_copying_artifacts = copy_to_host(artifact_paths, build_host)
+            artifact_copy_result = copy_to_host(artifact_paths, build_host)
             if exit_code != 0:
-                copy_spark_stderr(test_descriptor_str, build_host)
+                spark_error_copy_result = copy_spark_stderr(test_descriptor_str, build_host)
 
             rel_artifact_paths = [
-                    os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)
-                    for artifact_path in artifact_paths
-            ]
+                os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)
+                for artifact_path in artifact_paths]
+
         return yb_dist_tests.TestResult(
                 exit_code=exit_code,
                 test_descriptor=test_descriptor,
                 elapsed_time_sec=elapsed_time_sec,
                 failed_without_output=failed_without_output,
                 artifact_paths=rel_artifact_paths,
-                num_errors_copying_artifacts=num_errors_copying_artifacts)
+                artifact_copy_result=artifact_copy_result,
+                spark_error_copy_result=spark_error_copy_result)
     finally:
         delete_if_exists_log_errors(test_tmp_dir)
         delete_if_exists_log_errors(test_started_running_flag_file)
@@ -722,62 +763,6 @@ def get_mac_shared_nfs(path: str) -> str:
     if yb_build_host is None:
         raise ValueError("The YB_BUILD_HOST environment variable is not set")
     return "/Volumes/net/v1/" + yb_build_host + relpath
-
-
-def copy_to_host(artifact_paths: List[str], build_host: str) -> int:
-    """
-    Provide compatibility to copy artifacts back to build host via NFS or SSH.
-    """
-    num_errors_copying_artifacts = 0
-
-    if is_macos() and socket.gethostname() == build_host:
-        logging.info("Files already local to build host. Skipping artifact copy.")
-
-    else:
-        ssh_mode = True if os.getenv('YB_SPARK_COPY_MODE') == 'SSH' else False
-        num_artifacts_copied = 0
-
-        artifact_size_limit = int(os.getenv('YB_SPARK_MAX_ARTIFACT_SIZE_BYTES',
-                                            MAX_ARTIFACT_SIZE_BYTES))
-
-        for artifact_path in artifact_paths:
-            if not os.path.exists(artifact_path):
-                logging.warning("Build artifact file does not exist: '%s'", artifact_path)
-                continue
-
-            artifact_size = os.path.getsize(artifact_path)
-            if artifact_size > artifact_size_limit:
-                logging.warning(
-                    "Build artifact file {} of size {} bytes exceeds max limit of {} bytes".format(
-                        artifact_path, os.path.getsize(artifact_path), artifact_size_limit)
-                )
-                continue
-
-            if ssh_mode:
-                dest_dir = os.path.dirname(artifact_path)
-                logging.info(f"Copying {artifact_path} to {build_host}:{dest_dir}")
-            else:
-                if is_macos():
-                    dest_path = get_mac_shared_nfs(artifact_path)
-                else:
-                    dest_path = yb_dist_tests.to_real_nfs_path(artifact_path)
-                dest_dir = os.path.dirname(dest_path)
-                logging.info(f"Copying {artifact_path} to {dest_dir}")
-            try:
-                if ssh_mode:
-                    subprocess.check_call(['ssh', build_host, 'mkdir', '-p', dest_dir])
-                    subprocess.check_call(['scp', artifact_path, f'{build_host}:{dest_dir}/'])
-                else:
-                    subprocess.check_call(['mkdir', '-p', dest_dir])
-                    subprocess.check_call(['cp', '-f', artifact_path, dest_path])
-            except subprocess.CalledProcessError as ex:
-                logging.error("Error copying %s to %s: %s", artifact_path, dest_dir, ex)
-                num_errors_copying_artifacts += 1
-
-            num_artifacts_copied += 1
-        logging.info("Number of build artifact files copied: %d", num_artifacts_copied)
-
-    return num_errors_copying_artifacts
 
 
 def get_jenkins_job_name() -> Optional[str]:
@@ -1370,6 +1355,8 @@ def main() -> None:
     # By this point, test_descriptors have been duplicated the necessary number of times, with
     # attempt indexes attached to each test descriptor.
     spark_succeeded = False
+
+    results: List[yb_dist_tests.TestResult] = []
     if test_descriptors:
         def monitor_fail_count(stop_event: threading.Event) -> None:
             while fail_count.value < g_max_num_test_failures and not stop_event.is_set():
@@ -1421,6 +1408,10 @@ def main() -> None:
     failures_by_language: Dict[str, int] = defaultdict(int)
     failed_test_desc_strs = []
     had_errors_copying_artifacts = False
+
+    result: yb_dist_tests.TestResult
+    total_artifact_upload_time_sec: float = 0.0
+    total_retry_wait_time_sec: float = 0.0
     for result in results:
         test_language = result.test_descriptor.language
         if result.exit_code != 0:
@@ -1430,10 +1421,17 @@ def main() -> None:
             logging.info("Test failed%s: %s", how_test_failed, result.test_descriptor)
             failures_by_language[test_language] += 1
             failed_test_desc_strs.append(result.test_descriptor.descriptor_str)
-        if result.num_errors_copying_artifacts > 0:
-            logging.info("Test had errors copying artifacts to build host: %s",
-                         result.test_descriptor)
+        result.log_artifact_upload_errors()
+        if result.artifact_copy_result:
+            total_artifact_upload_time_sec += result.artifact_copy_result.total_time_sec
+            total_retry_wait_time_sec += result.artifact_copy_result.total_wait_time_sec
+        if result.spark_error_copy_result:
+            total_artifact_upload_time_sec += result.spark_error_copy_result.total_time_sec
+            total_retry_wait_time_sec += result.spark_error_copy_result.total_wait_time_sec
+
         num_tests_by_language[test_language] += 1
+    logging.info("Total time spent uploading artifacts: %.2f sec (total retry wait time: %.2f sec)",
+                 total_artifact_upload_time_sec, total_retry_wait_time_sec)
 
     if had_errors_copying_artifacts and global_exit_code == 0:
         logging.info("Will return exit code 1 due to errors copying artifacts to build host")

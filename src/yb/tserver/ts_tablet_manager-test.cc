@@ -85,6 +85,7 @@ DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_bool(disable_auto_flags_management);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
+DECLARE_int32(auto_compact_memory_cleanup_interval_sec);
 DECLARE_bool(allow_encryption_at_rest);
 
 namespace yb {
@@ -110,7 +111,7 @@ static const int kDrivesNum = 4;
 class TsTabletManagerTest : public YBTest {
  public:
   TsTabletManagerTest()
-    : schema_({ ColumnSchema("key", UINT32) }, 1) {
+    : schema_({ ColumnSchema("key", UINT32, ColumnKind::RANGE_ASC_NULL_FIRST) }) {
   }
 
   string GetDrivePath(int index) {
@@ -147,6 +148,7 @@ class TsTabletManagerTest : public YBTest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) = 30 * 24;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_jitter_factor_percentage) = 33;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_memory_cleanup_interval_sec) = 3600;
 
     test_data_root_ = GetTestPath("TsTabletManagerTest-fsroot");
     CreateMiniTabletServer();
@@ -896,6 +898,55 @@ TEST_F(TsTabletManagerTest, CompactionsEvenlySpreadByJitter) {
     ASSERT_GE(it.second, expected_minus_five_percent);
     ASSERT_LE(it.second, expected_plus_five_percent);
   }
+}
+
+// Tests that the cleanup function works as expected.
+TEST_F(TsTabletManagerTest, FullCompactionManagerCleanup) {
+  const std::string kTableId = "my-table-id";
+  const std::string kTabletId1 = "my-tablet-id-1";
+  const std::string kTabletId2 = "my-tablet-id-2";
+  const std::string kTabletId3 = "my-tablet-id-3";
+  auto compaction_manager = tablet_manager_->full_compaction_manager();
+
+  // Create 3 new tablets.
+  std::shared_ptr<TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId1, schema_, &peer));
+  peer.reset();
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId2, schema_, &peer));
+  peer.reset();
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId3, schema_, &peer));
+  compaction_manager->ScheduleFullCompactions();
+  ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId1));
+  ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId2));
+  ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId3));
+
+  // Delete tablet 1 using TABLET_DATA_DELETED, so peer is removed completely from TsTabletManager.
+  boost::optional<int64_t> cas_config_opid_index_less_or_equal;
+  boost::optional<TabletServerErrorPB::Code> error_code;
+  ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
+      tablet::TABLET_DATA_DELETED,
+      tablet::ShouldAbortActiveTransactions::kFalse,
+      boost::optional<int64_t>{},
+      false /* hide_only */,
+      false /* keep_data */,
+      &error_code));
+
+  // Run ScheduleFullCompactions again. Cleanup will not be triggered in the stats window map
+  // because we only execute cleanup every hour, and the number of extra tablet_ids don't meet the
+  // threshold.
+  compaction_manager->ScheduleFullCompactions();
+  ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId1));
+  ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId2));
+  ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId3));
+
+  // Change the frequency with which we run the cleanup, and run ScheduleFullCompactions again.
+  // This time, my-tablet-id-1 should be removed from the stats window map.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_memory_cleanup_interval_sec) = 1;
+  SleepFor(MonoDelta::FromSeconds(2));
+  compaction_manager->ScheduleFullCompactions();
+  ASSERT_FALSE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId1));
+  ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId2));
+  ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId3));
 }
 
 } // namespace tserver

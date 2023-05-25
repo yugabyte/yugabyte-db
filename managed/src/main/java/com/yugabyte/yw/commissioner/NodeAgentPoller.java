@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.google.common.base.Preconditions.checkState;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -297,6 +299,8 @@ public class NodeAgentPoller {
     // This handles upgrade for the given node agent.
     private void upgradeNodeAgent(NodeAgent nodeAgent) {
       nodeAgent.refresh();
+      checkState(
+          nodeAgent.getState() != State.REGISTERING, "Invalid state " + nodeAgent.getState());
       if (nodeAgent.getState() == State.READY) {
         if (checkVersion(nodeAgent)) {
           log.info(

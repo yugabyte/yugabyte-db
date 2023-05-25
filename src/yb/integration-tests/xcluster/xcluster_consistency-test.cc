@@ -172,7 +172,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
         for (const auto& tablet_id : producer_tablet_ids_) {
           std::shared_ptr<cdc::CDCTabletMetrics> metrics =
               std::static_pointer_cast<cdc::CDCTabletMetrics>(
-                  cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id}));
+                  cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
 
           if (metrics && metrics->last_read_hybridtime->value()) {
             producer_tablet_read_time_[tablet_id] = metrics->last_read_hybridtime->value();
@@ -197,7 +197,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
         for (const auto& tablet_id : producer_tablet_ids_) {
           std::shared_ptr<cdc::CDCTabletMetrics> metrics =
               std::static_pointer_cast<cdc::CDCTabletMetrics>(
-                  cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id}));
+                  cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
 
           if (metrics &&
               metrics->last_read_hybridtime->value() > producer_tablet_read_time_[tablet_id]) {
@@ -413,7 +413,7 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
 
     // 4. Setup replication.
     return XClusterConsistencyTest::SetupUniverseReplication(
-        producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, new_tables,
+        producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId, new_tables,
         bootstrap_ids_, opts);
   }
 
