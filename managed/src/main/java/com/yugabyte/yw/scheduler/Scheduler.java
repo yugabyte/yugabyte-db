@@ -72,6 +72,7 @@ public class Scheduler {
     resetRunningStatus();
     // Update next expected task for active schedule which got expired due to platform downtime.
     updateExpiredNextScheduledTaskTime();
+    updateExpiredNextIncrementScheduledTaskTime();
     // start scheduler
     start();
   }
@@ -108,10 +109,31 @@ public class Scheduler {
                   && (schedule.getNextScheduleTaskTime() == null
                       || Util.isTimeExpired(schedule.getNextScheduleTaskTime()))) {
                 schedule.updateNextScheduleTaskTime(Schedule.nextExpectedTaskTime(null, schedule));
+                if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
+                  schedule.updateNextIncrementScheduleTaskTime(
+                      ScheduleUtil.nextExpectedIncrementTaskTime(schedule));
+                }
               }
             });
   }
 
+  /**
+   * Updates expired next expected task time of active increment schedules in case of platform
+   * restarts.
+   */
+  public void updateExpiredNextIncrementScheduledTaskTime() {
+    Schedule.getAll()
+        .forEach(
+            (schedule) -> {
+              if (schedule.getStatus().equals(Schedule.State.Active)
+                  && (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID()))
+                  && (schedule.getNextIncrementScheduleTaskTime() == null
+                      || Util.isTimeExpired(schedule.getNextIncrementScheduleTaskTime()))) {
+                schedule.updateNextIncrementScheduleTaskTime(
+                    ScheduleUtil.nextExpectedIncrementTaskTime(schedule));
+              }
+            });
+  }
   /** Iterates through all the schedule entries and runs the tasks that are due to be scheduled. */
   @VisibleForTesting
   void scheduleRunner() {
@@ -123,10 +145,14 @@ public class Scheduler {
 
       log.info("Running scheduler");
       for (Schedule schedule : Schedule.getAllActive()) {
+        boolean isIncrementalBackup =
+            ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID());
         long frequency = schedule.getFrequency();
         String cronExpression = schedule.getCronExpression();
         Date expectedScheduleTaskTime = schedule.getNextScheduleTaskTime();
+        Date expectedIncrementScheduleTaskTime = schedule.getNextIncrementScheduleTaskTime();
         boolean backlogStatus = schedule.isBacklogStatus();
+        boolean incrementBacklogStatus = schedule.isIncrementBacklogStatus();
         if (cronExpression == null && frequency == 0) {
           log.error(
               "Scheduled task does not have a recurrence specified {}", schedule.getScheduleUUID());
@@ -157,19 +183,33 @@ public class Scheduler {
             expectedScheduleTaskTime =
                 expectedScheduleTaskTime == null ? nextScheduleTaskTime : expectedScheduleTaskTime;
             schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
+            schedule.updateNextIncrementScheduleTaskTime(
+                ScheduleUtil.nextExpectedIncrementTaskTime(schedule));
           }
 
+          // Update expected increment scheduled time if it is expired or null.
+          if (isIncrementalBackup) {
+            if (expectedIncrementScheduleTaskTime == null
+                || Util.isTimeExpired(expectedIncrementScheduleTaskTime)) {
+              Date nextIncrementScheduleTaskTime =
+                  ScheduleUtil.nextExpectedIncrementTaskTime(schedule);
+              expectedIncrementScheduleTaskTime =
+                  expectedIncrementScheduleTaskTime == null
+                      ? nextIncrementScheduleTaskTime
+                      : expectedIncrementScheduleTaskTime;
+              schedule.updateNextIncrementScheduleTaskTime(nextIncrementScheduleTaskTime);
+            }
+          }
           boolean shouldRunTask = Util.isTimeExpired(expectedScheduleTaskTime);
           UUID baseBackupUUID = null;
-          if (!shouldRunTask
-              && ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
+          if (!shouldRunTask && isIncrementalBackup) {
             baseBackupUUID = fetchBaseBackupUUIDIfIncrementalBackupRequired(schedule);
             if (baseBackupUUID != null) {
               shouldRunTask = true;
             }
           }
 
-          if (shouldRunTask || backlogStatus) {
+          if (shouldRunTask || backlogStatus || incrementBacklogStatus) {
             switch (taskType) {
               case BackupUniverse:
                 this.runBackupTask(schedule, alreadyRunning);
