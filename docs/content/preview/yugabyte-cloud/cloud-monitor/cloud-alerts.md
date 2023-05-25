@@ -56,7 +56,7 @@ YugabyteDB monitors the health of your clusters based on [cluster alert](#cluste
 | :----- | :---- | :---- |
 | Healthy | No alerts<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) | <br/>Info |
 | Needs Attention | [Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe
-| Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts) | Severe |
+| Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[CMK unavailable](#fix-cmk-unavailable-alerts) | Severe |
 
 To see the alert conditions that caused the current health condition, click the cluster health icon.
 
