@@ -1688,7 +1688,7 @@ lsm_rocksdb_compaction_tasks:
   range: true
   filters:
     export_type: "tserver_export"
-  group_by: "state"
+  group_by: "state_type"
   panel_group: "RocksDB"
   layout:
     title: "Compaction tasks"
