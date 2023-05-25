@@ -556,3 +556,7 @@ POST /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                  c
 # Customer Licenses Upload API
 POST    /customers/:cUUID/licenses                                             com.yugabyte.yw.controllers.CustomerLicenseController.upload(cUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/licenses/:lUUID                                      com.yugabyte.yw.controllers.CustomerLicenseController.delete(cUUID: java.util.UUID, lUUID: java.util.UUID, request: Request)
+
+# LDAP Mapping API
+GET /customers/:cUUID/ldap_mappings                                            com.yugabyte.yw.controllers.LdapDnToYbaRoleController.list(cUUID: java.util.UUID)
+PUT /customers/:cUUID/ldap_mappings                                            com.yugabyte.yw.controllers.LdapDnToYbaRoleController.update(cUUID: java.util.UUID, request: Request) 

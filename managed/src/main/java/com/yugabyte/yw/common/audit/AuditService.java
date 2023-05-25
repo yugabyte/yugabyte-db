@@ -124,6 +124,10 @@ public class AuditService {
     createAuditEntry(request, null, null, null, params, null);
   }
 
+  public void createAuditEntry(Http.Request request, JsonNode params, Audit.ActionType action) {
+    createAuditEntry(request, null, null, action, params, null);
+  }
+
   public void createAuditEntry(
       Http.Request request,
       Audit.TargetType target,
