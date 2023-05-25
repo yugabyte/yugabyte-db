@@ -354,6 +354,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
     return client_future_;
   }
 
+  Result<client::YBClient*> client() const override;
+
   int64_t LeaderTerm() const override;
   consensus::LeaderStatus LeaderStatus(bool allow_stale = false) const;
   Result<HybridTime> LeaderSafeTime() const override;
@@ -557,6 +559,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   TabletSplitter* tablet_splitter_;
 
   std::shared_future<client::YBClient*> client_future_;
+  mutable std::atomic<client::YBClient*> client_cache_{nullptr};
 
   rpc::Messenger* messenger_;
 
