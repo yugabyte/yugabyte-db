@@ -2,6 +2,15 @@
 
 Below is the complete list of release notes for every version of ``pg_stat_monitor``.
 
+## 2.0.1
+
+### Bug Fixes
+
+[PG-613](https://jira.percona.com/browse/PG-613) - Fixed the issue with segmentation fault error when the query plan is enabled on large queries.
+
+[PG-624](https://jira.percona.com/browse/PG-624) - Fixed the server crash when running pgbench with pg_stat_monitor loaded by improving the handling of the dynamic number of buckets.
+
+
 ## 2.0.0
 
 ### Improvements
