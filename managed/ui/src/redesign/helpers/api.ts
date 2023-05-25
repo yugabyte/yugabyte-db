@@ -465,6 +465,11 @@ class ApiService {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/acknowledge`;
     return axios.post(requestURL, { uuids: [uuid] }).then((res) => res.data);
   };
+
+  importReleases = (payload: any) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
+    return axios.post(requestURL, payload).then((res) => res.data);
+  }
 }
 
 export const api = new ApiService();

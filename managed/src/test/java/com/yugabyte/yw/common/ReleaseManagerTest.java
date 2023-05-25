@@ -698,7 +698,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
     releaseManager.addGFlagsMetadataFiles("0.0.1", metadata);
-    verify(mockCommissioner, times(1)).submit(any(), any());
+    verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
   @Test

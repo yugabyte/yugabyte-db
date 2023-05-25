@@ -21,7 +21,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
@@ -969,20 +968,9 @@ public class ReleaseManager {
       List<String> missingGFlagsFilesList = gFlagsValidation.getMissingGFlagFileList(version);
       if (missingGFlagsFilesList.size() != 0) {
         String releasesPath = appConfig.getString(Util.YB_RELEASES_PATH);
-        if (releaseMetadata.hasLocalRelease()) {
-          try (InputStream inputStream = getTarGZipDBPackageInputStream(version, releaseMetadata)) {
-            gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
-                inputStream, version, missingGFlagsFilesList, releasesPath);
-          }
-          log.info("Successfully added gFlags metadata for version: {}", version);
-        } else {
-          AddGFlagMetadata.Params taskParams = new AddGFlagMetadata.Params();
-          taskParams.version = version;
-          taskParams.releaseMetadata = releaseMetadata;
-          taskParams.requiredGFlagsFileList = missingGFlagsFilesList;
-          taskParams.releasesPath = releasesPath;
-          commissioner.submit(TaskType.AddGFlagMetadata, taskParams);
-        }
+        AddGFlagMetadata.fetchGFlagFiles(
+            releaseMetadata, missingGFlagsFilesList, version, releasesPath, this, gFlagsValidation);
+        log.info("Successfully added gFlags metadata for version: {}", version);
       } else {
         log.warn("Skipping gFlags metadata addition as all files are already present");
       }
