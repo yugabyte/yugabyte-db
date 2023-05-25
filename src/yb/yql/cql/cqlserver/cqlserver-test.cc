@@ -660,7 +660,7 @@ TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
   };
 
   auto CheckValues = [&]() {
-    ASSERT_NOTNULL(counters.get());
+    ASSERT_ONLY_NOTNULL(counters.get());
     ASSERT_EQ(calls+1, counters->calls);
     ASSERT_EQ(query, counters->query);
     ASSERT_EQ(total_time+execute_time*1000, counters->total_time);
