@@ -51,6 +51,8 @@ If Docker is not installed on the host computer, you need to install a recent ve
 
 If access to the Docker repositories for your Linux distribution is not available on the host computer, you may have to manually transfer the necessary RPM or DEB packages whose locations are specified in [Installing Docker in Airgapped Environments](https://community.replicated.com/t/installing-docker-in-airgapped-environments/81).
 
+Refer to [Airgapped hosts](../../prerequisites/default/#airgapped-hosts) for more details on preparing your host machine.
+
 ## Install Replicated
 
 On a computer connected to the Internet, perform the following steps:
