@@ -54,6 +54,8 @@ import org.yb.perf_advisor.services.generation.PlatformPerfAdvisor;
 @Slf4j
 public class PerfAdvisorScheduler {
 
+  public static final String DATABASE_DRIVER_PARAM = "db.perf_advisor.driver";
+
   private static final String PERF_ADVISOR_RUN_IN_PROGRESS = "Perf advisor run in progress";
 
   private final PlatformScheduler platformScheduler;
@@ -86,6 +88,15 @@ public class PerfAdvisorScheduler {
   }
 
   public void start() {
+    if (!configFactory
+        .staticApplicationConf()
+        .getString(DATABASE_DRIVER_PARAM)
+        .equals("org.postgresql.Driver")) {
+      log.debug(
+          "Skipping perf advisor scheduler initialization for tests"
+              + " or other non-postgresql environment");
+      return;
+    }
     platformScheduler.schedule(
         getClass().getSimpleName(),
         Duration.ZERO,
