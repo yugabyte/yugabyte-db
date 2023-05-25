@@ -10041,6 +10041,14 @@
     "TableInfoResp" : {
       "description" : "Table information response",
       "properties" : {
+        "colocated" : {
+          "description" : "Flag, indicating colocated table",
+          "type" : "boolean"
+        },
+        "colocationParentId" : {
+          "description" : "Colocation parent id",
+          "type" : "string"
+        },
         "keySpace" : {
           "description" : "Keyspace",
           "type" : "string"
@@ -10069,6 +10077,11 @@
           "format" : "double",
           "readOnly" : true,
           "type" : "number"
+        },
+        "tableID" : {
+          "description" : "Table ID",
+          "readOnly" : true,
+          "type" : "string"
         },
         "tableName" : {
           "description" : "Table name",
@@ -20856,6 +20869,12 @@
           "default" : false,
           "in" : "query",
           "name" : "excludeColocatedTables",
+          "required" : false,
+          "type" : "boolean"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "includeColocatedParentTables",
           "required" : false,
           "type" : "boolean"
         } ],
