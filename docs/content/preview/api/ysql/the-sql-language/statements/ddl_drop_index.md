@@ -91,7 +91,7 @@ Drop the index:
 DROP INDEX i1;
 ```
 
-The 'DROP' now succeeds and the `\d t1` meta-command shows that the index no longer exists.
+Use the `\d t1` meta-command to verify that the index no longer exists.
 
 ## See also
 
