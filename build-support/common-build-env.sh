@@ -1592,6 +1592,13 @@ add_brew_bin_to_path() {
   fi
 }
 
+remove_linuxbrew_bin_from_path() {
+  if using_linuxbrew; then
+    ensure_linuxbrew_dir_is_set
+    remove_path_entry "$YB_LINUXBREW_DIR/bin"
+  fi
+}
+
 detect_num_cpus() {
   if [[ ! ${YB_NUM_CPUS:-} =~ ^[0-9]+$ ]]; then
     if is_linux; then
@@ -2263,6 +2270,7 @@ run_shellcheck() {
     build-support/jenkins/yb-jenkins-build.sh
     build-support/jenkins/yb-jenkins-test.sh
     build-support/run-test.sh
+    yugabyted-ui/build.sh
     yb_build.sh
   )
   pushd "$YB_SRC_ROOT"
