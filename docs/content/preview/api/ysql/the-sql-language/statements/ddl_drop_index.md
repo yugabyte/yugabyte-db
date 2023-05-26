@@ -66,7 +66,6 @@ Create a table with an index:
 
 ```plpgsql
 CREATE TABLE t1(id BIGSERIAL PRIMARY KEY, v TEXT);
-
 CREATE INDEX i1 ON t1(v);
 ```
 
