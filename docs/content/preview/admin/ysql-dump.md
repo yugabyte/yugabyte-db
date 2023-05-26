@@ -22,7 +22,7 @@ Dumps are output in plain-text, SQL script files. Script dumps are plain-text fi
 
 While running ysql_dump, you should examine the output for any warnings (printed on standard error), especially in light of the limitations listed below.
 
-The ysql_dump utility is derived from the PostgreSQL [`pg_dump`](https://www.postgresql.org/docs/10/app-pgdump.html) utility.
+The ysql_dump utility is derived from the PostgreSQL [pg_dump](https://www.postgresql.org/docs/10/app-pgdump.html) utility.
 
 ### Installation
 

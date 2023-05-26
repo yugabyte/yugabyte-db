@@ -85,7 +85,7 @@ Specify the superuser username to use when disabling triggers. This is relevant 
 
 #### -v, --verbose
 
-Specifies verbose mode. This causes ysql_dumpall to output start and stop times to the dump file, and progress messages to standard error. It will also enable verbose output in [`ysql_dump`](../ysql-dump/).
+Specifies verbose mode. This causes ysql_dumpall to output start and stop times to the dump file, and progress messages to standard error. It will also enable verbose output in [ysql_dump](../ysql-dump/).
 
 #### --version, -V
 
@@ -147,7 +147,7 @@ Do not dump subscriptions.
 
 #### --no-sync
 
-By default, ysql_dumpall waits for all files to be written safely to disk. This option causes ysql_dumpall to return without waiting, which is faster, but means that a subsequent operating system crash can leave the dump corrupt. Generally, this option is helpfull for testing but should not be used when dumping data from production installation.
+By default, ysql_dumpall waits for all files to be written safely to disk. This option causes ysql_dumpall to return without waiting, which is faster, but means that a subsequent operating system crash can leave the dump corrupt. Generally, this option is helpful for testing but should not be used when dumping data from production installation.
 
 #### --no-unlogged-table-data
 
@@ -213,7 +213,7 @@ Specifies a role name to be used to create the dump. This option causes ysql_dum
 
 ## Environment
 
-The following PostgreSQL environment variables, referenced in some ysql_dumpall and `ysql_dump` options, are used by YugabyteDB for PostgreSQL compatibility:
+The following PostgreSQL environment variables, referenced in some ysql_dumpall and ysql_dump options, are used by YugabyteDB for PostgreSQL compatibility:
 
 - `PGHOST`
 - `PGPORT`
@@ -225,9 +225,9 @@ This utility also uses the environment variables supported by `libpq`.
 
 ## Notes
 
-- Because ysql_dumpall calls [`ysql_dump`](../ysql-dump/) internally, some diagnostic messages will refer to `ysql_dump`.
+- Because ysql_dumpall calls [ysql_dump](../ysql-dump/) internally, some diagnostic messages will refer to ysql_dump.
 - The [`-c|--clean`](#c-clean) option can be helpful even when your intention is to restore the dump script into a fresh cluster. Use of `-c|--clean` authorizes the script to drop and recreate the built-in `yugabyte`, `postgres`, and `template1` databases, ensuring that those databases will retain the same properties (for instance, locale and encoding) that they had in the source cluster. Without the option, those databases will retain their existing database-level properties, as well as any pre-existing contents.
-- Once restored, it is wise to run `ANALYZE` on each database so the optimizer has helpful statistics. You can also run `vacuumdb -a -z` to analyze all databases.
+- Once restored, it is recommended to run `ANALYZE` on each database so the optimizer has helpful statistics. You can also run `vacuumdb -a -z` to analyze all databases.
 - The dump script should not be expected to run completely without errors. In particular, because the script will issue `CREATE ROLE` statements for every role existing in the source cluster, it is certain to get a `role already exists` error for the bootstrap superuser, unless the destination cluster was initialized with a different bootstrap superuser name. This error is harmless and should be ignored. Use of the [`-c|--clean`](#c-clean) option is likely to produce additional harmless error messages about non-existent objects, although you can minimize those by adding [`--if-exists`](#if-exists).
 
 ## Examples
