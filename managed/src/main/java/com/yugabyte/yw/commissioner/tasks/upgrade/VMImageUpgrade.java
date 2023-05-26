@@ -163,9 +163,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                   .setSubTaskGroupType(getTaskSubGroupType()));
 
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
-
-      Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
-
       node.machineImage = machineImage;
       if (StringUtils.isNotBlank(sshUserOverride)) {
         node.sshUserOverride = sshUserOverride;
