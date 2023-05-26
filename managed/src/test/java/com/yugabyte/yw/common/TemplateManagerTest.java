@@ -52,6 +52,8 @@ public class TemplateManagerTest extends FakeDBApplication {
 
   @Mock Config mockConfig;
 
+  @Mock NodeAgentClient nodeAgentClient;
+
   @InjectMocks TemplateManager templateManager;
 
   private AccessKey setupTestAccessKey() {
