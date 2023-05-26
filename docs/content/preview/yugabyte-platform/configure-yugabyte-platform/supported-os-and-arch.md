@@ -1,8 +1,9 @@
 ---
-title: Supported operating systems and architectures
-headerTitle: Supported operating systems and architectures
-linkTitle: OS support
+title: Supported operating systems and architectures for YugabyteDB nodes
+headerTitle: Node prerequisites
+linkTitle: Node prerequisites
 description: Operating systems and architectures supported by YugabyteDB Anywhere for deploying YugabyteDB
+headcontent: Prerequisites for YugabyteDB universe nodes
 menu:
   preview_yugabyte-platform:
     identifier: supported-os-and-arch
@@ -11,7 +12,7 @@ menu:
 type: docs
 ---
 
-Using YugabyteDB Anywhere (YBA), you can deploy YugabyteDB universes on the following architectures and operating systems.
+Using YugabyteDB Anywhere (YBA), you can deploy YugabyteDB universes on nodes with the following architectures and operating systems.
 
 ## Supported CPU architectures
 

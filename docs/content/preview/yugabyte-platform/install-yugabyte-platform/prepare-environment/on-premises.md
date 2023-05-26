@@ -57,8 +57,11 @@ type: docs
 
 </ul>
 
-To run a YugabyteDB on a private cloud, you need to prepare one computer to run YugabyteDB Anywhere. This computer is in turn used to install and manage the nodes included in the universe.
+To run a YugabyteDB on a private cloud, you need to prepare one computer to run YugabyteDB Anywhere. This computer is in turn used to install and manage the nodes onto which you will deploy YugabyteDB universes.
 
+For information on the requirements for the node running YugabyteDB Anywhere, refer to [Prerequisites](../../prerequisites/default/).
+
+<!--
 A YugabyteDB Anywhere node has the following requirements:
 
 * Hardware requirements:
@@ -77,3 +80,4 @@ A YugabyteDB Anywhere node has the following requirements:
   For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
 * Ability to connect from the YugabyteDB Anywhere host to all YugabyteDB data nodes.
+-->
