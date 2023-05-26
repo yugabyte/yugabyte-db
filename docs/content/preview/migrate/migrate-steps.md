@@ -230,8 +230,8 @@ Sequence migration consists of two steps: sequence creation and setting resume v
 
 Note that there are some special cases involving sequences such as the following:
 
-- In MySQL, auto-increment column is migrated as a normal column with a sequence attached to it.
-- In PostgreSQL, `SERIAL` datatype and `GENERATED AS IDENTITY` columns use sequence object internally, so resume values for them are also generated during data export.
+- In MySQL, auto-increment column is migrated to YugbayteDB as a normal column with a sequence attached to it.
+- For PostgreSQL, `SERIAL` datatype and `GENERATED AS IDENTITY` columns use sequence object internally, so resume values for them are also generated during data export.
 
 {{< /note >}}
 
@@ -330,7 +330,7 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
         --file-table-map <filename1:table1,filename2:table2> \
         --delimiter <DELIMITER> \
         –-has-header \
-        --null-string
+        --null-string "<NULL_STRING>"
 
 ```
 

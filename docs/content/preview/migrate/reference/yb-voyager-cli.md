@@ -334,6 +334,7 @@ The valid *arguments* for import data file are described in the following table:
 | [--disable-pb](#disable-pb) | Hide progress bars. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
 | [--file-opts](#file-opts) <string> | Comma-separated string options for CSV file format. |
+| [--null-string](#null-string) | String that represents null value in the data file. |
 | [--file-table-map](#file-table-map) <filename1:tablename1> | Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database. |
 | [--format](#format) <format> | One of `CSV` or `text` format of the data file. |
 | [--has-header](#has-header) | Applies only to CSV file type. |
@@ -355,7 +356,6 @@ The valid *arguments* for import data file are described in the following table:
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
-| [--null-string](#null-string) | String that represents null value in the data file. |
 
 <!-- To do : document the following arguments with description
 | --continue-on-error |
@@ -557,6 +557,12 @@ Note that `escape_char` and `quote_char` are only valid and required for CSV fil
 
 Example: `--file-opts "escape_char=\",quote_char=\""` or `--file-opts 'escape_char=",quote_char="'`
 
+### --null-string
+
+String that represents null value in the data file.
+
+Default: ""(empty string) for CSV, and '\N' for text.
+
 ### --format
 
 Specifies the format of your data file with CSV or text as the supported formats.
@@ -623,12 +629,6 @@ Default: false
 Use this argument to not display progress bars.
 
 Default: false
-
-### --null-string
-
-String that represents null value in the data file.
-
-Default: For CSV: ""(empty string), For text: '\N'
 
 ---
 

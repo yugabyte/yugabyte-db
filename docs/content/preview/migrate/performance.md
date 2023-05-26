@@ -60,7 +60,7 @@ Use one or more of the following techniques to improve import data performance:
 
 - **Configure the host machine's disk** with higher IOPS and better throughput to improve the performance of the splitter, which splits the large data file into smaller splits of 20000 rows. Splitter performance depends on the host machine's disk.
 
-**Test results**
+**Performance test results**
 
 Following are the performance test results to demonstrate the preceding techniques:
 
