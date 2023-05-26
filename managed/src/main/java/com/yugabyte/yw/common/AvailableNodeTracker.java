@@ -137,21 +137,6 @@ public class AvailableNodeTracker {
   private UniverseDefinitionTaskParams.Cluster getCurrentCluster() {
     return clusters.get(currentClusterId);
   }
-  /**
-   * Clear all temporary occupied (all ToBeAdded nodes). All permanently occupied are marked as free
-   * for current cluster.
-   */
-  public void markOccupiedAsFree() {
-    getNodesForCurrentCluster()
-        .forEach(
-            node -> {
-              if (isWillBeFreed(node)) {
-                addToTemporaryCounts(node.cloudInfo.instance_type, node.azUuid, 1);
-              } else {
-                addToTemporaryCounts(node.cloudInfo.instance_type, node.azUuid, -1);
-              }
-            });
-  }
 
   public int getOccupiedByZone(UUID zoneId) {
     return getOccupiedByZone(zoneId, UniverseTaskBase.ServerType.TSERVER);

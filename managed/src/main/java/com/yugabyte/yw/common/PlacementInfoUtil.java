@@ -9,6 +9,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -382,6 +383,8 @@ public class PlacementInfoUtil {
 
     Set<UUID> removedZones = new HashSet<>();
     int deltaNodesToApplyToPlacement = 0;
+    boolean recalculatePlacement = false;
+    int intentZoneCount = getTargetZoneCount(cluster, allowGeoPartitioning);
     if (cluster.placementInfo != null) {
       Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(taskParams.nodeDetailsSet);
       // If we have added empty zones - it is a case of adding zone at creation time.
@@ -416,7 +419,7 @@ public class PlacementInfoUtil {
       UUID placementProvider = cluster.placementInfo.cloudList.get(0).uuid;
       if ((!keepPlacement && !checkFaultToleranceCorrect(cluster, allowGeoPartitioning))
           || !Objects.equals(placementProvider, nodeProvider)) {
-        cluster.placementInfo = null;
+        recalculatePlacement = true;
       }
     }
 
@@ -447,21 +450,30 @@ public class PlacementInfoUtil {
     // Assure node count is not less than rf.
     cluster.userIntent.numNodes =
         Math.max(cluster.userIntent.replicationFactor, cluster.userIntent.numNodes);
-    AvailableNodeTracker availableNodeTracker =
-        new AvailableNodeTracker(cluster.uuid, taskParams.clusters, taskParams.nodeDetailsSet);
 
     // Modifying placementInfo if needed.
-    if (cluster.placementInfo == null) {
-      availableNodeTracker.markOccupiedAsFree();
-      cluster.placementInfo =
-          getPlacementInfo(
-              cluster.clusterType,
-              cluster.userIntent,
-              cluster.userIntent.replicationFactor,
-              defaultRegionUUID,
-              removedZones,
-              availableNodeTracker);
-      LOG.debug("Generated new placement {}", cluster.placementInfo);
+    if (cluster.placementInfo == null || recalculatePlacement) {
+      if (clusterOpType == ClusterOperationType.CREATE) {
+        List<NodeDetails> otherClustersNodes =
+            taskParams
+                .nodeDetailsSet
+                .stream()
+                .filter(n -> !Objects.equals(n.placementUuid, cluster.uuid))
+                .collect(Collectors.toList());
+        cluster.placementInfo =
+            getPlacementInfo(
+                cluster.clusterType,
+                cluster.userIntent,
+                cluster.userIntent.replicationFactor,
+                defaultRegionUUID,
+                removedZones,
+                new AvailableNodeTracker(cluster.uuid, taskParams.clusters, otherClustersNodes));
+        LOG.debug("Generated new placement {}", cluster.placementInfo);
+      } else {
+        modifyCurrentPlacement(
+            cluster, intentZoneCount, removedZones, taskParams.clusters, taskParams.nodeDetailsSet);
+        LOG.debug("Modified current placement {}", cluster.placementInfo);
+      }
     }
 
     // userAZSelected means user provided placement info -> so considering placement as a point of
@@ -474,6 +486,8 @@ public class PlacementInfoUtil {
     }
 
     if (deltaNodesToApplyToPlacement != 0) {
+      AvailableNodeTracker availableNodeTracker =
+          new AvailableNodeTracker(cluster.uuid, taskParams.clusters, taskParams.nodeDetailsSet);
       // For some az's we could have more occupied nodes than needed by placement.
       availableNodeTracker.markExcessiveAsFree(cluster.placementInfo);
       applyDeltaNodes(
@@ -496,6 +510,18 @@ public class PlacementInfoUtil {
     setPerAZRF(cluster.placementInfo, cluster.userIntent.replicationFactor, defaultRegionUUID);
     LOG.info("Final Placement info: {}.", cluster.placementInfo);
     finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
+  }
+
+  private static int getTargetZoneCount(Cluster cluster, boolean allowGeopartitioning) {
+    int rf = cluster.userIntent.replicationFactor;
+    if (cluster.placementInfo == null) {
+      return rf;
+    }
+    int result = (int) cluster.placementInfo.azStream().count();
+    if (result > rf && !allowGeopartitioning) {
+      return rf;
+    }
+    return Math.max(rf, result);
   }
 
   /**
@@ -1410,7 +1436,10 @@ public class PlacementInfoUtil {
   private static Set<UUID> removeUnusedPlacementAZs(PlacementInfo placementInfo) {
     Set<UUID> result = new HashSet<>();
     for (PlacementCloud cloud : placementInfo.cloudList) {
-      for (PlacementRegion region : cloud.regionList) {
+      Iterator<PlacementRegion> regionIterator = cloud.regionList.iterator();
+
+      while (regionIterator.hasNext()) {
+        PlacementRegion region = regionIterator.next();
         Iterator<PlacementAZ> azIter = region.azList.iterator();
         while (azIter.hasNext()) {
           PlacementAZ az = azIter.next();
@@ -1419,6 +1448,10 @@ public class PlacementInfoUtil {
             azIter.remove();
             result.add(az.uuid);
           }
+        }
+        if (region.azList.isEmpty()) {
+          LOG.info("Removing region without AZs {}", region.name);
+          regionIterator.remove();
         }
       }
     }
@@ -2067,6 +2100,136 @@ public class PlacementInfoUtil {
     return maxNodeIdx + 1;
   }
 
+  /**
+   * Modifying current placement according to new user intent. In case of shrink - removing zones
+   * with least masters and tservers. In case of expand - keeping all zones with permanent nodes
+   * (not ToBeAdded or ToBeRemoved) Placement could be kept unchanged if there is no room for
+   * improvement (every zone has at least one permanent node or number of permanent nodes is equal
+   * to numNodes).
+   *
+   * @param cluster
+   * @param neededZoneCount
+   * @param removedZones
+   * @param allClusters
+   * @param nodeDetailsSet
+   */
+  private static void modifyCurrentPlacement(
+      Cluster cluster,
+      int neededZoneCount,
+      Set<UUID> removedZones,
+      List<Cluster> allClusters,
+      Set<NodeDetails> nodeDetailsSet) {
+    AvailableNodeTracker availableNodeTracker =
+        new AvailableNodeTracker(cluster.uuid, allClusters, nodeDetailsSet);
+    Map<UUID, PlacementAZ> placementAZMap = getPlacementAZMap(cluster.placementInfo);
+    Map<UUID, Integer> tserverCount = new HashMap<>();
+    Map<UUID, Integer> masterCount = new HashMap<>();
+    AtomicInteger liveTserverCount = new AtomicInteger();
+    Set<UUID> currentLiveZones = new HashSet<>();
+    Set<NodeDetails> currentLiveNodes =
+        nodeDetailsSet
+            .stream()
+            .filter(n -> Objects.equals(n.placementUuid, cluster.uuid))
+            .filter(n -> placementAZMap.containsKey(n.getAzUuid()))
+            .filter(n -> n.state != NodeState.ToBeRemoved && !removedZones.contains(n.azUuid))
+            .filter(n -> n.state != NodeState.ToBeAdded)
+            .peek(
+                n -> {
+                  if (n.isMaster) {
+                    masterCount.merge(n.getAzUuid(), 1, Integer::sum);
+                  }
+                  if (n.isTserver) {
+                    liveTserverCount.incrementAndGet();
+                    tserverCount.merge(n.getAzUuid(), 1, Integer::sum);
+                  }
+                  currentLiveZones.add(n.getAzUuid());
+                })
+            .collect(Collectors.toSet());
+    if (neededZoneCount >= placementAZMap.size()) {
+      // Expand.
+      if (liveTserverCount.get() >= cluster.userIntent.numNodes) {
+        LOG.debug(
+            "Cannot modify current placement, live nodes {} numNodes {}",
+            liveTserverCount.get(),
+            cluster.userIntent.numNodes);
+        return;
+      }
+      if (currentLiveZones.size() == neededZoneCount) {
+        LOG.debug(
+            "Cannot modify current placement, already have {} zones", currentLiveZones.size());
+        return;
+      }
+      Set<NodeDetails> nodes =
+          nodeDetailsSet
+              .stream()
+              .filter(
+                  n ->
+                      !Objects.equals(n.placementUuid, cluster.uuid)
+                          || currentLiveNodes.contains(n))
+              .collect(Collectors.toSet());
+      availableNodeTracker = new AvailableNodeTracker(cluster.uuid, allClusters, nodes);
+      Map<UUID, List<UUID>> availableAZs =
+          getAvailableAZsByRegion(cluster.userIntent, removedZones, availableNodeTracker);
+      Set<UUID> currentRegionUUIDs = getAllRegionUUIDs(currentLiveNodes);
+      // Order doesn't really matter for current nodes.
+      LinkedHashSet<UUID> allAZsSet =
+          currentLiveNodes
+              .stream()
+              .map(az -> az.getAzUuid())
+              .collect(Collectors.toCollection(LinkedHashSet::new));
+      // Adding zones from other regions.
+      appendAZsForRegions(allAZsSet, currentRegionUUIDs, availableAZs);
+      // Adding zones from current regions.
+      appendAZsForRegions(allAZsSet, Collections.emptySet(), availableAZs);
+      // Setting node count to minimal (only live nodes).
+      placementAZMap
+          .values()
+          .forEach(az -> az.numNodesInAZ = tserverCount.getOrDefault(az.uuid, 0));
+      List<UUID> targetAZs =
+          new ArrayList<>(allAZsSet).subList(0, Math.min(neededZoneCount, allAZsSet.size()));
+      int availableCnt = cluster.userIntent.numNodes - liveTserverCount.get();
+      for (UUID zoneId : targetAZs) {
+        if (availableCnt == 0) {
+          break;
+        }
+        PlacementAZ placementAZ = placementAZMap.get(zoneId);
+        if (placementAZ != null) {
+          if (placementAZ.numNodesInAZ == 0) {
+            placementAZ.numNodesInAZ = 1;
+            availableCnt--;
+          }
+        } else {
+          addPlacementZone(zoneId, cluster.placementInfo);
+          availableNodeTracker.acquire(zoneId);
+          availableCnt--;
+        }
+      }
+
+    } else {
+      // Shrink.
+      cluster
+          .placementInfo
+          .azStream()
+          .sorted(
+              Comparator.<PlacementAZ>comparingInt(p -> masterCount.getOrDefault(p.uuid, 0))
+                  .thenComparingInt(p -> tserverCount.getOrDefault(p.uuid, 0))
+                  .thenComparing(p -> p.isAffinitized))
+          .limit(placementAZMap.size() - neededZoneCount)
+          .forEach(p -> p.numNodesInAZ = 0);
+    }
+    removeUnusedZonesAndRegions(cluster.placementInfo, cluster.userIntent.regionList);
+    availableNodeTracker.markExcessiveAsFree(cluster.placementInfo);
+    int countByPlacement = getNodeCountInPlacement(cluster.placementInfo);
+    if (countByPlacement != cluster.userIntent.numNodes) {
+      applyDeltaNodes(
+          cluster.userIntent.numNodes - countByPlacement,
+          cluster.placementInfo,
+          cluster.userIntent,
+          availableNodeTracker,
+          false);
+    }
+  }
+
   public static PlacementInfo getPlacementInfo(
       ClusterType clusterType,
       UserIntent userIntent,
@@ -2113,55 +2276,17 @@ public class PlacementInfoUtil {
           "Preferred region " + userIntent.preferredRegion + " not in user region list.");
     }
 
-    // We would group the zones by region and the corresponding nodes, and use
-    // this map for subsequent calls, instead of recomputing the list every time.
-    Map<UUID, List<AvailabilityZone>> azByRegionMap = new HashMap<>();
+    Map<UUID, List<UUID>> azByRegionMap =
+        getAvailableAZsByRegion(userIntent, skipZones, availableNodeTracker);
 
-    for (UUID regionUuid : userIntent.regionList) {
-      List<AvailabilityZone> zones =
-          AvailabilityZone.getAZsForRegion(regionUuid)
-              .stream()
-              .filter(
-                  az -> {
-                    boolean res = availableNodeTracker.getAvailableForZone(az.uuid) > 0;
-                    if (!res) {
-                      LOG.debug(
-                          "Skipping {} as no available nodes", AvailabilityZone.get(az.uuid).name);
-                    }
-                    return res;
-                  })
-              .filter(az -> !skipZones.contains(az.uuid))
-              .collect(Collectors.toList());
-      if (!zones.isEmpty()) {
-        // TODO: sort zones by instance type
-        azByRegionMap.put(regionUuid, zones);
-      }
-    }
-
-    int azsAdded = 0;
-    int totalNumAzsInRegions =
-        azByRegionMap.values().stream().map(List::size).reduce(0, Integer::sum);
-
-    List<AvailabilityZone> allAzsInRegions = new ArrayList<>();
+    LinkedHashSet<UUID> allAzsInRegions = new LinkedHashSet<>();
+    Set<UUID> defaultRegions = Collections.emptySet();
     if (defaultRegionUUID != null) {
       allAzsInRegions.addAll(
           azByRegionMap.getOrDefault(defaultRegionUUID, Collections.emptyList()));
-      azsAdded = allAzsInRegions.size();
+      defaultRegions = Collections.singleton(defaultRegionUUID);
     }
-
-    while (azsAdded < totalNumAzsInRegions) {
-      for (UUID regionUUID : azByRegionMap.keySet()) {
-        if (regionUUID.equals(defaultRegionUUID)) {
-          continue;
-        }
-        List<AvailabilityZone> regionAzs = azByRegionMap.get(regionUUID);
-        if (regionAzs.size() > 0) {
-          allAzsInRegions.add(regionAzs.get(0));
-          regionAzs.remove(0);
-          azsAdded += 1;
-        }
-      }
-    }
+    appendAZsForRegions(allAzsInRegions, defaultRegions, azByRegionMap);
 
     if (allAzsInRegions.isEmpty()) {
       throw new PlatformServiceException(
@@ -2177,9 +2302,9 @@ public class PlacementInfoUtil {
 
     // Create the placement info object.
     PlacementInfo placementInfo = new PlacementInfo();
-
-    for (int i = 0; i < Math.min(numZones, allAzsInRegions.size()); i++) {
-      UUID zoneId = allAzsInRegions.get(i).uuid;
+    List<UUID> allAzsList = new ArrayList<>(allAzsInRegions);
+    for (int i = 0; i < Math.min(numZones, allAzsList.size()); i++) {
+      UUID zoneId = allAzsList.get(i);
       addPlacementZone(zoneId, placementInfo);
       availableNodeTracker.acquire(zoneId);
     }
@@ -2190,6 +2315,64 @@ public class PlacementInfoUtil {
     }
 
     return placementInfo;
+  }
+
+  private static void appendAZsForRegions(
+      LinkedHashSet<UUID> azList, Set<UUID> excludedRegions, Map<UUID, List<UUID>> azByRegionMap) {
+    ArrayListMultimap<UUID, UUID> multimap = ArrayListMultimap.create();
+    azByRegionMap.forEach(
+        (regUUID, azs) -> {
+          if (!excludedRegions.contains(regUUID)) {
+            multimap.putAll(regUUID, azs);
+          }
+          ;
+        });
+    while (!multimap.isEmpty()) {
+      for (UUID regionUUID : new ArrayList<>(multimap.keySet())) {
+        List<UUID> regionAzs = multimap.get(regionUUID);
+        azList.add(regionAzs.remove(0));
+      }
+    }
+  }
+
+  private static Map<UUID, List<UUID>> getAvailableAZsByRegion(
+      UserIntent userIntent,
+      Collection<UUID> skipZones,
+      AvailableNodeTracker availableNodeTracker) {
+
+    // We would group the zones by region and the corresponding nodes, and use
+    // this map for subsequent calls, instead of recomputing the list every time.
+    Map<UUID, List<UUID>> azByRegionMap = new HashMap<>();
+    Map<UUID, Integer> counts = new HashMap<>();
+    for (UUID regionUuid : userIntent.regionList) {
+      List<UUID> zones =
+          AvailabilityZone.getAZsForRegion(regionUuid)
+              .stream()
+              .peek(
+                  az -> {
+                    counts.put(az.uuid, availableNodeTracker.getAvailableForZone(az.uuid));
+                  })
+              .filter(
+                  az -> {
+                    boolean res = counts.get(az.uuid) > 0;
+                    if (!res) {
+                      LOG.debug("Skipping {} as no available nodes", az.name);
+                    }
+                    return res;
+                  })
+              .filter(az -> !skipZones.contains(az.uuid))
+              .sorted(
+                  Comparator.<AvailabilityZone>comparingInt(
+                          az -> Integer.MAX_VALUE - counts.get(az.uuid))
+                      .thenComparing(az -> az.name))
+              .map(az -> az.uuid)
+              .collect(Collectors.toList());
+      if (!zones.isEmpty()) {
+        // TODO: sort zones by instance type
+        azByRegionMap.put(regionUuid, zones);
+      }
+    }
+    return azByRegionMap;
   }
 
   public static long getNumMasters(Set<NodeDetails> nodes) {
