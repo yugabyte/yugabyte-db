@@ -10,6 +10,8 @@ menu:
     parent: docs
     weight: 2950
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The YugabyteDB documentation style is based on the [Microsoft style guide](https://docs.microsoft.com/en-us/style-guide/welcome/), with some input from [Apple's style guide](https://help.apple.com/applestyleguide/#/). We aim to automate as much as possible through Vale.
@@ -56,7 +58,54 @@ ysqlsh> CREATE TABLE $$__banking__$$;
 
 #### YSQL and YCQL code blocks
 
-Tag YSQL code blocks as `sql`, and YCQL code blocks as `cql`. The source highlighting differs slightly between the two.
+Tag YSQL code blocks as `plpgsql`, and YCQL code blocks as `cql`. The source highlighting differs slightly between the two.
+
+### Tables
+
+Markdown supports [tables](https://www.markdownguide.org/extended-syntax/#tables). By design the table rows have to be in one line. This makes adding bullets and multi-line code blocks impossible in table cells. For this, use the shortcode `table`. For example,
+
+```md
+{{</*table*/>}}
+| col-1 | col-2 |
+| ----- | ----- |
+<!-- row with bullets and code block -->
+|
+- 1
+- 2
+- 3|
+```output
+ k | v
+---+---
+ 1 | 2
+(1 row)
+```|
+<!-- row with tip block -->
+| {{</*warning title="Beware" */>}} start and end rows with the pipe symbol {{</*/warning*/>}} | 
+{{</*tip title="Awesome tip" */>}} Use 3 ticks for code blocks with pipe symbols {{</*/tip*/>}} |
+{{</*/table*/>}}
+```
+
+The above markdown should render as,
+
+{{<table>}}
+| col-1 | col-2 |
+| ----- | ----- |
+<!-- row with bullets and code block -->
+|
+- 1
+- 2
+- 3|
+```output
+ k | v
+---+---
+ 1 | 2
+(1 row)
+```|
+<!-- row with tip block -->
+| {{< warning title="Beware" >}} start and end rows with the pipe symbol {{</warning>}} | 
+{{< tip title="Awesome tip" >}} Use 3 ticks for code blocks with pipe symbols {{</tip>}} |
+{{</table>}}
+
 
 ### Admonitions
 
