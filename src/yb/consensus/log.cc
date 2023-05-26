@@ -1009,7 +1009,7 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
 
   active_segment_sequence_number_ = recover_segment->header().sequence_number();
   RETURN_NOT_OK(new_segment->ReuseHeader(recover_segment->header(),
-                                         recover_segment->first_entry_offset(), file_size));
+                                         recover_segment->first_entry_offset()));
 
   {
     std::lock_guard<std::mutex> lock(active_segment_mutex_);

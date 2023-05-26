@@ -412,5 +412,42 @@ TEST_F_EX(EncryptionTest, EncryptWALDataAfterWALReuseWithRotateKey,
   TestEncryptWALDataAfterWALReuse(true);
 }
 
+class WALRolloverTest : public EncryptionTest {
+ public:
+  size_t num_tablet_servers() override {
+    return 1;
+  }
+
+  size_t num_masters() override {
+    return 1;
+  }
+
+  int num_tablets() override {
+    return 1;
+  }
+
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->extra_tserver_flags.push_back("--initial_log_segment_size_bytes=262144");
+    opts->extra_tserver_flags.push_back("--save_index_into_wal_segments=true");
+    opts->extra_master_flags.push_back("--replication_factor=1");
+  }
+};
+
+TEST_F_EX(EncryptionTest, WALRolloverAndRestart, WALRolloverTest) {
+  auto* tablet_server = external_mini_cluster()->tablet_server(0);
+  WriteWorkload(0, kNumKeys);
+  auto current_segment_size =
+      ASSERT_RESULT(external_mini_cluster()->GetSegmentCounts(tablet_server));
+  // Verify WAL get rollovered.
+  ASSERT_GT(current_segment_size, 1);
+  tablet_server->Shutdown();
+  // After restart, bootstrap will read all entries to make sure no corruption.
+  ASSERT_OK(tablet_server->Restart());
+  ASSERT_OK(external_mini_cluster()->WaitForTabletsRunning(
+      tablet_server, MonoDelta::FromSeconds(30)));
+  ClusterVerifier cv(external_mini_cluster());
+  ASSERT_NO_FATALS(cv.CheckCluster());
+}
+
 } // namespace integration_tests
 } // namespace yb
