@@ -4,8 +4,8 @@ package com.yugabyte.yw.commissioner;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.commissioner.tasks.InstallYbcSoftwareOnK8s;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -15,13 +15,15 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YbcClientService;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -52,6 +54,7 @@ public class YbcUpgrade {
   private final RuntimeConfGetter confGetter;
   private final YbcClientService ybcClientService;
   private final YbcManager ybcManager;
+  private final YbcBackupUtil ybcBackupUtil;
   private final NodeUniverseManager nodeUniverseManager;
   private final KubernetesManagerFactory kubernetesManagerFactory;
   private final ReleaseManager releaseManager;
@@ -74,7 +77,9 @@ public class YbcUpgrade {
   private final String PLAT_YBC_PACKAGE_URL;
 
   private final CopyOnWriteArraySet<UUID> ybcUpgradeUniverseSet = new CopyOnWriteArraySet<>();
+  private final CopyOnWriteArraySet<UUID> ybcUpgradeUniverseSetOnK8s = new CopyOnWriteArraySet<>();
   private final Set<UUID> failedYBCUpgradeUniverseSet = new HashSet<>();
+  private final Set<UUID> failedYBCUpgradeUniverseSetOnK8s = new HashSet<>();
   private final Map<UUID, Set<String>> unreachableNodes = new ConcurrentHashMap<>();
   private final Map<UUID, Set<NodeDetails>> nodesToBeUpgradedWithLocalPackage = new HashMap<>();
 
@@ -84,6 +89,7 @@ public class YbcUpgrade {
       RuntimeConfGetter confGetter,
       YbcClientService ybcClientService,
       YbcManager ybcManager,
+      YbcBackupUtil ybcBackupUtil,
       NodeUniverseManager nodeUniverseManager,
       KubernetesManagerFactory kubernetesManagerFactory,
       ReleaseManager releaseManager,
@@ -92,6 +98,7 @@ public class YbcUpgrade {
     this.confGetter = confGetter;
     this.ybcClientService = ybcClientService;
     this.ybcManager = ybcManager;
+    this.ybcBackupUtil = ybcBackupUtil;
     this.nodeUniverseManager = nodeUniverseManager;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.releaseManager = releaseManager;
@@ -123,13 +130,25 @@ public class YbcUpgrade {
     unreachableNodes.put(universeUUID, new HashSet<>());
   }
 
+  public synchronized void setYBCUpgradeProcessOnK8s(UUID universeUUID) {
+    ybcUpgradeUniverseSetOnK8s.add(universeUUID);
+  }
+
   public synchronized void removeYBCUpgradeProcess(UUID universeUUID) {
     ybcUpgradeUniverseSet.remove(universeUUID);
     nodesToBeUpgradedWithLocalPackage.remove(universeUUID);
   }
 
+  public synchronized void removeYBCUpgradeProcessOnK8s(UUID universeUUID) {
+    ybcUpgradeUniverseSetOnK8s.remove(universeUUID);
+  }
+
   public synchronized boolean checkYBCUpgradeProcessExists(UUID universeUUID) {
     return ybcUpgradeUniverseSet.contains(universeUUID);
+  }
+
+  public synchronized boolean checkYBCUpgradeProcessExistsOnK8s(UUID universeUUID) {
+    return ybcUpgradeUniverseSetOnK8s.contains(universeUUID);
   }
 
   void scheduleRunner() {
@@ -141,25 +160,30 @@ public class YbcUpgrade {
       String ybcVersion = ybcManager.getStableYbcVersion();
       for (Customer customer : Customer.getAll()) {
         for (Universe universe : Universe.getAllWithoutResources(customer)) {
-          if (!canUpgradeYBC(universe, ybcVersion)) {
-            continue;
-          }
-          int numNodesInUniverse = universe.getNodes().size();
           if (universe
               .getUniverseDetails()
               .getPrimaryCluster()
               .userIntent
               .providerType
               .equals(Common.CloudType.kubernetes)) {
+            if (!canUpgradeYBCOnK8s(universe, ybcVersion)) {
+              continue;
+            }
             k8sUniverseList.add(universe.getUniverseUUID());
-          } else if (targetUniverseList.size() > YBC_UNIVERSE_UPGRADE_BATCH_SIZE) {
-            break;
-          } else if (targetUniverseList.size() > 0
-              && nodeCount + numNodesInUniverse > YBC_NODE_UPGRADE_BATCH_SIZE) {
-            break;
           } else {
-            nodeCount += numNodesInUniverse;
-            targetUniverseList.add(universe.getUniverseUUID());
+            if (!canUpgradeYBC(universe, ybcVersion)) {
+              continue;
+            }
+            int numNodesInUniverse = universe.getNodes().size();
+            if (targetUniverseList.size() > YBC_UNIVERSE_UPGRADE_BATCH_SIZE) {
+              break;
+            } else if (targetUniverseList.size() > 0
+                && nodeCount + numNodesInUniverse > YBC_NODE_UPGRADE_BATCH_SIZE) {
+              break;
+            } else {
+              nodeCount += numNodesInUniverse;
+              targetUniverseList.add(universe.getUniverseUUID());
+            }
           }
         }
       }
@@ -168,18 +192,13 @@ public class YbcUpgrade {
         failedYBCUpgradeUniverseSet.clear();
       }
 
-      k8sUniverseList.forEach(
-          (universeUUID) -> {
-            try {
-              this.upgradeYbcOnK8s(universeUUID, ybcVersion, false);
-            } catch (Exception e) {
-              log.error(
-                  "YBC Upgrade request failed for universe {} with error: {}", universeUUID, e);
-            }
-          });
+      if (k8sUniverseList.isEmpty()) {
+        failedYBCUpgradeUniverseSetOnK8s.clear();
+      }
 
       targetUniverseList.forEach(
           (universeUUID) -> {
+            Universe universe = Universe.getOrBadRequest(universeUUID);
             try {
               this.upgradeYBC(universeUUID, ybcVersion, false);
             } catch (Exception e) {
@@ -187,6 +206,16 @@ public class YbcUpgrade {
                   "YBC Upgrade request failed for universe {} with error: {}", universeUUID, e);
               failedYBCUpgradeUniverseSet.add(universeUUID);
               removeYBCUpgradeProcess(universeUUID);
+            }
+          });
+
+      k8sUniverseList.forEach(
+          (universeUUID) -> {
+            try {
+              this.upgradeYbcOnK8s(universeUUID, ybcVersion, false);
+            } catch (Exception ex) {
+              log.error(
+                  "YBC Upgrade request failed for universe {} with error: {}", universeUUID, ex);
             }
           });
 
@@ -222,6 +251,26 @@ public class YbcUpgrade {
             }
           });
 
+      if (ybcUpgradeUniverseSetOnK8s.size() > 0) {
+        Iterator<UUID> iter = k8sUniverseList.iterator();
+        while (iter.hasNext()) {
+          UUID universeUUID = iter.next();
+          Optional<Universe> optional = Universe.maybeGet(universeUUID);
+          if (!optional.isPresent()) {
+            iter.remove();
+            continue;
+          } else if (checkYBCUpgradeProcessExistsOnK8s(universeUUID)
+              && !failedYBCUpgradeUniverseSetOnK8s.contains(universeUUID)) {
+            waitForYbcServersOnK8s(universeUUID, ybcVersion);
+          }
+
+          if (checkYBCUpgradeProcessExistsOnK8s(universeUUID)) {
+            removeYBCUpgradeProcessOnK8s(universeUUID);
+            failedYBCUpgradeUniverseSetOnK8s.add(universeUUID);
+          }
+        }
+      }
+
     } catch (Exception e) {
       log.error("Error occurred while running YBC upgrade scheduler", e);
     }
@@ -233,6 +282,14 @@ public class YbcUpgrade {
         && !universe.getUniverseDetails().updateInProgress
         && !universe.getUniverseDetails().getYbcSoftwareVersion().equals(ybcVersion)
         && !failedYBCUpgradeUniverseSet.contains(universe.getUniverseUUID());
+  }
+
+  public boolean canUpgradeYBCOnK8s(Universe universe, String ybcVersion) {
+    return universe.isYbcEnabled()
+        && !universe.getUniverseDetails().universePaused
+        && !universe.getUniverseDetails().updateInProgress
+        && !universe.getUniverseDetails().getYbcSoftwareVersion().equals(ybcVersion)
+        && !failedYBCUpgradeUniverseSetOnK8s.contains(universe.getUniverseUUID());
   }
 
   public synchronized void upgradeYBC(UUID universeUUID, String ybcVersion, boolean force)
@@ -275,17 +332,59 @@ public class YbcUpgrade {
       log.debug("Skipping scheduled ybc upgrade on universe {} as it was disabled.", universeUUID);
       return;
     }
-    if (checkYBCUpgradeProcessExists(universeUUID)) {
+
+    if (checkYBCUpgradeProcessExistsOnK8s(universeUUID)) {
       log.warn("YBC upgrade process already exists for universe {}", universeUUID);
       return;
     } else {
-      setYBCUpgradeProcess(universeUUID);
+      setYBCUpgradeProcessOnK8s(universeUUID);
     }
-    InstallYbcSoftwareOnK8s.Params taskParams = new InstallYbcSoftwareOnK8s.Params();
-    taskParams.setUniverseUUID(universeUUID);
-    taskParams.setYbcSoftwareVersion(ybcVersion);
-    taskParams.lockUniverse = true;
-    commissioner.submit(TaskType.InstallYbcSoftwareOnK8s, taskParams);
+
+    try {
+      Set<NodeDetails> primaryTservers =
+          new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
+      List<String> commandArgs =
+          Arrays.asList("/bin/bash", "-c", "/home/yugabyte/tools/k8s_ybc_parent.py stop");
+      PlacementInfo primaryPI = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+      Map<String, Map<String, String>> k8sConfigMap =
+          KubernetesUtil.getKubernetesConfigPerPodName(primaryPI, primaryTservers);
+      for (NodeDetails primaryTserver : primaryTservers) {
+        Map<String, String> config = k8sConfigMap.get(primaryTserver.nodeName);
+        ybcBackupUtil.copyYbcPackagesOnK8s(config, universe, primaryTserver, ybcVersion);
+        ybcBackupUtil.performActionOnYbcK8sNode(config, primaryTserver, commandArgs);
+      }
+
+      if (universe.getUniverseDetails().getReadOnlyClusters().size() != 0) {
+        Cluster readOnlyCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
+        Set<NodeDetails> readOnlyTservers =
+            new HashSet<NodeDetails>(universe.getNodesInCluster(readOnlyCluster.uuid));
+        PlacementInfo readOnlyPI = readOnlyCluster.placementInfo;
+        k8sConfigMap = KubernetesUtil.getKubernetesConfigPerPodName(readOnlyPI, readOnlyTservers);
+        for (NodeDetails readOnlyTserver : readOnlyTservers) {
+          Map<String, String> config = k8sConfigMap.get(readOnlyTserver.nodeName);
+          ybcBackupUtil.copyYbcPackagesOnK8s(config, universe, readOnlyTserver, ybcVersion);
+          ybcBackupUtil.performActionOnYbcK8sNode(config, readOnlyTserver, commandArgs);
+        }
+      }
+      failedYBCUpgradeUniverseSetOnK8s.remove(universeUUID);
+    } catch (Exception ex) {
+      log.error("YBC Upgrade request failed for universe {} with error: {}", universeUUID, ex);
+      failedYBCUpgradeUniverseSetOnK8s.add(universeUUID);
+    }
+  }
+
+  public synchronized boolean waitForYbcServersOnK8s(UUID universeUUID, String ybcVersion) {
+    try {
+      Universe universe = Universe.getOrBadRequest(universeUUID);
+      ybcBackupUtil.waitForYbc(universe, new HashSet<NodeDetails>(universe.getTServers()));
+      updateUniverseYBCVersion(universeUUID, ybcVersion);
+      removeYBCUpgradeProcessOnK8s(universeUUID);
+      failedYBCUpgradeUniverseSet.remove(universeUUID);
+    } catch (Exception ex) {
+      log.error("Ybc server start failed on universe: {}, with error: {}", universeUUID, ex);
+      return false;
+    }
+    return true;
   }
 
   private void upgradeYbcOnNode(
