@@ -33,6 +33,8 @@ import org.yb.minicluster.MiniYBCluster;
 public class TestYsqlMetrics extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlMetrics.class);
 
+  private static final String PEAK_MEM_FIELD = "Peak Memory Usage";
+
   @Test
   public void testMetrics() throws Exception {
     Statement statement = connection.createStatement();
@@ -522,6 +524,24 @@ public class TestYsqlMetrics extends BasePgSQLTest {
   }
 
   /**
+   * Test "Peak Memory" is not shown in EXPLAIN ANALYZE when yb_enable_memory_tracking
+   * flag is off.
+   * @throws Exception
+   */
+  @Test
+  public void testExplainPeakMemWhenMemoryTrackingOff() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("SET yb_enable_memory_tracking = OFF");
+      final String query = "EXPLAIN (ANALYZE) SELECT 1";
+      ResultSet result = statement.executeQuery(query);
+      while(result.next()) {
+        final String row = result.getString(1);
+        assertFalse(row.contains(PEAK_MEM_FIELD));
+      }
+    }
+  }
+
+  /**
    * Validate the EXPLAIN ANALYZE output, and return maximum memory consumption found.
    **/
   private long runExplainAnalyze(Statement statement, final int limit) throws Exception {
@@ -541,7 +561,7 @@ public class TestYsqlMetrics extends BasePgSQLTest {
   private long findMaxMemInExplain(final ResultSet result) throws Exception {
     while(result.next()) {
       final String row = result.getString(1);
-      if (row.contains("Peak Memory Usage")) {
+      if (row.contains(PEAK_MEM_FIELD)) {
         final String[] tks = row.split(" ");
         long maxMem = Long.valueOf(tks[tks.length - 2]);
         return maxMem;
