@@ -88,7 +88,10 @@ class AbstractMethod(object):
         self.parser.add_argument("--connection_type", default=None, required=False)
         self.parser.add_argument("--architecture", required=False, help="Architecture for machine "
                                  + "image. Defaults to x86_64.", default="x86_64")
-        self.parser.add_argument("--remote_tmp_dir", default="/tmp")
+        self.parser.add_argument("--remote_tmp_dir", default="/tmp",
+                                 help="Temp directory on the remote host.")
+        self.parser.add_argument("--tmp_dir", default="/tmp",
+                                 help="Temp directory on the local host.")
 
     def preprocess_args(self, args):
         """Hook for pre-processing args before actually executing the callback. Useful for shared
@@ -1365,7 +1368,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         args.itest_s3_package_path,
                         args.search_pattern, time.time() - start_time))
                 else:
-                    if copy_to_tmp(self.extra_vars, args.package, remote_tmp_dir=args.remote_tmp_dir):
+                    if copy_to_tmp(self.extra_vars, args.package,
+                                   remote_tmp_dir=args.remote_tmp_dir):
                         raise YBOpsRecoverableError(
                             f"[app] Failed to copy package {args.package} to {args.search_pattern}")
 
@@ -1376,7 +1380,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 ybc_package_path = args.ybc_package
                 if os.path.isfile(ybc_package_path):
                     start_time = time.time()
-                    if copy_to_tmp(self.extra_vars, ybc_package_path, remote_tmp_dir=args.remote_tmp_dir):
+                    if copy_to_tmp(self.extra_vars, ybc_package_path,
+                                   remote_tmp_dir=args.remote_tmp_dir):
                         raise YBOpsRecoverableError(f"[app] Failed to copy package "
                                                     f"{ybc_package_path} to {args.search_pattern}")
                     logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
@@ -1898,7 +1903,8 @@ class RunHooks(AbstractInstancesMethod):
         self.wait_for_host(args, use_default_ssh_port)
 
         # Copy the hook to the remote node
-        scp_result = copy_to_tmp(self.extra_vars, args.hook_path, remote_tmp_dir=args.remote_tmp_dir)
+        scp_result = copy_to_tmp(self.extra_vars, args.hook_path,
+                                 remote_tmp_dir=args.remote_tmp_dir)
         if scp_result:
             raise YBOpsRuntimeError("Could not transfer hook to target node.")
 

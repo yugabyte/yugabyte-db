@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -22,6 +23,8 @@ public class TemplateManager extends DevopsBase {
   public static final String PROVISION_SCRIPT = "provision_instance.py";
 
   @Inject Config appConfig;
+
+  @Inject NodeAgentClient nodeAgentClient;
 
   @Override
   protected String getCommandType() {
@@ -105,6 +108,14 @@ public class TemplateManager extends DevopsBase {
           commandArgs.add(server);
         }
       }
+    }
+
+    if (nodeAgentClient.isClientEnabled(provider)) {
+      commandArgs.add("--install_node_agent");
+      commandArgs.add("--provider_id");
+      commandArgs.add(provider.getUuid().toString());
+      commandArgs.add("--node_agent_port");
+      commandArgs.add(String.valueOf(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort)));
     }
 
     JsonNode result =
