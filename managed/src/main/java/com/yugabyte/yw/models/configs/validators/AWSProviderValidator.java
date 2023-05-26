@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface.VPCType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -146,6 +147,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       Provider provider, Region region, SetMultimap<String, String> validationErrorsMap) {
     String fieldDetails = "REGION." + region.getCode() + ".DRY_RUN";
     try {
+      AWSCloudInfo cloudInfo = provider.getDetails().getCloudInfo().getAws();
       List<DryRunValidators> dryRunValidators = new ArrayList<>();
       dryRunValidators.add(
           () -> awsCloudImpl.dryRunDescribeInstanceOrBadRequest(provider, region.getCode()));
@@ -161,10 +163,12 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
           () -> awsCloudImpl.dryRunSecurityGroupOrBadRequest(provider, region.getCode()));
       dryRunValidators.add(
           () -> awsCloudImpl.dryRunKeyPairOrBadRequest(provider, region.getCode()));
-      dryRunValidators.add(
-          () ->
-              awsCloudImpl.dryRunAuthorizeSecurityGroupIngressOrBadRequest(
-                  provider, region.getCode()));
+      if (cloudInfo.getVpcType() != null && cloudInfo.getVpcType().equals(VPCType.NEW)) {
+        dryRunValidators.add(
+            () ->
+                awsCloudImpl.dryRunAuthorizeSecurityGroupIngressOrBadRequest(
+                    provider, region.getCode()));
+      }
       // Run each dry run validators.
       for (DryRunValidators dryRunValidator : dryRunValidators) {
         try {
