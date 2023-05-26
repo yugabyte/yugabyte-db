@@ -27,7 +27,7 @@ To view role details, select the role in the list.
 
 ## Built-in roles
 
-YugabyteDB Managed includes two built-in roles for managing your account:
+YugabyteDB Managed includes built-in roles for managing your account:
 
 - **Admin** - The Admin role provides full access to all features. There must always be at least one Admin user. The primary account user (the user who created the YugabyteDB Managed account) is automatically assigned an Admin role.
 
@@ -56,7 +56,7 @@ To create a role, do the following:
 To create a role from an existing role, do the following:
 
 1. Navigate to **Admin > Access Control > Roles**, then select the role to modify to display the **Role Details** sheet.
-1. Click **Clone Role**.
+1. For a built-in role, click **Clone Role**; for a custom role, click **Actions** and choose **Clone Role**.
 1. Enter a name for the role.
 1. Enter a description for the role.
 1. Click **Edit Permissions**.
@@ -65,7 +65,7 @@ To create a role from an existing role, do the following:
 
 ## Edit a role
 
-To edit a role, do the following:
+You can only edit custom roles. To edit a custom role, do the following:
 
 1. Navigate to **Admin > Access Control > Roles**, then select the role to modify to display the **Role Details** sheet.
 1. Click **Actions** and **Edit Role**.
@@ -77,7 +77,7 @@ To edit a role, do the following:
 
 ## Delete a role
 
-You can only delete roles that are not assigned to any users.
+You can only delete custom roles, and only if the role is not assigned to any users.
 
 To delete a role, do the following:
 
