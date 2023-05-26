@@ -413,8 +413,7 @@ class WritableLogSegment {
   // This initializer method avoids writing header to disk when creating a WritableLogSegment
   // from a ReadableLogSegment.
   Status ReuseHeader(const LogSegmentHeaderPB& new_header,
-                            int64_t first_entry_offset,
-                            int64_t written_offset);
+                            int64_t first_entry_offset);
 
   // Opens the segment by writing the header.
   Status WriteHeader(const LogSegmentHeaderPB& new_header);
@@ -468,7 +467,7 @@ class WritableLogSegment {
   }
 
   int64_t written_offset() const {
-    return written_offset_;
+    return writable_file_->Size();
   }
 
   // Write header without data. This help us to simulate crash
@@ -502,9 +501,6 @@ class WritableLogSegment {
 
   // the offset of the first entry in the log
   int64_t first_entry_offset_;
-
-  // The offset where the last written entry ends.
-  int64_t written_offset_;
 
   faststring index_block_header_buffer_;
 
