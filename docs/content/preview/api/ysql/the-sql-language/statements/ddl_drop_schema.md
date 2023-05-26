@@ -44,7 +44,7 @@ Use the `DROP SCHEMA` statement to remove a schema and all of its associated obj
 
 ## Semantics
 
-- `DROP SCHEMA` will execute in its own transaction and is an all or nothing operation.
+- `DROP SCHEMA... CASCADE` executes in a single transaction so that _either_ it has no effect (if it's interrupted) _or_ the nominated schema together with all the objects in it are dropped.
 
 ### *drop_schema*
 
