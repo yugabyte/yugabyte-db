@@ -50,7 +50,7 @@ Under normal operation, an error is raised if the index does not exist.  Adding 
 
 #### *index_name*
 
-Specify the name of the index to be dropped. Objects associated with the index, such as other indexes, will be eventually invalidated after the `DROP INDEX` statement is completed.
+Specify the name of the index to be dropped. Objects associated with the index will be eventually invalidated after the `DROP INDEX` statement is completed.
 
 #### RESTRICT / CASCADE
 
