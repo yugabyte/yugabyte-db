@@ -552,23 +552,23 @@ ybcIterateForeignScan(ForeignScanState *node)
 
 	/*
 	 * Unlike YbSeqScan, IndexScan, and IndexOnlyScan, YB ForeignScan does not
-	 * call YbInstantiateRemoteParams before doing scan:
+	 * call YbInstantiatePushdownParams before doing scan:
 	 *
 	 * - YbSeqNext
-	 *   - YbInstantiateRemoteParams
+	 *   - YbInstantiatePushdownParams
 	 *   - ybc_remote_beginscan
 	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
 	 * - IndexScan/IndexNextWithReorder/ExecReScanIndexScan
-	 *   - YbInstantiateRemoteParams
+	 *   - YbInstantiatePushdownParams
 	 *   - index_rescan
 	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
 	 * - IndexOnlyScan/ExecReScanIndexOnlyScan
-	 *   - YbInstantiateRemoteParams
+	 *   - YbInstantiatePushdownParams
 	 *   - index_rescan
 	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
 	 * - ForeignNext
 	 *   - ybcIterateForeignScan (impl of IterateForeignScan)
-	 *     - YbInstantiateRemoteParams
+	 *     - YbInstantiatePushdownParams
 	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
 	 *
 	 * Reasoning:
@@ -605,15 +605,16 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 *   If it were desired to solely rely on fdw_private holding
 	 *   PushdownExprs, whatever modifications that happened to
 	 *   fdw_recheck_quals would have to be updated onto fdw_private's copy of
-	 *   quals before calling YbInstantiateRemoteParams.
+	 *   quals before calling YbInstantiatePushdownParams.
 	 * - Plan is to remove YB FDW code in favor of YbSeqScan, so it is not
 	 *   worth the effort of making a good long-term solution here.
 	 */
-	PushdownExprs orig_remote = {
+	PushdownExprs orig_pushdown = {
 		.quals = foreignScan->fdw_recheck_quals,
 		.colrefs = foreignScan->fdw_private,
 	};
-	PushdownExprs *remote = YbInstantiateRemoteParams(&orig_remote, estate);
+	PushdownExprs *pushdown = YbInstantiatePushdownParams(&orig_pushdown,
+														  estate);
 
 	/* Execute the select statement one time.
 	 * TODO(neil) Check whether YugaByte PgGate should combine Exec() and Fetch() into one function.
@@ -623,11 +624,11 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 */
 	if (!ybc_state->is_exec_done) {
 		ybcSetupScanTargets(node);
-		if (remote != NULL)
+		if (pushdown != NULL)
 		{
-			YbDmlAppendQuals(remote->quals, true /* is_primary */,
+			YbDmlAppendQuals(pushdown->quals, true /* is_primary */,
 							 ybc_state->handle);
-			YbDmlAppendColumnRefs(remote->colrefs, true /* is_primary */,
+			YbDmlAppendColumnRefs(pushdown->colrefs, true /* is_primary */,
 								  ybc_state->handle);
 		}
 		HandleYBStatus(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params));
