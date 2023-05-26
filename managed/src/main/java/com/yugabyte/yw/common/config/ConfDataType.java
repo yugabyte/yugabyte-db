@@ -30,6 +30,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.directory.api.ldap.model.message.SearchScope;
 import play.libs.Json;
 
 @Getter
@@ -146,6 +147,19 @@ public class ConfDataType<T> {
               return SkipCertValidationType.valueOf(s);
             } catch (Exception e) {
               String failMsg = String.format("%s is not a valid value for desired key\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
+  static ConfDataType<SearchScope> LdapSearchScopeEnum =
+      new ConfDataType<>(
+          "LdapSearchScope",
+          SearchScope.class,
+          new EnumGetter<>(SearchScope.class),
+          (s) -> {
+            try {
+              return SearchScope.valueOf(s);
+            } catch (Exception e) {
+              String failMsg = String.format("%s is not a valid LDAP Search Scope\n", s);
               throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
             }
           });

@@ -31,9 +31,6 @@
 //
 package org.yb.client;
 
-import com.google.common.net.HostAndPort;
-import com.stumbleupon.async.Callback;
-import com.stumbleupon.async.Deferred;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -65,6 +62,10 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
+
+import com.google.common.net.HostAndPort;
+import com.stumbleupon.async.Callback;
+import com.stumbleupon.async.Deferred;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -963,6 +964,15 @@ public class YBClient implements AutoCloseable {
   public String getMasterAddresses(HostAndPort hp) throws Exception {
     Deferred<GetMasterAddressesResponse> d = asyncClient.getMasterAddresses(hp);
     return d.join(getDefaultAdminOperationTimeoutMs()).getMasterAddresses();
+  }
+
+  /**
+   * @see AsyncYBClient#upgradeYsql(HostAndPort, boolean)
+   */
+  public UpgradeYsqlResponse upgradeYsql(HostAndPort hp, boolean useSingleConnection)
+    throws Exception {
+    Deferred<UpgradeYsqlResponse> d = asyncClient.upgradeYsql(hp, useSingleConnection);
+    return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
   /**

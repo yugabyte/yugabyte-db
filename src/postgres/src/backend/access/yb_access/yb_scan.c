@@ -1856,9 +1856,9 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 }
 
 /*
- * ybSetupScanQual
+ * YbDmlAppendQuals
  *
- * Add remote filter expressions to the YbScanDesc.
+ * Add remote filter expressions to the statement.
  * The expression are pushed down to DocDB and used to filter rows early to
  * avoid sending them across network.
  * Set is_primary to false if the filter expression is to apply to secondary
@@ -1866,49 +1866,49 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
  * columns rather than main relation columns.
  * For primary key scan or sequential scan is_primary should be true.
  */
-static void
-ybSetupScanQual(YbScanDesc ybScan, List *qual, bool is_primary)
+void
+YbDmlAppendQuals(List *quals, bool is_primary, YBCPgStatement handle)
 {
 	ListCell   *lc;
-	foreach(lc, qual)
+
+	foreach(lc, quals)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
 		/* Create new PgExpr wrapper for the expression */
-		YBCPgExpr yb_expr = YBCNewEvalExprCall(ybScan->handle, expr);
+		YBCPgExpr yb_expr = YBCNewEvalExprCall(handle, expr);
 		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendQual(ybScan->handle, yb_expr, is_primary));
+		HandleYBStatus(YbPgDmlAppendQual(handle, yb_expr, is_primary));
 	}
 }
 
 /*
- * ybSetupScanColumnRefs
+ * YbDmlAppendColumnRefs
  *
  * Add the list of column references used by pushed down expressions to the
- * YbScanDesc.
- * The colref list is expected to be the list of YbExprParamDesc nodes.
+ * statement.
+ * The colref list is expected to be the list of YbExprColrefDesc nodes.
  * Set is_primary to false if the filter expression is to apply to secondary
  * index. In this case attno field values must be properly adjusted to refer
  * the index columns rather than main relation columns.
  * For primary key scan or sequential scan is_primary should be true.
  */
-static void
-ybSetupScanColumnRefs(YbScanDesc ybScan, List *colrefs, bool is_primary)
+void
+YbDmlAppendColumnRefs(List *colrefs, bool is_primary, YBCPgStatement handle)
 {
 	ListCell   *lc;
+
 	foreach(lc, colrefs)
 	{
-		YbExprParamDesc *param = lfirst_node(YbExprParamDesc, lc);
+		YbExprColrefDesc *param = lfirst_node(YbExprColrefDesc, lc);
 		YBCPgTypeAttrs type_attrs = { param->typmod };
 		/* Create new PgExpr wrapper for the column reference */
-		YBCPgExpr yb_expr = YBCNewColumnRef(ybScan->handle,
+		YBCPgExpr yb_expr = YBCNewColumnRef(handle,
 											param->attno,
 											param->typid,
 											param->collid,
 											&type_attrs);
 		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendColumnRef(ybScan->handle,
-											  yb_expr,
-											  is_primary));
+		HandleYBStatus(YbPgDmlAppendColumnRef(handle, yb_expr, is_primary));
 	}
 }
 
@@ -1925,8 +1925,8 @@ ybSetupScanColumnRefs(YbScanDesc ybScan, List *colrefs, bool is_primary)
  *
  * - If "xs_want_itup" is true, Postgres layer is expecting an IndexTuple that has ybctid to
  *   identify the desired row.
- * - "rel_remote" defines expressions to pushdown to remote relation scan
- * - "idx_remote" defines expressions to pushdown to remote secondary index
+ * - "rel_pushdown" defines expressions to pushdown to remote relation scan
+ * - "idx_pushdown" defines expressions to pushdown to remote secondary index
  *   scan. If the scan is not over a secondary index.
  */
 YbScanDesc
@@ -1935,8 +1935,8 @@ ybcBeginScan(Relation relation,
 			 bool xs_want_itup,
 			 int nkeys, ScanKey keys,
 			 Scan *pg_scan_plan,
-			 PushdownExprs *rel_remote,
-			 PushdownExprs *idx_remote)
+			 PushdownExprs *rel_pushdown,
+			 PushdownExprs *idx_pushdown)
 {
 	if (nkeys > YB_MAX_SCAN_KEYS)
 		ereport(ERROR,
@@ -1992,25 +1992,27 @@ ybcBeginScan(Relation relation,
 		/*
 		* Set up pushdown expressions.
 		* Sequential, IndexOnly and primary key scans are refer only one
-		* relation, and all expression they push down are in the rel_remote.
+		* relation, and all expression they push down are in the rel_pushdown.
 		* Secondary index scan may have pushable expressions that refer columns
-		* not included in the index, those go to the rel_remote as well.
+		* not included in the index, those go to the rel_pushdown as well.
 		* Secondary index scan's expressions that refer only columns available
-		* from the index are go to the idx_remote and pushed down when the index
-		* is scanned.
+		* from the index are go to the idx_pushdown and pushed down when the
+		* index is scanned.
 		*/
-		if (rel_remote != NULL)
+		if (rel_pushdown != NULL)
 		{
-			ybSetupScanQual(ybScan, rel_remote->qual, true /* is_primary */);
-			ybSetupScanColumnRefs(ybScan, rel_remote->colrefs,
-								  true /* is_primary */);
+			YbDmlAppendQuals(rel_pushdown->quals, true /* is_primary */,
+							 ybScan->handle);
+			YbDmlAppendColumnRefs(rel_pushdown->colrefs, true /* is_primary */,
+								  ybScan->handle);
 		}
 
-		if (idx_remote != NULL)
+		if (idx_pushdown != NULL)
 		{
-			ybSetupScanQual(ybScan, idx_remote->qual, false /* is_primary */);
-			ybSetupScanColumnRefs(ybScan, idx_remote->colrefs,
-								  false /* is_primary */);
+			YbDmlAppendQuals(idx_pushdown->quals, false /* is_primary */,
+							 ybScan->handle);
+			YbDmlAppendColumnRefs(idx_pushdown->colrefs, false /* is_primary */,
+								  ybScan->handle);
 		}
 
 		/*
@@ -2229,8 +2231,8 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 									 nkeys,
 									 key,
 									 pg_scan_plan,
-									 NULL /* rel_remote */,
-									 NULL /* idx_remote */);
+									 NULL /* rel_pushdown */,
+									 NULL /* idx_pushdown */);
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
@@ -2280,8 +2282,8 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 									 nkeys,
 									 key,
 									 pg_scan_plan,
-									 NULL /* rel_remote */,
-									 NULL /* idx_remote */);
+									 NULL /* rel_pushdown */,
+									 NULL /* idx_pushdown */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -2331,16 +2333,16 @@ HeapScanDesc
 ybc_remote_beginscan(Relation relation,
 					 Snapshot snapshot,
 					 Scan *pg_scan_plan,
-					 PushdownExprs *remote)
+					 PushdownExprs *pushdown)
 {
 	YbScanDesc ybScan = ybcBeginScan(relation,
 									 NULL /* index */,
 									 false /* xs_want_itup */,
 									 0 /* nkeys */,
-									 NULL/* key */,
+									 NULL /* key */,
 									 pg_scan_plan,
-									 remote,
-									 NULL /* idx_remote */);
+									 pushdown /* rel_pushdown */,
+									 NULL /* idx_pushdown */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));

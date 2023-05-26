@@ -113,7 +113,7 @@ public class TablesController extends AuthenticatedController {
 
   private static final String MASTER_LEADER_TIMEOUT_CONFIG_PATH =
       "yb.wait_for_master_leader_timeout";
-
+  private static final String TABLEGROUP_ID_SUFFIX = ".tablegroup.parent.uuid";
   private static final String COLOCATED_NAME_SUFFIX = ".colocated.parent.tablename";
   private static final String COLOCATION_NAME_SUFFIX = ".colocation.parent.tablename";
 
@@ -304,6 +304,9 @@ public class TablesController extends AuthenticatedController {
   @Jacksonized
   static class TableInfoResp {
 
+    @ApiModelProperty(value = "Table ID", accessMode = READ_ONLY)
+    public final String tableID;
+
     @ApiModelProperty(value = "Table UUID", accessMode = READ_ONLY)
     public final UUID tableUUID;
 
@@ -339,6 +342,12 @@ public class TablesController extends AuthenticatedController {
 
     @ApiModelProperty(value = "Postgres schema name of the table", example = "public")
     public final String pgSchemaName;
+
+    @ApiModelProperty(value = "Flag, indicating colocated table")
+    public final Boolean colocated;
+
+    @ApiModelProperty(value = "Colocation parent id")
+    public final String colocationParentId;
   }
 
   @ApiOperation(
@@ -351,29 +360,19 @@ public class TablesController extends AuthenticatedController {
       UUID customerUUID,
       UUID universeUUID,
       boolean includeParentTableInfo,
-      boolean excludeColocatedTables) {
+      boolean excludeColocatedTables,
+      boolean includeColocatedParentTables) {
 
-    // Do not support this use case as the meaning of parent table is different for these two cases.
-    // The current implementation of listTablesWithParentTableInfo() sets the parentTableUUID of a
-    // partition to the paritioned table. It is possible for partitions to exist in a db with
-    // colocation=true. In this scenario, there can be conflict between the parentTableUUID, as it
-    // can be the UUID of the partitioned table or the colocated parent table UUID.
-    if (includeParentTableInfo && excludeColocatedTables) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "Parameter selection, includeParentTableInfo: %s, excludeColocatedTables: %s, "
-                  + "not supported",
-              includeParentTableInfo, excludeColocatedTables));
-    }
-
-    if (includeParentTableInfo) {
-      return listTablesWithParentTableInfo(customerUUID, universeUUID);
-    }
     // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    String universeVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    boolean hasColocationInfo =
+        CommonUtils.isReleaseBetween("2.18.1.0-b18", "2.19.0.0-b0", universeVersion)
+            || CommonUtils.isReleaseEqualOrAfter("2.19.0.0-b168", universeVersion);
 
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
@@ -386,20 +385,75 @@ public class TablesController extends AuthenticatedController {
     ListTablesResponse response =
         listTablesOrBadRequest(masterAddresses, certificate, false /* excludeSystemTables */);
     List<TableInfo> tableInfoList = response.getTableInfoList();
+
+    // First filter out all system tables except redis table.
+    tableInfoList =
+        tableInfoList.stream()
+            .filter(table -> !isSystemTable(table) || isSystemRedis(table))
+            .collect(Collectors.toList());
     List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
 
-    if (excludeColocatedTables) {
-      Set<String> colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
-      tableInfoList =
+    // Prepare colocated parent table map.
+    Map<TablePartitionInfoKey, TableInfo> colocatedParentTablesMap =
+        tableInfoList.stream()
+            .filter(this::isColocatedParentTable)
+            .collect(
+                Collectors.toMap(
+                    ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
+                    Function.identity()));
+
+    // Fetch table partitions information if needed.
+    Map<TablePartitionInfoKey, TablePartitionInfo> partitionMap = new HashMap<>();
+    Map<TablePartitionInfoKey, TableInfo> tablePartitionInfoToTableInfoMap = new HashMap<>();
+    if (includeParentTableInfo) {
+      Map<String, List<TableInfo>> namespacesToTablesMap =
+          tableInfoList.stream().collect(Collectors.groupingBy(ti -> ti.getNamespace().getName()));
+      for (String namespace : namespacesToTablesMap.keySet()) {
+        partitionMap.putAll(fetchTablePartitionInfo(universe, namespace));
+      }
+
+      tablePartitionInfoToTableInfoMap =
           tableInfoList.stream()
-              .filter(t -> !colocatedKeySpaces.contains(t.getNamespace().getName()))
-              .collect(Collectors.toList());
+              .collect(
+                  Collectors.toMap(
+                      ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
+                      Function.identity()));
+    }
+
+    // Fetch colocated keyspaces. excludeColocatedTables effectively means
+    // 'exclude tables from colocated keyspaces'.
+    Set<String> colocatedKeySpaces = Collections.emptySet();
+    if (excludeColocatedTables) {
+      colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
     }
 
     for (TableInfo table : tableInfoList) {
-      if ((!isSystemTable(table) || isSystemRedis(table)) && !isColocatedParentTable(table)) {
-        tableInfoRespList.add(buildResponseFromTableInfo(table, null, null, tableSizes).build());
+      TablePartitionInfoKey tableKey =
+          new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
+      if (excludeColocatedTables && colocatedKeySpaces.contains(table.getNamespace().getName())) {
+        // Exclude tables from colocated keyspaces, if needed.
+        continue;
       }
+      if (!includeColocatedParentTables && colocatedParentTablesMap.containsKey(tableKey)) {
+        // Exclude colocated parent tables unless they are requested explicitly.
+        continue;
+      }
+      TableInfo parentPartitionInfo = null;
+      TablePartitionInfo partitionInfo = null;
+      if (includeParentTableInfo) {
+        if (partitionMap.containsKey(tableKey)) {
+          // This 'table' is a partition of some table.
+          partitionInfo = partitionMap.get(tableKey);
+          parentPartitionInfo =
+              tablePartitionInfoToTableInfoMap.get(
+                  new TablePartitionInfoKey(partitionInfo.parentTable, partitionInfo.keyspace));
+          LOG.debug("Partition {}, Parent {}", partitionInfo, parentPartitionInfo);
+        }
+      }
+      tableInfoRespList.add(
+          buildResponseFromTableInfo(
+                  table, partitionInfo, parentPartitionInfo, tableSizes, hasColocationInfo)
+              .build());
     }
     return PlatformResults.withData(tableInfoRespList);
   }
@@ -1090,66 +1144,6 @@ public class TablesController extends AuthenticatedController {
     return new YBPTask(taskUUID, universeUUID).asResult();
   }
 
-  private Result listTablesWithParentTableInfo(UUID customerUUID, UUID universeUUID) {
-    // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
-    // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-
-    final String masterAddresses = universe.getMasterAddresses(true);
-    if (masterAddresses.isEmpty()) {
-      String errMsg = "Expected error. Masters are not currently queryable.";
-      LOG.warn(errMsg);
-      return ok(errMsg);
-    }
-
-    Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
-
-    String certificate = universe.getCertificateNodetoNode();
-    ListTablesResponse response =
-        listTablesOrBadRequest(masterAddresses, certificate, true /* excludeSystemTables */);
-    List<TableInfo> tableInfoList = response.getTableInfoList();
-
-    Map<String, List<TableInfo>> namespacesToTablesMap =
-        tableInfoList.stream().collect(Collectors.groupingBy(ti -> ti.getNamespace().getName()));
-
-    Map<TablePartitionInfoKey, TablePartitionInfo> partitionMap = new HashMap<>();
-    for (String namespace : namespacesToTablesMap.keySet()) {
-      partitionMap.putAll(fetchTablePartitionInfo(universe, namespace));
-    }
-
-    Map<TablePartitionInfoKey, TableInfo> tablePartitionInfoToTableInfoMap =
-        tableInfoList.stream()
-            .collect(
-                Collectors.toMap(
-                    ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
-                    Function.identity()));
-
-    List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
-
-    for (TableInfo table : tableInfoList) {
-      if (!isSystemTable(table) || isSystemRedis(table)) {
-        TablePartitionInfoKey partitionInfoKey =
-            new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
-        TableInfo parentPartitionInfo = null;
-        TablePartitionInfo partitionInfo = null;
-        if (partitionMap.containsKey(partitionInfoKey)) {
-          // This 'table' is a partition of some table.
-          partitionInfo = partitionMap.get(partitionInfoKey);
-          parentPartitionInfo =
-              tablePartitionInfoToTableInfoMap.get(
-                  new TablePartitionInfoKey(partitionInfo.parentTable, partitionInfo.keyspace));
-          LOG.debug("Partition {}, Parent {}", partitionInfo, parentPartitionInfo);
-        }
-        tableInfoRespList.add(
-            buildResponseFromTableInfo(table, partitionInfo, parentPartitionInfo, tableSizes)
-                .build());
-      }
-    }
-
-    return PlatformResults.withData(tableInfoRespList);
-  }
-
   private Set<String> getColocatedKeySpaces(List<TableInfo> tableInfoList) {
     Set<String> colocatedKeySpaces = new HashSet<String>();
     for (TableInfo tableInfo : tableInfoList) {
@@ -1166,11 +1160,13 @@ public class TablesController extends AuthenticatedController {
       TableInfo table,
       TablePartitionInfo tablePartitionInfo,
       TableInfo parentTableInfo,
-      Map<String, TableSizes> tableSizeMap) {
+      Map<String, TableSizes> tableSizeMap,
+      boolean hasColocationInfo) {
     String id = table.getId().toStringUtf8();
     String tableKeySpace = table.getNamespace().getName();
     TableInfoResp.TableInfoRespBuilder builder =
         TableInfoResp.builder()
+            .tableID(id)
             .tableUUID(getUUIDRepresentation(id))
             .keySpace(tableKeySpace)
             .tableType(table.getTableType())
@@ -1190,6 +1186,19 @@ public class TablesController extends AuthenticatedController {
     }
     if (table.hasPgschemaName()) {
       builder.pgSchemaName(table.getPgschemaName());
+    }
+    if (hasColocationInfo) {
+      if (!table.hasColocatedInfo()) {
+        builder.colocated(false);
+      } else {
+        builder.colocated(table.getColocatedInfo().getColocated());
+        if (builder.colocated) {
+          if (table.getColocatedInfo().hasParentTableId()) {
+            String parentTableId = table.getColocatedInfo().getParentTableId().toStringUtf8();
+            builder.colocationParentId(parentTableId);
+          }
+        }
+      }
     }
     return builder;
   }

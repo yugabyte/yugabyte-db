@@ -77,6 +77,7 @@ public class CertificateSelfSigned extends CertificateProviderBase {
       if (certInfo.getPrivateKey() == null) {
         throw new PlatformServiceException(BAD_REQUEST, "Keyfile cannot be null!");
       }
+
       // The first entry will be the certificate that needs to sign the necessary certificate.
       X509Certificate cer =
           CertificateHelper.convertStringToX509CertList(

@@ -16,6 +16,7 @@ import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -273,8 +274,7 @@ public class UniverseInfoController extends AuthenticatedController {
             .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, nodeName));
     return CompletableFuture.supplyAsync(
         () -> {
-          String storagePath =
-              runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
+          String storagePath = AppConfigHelper.getStoragePath();
           String tarFileName = node.cloudInfo.private_ip + "-logs.tar.gz";
           Path targetFile = Paths.get(storagePath + "/" + tarFileName);
           File file =

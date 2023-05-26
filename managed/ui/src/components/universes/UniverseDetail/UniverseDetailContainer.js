@@ -20,7 +20,6 @@ import {
   fetchCustomerTasksSuccess,
   fetchCustomerTasksFailure
 } from '../../../actions/tasks';
-
 import {
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse,
@@ -76,6 +75,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     showGFlagsModal: () => {
       dispatch(openDialog('gFlagsModal'));
+    },
+    showGFlagsNewModal: () => {
+      dispatch(openDialog('gFlagsNewModal'));
     },
     showHelmOverridesModal: () => {
       dispatch(openDialog('helmOverridesModal'));

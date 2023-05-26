@@ -5,7 +5,6 @@ linkTitle: Configure cloud providers
 description: Configure the Amazon Web Services (AWS) cloud provider.
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
-  - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
   - /preview/yugabyte-platform/deploy/configure-cloud-providers/aws
 menu:
   preview_yugabyte-platform:

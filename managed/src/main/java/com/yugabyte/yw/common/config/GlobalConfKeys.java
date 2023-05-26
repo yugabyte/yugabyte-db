@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import java.time.Duration;
 import java.util.List;
+import org.apache.directory.api.ldap.model.message.SearchScope;
 
 public class GlobalConfKeys extends RuntimeConfigKeysModule {
 
@@ -49,6 +50,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Use New Helm Naming",
           "TODO - Leave this for feature owners to fill in",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+
+  public static final ConfKeyInfo<Boolean> usek8sCustomResources =
+      new ConfKeyInfo<>(
+          "yb.use_k8s_custom_resources",
+          ScopeType.GLOBAL,
+          "Specify custom CPU/memory values for k8s universes",
+          "Use custom CPU/Memory for kubernetes nodes. Once enabled, shouldn't be disabled.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> useOauth =
@@ -460,6 +470,47 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP Search Attribute",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<String> ldapGroupSearchFilter =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_group_search_filter",
+          ScopeType.GLOBAL,
+          "LDAP Group Search Filter Query",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<SearchScope> ldapGroupSearchScope =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_group_search_scope",
+          ScopeType.GLOBAL,
+          "LDAP group search scope in case of filter query",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.LdapSearchScopeEnum,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<String> ldapGroupMemberOfAttribute =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_group_member_of_attribute",
+          ScopeType.GLOBAL,
+          "memberOf attribute in user LDAP entry to be used for group memberships",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<Boolean> ldapGroupUseQuery =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_group_use_query",
+          ScopeType.GLOBAL,
+          "Whether to use query search filter or user attribute "
+              + "for establishing LDAP group membership",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<Boolean> ldapGroupUseRoleMapping =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_group_use_role_mapping",
+          ScopeType.GLOBAL,
+          "Whether to use ldap group to role mapping",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.UIDriven));
   public static ConfKeyInfo<Boolean> enableDetailedLogs =
       new ConfKeyInfo<>(

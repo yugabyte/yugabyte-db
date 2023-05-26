@@ -60,7 +60,7 @@ string EncodeRedisKey(const Slice& key) {
 }
 
 TEST(PartitionTest, TestRedisEncoding) {
-  Schema schema({ ColumnSchema("key", STRING, false, true) }, { ColumnId(0) }, 1);
+  Schema schema({ ColumnSchema("key", STRING, ColumnKind::HASH) }, { ColumnId(0) });
 
   PartitionSchema partition_schema;
   ASSERT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));

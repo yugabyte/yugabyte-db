@@ -677,7 +677,7 @@ bool YBCExecuteDelete(Relation rel,
 	 */
 	foreach (lc, returning_columns)
 	{
-		YbExprParamDesc *colref = lfirst_node(YbExprParamDesc, lc);
+		YbExprColrefDesc *colref = lfirst_node(YbExprColrefDesc, lc);
 		YBCPgTypeAttrs type_attrs = { colref->typmod };
 		YBCPgExpr yb_expr = YBCNewColumnRef(delete_stmt,
 											colref->attno,
@@ -925,7 +925,7 @@ bool YBCExecuteUpdate(Relation rel,
 	 */
 	foreach (lc, mt_plan->ybReturningColumns)
 	{
-		YbExprParamDesc *colref = lfirst_node(YbExprParamDesc, lc);
+		YbExprColrefDesc *colref = lfirst_node(YbExprColrefDesc, lc);
 		YBCPgTypeAttrs type_attrs = { colref->typmod};
 		YBCPgExpr yb_expr = YBCNewColumnRef(update_stmt,
 											colref->attno,
@@ -936,17 +936,8 @@ bool YBCExecuteUpdate(Relation rel,
 	}
 
 	/* Column references to prepare data to evaluate pushed down expressions */
-	foreach (lc, mt_plan->ybColumnRefs)
-	{
-		YbExprParamDesc *colref = lfirst_node(YbExprParamDesc, lc);
-		YBCPgTypeAttrs type_attrs = { colref->typmod };
-		YBCPgExpr yb_expr = YBCNewColumnRef(update_stmt,
-											colref->attno,
-											colref->typid,
-											colref->collid,
-											&type_attrs);
-		HandleYBStatus(YbPgDmlAppendColumnRef(update_stmt, yb_expr, true));
-	}
+	YbDmlAppendColumnRefs(mt_plan->ybColumnRefs, true /* is_primary */,
+						  update_stmt);
 
 	/* Execute the statement. */
 

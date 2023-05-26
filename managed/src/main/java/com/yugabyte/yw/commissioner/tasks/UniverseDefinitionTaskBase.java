@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.password.RedactingService;
@@ -1253,6 +1254,27 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                         az, curAZOverridesStr, newAZOverridesStr));
               }
             }
+          }
+        }
+
+        if (confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+          final Double cpuCoreCount = cluster.userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
+          final Double memoryGib = cluster.userIntent.masterK8SNodeResourceSpec.memoryGib;
+          final boolean isCpuCoreCountOutOfRange =
+              (cpuCoreCount <= UserIntent.MIN_CPU || cpuCoreCount >= UserIntent.MAX_CPU);
+          final boolean isMemoryGibOutOfRange =
+              (memoryGib <= UserIntent.MIN_MEMORY || memoryGib >= UserIntent.MAX_MEMORY);
+
+          if (isCpuCoreCountOutOfRange || isMemoryGibOutOfRange) {
+            throw new IllegalArgumentException(
+                String.format(
+                    "CPU/Memory provided is out of range. Custom values for CPU should be between "
+                        + "%.2f and %.2f cores. Custom values for Memory should be between "
+                        + "%.2fGiB and %.2fGiB",
+                    UserIntent.MIN_CPU,
+                    UserIntent.MAX_CPU,
+                    UserIntent.MIN_MEMORY,
+                    UserIntent.MAX_MEMORY));
           }
         }
       } else {

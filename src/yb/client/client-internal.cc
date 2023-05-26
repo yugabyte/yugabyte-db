@@ -801,10 +801,10 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
           strings::Substitute("Unable to check the schema of parent table $0",
                               table_name.ToString()));
 
-      YBSchemaBuilder schemaBuilder;
-      schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
+      YBSchemaBuilder schema_builder;
+      schema_builder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey();
       YBSchema ybschema;
-      CHECK_OK(schemaBuilder.Build(&ybschema));
+      CHECK_OK(schema_builder.Build(&ybschema));
 
       if (!ybschema.Equals(info.schema)) {
         string msg = Format("Table $0 already exists with a different "

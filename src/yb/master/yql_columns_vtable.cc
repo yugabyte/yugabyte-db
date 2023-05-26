@@ -32,8 +32,27 @@
 
 using std::string;
 
-namespace yb {
-namespace master {
+namespace yb::master {
+
+namespace {
+
+std::string SortingTypeToString(SortingType sorting_type) {
+  switch (sorting_type) {
+    case kNotSpecified:
+      return "none";
+    case kAscending:
+      return "asc";
+    case kDescending:
+      return "desc";
+    case kAscendingNullsLast:
+      return "asc nulls last";
+    case kDescendingNullsLast:
+      return "desc nulls last";
+  }
+  FATAL_INVALID_ENUM_VALUE(SortingType, sorting_type);
+}
+
+} // namespace
 
 YQLColumnsVTable::YQLColumnsVTable(const TableName& table_name,
                                    const NamespaceName& namespace_name,
@@ -55,8 +74,8 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
   } else {
     RETURN_NOT_OK(SetColumnValue(kColumnName, schema.column(col_idx).name(), row));
   }
-  RETURN_NOT_OK(SetColumnValue(kClusteringOrder, schema.column(col_idx).sorting_type_string(),
-                               row));
+  RETURN_NOT_OK(SetColumnValue(
+      kClusteringOrder, SortingTypeToString(schema.column(col_idx).sorting_type()), row));
   const ColumnSchema& column = schema.column(col_idx);
   RETURN_NOT_OK(SetColumnValue(kType, column.is_counter() ? "counter" : column.type()->ToString(),
                                row));
@@ -133,5 +152,4 @@ Schema YQLColumnsVTable::CreateSchema() const {
   return builder.Build();
 }
 
-}  // namespace master
-}  // namespace yb
+}  // namespace yb::master

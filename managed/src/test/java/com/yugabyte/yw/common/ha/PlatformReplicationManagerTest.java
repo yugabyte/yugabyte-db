@@ -200,11 +200,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort, isYbaInstaller);
     PlatformReplicationManager backupManager =
         new PlatformReplicationManager(
-            mockPlatformScheduler,
-            mockReplicationUtil,
-            mockConfigHelper,
-            mockConfig,
-            mockFileDataService);
+            mockPlatformScheduler, mockReplicationUtil, mockFileDataService);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -253,11 +249,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       PlatformReplicationManager backupManager =
           spy(
               new PlatformReplicationManager(
-                  mockPlatformScheduler,
-                  mockReplicationUtil,
-                  mockConfigHelper,
-                  mockConfig,
-                  mockFileDataService));
+                  mockPlatformScheduler, mockReplicationUtil, mockFileDataService));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());

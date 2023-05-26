@@ -151,7 +151,14 @@ extern void ybc_heap_endscan(HeapScanDesc scanDesc);
 extern HeapScanDesc ybc_remote_beginscan(Relation relation,
 										 Snapshot snapshot,
 										 Scan *pg_scan_plan,
-										 PushdownExprs *remote);
+										 PushdownExprs *pushdown);
+
+/* Add quals to the given statement. */
+extern void YbDmlAppendQuals(List *quals, bool is_primary,
+							 YBCPgStatement handle);
+/* Add column references to the given statement. */
+extern void YbDmlAppendColumnRefs(List *colrefs, bool is_primary,
+								  YBCPgStatement handle);
 
 /*
  * The ybc_idx API is used to process the following SELECT.
@@ -164,8 +171,8 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   int nkeys,
 							   ScanKey key,
 							   Scan *pg_scan_plan,
-							   PushdownExprs *rel_remote,
-							   PushdownExprs *idx_remote);
+							   PushdownExprs *rel_pushdown,
+							   PushdownExprs *idx_pushdown);
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);

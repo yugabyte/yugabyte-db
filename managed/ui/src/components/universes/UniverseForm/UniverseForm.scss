@@ -837,6 +837,23 @@
   font-weight: 600;
 }
 
+.gflag-empty-banner-new {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex: 1;
+  border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+  background: colors.$YB_BG_WHITE_3;
+  border-radius: 8px;
+  margin-top: 10px;
+  justify-content: center;
+
+  .empty-text {
+    color: colors.$YB_DARKER_GRAY;
+    margin-top: 56px;
+  }
+}
+
 .gflag-empty-banner {
   height: 440px;
   width: 100%;

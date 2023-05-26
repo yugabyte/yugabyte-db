@@ -537,13 +537,19 @@ set_build_type_based_on_jenkins_job_name() {
 }
 
 set_default_compiler_type() {
+  expect_vars_to_be_set build_type
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     if is_mac; then
       YB_COMPILER_TYPE=clang
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      YB_COMPILER_TYPE=clang15
+      if [[ ${build_type} =~ ^(asan|debug|fastdebug)$ ]]; then
+        YB_COMPILER_TYPE=clang16
+      else
+        # Use Clang 15 for release builds and TSAN builds until perf evaluation and TSAN fixes.
+        YB_COMPILER_TYPE=clang15
+      fi
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -2289,8 +2295,9 @@ activate_virtualenv() {
     virtualenv_dir+="-${YB_TARGET_ARCH}"
   fi
 
-  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]] && \
-     ! "$yb_readonly_virtualenv"; then
+  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" &&
+        -d $virtualenv_dir &&
+        ${yb_readonly_virtualenv} == "false" ]]; then
     log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
     rm -rf "$virtualenv_dir"
     # We don't want to be re-creating the virtual environment over and over again.
@@ -2361,9 +2368,10 @@ activate_virtualenv() {
   fi
 
   local pip_executable=pip3
-  if ! "$yb_readonly_virtualenv"; then
+  if [[ ${yb_readonly_virtualenv} == "false" ]]; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
+    pip3 install --upgrade pip
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache
@@ -2747,8 +2755,9 @@ adjust_compiler_type_on_mac() {
   # A workaround for old macOS build workers where the default Clang version is 13 or older.
   if is_mac &&
     ! is_apple_silicon &&
-    [[ ${YB_COMPILER_TYPE:-clang} == "clang" ]] &&
-    [[ $(clang --version) =~ clang\ version\ ([0-9]+) ]]
+    [[ ${YB_COMPILER_TYPE:-clang} == "clang" &&
+       -f /usr/bin/clang &&
+       $(clang --version) =~ clang\ version\ ([0-9]+) ]]
   then
     clang_major_version=${BASH_REMATCH[1]}
     if [[ ${clang_major_version} -lt 14 ]]; then

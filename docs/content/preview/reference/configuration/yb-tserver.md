@@ -547,7 +547,7 @@ For example:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the exception of some logging options. Refer to [PostgreSQL logging options](#postgresql-logging-options).
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL server options](#postgresql-server-options).
 
 ##### --ysql_timezone
 
@@ -731,13 +731,31 @@ Only change this flag to `three_shared_parts` after you migrate the whole cluste
 
 Used to control rate of memstore flush and SSTable file compaction.
 
-Default: `256MB` (256 MB/second)
+Default: `1GB` (1 GB/second)
 
 ##### --rocksdb_universal_compaction_min_merge_width
 
 Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `4`
+
+##### --rocksdb_max_background_compactions
+
+Maximum number of threads to do background compactions (used when compactions need to catch up.) Unless `rocksdb_disable_compactions=true`, this cannot be set to zero.
+
+Default: `-1` (the value is calculated at runtime). For servers with up to 4 CPU cores, the default value is considered as `1`. For servers with up to 8 CPU cores, the default value is considered as `2`. For servers with up to 32 CPU cores, the default value is considered as `3`. Beyond 32 cores, the default value is considered as `4`.
+
+##### --rocksdb_compaction_size_threshold_bytes
+
+Threshold beyond which a compaction is considered large.
+
+Default: `2GB`
+
+##### --rocksdb_level0_file_num_compaction_trigger
+
+Number of files to trigger level-0 compaction. Set to `-1` if compaction should not be triggered by number of files at all.
+
+Default: `5`. 
 
 ##### --rocksdb_universal_compaction_size_ratio
 
@@ -1067,27 +1085,29 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
-## PostgreSQL options
+## PostgreSQL server options
 
-YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters on several levels by: 
+YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
 
-1. Using the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag.
+You can modify these parameters in the following ways:
 
-1. Setting the option per-database:
+- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
+
+- Set the option per-database:
 
     ```sql
     ALTER DATABASE database_name SET temp_file_limit=-1;
     ```
 
-1. Setting the option per-role:
+- Set the option per-role:
 
     ```sql
     ALTER ROLE yugabyte SET temp_file_limit=-1;
     ```
 
-    When setting the GUC variable at the role or database level, you have to open a new session for the changes to take effect.
+    When setting a parameter at the role or database level, you have to open a new session for the changes to take effect.
 
-1. Setting the option for the current session:
+- Set the option for the current session:
 
     ```sql
     SET temp_file_limit=-1;
@@ -1095,10 +1115,11 @@ YugabyteDB uses PostgreSQL server configuration parameters to apply server confi
     SET SESSION temp_file_limit=-1;
     ```
 
-    If `SET` is issued within a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
+    If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
+
     If the surrounding transaction commits, the effects will persist for the whole session.
 
-1. Set the option for the current transaction:
+- Set the option for the current transaction:
 
     ```sql
     SET LOCAL temp_file_limit=-1;
@@ -1127,7 +1148,7 @@ When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file
 
 Default: `off`
 
-##### --temp_file_limit
+##### temp_file_limit
 
 Specifies the amount of disk space used for temporary files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
 
@@ -1135,7 +1156,7 @@ Any query whose disk space usage exceeds `temp_file_limit` will terminate with t
 
 You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
 
-Valid values are `-1` (unlimited), `integer` (in kilobytes), `xMB` (in megabytes), and `xGB` (in gigabytes).
+Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
 
 Default: `1GB`
 
