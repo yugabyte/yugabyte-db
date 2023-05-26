@@ -134,6 +134,10 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return IsExternalTransaction::kFalse;
   }
 
+  void RecordConflictResolutionKeysScanned(int64_t num_keys) override {}
+
+  void RecordConflictResolutionScanLatency(MonoDelta latency) override {}
+
  private:
   static void Fail() {
     LOG(FATAL) << "Internal error: trying to get transaction status for non transactional table";
