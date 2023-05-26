@@ -466,8 +466,8 @@ _copyYbSeqScan(const YbSeqScan *from)
 	 */
 	CopyScanFields((const Scan *) from, (Scan *) newnode);
 
-	COPY_NODE_FIELD(remote.quals);
-	COPY_NODE_FIELD(remote.colrefs);
+	COPY_NODE_FIELD(yb_pushdown.quals);
+	COPY_NODE_FIELD(yb_pushdown.colrefs);
 
 	return newnode;
 }
@@ -517,10 +517,10 @@ _copyIndexScan(const IndexScan *from)
 	COPY_NODE_FIELD(indexorderbyops);
 	COPY_NODE_FIELD(indextlist);
 	COPY_SCALAR_FIELD(indexorderdir);
-	COPY_NODE_FIELD(index_remote.quals);
-	COPY_NODE_FIELD(index_remote.colrefs);
-	COPY_NODE_FIELD(rel_remote.quals);
-	COPY_NODE_FIELD(rel_remote.colrefs);
+	COPY_NODE_FIELD(yb_idx_pushdown.quals);
+	COPY_NODE_FIELD(yb_idx_pushdown.colrefs);
+	COPY_NODE_FIELD(yb_rel_pushdown.quals);
+	COPY_NODE_FIELD(yb_rel_pushdown.colrefs);
 
 	return newnode;
 }
@@ -546,8 +546,8 @@ _copyIndexOnlyScan(const IndexOnlyScan *from)
 	COPY_NODE_FIELD(indexorderby);
 	COPY_NODE_FIELD(indextlist);
 	COPY_SCALAR_FIELD(indexorderdir);
-	COPY_NODE_FIELD(remote.quals);
-	COPY_NODE_FIELD(remote.colrefs);
+	COPY_NODE_FIELD(yb_pushdown.quals);
+	COPY_NODE_FIELD(yb_pushdown.colrefs);
 	COPY_NODE_FIELD(yb_indexqual_for_recheck);
 
 	return newnode;

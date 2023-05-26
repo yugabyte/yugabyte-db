@@ -1925,8 +1925,8 @@ YbDmlAppendColumnRefs(List *colrefs, bool is_primary, YBCPgStatement handle)
  *
  * - If "xs_want_itup" is true, Postgres layer is expecting an IndexTuple that has ybctid to
  *   identify the desired row.
- * - "rel_remote" defines expressions to pushdown to remote relation scan
- * - "idx_remote" defines expressions to pushdown to remote secondary index
+ * - "rel_pushdown" defines expressions to pushdown to remote relation scan
+ * - "idx_pushdown" defines expressions to pushdown to remote secondary index
  *   scan. If the scan is not over a secondary index.
  */
 YbScanDesc
@@ -1935,8 +1935,8 @@ ybcBeginScan(Relation relation,
 			 bool xs_want_itup,
 			 int nkeys, ScanKey keys,
 			 Scan *pg_scan_plan,
-			 PushdownExprs *rel_remote,
-			 PushdownExprs *idx_remote)
+			 PushdownExprs *rel_pushdown,
+			 PushdownExprs *idx_pushdown)
 {
 	if (nkeys > YB_MAX_SCAN_KEYS)
 		ereport(ERROR,
@@ -1992,26 +1992,26 @@ ybcBeginScan(Relation relation,
 		/*
 		* Set up pushdown expressions.
 		* Sequential, IndexOnly and primary key scans are refer only one
-		* relation, and all expression they push down are in the rel_remote.
+		* relation, and all expression they push down are in the rel_pushdown.
 		* Secondary index scan may have pushable expressions that refer columns
-		* not included in the index, those go to the rel_remote as well.
+		* not included in the index, those go to the rel_pushdown as well.
 		* Secondary index scan's expressions that refer only columns available
-		* from the index are go to the idx_remote and pushed down when the index
-		* is scanned.
+		* from the index are go to the idx_pushdown and pushed down when the
+		* index is scanned.
 		*/
-		if (rel_remote != NULL)
+		if (rel_pushdown != NULL)
 		{
-			YbDmlAppendQuals(rel_remote->quals, true /* is_primary */,
+			YbDmlAppendQuals(rel_pushdown->quals, true /* is_primary */,
 							 ybScan->handle);
-			YbDmlAppendColumnRefs(rel_remote->colrefs, true /* is_primary */,
+			YbDmlAppendColumnRefs(rel_pushdown->colrefs, true /* is_primary */,
 								  ybScan->handle);
 		}
 
-		if (idx_remote != NULL)
+		if (idx_pushdown != NULL)
 		{
-			YbDmlAppendQuals(idx_remote->quals, false /* is_primary */,
+			YbDmlAppendQuals(idx_pushdown->quals, false /* is_primary */,
 							 ybScan->handle);
-			YbDmlAppendColumnRefs(idx_remote->colrefs, false /* is_primary */,
+			YbDmlAppendColumnRefs(idx_pushdown->colrefs, false /* is_primary */,
 								  ybScan->handle);
 		}
 
@@ -2231,8 +2231,8 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 									 nkeys,
 									 key,
 									 pg_scan_plan,
-									 NULL /* rel_remote */,
-									 NULL /* idx_remote */);
+									 NULL /* rel_pushdown */,
+									 NULL /* idx_pushdown */);
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
@@ -2282,8 +2282,8 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 									 nkeys,
 									 key,
 									 pg_scan_plan,
-									 NULL /* rel_remote */,
-									 NULL /* idx_remote */);
+									 NULL /* rel_pushdown */,
+									 NULL /* idx_pushdown */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -2333,16 +2333,16 @@ HeapScanDesc
 ybc_remote_beginscan(Relation relation,
 					 Snapshot snapshot,
 					 Scan *pg_scan_plan,
-					 PushdownExprs *remote)
+					 PushdownExprs *pushdown)
 {
 	YbScanDesc ybScan = ybcBeginScan(relation,
 									 NULL /* index */,
 									 false /* xs_want_itup */,
 									 0 /* nkeys */,
-									 NULL/* key */,
+									 NULL /* key */,
 									 pg_scan_plan,
-									 remote,
-									 NULL /* idx_remote */);
+									 pushdown /* rel_pushdown */,
+									 NULL /* idx_pushdown */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
