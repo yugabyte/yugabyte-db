@@ -34,10 +34,9 @@ public class CustomCAStoreManager {
 
   @Inject
   public CustomCAStoreManager(
-      JavaTrustStoreManager javaTrustStoreManager,
-      SystemTrustStoreManager systemTrustStoreManager) {
-    trustStoreManagers.add(javaTrustStoreManager);
-    trustStoreManagers.add(systemTrustStoreManager);
+      JksTrustStoreManager jksTrustStoreManager, PemTrustStoreManager pemTrustStoreManager) {
+    trustStoreManagers.add(jksTrustStoreManager);
+    trustStoreManagers.add(pemTrustStoreManager);
   }
 
   public UUID addCACert(UUID customerId, String name, String contents, String storagePath) {
@@ -80,7 +79,7 @@ public class CustomCAStoreManager {
           activeCert);
       log.debug("Added CA certificate {} to DB", certId);
 
-    } catch (KeyStoreException | CertificateException | IOException | PlatformServiceException e) {
+    } catch (Exception e) {
       suppressErrors = true; // Rollback errors need not be reported to user.
       try {
         boolean deleted = CustomCaCertificateInfo.delete(customerId, certId);
@@ -92,7 +91,7 @@ public class CustomCAStoreManager {
         purge(new File(certPath).getParentFile());
         log.debug("Rolled back filesystem");
       } catch (KeyStoreException | CertificateException | IOException ex) {
-        log.warn("Cannot rollback add CA certificate due to {}", ex.getMessage());
+        log.warn("Cannot rollback add CA certificate", ex);
       }
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getLocalizedMessage());
     }
@@ -171,12 +170,8 @@ public class CustomCAStoreManager {
       // 2 certs will be active now, be sure to take the latest if certId is not
       // used in 'select' query.
       oldCert.deactivate();
-    } catch (KeyStoreException
-        | NoSuchAlgorithmException
-        | CertificateException
-        | IOException
-        | PlatformServiceException e) {
-      log.warn("Rolling back cert refresh because of - {}", e.getMessage());
+    } catch (Exception e) {
+      log.warn("Rolling back certificate update", e);
       // Rollback DB.
       CustomCaCertificateInfo newCert = CustomCaCertificateInfo.getOrGrunt(customerId, newCertId);
       oldCert.activate();
@@ -196,18 +191,18 @@ public class CustomCAStoreManager {
         log.debug("Rolled back all runtime trust-stores");
 
         // Delete files.
-        purge(new File(newCertPath).getParentFile());
+        if (newCertPath != null) purge(new File(newCertPath).getParentFile());
         log.debug("Rolled back local filesystem");
       } catch (KeyStoreException
           | CertificateException
           | NoSuchAlgorithmException
           | IOException ex) {
-        log.warn("Cannot rollback refresh operation due to '{}'", ex.getMessage());
+        log.warn("Cannot rollback refresh operation", ex);
         // We'd already written the cert bundle to newCertPath- delete it when refresh failed.
         try {
           purge(new File(newCertPath).getParentFile());
         } catch (IOException exc) {
-          log.warn("Rolling back refresh failed. Error: {}", exc.getLocalizedMessage());
+          log.warn("Rolling back refresh failed. Error: ", exc);
         }
       }
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getLocalizedMessage());
@@ -233,7 +228,6 @@ public class CustomCAStoreManager {
     String trustStoreHome = getTruststoreHome(storagePath);
     String certPath = getCustomCACertsPath(trustStoreHome, certId);
     boolean deleted = false;
-    boolean marked = false;
     boolean suppressErrors = false;
     char[] truststorePassword = getTruststorePassword();
     List<TrustStoreManager> trustStoreManagersToRollback = new ArrayList<>();
@@ -246,12 +240,10 @@ public class CustomCAStoreManager {
       log.debug("Removed from all runtime trust-stores");
 
       cert.deactivate();
-      marked = true;
       log.debug("Inactivated CA certificate {}", certId);
-    } catch (KeyStoreException | CertificateException | IOException e) {
-      log.error("CA certificate delete is incomplete due to - {}", e.getMessage());
+    } catch (Exception e) {
+      log.error("CA certificate delete is incomplete due to: ", e);
       // Rollback DB.
-      if (cert == null) log.warn("CA certificate {} already deleted, cannot rollback", certId);
       cert.activate();
       try {
         suppressErrors = true;
@@ -260,22 +252,21 @@ public class CustomCAStoreManager {
               certPath, cert.getName(), trustStoreHome, truststorePassword, suppressErrors);
         }
       } catch (Exception ex) {
-        log.warn("Cannot complete rollback delete operation due to {}", ex.getMessage());
+        log.warn("Cannot complete rollback delete operation due to: ", ex);
       }
       String msg = String.format("Failed to delete custom CA cert: %s", e.getLocalizedMessage());
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
     }
     // Clean up.
-    if (marked) {
-      try {
-        purge(new File(certPath).getParentFile());
-      } catch (IOException e) {
-        log.error("Failed to cleanup file remnants. Error: {}", e.getMessage());
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getLocalizedMessage());
-      }
-      deleted = cert.delete();
-      log.info("Deleted CA certificate {}", certId);
+    try {
+      purge(new File(certPath).getParentFile());
+    } catch (IOException e) {
+      log.error("Failed to cleanup file remnants. Error: ", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getLocalizedMessage());
     }
+    deleted = cert.delete();
+    log.info("Deleted CA certificate {}", certId);
+
     return deleted;
   }
 

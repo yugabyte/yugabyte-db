@@ -22,14 +22,11 @@ import lombok.extern.slf4j.Slf4j;
 
 @Singleton
 @Slf4j
-public class JavaTrustStoreManager implements TrustStoreManager {
+public class JksTrustStoreManager implements TrustStoreManager {
 
   public static final String TRUSTSTORE_FILE_NAME = "ybJksCaCerts";
 
-  /**
-   * Creates a new trust store file (with the default trust store), if it does not exist and adds
-   * the custom CA certificate to it.
-   */
+  /** Creates a trust-store with only custom CA certificates in JKS format. */
   public boolean addCertificate(
       String certPath,
       String certAlias,
@@ -38,7 +35,7 @@ public class JavaTrustStoreManager implements TrustStoreManager {
       boolean suppressErrors)
       throws KeyStoreException, CertificateException, IOException, PlatformServiceException {
 
-    log.debug("Trying to update YBA's Java truststore ...");
+    log.debug("Trying to update YBA's JKS truststore ...");
     // Get the existing trust bundle.
     String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
     log.debug("Updating truststore {}", trustStorePath);
@@ -89,7 +86,7 @@ public class JavaTrustStoreManager implements TrustStoreManager {
 
     // Get the existing trust bundle.
     String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
-    log.debug("Trying to replace cert {} in YBA's Java truststore {}", certAlias, trustStorePath);
+    log.debug("Trying to replace cert {} in YBA's JKS truststore {}", certAlias, trustStorePath);
     KeyStore trustStore = getTrustStore(trustStorePath, trustStorePassword, false);
     if (trustStore == null) {
       String errMsg = "Truststore cannot be null";
@@ -143,7 +140,8 @@ public class JavaTrustStoreManager implements TrustStoreManager {
       }
       return trustStore;
     } catch (IOException | KeyStoreException | NoSuchAlgorithmException | CertificateException e) {
-      String msg = String.format("Failed to get trust store. Error %s", e.getLocalizedMessage());
+      String msg =
+          String.format("Failed to get JKS trust store. Error %s", e.getLocalizedMessage());
       log.error(msg, e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
     }
@@ -175,6 +173,6 @@ public class JavaTrustStoreManager implements TrustStoreManager {
     saveTrustStore(trustStorePath, trustStore, trustStorePassword);
     log.debug("Truststore '{}' now does not have a CA certificate '{}'", trustStorePath, certAlias);
 
-    log.info("Custom CA certs deleted in YBA's Java truststore");
+    log.info("Custom CA certs deleted in YBA's JKS truststore");
   }
 }
