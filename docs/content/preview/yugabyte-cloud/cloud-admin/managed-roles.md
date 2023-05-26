@@ -42,9 +42,11 @@ YugabyteDB Managed includes built-in roles for managing your account:
 
 - **Viewer** - The Viewer role has _all_ view permissions, exclusively, and can't perform any tasks.
 
+You can't delete or edit built-in roles.
+
 ## Create a role
 
-To create a role, do the following:
+To create a custom role, do the following:
 
 1. Navigate to **Admin > Access Control > Roles**, then click **Create a Role** to display the **Create a Role** dialog.
 1. Enter a name for the role.
@@ -53,7 +55,7 @@ To create a role, do the following:
 1. Select the permissions to assign to the role and click **Select** when you are done.
 1. Click **Save**.
 
-To create a role from an existing role, do the following:
+To create a custom role from an existing role, do the following:
 
 1. Navigate to **Admin > Access Control > Roles**, then select the role to modify to display the **Role Details** sheet.
 1. For a built-in role, click **Clone Role**; for a custom role, click **Actions** and choose **Clone Role**.
@@ -79,7 +81,7 @@ You can only edit custom roles. To edit a custom role, do the following:
 
 You can only delete custom roles, and only if the role is not assigned to any users.
 
-To delete a role, do the following:
+To delete a custom role, do the following:
 
 1. Navigate to **Admin > Access Control > Roles**, then select the role to modify to display the **Role Details** sheet.
 1. Click **Actions** and **Delete Role**.
