@@ -70,7 +70,7 @@ CREATE TABLE t1(id BIGSERIAL PRIMARY KEY, v TEXT);
 CREATE INDEX i1 ON t1(v);
 ```
 
-Watch the newly created index:
+Verify the index was created:
 
 ```sql
 yugabyte=# \d t1
@@ -91,7 +91,7 @@ Drop the index:
 DROP INDEX i1;
 ```
 
-The 'DROP' now succeeds and the `\d t1` meta-command shows that the index no longer exists.
+Use the `\d t1` meta-command to verify that the index no longer exists.
 
 ## See also
 
