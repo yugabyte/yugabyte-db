@@ -72,7 +72,10 @@ CREATE INDEX i1 ON t1(v);
 Verify the index was created:
 
 ```sql
-yugabyte=# \d t1
+\d t1
+```
+
+```output
                             Table "public.t1"
  Column |  Type  | Collation | Nullable |            Default             
 --------+--------+-----------+----------+--------------------------------
@@ -81,7 +84,6 @@ yugabyte=# \d t1
 Indexes:
     "t1_pkey" PRIMARY KEY, lsm (id HASH)
     "i1" lsm (v HASH)
-
 ```
 
 Drop the index:
