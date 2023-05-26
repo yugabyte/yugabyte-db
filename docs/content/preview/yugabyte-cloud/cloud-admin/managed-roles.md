@@ -1,8 +1,8 @@
 ---
-title: Manage roles for YugabyteDB Managed
+title: Manage roles for YugabyteDB Managed using RBAC
 headertitle: Manage account roles
 linkTitle: Manage account roles
-description: Manage roles that can be assigned to users of your YugabyteDB Managed account.
+description: Manage user roles using RBAC in YugabyteDB Managed accounts.
 headcontent: Create custom roles for team members
 image: /images/section_icons/secure/create-roles.png
 menu:
@@ -13,9 +13,9 @@ menu:
 type: docs
 ---
 
-Access to the features of your YugabyteDB Managed account is managed using roles. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
+YugabyteDB Managed uses role based access control (RBAC) to manage account access. Using roles, you can enforce the Principle of Least Privilege by ensuring that users have the precise permissions needed to fulfill their roles while mitigating the risk of unauthorized access or accidental breaches. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
 
-YugabyteDB Managed includes [built-in roles](#built-in-roles), and you can define custom roles for team members to restrict access to specific account features. For information on assigning roles to users, refer to [Change a user's role](../manage-access/#change-a-user-s-role).
+YugabyteDB Managed includes [built-in roles](#built-in-roles), and you can [define custom roles](#create-a-role) for team members to restrict access to specific account features. For information on assigning roles to users, refer to [Change a user's role](../manage-access/#change-a-user-s-role).
 
 Roles are also assigned to [API keys](../../managed-automation/managed-apikeys/) to delineate what functionality is available to users accessing your account using either the YugabyteDB Managed API or YBM CLI. You assign roles to API keys when creating the key; refer to [Create an API key](../../managed-automation/managed-apikeys/#create-an-api-key).
 
