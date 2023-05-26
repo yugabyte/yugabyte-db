@@ -29,7 +29,8 @@ const initialStateFeatureInTest = {
   enableCustomEmailTemplates: true,
   enableAWSProviderValidation: true,
   enableMKR: true,
-  enableS3BackupProxy: false
+  enableS3BackupProxy: false,
+  enableRRGflags: false
 };
 
 const initialStateFeatureReleased = {
