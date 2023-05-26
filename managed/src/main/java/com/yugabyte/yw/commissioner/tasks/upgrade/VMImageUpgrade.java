@@ -163,6 +163,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                   .setSubTaskGroupType(getTaskSubGroupType()));
 
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
+
+      Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
+
       node.machineImage = machineImage;
       if (StringUtils.isNotBlank(sshUserOverride)) {
         node.sshUserOverride = sshUserOverride;
@@ -195,6 +198,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               createWaitForYbcServerTask(new HashSet<>(Arrays.asList(node)))
                   .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
             } else {
+              // Todo: remove the following subtask.
+              // We have an issue where the tserver gets running once the VM with the new image is
+              // up.
+              createServerControlTask(
+                  node, processType, "stop", params -> params.isIgnoreError = true);
+
               createGFlagsOverrideTasks(
                   nodeList,
                   processType,
