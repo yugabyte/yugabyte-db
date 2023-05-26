@@ -47,7 +47,7 @@ class EncryptedWritableFile : public WritableFileWrapper {
     }
 
     uint8_t* buf = static_cast<uint8_t*>(EncryptionBuffer::Get()->GetBuffer(data.size()));
-    RETURN_NOT_OK(stream_->Encrypt(Size() - header_size_, data, buf));
+    RETURN_NOT_OK(stream_->Encrypt(WritableFileWrapper::Size() - header_size_, data, buf));
     return WritableFileWrapper::Append(Slice(buf, data.size()));
   }
 
@@ -63,7 +63,7 @@ class EncryptedWritableFile : public WritableFileWrapper {
 
     uint8_t* buf = static_cast<uint8_t*>(EncryptionBuffer::Get()->GetBuffer(total_size));
     auto write_pos = buf;
-    auto offset = Size() - header_size_;
+    auto offset = WritableFileWrapper::Size() - header_size_;
     for (auto it = slices; it != end; ++it) {
       RETURN_NOT_OK(stream_->Encrypt(offset, *it, write_pos));
       write_pos += it->size();
@@ -71,6 +71,10 @@ class EncryptedWritableFile : public WritableFileWrapper {
     }
 
     return WritableFileWrapper::Append(Slice(buf, total_size));
+  }
+
+  uint64_t Size() const override {
+    return WritableFileWrapper::Size() - header_size_;
   }
 
  private:
