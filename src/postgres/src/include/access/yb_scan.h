@@ -153,6 +153,11 @@ extern HeapScanDesc ybc_remote_beginscan(Relation relation,
 										 Scan *pg_scan_plan,
 										 PushdownExprs *pushdown);
 
+/* Add targets to the given statement. */
+extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
+extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
+									 YBCPgStatement handle);
+extern void YbDmlAppendTargets(List *colrefs, YBCPgStatement handle);
 /* Add quals to the given statement. */
 extern void YbDmlAppendQuals(List *quals, bool is_primary,
 							 YBCPgStatement handle);
