@@ -303,7 +303,7 @@ case "$command" in
     print_err_out "Stopping yb-$daemon on `hostname`"
     # Saving PID and deleting before KILL, to prevent race conditions with cron-check.
     daemon_pid=$(cat ${daemon_pid_file})
-    rm ${daemon_pid_file}
+    rm -f ${daemon_pid_file}
 
     if [[ $(check_running) -ne 0 ]]; then
       print_err_out "Process isn't running! Nothing to do"
