@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -54,6 +55,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
   @Mock NodeUniverseManager mockNodeUniverseManager;
   @Mock ReleaseManager mockReleaseManager;
   @Mock KubernetesManagerFactory mockKubernetesManagerFactory;
+  @Mock YbcBackupUtil mockYbcBackupUtil;
 
   MockedStatic<Util> mockedUtil;
 
@@ -94,6 +96,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
             mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
+            mockYbcBackupUtil,
             mockNodeUniverseManager,
             mockKubernetesManagerFactory,
             mockReleaseManager,
@@ -166,6 +169,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
             mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
+            mockYbcBackupUtil,
             mockNodeUniverseManager,
             mockKubernetesManagerFactory,
             mockReleaseManager,
@@ -214,6 +218,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
             mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
+            mockYbcBackupUtil,
             mockNodeUniverseManager,
             mockKubernetesManagerFactory,
             mockReleaseManager,
@@ -261,6 +266,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
             mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
+            mockYbcBackupUtil,
             mockNodeUniverseManager,
             mockKubernetesManagerFactory,
             mockReleaseManager,
