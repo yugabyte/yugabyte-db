@@ -49,6 +49,7 @@ import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
+import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import './UniverseDetail.scss';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
@@ -60,6 +61,7 @@ export const isEphemeralAwsStorageInstance = (instanceType) => {
 class UniverseDetail extends Component {
   constructor(props) {
     super(props);
+
     this.showUpgradeMarker = this.showUpgradeMarker.bind(this);
     this.onEditUniverseButtonClick = this.onEditUniverseButtonClick.bind(this);
     this.state = {
@@ -82,6 +84,11 @@ class UniverseDetail extends Component {
   isNewUIEnabled = () => {
     const { featureFlags } = this.props;
     return featureFlags.test.enableNewUI || featureFlags.released.enableNewUI;
+  };
+
+  isRRFlagsEnabled = () => {
+    const { featureFlags } = this.props;
+    return featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
   };
 
   componentDidMount() {
@@ -232,6 +239,7 @@ class UniverseDetail extends Component {
       showRunSampleAppsModal,
       showSupportBundleModal,
       showGFlagsModal,
+      showGFlagsNewModal,
       showHelmOverridesModal,
       showManageKeyModal,
       showDeleteUniverseModal,
@@ -660,10 +668,22 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         )}
 
-                      {!universePaused && (
+                      {!universePaused && !this.isRRFlagsEnabled() && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.editGFlags'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
+                      {!universePaused && this.isRRFlagsEnabled() && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={showGFlagsNewModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
                             'universes.details.overview.editGFlags'
@@ -874,6 +894,16 @@ class UniverseDetail extends Component {
           }
           onHide={closeModal}
         />
+        <EditGflagsModal
+          open={showModal && visibleModal === 'gFlagsNewModal'}
+          onClose={() => {
+            closeModal();
+            this.props.fetchCustomerTasks();
+            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+          }}
+          universeData={currentUniverse.data}
+        />
+
         <DeleteUniverseContainer
           visible={showModal && visibleModal === 'deleteUniverseModal'}
           onHide={closeModal}
