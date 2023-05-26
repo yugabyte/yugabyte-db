@@ -17,8 +17,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -35,6 +33,7 @@ import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -65,7 +64,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.bouncycastle.asn1.x509.GeneralName;
@@ -139,20 +137,20 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   }
 
   private final KubernetesManagerFactory kubernetesManagerFactory;
-
   private final ReleaseManager releaseManager;
+  private final YbcBackupUtil ybcBackupUtil;
 
   @Inject
   protected KubernetesCommandExecutor(
       BaseTaskDependencies baseTaskDependencies,
       KubernetesManagerFactory kubernetesManagerFactory,
-      ReleaseManager releaseManager) {
+      ReleaseManager releaseManager,
+      YbcBackupUtil ybcBackupUtil) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.releaseManager = releaseManager;
+    this.ybcBackupUtil = ybcBackupUtil;
   }
-
-  static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
 
   // Added constant to compute CPU burst limit
   static final double burstVal = 1.2;
@@ -339,48 +337,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case COPY_PACKAGE:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         NodeDetails nodeDetails = u.getNode(taskParams().ybcServerName);
-        ReleaseManager.ReleaseMetadata releaseMetadata =
-            releaseManager.getYbcReleaseByVersion(
-                taskParams().getYbcSoftwareVersion(),
-                OsType.LINUX.toString().toLowerCase(),
-                Architecture.x86_64.name().toLowerCase());
-        String ybcPackage = releaseMetadata.filePath;
-        Map<String, String> ybcGflags =
-            GFlagsUtil.getYbcFlagsForK8s(
-                taskParams().getUniverseUUID(), taskParams().ybcServerName);
-        try {
-          Path confFilePath =
-              Files.createTempFile(
-                  taskParams().getUniverseUUID().toString() + "_" + taskParams().ybcServerName,
-                  ".conf");
-          Files.write(
-              confFilePath,
-              () ->
-                  ybcGflags.entrySet().stream()
-                      .<CharSequence>map(e -> "--" + e.getKey() + "=" + e.getValue())
-                      .iterator());
-          kubernetesManagerFactory
-              .getManager()
-              .copyFileToPod(
-                  config,
-                  nodeDetails.cloudInfo.kubernetesNamespace,
-                  nodeDetails.cloudInfo.kubernetesPodName,
-                  "yb-controller",
-                  confFilePath.toAbsolutePath().toString(),
-                  "/mnt/disk0/yw-data/controller/conf/server.conf");
-          kubernetesManagerFactory
-              .getManager()
-              .copyFileToPod(
-                  config,
-                  nodeDetails.cloudInfo.kubernetesNamespace,
-                  nodeDetails.cloudInfo.kubernetesPodName,
-                  "yb-controller",
-                  ybcPackage,
-                  "/mnt/disk0/yw-data/controller/tmp/");
-        } catch (Exception ex) {
-          log.error(ex.getMessage(), ex);
-          throw new RuntimeException("Could not upload the ybc contents", ex);
-        }
+        ybcBackupUtil.copyYbcPackagesOnK8s(
+            config, u, nodeDetails, taskParams().getYbcSoftwareVersion());
         break;
       case YBC_ACTION:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
@@ -390,14 +348,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 "/bin/bash",
                 "-c",
                 String.format("/home/yugabyte/tools/k8s_ybc_parent.py %s", taskParams().command));
-        kubernetesManagerFactory
-            .getManager()
-            .performYbcAction(
-                config,
-                nodeDetails.cloudInfo.kubernetesNamespace,
-                nodeDetails.cloudInfo.kubernetesPodName,
-                "yb-controller",
-                commandArgs);
+        ybcBackupUtil.performActionOnYbcK8sNode(config, nodeDetails, commandArgs);
         break;
     }
   }
