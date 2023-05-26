@@ -355,6 +355,7 @@ The valid *arguments* for import data file are described in the following table:
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
+| [--null-string](#null-string) | String that represents null value in the data file. |
 
 <!-- To do : document the following arguments with description
 | --continue-on-error |
@@ -501,7 +502,7 @@ Depending on the target YugabyteDB configuration, the value of `--parallel-jobs`
 
 Default: If yb-voyager can determine the total number of cores `N` in the target YugabyteDB cluster, it uses `N/2` as the default. Otherwise, it defaults to twice the number of nodes in the cluster.
 
-Note that the `--parallel-jobs` argument is unsupported with [EXPERIMENTAL_FAST_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle).
+Note that the `--parallel-jobs` argument is unsupported with [BETA_FAST_DATA_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle).
 
 ### --batch-size
 
@@ -623,13 +624,19 @@ Use this argument to not display progress bars.
 
 Default: false
 
+### --null-string
+
+String that represents null value in the data file.
+
+Default: For CSV: ""(empty string), For text: '\N'
+
 ---
 
 ## SSL Connectivity
 
 You can instruct yb-voyager to connect to the source or target database over an SSL connection. Connecting securely to PostgreSQL, MySQL, and YugabyteDB requires you to pass a similar set of arguments to yb-voyager. Oracle requires a different set of arguments.
 
-Note that the SSL arguments are unsupported with [EXPERIMENTAL_FAST_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle).
+Note that the SSL arguments are unsupported with [BETA_FAST_DATA_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle).
 
 The following table summarizes the arguments and options you can pass to yb-voyager to establish an SSL connection.
 

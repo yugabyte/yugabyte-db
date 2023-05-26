@@ -61,8 +61,8 @@ The following table includes a list of supported data type mappings for migratin
 | URIType | URITYPE | Not supported. |
 | Objects | | Not supported. |
 | REF | | Not supported. |
-| Nested tables | Composite type |  Unsupported when used with [EXPERIMENTAL_FAST_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle). |
-| VARRAY | Composite type |  Unsupported when used with [EXPERIMENTAL_FAST_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle). |
+| Nested tables | Composite type |  Unsupported when used with [BETA_FAST_DATA_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle). |
+| VARRAY | Composite type |  Unsupported when used with [BETA_FAST_DATA_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle). |
 
 ### ANSI supported data types
 
