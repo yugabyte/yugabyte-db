@@ -22,7 +22,7 @@ API keys are not stored in YugabyteDB Managed. Safeguard them by doing the follo
 - Revoke keys that are lost or compromised.
 - Don't embed keys in code. Applications that contain keys can be de-compiled to extract keys, or de-obfuscated from on-device storage. API keys can also be compromised if committed to a code repository.
 
-API keys are [role-specific](../../cloud-admin/managed-roles/); keys assigned a Developer role can only be used to perform developer-level tasks using the API.
+API keys are [role-specific](../../cloud-admin/managed-roles/); for example, keys assigned a Developer role can only be used to perform developer-level tasks using the API.
 
 The **API Keys** tab under **Access Control** on the **Admin** page displays a list of API keys created for your account that includes the key name, key status, the user that created the key, and the date it was created, last used, and expires.
 

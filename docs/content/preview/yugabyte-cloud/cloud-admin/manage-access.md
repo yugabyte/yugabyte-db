@@ -60,6 +60,12 @@ You cannot change your own role.
 
 To change a user's role, in the **User Role** column, select a role for the user.
 
+{{< warning title="Use caution when changing roles" >}}
+
+Changing user roles can impact account security. Use caution when assigning roles with permissions for changing and assigning roles, inviting users, or creating API keys. If you are unsure, review role details before assigning.
+
+{{< /warning >}}
+
 To create and manage roles, refer to [Manage account roles](../managed-roles/).
 
 ## Reset your password
