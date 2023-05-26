@@ -2,7 +2,7 @@
 title: Supported operating systems and architectures
 headerTitle: Supported operating systems and architectures
 linkTitle: OS support
-description: List of operating systems and architectures supported by YugabyteDB Anywhere
+description: Operating systems and architectures supported by YugabyteDB Anywhere for deploying YugabyteDB
 menu:
   preview_yugabyte-platform:
     identifier: supported-os-and-arch
@@ -11,15 +11,17 @@ menu:
 type: docs
 ---
 
+Using YugabyteDB Anywhere (YBA), you can deploy YugabyteDB universes on the following architectures and operating systems.
+
 ## Supported CPU architectures
 
 YugabyteDB Anywhere supports deploying YugabyteDB on both x86 and ARM (aarch64) architecture-based hardware.
 
-Note that support for ARM architectures is unavailable for [airgapped](../../install-yugabyte-platform/install-software/airgapped/) setups, because YB Anywhere's ARM support for [AWS Graviton](https://aws.amazon.com/ec2/graviton/) requires Internet connectivity.
+Note that support for ARM architectures is unavailable for [airgapped](../../install-yugabyte-platform/install-software/airgapped/) setups, because YBA ARM support for [AWS Graviton](https://aws.amazon.com/ec2/graviton/) requires Internet connectivity.
 
 ## Supported operating systems
 
-YugabyteDB Anywhere supports deploying YugabyteDB on the following operating systems:
+YBA supports deploying YugabyteDB on the following operating systems:
 
 * AlmaLinux OS 8 (default)
 * CentOS
@@ -27,6 +29,7 @@ YugabyteDB Anywhere supports deploying YugabyteDB on the following operating sys
 * Oracle Linux 8
 * Ubuntu 18
 * Ubuntu 20
+* Red Hat Enterprise Linux 7
 * Red Hat Enterprise Linux 8
 
 ### Requirements for all OSes
@@ -37,9 +40,8 @@ The host AMI must have `gtar` and `zipinfo` installed.
 
 ### Oracle Linux and AlmaLinux notes
 
-YugabyteDB Anywhere support for Oracle Linux 8 and AlmaLinux OS 8 has the following limitations:
+YBA support for Oracle Linux 8 and AlmaLinux OS 8 has the following limitations:
 
 * Oracle Linux 8 uses the `firewall-cmd` client to set default target `ACCEPT`.
 * On Oracle Linux 8, only the Red Hat Linux-compatible kernel is supported, to allow port changing. The Unbreakable Enterprise Kernel (UEK) is not supported.
 * Systemd services are only supported in YugabyteDB Anywhere 2.15.1 and later versions.
-

@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-There are three methods of installing YugabyteDB Anywhere (YBA):
+You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
