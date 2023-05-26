@@ -55,7 +55,7 @@ ForeignNext(ForeignScanState *node)
 	else
 		/*
 		 * YB note: for YB FDW, see comment in ybcIterateForeignScan for why
-		 * YbInstantiateRemoteParams is not called at this level.
+		 * YbInstantiatePushdownParams is not called at this level.
 		 */
 		slot = node->fdwroutine->IterateForeignScan(node);
 	MemoryContextSwitchTo(oldcontext);

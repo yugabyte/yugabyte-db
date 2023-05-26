@@ -188,21 +188,21 @@ static void label_sort_with_costsize(PlannerInfo *root, Sort *plan,
 static SeqScan *make_seqscan(List *qptlist, List *qpqual, Index scanrelid);
 static YbSeqScan *make_yb_seqscan(List *qptlist,
 				List *local_quals,
-				List *remote_quals,
-				List *colrefs,
+				List *yb_pushdown_quals,
+				List *yb_pushdown_colrefs,
 				Index scanrelid);
 static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 				TableSampleClause *tsc);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
-			   List *rel_colrefs, List *rel_remote_quals,
-			   List *idx_colrefs, List *idx_remote_quals,
+			   List *yb_rel_pushdown_colrefs, List *yb_rel_pushdown_quals,
+			   List *yb_idx_pushdown_colrefs, List *yb_idx_pushdown_quals,
 			   Index scanrelid, Oid indexid,
 			   List *indexqual, List *indexqualorig,
 			   List *indexorderby, List *indexorderbyorig,
 			   List *indexorderbyops, List *indextlist,
 			   ScanDirection indexscandir);
 static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
-				   List *colrefs, List *remote_quals,
+				   List *yb_pushdown_colrefs, List *yb_pushdown_quals,
 				   Index scanrelid, Oid indexid,
 				   List *indexqual, List *indexorderby,
 				   List *indextlist,
@@ -6355,21 +6355,20 @@ make_seqscan(List *qptlist,
 static YbSeqScan *
 make_yb_seqscan(List *qptlist,
 				List *local_quals,
-				List *remote_quals,
-				List *colrefs,
+				List *yb_pushdown_quals,
+				List *yb_pushdown_colrefs,
 				Index scanrelid)
 {
 	YbSeqScan  *node = makeNode(YbSeqScan);
 	Plan	   *plan = &node->scan.plan;
-	PushdownExprs *remote = &node->remote;
 
 	plan->targetlist = qptlist;
 	plan->qual = local_quals;
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
-	remote->quals = remote_quals;
-	remote->colrefs = colrefs;
 	node->scan.scanrelid = scanrelid;
+	node->yb_pushdown.quals = yb_pushdown_quals;
+	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 
 	return node;
 }
@@ -6396,10 +6395,10 @@ make_samplescan(List *qptlist,
 static IndexScan *
 make_indexscan(List *qptlist,
 			   List *qpqual,
-			   List *rel_colrefs,
-			   List *rel_remote_quals,
-			   List *idx_colrefs,
-			   List *idx_remote_quals,
+			   List *yb_rel_pushdown_colrefs,
+			   List *yb_rel_pushdown_quals,
+			   List *yb_idx_pushdown_colrefs,
+			   List *yb_idx_pushdown_quals,
 			   Index scanrelid,
 			   Oid indexid,
 			   List *indexqual,
@@ -6426,10 +6425,10 @@ make_indexscan(List *qptlist,
 	node->indexorderbyops = indexorderbyops;
 	node->indextlist = indextlist;
 	node->indexorderdir = indexscandir;
-	node->rel_remote.colrefs = rel_colrefs;
-	node->rel_remote.quals = rel_remote_quals;
-	node->index_remote.colrefs = idx_colrefs;
-	node->index_remote.quals = idx_remote_quals;
+	node->yb_rel_pushdown.colrefs = yb_rel_pushdown_colrefs;
+	node->yb_rel_pushdown.quals = yb_rel_pushdown_quals;
+	node->yb_idx_pushdown.colrefs = yb_idx_pushdown_colrefs;
+	node->yb_idx_pushdown.quals = yb_idx_pushdown_quals;
 
 	return node;
 }
@@ -6437,8 +6436,8 @@ make_indexscan(List *qptlist,
 static IndexOnlyScan *
 make_indexonlyscan(List *qptlist,
 				   List *qpqual,
-				   List *colrefs,
-				   List *remote_quals,
+				   List *yb_pushdown_colrefs,
+				   List *yb_pushdown_quals,
 				   Index scanrelid,
 				   Oid indexid,
 				   List *indexqual,
@@ -6459,8 +6458,8 @@ make_indexonlyscan(List *qptlist,
 	node->indexorderby = indexorderby;
 	node->indextlist = indextlist;
 	node->indexorderdir = indexscandir;
-	node->remote.colrefs = colrefs;
-	node->remote.quals = remote_quals;
+	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
+	node->yb_pushdown.quals = yb_pushdown_quals;
 
 	return node;
 }
