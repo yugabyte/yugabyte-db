@@ -56,7 +56,7 @@ Specify the name of the index to be dropped. Objects associated with the index, 
 
 #### RESTRICT / CASCADE
 
-`RESTRICT` is the default and it will not drop the index if any objects depend on it.
+`RESTRICT` (the default) will not drop the index if any objects depend on it.
 
 `CASCADE` will drop any objects that transitively depend on the index.
 
