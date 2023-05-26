@@ -171,6 +171,8 @@ class LogIndex::IndexChunk : public RefCountedThreadSafe<LogIndex::IndexChunk> {
   const string path_;
   int fd_;
   uint8_t* mapping_;
+  // Lock to ensure that only one reader/writer is performing operation on mapping_.
+  simple_spinlock entry_lock_;
 };
 
 namespace  {
@@ -222,12 +224,14 @@ uint8_t* LogIndex::IndexChunk::GetPhysicalEntryPtr(int entry_index) {
 }
 
 void LogIndex::IndexChunk::GetEntry(int entry_index, PhysicalEntry* ret) {
+  std::lock_guard<simple_spinlock> l(entry_lock_);
   memcpy(ret, GetPhysicalEntryPtr(entry_index), sizeof(PhysicalEntry));
 }
 
 void LogIndex::IndexChunk::SetEntry(int entry_index, const PhysicalEntry& phys) {
   DVLOG_WITH_FUNC(4) << "path: " << path_ << " index_in_chunk: " << entry_index
-                    << " entry: " << phys.ToString();
+                     << " entry: " << phys.ToString();
+  std::lock_guard<simple_spinlock> l(entry_lock_);
   memcpy(GetPhysicalEntryPtr(entry_index), &phys, sizeof(PhysicalEntry));
 }
 
@@ -358,7 +362,6 @@ Status LogIndex::AddEntry(const LogIndexEntry& entry, const Overwrite overwrite)
   phys.term = entry.op_id.term;
   phys.segment_sequence_number = entry.segment_sequence_number;
   phys.offset_in_segment = entry.offset_in_segment;
-  std::lock_guard<simple_spinlock> l(open_chunks_lock_);
   if (PREDICT_FALSE(!overwrite)) {
     // Check if destination entry at operation index inside chunk is empty (memory mapped file
     // content is zero-initialized), so we can load into it and won't overwrite existing index
@@ -395,7 +398,6 @@ Status LogIndex::GetEntry(int64_t index, LogIndexEntry* entry) {
   RETURN_NOT_OK(s);
   int index_in_chunk = index % GetEntriesPerIndexChunk();
   PhysicalEntry phys;
-  std::lock_guard<simple_spinlock> l(open_chunks_lock_);
   chunk->GetEntry(index_in_chunk, &phys);
 
   // We never write any real entries to offset 0, because there's a header
