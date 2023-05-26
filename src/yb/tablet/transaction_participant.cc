@@ -114,6 +114,14 @@ METRIC_DEFINE_simple_gauge_uint64(
     tablet, aborted_transactions_pending_cleanup,
     "Total number of aborted transactions running in participant",
     yb::MetricUnit::kTransactions);
+METRIC_DEFINE_coarse_histogram(tablet, conflict_resolution_latency, "Conflict Resolution Latency",
+                               yb::MetricUnit::kMicroseconds,
+                               "Microseconds spent on conflict resolution across all "
+                               "transactions at the current tablet");
+METRIC_DEFINE_coarse_histogram(tablet, conflict_resolution_num_keys_scanned,
+                               "Total Keys Scanned During Conflict Resolution",
+                               yb::MetricUnit::kKeys,
+                               "Number of keys scanned during conflict resolution)");
 
 DEFINE_test_flag(int32, txn_participant_inject_latency_on_apply_update_txn_ms, 0,
                  "How much latency to inject when a update txn operation is applied.");
@@ -158,6 +166,10 @@ class TransactionParticipant::Impl
     metric_transaction_not_found_ = METRIC_transaction_not_found.Instantiate(entity);
     metric_aborted_transactions_pending_cleanup_ =
         METRIC_aborted_transactions_pending_cleanup.Instantiate(entity, 0);
+    metric_conflict_resolution_latency_ =
+        METRIC_conflict_resolution_latency.Instantiate(entity);
+    metric_conflict_resolution_num_keys_scanned_ =
+        METRIC_conflict_resolution_num_keys_scanned.Instantiate(entity);
     auto parent_mem_tracker = MemTracker::FindOrCreateTracker(
         kParentMemTrackerId, tablets_mem_tracker);
     mem_tracker_ = MemTracker::CreateTracker(Format("$0-$1", kParentMemTrackerId,
@@ -1231,6 +1243,14 @@ class TransactionParticipant::Impl
     return lock_and_iterator.transaction().external_transaction();
   }
 
+  void RecordConflictResolutionKeysScanned(int64_t num_keys) {
+    metric_conflict_resolution_num_keys_scanned_->Increment(num_keys);
+  }
+
+  void RecordConflictResolutionScanLatency(MonoDelta latency) {
+    metric_conflict_resolution_latency_->Increment(latency.ToMilliseconds());
+  }
+
  private:
   class AbortCheckTimeTag;
   class StartTimeTag;
@@ -1878,6 +1898,8 @@ class TransactionParticipant::Impl
   scoped_refptr<AtomicGauge<uint64_t>> metric_transactions_running_;
   scoped_refptr<AtomicGauge<uint64_t>> metric_aborted_transactions_pending_cleanup_;
   scoped_refptr<Counter> metric_transaction_not_found_;
+  scoped_refptr<Histogram> metric_conflict_resolution_latency_;
+  scoped_refptr<Histogram> metric_conflict_resolution_num_keys_scanned_;
 
   TransactionLoader loader_;
   std::atomic<bool> closing_{false};
@@ -2126,6 +2148,14 @@ HybridTime TransactionParticipant::GetMinStartTimeAmongAllRunningTransactions() 
 
 OpId TransactionParticipant::GetHistoricalMaxOpId() const {
   return impl_->GetHistoricalMaxOpId();
+}
+
+void TransactionParticipant::RecordConflictResolutionKeysScanned(int64_t num_keys) {
+  impl_->RecordConflictResolutionKeysScanned(num_keys);
+}
+
+void TransactionParticipant::RecordConflictResolutionScanLatency(MonoDelta latency) {
+  impl_->RecordConflictResolutionScanLatency(latency);
 }
 
 }  // namespace tablet
