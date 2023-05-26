@@ -29,7 +29,11 @@ import logging
 import os
 import stat
 import ybops.utils as ybutils
+import re
+import ssl
 from six import iteritems
+from http.client import HTTPConnection, HTTPSConnection
+from urllib.parse import urlparse
 
 
 class OnPremCreateInstancesMethod(CreateInstancesMethod):
@@ -439,6 +443,12 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
                                  help="Whether to set up chrony for NTP synchronization.")
         self.parser.add_argument("--ntp_server", required=False, action="append", default=[],
                                  help="NTP server to connect to.")
+        self.parser.add_argument("--provider_id", required=True,
+                                 help="Provider ID.")
+        self.parser.add_argument("--install_node_agent", action="store_true", default=False,
+                                 help="Install node agent in provisioning.")
+        self.parser.add_argument("--node_agent_port", default=9070, required=False,
+                                 help="Node agent server port.")
 
     def callback(self, args):
         config = {'devops_home': ybutils.YB_DEVOPS_HOME_PERM, 'cloud': self.cloud.name}
@@ -465,3 +475,122 @@ class OnPremAccessAddKeyMethod(AbstractAccessMethod):
     def callback(self, args):
         (private_key_file, public_key_file) = self.validate_key_files(args)
         print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))
+
+
+class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(OnPremInstallNodeAgentMethod, self).__init__(base_command, 'install-node-agent')
+
+    def preprocess_args(self, args):
+        super(OnPremInstallNodeAgentMethod, self).preprocess_args(args)
+
+    def add_extra_args(self):
+        super(OnPremInstallNodeAgentMethod, self).add_extra_args()
+        self.parser.add_argument("--yba_url", help="Base YBA URL reachable from DB node.",
+                                 required=True)
+        self.parser.add_argument("--api_token", help="API token for YBA.", required=True)
+        self.parser.add_argument("--node_name", help="Node name.", required=True)
+        self.parser.add_argument("--provider_id", help="Provider ID (UUID).", required=True)
+        self.parser.add_argument("--zone_name", help="Zone name.", required=True)
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Instance: {} does not exist, cannot install node agent"
+                                    .format(args.search_pattern))
+        self.update_ansible_vars_with_args(args)
+        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
+        url = urlparse(args.yba_url)
+        self.https = True if url.scheme == 'https' else False
+        self.yba_host = url.hostname
+        self.yba_port = url.port
+        self.auth_header = {"X-AUTH-YW-API-TOKEN": args.api_token}
+        self.install_user = "yugabyte"
+        self.local_installer_path = os.path.join(args.tmp_dir, "node-agent-installer.sh")
+        self.remote_installer_path = os.path.join(args.remote_tmp_dir, "node-agent-installer.sh")
+        self.sudo_pass_file = '{}/.yb_sudo_pass.sh'.format(args.remote_tmp_dir)
+        self.extra_vars['sudo_pass_file'] = self.sudo_pass_file
+        self.cloud.setup_ansible(args).run("send_sudo_pass.yml",
+                                           self.extra_vars, host_info,
+                                           print_output=False)
+        remote_shell = RemoteShell(self.extra_vars)
+        try:
+            self.copy_installer_script(args)
+            self.uninstall_node_agent(args)
+            self.install_node_agent(args)
+        finally:
+            remote_shell.exec_command(f'rm -rf "{self.sudo_pass_file}"'
+                                      f' "{self.remote_installer_path}"')
+            remote_shell.close()
+
+    def get_http_connection(self, args):
+        return HTTPSConnection(host=self.yba_host,
+                               port=self.yba_port,
+                               context=ssl._create_unverified_context(),
+                               timeout=10) if self.https else HTTPConnection(host=self.yba_host,
+                                                                             port=self.yba_port,
+                                                                             timeout=10)
+
+    def get_node_os_arch(self, args):
+        cmd = ["uname", "-sm"]
+        remote_shell = RemoteShell(self.extra_vars)
+        try:
+            result = remote_shell.run_command(cmd)
+            parts = re.split("\\s+", result.stdout)
+            return parts[0], parts[1]
+        finally:
+            remote_shell.close()
+
+    def copy_installer_script(self, args):
+        os_type, arch_type = self.get_node_os_arch(args)
+        conn = self.get_http_connection(args)
+        try:
+            # Download the installer locally.
+            conn.request("GET", f"/api/v1/node_agents/download?os={os_type}&arch={arch_type}",
+                         headers=self.auth_header)
+            with open(self.local_installer_path, "wb") as file:
+                response = conn.getresponse()
+                file.write(response.read())
+            st = os.stat(self.local_installer_path)
+            os.chmod(self.local_installer_path,
+                     st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+            # Copy over the installer to the remote host.
+            # File permissions are preserved.
+            copy_to_tmp(self.extra_vars, self.local_installer_path)
+        finally:
+            conn.close()
+
+    def uninstall_node_agent(self, args):
+        remote_shell = RemoteShell(self.extra_vars)
+        try:
+            uninstall_cmd = ["bash", "-c", f"cd {args.remote_tmp_dir}"
+                             f" && . {self.sudo_pass_file}"
+                             f" && echo -n $YB_SUDO_PASS | sudo -H -S"
+                             f" {self.remote_installer_path} -c uninstall -u {args.yba_url}"
+                             f" -t {args.api_token} --node_ip {args.node_agent_ip}"
+                             " --skip_verify_cert"]
+            remote_shell.run_command(uninstall_cmd)
+        finally:
+            remote_shell.close()
+
+    def install_node_agent(self, args):
+        remote_shell = RemoteShell(self.extra_vars)
+        try:
+            install_cmd = ["bash", "-c", f"cd {args.remote_tmp_dir}"
+                           f" && . {self.sudo_pass_file}"
+                           f" && echo -n $YB_SUDO_PASS | sudo -H -S -u {self.install_user}"
+                           f" {self.remote_installer_path} -c install -u {args.yba_url}"
+                           f" -t {args.api_token} --skip_verify_cert --silent"
+                           f" --user {self.install_user}"
+                           f" --node_name {args.node_name} --node_ip {args.node_agent_ip}"
+                           f" --node_port {args.node_agent_port} --provider_id {args.provider_id}"
+                           f" --instance_type {args.instance_type} --zone_name {args.zone_name}"]
+            # Run the installer script.
+            remote_shell.run_command(install_cmd)
+            # Install service as root.
+            service_cmd = ["bash", "-c", f"cd {args.remote_tmp_dir} && . {self.sudo_pass_file}"
+                           f" && echo -n $YB_SUDO_PASS | sudo -H -S {self.remote_installer_path}"
+                           f" -c install_service --user {self.install_user}"]
+            remote_shell.run_command(service_cmd)
+        finally:
+            remote_shell.close()
