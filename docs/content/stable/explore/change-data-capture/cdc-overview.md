@@ -4,7 +4,6 @@ headerTitle: Overview
 linkTitle: Overview
 description: Change Data Capture in YugabyteDB.
 headcontent: Change Data Capture in YugabyteDB
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable:
     parent: explore-change-data-capture
