@@ -119,7 +119,7 @@ Dump data as `INSERT` statements (rather than `COPY` statements). This will make
 
 #### --load-via-partition-root
 
-When dumping data for a table partition, make the COPY or INSERT statements target the root of the partitioning hierarchy that contains it, rather than the partition itself. This causes the appropriate partition to be re-determined for each row when the data is loaded. This may be useful when reloading data on a server where rows do not always fall into the same partitions as they did on the original server. That could happen, for example, if the partitioning column is of type text and the two systems have different definitions of the collation used to sort the partitioning column.
+When dumping data for a table partition, make the COPY or INSERT statements target the root of the partitioning hierarchy that contains it, rather than the partition itself. This causes the appropriate partition to be re-determined for each row when the data is loaded. This may be useful when reloading data on a server where rows do not always fall into the same partitions as they did on the original server. That could happen, for example, if the partitioning column is of type text, and the two systems have different definitions of the collation used to sort the partitioning column.
 
 #### --lock-wait-timeout=*timeout*
 
@@ -135,7 +135,7 @@ Do not dump publications.
 
 #### --no-role-passwords
 
-Do not dump passwords for roles. When restored, roles will have a null password, and password authentication will always fail until the password is set. Since password values aren't needed when this option is specified, the role information is read from the catalog view `pg_roles` instead of `pg_authid`. Therefore, this option also helps if access to `pg_authid` is restricted by some security policy. [**Note**: YugabyteDB uses the `pg_roles` and `pg_authid` system tables for PostgreSQL compatibility.]
+Do not dump passwords for roles. When restored, roles will have a null password, and password authentication will always fail until the password is set. As password values aren't needed when this option is specified, the role information is read from the catalog view `pg_roles` instead of `pg_authid`. Therefore, this option also helps if access to `pg_authid` is restricted by some security policy. Note: YugabyteDB uses the `pg_roles` and `pg_authid` system tables for PostgreSQL compatibility.
 
 #### --no-security-labels
 
@@ -244,7 +244,7 @@ To reload databases from this file, you can use:
 $ ./bin/ysqlsh -f db.out yugabyte
 ```
 
-It is not important to which database you connect because the script file created by ysql_dumpall will contain the appropriate statements to create and connect to the saved databases. An exception is that if you specified [`-c|--clean`](#c-clean), you must connect to the `postgres` database initially; the script will attempt to drop other databases immediately, and that will fail for the database you are connected to.
+The database to which you connect is not important because the script file created by ysql_dumpall will contain the appropriate statements to create and connect to the saved databases. An exception is that if you specified [`-c|--clean`](#c-clean), you must connect to the `postgres` database initially; the script will attempt to drop other databases immediately, and that will fail for the database you are connected to.
 
 ## See Also
 

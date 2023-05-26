@@ -163,7 +163,7 @@ Specify the compression level to use. Zero (`0`) means no compression. For plain
 
 #### --column-inserts, --attribute-inserts
 
-Dump data as `INSERT` statements with explicit column names (`INSERT INTO table (column, ...) VALUES ...`). This will make restoration very slow; it is mainly useful for making dumps that can be loaded into non-YugabyteDB databases. However, since this option generates a separate statement for each row, an error in reloading a row causes only that row to be lost rather than the entire table contents.
+Dump data as `INSERT` statements with explicit column names (`INSERT INTO table (column, ...) VALUES ...`). This makes restoration very slow; it is mainly helpful for making dumps that can be loaded into non-YugabyteDB databases. However, as this option generates a separate statement for each row, an error in reloading a row causes only that row to be lost rather than the entire table contents.
 
 #### --disable-dollar-quoting
 
@@ -183,7 +183,7 @@ Note that if you use this option currently, you probably also want the dump be i
 
 #### --exclude-table-data=*table*
 
-Do not dump data for any tables matching the table pattern. The pattern is interpreted according to the same rules as for [`-t|--table`](#t-table-table-table). The `--exclude-table-data` option can be given more than once to exclude tables matching any of several patterns. This option is useful when you need the definition of a particular table even though you do not need the data in it.
+Do not dump data for any tables matching the table pattern. The pattern is interpreted according to the same rules as for [`-t|--table`](#t-table-table-table). The `--exclude-table-data` option can be given more than once to exclude tables matching any of several patterns. This option is helpful when you need the definition of a particular table even though you do not need the data in it.
 
 To exclude data for all tables in the database, see [`-s|--schema-only`](#s-schema-only).
 
@@ -193,11 +193,11 @@ Use conditional statements (that is, add an `IF EXISTS` clause) when cleaning da
 
 #### --inserts
 
-Dump data as `INSERT` statements (rather than `COPY` statements). This will make restoration very slow; it is mainly useful for making dumps that can be loaded into non-YugabyteDB databases. However, since this option generates a separate statement for each row, an error in reloading a row causes only that row to be lost rather than the entire table contents. Note that the restore might fail altogether if you have rearranged column order. The `--column-inserts` option is safe against column order changes, though even slower.
+Dump data as `INSERT` statements (rather than `COPY` statements). This will make restoration very slow; it is mainly helpful for making dumps that can be loaded into non-YugabyteDB databases. However, as this option generates a separate statement for each row, an error in reloading a row causes only that row to be lost rather than the entire table contents. Note that the restore might fail altogether if you have rearranged column order. The `--column-inserts` option is safe against column order changes, though even slower.
 
 #### --lock-wait-timeout=*timeout*
 
-Do not wait forever to acquire shared table locks at the beginning of the dump. Instead fail if unable to lock a table within the specified timeout. The timeout may be specified in any of the formats accepted by `SET statement_timeout`. (Allowed formats vary depending on the server version you are dumping from, but an integer number of milliseconds is accepted by all versions.)
+Do not wait forever to acquire shared table locks at the beginning of the dump. Instead fail if unable to lock a table in the specified timeout. The timeout may be specified in any of the formats accepted by `SET statement_timeout`. (Allowed formats vary depending on the server version you are dumping from, but an integer number of milliseconds is accepted by all versions.)
 
 #### --no-publications
 
@@ -213,7 +213,7 @@ Do not dump subscriptions.
 
 #### --no-sync
 
-By default, ysql_dump waits for all files to be written safely to disk. This option causes ysql_dump to return without waiting, which is faster, but means that a subsequent operating system crash can leave the dump corrupt. Generally, this option is useful for testing but should not be used when dumping data from production installation.
+By default, ysql_dump waits for all files to be written safely to disk. This option causes ysql_dump to return without waiting, which is faster, but means that a subsequent operating system crash can leave the dump corrupt. Generally, this option is helpful for testing but should not be used when dumping data from production installation.
 
 #### --no-unlogged-table-data
 
@@ -237,7 +237,7 @@ If there are active read-write transactions, the maximum wait time until the sta
 
 #### --snapshot=*snapshotname*
 
-Use the specified synchronized snapshot when making a dump of the database. This option is useful when needing to synchronize the dump with a logical replication slot or with a concurrent session. In the case of a parallel dump, the snapshot name defined by this option is used rather than taking a new snapshot.
+Use the specified synchronized snapshot when making a dump of the database. This option is helpful when needing to synchronize the dump with a logical replication slot or with a concurrent session. In the case of a parallel dump, the snapshot name defined by this option is used rather than taking a new snapshot.
 
 #### --strict-names
 
@@ -283,7 +283,7 @@ Never issue a password prompt. If the server requires password authentication an
 
 Force ysql_dump to prompt for a password before connecting to a database.
 
-This option is never essential, since ysql_dump automatically prompts for a password if the server demands password authentication. However, ysql_dump will waste a connection attempt finding out that the server wants a password. In some cases it is worth typing `-W|--password` to avoid the extra connection attempt.
+This option is never essential, as ysql_dump automatically prompts for a password if the server demands password authentication. However, ysql_dump will waste a connection attempt finding out that the server wants a password. In some cases it is worth typing `-W|--password` to avoid the extra connection attempt.
 
 #### --role=*rolename*
 
