@@ -3,6 +3,7 @@
     "common": {
       "beta": "Beta",
       "apply": "Apply",
+      "applyChanges": "Apply Changes",
       "cancel": "Cancel",
       "confirm": "Confirm",
       "create": "Create",
@@ -20,7 +21,8 @@
       "none": "None",
       "edit": "Edit",
       "remove": "Remove",
-      "wrong": "Something went wrong."
+      "wrong": "Something went wrong.",
+      "areYouSure": "Are you sure ?"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -173,6 +175,21 @@
         "title": "G-Flags",
         "tServerValue": "T-SERVER VALUE",
         "addRow": "Add Row",
+        "inheritFlagsMsg": "Apply the same Flags to primary cluster and Read Replica.",
+        "note": "Note! ",
+        "rrWithOnlyTserver": "Read Replicas only have T-Servers",
+        "primaryClusterFlags": "Primary Cluster Flags",
+        "primaryTab": "Primary Cluster",
+        "rrTab": "Read Replica",
+        "gFlagUpdateOptions": "G-Flag Update Options",
+        "rollingMsg": "Apply all changes using a rolling restart (slower, zero downtime)",
+        "nonRollingMsg": "Apply all changes immediately, using a concurrent restart (faster, some downtime)",
+        "nonRestart": "Apply all changes which do not require a restart immediately",
+        "nonRestartRuntime": "apply remaining changes the next time the database is restarted",
+        "delayBetweenServers": "Delay Between Servers :",
+        "seconds": "seconds",
+        "inheritRRModalBody": "Apply the same Flags to both Primary Cluster and Read replica? <br /> This will override all the Flags that are currently applied to Read replica<br /> by Primary Cluster’s Flag.",
+        "inheritRRModalConfirmMsg": "Are you sure you want to continue with the changes?",
         "validationError": "Fix all the errors shown below to proceed",
         "hbaLDAPConflocal": "local database user auth-method [auth-options]",
         "hbaLDAPConfHost": "host database user address auth-method [auth-options]",
@@ -394,7 +411,7 @@
           "default": "Default",
           "addValuesButton": "Add Values",
           "valuesHelpText": "Define the possible values for the variable. Set one of the values as the <bold>default</bold> to use for all alerts that use the notification template. You can choose a value when configuring the alert policy.",
-          "nameError":"Name should contain only alphanumeric and _(underscore)"
+          "nameError": "Name should contain only alphanumeric and _(underscore)"
         },
         "assignCustomVariableValueModal": {
           "title": "Assign Variable Value to Alert Policies",

@@ -129,7 +129,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
             <Box
               flexShrink={1}
               display={'flex'}
-              ml={2}
+              ml={5}
               alignItems="center"
               className={isPrimary ? classes.selectedTab : classes.disabledTab}
             >
@@ -138,7 +138,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
             <Box
               flexShrink={1}
               display={'flex'}
-              ml={2}
+              ml={5}
               mr={1}
               alignItems="center"
               className={!isPrimary ? classes.selectedTab : classes.disabledTab}
@@ -239,10 +239,10 @@ export const UniverseForm: FC<UniverseFormProps> = ({
           <>
             <SecurityConfiguration runtimeConfigs={runtimeConfigs} />
             <AdvancedConfiguration />
-            <GFlags />
-            <HelmOverrides />
           </>
         )}
+        <GFlags />
+        {isPrimary && <HelmOverrides />}
         <UserTags />
       </>
     );

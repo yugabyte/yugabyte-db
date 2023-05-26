@@ -2,9 +2,10 @@ import React, { useState, ReactElement } from 'react';
 import _ from 'lodash';
 import * as Yup from 'yup';
 import clsx from 'clsx';
+import { useSelector } from 'react-redux';
 import { Box } from '@material-ui/core';
-import { Control, useFieldArray } from 'react-hook-form';
-import { useUpdateEffect } from 'react-use';
+import { useFieldArray } from 'react-hook-form';
+import { useEffectOnce, useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
@@ -21,7 +22,7 @@ import AddGFlag from '../../../../../../../components/universes/UniverseForm/Add
 import EditorGFlag from '../../../../../../../components/universes/UniverseForm/EditorGFlag';
 import { useWhenMounted } from '../../../../../../helpers/hooks';
 import { validateGFlags } from '../../../../../../../actions/universe';
-import { UniverseFormData, Gflag } from '../../../utils/dto';
+import { Gflag } from '../../../utils/dto';
 //Icons
 import Edit from '../../../../../../assets/edit_pen.svg';
 import Close from '../../../../../../assets/close.svg';
@@ -38,9 +39,11 @@ import MoreIcon from '../../../../../../assets/ellipsis.svg';
 interface GflagsFieldProps {
   dbVersion: string;
   fieldPath: string;
-  control: Control<Partial<UniverseFormData>>;
+  control: any;
   editMode: boolean;
   isReadOnly: boolean;
+  isReadReplica: boolean;
+  tableMaxHeight?: string;
 }
 
 interface SelectedOption {
@@ -85,7 +88,9 @@ export const GFlagsField = ({
   fieldPath,
   control,
   editMode = false,
-  isReadOnly = false
+  isReadOnly = false,
+  isReadReplica = false,
+  tableMaxHeight
 }: GflagsFieldProps): ReactElement => {
   const { fields, append, insert, remove } = useFieldArray({
     name: fieldPath as any,
@@ -98,6 +103,8 @@ export const GFlagsField = ({
   const [versionError, setVersionError] = useState<string | null>(null);
   const whenMounted = useWhenMounted();
   const { t } = useTranslation();
+  const featureFlags = useSelector((state: any) => state.featureFlags);
+  const enableRRGflags = featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
 
   //options Array -- TO DRY THE CODE
   const OPTIONS = [
@@ -127,11 +134,13 @@ export const GFlagsField = ({
   const SERVER_LIST = [
     {
       serverName: TSERVER,
-      label: t('universeForm.gFlags.addToTServer')
+      label: t('universeForm.gFlags.addToTServer'),
+      visible: true
     },
     {
       serverName: MASTER,
-      label: t('universeForm.gFlags.addToMaster')
+      label: t('universeForm.gFlags.addToMaster'),
+      visible: !isReadReplica
     }
   ];
 
@@ -229,7 +238,9 @@ export const GFlagsField = ({
     });
   };
 
-  useUpdateEffect(onVersionChange, [dbVersion]);
+  useUpdateEffect(onVersionChange, [dbVersion, isReadReplica]);
+
+  useEffectOnce(onVersionChange);
 
   const errorPopover = (title: string, msg: string) => (
     <OverlayTrigger
@@ -417,27 +428,34 @@ export const GFlagsField = ({
       <div className={isReadOnly ? 'gflag-read-table' : 'gflag-edit-table'}>
         <BootstrapTable
           data={fields}
-          height={editMode ? '420px' : 'auto'}
-          maxHeight="420px"
+          height={tableMaxHeight ?? 'auto'}
+          maxHeight={tableMaxHeight ?? '420px'}
           tableStyle={{ overflow: 'scroll' }}
         >
-          <TableHeaderColumn width="40%" dataField="Name" dataFormat={nameFormatter} isKey>
+          <TableHeaderColumn
+            width={isReadReplica ? '60%' : '40%'}
+            dataField="Name"
+            dataFormat={nameFormatter}
+            isKey
+          >
             <span className="header-title">{t('universeForm.gFlags.flagName')}</span>
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="TSERVER"
-            width="30%"
+            width={isReadReplica ? '40%' : '30%'}
             dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, TSERVER)}
           >
             <span className="header-title">{t('universeForm.gFlags.tServerValue')}</span>
           </TableHeaderColumn>
-          <TableHeaderColumn
-            dataField="MASTER"
-            width="30%"
-            dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, MASTER)}
-          >
-            <span className="header-title">{t('universeForm.gFlags.masterValue')}</span>
-          </TableHeaderColumn>
+          {!isReadReplica && (
+            <TableHeaderColumn
+              dataField="MASTER"
+              width="30%"
+              dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, MASTER)}
+            >
+              <span className="header-title">{t('universeForm.gFlags.masterValue')}</span>
+            </TableHeaderColumn>
+          )}
         </BootstrapTable>
       </div>
     );
@@ -461,12 +479,28 @@ export const GFlagsField = ({
     const gflagSchema = Yup.object().shape({
       flagvalue: Yup.mixed().required(t('universeForm.validation.fieldRequired'))
     });
-    const modalTitle =
+    let modalTitle =
       selectedProps?.mode === CREATE
         ? selectedProps?.label
         : t('universeForm.gFlags.editFlagValue');
     const modalLabel =
       selectedProps?.mode === CREATE ? t('universeForm.gFlags.addFlag') : t('common.confirm');
+    if (enableRRGflags) {
+      if (isReadReplica)
+        modalTitle =
+          t('universeForm.gFlags.rrTab') +
+          ' / ' +
+          selectedProps?.server +
+          ' / ' +
+          t('universeForm.gFlags.addFlag');
+      else
+        modalTitle =
+          t('universeForm.gFlags.primaryTab') +
+          ' / ' +
+          selectedProps?.server +
+          ' / ' +
+          t('universeForm.gFlags.addFlag');
+    }
     return (
       <YBModalForm
         title={modalTitle}
@@ -489,14 +523,14 @@ export const GFlagsField = ({
 
   const renderBanner = () => {
     return (
-      <div className="gflag-empty-banner">
+      <div className="gflag-empty-banner-new ">
         <span className="empty-text">{t('universeForm.gFlags.noFlags')}</span>
       </div>
     );
   };
 
   return (
-    <Box display="flex" width="100%" flexDirection="column">
+    <Box display="flex" width="100%" height="100%" flexDirection="column">
       {versionError && (
         <Alert bsStyle="danger">
           {versionError} ({t('universeForm.gFlags.selectedDBVersion')}
@@ -509,7 +543,7 @@ export const GFlagsField = ({
             const { optionName, ...rest } = option;
             return (
               <DropdownButton {...rest} bsSize="small" id={optionName} key={optionName}>
-                {SERVER_LIST.map((server) => {
+                {SERVER_LIST.filter((e) => e.visible).map((server) => {
                   const { serverName, label } = server;
                   const serverProps = {
                     option: optionName,
