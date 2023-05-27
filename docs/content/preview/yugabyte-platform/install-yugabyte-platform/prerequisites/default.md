@@ -3,6 +3,7 @@ title: Prerequisites - Replicated
 headerTitle: Prerequisites for YBA
 linkTitle: YBA prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere using Replicated.
+headContent: What you need to install YugabyteDB Anywhere
 menu:
   preview_yugabyte-platform:
     identifier: prerequisites
@@ -11,7 +12,7 @@ menu:
 type: docs
 ---
 
-There are three methods of installing YugabyteDB Anywhere (YBA):
+You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
