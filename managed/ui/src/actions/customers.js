@@ -1243,3 +1243,13 @@ export function resetRuntimeConfigs() {
     type: RESET_RUNTIME_CONFIGS
   };
 }
+
+export function getLDAPRoleMapping() {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.get(`${ROOT_URL}/customers/${cUUID}/ldap_mappings`);
+}
+
+export function setLDAPRoleMapping(payload) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.put(`${ROOT_URL}/customers/${cUUID}/ldap_mappings`, payload);
+}
