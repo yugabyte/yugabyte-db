@@ -12,9 +12,9 @@ menu:
 type: indexpage
 ---
 
-After YugabytDB Anywhere has been installed, the next step is to create provider configurations. A provider configuration comprises all the parameters needed to deploy a universe on corresponding provider. This includes cloud credentials, regions and zones, networking details, and more.
+After YugabytDB Anywhere (YBA) has been installed, the next step is to create provider configurations. A provider configuration comprises all the parameters needed to deploy a YugabyteDB universe on the corresponding provider. This includes cloud credentials, regions and zones, networking details, and more.
 
-When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to create and provision the nodes that will make up the universe.
+When deploying a universe, YBA uses the provider configuration settings to create and provision the nodes that will make up the universe.
 
 <div class="row">
 
@@ -34,10 +34,10 @@ When deploying a universe, YugabyteDB Anywhere uses the provider configuration s
     <a class="section-link icon-offset" href="supported-os-and-arch/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Supported operating systems</div>
+        <div class="title">Node prerequisites</div>
       </div>
       <div class="body">
-        Operating systems and architectures supported by YugabyteDB Anywhere for deploying universes.
+        Operating systems and architectures supported by YBA for deploying YugabyteDB universes.
       </div>
     </a>
   </div>

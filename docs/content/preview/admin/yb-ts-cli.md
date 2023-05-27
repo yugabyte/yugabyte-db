@@ -25,7 +25,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] <command> <flags>
 * *command*: The operation to be performed. See [Commands](#commands) below.
 * *flags*: The flags to be applied to the command. See [Flags](#flags).
 
-## Command line help
+### Online help
 
 To display the available online help, run `yb-ts-cli` without any commands or flags at the YugabyteDB home directory.
 
