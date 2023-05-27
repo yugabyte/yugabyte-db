@@ -262,6 +262,12 @@ public class TokenAuthenticator extends Action.Simple {
 
   // Check role, and if the API call is accessible.
   private boolean checkAccessLevel(String endPoint, Users user, String requestType) {
+
+    // Allow only superadmins to change LDAP Group Mappings.
+    if (endPoint.endsWith("/ldap_mappings") && requestType.equals("PUT")) {
+      return user.getRole() == Role.SuperAdmin;
+    }
+
     // Users should be allowed to change their password.
     // Even admin users should not be allowed to change another
     // user's password.

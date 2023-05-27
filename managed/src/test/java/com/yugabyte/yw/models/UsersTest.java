@@ -149,4 +149,15 @@ public class UsersTest extends FakeDBApplication {
     assertEquals(false, json.has("passwordHash"));
     assertEquals(false, json.has("apiToken"));
   }
+
+  @Test
+  public void testRoleUnion() {
+    Role[] roles = {null, Role.ReadOnly, Role.BackupAdmin, Role.Admin, Role.SuperAdmin};
+
+    for (int i = 0; i < roles.length; i++) {
+      for (int j = 0; j < roles.length; j++) {
+        assertEquals(Role.union(roles[i], roles[j]), roles[i > j ? i : j]);
+      }
+    }
+  }
 }

@@ -27,8 +27,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
@@ -52,17 +50,17 @@ public class Users extends Model {
 
   /** These are the available user roles */
   public enum Role {
-    @EnumValue("Admin")
-    Admin,
-
     @EnumValue("ReadOnly")
     ReadOnly,
 
-    @EnumValue("SuperAdmin")
-    SuperAdmin,
-
     @EnumValue("BackupAdmin")
-    BackupAdmin;
+    BackupAdmin,
+
+    @EnumValue("Admin")
+    Admin,
+
+    @EnumValue("SuperAdmin")
+    SuperAdmin;
 
     public String getFeaturesFile() {
       switch (this) {
@@ -77,6 +75,22 @@ public class Users extends Model {
         default:
           return null;
       }
+    }
+
+    public static Role union(Role r1, Role r2) {
+      if (r1 == null) {
+        return r2;
+      }
+
+      if (r2 == null) {
+        return r1;
+      }
+
+      if (r1.compareTo(r2) < 0) {
+        return r2;
+      }
+
+      return r1;
     }
   }
 
@@ -146,7 +160,6 @@ public class Users extends Model {
 
   // The role of the user.
   @Column(nullable = false)
-  @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "User role")
   private Role role;
 
