@@ -427,7 +427,7 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   } else {
     HybridTime current_safe_time = HybridTime::kMin;
     if (IsPgsqlFollowerReadAtAFollower()) {
-      auto current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
+      current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
           require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
       if (GetAtomicFlag(&FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) &&
           current_safe_time < read_time_.read) {
