@@ -1015,11 +1015,11 @@ TEST_F(QLTabletTest, LeaderChange) {
     for (const auto& peer : peers) {
       if (peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
         LOG(INFO) << "Request step down: " << server->permanent_uuid() << " => " << leader_id;
-        consensus::LeaderStepDownRequestPB req;
-        req.set_tablet_id(peer->tablet_id());
-        req.set_new_leader_uuid(leader_id);
+        consensus::LeaderStepDownRequestPB stepdown_request;
+        stepdown_request.set_tablet_id(peer->tablet_id());
+        stepdown_request.set_new_leader_uuid(leader_id);
         consensus::LeaderStepDownResponsePB resp;
-        ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+        ASSERT_OK(peer->consensus()->StepDown(&stepdown_request, &resp));
         found = true;
         break;
       }
@@ -1047,7 +1047,6 @@ void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
 
   const auto kValue1 = 2;
   const auto kValue2 = 3;
-  const auto kTotalKeys = 200;
 
   auto session1 = CreateSession();
   auto session2 = CreateSession();

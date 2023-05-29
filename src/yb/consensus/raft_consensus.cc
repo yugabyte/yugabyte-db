@@ -2663,12 +2663,12 @@ Status RaftConsensus::UnsafeChangeConfig(
   for (const auto& peer : committed_config.peers()) {
     const string& peer_uuid = peer.permanent_uuid();
     if (!ContainsKey(retained_peer_uuids, peer_uuid)) {
-      ChangeConfigRequestPB req;
-      req.set_tablet_id(tablet_id());
-      req.mutable_server()->set_permanent_uuid(peer_uuid);
-      req.set_type(REMOVE_SERVER);
-      req.set_cas_config_opid_index(committed_config.opid_index());
-      CHECK(RemoveFromRaftConfig(&new_config, req));
+      ChangeConfigRequestPB change_config_request;
+      change_config_request.set_tablet_id(tablet_id());
+      change_config_request.mutable_server()->set_permanent_uuid(peer_uuid);
+      change_config_request.set_type(REMOVE_SERVER);
+      change_config_request.set_cas_config_opid_index(committed_config.opid_index());
+      CHECK(RemoveFromRaftConfig(&new_config, change_config_request));
     }
   }
   // Check that local peer is part of the new config and is a VOTER.

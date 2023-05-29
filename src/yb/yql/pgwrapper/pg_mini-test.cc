@@ -346,7 +346,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(FollowerReads)) {
     ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_READ_ONLY_SQL_TRANSACTION) << status;
     ASSERT_STR_CONTAINS(status.ToString(), "cannot execute UPDATE in a read-only transaction");
 
-    auto value =
+    value =
         ASSERT_RESULT(conn.FetchValue<std::string>("/*+ Set(transaction_read_only off) */ "
                                                    "SELECT value FROM t WHERE key = 1"));
     ASSERT_EQ(value, "old");
