@@ -113,9 +113,9 @@ public class TestDDL extends CDCBaseClass {
       assertEquals("b", ddl1.getRowMessage().getSchema().getColumnInfo(1).getName());
 
       ExpectedRecordYSQL<?> insert1 = new ExpectedRecordYSQL<>(1, 2, Op.INSERT);
-      ExpectedRecordYSQL.checkRecord(outputList.get(1), insert1);
+      ExpectedRecordYSQL.checkRecord(outputList.get(2), insert1);
 
-      CdcService.CDCSDKProtoRecordPB ddl2 = outputList.get(2);
+      CdcService.CDCSDKProtoRecordPB ddl2 = outputList.get(4);
       assertEquals(Op.DDL, ddl2.getRowMessage().getOp());
       assertEquals(3, ddl2.getRowMessage().getSchema().getColumnInfoCount());
       assertEquals("a", ddl2.getRowMessage().getSchema().getColumnInfo(0).getName());
@@ -123,7 +123,7 @@ public class TestDDL extends CDCBaseClass {
       assertEquals("c", ddl2.getRowMessage().getSchema().getColumnInfo(2).getName());
 
       ExpectedRecord3Proto insert2 = new ExpectedRecord3Proto(2, 3, 4, Op.INSERT);
-      ExpectedRecord3Proto.checkRecord(outputList.get(3), insert2);
+      ExpectedRecord3Proto.checkRecord(outputList.get(6), insert2);
     } catch (Exception e) {
       LOG.error("Test to verify adding a column while CDC still attached failed", e);
       fail();
@@ -143,9 +143,15 @@ public class TestDDL extends CDCBaseClass {
       assertEquals(1, statement.executeUpdate("insert into test values (3);"));
 
       ExpectedRecordYSQL<?>[] expectedRecords = new ExpectedRecordYSQL[] {
+        new ExpectedRecordYSQL<>(-1, -1, Op.BEGIN),
         new ExpectedRecordYSQL<>(1, 404, Op.INSERT),
+        new ExpectedRecordYSQL<>(-1, -1, Op.COMMIT),
+        new ExpectedRecordYSQL(-1, -1, Op.BEGIN),
         new ExpectedRecordYSQL<>(2, 3, Op.INSERT),
-        new ExpectedRecordYSQL<>(3, 404, Op.INSERT)
+        new ExpectedRecordYSQL<>(-1, -1, Op.COMMIT),
+        new ExpectedRecordYSQL(-1, -1, Op.BEGIN),
+        new ExpectedRecordYSQL<>(3, 404, Op.INSERT),
+        new ExpectedRecordYSQL<>(-1, -1, Op.COMMIT)
       };
 
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
