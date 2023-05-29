@@ -16,22 +16,28 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Optional;
+import java.util.UUID;
 import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -54,6 +60,7 @@ public class UniverseYbDbAdminHandler {
   @Inject RuntimeConfigFactory runtimeConfigFactory;
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
   @Inject YcqlQueryExecutor ycqlQueryExecutor;
+  @Inject Commissioner commissioner;
 
   public UniverseYbDbAdminHandler() {}
 
@@ -153,6 +160,70 @@ public class UniverseYbDbAdminHandler {
     }
 
     return ysqlQueryExecutor.executeQuery(universe, runQueryFormData);
+  }
+
+  public UUID configureYSQL(
+      ConfigureDBApiParams requestParams, Customer customer, Universe universe) {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    // Verify request params
+    requestParams.verifyParams(universe);
+    TaskType taskType =
+        userIntent.providerType.equals(Common.CloudType.kubernetes)
+            ? TaskType.ConfigureDBApisKubernetes
+            : TaskType.ConfigureDBApis;
+    UUID taskUUID = commissioner.submit(taskType, requestParams);
+    LOG.info(
+        "Submitted {} for {} : {}, task uuid = {}.",
+        taskType,
+        universe.getUniverseUUID(),
+        universe.getName(),
+        taskUUID);
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ConfigureDBApis,
+        universe.getName());
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for universe {} : {}.",
+        taskUUID,
+        universe.getUniverseUUID(),
+        universe.getName());
+    return taskUUID;
+  }
+
+  public UUID configureYCQL(
+      ConfigureDBApiParams requestParams, Customer customer, Universe universe) {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    // Verify request params
+    requestParams.verifyParams(universe);
+    TaskType taskType =
+        userIntent.providerType.equals(Common.CloudType.kubernetes)
+            ? TaskType.ConfigureDBApisKubernetes
+            : TaskType.ConfigureDBApis;
+    UUID taskUUID = commissioner.submit(taskType, requestParams);
+    LOG.info(
+        "Submitted {} for {} : {}, task uuid = {}.",
+        taskType,
+        universe.getUniverseUUID(),
+        universe.getName(),
+        taskUUID);
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ConfigureDBApis,
+        universe.getName());
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for universe {} : {}.",
+        taskUUID,
+        universe.getUniverseUUID(),
+        universe.getName());
+    return taskUUID;
   }
 
   @VisibleForTesting

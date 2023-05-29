@@ -48,6 +48,11 @@ public enum TaskType {
 
   CreateBackup(com.yugabyte.yw.commissioner.tasks.CreateBackup.class),
 
+  ConfigureDBApis(com.yugabyte.yw.commissioner.tasks.upgrade.ConfigureDBApis.class),
+
+  ConfigureDBApisKubernetes(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ConfigureDBApisKubernetes.class),
+
   CreatePitrConfig(com.yugabyte.yw.commissioner.tasks.CreatePitrConfig.class),
 
   DeletePitrConfig(com.yugabyte.yw.commissioner.tasks.DeletePitrConfig.class),
@@ -504,6 +509,12 @@ public enum TaskType {
 
   UpdateClusterUserIntent(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent.class),
+
+  UpdateClusterAPIDetails(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails.class),
+
+  UpdateUniverseCommunicationPorts(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts.class),
 
   CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class),
 
