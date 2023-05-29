@@ -18,9 +18,7 @@ package com.yugabyte.yw.common.ybflyway;
 import com.typesafe.config.Config;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import org.flywaydb.play.FlywayWebCommand;
 import org.flywaydb.play.Flyways;
-import play.api.Configuration;
 import play.api.Environment;
 import play.core.WebCommands;
 import scala.collection.JavaConverters;
@@ -31,10 +29,6 @@ public class YBFlywayInit {
   @Inject
   public YBFlywayInit(
       Config config, Environment environment, Flyways flyways, WebCommands webCommands) {
-    FlywayWebCommand webCommand =
-        new FlywayWebCommand(new Configuration(config), environment, flyways);
-    webCommands.addHandler(webCommand);
-
     for (String dbName : JavaConverters.asJavaCollection(flyways.allDatabaseNames())) {
       String migrationsDisabledPath = "db." + dbName + ".migration.disabled";
       boolean disabled =

@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: the-sql-language
     parent: api-ysql
-    weight: 100
+    weight: 10
 type: indexpage
 ---
 This page describes the categorization scheme for the SQL statements and links to lists of the statements that fall into each category. It also describes notions, like the `WITH` clause, that need careful explanation and have applicability across two or more statement kinds.

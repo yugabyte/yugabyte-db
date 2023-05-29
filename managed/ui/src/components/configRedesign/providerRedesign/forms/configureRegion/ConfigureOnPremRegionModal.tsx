@@ -15,7 +15,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import { OnPremRegionFieldLabel, RegionOperation } from './constants';
 import { ConfigureOnPremAvailabilityZoneField } from './ConfigureOnPremAvailabilityZoneField';
-import { generateLowerCaseAlphanumericId } from '../utils';
+import { generateLowerCaseAlphanumericId, getIsRegionFormDisabled } from '../utils';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
 import { ON_PREM_LOCATIONS } from '../../providerRegionsData';
@@ -26,6 +26,7 @@ interface ConfigureOnPremRegionModalProps extends YBModalProps {
   onRegionSubmit: (region: ConfigureOnPremRegionFormValues) => void;
   onClose: () => void;
   regionOperation: RegionOperation;
+  isProviderFormDisabled: boolean;
 
   regionSelection?: ConfigureOnPremRegionFormValues;
 }
@@ -65,6 +66,7 @@ const ON_PREM_LOCATION_OPTIONS = Object.entries(ON_PREM_LOCATIONS).map(
 
 export const ConfigureOnPremRegionModal = ({
   configuredRegions,
+  isProviderFormDisabled,
   onRegionSubmit,
   onClose,
   regionSelection,
@@ -119,17 +121,25 @@ export const ConfigureOnPremRegionModal = ({
     onClose();
   };
 
+  const isFormDisabled = isProviderFormDisabled || getIsRegionFormDisabled(formMethods.formState);
   return (
     <FormProvider {...formMethods}>
       <YBModal
         title={`${RegionOperationLabel[regionOperation]} Region`}
         titleIcon={<i className={clsx('fa fa-plus', classes.titleIcon)} />}
-        submitLabel={`${RegionOperationLabel[regionOperation]} Region`}
+        submitLabel={
+          regionOperation !== RegionOperation.VIEW
+            ? `${RegionOperationLabel[regionOperation]} Region`
+            : undefined
+        }
         cancelLabel="Cancel"
         onSubmit={formMethods.handleSubmit(onSubmit)}
         onClose={onClose}
         submitTestId="ConfigureRegionModal-SubmitButton"
         cancelTestId="ConfigureRegionModal-CancelButton"
+        buttonProps={{
+          primary: { disabled: isFormDisabled }
+        }}
         {...modalProps}
       >
         <div className={classes.formField}>
@@ -138,6 +148,7 @@ export const ConfigureOnPremRegionModal = ({
             control={formMethods.control}
             name="code"
             placeholder="Enter..."
+            disabled={isFormDisabled}
             fullWidth
           />
         </div>
@@ -147,12 +158,13 @@ export const ConfigureOnPremRegionModal = ({
             control={formMethods.control}
             name="location"
             options={ON_PREM_LOCATION_OPTIONS}
+            isDisabled={isFormDisabled}
           />
         </div>
         <div>
           <ConfigureOnPremAvailabilityZoneField
             className={classes.manageAvailabilityZoneField}
-            isSubmitting={formMethods.formState.isSubmitting}
+            isFormDisabled={isFormDisabled}
           />
           {formMethods.formState.errors.zones?.message && (
             <FormHelperText error={true}>

@@ -148,6 +148,10 @@ DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
     "after which PITR restore can be performed.");
 TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
+DEFINE_RUNTIME_bool(
+    allow_ycql_transactional_xcluster, false,
+    "Determines if xCluster transactional replication on YCQL tables is allowed.");
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -801,11 +805,11 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(const SnapshotId& snaps
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_pb,
-                                                ImportSnapshotMetaResponsePB* resp,
-                                                NamespaceMap* namespace_map,
-                                                UDTypeMap* type_map,
-                                                ExternalTableSnapshotDataMap* tables_data) {
+Status CatalogManager::ImportSnapshotPreprocess(
+    const SnapshotInfoPB& snapshot_pb,
+    NamespaceMap* namespace_map,
+    UDTypeMap* type_map,
+    ExternalTableSnapshotDataMap* tables_data) {
   // First pass: preprocess namespaces and UDTs
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
@@ -900,8 +904,7 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
                 }
               }
             }
-            data.table_meta = resp->mutable_tables_meta()->Add();
-            data.tablet_id_map = data.table_meta->mutable_tablets_ids();
+            data.table_meta = ImportSnapshotMetaResponsePB::TableMetaPB();
           } else {
             LOG_WITH_FUNC(WARNING) << "Ignoring duplicate table with id " << entry.id();
           }
@@ -921,7 +924,6 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
 }
 
 Status CatalogManager::ImportSnapshotProcessUDTypes(const SnapshotInfoPB& snapshot_pb,
-                                                    ImportSnapshotMetaResponsePB* resp,
                                                     UDTypeMap* type_map,
                                                     const NamespaceMap& namespace_map) {
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
@@ -936,7 +938,6 @@ Status CatalogManager::ImportSnapshotProcessUDTypes(const SnapshotInfoPB& snapsh
 }
 
 Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapshot_pb,
-                                                   ImportSnapshotMetaResponsePB* resp,
                                                    const NamespaceMap& namespace_map,
                                                    const UDTypeMap& type_map,
                                                    ExternalTableSnapshotDataMap* tables_data) {
@@ -947,7 +948,15 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
         && tables_data->find(entry.id()) != tables_data->end()) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
       if (data.is_index()) {
-        RETURN_NOT_OK(ImportTableEntry(namespace_map, type_map, *tables_data, &data));
+        // YSQL indices can be in an invalid state. In this state they are omitted by ysql_dump.
+        // Assume this is an invalid index that wasn't part of the ysql_dump instead of failing the
+        // import here.
+        auto s = ImportTableEntry(namespace_map, type_map, *tables_data, &data);
+        if (s.IsInvalidArgument() && MasterError(s) == MasterErrorPB::OBJECT_NOT_FOUND) {
+          continue;
+        } else if (!s.ok()) {
+          return s;
+        }
       }
     }
   }
@@ -1001,7 +1010,6 @@ Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
 }
 
 Status CatalogManager::ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
-                                                    ImportSnapshotMetaResponsePB* resp,
                                                     ExternalTableSnapshotDataMap* tables_data) {
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
@@ -1138,7 +1146,6 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
                                           ImportSnapshotMetaResponsePB* resp,
                                           rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing ImportSnapshotMeta request: " << req->ShortDebugString();
-
   NamespaceMap namespace_map;
   UDTypeMap type_map;
   ExternalTableSnapshotDataMap tables_data;
@@ -1163,11 +1170,10 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   }
 
   // PHASE 1: Recreate namespaces, create type's & table's meta data.
-  RETURN_NOT_OK(ImportSnapshotPreprocess(
-      snapshot_pb, resp, &namespace_map, &type_map, &tables_data));
+  RETURN_NOT_OK(ImportSnapshotPreprocess(snapshot_pb, &namespace_map, &type_map, &tables_data));
 
   // PHASE 2: Recreate UD types.
-  RETURN_NOT_OK(ImportSnapshotProcessUDTypes(snapshot_pb, resp, &type_map, namespace_map));
+  RETURN_NOT_OK(ImportSnapshotProcessUDTypes(snapshot_pb, &type_map, namespace_map));
 
   // PHASE 3: Recreate ONLY tables.
   RETURN_NOT_OK(ImportSnapshotCreateAndWaitForTables(
@@ -1175,10 +1181,10 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
 
   // PHASE 4: Recreate ONLY indexes.
   RETURN_NOT_OK(ImportSnapshotCreateIndexes(
-      snapshot_pb, resp, namespace_map, type_map, &tables_data));
+      snapshot_pb, namespace_map, type_map, &tables_data));
 
   // PHASE 5: Restore tablets.
-  RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, resp, &tables_data));
+  RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, &tables_data));
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
      const string msg = "ImportSnapshotMeta interrupted due to test flag";
@@ -1187,7 +1193,25 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   }
 
   successful_exit = true;
+  // Copy the table mapping into the response.
+  for (auto& [_, table_data] : tables_data) {
+    if (table_data.table_meta) {
+      resp->mutable_tables_meta()->Add()->Swap(&*table_data.table_meta);
+    }
+  }
   return Status::OK();
+}
+
+Status CatalogManager::GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
+                                                  GetFullUniverseKeyRegistryResponsePB* resp) {
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForRead();
+  if (!l.data().pb.has_encryption_info()) {
+    return Status::OK();
+  }
+  auto encryption_info = l.data().pb.encryption_info();
+
+  return encryption_manager_->GetFullUniverseKeyRegistry(encryption_info, resp);
 }
 
 Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
@@ -1927,6 +1951,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
           if (table_data->new_table_id.empty()) {
             const string msg = Format("YSQL table not found: $0", meta.name());
             LOG_WITH_FUNC(WARNING) << msg;
+            table_data->table_meta = std::nullopt;
             return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
           }
         }
@@ -1970,12 +1995,11 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
     // Ignore 'nullable' attribute - due to difference in implementation
     // of PgCreateTable::AddColumn() and PgAlterTable::AddColumn().
-    struct CompareColumnsExceptNullable {
-      bool operator ()(const ColumnSchema& a, const ColumnSchema& b) {
-        return ColumnSchema::CompHashKey(a, b) && ColumnSchema::CompSortingType(a, b) &&
-            ColumnSchema::CompTypeInfo(a, b) && ColumnSchema::CompName(a, b);
-      }
-    } comparator;
+    auto comparator = [](const ColumnSchema& a, const ColumnSchema& b) {
+      return ColumnSchema::CompKind(a, b) &&
+             ColumnSchema::CompTypeInfo(a, b) &&
+             ColumnSchema::CompName(a, b);
+    };
     // Schema::Equals() compares only column names & types. It does not compare the column ids.
     if (!persisted_schema.Equals(schema, comparator)
         || persisted_schema.column_ids().size() != column_ids.size()) {
@@ -2191,9 +2215,26 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
 
   LOG_IF(DFATAL, table_map->find(meta.table_id()) == table_map->end())
       << "Table not found: " << meta.table_id();
+  if (table_map->find(meta.table_id()) == table_map->end()) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Cannot find table with id $0 hosted on tablet $1", meta.table_id(),
+        entry.id());
+  }
   ExternalTableSnapshotData& table_data = (*table_map)[meta.table_id()];
+  if (!table_data.table_meta) {
+    if (table_data.is_index()) {
+      // The metadata for this index was not initialized in ImportTableEntry. We assume it was
+      // missing from the ysql_dump and is an invalid YSQL index. Ignore.
+      return Status::OK();
+    }
+    auto msg = Format("Missing metadata for table corresponding to snapshot table $0.$1, id $2",
+        table_data.table_entry_pb.namespace_name(), table_data.table_entry_pb.name(),
+        table_data.old_table_id);
+    DCHECK(false) << msg;
+    return STATUS(IllegalState, msg);
+  }
 
-  if (meta.colocated() && table_data.tablet_id_map->size() >= 1) {
+  if (meta.colocated() && table_data.table_meta->tablets_ids_size() >= 1) {
     LOG_WITH_FUNC(INFO) << "Already processed this colocated tablet: " << entry.id();
     return Status::OK();
   }
@@ -2205,7 +2246,7 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
     scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
 
     if (tablet != nullptr) {
-      IdPairPB* const pair = table_data.tablet_id_map->Add();
+      IdPairPB* const pair = table_data.table_meta->add_tablets_ids();
       pair->set_old_id(entry.id());
       pair->set_new_id(entry.id());
       return Status::OK();
@@ -2227,7 +2268,7 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
     return STATUS(NotFound, msg, MasterError(MasterErrorPB::INTERNAL_ERROR));
   }
 
-  IdPairPB* const pair = table_data.tablet_id_map->Add();
+  IdPairPB* const pair = table_data.table_meta->add_tablets_ids();
   pair->set_old_id(entry.id());
   pair->set_new_id(it->second);
   return Status::OK();
@@ -2295,6 +2336,9 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
 Status CatalogManager::RestoreSysCatalog(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
+
+  auto tablet_pending_op = tablet->CreateScopedRWOperationBlockingRocksDbShutdownStart();
+
   bool restore_successful = false;
   // If sys catalog restoration fails then unblock other RPCs.
   auto scope_exit = ScopeExit([this, &restore_successful] {
@@ -2312,20 +2356,22 @@ Status CatalogManager::RestoreSysCatalog(
   // Remove ": " to patch suffix.
   log_prefix.erase(log_prefix.size() - 2);
   tablet->InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
-  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
 
+  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
+  // db can't be closed concurrently, so it is ok to use dummy ScopedRWOperation.
+  auto db_pending_op = ScopedRWOperation();
   auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
   // Load objects to restore and determine obsolete objects.
   RestoreSysCatalogState state(restoration);
-  RETURN_NOT_OK(state.LoadRestoringObjects(doc_read_context(), doc_db));
+  RETURN_NOT_OK(state.LoadRestoringObjects(doc_read_context(), doc_db, db_pending_op));
   // Load existing objects from RocksDB because on followers they are NOT present in loaded sys
   // catalog state.
-  RETURN_NOT_OK(state.LoadExistingObjects(doc_read_context(), tablet->doc_db()));
+  RETURN_NOT_OK(state.LoadExistingObjects(doc_read_context(), tablet->doc_db(), tablet_pending_op));
   RETURN_NOT_OK(state.Process());
 
   docdb::DocWriteBatch write_batch(
-      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
+      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
 
   // Restore the pg_catalog tables.
   if (FLAGS_enable_ysql && state.IsYsqlRestoration()) {
@@ -3017,8 +3063,17 @@ Status CatalogManager::GetUDTypeMetadata(
 
 Status CatalogManager::ValidateTableSchema(
     const std::shared_ptr<client::YBTableInfo>& info,
-    const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
+    const SetupReplicationInfo& setup_info,
     GetTableSchemaResponsePB* resp) {
+  bool is_ysql_table = info->table_type == client::YBTableType::PGSQL_TABLE_TYPE;
+  if (setup_info.transactional && !GetAtomicFlag(&FLAGS_allow_ycql_transactional_xcluster) &&
+      !is_ysql_table) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Transactional replication is not supported for non-YSQL tables: $0",
+        info->table_name.ToString());
+  }
+
   // Get corresponding table schema on local universe.
   GetTableSchemaRequestPB req;
 
@@ -3040,7 +3095,6 @@ Status CatalogManager::ValidateTableSchema(
          Substitute("Error while listing table: $0", status.ToString()));
 
   const auto& source_schema = client::internal::GetSchema(info->schema);
-  bool is_ysql_table = info->table_type == client::YBTableType::PGSQL_TABLE_TYPE;
   for (const auto& t : list_resp.tables()) {
     // Check that table name and namespace both match.
     if (t.name() != info->table_name.table_name() ||
@@ -3050,7 +3104,8 @@ Status CatalogManager::ValidateTableSchema(
 
     // Check that schema name matches for YSQL tables, if the field is empty, fill in that
     // information during GetTableSchema call later.
-    if (is_ysql_table && t.has_pgschema_name() &&
+    bool has_valid_pgschema_name = !t.pgschema_name().empty();
+    if (is_ysql_table && has_valid_pgschema_name &&
         t.pgschema_name() != source_schema.SchemaName()) {
       continue;
     }
@@ -3062,10 +3117,8 @@ Status CatalogManager::ValidateTableSchema(
            Substitute("Error while getting table schema: $0", status.ToString()));
 
     // Double-check schema name here if the previous check was skipped.
-    if (is_ysql_table && !t.has_pgschema_name()) {
-      std::string target_schema_name = resp->schema().has_pgschema_name()
-          ? resp->schema().pgschema_name()
-          : "";
+    if (is_ysql_table && !has_valid_pgschema_name) {
+      std::string target_schema_name = resp->schema().pgschema_name();
       if (target_schema_name != source_schema.SchemaName()) {
         table->clear_table_id();
         continue;
@@ -3091,8 +3144,9 @@ Status CatalogManager::ValidateTableSchema(
     break;
   }
 
-  SCHECK(table->has_table_id(), NotFound,
-         Substitute("Could not find matching table for $0", info->table_name.ToString()));
+  SCHECK(table->has_table_id(), NotFound, Substitute(
+      "Could not find matching table for $0$1", info->table_name.ToString(),
+      (is_ysql_table ? " pgschema_name: " + source_schema.SchemaName() : "")));
 
   // Still need to make map of table id to resp table id (to add to validated map)
   // For colocated tables, only add the parent table since we only added the parent table to the

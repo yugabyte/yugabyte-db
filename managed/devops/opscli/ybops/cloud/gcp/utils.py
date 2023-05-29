@@ -663,7 +663,25 @@ class GoogleCloudAdmin():
                                                         zone=zone,
                                                         instance=instance,
                                                         body=body).execute()
-        return self.waiter.wait(operation, zone=zone)
+        output = self.waiter.wait(operation, zone=zone)
+        response = self.compute.instances().get(project=self.project,
+                                                zone=zone,
+                                                instance=instance).execute()
+        for disk in response.get("disks"):
+            if disk.get("source") != body.get("source"):
+                continue
+            device_name = disk.get("deviceName")
+            logging.info("Setting disk auto delete for {} attached to {}"
+                         .format(device_name, instance))
+            # Even if this fails, volumes are already tagged for cleanup.
+            operation = self.compute.instances().setDiskAutoDelete(project=self.project,
+                                                                   zone=zone,
+                                                                   instance=instance,
+                                                                   deviceName=device_name,
+                                                                   autoDelete=True).execute()
+            self.waiter.wait(operation, zone=zone)
+            break
+        return output
 
     def unmount_disk(self, zone, instance, name):
         logging.info("Detaching disk {} from instance {}".format(name, instance))
@@ -882,6 +900,15 @@ class GoogleCloudAdmin():
             results.append(result)
         return results
 
+    def get_image_disk_size(self, machine_image):
+        tokens = machine_image.split("/")
+        image_project = self.project
+        image_project_idx = tokens.index("projects")
+        if image_project_idx >= 0:
+            image_project = tokens[image_project_idx + 1]
+        image = self.get_image(tokens[-1], image_project)
+        return image["diskSizeGb"]
+
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_spot_instance, can_ip_forward, machine_image, num_volumes, volume_type,
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
@@ -900,7 +927,11 @@ class GoogleCloudAdmin():
         boot_disk_init_params["sourceImage"] = machine_image
         if boot_disk_size_gb is not None:
             # Default: 10GB
-            boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
+            min_disk_size = self.get_image_disk_size(machine_image)
+            disk_size = min_disk_size if min_disk_size \
+                and int(min_disk_size) > int(boot_disk_size_gb) \
+                else boot_disk_size_gb
+            boot_disk_init_params["diskSizeGb"] = disk_size
         # Create boot disk backed by a zonal persistent SSD
         boot_disk_init_params["diskType"] = "zones/{}/diskTypes/pd-ssd".format(zone)
         boot_disk_json["initializeParams"] = boot_disk_init_params

@@ -110,4 +110,6 @@ export interface IAlertChannelTemplates {
   textTemplate?: string;
   defaultTextTemplate?: string;
   defaultTitleTemplate?: string;
+  highlightedTitleTemplate?: string;
+  highlightedTextTemplate?: string;
 }

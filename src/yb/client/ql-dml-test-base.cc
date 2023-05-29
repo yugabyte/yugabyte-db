@@ -210,12 +210,12 @@ void CreateTable(
 void BuildSchema(Partitioning partitioning, Schema* schema) {
   switch (partitioning) {
     case Partitioning::kHash:
-      *schema = Schema({ ColumnSchema(kKeyColumn, INT32, false, true),
-                         ColumnSchema(kValueColumn, INT32) }, 1);
+      *schema = Schema({ ColumnSchema(kKeyColumn, INT32, ColumnKind::HASH),
+                         ColumnSchema(kValueColumn, INT32) });
       return;
     case Partitioning::kRange:
-      *schema = Schema({ ColumnSchema(kKeyColumn, INT32),
-                         ColumnSchema(kValueColumn, INT32) }, 1);
+      *schema = Schema({ ColumnSchema(kKeyColumn, INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+                         ColumnSchema(kValueColumn, INT32) });
       return;
   }
   FATAL_INVALID_ENUM_VALUE(Partitioning, partitioning);
@@ -515,9 +515,9 @@ Status CheckOp(YBqlOp* op) {
   return Status::OK();
 }
 
-Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table) {
+Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table, MonoDelta timeout) {
   LOG(INFO) << "Running full scan on table " << table.name().ToString() << "...";
-  session->SetTimeout(5s * kTimeMultiplier);
+  session->SetTimeout(timeout);
   QLPagingStatePB paging_state;
   bool has_paging_state = false;
   size_t row_count = 0;

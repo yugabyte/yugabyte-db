@@ -128,8 +128,8 @@ class TestTabletSchema : public YBTabletTest {
 
  private:
   Schema CreateBaseSchema() {
-    return Schema({ ColumnSchema("key", INT32, false, true),
-                    ColumnSchema("c1", INT32) }, 1);
+    return Schema({ ColumnSchema("key", INT32, ColumnKind::HASH),
+                    ColumnSchema("c1", INT32) });
   }
 };
 

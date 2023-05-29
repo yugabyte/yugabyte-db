@@ -239,7 +239,6 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   // Data source of this call.
   CallData request_data_;
-  std::atomic<size_t> request_data_memory_usage_{0};
 
   // Timing information related to this RPC call.
   InboundCallTiming timing_;

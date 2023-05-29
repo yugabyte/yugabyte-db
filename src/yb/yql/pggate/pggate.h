@@ -395,7 +395,7 @@ class PgApiImpl {
 
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
-  Status DmlAppendColumnRef(PgStatement *handle, PgExpr *colref, bool is_primary);
+  Status DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_primary);
 
   // Binding Columns: Bind column with a value (expression) in a statement.
   // + This API is used to identify the rows you want to operate on. If binding columns are not
@@ -425,6 +425,7 @@ class PgApiImpl {
                              YBCPgExpr lhs,
                              int n_attr_values,
                              YBCPgExpr *attr_values);
+  Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
 
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);

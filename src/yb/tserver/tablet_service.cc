@@ -336,13 +336,15 @@ class WriteQueryCompletionCallback {
       WriteResponsePB* response,
       tablet::WriteQuery* query,
       const server::ClockPtr& clock,
-      bool trace = false)
+      bool trace,
+      bool leader_term_set_in_request)
       : tablet_peer_(std::move(tablet_peer)),
         context_(std::move(context)),
         response_(response),
         query_(query),
         clock_(clock),
         include_trace_(trace),
+        leader_term_set_in_request_(leader_term_set_in_request),
         trace_(include_trace_ ? Trace::CurrentTrace() : nullptr) {}
 
   void operator()(Status status) const {
@@ -358,6 +360,12 @@ class WriteQueryCompletionCallback {
     TRACE("Write completing with status $0", yb::ToString(status));
 
     if (!status.ok()) {
+      if (leader_term_set_in_request_ && status.IsAborted() &&
+          status.message().Contains("Operation submitted in term")) {
+        // Return a permanent error since term is set the request.
+        status = STATUS_FORMAT(InvalidArgument, "Leader term changed");
+      }
+
       LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status;
       if (include_trace_ && trace_) {
         response_->set_trace_buffer(trace_->DumpToString(true));
@@ -398,6 +406,7 @@ class WriteQueryCompletionCallback {
   tablet::WriteQuery* const query_;
   server::ClockPtr clock_;
   const bool include_trace_;
+  const bool leader_term_set_in_request_;
   scoped_refptr<Trace> trace_;
 };
 
@@ -1364,7 +1373,7 @@ void TabletServiceImpl::GetCompatibleSchemaVersion(
   tablet::TableInfoPtr table_info = nullptr;
   if (req->schema().has_colocated_table_id()) {
     auto result = tablet.peer->tablet_metadata()->GetTableInfo(
-        {} /* table_id */, req->schema().colocated_table_id().colocation_id());
+        req->schema().colocated_table_id().colocation_id());
     if (!result.ok()) {
       SetupErrorAndRespond(
           resp->mutable_error(), result.status(), TabletServerErrorPB::TABLET_NOT_FOUND, &context);
@@ -1996,8 +2005,12 @@ Status TabletServiceImpl::PerformWrite(
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(*context));
 
+  const auto leader_term = req->has_leader_term() && req->leader_term() != OpId::kUnknownTerm
+                               ? req->leader_term()
+                               : tablet.leader_term;
+
   auto query = std::make_unique<tablet::WriteQuery>(
-      tablet.leader_term, context_ptr->GetClientDeadline(), tablet.peer.get(), tablet.tablet,
+      leader_term, context_ptr->GetClientDeadline(), tablet.peer.get(), tablet.tablet,
       context_ptr.get(), resp);
   query->set_client_request(*req);
 
@@ -2010,7 +2023,8 @@ Status TabletServiceImpl::PerformWrite(
   }
 
   query->set_callback(WriteQueryCompletionCallback(
-      tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace()));
+      tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace(),
+      req->has_leader_term()));
 
   query->AdjustYsqlQueryTransactionality(req->pgsql_write_batch_size());
 
@@ -2543,7 +2557,7 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 namespace {
 
 Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
-  auto scoped_read_operation = tablet->CreateNonAbortableScopedRWOperation();
+  auto scoped_read_operation = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
   const shared_ptr<Schema> schema = tablet->metadata()->schema();
@@ -2687,22 +2701,24 @@ void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
 void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
                                       GetLockStatusResponsePB* resp,
                                       rpc::RpcContext context) {
-  TransactionId txn_id = TransactionId::Nil();
-  if (req->has_transaction_id() && !req->transaction_id().empty()) {
-    auto id_or_status = FullyDecodeTransactionId(req->transaction_id());
+  std::set<TransactionId> transaction_ids;
+  for (auto& txn_id : req->transaction_ids()) {
+    auto id_or_status = FullyDecodeTransactionId(txn_id);
     if (!id_or_status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
       return;
     }
-    txn_id = *id_or_status;
+    transaction_ids.insert(*id_or_status);
   }
+
   if (req->has_tablet_id() && !req->tablet_id().empty()) {
     PerformAtLeader(req, resp, &context,
-      [req, resp, &txn_id](const LeaderTabletPeer& tablet_peer) -> Status {
-        const auto& tablet = tablet_peer.tablet;
-        return tablet->GetLockStatus(
-            txn_id, req->subtransaction_id(), resp->add_tablet_lock_infos());
-        return Status::OK();
+      [resp, &transaction_ids](const LeaderTabletPeer& tablet_peer) -> Status {
+        auto s = tablet_peer.tablet->GetLockStatus(transaction_ids, resp->add_tablet_lock_infos());
+        if (!s.ok()) {
+          resp->Clear();
+        }
+        return s;
       });
     return;
   }
@@ -2715,9 +2731,8 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       // TODO(pglocks): https://github.com/yugabyte/yugabyte-db/issues/15647
       // Include leader_term in response so client may pick only the latest leader if multiple
       // tablets respond.
-      const auto& tablet = tablet_peer->shared_tablet();
-      auto s = tablet->GetLockStatus(
-          txn_id, req->subtransaction_id(), resp->add_tablet_lock_infos());
+      auto s = tablet_peer->shared_tablet()->GetLockStatus(
+          transaction_ids, resp->add_tablet_lock_infos());
       if (!s.ok()) {
         resp->Clear();
         SetupErrorAndRespond(resp->mutable_error(), s, &context);

@@ -22,12 +22,14 @@ To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-
 ```sh
 yb-admin \
     [ -master_addresses <master-addresses> ]  \
+    [ -init_master_addrs <master-address> ]  \
     [ -timeout_ms <millisec> ] \
     [ -certs_dir_name <dir_name> ] \
     <command> [ command_flags ]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *init_master_addrs*: Allows specifying a single YB-Master address from which the rest of the YB-Masters are discovered.
 * *timeout_ms*: The RPC timeout, in milliseconds. Default value is `60000`. A value of `0` means don't wait; `-1` means wait indefinitely.
 * *certs_dir_name*: The directory with certificates to use for secure server connections. Default value is `""`.
 
@@ -153,12 +155,13 @@ Use this to find out who the LEADER of a tablet is.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    list_tablets <keyspace> <table_name> [max_tablets]
+    list_tablets <keyspace_type>.<keyspace_name> <table> [max_tablets]
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *keyspace*: The namespace, or name of the database or keyspace.
-* *table_name*: The name of the table.
+* *keyspace_type*: Type of the keyspace, ysql or ycql.
+* *keyspace_name*: The namespace, or name of the database or keyspace.
+* *table*: The name of the table.
 * *max_tablets*: The maximum number of tables to be returned. Default is `10`. Set to `0` to return all tablets.
 
 **Example**
@@ -166,7 +169,7 @@ yb-admin \
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    list_tablets ydb test_tb 0
+    list_tablets ysql.db_name table_name 0
 ```
 
 ```output
@@ -435,13 +438,14 @@ Triggers manual compaction on a table.
 yb-admin \
     -master_addresses <master-addresses> \
     compact_table <keyspace> <table_name> \
-    [timeout_in_seconds]
+    [timeout_in_seconds] [ADD_INDEXES]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: Specifies the database `ysql.db-name` or keyspace `ycql.keyspace-name`.
 * *table_name*: Specifies the table name.
-* *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for compaction to end. Default value is `20`.
+* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
 
 **Example**
 
@@ -456,6 +460,36 @@ Started compaction of table kong.test
 Compaction request id: 75c406c1d2964487985f9c852a8ef2a3
 Waiting for compaction...
 Compaction complete: SUCCESS
+```
+
+#### compact_table_by_id
+
+Triggers manual compaction on a table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    compact_table_by_id <table_id> \
+    [timeout_in_seconds] [ADD_INDEXES]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *table_id*: The unique UUID associated with the table to be compacted.
+* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    compact_table_by_id 000033f100003000800000000000410a
+```
+
+```output
+Compacted [000033f100003000800000000000410a] tables.
 ```
 
 #### modify_table_placement_info
@@ -562,20 +596,18 @@ Add a tablet to a transaction status table.
 yb-admin \
     -master_addresses <master-addresses> \
     add_transaction_tablet \
-    <keyspace> <table_name>
+    <table_id>
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *keyspace*: The name of the keyspace.
-* *table_name*: The name of the transaction status table name.
+* *table_id*: The identifier (ID) of the table.
 
 **Example**
 
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    add_transaction_tablet \
-    system transactions
+    add_transaction_tablet 000033eb000030008000000000004002
 ```
 
 To verify that the new status tablet has been created, run the [`list_tablets`](#list-tablets) command.
@@ -1685,7 +1717,7 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 ```sh
 ./bin/yb-admin \
     -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 \
+    setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3_xClusterSetup1 \
     127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
 ```
@@ -1793,6 +1825,110 @@ yb-admin \
 * *source_universe_uuid*: The UUID of the source universe.
 * *replication_name*: The name of the replication to be enabled or disabled.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
+
+#### change_xcluster_role
+
+Sets the xCluster role to `STANDBY` or `ACTIVE`.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master_addresses> \
+    change_xcluster_role \
+    <role> 
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. 
+These are the addresses of the master nodes where the role has to be applied. Example: if we want to change target to `STANDBY` we have to use target universe master addresses, 
+and if we want to change source universe role then we have to use source universe master addresses.
+* *role*: Can be `STANDBY` or `ACTIVE`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    change_xcluster_role STANDBY
+```
+
+#### get_xcluster_safe_time
+
+Reports the current xCluster safe time for each namespace, which is the time at which reads will be performed.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <target_master_addresses> \
+    get_xcluster_safe_time \
+    [include_lag_and_skew] 
+```
+
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *include_lag_and_skew*: Set `include_lag_and_skew` option to show `safe_time_lag_sec` and `safe_time_skew_sec`, otherwise these are hidden by default.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    get_xcluster_safe_time
+```
+```output
+{
+    "namespace_id": "000033f1000030008000000000000000",
+    "namespace_name": "yugabyte",
+    "safe_time": "2023-04-14 18:34:18.429430",
+    "safe_time_epoch": "1681522458429430",
+    "safe_time_lag_sec": "15.66",
+    "safe_time_skew_sec": "14.95"
+}
+```
+
+* *namespace_id*: ID of the stream.
+* *namespace_name*: Name of the stream.
+* *safe_time*: Safe time in timestamp format.
+* *safe_time_epoch*: The `epoch` of the safe time.
+* *safe_time_lag_sec*: Safe time lag is computed as `(current time - current safe time)`.
+* *safe_time_skew_sec*: Safe time skew is computed as `(safe time of most caught up tablet - safe time of laggiest tablet)`.
+
+#### wait_for_replication_drain
+
+Verify when the producer and consumer are in sync for a given list of `stream_ids` at a given timestamp. 
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    wait_for_replication_drain \
+    <comma_separated_list_of_stream_ids> [<timestamp> | minus <interval>]
+```
+
+* *source_master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *comma_separated_list_of_stream_ids*: Comma-separated list of stream IDs.
+* *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
+* *minus <interval>*: The `minus <interval>` is the same format as in <a href="{{< relref "../explore/cluster-management/point-in-time-recovery-ycql.md#restore-from-a-relative-time" >}}">PITR documentation</a>, or see [`yb-admin restore_snapshot_schedule` command](#restore-snapshot-schedule)).
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+    wait_for_replication_drain 000033f1000030008000000000000000,200033f1000030008000000000000002 minus 1m
+```
+
+If all streams are caught-up, the API outputs `All replications are caught-up.` to the console.  
+Otherwise, it outputs the non-caught-up streams in the following format:
+```
+Found undrained replications:
+- Under Stream <stream_id>:
+  - Tablet: <tablet_id>
+  - Tablet: <tablet_id>
+  // ......
+// ......
+```
 
 #### list_cdc_streams
 

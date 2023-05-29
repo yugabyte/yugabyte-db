@@ -52,11 +52,9 @@ Used to specify the tablespace for the materialized view.
 
 ### Storage parameters
 
-COLOCATED
+COLOCATION
 
-Colocated table support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
-Specify `COLOCATED = true` for the materialized view to be colocated. The default value of this option is false.
+Specify `COLOCATION = true` for the materialized view to be colocated. The default value of this option is false.
 
 ## Examples
 

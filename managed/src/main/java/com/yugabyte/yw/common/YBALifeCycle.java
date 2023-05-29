@@ -12,8 +12,11 @@ package com.yugabyte.yw.common;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
-import io.ebean.Ebean;
+import com.yugabyte.yw.controllers.handlers.EnvProxySelector;
+import io.ebean.DB;
+import java.net.ProxySelector;
 import play.Environment;
+import play.db.ebean.EbeanDynamicEvolutions;
 
 /** Play lifecycle does not give onStartup event */
 public class YBALifeCycle {
@@ -27,7 +30,8 @@ public class YBALifeCycle {
       Config config,
       ConfigHelper configHelper,
       Environment environment,
-      StaticInjectorHolder staticInjectorHolder) {
+      StaticInjectorHolder staticInjectorHolder,
+      EbeanDynamicEvolutions ebeanDynamicEvolutions) {
     this.config = config;
     this.configHelper = configHelper;
     this.environment = environment;
@@ -36,6 +40,7 @@ public class YBALifeCycle {
 
   /** This is invoked before any migrations start and first thing after YBA module is loaded. */
   void onStart() {
+    ProxySelector.setDefault(new EnvProxySelector());
     checkIfDowngrade();
   }
 
@@ -45,7 +50,7 @@ public class YBALifeCycle {
    */
   private void checkIfDowngrade() {
     boolean isFreshInstall =
-        !Ebean.getDefaultServer()
+        !DB.getDefault()
             .createSqlQuery(
                 "SELECT * FROM information_schema.tables WHERE table_name = 'schema_version'")
             .findOneOrEmpty()

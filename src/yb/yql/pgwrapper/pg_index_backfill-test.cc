@@ -520,11 +520,9 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Large)) {
 
 // Cousin of TestIndexBackfill#insertsWhileCreatingIndex java test.
 Status PgIndexBackfillTest::TestInsertsWhileCreatingIndex(bool expect_missing_row) {
-  TestThreadHolder thread_holder;
-  const std::string kTableName = "fasttab";
-
   RETURN_NOT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
 
+  TestThreadHolder thread_holder;
   constexpr int kNumThreads = 4;
   std::array<int, kNumThreads> counts;
   counts.fill(0);
@@ -538,7 +536,7 @@ Status PgIndexBackfillTest::TestInsertsWhileCreatingIndex(bool expect_missing_ro
     "Transaction was recently aborted",
   };
   for (int thread_idx = 0; thread_idx < kNumThreads; thread_idx++) {
-    thread_holder.AddThreadFunctor([this, thread_idx, kTableName, &latch, &counts, &allowed_msgs,
+    thread_holder.AddThreadFunctor([this, thread_idx, &latch, &counts, &allowed_msgs,
                                     &stop = thread_holder.stop_flag()] {
           LOG(INFO) << "Begin writer thread " << thread_idx;
           auto conn = ASSERT_RESULT(Connect());
@@ -627,7 +625,18 @@ TEST_F_EX(
     PgIndexBackfillTest,
     YB_DISABLE_TEST_IN_TSAN(InsertsWhileCreatingIndexDisableWait),
     PgIndexBackfillTestDisableWait) {
-  ASSERT_OK(TestInsertsWhileCreatingIndex(true /* expect_missing_row */));
+  constexpr auto kNumTries = 5;
+
+  for (int i = 0; i < kNumTries; ++i) {
+    Status s = TestInsertsWhileCreatingIndex(true /* expect_missing_row */);
+    if (s.ok()) {
+      return;
+    }
+    ASSERT_TRUE(s.IsIllegalState()) << s;
+    ASSERT_STR_CONTAINS(s.message().ToBuffer(), "row count should mismatch");
+    ASSERT_OK(conn_->ExecuteFormat("DROP TABLE $0", kTableName));
+  }
+  FAIL() << "Did not get row count mismatch in " << kNumTries << " tries";
 }
 
 class PgIndexBackfillTestChunking : public PgIndexBackfillTest {

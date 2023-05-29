@@ -10,8 +10,12 @@ import static com.yugabyte.yw.common.ThrownMatcher.thrown;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.nullValue;
-import static org.hamcrest.MatcherAssert.*;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.fail;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -39,7 +43,7 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.CallableSql;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -289,7 +293,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
             .targetType(TargetType.UNIVERSE)
             .target(
                 new AlertConfigurationTarget()
-                    .setAll(false)
+                    .setAll(true)
                     .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
             .build();
     assertFind(filter, configuration, configuration2);
@@ -300,6 +304,16 @@ public class AlertConfigurationTest extends FakeDBApplication {
             .target(
                 new AlertConfigurationTarget()
                     .setAll(false)
+                    .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
+            .build();
+    assertFind(filter, configuration2);
+
+    filter =
+        AlertConfigurationFilter.builder()
+            .targetType(TargetType.UNIVERSE)
+            .target(
+                new AlertConfigurationTarget()
+                    .setAll(true)
                     .setUuids(ImmutableSet.of(UUID.randomUUID())))
             .build();
     assertFind(filter, configuration);
@@ -692,8 +706,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
   @Test
   public void testTransactions() {
     AlertConfiguration configuration = createTestConfiguration();
-    CallableSql dropTable = Ebean.createCallableSql("drop table maintenance_window");
-    Ebean.execute(dropTable);
+    CallableSql dropTable = DB.createCallableSql("drop table maintenance_window");
+    DB.getDefault().execute(dropTable);
 
     configuration.setMaintenanceWindowUuids(ImmutableSet.of(UUID.randomUUID()));
 

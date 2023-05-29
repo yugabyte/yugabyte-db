@@ -231,12 +231,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   virtual rocksdb::Env* GetRocksDBEnv();
 
-  void SetUniverseKeys(const encryption::UniverseKeysPB& universe_keys);
-
   virtual Status SetUniverseKeyRegistry(
       const encryption::UniverseKeyRegistryPB& universe_key_registry);
-
-  void GetUniverseKeyRegistrySync();
 
   uint64_t GetSharedMemoryPostgresAuthKey();
 
@@ -410,6 +406,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // CDC service.
   std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;
+
+  std::unique_ptr<rocksdb::Env> rocksdb_env_;
+  std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

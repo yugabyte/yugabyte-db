@@ -27,7 +27,9 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertTemplateSettings;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -70,8 +72,12 @@ public class SwamperHelper {
   @VisibleForTesting static final String TARGET_FILE_NODE_PREFIX = "node.";
   @VisibleForTesting static final String TARGET_FILE_YUGABYTE_PREFIX = "yugabyte.";
   @VisibleForTesting static final String TARGET_FILE_PREFIX_PATTERN = "(node|yugabyte)\\.";
+  @VisibleForTesting static final String TARGET_FILE_NODE_AGENT_PREFIX = "node-agent.";
+  @VisibleForTesting static final String TARGET_FILE_NODE_AGENT_PREFIX_PATTERN = "node-agent\\.";
   private static final Pattern TARGET_FILE_PATTERN =
       Pattern.compile("^(node|yugabyte)\\." + UUID_PATTERN + ".json$");
+  private static final Pattern TARGET_FILE_NODE_AGENT_PATTERN =
+      Pattern.compile("^node-agent\\." + UUID_PATTERN + ".json$");
 
   private static final String TARGET_PATH_PARAM = "yb.swamper.targetPath";
   private static final String RULES_PATH_PARAM = "yb.swamper.rulesPath";
@@ -191,11 +197,11 @@ public class SwamperHelper {
     return getOrCreateDirectory(TARGET_PATH_PARAM);
   }
 
-  private String getSwamperFile(UUID universeUUID, String prefix) {
+  private String getSwamperFile(UUID targetUUID, String prefix) {
     File swamperTargetDirectory = getSwamperTargetDirectory();
 
     if (swamperTargetDirectory != null) {
-      return String.format("%s/%s%s.json", swamperTargetDirectory, prefix, universeUUID.toString());
+      return String.format("%s/%s%s.json", swamperTargetDirectory, prefix, targetUUID.toString());
     }
     return null;
   }
@@ -278,8 +284,26 @@ public class SwamperHelper {
     writeJsonFile(swamperFile, ybTargets);
   }
 
-  private void removeUniverseTargetJson(UUID universeUUID, String prefix) {
-    String swamperFile = getSwamperFile(universeUUID, prefix);
+  public void writeNodeAgentTargetJson(NodeAgent nodeAgent) {
+    String swamperFile = getSwamperFile(nodeAgent.getUuid(), TARGET_FILE_NODE_AGENT_PREFIX);
+    if (swamperFile == null || new File(swamperFile).exists()) {
+      return;
+    }
+    ArrayNode targets = Json.newArray();
+    ObjectNode target = Json.newObject();
+    ArrayNode targetNodes = Json.newArray();
+    ObjectNode labels = Json.newObject();
+    targetNodes.add(String.format("%s:%d", nodeAgent.getIp(), nodeAgent.getPort()));
+    labels.put(KnownAlertLabels.CUSTOMER_UUID.labelName(), nodeAgent.getCustomerUuid().toString());
+    labels.put(KnownAlertLabels.NODE_AGENT_UUID.labelName(), nodeAgent.getUuid().toString());
+    target.set("targets", targetNodes);
+    target.set("labels", labels);
+    targets.add(target);
+    writeJsonFile(swamperFile, targets);
+  }
+
+  private void removeTargetJson(UUID targetUUID, String prefix) {
+    String swamperFile = getSwamperFile(targetUUID, prefix);
     if (swamperFile != null) {
       File file = new File(swamperFile);
 
@@ -292,8 +316,12 @@ public class SwamperHelper {
 
   public void removeUniverseTargetJson(UUID universeUUID) {
     // TODO: make these constants / enums.
-    removeUniverseTargetJson(universeUUID, TARGET_FILE_NODE_PREFIX);
-    removeUniverseTargetJson(universeUUID, TARGET_FILE_YUGABYTE_PREFIX);
+    removeTargetJson(universeUUID, TARGET_FILE_NODE_PREFIX);
+    removeTargetJson(universeUUID, TARGET_FILE_YUGABYTE_PREFIX);
+  }
+
+  public void removeNodeAgentTargetJson(UUID nodeAgentUUID) {
+    removeTargetJson(nodeAgentUUID, TARGET_FILE_NODE_AGENT_PREFIX);
   }
 
   private File getSwamperRuleDirectory() {
@@ -391,6 +419,13 @@ public class SwamperHelper {
   public List<UUID> getTargetUniverseUuids() {
     return extractUuids(
         getSwamperTargetDirectory(), TARGET_FILE_PATTERN, TARGET_FILE_PREFIX_PATTERN);
+  }
+
+  public List<UUID> getTargetNodeAgentUuids() {
+    return extractUuids(
+        getSwamperTargetDirectory(),
+        TARGET_FILE_NODE_AGENT_PATTERN,
+        TARGET_FILE_NODE_AGENT_PREFIX_PATTERN);
   }
 
   private List<UUID> extractUuids(File directory, Pattern pattern, String prefix) {

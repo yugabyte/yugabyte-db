@@ -25,7 +25,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import lombok.extern.slf4j.Slf4j;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
@@ -37,7 +36,6 @@ import play.mvc.Http.Cookie;
 import play.mvc.Result;
 import play.mvc.Results;
 
-@Slf4j
 public class TokenAuthenticator extends Action.Simple {
   public static final Set<String> READ_POST_ENDPOINTS =
       ImmutableSet.of(
@@ -53,7 +51,8 @@ public class TokenAuthenticator extends Action.Simple {
           "/schedules/page",
           "/fetch_package",
           "/performance_recommendations/page",
-          "/performance_recommendation_state_change/page");
+          "/performance_recommendation_state_change/page",
+          "/node_agents/page");
   public static final String COOKIE_AUTH_TOKEN = "authToken";
   public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";
@@ -263,6 +262,12 @@ public class TokenAuthenticator extends Action.Simple {
 
   // Check role, and if the API call is accessible.
   private boolean checkAccessLevel(String endPoint, Users user, String requestType) {
+
+    // Allow only superadmins to change LDAP Group Mappings.
+    if (endPoint.endsWith("/ldap_mappings") && requestType.equals("PUT")) {
+      return user.getRole() == Role.SuperAdmin;
+    }
+
     // Users should be allowed to change their password.
     // Even admin users should not be allowed to change another
     // user's password.

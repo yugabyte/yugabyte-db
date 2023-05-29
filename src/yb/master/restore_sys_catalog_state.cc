@@ -739,14 +739,15 @@ std::string RestoreSysCatalogState::Objects::SizesToString() const {
 template <class PB>
 Status RestoreSysCatalogState::IterateSysCatalog(
     const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
-    HybridTime read_time, std::unordered_map<std::string, PB>* map,
+    std::reference_wrapper<const ScopedRWOperation> pending_op, HybridTime read_time,
+    std::unordered_map<std::string, PB>* map,
     std::unordered_map<std::string, PB>* sequences_data_map) {
-  dockv::ReaderProjection projection(doc_read_context.schema);
-  docdb::DocRowwiseIterator iter(
+  dockv::ReaderProjection projection(doc_read_context.schema());
+  docdb::DocRowwiseIterator iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
-      CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), nullptr);
+      CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), pending_op, nullptr);
   return EnumerateSysCatalog(
-      &iter, doc_read_context.schema, GetEntryType<PB>::value, [map, sequences_data_map](
+      &iter, doc_read_context.schema(), GetEntryType<PB>::value, [map, sequences_data_map](
           const Slice& id, const Slice& data) -> Status {
     auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data));
     if (!ShouldLoadObject(pb)) {
@@ -767,25 +768,32 @@ Status RestoreSysCatalogState::IterateSysCatalog(
 }
 
 Status RestoreSysCatalogState::LoadObjects(
-    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db, HybridTime read_time,
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> pending_op, HybridTime read_time,
     Objects* objects) {
   RETURN_NOT_OK(IterateSysCatalog(
-      doc_read_context, doc_db, read_time, &objects->namespaces, &objects->sequences_namespace));
+      doc_read_context, doc_db, pending_op, read_time, &objects->namespaces,
+      &objects->sequences_namespace));
   RETURN_NOT_OK(IterateSysCatalog(
-      doc_read_context, doc_db, read_time, &objects->tables, &objects->sequences_table));
+      doc_read_context, doc_db, pending_op, read_time, &objects->tables,
+      &objects->sequences_table));
   RETURN_NOT_OK(IterateSysCatalog(
-      doc_read_context, doc_db, read_time, &objects->tablets, &objects->sequences_tablets));
+      doc_read_context, doc_db, pending_op, read_time, &objects->tablets,
+      &objects->sequences_tablets));
   return Status::OK();
 }
 
 Status RestoreSysCatalogState::LoadRestoringObjects(
-    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db) {
-  return LoadObjects(doc_read_context, doc_db, restoration_.restore_at, &restoring_objects_);
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> pending_op) {
+  return LoadObjects(
+      doc_read_context, doc_db, pending_op, restoration_.restore_at, &restoring_objects_);
 }
 
 Status RestoreSysCatalogState::LoadExistingObjects(
-    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db) {
-  return LoadObjects(doc_read_context, doc_db, HybridTime::kMax, &existing_objects_);
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> pending_op) {
+  return LoadObjects(doc_read_context, doc_db, pending_op, HybridTime::kMax, &existing_objects_);
 }
 
 Status RestoreSysCatalogState::CheckExistingEntry(
@@ -898,13 +906,13 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
     docdb::DocWriteBatch* write_batch) {
   std::string config_type;
   SysConfigEntryPB catalog_meta;
-  dockv::ReaderProjection projection(doc_read_context.schema);
-  docdb::DocRowwiseIterator iter(
+  dockv::ReaderProjection projection(doc_read_context.schema());
+  auto iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
-      CoarseTimePoint::max(), ReadHybridTime::Max(), nullptr);
+      CoarseTimePoint::max(), ReadHybridTime::Max(), write_batch->pending_op(), nullptr);
 
   RETURN_NOT_OK(EnumerateSysCatalog(
-      &iter, doc_read_context.schema, SysRowEntryType::SYS_CONFIG,
+      &iter, doc_read_context.schema(), SysRowEntryType::SYS_CONFIG,
       [&](const Slice& id, const Slice& data) -> Status {
         if (id.ToBuffer() != kYsqlCatalogConfigType) {
           return Status::OK();
@@ -921,7 +929,7 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
   RETURN_NOT_OK(pb_util::SerializeToString(catalog_meta, &buffer));
   RETURN_NOT_OK(WriteEntry(
       SysRowEntryType::SYS_CONFIG, config_type, buffer, QLWriteRequestPB::QL_STMT_UPDATE,
-      doc_read_context.schema, write_batch));
+      doc_read_context.schema(), write_batch));
 
   LOG(INFO) << "PITR: Incrementing legacy catalog version to " << existing_version + 1;
 

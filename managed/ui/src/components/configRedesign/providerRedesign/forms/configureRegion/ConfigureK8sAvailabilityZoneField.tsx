@@ -28,7 +28,7 @@ import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBTextAreaField } from '../../../../../redesign/components/YBInput/YBTextAreaField';
 
 interface ConfigureK8sAvailabilityZoneFieldProps {
-  isSubmitting: boolean;
+  isFormDisabled: boolean;
   regionOperation: RegionOperation;
 
   className?: string;
@@ -83,7 +83,7 @@ const CERT_ISSUER_TYPE_OPTIONS: OptionProps[] = [
 
 export const ConfigureK8sAvailabilityZoneField = ({
   regionOperation,
-  isSubmitting,
+  isFormDisabled,
   className
 }: ConfigureK8sAvailabilityZoneFieldProps) => {
   const classes = useStyles();
@@ -118,6 +118,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                   control={control}
                   name={`zones.${index}.code`}
                   placeholder="Enter..."
+                  disabled={isFormDisabled}
                   fullWidth
                 />
               </div>
@@ -125,13 +126,14 @@ export const ConfigureK8sAvailabilityZoneField = ({
                 <>
                   <div className={classes.formField}>
                     <div>{K8sRegionFieldLabel.CURRENT_KUBE_CONFIG_FILEPATH}</div>
-                    <YBInput value={zones[index].kubeConfigFilepath} disabled={true} />
+                    <YBInput value={zones[index].kubeConfigFilepath} disabled={true} fullWidth />
                   </div>
                   <div className={classes.formField}>
                     <div>{K8sRegionFieldLabel.EDIT_KUBE_CONFIG}</div>
                     <YBToggleField
                       name={`zones.${index}.editKubeConfigContent`}
                       control={control}
+                      disabled={isFormDisabled}
                     />
                   </div>
                 </>
@@ -145,6 +147,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                     actionButtonText="Upload Kube Config File"
                     multipleFiles={false}
                     showHelpText={false}
+                    disabled={isFormDisabled}
                   />
                 </div>
               )}
@@ -154,6 +157,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                   control={control}
                   name={`zones.${index}.kubernetesStorageClass`}
                   placeholder="Enter..."
+                  disabled={isFormDisabled}
                   fullWidth
                 />
               </div>
@@ -163,6 +167,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                   control={control}
                   name={`zones.${index}.kubePodAddressTemplate`}
                   placeholder="Enter..."
+                  disabled={isFormDisabled}
                   fullWidth
                 />
               </div>
@@ -172,6 +177,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                   control={control}
                   name={`zones.${index}.kubeDomain`}
                   placeholder="Enter..."
+                  disabled={isFormDisabled}
                   fullWidth
                 />
               </div>
@@ -181,12 +187,17 @@ export const ConfigureK8sAvailabilityZoneField = ({
                   control={control}
                   name={`zones.${index}.kubeNamespace`}
                   placeholder="Enter..."
+                  disabled={isFormDisabled}
                   fullWidth
                 />
               </div>
               <div className={classes.formField}>
                 <div>{K8sRegionFieldLabel.OVERRIDES}</div>
-                <YBTextAreaField control={control} name={`zones.${index}.overrides`} />
+                <YBTextAreaField
+                  control={control}
+                  name={`zones.${index}.overrides`}
+                  disabled={isFormDisabled}
+                />
               </div>
               <div className={classes.formField}>
                 <div>{K8sRegionFieldLabel.CERT_ISSUER_TYPE}</div>
@@ -195,6 +206,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                   name={`zones.${index}.certIssuerType`}
                   options={CERT_ISSUER_TYPE_OPTIONS}
                   orientation="horizontal"
+                  isDisabled={isFormDisabled}
                 />
               </div>
               {([
@@ -207,6 +219,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                     control={control}
                     name={`zones.${index}.certIssuerName`}
                     placeholder="Enter..."
+                    disabled={isFormDisabled}
                     fullWidth
                   />
                 </div>
@@ -216,6 +229,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                 btnIcon="fa fa-trash-o"
                 btnText="Delete Zone"
                 onClick={() => remove(index)}
+                disabled={isFormDisabled}
               />
             </div>
           );
@@ -227,7 +241,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
           btnClass="btn btn-default"
           btnType="button"
           onClick={addZoneField}
-          disabled={isSubmitting}
+          disabled={isFormDisabled}
           data-testid="ConfigureK8sAvailabilityZoneField-AddZoneButton"
         />
       </div>

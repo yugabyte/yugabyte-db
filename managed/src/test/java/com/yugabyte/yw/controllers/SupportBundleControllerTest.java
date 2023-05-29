@@ -7,7 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -47,7 +47,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -271,8 +271,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             "YbcLogs");
     ArrayNode componentsArray = mapper.valueToTree(components);
 
-    bodyJson.put("startDate", "2022-02-01");
-    bodyJson.put("endDate", "2022-03-03");
+    bodyJson.put("startDate", "2022-02-01T00:00:00Z");
+    bodyJson.put("endDate", "2022-03-03T00:00:00Z");
     bodyJson.putArray("components").addAll(componentsArray);
 
     // Mocking commissioner submit functionality to create a support bundle
@@ -291,12 +291,10 @@ public class SupportBundleControllerTest extends FakeDBApplication {
               universe.setUniverseDetails(universeDetails);
             });
 
-    Result result =
-        assertPlatformException(
-            () -> createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), bodyJson));
+    Result result = createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(BAD_REQUEST, result.status());
-    assertAuditEntry(0, customer.getUuid());
+    assertEquals(OK, result.status());
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -318,8 +316,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             "YbcLogs");
     ArrayNode componentsArray = mapper.valueToTree(components);
 
-    bodyJson.put("startDate", "2022-02-01");
-    bodyJson.put("endDate", "2022-03-03");
+    bodyJson.put("startDate", "2022-02-01T00:00:00Z");
+    bodyJson.put("endDate", "2022-03-03T00:00:00Z");
     bodyJson.putArray("components").addAll(componentsArray);
 
     // Mocking commissioner submit functionality to create a support bundle
@@ -338,12 +336,10 @@ public class SupportBundleControllerTest extends FakeDBApplication {
               universe.setUniverseDetails(universeDetails);
             });
 
-    Result result =
-        assertPlatformException(
-            () -> createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), bodyJson));
+    Result result = createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(BAD_REQUEST, result.status());
-    assertAuditEntry(0, customer.getUuid());
+    assertEquals(OK, result.status());
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test

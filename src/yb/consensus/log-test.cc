@@ -66,7 +66,7 @@ DECLARE_int32(o_direct_block_alignment_bytes);
 DECLARE_int32(o_direct_block_size_bytes);
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_bool(TEST_skip_file_close);
-DECLARE_int64(reuse_unclosed_segment_threshold);
+DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
 
 namespace yb {
 namespace log {
@@ -220,7 +220,7 @@ void LogTest::DoReuseLastSegmentTest(bool durable_wal_write) {
   // log_->Close() simulates crash now
   FLAGS_TEST_simulate_abrupt_server_restart = true;
   FLAGS_TEST_skip_file_close = true;
-  FLAGS_reuse_unclosed_segment_threshold = 512_KB;
+  FLAGS_reuse_unclosed_segment_threshold_bytes = 512_KB;
   // Restore value options_.durable_wal_write back later.
   bool temp = options_.durable_wal_write;
   options_.durable_wal_write = durable_wal_write;

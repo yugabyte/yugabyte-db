@@ -1,8 +1,9 @@
 ---
-title: Install YugabyteDB Anywhere software - Airgapped
-headerTitle: Install YugabyteDB Anywhere software - Airgapped
-linkTitle: Install software
+title: Install YugabyteDB Anywhere for Airgapped environments
+headerTitle: Install YugabyteDB Anywhere
+linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software in your on-premises, airgapped environment.
+headContent: Install YBA software in an OpenShift environment
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -10,11 +11,21 @@ menu:
     weight: 77
 type: docs
 ---
+
+Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA Prerequisites](../../prerequisites/default/).
+
+Note: For higher availability, one or more additional YugabyteDB Anywhere instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
+  </li>
+
+  <li>
+    <a href="../airgapped/" class="nav-link active">
+      <i class="fa-solid fa-link-slash"></i>Replicated - Airgapped</a>
   </li>
 
   <li>
@@ -23,13 +34,13 @@ type: docs
   </li>
 
   <li>
-    <a href="../airgapped/" class="nav-link active">
-      <i class="fa-solid fa-link-slash"></i>Airgapped</a>
+    <a href="../openshift/" class="nav-link">
+      <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat"></i>OpenShift</a>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>YBA Installer</a>
   </li>
 
 </ul>
@@ -39,6 +50,8 @@ type: docs
 If Docker is not installed on the host computer, you need to install a recent version that matches the minimum requirements outlined in [Installing Docker in Airgapped Environments](https://community.replicated.com/t/installing-docker-in-airgapped-environments/81).
 
 If access to the Docker repositories for your Linux distribution is not available on the host computer, you may have to manually transfer the necessary RPM or DEB packages whose locations are specified in [Installing Docker in Airgapped Environments](https://community.replicated.com/t/installing-docker-in-airgapped-environments/81).
+
+Refer to [Airgapped hosts](../../prerequisites/default/#airgapped-hosts) for more details on preparing your host machine.
 
 ## Install Replicated
 
@@ -150,10 +163,10 @@ Click **Continue** to configure YugabyteDB Anywhere.
 
 If the preflight check fails, review the [Troubleshoot YugabyteDB Anywhere](../../../troubleshoot/) to resolve the issue.
 
-## Set the TLS Version for Nginx Frontend
+## Set the TLS Version for Yugaware Frontend
 
 Specify TLS versions via **Application config**, as shown in the following illustration:
 
-![Application Config](/images/replicated/application-config.png)
+![Application Configuration](/images/replicated/application-config.png)
 
 The recommended TLS version is 1.2.

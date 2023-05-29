@@ -12,22 +12,24 @@
 //
 
 #include "yb/docdb/doc_rowwise_iterator.h"
-#include <iterator>
 
 #include <cstdint>
+#include <iterator>
 #include <ostream>
 #include <string>
 #include <vector>
 
-#include "yb/qlexpr/ql_expr.h"
+#include "yb/docdb/doc_rowwise_iterator_base.h"
+#include "yb/docdb/docdb_statistics.h"
+#include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/scan_choices.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
-#include "yb/docdb/doc_rowwise_iterator_base.h"
-#include "yb/docdb/docdb_statistics.h"
 #include "yb/dockv/expiration.h"
-#include "yb/docdb/intent_aware_iterator.h"
-#include "yb/docdb/scan_choices.h"
+#include "yb/dockv/pg_row.h"
+
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
@@ -44,8 +46,8 @@ using std::string;
 DEFINE_RUNTIME_bool(ysql_use_flat_doc_reader, true,
     "Use DocDBTableReader optimization that relies on having at most 1 subkey for YSQL.");
 
-DEFINE_test_flag(int32, fetch_next_delay_ms, 0,
-                 "Amount of time to delay inside FetchNext");
+DEFINE_test_flag(int32, fetch_next_delay_ms, 0, "Amount of time to delay inside FetchNext");
+DEFINE_test_flag(string, fetch_next_delay_column, "", "Only delay when schema has specific column");
 
 using namespace std::chrono_literals;
 
@@ -59,12 +61,12 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
-          projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter),
-      statistics_(statistics) {}
+          projection, doc_read_context, txn_op_context, doc_db, deadline, read_time, pending_op),
+      statistics_(statistics) {
+}
 
 DocRowwiseIterator::DocRowwiseIterator(
     const dockv::ReaderProjection& projection,
@@ -73,12 +75,13 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter,
+    ScopedRWOperation&& pending_op,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter),
-      statistics_(statistics) {}
+          std::move(pending_op)),
+      statistics_(statistics) {
+}
 
 DocRowwiseIterator::~DocRowwiseIterator() = default;
 
@@ -115,12 +118,12 @@ void DocRowwiseIterator::InitIterator(
 void DocRowwiseIterator::ConfigureForYsql() {
   ignore_ttl_ = true;
   if (FLAGS_ysql_use_flat_doc_reader) {
-    is_flat_doc_ = IsFlatDoc::kTrue;
+    doc_mode_ = DocMode::kFlat;
   }
 }
 
 void DocRowwiseIterator::InitResult() {
-  if (is_flat_doc_) {
+  if (doc_mode_ == DocMode::kFlat) {
     row_ = std::nullopt;
   } else {
     row_.emplace();
@@ -158,11 +161,23 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) co
   return Status::OK();
 }
 
+Result<bool> DocRowwiseIterator::PgFetchNext(dockv::PgTableRow* table_row) {
+  if (table_row) {
+    table_row->Clear();
+  }
+  return FetchNextImpl(table_row);
+}
+
 Result<bool> DocRowwiseIterator::DoFetchNext(
     qlexpr::QLTableRow* table_row,
     const dockv::ReaderProjection* projection,
     qlexpr::QLTableRow* static_row,
     const dockv::ReaderProjection* static_projection) {
+  return FetchNextImpl(QLTableRowPair{table_row, projection, static_row, static_projection});
+}
+
+template <class TableRow>
+Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
   VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", done_: "
           << done_ << ", db_iter finished: " << db_iter_->IsOutOfRecords();
 
@@ -175,16 +190,23 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     return false;
   }
 
+  RETURN_NOT_OK(pending_op_ref_.GetAbortedStatus());
+
   if (PREDICT_FALSE(FLAGS_TEST_fetch_next_delay_ms > 0)) {
-    YB_LOG_EVERY_N_SECS(INFO, 1)
-        << "Delaying read for " << FLAGS_TEST_fetch_next_delay_ms << " ms"
-        << ", schema column names: " << AsString(doc_read_context_.schema.column_names());
-    SleepFor(FLAGS_TEST_fetch_next_delay_ms * 1ms);
+    const auto column_names = schema().column_names();
+    if (FLAGS_TEST_fetch_next_delay_column.empty() ||
+        std::find(column_names.begin(), column_names.end(), FLAGS_TEST_fetch_next_delay_column) !=
+            column_names.end()) {
+      YB_LOG_EVERY_N_SECS(INFO, 1)
+          << "Delaying read for " << FLAGS_TEST_fetch_next_delay_ms << " ms"
+          << ", schema column names: " << AsString(column_names);
+      SleepFor(FLAGS_TEST_fetch_next_delay_ms * 1ms);
+    }
   }
 
   for (;;) {
     if (db_iter_->IsOutOfRecords() || (scan_choices_ && scan_choices_->FinishedWithScanChoices())) {
-      Done();
+      done_ = true;
       return false;
     }
 
@@ -217,15 +239,20 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     }
 
     // e.g in cotable, row may point outside table bounds.
-    if (!dockv::DocKeyBelongsTo(key_data.key, doc_read_context_.schema)) {
-      Done();
+    auto in_table = dockv::DocKeyBelongsTo(key_data.key, schema());
+    DCHECK_EQ(in_table, key_data.key.starts_with(shared_key_prefix()))
+        << "Shared prefix: " << shared_key_prefix().ToDebugHexString()
+        << ", key: " << key_data.key.ToDebugHexString()
+        << ", schema: " << schema().ToString();
+    if (!in_table) {
+      done_ = true;
       return false;
     }
 
     RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(db_iter_->value())));
 
     if (has_bound_key_ && is_forward_scan_ == (row_key_.compare(bound_key_) >= 0)) {
-      Done();
+      done_ = true;
       return false;
     }
 
@@ -267,21 +294,20 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
           db_iter_.get(), deadline_, &projection_, table_type_,
-          doc_read_context_.schema_packing_storage);
+          schema_packing_storage());
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
           VERIFY_RESULT(GetTableTombstoneTime(doc_key))));
       if (!ignore_ttl_) {
-        doc_reader_->SetTableTtl(doc_read_context_.schema);
+        doc_reader_->SetTableTtl(schema());
       }
     }
 
-    if (!is_flat_doc_) {
-      DCHECK(row_->type() == dockv::ValueEntryType::kObject);
+    if (doc_mode_ == DocMode::kGeneric) {
+      DCHECK_EQ(row_->type(), dockv::ValueEntryType::kObject);
       row_->object_container().clear();
     }
 
-    auto doc_found_res =
-        is_flat_doc_ ? doc_reader_->GetFlat(doc_key, table_row) : doc_reader_->Get(doc_key, &*row_);
+    auto doc_found_res = FetchRow(doc_key, table_row);
     if (!doc_found_res.ok()) {
       has_next_status_ = doc_found_res.status();
       return has_next_status_;
@@ -301,21 +327,44 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     VLOG(4) << __func__ << ", iter: " << !db_iter_->IsOutOfRecords();
 
     if (doc_found != DocReaderResult::kNotFound) {
-      if (table_row) {
-        if (!static_row) {
-          has_next_status_ = FillRow(table_row, projection);
-        } else if (IsFetchedRowStatic()) {
-          has_next_status_ = FillRow(static_row, static_projection);
-        } else {
-          table_row->Clear();
-          has_next_status_ = FillRow(table_row, projection);
-        }
-        RETURN_NOT_OK(has_next_status_);
-      }
+      has_next_status_ = FillRow(table_row);
+      RETURN_NOT_OK(has_next_status_);
       break;
     }
   }
   return true;
+}
+
+Result<DocReaderResult> DocRowwiseIterator::FetchRow(
+    const Slice& doc_key, dockv::PgTableRow* table_row) {
+  CHECK_NE(doc_mode_, DocMode::kGeneric) << "Table type: " << table_type_;
+  return doc_reader_->GetFlat(doc_key, table_row);
+}
+
+Result<DocReaderResult> DocRowwiseIterator::FetchRow(
+    const Slice& doc_key, QLTableRowPair table_row) {
+  return doc_mode_ == DocMode::kFlat ? doc_reader_->GetFlat(doc_key, table_row.table_row)
+                                     : doc_reader_->Get(doc_key, &*row_);
+}
+
+Status DocRowwiseIterator::FillRow(dockv::PgTableRow* out) {
+  return CopyKeyColumnsToRow(projection_, out);
+}
+
+Status DocRowwiseIterator::FillRow(QLTableRowPair out) {
+  if (!out.table_row) {
+    return Status::OK();
+  }
+
+  if (!out.static_row) {
+    return FillRow(out.table_row, out.projection);
+  }
+  if (IsFetchedRowStatic()) {
+    return FillRow(out.static_row, out.static_projection);
+  }
+
+  out.table_row->Clear();
+  return FillRow(out.table_row, out.projection);
 }
 
 string DocRowwiseIterator::ToString() const {
@@ -341,20 +390,21 @@ Status DocRowwiseIterator::FillRow(
   }
 
   // Copy required key columns to table_row.
-  RETURN_NOT_OK(CopyKeyColumnsToQLTableRow(projection, table_row));
+  RETURN_NOT_OK(CopyKeyColumnsToRow(projection, table_row));
 
-  if (is_flat_doc_) {
+  if (doc_mode_ == DocMode::kFlat) {
     return Status::OK();
   }
 
   DVLOG_WITH_FUNC(4) << "subdocument: " << AsString(*row_);
+  const auto& schema = this->schema();
   for (const auto& column : projection.value_columns()) {
     const auto* source = row_->GetChild(column.subkey);
     if (!source) {
       continue;
     }
     auto& dest = table_row->AllocColumn(column.id);
-    source->ToQLValuePB(column.type, &dest.value);
+    source->ToQLValuePB(VERIFY_RESULT_REF(schema.column_by_id(column.id)).type(), &dest.value);
     dest.ttl_seconds = source->GetTtl();
     if (source->IsWriteTimeSet()) {
       dest.write_time = source->GetWriteTime();
@@ -367,7 +417,7 @@ Status DocRowwiseIterator::FillRow(
 }
 
 bool DocRowwiseIterator::LivenessColumnExists() const {
-  CHECK(!is_flat_doc_) << "Flat doc mode not supported yet";
+  CHECK_NE(doc_mode_, DocMode::kFlat) << "Flat doc mode not supported yet";
   const auto* subdoc = row_->GetChild(dockv::KeyEntryValue::kLivenessColumn);
   return subdoc != nullptr && subdoc->value_type() != dockv::ValueEntryType::kInvalid;
 }

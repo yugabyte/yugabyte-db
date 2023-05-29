@@ -57,6 +57,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { YBButton as YBRedesignedButton } from '../../../../../redesign/components';
@@ -106,7 +107,7 @@ export interface AWSProviderEditFormFieldValues {
   secretAccessKey: string;
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
-  sshPort: number;
+  sshPort: number | null;
   sshPrivateKeyContent: File;
   sshUser: string;
   vpcSetupType: VPCSetupType;
@@ -172,6 +173,7 @@ export const AWSProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isForceSubmitting, setIsForceSubmitting] = useState<boolean>(false);
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const [
     quickValidationErrors,
@@ -227,10 +229,10 @@ export const AWSProviderEditForm = ({
   };
   const onFormSubmit = async (
     formValues: AWSProviderEditFormFieldValues,
-    shouldValidate = true
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
   ) => {
     clearErrors();
-
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -242,9 +244,16 @@ export const AWSProviderEditForm = ({
     try {
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
+        setIsForceSubmitting(ignoreValidationErrors);
         await editProvider(providerPayload, {
           shouldValidate: shouldValidate,
-          mutateOptions: { onError: handleFormSubmitServerError }
+          ignoreValidationErrors: ignoreValidationErrors,
+          mutateOptions: {
+            onError: handleFormSubmitServerError,
+            onSettled: () => {
+              setIsForceSubmitting(false);
+            }
+          }
         });
       } catch (_) {
         // Handled by onError callback
@@ -257,15 +266,15 @@ export const AWSProviderEditForm = ({
     formValues
   ) => onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation);
   const onFormForceSubmit: SubmitHandler<AWSProviderEditFormFieldValues> = async (formValues) =>
-    onFormSubmit(formValues, false);
+    onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation, true);
 
   const showAddRegionFormModal = () => {
     setRegionSelection(undefined);
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT_NEW);
+  const showEditRegionFormModal = (regionOperation: RegionOperation) => {
+    setRegionOperation(regionOperation);
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -312,8 +321,9 @@ export const AWSProviderEditForm = ({
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
   const ybImageType = formMethods.watch('ybImageType');
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
+  const existingRegions = providerConfig.regions.map((region) => region.code);
   const isFormDisabled =
-    isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+    getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig) || isForceSubmitting;
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -457,12 +467,14 @@ export const AWSProviderEditForm = ({
               <RegionList
                 providerCode={ProviderCode.AWS}
                 regions={regions}
+                existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={isProviderInUse}
               />
               {!!formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -490,7 +502,7 @@ export const AWSProviderEditForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -615,7 +627,7 @@ export const AWSProviderEditForm = ({
               }
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
@@ -632,6 +644,8 @@ export const AWSProviderEditForm = ({
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           configuredRegions={regions}
+          isEditProvider={true}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -675,10 +689,11 @@ const constructDefaultFormValues = (
     zones: region.zones
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort ?? '',
+  sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
-  vpcSetupType: providerConfig.details.cloudInfo.aws.vpcType
+  vpcSetupType: providerConfig.details.cloudInfo.aws.vpcType,
+  ybImageType: YBImageType.CUSTOM_AMI
 });
 
 const constructProviderPayload = async (
@@ -724,8 +739,8 @@ const constructProviderPayload = async (
       },
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: [
       ...formValues.regions.map<AWSRegionMutation>((regionFormValues) => {
@@ -742,13 +757,29 @@ const constructProviderPayload = async (
           details: {
             cloudInfo: {
               [ProviderCode.AWS]: {
-                ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
+                ...(existingRegion
+                  ? {
+                      ...(existingRegion.details.cloudInfo.aws.ybImage && {
+                        ybImage: existingRegion.details.cloudInfo.aws.ybImage
+                      }),
+                      ...(existingRegion.details.cloudInfo.aws.arch && {
+                        arch: existingRegion.details.cloudInfo.aws.arch
+                      })
+                    }
+                  : regionFormValues.ybImage
                   ? {
                       ybImage: regionFormValues.ybImage
                     }
-                  : { arch: formValues.ybImageType }),
-                securityGroupId: regionFormValues.securityGroupId,
-                vnet: regionFormValues.vnet
+                  : {
+                      arch:
+                        providerConfig.regions[0]?.details.cloudInfo.aws.arch ?? YBImageType.X86_64
+                    }),
+                ...(regionFormValues.securityGroupId && {
+                  securityGroupId: regionFormValues.securityGroupId
+                }),
+                ...(regionFormValues.vnet && {
+                  vnet: regionFormValues.vnet
+                })
               }
             }
           },

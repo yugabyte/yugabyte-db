@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <condition_variable>
 #include <mutex>
 #include <unordered_map>
 #include <utility>
@@ -24,6 +25,8 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/mem_tracker.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
@@ -35,10 +38,27 @@ enum class CacheCheckMode {
   RETRY,
 };
 
+enum class CacheEntryFetchStatus {
+  NOT_FETCHING,
+  FETCHING,
+  FETCHED,
+};
+
+struct YBMetaDataCacheEntry {
+  // Protects concurrent calls to YBClient::OpenTable for the entry.
+  std::mutex mutex_;
+  std::condition_variable fetch_wait_cv_;
+
+  CacheEntryFetchStatus fetch_status_ = {CacheEntryFetchStatus::NOT_FETCHING};
+  std::shared_ptr<YBTable> table_;
+  ScopedTrackedConsumption consumption_;
+};
+
 class YBMetaDataCache {
  public:
-  YBMetaDataCache(client::YBClient* client,
-                  bool create_roles_permissions_cache = false);
+  YBMetaDataCache(
+      client::YBClient* client, bool create_roles_permissions_cache = false,
+      const MemTrackerPtr& mem_tracker = MemTrackerPtr());
   ~YBMetaDataCache();
 
   // Opens the table with the given name or id. If the table has been opened before, returns the
@@ -95,30 +115,52 @@ class YBMetaDataCache {
       const CacheCheckMode check_mode =  CacheCheckMode::RETRY);
 
  private:
+  template <typename T>
+  std::shared_ptr<YBMetaDataCacheEntry> GetOrCreateEntryInCacheUnlocked(
+      std::unordered_map<T, std::shared_ptr<YBMetaDataCacheEntry>, boost::hash<T>>* cache,
+      const T& table_identifier,
+      std::shared_ptr<YBTable>* table,
+      bool* cache_used);
+
+  template <typename T>
+  Status FetchTableDetailsInCache(const std::shared_ptr<YBMetaDataCacheEntry> entry,
+                                  const T table_identifier,
+                                  std::shared_ptr<YBTable>* table,
+                                  bool* cache_used);
+
+  template <typename T, typename V, typename F>
+  void RemoveFromCache(
+      std::unordered_map<T, std::shared_ptr<YBMetaDataCacheEntry>, boost::hash<T>>* direct_cache,
+      std::unordered_map<V, std::shared_ptr<YBMetaDataCacheEntry>, boost::hash<V>>* indirect_cache,
+      const T& direct_key,
+      const F& get_indirect_key);
+
   client::YBClient* const client_;
-
-  // Map from table-name to YBTable instances.
-  typedef std::unordered_map<YBTableName,
-                             std::shared_ptr<YBTable>,
-                             boost::hash<YBTableName>> YBTableByNameMap;
-  YBTableByNameMap cached_tables_by_name_;
-
-  // Map from table-id to YBTable instances.
-  typedef std::unordered_map<TableId,
-                             std::shared_ptr<YBTable>,
-                             boost::hash<TableId>> YBTableByIdMap;
-  YBTableByIdMap cached_tables_by_id_;
 
   std::mutex cached_tables_mutex_;
 
+  // Map from table-name to YBTable instances.
+  typedef std::unordered_map<YBTableName,
+                             std::shared_ptr<YBMetaDataCacheEntry>,
+                             boost::hash<YBTableName>> YBTableByNameMap;
+  YBTableByNameMap cached_tables_by_name_ GUARDED_BY(cached_tables_mutex_);
+
+  // Map from table-id to YBTable instances.
+  typedef std::unordered_map<TableId,
+                             std::shared_ptr<YBMetaDataCacheEntry>,
+                             boost::hash<TableId>> YBTableByIdMap;
+  YBTableByIdMap cached_tables_by_id_ GUARDED_BY(cached_tables_mutex_);
+
   std::shared_ptr<client::internal::PermissionsCache> permissions_cache_;
 
+  std::mutex cached_types_mutex_;
   // Map from type-name to QLType instances.
   typedef std::unordered_map<std::pair<std::string, std::string>,
                              std::shared_ptr<QLType>,
                              boost::hash<std::pair<std::string, std::string>>> YBTypeMap;
-  YBTypeMap cached_types_;
-  std::mutex cached_types_mutex_;
+  YBTypeMap cached_types_ GUARDED_BY(cached_types_mutex_);
+
+  MemTrackerPtr mem_tracker_;
 };
 
 } // namespace client

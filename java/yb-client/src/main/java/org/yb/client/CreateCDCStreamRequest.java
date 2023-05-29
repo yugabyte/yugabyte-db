@@ -17,6 +17,7 @@ import com.google.protobuf.Message;
 import io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.CommonTypes;
 import org.yb.cdc.CdcService.CreateCDCStreamRequestPB;
 import org.yb.cdc.CdcService.CreateCDCStreamResponsePB;
 import org.yb.cdc.CdcService;
@@ -31,6 +32,8 @@ public class CreateCDCStreamRequest extends YRpc<CreateCDCStreamResponse> {
   private final CdcService.CDCRecordFormat record_format;
   private final CdcService.CDCCheckpointType checkpoint_type;
   private CdcService.CDCRecordType recordType;
+
+  private CommonTypes.YQLDatabase dbType;
 
   public CreateCDCStreamRequest(YBTable masterTable, String tableId,
                                 String namespaceName, String format,
@@ -68,6 +71,15 @@ public class CreateCDCStreamRequest extends YRpc<CreateCDCStreamResponse> {
     this(masterTable, tableId, namespaceName, format, checkpointType, null);
   }
 
+  public CreateCDCStreamRequest(YBTable masterTable, String tableId,
+                                String namespaceName, String format,
+                                String checkpointType, String recordType,
+                                CommonTypes.YQLDatabase dbType) {
+
+    this(masterTable, tableId, namespaceName, format, checkpointType, recordType);
+    this.dbType = dbType;
+  }
+
   @Override
   ByteBuf serialize(Message header) {
     assert header.isInitialized();
@@ -83,6 +95,9 @@ public class CreateCDCStreamRequest extends YRpc<CreateCDCStreamResponse> {
       builder.setRecordType(this.recordType);
     }
 
+    if (dbType != null) {
+      builder.setDbType(this.dbType);
+    }
     return toChannelBuffer(header, builder.build());
   }
 

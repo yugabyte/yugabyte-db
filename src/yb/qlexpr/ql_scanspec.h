@@ -16,6 +16,10 @@
 #pragma once
 
 #include <map>
+#include <memory>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include <boost/functional/hash.hpp>
 #include <boost/optional/optional.hpp>
@@ -87,6 +91,9 @@ class QLScanRange {
   struct QLRange {
     boost::optional<QLBound> min_bound;
     boost::optional<QLBound> max_bound;
+    // Set to true only for an IS NOT NULL query, in which case the bounds (min_bound and max_bound)
+    // are not set.
+    bool is_not_null = false;
   };
 
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
@@ -284,25 +291,18 @@ class QLScanSpec : public YQLScanSpec {
 //--------------------------------------------------------------------------------------------------
 class PgsqlScanSpec : public YQLScanSpec {
  public:
-  typedef std::unique_ptr<PgsqlScanSpec> UniPtr;
-
   PgsqlScanSpec(
       const Schema& schema,
       bool is_forward_scan,
       rocksdb::QueryId query_id,
-      std::unique_ptr<const QLScanRange>
-          range_bounds,
-      size_t prefix_length,
-      const PgsqlExpressionPB* where_expr,
-      QLExprExecutorPtr executor = nullptr);
-
-  virtual ~PgsqlScanSpec();
-
-  const PgsqlExpressionPB* where_expr() { return where_expr_; }
-
- protected:
-  const PgsqlExpressionPB* where_expr_;
-  QLExprExecutorPtr executor_;
+      std::unique_ptr<const QLScanRange> range_bounds,
+      size_t prefix_length);
 };
+
+using ColumnListVector = std::vector<int>;
+
+std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
+    const QLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
+    const ColumnListVector& col_idxs);
 
 }  // namespace yb::qlexpr

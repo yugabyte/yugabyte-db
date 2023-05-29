@@ -152,7 +152,7 @@ This is the result:
  frog | frog-child-c
 ```
 
-The `\d children` metacommand shows that it has a foreign key that's a dependent object on the column `b` in the `parents` table:
+The `\d children` meta-command shows that it has a foreign key that's a dependent object on the column `b` in the `parents` table:
 
 ```output
 Indexes:
@@ -208,6 +208,20 @@ Drop the named constraint from the table.
 #### RENAME [ COLUMN ] *column_name* TO *column_name*
 
 Rename a column to the specified name.
+
+#### RENAME CONSTRAINT *constraint_name* TO *constraint_name*
+
+Rename a constraint to the specified name.
+
+##### Example
+
+Create a table with a constraint and rename the constraint:
+
+```sql
+CREATE TABLE test(id BIGSERIAL PRIMARY KEY, a TEXT);
+ALTER TABLE test ADD constraint vague_name unique (a);
+ALTER TABLE test RENAME CONSTRAINT vague_name TO unique_a_constraint;
+```
 
 #### ENABLE / DISABLE ROW LEVEL SECURITY
 

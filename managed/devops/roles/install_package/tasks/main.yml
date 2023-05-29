@@ -25,7 +25,7 @@
 - name: Set ybc package name
   set_fact:
     ybc_package_name: "{{ ybc_package | basename }}"
-    remote_tmp_ybc_package: "/tmp/{{ ybc_package | basename }}"
+    remote_tmp_ybc_package: "{{ remote_tmp_dir | default('/tmp') }}/{{ ybc_package | basename }}"
     software_ybc_package_folder: "{{ yb_software_dir }}/{{ ybc_dir }}"
     ybc_symlink_dir: "{{ yb_home_dir }}/controller"
   when: configure_ybc

@@ -25,7 +25,7 @@ You need to start as many YB-TServers as there are nodes, with the master addres
 
 ## Examples
 
-Suppose a table with four nodes is created in a YugabyteDB universe. In addition, suppose that the table has a replication factor of 3. First the three masters are started in create mode. This is done explicitly to prevent accidental errors in creating a universe while it is already running. The following diagram depicts the start of the  universe creation process: 
+Suppose a table is created in a YugabyteDB universe with four nodes. In addition, suppose that the table has a replication factor of 3. First the three masters are started in create mode. This is done explicitly to prevent accidental errors in creating a universe while it is already running. The following diagram depicts the start of the  universe creation process: 
 
 ![create_universe_masters](/images/architecture/create_universe_masters.png)
 

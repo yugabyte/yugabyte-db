@@ -7,6 +7,8 @@ import com.google.common.collect.Iterables;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformUniverseNodeConfig;
@@ -27,6 +29,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
@@ -50,6 +53,8 @@ import org.yb.perf_advisor.services.generation.PlatformPerfAdvisor;
 @Singleton
 @Slf4j
 public class PerfAdvisorScheduler {
+
+  public static final String DATABASE_DRIVER_PARAM = "db.perf_advisor.driver";
 
   private static final String PERF_ADVISOR_RUN_IN_PROGRESS = "Perf advisor run in progress";
 
@@ -83,6 +88,15 @@ public class PerfAdvisorScheduler {
   }
 
   public void start() {
+    if (!configFactory
+        .staticApplicationConf()
+        .getString(DATABASE_DRIVER_PARAM)
+        .equals("org.postgresql.Driver")) {
+      log.debug(
+          "Skipping perf advisor scheduler initialization for tests"
+              + " or other non-postgresql environment");
+      return;
+    }
     platformScheduler.schedule(
         getClass().getSimpleName(),
         Duration.ZERO,
@@ -222,7 +236,9 @@ public class PerfAdvisorScheduler {
       UniversePerfAdvisorRun run) {
     try {
       run.setStartTime(new Date()).setState(State.RUNNING).save();
+      List<RecommendationType> dbQueryRecommendationTypes = DB_QUERY_RECOMMENDATION_TYPES;
       JsonNode databaseNamesResult = queryHelper.listDatabaseNames(universe);
+      List<String> databases = new ArrayList<>();
       if (databaseNamesResult.has("error")) {
         String errorMessage = databaseNamesResult.get("error").toString();
         log.error(
@@ -230,13 +246,14 @@ public class PerfAdvisorScheduler {
                 + universe.getUniverseUUID()
                 + ": "
                 + errorMessage);
-        run.setEndTime(new Date()).setState(State.FAILED).save();
-        return;
-      }
-      List<String> databases = new ArrayList<>();
-      Iterator<JsonNode> queryIterator = databaseNamesResult.get("result").elements();
-      while (queryIterator.hasNext()) {
-        databases.add(queryIterator.next().get("datname").asText());
+        // We'll not retrieve any recommendation types from DB nodes in these case - just pass
+        // empty recommendation types list to leave existing recommendations active.
+        dbQueryRecommendationTypes = Collections.emptyList();
+      } else {
+        Iterator<JsonNode> queryIterator = databaseNamesResult.get("result").elements();
+        while (queryIterator.hasNext()) {
+          databases.add(queryIterator.next().get("datname").asText());
+        }
       }
       Provider provider =
           Provider.getOrBadRequest(
@@ -252,16 +269,22 @@ public class PerfAdvisorScheduler {
               databases,
               NodeManager.YUGABYTE_USER,
               tserverNode.ysqlServerRpcPort,
-              DB_QUERY_RECOMMENDATION_TYPES,
+              dbQueryRecommendationTypes,
               ysqlAuth,
               tlsClient);
+      // In K8S environment we may have no permissions to write to YB home dir
+      String perfAdvisorScriptDestPath =
+          (provider.getCloudCode().equals(CloudType.kubernetes)
+                  ? KubernetesTaskBase.K8S_NODE_YW_DATA_DIR
+                  : provider.getYbHome())
+              + "/bin";
       UniverseConfig uConfig =
           new UniverseConfig(
               customer.getUuid(),
               universe.getUniverseUUID(),
               universeNodeConfigList,
               scriptConfig,
-              provider.getYbHome() + "/bin",
+              perfAdvisorScriptDestPath,
               universeConfig);
       platformPerfAdvisor.run(uConfig);
       run.setEndTime(new Date()).setState(State.COMPLETED).save();

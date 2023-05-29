@@ -78,6 +78,9 @@ constexpr bool kYcqlPackedRowEnabled = true;
 DEFINE_RUNTIME_bool(ycql_enable_packed_row, kYcqlPackedRowEnabled,
                     "Whether packed row is enabled for YCQL.");
 
+DEFINE_RUNTIME_bool(ycql_jsonb_use_member_cache, true,
+                    "Whether we use member cache during jsonb processing in YCQL.");
+
 DEFINE_UNKNOWN_uint64(
     ycql_packed_row_size_limit, 0,
     "Packed row size limit for YCQL in bytes. 0 to make this equal to SSTable block size.");
@@ -204,13 +207,20 @@ bool JoinNonStaticRow(
   return join_successful;
 }
 
+typedef rapidjson::SizeType RapidJsonMemberIndex;
+typedef std::unordered_map<uintptr_t, std::unordered_map<std::string, RapidJsonMemberIndex>>
+    RapidJsonMemberCache;
+
+uintptr_t MemberCacheValueHash(rapidjson::Value* p) { return reinterpret_cast<uintptr_t>(p); }
+
 Status FindMemberForIndex(const QLColumnValuePB& column_value,
                           int index,
                           rapidjson::Value* document,
                           rapidjson::Value::MemberIterator* memberit,
                           rapidjson::Value::ValueIterator* valueit,
                           bool* last_elem_object,
-                          IsInsert is_insert) {
+                          IsInsert is_insert,
+                          RapidJsonMemberCache* member_cache) {
   *last_elem_object = false;
 
   int64_t array_index;
@@ -239,8 +249,38 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
 
     *last_elem_object = true;
 
-    const auto& member = column_value.json_args(index).operand().value().string_value().c_str();
-    *memberit = document->FindMember(member);
+    const auto& member = column_value.json_args(index).operand().value().string_value();
+    *memberit = document->MemberEnd();
+
+    if (FLAGS_ycql_jsonb_use_member_cache) {
+      auto node_itr = member_cache->find(MemberCacheValueHash(document));
+      if (node_itr != member_cache->end()) {
+        // Find the member from the cache.
+        auto member_itr = node_itr->second.find(member);
+        if (member_itr != node_itr->second.end()) {
+          LOG_IF(DFATAL, member_itr->second >= document->MemberCount())
+              << "Invalid index in the member cache";
+          *memberit = document->MemberBegin() + member_itr->second;
+        }
+      } else {
+        // Fetch and cache all the members of the document.
+        std::unordered_map<std::string, RapidJsonMemberIndex> members;
+        RapidJsonMemberIndex member_idx = 0;
+        for (auto m = document->MemberBegin(); m != document->MemberEnd(); m++, member_idx++) {
+          auto curr_member_name = m->name.GetString();
+          if (curr_member_name == member) {
+            LOG_IF(DFATAL, !(*memberit == document->MemberEnd()))
+                << "Duplicate member found in the json object";
+            *memberit = m;
+          }
+          members[curr_member_name] = member_idx;
+        }
+        (*member_cache)[MemberCacheValueHash(document)] = std::move(members);
+      }
+    } else {
+      *memberit = document->FindMember(member.c_str());
+    }
+
     if (memberit->operator==(document->MemberEnd())) {
       return STATUS_SUBSTITUTE(QLError, "Could not find member: ", member);
     }
@@ -304,7 +344,7 @@ Status QLWriteOperation::Init(QLResponsePB* response) {
   response_ = response;
   insert_into_unique_index_ = request_.type() == QLWriteRequestPB::QL_STMT_INSERT &&
                               unique_index_key_projection_ != nullptr;
-  require_read_ = RequireRead(request_, doc_read_context_->schema) || insert_into_unique_index_
+  require_read_ = RequireRead(request_, doc_read_context_->schema()) || insert_into_unique_index_
                   || !index_map_.empty();
   update_indexes_ = !request_.update_index_ids().empty();
 
@@ -315,7 +355,7 @@ Status QLWriteOperation::Init(QLResponsePB* response) {
   DVLOG(4) << "Processing request " << yb::ToString(request_);
   for (const auto& column : request_.column_values()) {
     DVLOG(4) << "Looking at column : " << yb::ToString(column);
-    auto schema_column = doc_read_context_->schema.column_by_id(ColumnId(column.column_id()));
+    auto schema_column = doc_read_context_->schema().column_by_id(ColumnId(column.column_id()));
     DVLOG(4) << "schema column : " << yb::ToString(schema_column);
     RETURN_NOT_OK(schema_column);
     if (schema_column->is_static()) {
@@ -328,7 +368,7 @@ Status QLWriteOperation::Init(QLResponsePB* response) {
     }
   }
 
-  bool is_range_operation = IsRangeOperation(request_, doc_read_context_->schema);
+  bool is_range_operation = IsRangeOperation(request_, doc_read_context_->schema());
 
   // We need the hashed key if writing to the static columns, and need primary key if writing to
   // non-static columns or writing the full primary key (i.e. range columns are present or table
@@ -336,7 +376,7 @@ Status QLWriteOperation::Init(QLResponsePB* response) {
   return InitializeKeys(
       write_static_columns || is_range_operation,
       write_non_static_columns || !request_.range_column_values().empty() ||
-      doc_read_context_->schema.num_range_key_columns() == 0);
+      doc_read_context_->schema().num_range_key_columns() == 0);
 }
 
 Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primary_key) {
@@ -346,13 +386,13 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
   dockv::KeyEntryValues hashed_components;
   dockv::KeyEntryValues range_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
-      hashed_column_values, doc_read_context_->schema, 0,
-      doc_read_context_->schema.num_hash_key_columns(),
+      hashed_column_values, doc_read_context_->schema(), 0,
+      doc_read_context_->schema().num_hash_key_columns(),
       &hashed_components));
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
-      range_column_values, doc_read_context_->schema,
-      doc_read_context_->schema.num_hash_key_columns(),
-      doc_read_context_->schema.num_range_key_columns(),
+      range_column_values, doc_read_context_->schema(),
+      doc_read_context_->schema().num_hash_key_columns(),
+      doc_read_context_->schema().num_range_key_columns(),
       &range_components));
 
   // need_pk - true is we should construct pk_key_key_
@@ -397,7 +437,7 @@ Status QLWriteOperation::GetDocPaths(
     dockv::KeyBytes buffer;
     for (const auto& column_value : request_.column_values()) {
       ColumnId column_id(column_value.column_id());
-      const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema.column_by_id(column_id));
+      const auto& column = VERIFY_RESULT_REF(doc_read_context_->schema().column_by_id(column_id));
 
       Slice doc_key = column.is_static() ? encoded_hashed_doc_key_.as_slice()
                                          : encoded_pk_doc_key_.as_slice();
@@ -441,7 +481,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
 
   // Create projections to scan docdb.
   RETURN_NOT_OK(CreateProjections(
-      doc_read_context_->schema, request_.column_refs(), static_projection, non_static_projection,
+      doc_read_context_->schema(), request_.column_refs(), static_projection, non_static_projection,
       /* full_projection = */ nullptr,
       /* don't need range keys when only hash key was specified */
       pk_doc_key_ ? AddKeysMode::kAll : AddKeysMode::kHash));
@@ -453,19 +493,21 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
 
   // Scan docdb for the static and non-static columns of the row using the hashed / primary key.
   if (hashed_doc_key_) {
-    DocQLScanSpec spec(doc_read_context_->schema, *hashed_doc_key_, request_.query_id());
-    DocRowwiseIterator iterator(
+    DocQLScanSpec spec(doc_read_context_->schema(), *hashed_doc_key_, request_.query_id());
+    auto iterator = DocRowwiseIterator(
         *static_projection, *doc_read_context_, txn_op_context_,
-        data.doc_write_batch->doc_db(), data.deadline, data.read_time);
+        data.doc_write_batch->doc_db(), data.deadline, data.read_time,
+        data.doc_write_batch->pending_op());
     RETURN_NOT_OK(iterator.Init(spec));
     RETURN_NOT_OK(iterator.FetchNext(table_row));
     data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
   }
   if (pk_doc_key_) {
-    DocQLScanSpec spec(doc_read_context_->schema, *pk_doc_key_, request_.query_id());
-    DocRowwiseIterator iterator(
+    DocQLScanSpec spec(doc_read_context_->schema(), *pk_doc_key_, request_.query_id());
+    auto iterator = DocRowwiseIterator(
         *non_static_projection, *doc_read_context_, txn_op_context_,
-        data.doc_write_batch->doc_db(), data.deadline, data.read_time);
+        data.doc_write_batch->doc_db(), data.deadline, data.read_time,
+        data.doc_write_batch->pending_op());
     RETURN_NOT_OK(iterator.Init(spec));
     if (VERIFY_RESULT(iterator.FetchNext(table_row))) {
       // If there are indexes to update, check if liveness column exists for update/delete because
@@ -519,12 +561,12 @@ Status QLWriteOperation::PopulateConditionalDmlRow(
   if (return_present_values) {
     RETURN_NOT_OK(EnumProjectedColumns(
         static_projection, non_static_projection,
-        [&columns, &schema = doc_read_context_->schema](const auto& column) -> Status {
+        [&columns, &schema = doc_read_context_->schema()](const auto& column) -> Status {
       columns.push_back(VERIFY_RESULT(schema.column_by_id(column.id)));
       return Status::OK();
     }));
   }
-  rowblock->reset(new qlexpr::QLRowBlock(Schema(columns, 0)));
+  rowblock->reset(new qlexpr::QLRowBlock{Schema(columns)});
   QLRow& row = rowblock->get()->Extend();
   row.mutable_column(0)->set_bool_value(should_apply);
   size_t col_idx = 1;
@@ -547,19 +589,19 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
   columns.emplace_back(ColumnSchema("[applied]", BOOL));
   columns.emplace_back(ColumnSchema("[message]", STRING));
   columns.insert(
-      columns.end(), doc_read_context_->schema.columns().begin(),
-      doc_read_context_->schema.columns().end());
+      columns.end(), doc_read_context_->schema().columns().begin(),
+      doc_read_context_->schema().columns().end());
 
-  rowblock->reset(new qlexpr::QLRowBlock(Schema(columns, 0)));
+  *rowblock = std::make_unique<qlexpr::QLRowBlock>(Schema(columns));
   QLRow& row = rowblock->get()->Extend();
   row.mutable_column(0)->set_bool_value(should_apply);
   // No message unless there is an error (then message will be set in executor).
 
   // If not applied report the existing row values as for regular if clause.
   if (!should_apply) {
-    for (size_t i = 0; i < doc_read_context_->schema.num_columns(); i++) {
+    for (size_t i = 0; i < doc_read_context_->schema().num_columns(); i++) {
       boost::optional<const QLValuePB&> col_val = table_row.GetValue(
-          doc_read_context_->schema.column_id(i));
+          doc_read_context_->schema().column_id(i));
       if (col_val.is_initialized()) {
         *(row.mutable_column(i + 2)) = *col_val;
       }
@@ -620,14 +662,15 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
 Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, ReadHybridTime read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
-  DocQLScanSpec spec(doc_read_context_->schema, *pk_doc_key_, request_.query_id(), true);
-  DocRowwiseIterator iterator(
+  DocQLScanSpec spec(doc_read_context_->schema(), *pk_doc_key_, request_.query_id(), true);
+  auto iterator = DocRowwiseIterator(
       *unique_index_key_projection_,
       *doc_read_context_,
       txn_op_context_,
       data.doc_write_batch->doc_db(),
       data.deadline,
-      read_time);
+      read_time,
+      data.doc_write_batch->pending_op());
   RETURN_NOT_OK(iterator.Init(spec));
 
   // It is a duplicate value if the index key exists already and the index value (corresponding to
@@ -692,6 +735,7 @@ Status QLWriteOperation::ApplyForJsonOperators(
   using common::Jsonb;
   rapidjson::Document document;
   QLValue qlv;
+  RapidJsonMemberCache member_cache;
   bool read_needed = true;
   for (const auto& column_value_ptr : col_map.find(col_id)->second) {
     const auto& column_value = *column_value_ptr;
@@ -731,11 +775,11 @@ Status QLWriteOperation::ApplyForJsonOperators(
 
     int i = 0;
     auto status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
-        &last_elem_object, is_insert);
+        &last_elem_object, is_insert, &member_cache);
     for (i = 1; i < column_value.json_args_size() && status.ok(); i++) {
       node = (last_elem_object) ? &(memberit->value) : &(*valueit);
       status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
-          &last_elem_object, is_insert);
+          &last_elem_object, is_insert, &member_cache);
     }
 
     bool update_missing = false;
@@ -751,7 +795,11 @@ Status QLWriteOperation::ApplyForJsonOperators(
         auto val = column_value.json_args(i - 1).operand().value().string_value();
         rapidjson::Value v(
             val.c_str(), narrow_cast<rapidjson::SizeType>(val.size()), document.GetAllocator());
+        // Add the member and update the cache if enabled.
         node->AddMember(v, rhs_doc, document.GetAllocator());
+        if (FLAGS_ycql_jsonb_use_member_cache) {
+          member_cache[MemberCacheValueHash(node)][val] = node->MemberCount() - 1;
+        }
       } else {
         RETURN_NOT_OK(status);
       }
@@ -822,10 +870,10 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
       break;
     }
     case LIST: {
-      MonoDelta default_ttl = doc_read_context_->schema.table_properties().HasDefaultTimeToLive() ?
-          MonoDelta::FromMilliseconds(
-              doc_read_context_->schema.table_properties().DefaultTimeToLive()) :
-          MonoDelta::kMax;
+      MonoDelta default_ttl = doc_read_context_->schema().table_properties().HasDefaultTimeToLive()
+          ? MonoDelta::FromMilliseconds(
+                doc_read_context_->schema().table_properties().DefaultTimeToLive())
+          : MonoDelta::kMax;
 
       int target_cql_index = column_value.subscript_args(0).value().int32_value();
       RETURN_NOT_OK(context.data->doc_write_batch->ReplaceCqlInList(
@@ -954,11 +1002,11 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   } else {
     size_t idx = 0;
     for (const QLExpressionPB& expr : request_.hashed_column_values()) {
-      new_row.AllocColumn(doc_read_context_->schema.column_id(idx), expr.value());
+      new_row.AllocColumn(doc_read_context_->schema().column_id(idx), expr.value());
       idx++;
     }
     for (const QLExpressionPB& expr : request_.range_column_values()) {
-      new_row.AllocColumn(doc_read_context_->schema.column_id(idx), expr.value());
+      new_row.AllocColumn(doc_read_context_->schema().column_id(idx), expr.value());
       idx++;
     }
   }
@@ -1055,7 +1103,7 @@ Status QLWriteOperation::ApplyUpsert(
     }
     const ColumnId column_id(column_value.column_id());
     const ColumnSchema& column_schema = VERIFY_RESULT(
-        doc_read_context_->schema.column_by_id(column_id));
+        doc_read_context_->schema().column_by_id(column_id));
 
     QLValue expr_result;
     if (!column_value.json_args().empty()) {
@@ -1090,7 +1138,7 @@ Status QLWriteOperation::ApplyUpsert(
 
   for (const auto& [column_id, _] : col_map) {
     const ColumnSchema& column_schema = VERIFY_RESULT(
-        doc_read_context_->schema.column_by_id(column_id));
+        doc_read_context_->schema().column_by_id(column_id));
     RETURN_NOT_OK(ApplyForJsonOperators(
         column_schema, column_id, col_map, context, is_insert, new_row));
   }
@@ -1124,7 +1172,7 @@ Status QLWriteOperation::ApplyDelete(
       CHECK(column_value.has_column_id())
           << "column id missing: " << column_value.DebugString();
       const ColumnId column_id(column_value.column_id());
-      const auto& column = VERIFY_RESULT_REF(doc_read_context_->schema.column_by_id(column_id));
+      const auto& column = VERIFY_RESULT_REF(doc_read_context_->schema().column_by_id(column_id));
 
       if (!column_value.subscript_args().empty()) {
         RETURN_NOT_OK(DeleteSubscriptedColumnElement(data, column, column_value, column_id));
@@ -1143,7 +1191,7 @@ Status QLWriteOperation::ApplyDelete(
     if (update_indexes_) {
       RETURN_NOT_OK(UpdateIndexes(*existing_row, *new_row));
     }
-  } else if (IsRangeOperation(request_, doc_read_context_->schema)) {
+  } else if (IsRangeOperation(request_, doc_read_context_->schema())) {
     // If the range columns are not specified, we read everything and delete all rows for
     // which the where condition matches.
 
@@ -1152,22 +1200,22 @@ Status QLWriteOperation::ApplyDelete(
     dockv::ReaderProjection static_projection;
     dockv::ReaderProjection projection;
     RETURN_NOT_OK(CreateProjections(
-        doc_read_context_->schema, request_.column_refs(), &static_projection, &projection, nullptr,
-        AddKeysMode::kAll));
+        doc_read_context_->schema(), request_.column_refs(), &static_projection, &projection,
+        nullptr, AddKeysMode::kAll));
 
     // Construct the scan spec basing on the WHERE condition.
     vector<KeyEntryValue> hashed_components;
     RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
-        request_.hashed_column_values(), doc_read_context_->schema, 0,
-        doc_read_context_->schema.num_hash_key_columns(), &hashed_components));
+        request_.hashed_column_values(), doc_read_context_->schema(), 0,
+        doc_read_context_->schema().num_hash_key_columns(), &hashed_components));
 
     boost::optional<int32_t> hash_code = request_.has_hash_code()
                                          ? boost::make_optional<int32_t>(request_.hash_code())
                                          : boost::none;
     const auto range_covers_whole_partition_key = !request_.has_where_expr();
     const auto include_static_columns_in_scan = range_covers_whole_partition_key &&
-                                                doc_read_context_->schema.has_statics();
-    DocQLScanSpec spec(doc_read_context_->schema,
+                                                doc_read_context_->schema().has_statics();
+    DocQLScanSpec spec(doc_read_context_->schema(),
                        hash_code,
                        hash_code, // max hash code.
                        hashed_components,
@@ -1178,9 +1226,9 @@ Status QLWriteOperation::ApplyDelete(
                        include_static_columns_in_scan);
 
     // Create iterator.
-    DocRowwiseIterator iterator(
-        projection, *doc_read_context_, txn_op_context_,
-        data.doc_write_batch->doc_db(), data.deadline, data.read_time);
+    auto iterator = DocRowwiseIterator(
+        projection, *doc_read_context_, txn_op_context_, data.doc_write_batch->doc_db(),
+        data.deadline, data.read_time, data.doc_write_batch->pending_op());
     RETURN_NOT_OK(iterator.Init(spec));
 
     // Iterate through rows and delete those that match the condition.
@@ -1232,9 +1280,9 @@ Status QLWriteOperation::DeleteSubscriptedColumnElement(
     }
     case LIST: {
       const MonoDelta default_ttl =
-          doc_read_context_->schema.table_properties().HasDefaultTimeToLive()
+          doc_read_context_->schema().table_properties().HasDefaultTimeToLive()
               ? MonoDelta::FromMilliseconds(
-                    doc_read_context_->schema.table_properties().DefaultTimeToLive())
+                    doc_read_context_->schema().table_properties().DefaultTimeToLive())
               : MonoDelta::kMax;
 
       const int target_cql_index = column_value.subscript_args(0).value().int32_value();
@@ -1260,10 +1308,10 @@ Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_w
   if (request_.has_user_timestamp_usec()) {
     // If user_timestamp is provided, we need to add a tombstone for each individual
     // column in the schema since we don't want to analyze this on the read path.
-    for (auto i = doc_read_context_->schema.num_key_columns();
-         i < doc_read_context_->schema.num_columns(); i++) {
+    for (auto i = doc_read_context_->schema().num_key_columns();
+         i < doc_read_context_->schema().num_columns(); i++) {
       const DocPath sub_path(row_path.encoded_doc_key(),
-                             KeyEntryValue::MakeColumnId(doc_read_context_->schema.column_id(i)));
+                             KeyEntryValue::MakeColumnId(doc_read_context_->schema().column_id(i)));
       RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path,
                                                   read_ht,
                                                   deadline,
@@ -1312,12 +1360,12 @@ Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
   if ((request_.type() == QLWriteRequestPB::QL_STMT_UPDATE ||
        request_.type() == QLWriteRequestPB::QL_STMT_DELETE) &&
       !liveness_column_exists_) {
-    for (size_t idx = doc_read_context_->schema.num_key_columns();
-         idx < doc_read_context_->schema.num_columns(); idx++) {
-      if (doc_read_context_->schema.column(idx).is_static()) {
+    for (size_t idx = doc_read_context_->schema().num_key_columns();
+         idx < doc_read_context_->schema().num_columns(); idx++) {
+      if (doc_read_context_->schema().column(idx).is_static()) {
         continue;
       }
-      const ColumnId column_id = doc_read_context_->schema.column_id(idx);
+      const ColumnId column_id = doc_read_context_->schema().column_id(idx);
       switch (GetValueState(new_row, column_id)) {
         case ValueState::kNull: continue;
         case ValueState::kNotNull: return false;
@@ -1337,16 +1385,16 @@ Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
     //       cols that are kMissing in new_row so that we can decide if the row is deleted or not).
 
     bool skip_check = false;
-    for (size_t idx = doc_read_context_->schema.num_key_columns();
-         idx < doc_read_context_->schema.num_columns(); idx++) {
-      const ColumnId column_id = doc_read_context_->schema.column_id(idx);
+    for (size_t idx = doc_read_context_->schema().num_key_columns();
+         idx < doc_read_context_->schema().num_columns(); idx++) {
+      const ColumnId column_id = doc_read_context_->schema().column_id(idx);
       if (GetValueState(new_row, column_id) == ValueState::kNotNull) skip_check = true;
     }
 
     if (!skip_check) {
-      for (size_t idx = doc_read_context_->schema.num_key_columns();
-           idx < doc_read_context_->schema.num_columns(); idx++) {
-        const ColumnId column_id = doc_read_context_->schema.column_id(idx);
+      for (size_t idx = doc_read_context_->schema().num_key_columns();
+           idx < doc_read_context_->schema().num_columns(); idx++) {
+        const ColumnId column_id = doc_read_context_->schema().column_id(idx);
         if (GetValueState(new_row, column_id) == ValueState::kMissing) {
           DCHECK(GetValueState(existing_row, column_id) != ValueState::kMissing);
         }
@@ -1656,13 +1704,14 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
                                 const DocReadContext& doc_read_context,
+                                std::reference_wrapper<const ScopedRWOperation> pending_op,
                                 QLResultSet* resultset,
                                 HybridTime* restart_read_ht) {
   auto se = ScopeExit([resultset] {
     resultset->Complete();
   });
 
-  const auto& schema = doc_read_context.schema;
+  const auto& schema = doc_read_context.schema();
   SimulateTimeoutIfTesting(&deadline);
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   size_t num_rows_skipped = 0;
@@ -1701,7 +1750,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
       request_, read_time, schema, read_static_columns, &spec, &static_row_spec));
   RETURN_NOT_OK(ql_storage.GetIterator(
       request_, full_projection, doc_read_context, txn_op_context_, deadline, read_time,
-      *spec, &iter));
+      *spec, pending_op, &iter));
   VTRACE(1, "Initialized iterator");
 
   QLTableRow static_row;
@@ -1716,7 +1765,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
     std::unique_ptr<YQLRowwiseIteratorIf> static_row_iter;
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_, static_projection, doc_read_context, txn_op_context_, deadline,
-        read_time, *static_row_spec, &static_row_iter));
+        read_time, *static_row_spec, pending_op, &static_row_iter));
     RETURN_NOT_OK(static_row_iter->FetchNext(&static_row));
   }
 

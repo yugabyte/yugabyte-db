@@ -1,7 +1,7 @@
 ---
 title: Prepare the private cloud (on-premise) environment
-headerTitle: Prepare the private cloud (on-premise) environment
-linkTitle: Prepare the environment
+headerTitle: Cloud prerequisites - On-Premises
+linkTitle: Cloud prerequisites
 description: Prepare the private cloud (on-premise) environment for YugabyteDB Anywhere.
 menu:
   preview_yugabyte-platform:
@@ -57,8 +57,11 @@ type: docs
 
 </ul>
 
-<br>To run a YugabyteDB universe on a private cloud, you need to prepare one computer to run YugabyteDB Anywhere, which is in turn used to install and manage the nodes included in the universe.
+To run a YugabyteDB on a private cloud, you need to prepare one computer to run YugabyteDB Anywhere. This computer is in turn used to install and manage the nodes onto which you will deploy YugabyteDB universes.
 
+For information on the requirements for the node running YugabyteDB Anywhere, refer to [Prerequisites](../../prerequisites/default/).
+
+<!--
 A YugabyteDB Anywhere node has the following requirements:
 
 * Hardware requirements:
@@ -77,3 +80,4 @@ A YugabyteDB Anywhere node has the following requirements:
   For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
 * Ability to connect from the YugabyteDB Anywhere host to all YugabyteDB data nodes.
+-->

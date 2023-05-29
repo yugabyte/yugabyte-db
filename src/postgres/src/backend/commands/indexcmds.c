@@ -15,6 +15,8 @@
 
 #include "postgres.h"
 
+#include <inttypes.h>
+
 #include "access/amapi.h"
 #include "access/htup_details.h"
 #include "access/reloptions.h"
@@ -3063,8 +3065,28 @@ YbWaitForBackendsCatalogVersion()
 
 	int num_lagging_backends = -1;
 	int retries_left = 10;
+	const TimestampTz start = GetCurrentTimestamp();
 	while (num_lagging_backends != 0)
 	{
+		if (yb_wait_for_backends_catalog_version_timeout > 0 &&
+			TimestampDifferenceExceeds(start,
+									   GetCurrentTimestamp(),
+									   yb_wait_for_backends_catalog_version_timeout))
+			ereport(ERROR,
+					(errmsg("timed out waiting for postgres backends to catch"
+							" up"),
+					 errdetail("%d backends on database %u are still behind"
+							   " catalog version %" PRIu64 ".",
+							   num_lagging_backends,
+							   MyDatabaseId,
+							   YbGetCatalogCacheVersion()),
+					 errhint("Run the following query on all tservers to find"
+							 " the lagging backends: SELECT * FROM"
+							 " pg_stat_activity WHERE catalog_version < %"
+							 PRIu64 " AND datid = %u;",
+							 YbGetCatalogCacheVersion(),
+							 MyDatabaseId)));
+
 		YBCStatus s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
 														 YbGetCatalogCacheVersion(),
 														 &num_lagging_backends);

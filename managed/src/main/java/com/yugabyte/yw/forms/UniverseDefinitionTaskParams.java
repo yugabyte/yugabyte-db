@@ -460,6 +460,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Cloud Instance Type that the user wants for tserver nodes.
     @Constraints.Required() @ApiModelProperty public String instanceType;
 
+    // Used only for k8s universes when instance type is set to custom.
+    @ApiModelProperty public K8SNodeResourceSpec masterK8SNodeResourceSpec;
+
+    @ApiModelProperty public K8SNodeResourceSpec tserverK8SNodeResourceSpec;
+
+    public static class K8SNodeResourceSpec {
+      // Memory in GiB
+      public Double memoryGib = 4.0;
+      // CPU in core count
+      public Double cpuCoreCount = 2.0;
+    }
+
+    public static final double MIN_CPU = 0.5;
+    public static final double MAX_CPU = 100.0;
+    public static final double MIN_MEMORY = 2.0;
+    public static final double MAX_MEMORY = 1000.0;
+
     // The number of nodes to provision. These include ones for both masters and tservers.
     @Constraints.Min(1)
     @ApiModelProperty

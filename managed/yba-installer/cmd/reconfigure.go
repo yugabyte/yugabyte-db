@@ -17,7 +17,7 @@ var reconfigureCmd = &cobra.Command{
 		"YugabyteDB Anywhere services.",
 	Args: cobra.NoArgs,
 	Long: `
-    The reconfigure command is used to apply changes made to yba-ctl.yml to running 
+    The reconfigure command is used to apply changes made to yba-ctl.yml to running
 	YugabyteDB Anywhere services. The process involves restarting all associated services.`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if !common.RunFromInstalled() {

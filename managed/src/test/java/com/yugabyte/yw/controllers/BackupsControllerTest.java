@@ -499,7 +499,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
         .when(mockBackupUtil)
-        .validateTables(any(), any(), any(), any());
+        .validateBackupRequest(any(), any(), any());
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
     bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());

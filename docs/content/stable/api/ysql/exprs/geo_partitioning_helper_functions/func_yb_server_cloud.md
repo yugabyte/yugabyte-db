@@ -2,7 +2,7 @@
 title: yb_server_cloud() function [YSQL]
 headerTitle: yb_server_cloud()
 linkTitle: yb_server_cloud()
-description: Returns the cloud of the currently connected node
+description: Returns the cloud provider of the currently connected node
 menu:
   stable:
     identifier: api-ysql-exprs-yb_server_cloud
@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-`yb_server_cloud()` returns the cloud that user's server is connected to.
+`yb_server_cloud()` returns the cloud provider that a user's server is connected to.
 
 ## Examples
 

@@ -90,6 +90,21 @@ public class AccessKey extends Model {
     @ApiModelProperty public boolean deleteRemote = true;
     @ApiModelProperty public String keyPairName;
     @ApiModelProperty public String sshPrivateKeyContent;
+    /*
+     * There are 3 different scenarios.
+     * 1. Allow YW to manage keypair - We create the private key content AND upload to AWS.
+     * 2. They provide their own custom keypair content/name, but it doesn't already exist in AWS.
+     *    We create a private key with the same contents as what they provide and then import that
+     *    to AWS account.
+     * 3. They provide their own keypair content/name that matches one existing in their AWS
+     *    account.
+     *    a. If they let us validate, then we test the fingerprints to make sure the key content
+     *       they provide matches the name of the key that already exists in AWS.
+     *    b. Some customers don't want to give us permission to describe key pairs, so they need
+     *       to be able to skip the validation (in this case below flag should be set, & we will
+     *       trust customer with the provider keyContent)
+     */
+    @ApiModelProperty public boolean skipKeyValidateAndUpload = false;
 
     @ApiModelProperty(value = "Key Management state", accessMode = AccessMode.READ_ONLY)
     private KeyManagementState managementState = KeyManagementState.Unknown;

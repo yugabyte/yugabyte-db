@@ -57,7 +57,7 @@ Private versus Public IP: Consider setting up a VPN or using the node’s public
 
 - Cloud Account Configuration: Open the relevant ports, as per the following definition, for TCP traffic on your cloud provider account (for example, security group rules).
 
-- SELinux is enabled: If your host has SELinux enabled, run the following commands to open the ports using firewall exceptions.
+- Firewall is enabled: If your host has firewall enabled, run the following commands to open the ports using firewall exceptions.
 
   ```sh
   sudo firewall-cmd --zone=public --add-port=7000/tcp;

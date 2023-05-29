@@ -48,6 +48,9 @@ public class MetricQueryParams {
   @ApiModelProperty(value = "Table id")
   private String tableId;
 
+  @ApiModelProperty(value = "Stream id")
+  private String streamId;
+
   @ApiModelProperty(value = "Is Recharts")
   private boolean isRecharts;
 

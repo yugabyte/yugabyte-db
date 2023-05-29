@@ -112,6 +112,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     try {
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
     } catch (Exception e) {
+      fail();
     }
 
     CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =

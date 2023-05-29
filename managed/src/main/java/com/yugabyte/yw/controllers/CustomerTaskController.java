@@ -8,6 +8,7 @@ import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
+import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
@@ -146,12 +147,12 @@ public class CustomerTaskController extends AuthenticatedController {
     }
   }
 
-  private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
+  private Map<UUID, List<CustomerTaskFormData>> fetchTasks(Customer customer, UUID targetUUID) {
     ExpressionList<CustomerTask> customerTaskQuery =
         CustomerTask.find
             .query()
             .where()
-            .eq("customer_uuid", customerUUID)
+            .eq("customer_uuid", customer.getUuid())
             .orderBy("create_time desc");
 
     if (targetUUID != null) {
@@ -162,7 +163,8 @@ public class CustomerTaskController extends AuthenticatedController {
         customerTaskQuery
             .setMaxRows(
                 confGetter.getConfForScope(
-                    Customer.getOrBadRequest(customerUUID), CustomerConfKeys.taskDbQueryLimit))
+                    Customer.getOrBadRequest(customer.getUuid()),
+                    CustomerConfKeys.taskDbQueryLimit))
             .orderBy("create_time desc")
             .findPagedList()
             .getList();
@@ -182,7 +184,8 @@ public class CustomerTaskController extends AuthenticatedController {
                     CustomerTask::getTargetUUID,
                     Function.identity(),
                     (c1, c2) -> c1.getCompletionTime().after(c2.getCompletionTime()) ? c1 : c2));
-    Map<UUID, String> updatingTaskByTargetMap = commissioner.getUpdatingTaskUUIDsForTargets();
+    Map<UUID, String> updatingTaskByTargetMap =
+        commissioner.getUpdatingTaskUUIDsForTargets(customer.getId());
     for (CustomerTask task : customerTaskList) {
       TaskInfo taskInfo = taskInfoMap.get(task.getTaskUUID());
       commissioner
@@ -203,9 +206,8 @@ public class CustomerTaskController extends AuthenticatedController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result list(UUID customerUUID) {
-    Customer.getOrBadRequest(customerUUID);
-
-    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, null);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customer, null);
     return PlatformResults.withData(taskList);
   }
 
@@ -214,9 +216,9 @@ public class CustomerTaskController extends AuthenticatedController {
       response = CustomerTaskFormData.class,
       responseContainer = "List")
   public Result tasksList(UUID customerUUID, UUID universeUUID) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     List<CustomerTaskFormData> flattenList = new ArrayList<CustomerTaskFormData>();
-    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, universeUUID);
+    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customer, universeUUID);
     for (List<CustomerTaskFormData> task : taskList.values()) {
       flattenList.addAll(task);
     }
@@ -225,10 +227,10 @@ public class CustomerTaskController extends AuthenticatedController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result universeTasks(UUID customerUUID, UUID universeUUID) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Map<UUID, List<CustomerTaskFormData>> taskList =
-        fetchTasks(customerUUID, universe.getUniverseUUID());
+        fetchTasks(customer, universe.getUniverseUUID());
     return PlatformResults.withData(taskList);
   }
 
@@ -275,6 +277,7 @@ public class CustomerTaskController extends AuthenticatedController {
 
     AbstractTaskParams taskParams = null;
     switch (taskType) {
+      case CreateKubernetesUniverse:
       case CreateUniverse:
       case EditUniverse:
       case ReadOnlyClusterCreate:
@@ -282,6 +285,9 @@ public class CustomerTaskController extends AuthenticatedController {
         break;
       case ResizeNode:
         taskParams = Json.fromJson(oldTaskParams, ResizeNodeParams.class);
+        break;
+      case DestroyKubernetesUniverse:
+        taskParams = Json.fromJson(oldTaskParams, DestroyUniverse.Params.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:
@@ -312,6 +318,12 @@ public class CustomerTaskController extends AuthenticatedController {
         nodeTaskParams.expectedUniverseVersion = -1;
         if (oldTaskParams.has("rootCA")) {
           nodeTaskParams.rootCA = UUID.fromString(oldTaskParams.get("rootCA").textValue());
+        }
+        if (universe.isYbcEnabled()) {
+          nodeTaskParams.setEnableYbc(true);
+          nodeTaskParams.setYbcInstalled(true);
+          nodeTaskParams.setYbcSoftwareVersion(
+              universe.getUniverseDetails().getYbcSoftwareVersion());
         }
         taskParams = nodeTaskParams;
         break;

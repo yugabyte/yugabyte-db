@@ -158,7 +158,7 @@ GET     /customers/:cUUID/providers/:pUUID/releases                            c
 
 # Certificate API
 POST    /customers/:cUUID/certificates                                         com.yugabyte.yw.controllers.CertificateController.upload(cUUID: java.util.UUID, request: Request)
-POST    /customers/:cUUID/certificates/create_self_signed_cert          com.yugabyte.yw.controllers.CertificateController.createSelfSignedCert(cUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/certificates/create_self_signed_cert                 com.yugabyte.yw.controllers.CertificateController.createSelfSignedCert(cUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/certificates                                         com.yugabyte.yw.controllers.CertificateController.list(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/certificates/:rUUID                                  com.yugabyte.yw.controllers.CertificateController.delete(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/certificates/:name                                   com.yugabyte.yw.controllers.CertificateController.get(cUUID: java.util.UUID, name: String)
@@ -167,6 +167,13 @@ GET     /customers/:cUUID/certificates/:rUUID/download                         c
 POST    /customers/:cUUID/certificates/:rUUID                                  com.yugabyte.yw.controllers.CertificateController.getClientCert(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/certificates/:rUUID/update_empty_cert                com.yugabyte.yw.controllers.CertificateController.updateEmptyCustomCert(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/certificates/:rUUID/edit                             com.yugabyte.yw.controllers.CertificateController.edit(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
+
+# Custom CA in TrustStore
+POST	/customers/:cUUID/customCAStore								           com.yugabyte.yw.controllers.CustomCAStoreController.addCA(cUUID: java.util.UUID, request: Request)
+POST	/customers/:cUUID/customCAStore/:certUUID					  	       com.yugabyte.yw.controllers.CustomCAStoreController.updateCA(cUUID: java.util.UUID, certUUID: java.util.UUID, request: Request)
+GET		/customers/:cUUID/customCAStoreCertificates							   com.yugabyte.yw.controllers.CustomCAStoreController.listCAs(cUUID: java.util.UUID)
+GET		/customers/:cUUID/customCAStoreCertificates/:certUUID				   com.yugabyte.yw.controllers.CustomCAStoreController.downloadCA(cUUID: java.util.UUID, certUUID: java.util.UUID, request: Request)
+DELETE	/customers/:cUUID/customCAStoreCertificates/:certUUID			       com.yugabyte.yw.controllers.CustomCAStoreController.deleteCA(cUUID: java.util.UUID, certUUID: java.util.UUID, request: Request)
 
 # Alerts API
 GET     /customers/:cUUID/alerts                                               com.yugabyte.yw.controllers.AlertController.list(cUUID: java.util.UUID)
@@ -356,7 +363,7 @@ POST    /customers/:cUUID/universes/:uniUUID/upgrade/thirdparty_software       c
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/reboot                    com.yugabyte.yw.controllers.UpgradeUniverseController.rebootUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 
 # Table Management API
-GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeParentTableInfo: Boolean ?= false, excludeColocatedTables: Boolean ?= false)
+GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeParentTableInfo: Boolean ?= false, excludeColocatedTables: Boolean ?= false, includeColocatedParentTables: Boolean ?= false)
 GET     /customers/:cUUID/universes/:uniUUID/namespaces                        com.yugabyte.yw.controllers.TablesController.listNamespaces(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeSystemNamespaces: Boolean ?= false)
 POST    /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID                 com.yugabyte.yw.controllers.TablesController.describe(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
@@ -513,6 +520,7 @@ DELETE  /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                     c
 
 # Node Agent API
 POST   /customers/:cUUID/node_agents                                           com.yugabyte.yw.controllers.NodeAgentController.register(cUUID: java.util.UUID, request: Request)
+POST   /customers/:cUUID/node_agents/page                                      com.yugabyte.yw.controllers.NodeAgentController.page(cUUID: java.util.UUID, request: Request)
 GET    /customers/:cUUID/node_agents                                           com.yugabyte.yw.controllers.NodeAgentController.list(cUUID: java.util.UUID, nodeIp: String ?= "")
 GET    /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.get(cUUID: java.util.UUID, nUUID: java.util.UUID)
 PUT    /customers/:cUUID/node_agents/:nUUID/state                              com.yugabyte.yw.controllers.NodeAgentController.updateState(cUUID: java.util.UUID, nUUID: java.util.UUID, request: Request)
@@ -548,3 +556,7 @@ POST /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                  c
 # Customer Licenses Upload API
 POST    /customers/:cUUID/licenses                                             com.yugabyte.yw.controllers.CustomerLicenseController.upload(cUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/licenses/:lUUID                                      com.yugabyte.yw.controllers.CustomerLicenseController.delete(cUUID: java.util.UUID, lUUID: java.util.UUID, request: Request)
+
+# LDAP Mapping API
+GET /customers/:cUUID/ldap_mappings                                            com.yugabyte.yw.controllers.LdapDnToYbaRoleController.list(cUUID: java.util.UUID)
+PUT /customers/:cUUID/ldap_mappings                                            com.yugabyte.yw.controllers.LdapDnToYbaRoleController.update(cUUID: java.util.UUID, request: Request) 

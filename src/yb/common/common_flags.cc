@@ -85,6 +85,8 @@ TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, adv
 namespace yb {
 
 void InitCommonFlags() {
+  // Note! Autoflags are in non-promoted state (are set to the initial value) during execution of
+  // this function. Be very careful in manipulations with such flags.
 }
 
 } // namespace yb

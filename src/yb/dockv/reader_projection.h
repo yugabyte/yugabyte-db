@@ -33,12 +33,14 @@ inline ColumnId GetColumnId(const PB& pb) {
 struct ProjectedColumn {
   ColumnId id;
   KeyEntryValue subkey; // id converted to KeyEntryValue
-  QLTypePtr type;
+  DataType data_type;
 
   std::string ToString() const;
 };
 
 struct ReaderProjection {
+  static constexpr size_t kNotFoundIndex = std::numeric_limits<size_t>::max();
+
   size_t num_key_columns = 0;
   // Columns are ordered by id and do not contain duplicates.
   // It is guaranteed by our system that key columns have smaller ids than value columns.
@@ -105,6 +107,8 @@ struct ReaderProjection {
     columns.reserve(SumSizes(std::forward<ColumnIds>(column_refs)...));
     CompleteInit(DoAddColumns(schema, std::forward<ColumnIds>(column_refs)...));
   }
+
+  size_t ColumnIdxById(ColumnId column_id) const;
 
   std::string ToString() const;
 

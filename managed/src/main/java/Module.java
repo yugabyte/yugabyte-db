@@ -3,6 +3,8 @@
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Names;
+import com.nimbusds.oauth2.sdk.ParseException;
+import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudModules;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
@@ -23,6 +25,7 @@ import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
@@ -94,13 +97,10 @@ import play.Environment;
  */
 @Slf4j
 public class Module extends AbstractModule {
-
-  private final Environment environment;
   private final Config config;
   private final String[] TLD_OVERRIDE = {"local"};
 
   public Module(Environment environment, Config config) {
-    this.environment = environment;
     this.config = config;
   }
 
@@ -195,6 +195,7 @@ public class Module extends AbstractModule {
       bind(PerfAdvisorScheduler.class).asEagerSingleton();
       requestStaticInjection(CertificateInfo.class);
       requestStaticInjection(HealthCheck.class);
+      requestStaticInjection(AppConfigHelper.class);
     }
 
     bind(YbClientConfigFactory.class).asEagerSingleton();
@@ -210,7 +211,7 @@ public class Module extends AbstractModule {
       oidcConfiguration.setClientId(config.getString("yb.security.clientID"));
       oidcConfiguration.setSecret(config.getString("yb.security.secret"));
       oidcConfiguration.setScope(config.getString("yb.security.oidcScope"));
-      oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI"));
+      setProviderMetadata(config, oidcConfiguration);
       oidcConfiguration.setMaxClockSkew(3600);
       oidcConfiguration.setResponseType("code");
       return new OidcClient<>(oidcConfiguration);
@@ -218,6 +219,26 @@ public class Module extends AbstractModule {
       log.warn("Client with empty OIDC configuration because yb.security.type={}", securityType);
       // todo: fail fast instead of relying on log?
       return new OidcClient<>();
+    }
+  }
+
+  private void setProviderMetadata(Config config, OidcConfiguration oidcConfiguration) {
+    String providerMetadata = config.getString("yb.security.oidcProviderMetadata");
+    if (providerMetadata.isEmpty()) {
+      String discoveryURI = config.getString("yb.security.discoveryURI");
+      if (discoveryURI.isEmpty()) {
+        log.error("OIDC setup error: Both discoveryURL and provider metadata is empty");
+        // TODO(sbapat) throw. Though rest of the method is written to fail silently so do not
+        //  want to change that in this diff.
+      } else {
+        oidcConfiguration.setDiscoveryURI(discoveryURI);
+      }
+    } else {
+      try {
+        oidcConfiguration.setProviderMetadata(OIDCProviderMetadata.parse(providerMetadata));
+      } catch (ParseException e) {
+        log.error("Provider metadata invalid", e);
+      }
     }
   }
 

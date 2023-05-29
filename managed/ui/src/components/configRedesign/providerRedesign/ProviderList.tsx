@@ -5,11 +5,12 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import React, { useState } from 'react';
-import { useQuery } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { Box, Typography } from '@material-ui/core';
+import { useInterval } from 'react-use';
 
 import { api, providerQueryKey, universeQueryKey } from '../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -20,7 +21,11 @@ import {
   KubernetesProviderType,
   KUBERNETES_PROVIDERS_MAP,
   PROVIDER_ROUTE_PREFIX,
-  KubernetesProviderTypeLabel
+  KubernetesProviderTypeLabel,
+  ProviderStatus,
+  ProviderStatusLabel as ProviderStatusTextLabel,
+  PROVIDER_CONFIG_REFETCH_INTERVAL_MS,
+  TRANSITORY_PROVIDER_STATUSES
 } from './constants';
 import { EmptyListPlaceholder } from './EmptyListPlaceholder';
 import { ProviderDashboardView } from './InfraProvider';
@@ -31,6 +36,8 @@ import { DeleteProviderConfigModal } from './DeleteProviderConfigModal';
 import { UniverseItem } from './providerView/providerDetails/UniverseTable';
 import { getLinkedUniverses, usePillStyles } from './utils';
 import { YBButton } from '../../../redesign/components';
+import { ProviderStatusLabel } from './components/ProviderStatusLabel';
+import { SortOrder } from '../../../redesign/helpers/constants';
 
 import { YBProvider, YBRegion } from './types';
 
@@ -58,33 +65,38 @@ export const ProviderList = (props: ProviderListProps) => {
   const [isDeleteProviderModalOpen, setIsDeleteProviderModalOpen] = useState<boolean>(false);
   const [deleteProviderConfigSelection, setDeleteProviderConfigSelection] = useState<YBProvider>();
   const classes = usePillStyles();
-  const {
-    data: providerList,
-    isLoading: isProviderListQueryLoading,
-    isError: isProviderListQueryError,
-    isIdle: isProviderListQueryIdle
-  } = useQuery(providerQueryKey.ALL, () => api.fetchProviderList());
-  const {
-    data: universeList,
-    isLoading: isUniverseListQueryLoading,
-    isError: isUniverseListQueryError,
-    isIdle: isUniverseListQueryIdle
-  } = useQuery(universeQueryKey.ALL, () => api.fetchUniverseList());
+  const providerListQuery = useQuery(providerQueryKey.ALL, () => api.fetchProviderList());
+  const universeListQuery = useQuery(universeQueryKey.ALL, () => api.fetchUniverseList());
+  const queryClient = useQueryClient();
+
+  useInterval(() => {
+    if (
+      providerListQuery.data?.some((provider) =>
+        (TRANSITORY_PROVIDER_STATUSES as readonly ProviderStatus[]).includes(
+          provider.usabilityState
+        )
+      )
+    ) {
+      queryClient.invalidateQueries(providerQueryKey.ALL, { exact: true });
+    }
+  }, PROVIDER_CONFIG_REFETCH_INTERVAL_MS);
 
   if (
-    isProviderListQueryLoading ||
-    isProviderListQueryIdle ||
-    isUniverseListQueryLoading ||
-    isUniverseListQueryIdle
+    providerListQuery.isLoading ||
+    providerListQuery.isIdle ||
+    universeListQuery.isLoading ||
+    universeListQuery.isIdle
   ) {
     return <YBLoading />;
   }
-  if (isProviderListQueryError) {
+  if (providerListQuery.isError) {
     return <YBErrorIndicator customErrorMessage="Error fetching provider list." />;
   }
-  if (isUniverseListQueryError) {
+  if (universeListQuery.isError) {
     return <YBErrorIndicator customErrorMessage="Error fetching universe list." />;
   }
+  const providerList = providerListQuery.data;
+  const universeList = universeListQuery.data;
 
   const showDeleteProviderModal = () => {
     setIsDeleteProviderModalOpen(true);
@@ -107,9 +119,28 @@ export const ProviderList = (props: ProviderListProps) => {
           providerCode === ProviderCode.KUBERNETES ? props.kubernetesProviderType : providerCode
         }/${row.uuid}`}
       >
-        {providerName}
+        <Typography variant="body2">{providerName}</Typography>
       </Link>
     );
+  };
+  const formatProviderStatus = (usabilityState: ProviderStatus) => (
+    <ProviderStatusLabel providerStatus={usabilityState} variant="body2" />
+  );
+  const sortProviderStatus = (rowA: ProviderListItem, rowB: ProviderListItem, order: SortOrder) => {
+    let comparison = 0;
+    if (
+      ProviderStatusTextLabel[rowA.usabilityState] === ProviderStatusTextLabel[rowB.usabilityState]
+    ) {
+      // Break ties with provider name.
+      comparison = rowA.name > rowB.name ? 1 : -1;
+    } else {
+      comparison =
+        ProviderStatusTextLabel[rowA.usabilityState] > ProviderStatusTextLabel[rowB.usabilityState]
+          ? 1
+          : -1;
+    }
+
+    return order === SortOrder.DESCENDING ? comparison * -1 : comparison;
   };
   const formatRegions = (regions: YBRegion[]) => <RegionsCell regions={regions} />;
   const formatProviderActions = (_: unknown, row: ProviderListItem) => {
@@ -131,15 +162,14 @@ export const ProviderList = (props: ProviderListProps) => {
       </Dropdown>
     );
   };
-
   const formatUsage = (_: unknown, row: ProviderListItem) => {
     return row.linkedUniverses.length ? (
       <Box display="flex" gridGap="5px">
-        <div>In Use</div>
+        <Typography variant="body2">In Use</Typography>
         <div className={classes.pill}>{row.linkedUniverses.length}</div>
       </Box>
     ) : (
-      'Not in Use'
+      <Typography variant="body2">Not in Use</Typography>
     );
   };
 
@@ -156,6 +186,7 @@ export const ProviderList = (props: ProviderListProps) => {
       const linkedUniverses = getLinkedUniverses(provider.uuid, universeList);
       return { ...provider, linkedUniverses: linkedUniverses };
     });
+
   return (
     <>
       <Box display="flex" marginBottom="35px">
@@ -199,6 +230,14 @@ export const ProviderList = (props: ProviderListProps) => {
                 dataFormat={formatProviderName}
               >
                 Configuration Name
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="usabilityState"
+                dataSort={true}
+                sortFunc={sortProviderStatus}
+                dataFormat={formatProviderStatus}
+              >
+                Status
               </TableHeaderColumn>
               <TableHeaderColumn dataField="regions" dataFormat={formatRegions}>
                 Regions

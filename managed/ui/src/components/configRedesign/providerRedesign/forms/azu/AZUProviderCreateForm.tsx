@@ -29,7 +29,7 @@ import {
   VPCSetupType
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
-import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, getIsFormDisabled, readFileAsText } from '../utils';
 import { FormContainer } from '../components/FormContainer';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
@@ -176,7 +176,7 @@ export const AZUProviderCreateForm = ({
     'sshKeypairManagement',
     DEFAULT_FORM_VALUES.sshKeypairManagement
   );
-  const isFormDisabled = formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const isFormDisabled = getIsFormDisabled(formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -273,6 +273,7 @@ export const AZUProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -296,7 +297,7 @@ export const AZUProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -365,7 +366,7 @@ export const AZUProviderCreateForm = ({
               btnText="Create Provider Configuration"
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
@@ -382,6 +383,8 @@ export const AZUProviderCreateForm = ({
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           configuredRegions={regions}
+          isEditProvider={false}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -432,7 +435,7 @@ const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldVa
         [ProviderCode.AZU]: {
           azuClientId: formValues.azuClientId,
           azuClientSecret: formValues.azuClientSecret,
-          azuHostedZoneId: formValues.azuHostedZoneId,
+          ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
           azuRG: formValues.azuRG,
           azuSubscriptionId: formValues.azuSubscriptionId,
           azuTenantId: formValues.azuTenantId
@@ -440,17 +443,23 @@ const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldVa
       },
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: formValues.regions.map<AZURegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,
       details: {
         cloudInfo: {
           [ProviderCode.AZU]: {
-            securityGroupId: regionFormValues.securityGroupId,
-            vnet: regionFormValues.vnet,
-            ybImage: regionFormValues.ybImage
+            ...(regionFormValues.securityGroupId && {
+              securityGroupId: regionFormValues.securityGroupId
+            }),
+            ...(regionFormValues.vnet && {
+              vnet: regionFormValues.vnet
+            }),
+            ...(regionFormValues.ybImage && {
+              ybImage: regionFormValues.ybImage
+            })
           }
         }
       },

@@ -1,7 +1,7 @@
 ---
 title: Prepare the Kubernetes environment
-headerTitle: Prepare the Kubernetes environment
-linkTitle: Prepare the environment
+headerTitle: Cloud prerequisites - Kubernetes
+linkTitle: Cloud prerequisites
 description: Prepare the Kubernetes environment for YugabyteDB Anywhere.
 aliases:
   - /preview/deploy/enterprise-edition/prepare-environment/

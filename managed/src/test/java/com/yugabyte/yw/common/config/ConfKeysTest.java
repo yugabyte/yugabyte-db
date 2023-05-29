@@ -113,6 +113,7 @@ public class ConfKeysTest extends FakeDBApplication {
     validVals.put(
         ConfDataType.KeyValuesSetMultimapType,
         "[\"yb_task:task1\",\"yb_task:task2\",\"yb_dev:*\"]");
+    validVals.put(ConfDataType.LdapSearchScopeEnum, "SUBTREE");
 
     // No data validation for these types yet
     Set<ConfDataType<?>> exceptions =

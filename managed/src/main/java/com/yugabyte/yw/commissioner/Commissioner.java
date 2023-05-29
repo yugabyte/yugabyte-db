@@ -306,9 +306,9 @@ public class Commissioner {
   }
 
   // Returns a map of target to updating task UUID.
-  public Map<UUID, String> getUpdatingTaskUUIDsForTargets() {
+  public Map<UUID, String> getUpdatingTaskUUIDsForTargets(Long customerId) {
     return Universe.getUniverseDetailsFields(
-        String.class, UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD);
+        String.class, customerId, UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD);
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {
@@ -339,7 +339,8 @@ public class Commissioner {
   // Returns the TaskExecutionListener instance.
   private TaskExecutionListener getTaskExecutionListener() {
     final Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
-    Listener listener = new Listener(providerEditRestrictionManager, beforeTaskConsumer);
+    DefaultTaskExecutionListener listener =
+        new DefaultTaskExecutionListener(providerEditRestrictionManager, beforeTaskConsumer);
     return listener;
   }
 

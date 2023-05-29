@@ -77,7 +77,21 @@ Status PgDml::AppendTarget(PgExpr *target) {
 
 Status PgDml::AppendTargetPB(PgExpr *target) {
   // Append to targets_.
-  targets_.push_back(target);
+  bool is_aggregate = target->is_aggregate();
+  if (targets_.empty()) {
+    has_aggregate_targets_ = is_aggregate;
+  } else {
+    RSTATUS_DCHECK_EQ(has_aggregate_targets_, is_aggregate,
+                      IllegalState, "Combining aggregate and non aggregate targets");
+  }
+
+  if (is_aggregate) {
+    auto aggregate = down_cast<PgAggregateOperator*>(target);
+    aggregate->set_index(narrow_cast<int>(targets_.size()));
+    targets_.push_back(aggregate);
+  } else {
+    targets_.push_back(down_cast<PgColumnRef*>(target));
+  }
 
   // Allocate associated protobuf.
   auto* expr_pb = AllocTargetPB();
@@ -101,9 +115,6 @@ Status PgDml::AppendQual(PgExpr *qual, bool is_primary) {
     return secondary_index_query_->AppendQual(qual, true);
   }
 
-  // Append to quals_.
-  quals_.push_back(qual);
-
   // Allocate associated protobuf.
   auto* expr_pb = AllocQualPB();
 
@@ -115,15 +126,14 @@ Status PgDml::AppendQual(PgExpr *qual, bool is_primary) {
   return qual->PrepareForRead(this, expr_pb);
 }
 
-Status PgDml::AppendColumnRef(PgExpr *colref, bool is_primary) {
+Status PgDml::AppendColumnRef(PgColumnRef* colref, bool is_primary) {
   if (!is_primary) {
     DCHECK(secondary_index_query_) << "The secondary index query is expected";
     return secondary_index_query_->AppendColumnRef(colref, true);
   }
 
-  DCHECK(colref->is_colref()) << "Colref is expected";
   // Postgres attribute number, this is column id to refer the column from Postgres code
-  int attr_num = static_cast<PgColumnRef *>(colref)->attr_num();
+  int attr_num = colref->attr_num();
   // Retrieve column metadata from the target relation metadata
   PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
   if (!col.is_virtual_column()) {
@@ -479,18 +489,8 @@ Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
   return false;
 }
 
-bool PgDml::has_aggregate_targets() {
-  size_t num_aggregate_targets = 0;
-  for (const auto& target : targets_) {
-    if (target->is_aggregate()) {
-      num_aggregate_targets++;
-    }
-  }
-
-  CHECK(num_aggregate_targets == 0 || num_aggregate_targets == targets_.size())
-    << "Some, but not all, targets are aggregate expressions.";
-
-  return num_aggregate_targets > 0;
+bool PgDml::has_aggregate_targets() const {
+  return has_aggregate_targets_;
 }
 
 Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {

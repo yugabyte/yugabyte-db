@@ -110,6 +110,10 @@ public class GFlagsUtil {
   public static final String WEBSERVER_CERTIFICATE_FILE = "webserver_certificate_file";
   public static final String WEBSERVER_PRIVATE_KEY_FILE = "webserver_private_key_file";
   public static final String WEBSERVER_CA_CERTIFICATE_FILE = "webserver_ca_certificate_file";
+  public static final String RAFT_HEARTBEAT_INTERVAL = "raft_heartbeat_interval_ms";
+  public static final String LEADER_LEASE_DURATION_MS = "leader_lease_duration_ms";
+  public static final String LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS =
+      "leader_failure_max_missed_heartbeat_periods";
 
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
   public static final String CORES_DIR_PATH = "/cores";
@@ -134,6 +138,7 @@ public class GFlagsUtil {
   public static final String YBC_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
   public static final String YBC_PER_DOWNLOAD_OBJECTS = "per_download_num_objects";
+  public static final String TMP_DIRECTORY = "tmp_dir";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -209,6 +214,14 @@ public class GFlagsUtil {
       extra_gflags.put(FS_DATA_DIRS, mountPoints);
     } else {
       throw new RuntimeException("mountpoints and numVolumes are missing from taskParam");
+    }
+
+    boolean isMultiRegion =
+        universe.getConfig().getOrDefault(Universe.IS_MULTIREGION, "false").equals("true");
+    if (isMultiRegion) {
+      extra_gflags.put(RAFT_HEARTBEAT_INTERVAL, String.valueOf(1500));
+      extra_gflags.put(LEADER_LEASE_DURATION_MS, String.valueOf(6000));
+      extra_gflags.put(LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS, String.valueOf(5));
     }
 
     NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -317,6 +330,8 @@ public class GFlagsUtil {
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
+    // Append the custom_tmp gflag to the YBC gflag.
+    ybcFlags.put(TMP_DIRECTORY, GFlagsUtil.getCustomTmpDirectory(node, universe));
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
@@ -429,6 +444,29 @@ public class GFlagsUtil {
       gflags.put(POSTMASTER_CGROUP, YSQL_CGROUP_PATH);
     }
     return gflags;
+  }
+
+  public static String getCustomTmpDirectory(NodeDetails node, Universe universe) {
+    Map<String, String> res = new HashMap<>();
+    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+    if (node.isMaster) {
+      res.putAll(
+          getGFlagsForNode(
+              node,
+              UniverseTaskBase.ServerType.MASTER,
+              cluster,
+              universe.getUniverseDetails().clusters));
+    }
+    if (node.isTserver) {
+      res.putAll(
+          getGFlagsForNode(
+              node,
+              UniverseTaskBase.ServerType.TSERVER,
+              cluster,
+              universe.getUniverseDetails().clusters));
+    }
+
+    return res.getOrDefault(TMP_DIRECTORY, "/tmp");
   }
 
   private static Map<String, String> getYSQLGFlags(

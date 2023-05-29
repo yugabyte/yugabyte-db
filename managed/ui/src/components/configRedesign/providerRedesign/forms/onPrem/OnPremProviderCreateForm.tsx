@@ -30,7 +30,7 @@ import { RegionOperation } from '../configureRegion/constants';
 import { YBButton } from '../../../../common/forms/fields';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInputField, YBToggleField } from '../../../../../redesign/components';
-import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, getIsFormDisabled, readFileAsText } from '../utils';
 
 import { OnPremRegionMutation, YBProviderMutation } from '../../types';
 
@@ -163,7 +163,7 @@ export const OnPremProviderCreateForm = ({
     defaultValues.installNodeExporter
   );
 
-  const isFormDisabled = formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const isFormDisabled = getIsFormDisabled(formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -204,6 +204,7 @@ export const OnPremProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message ? (
                 <FormHelperText error={true}>
@@ -227,7 +228,7 @@ export const OnPremProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   fullWidth
                   disabled={isFormDisabled}
                 />
@@ -334,7 +335,7 @@ export const OnPremProviderCreateForm = ({
               btnText="Create Provider Configuration"
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
@@ -350,6 +351,7 @@ export const OnPremProviderCreateForm = ({
       {isRegionFormModalOpen && (
         <ConfigureOnPremRegionModal
           configuredRegions={regions}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -398,17 +400,17 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.ON_PREM]: {
-          ybHomeDir: formValues.ybHomeDir
+          ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir })
         }
       },
       installNodeExporter: formValues.installNodeExporter,
-      nodeExporterPort: formValues.nodeExporterPort,
-      nodeExporterUser: formValues.nodeExporterUser,
+      ...(formValues.nodeExporterPort && { nodeExporterPort: formValues.nodeExporterPort }),
+      ...(formValues.nodeExporterUser && { nodeExporterUser: formValues.nodeExporterUser }),
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
       skipProvisioning: formValues.skipProvisioning,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: formValues.regions.map<OnPremRegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,

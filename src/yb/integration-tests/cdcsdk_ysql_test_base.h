@@ -1066,45 +1066,76 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const OpId& op_id = OpId::Min(), const uint64_t cdc_sdk_safe_time = 0,
       bool initial_checkpoint = true, const int tablet_idx = 0, bool bootstrap = false) {
-    int max_retries = 3;
     Status st;
-    for (int retry = 0; retry < max_retries; ++retry) {
-      RpcController set_checkpoint_rpc;
-      SetCDCCheckpointRequestPB set_checkpoint_req;
-      SetCDCCheckpointResponsePB set_checkpoint_resp;
-      auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-      set_checkpoint_rpc.set_deadline(deadline);
-      PrepareSetCheckpointRequest(
-          &set_checkpoint_req, stream_id, tablets, tablet_idx, op_id, initial_checkpoint,
-          cdc_sdk_safe_time, bootstrap);
-      st = cdc_proxy_->SetCDCCheckpoint(
-          set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
+    SetCDCCheckpointResponsePB set_checkpoint_resp_final;
 
-      if (st.ok()) {
-        return set_checkpoint_resp;
-      }
-    }
 
-    return st;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          RpcController set_checkpoint_rpc;
+          SetCDCCheckpointRequestPB set_checkpoint_req;
+
+          SetCDCCheckpointResponsePB set_checkpoint_resp;
+          auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
+          set_checkpoint_rpc.set_deadline(deadline);
+          PrepareSetCheckpointRequest(
+              &set_checkpoint_req, stream_id, tablets, tablet_idx, op_id, initial_checkpoint,
+              cdc_sdk_safe_time, bootstrap);
+          st = cdc_proxy_->SetCDCCheckpoint(
+              set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
+
+          if (set_checkpoint_resp.has_error() &&
+              (set_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND)) {
+            return STATUS_FORMAT(
+                InternalError, "Response had error: $0", set_checkpoint_resp.DebugString());
+          }
+          if (st.ok() && !set_checkpoint_resp.has_error()) {
+            set_checkpoint_resp_final.CopyFrom(set_checkpoint_resp);
+            return true;
+          }
+
+          return false;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout),
+        "GetChanges timed out waiting for Leader to get ready"));
+
+    return set_checkpoint_resp_final;
   }
 
   Result<std::vector<OpId>> GetCDCCheckpoint(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
-    RpcController get_checkpoint_rpc;
     GetCheckpointRequestPB get_checkpoint_req;
-    GetCheckpointResponsePB get_checkpoint_resp;
-    auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-    get_checkpoint_rpc.set_deadline(deadline);
 
     std::vector<OpId> op_ids;
-    for (auto tablet : tablets) {
+    op_ids.reserve(tablets.size());
+    for (const auto& tablet : tablets) {
       get_checkpoint_req.set_stream_id(stream_id);
-      get_checkpoint_req.set_tablet_id(tablets.Get(0).tablet_id());
-      RETURN_NOT_OK(
-          cdc_proxy_->GetCheckpoint(get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
-      op_ids.push_back(OpId::FromPB(get_checkpoint_resp.checkpoint().op_id()));
+      get_checkpoint_req.set_tablet_id(tablet.tablet_id());
+
+      RETURN_NOT_OK(WaitFor(
+          [&]() -> Result<bool> {
+            GetCheckpointResponsePB get_checkpoint_resp;
+            RpcController get_checkpoint_rpc;
+            RETURN_NOT_OK(cdc_proxy_->GetCheckpoint(
+                get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
+
+            if (get_checkpoint_resp.has_error() &&
+                (get_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND)) {
+              return STATUS_FORMAT(
+                  InternalError, "Response had error: $0", get_checkpoint_resp.DebugString());
+            }
+            if (!get_checkpoint_resp.has_error()) {
+              op_ids.push_back(OpId::FromPB(get_checkpoint_resp.checkpoint().op_id()));
+              return true;
+            }
+
+            return false;
+          },
+          MonoDelta::FromSeconds(kRpcTimeout),
+          "GetChanges timed out waiting for Leader to get ready"));
     }
+
     return op_ids;
   }
 
@@ -1218,7 +1249,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const auto& tserver = test_cluster()->mini_tablet_server(i)->server();
       auto cdc_service = dynamic_cast<CDCServiceImpl*>(
           tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
-      auto status = cdc_service->TEST_GetTabletInfoFromCache({"" /* UUID */, stream_id, tablet_id});
+      auto status = cdc_service->TEST_GetTabletInfoFromCache({{}, stream_id, tablet_id});
       if (status.ok()) {
         count += 1;
       }
@@ -1423,7 +1454,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequest(&change_req, stream_id, tablets, *cp, tablet_idx, "", safe_hybrid_time);
     }
 
-    // Retry only on LeaderNotReadyToServe errors
+    // Retry only on LeaderNotReadyToServe or NotFound errors
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           RpcController get_changes_rpc;
@@ -1433,7 +1464,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
             status = StatusFromPB(change_resp.error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe()) {
+          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
             return false;
           }
 
@@ -1460,7 +1491,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequest(&change_req, stream_id, tablet_id, *cp, tablet_idx);
     }
 
-    // Retry only on LeaderNotReadyToServe errors
+    // Retry only on LeaderNotReadyToServe or NotFound errors
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           RpcController get_changes_rpc;
@@ -1470,7 +1501,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
             status = StatusFromPB(change_resp.error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe()) {
+          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
             return false;
           }
 
@@ -1497,7 +1528,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequestWithExplicitCheckpoint(&change_req, stream_id, tablets, *cp, tablet_idx);
     }
 
-    // Retry only on LeaderNotReadyToServe errors
+    // Retry only on LeaderNotReadyToServe or NotFound errors
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           RpcController get_changes_rpc;
@@ -1507,7 +1538,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
             status = StatusFromPB(change_resp.error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe()) {
+          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
             return false;
           }
 
@@ -1727,11 +1758,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       ASSERT_EQ(OpId(1, 3), op_id);
     }
 
-    resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId(1, -3)));
-    ASSERT_TRUE(resp.has_error());
+    ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets, OpId(1, -3)));
 
-    resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId(-2, 1)));
-    ASSERT_TRUE(resp.has_error());
+    ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets, OpId(-2, 1)));
   }
 
   Result<GetChangesResponsePB> VerifyIfDDLRecordPresent(
@@ -2100,7 +2129,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     NamespaceId ns_id;
     std::vector<TableId> stream_table_ids;
     std::unordered_map<std::string, std::string> options;
-    RETURN_NOT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+    StreamModeTransactional transactional(false);
+    RETURN_NOT_OK(test_client()->GetCDCStream(
+        stream_id, &ns_id, &stream_table_ids, &options, &transactional));
     return stream_table_ids;
   }
 

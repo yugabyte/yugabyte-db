@@ -37,7 +37,7 @@ import { YBButton } from '../../../../common/forms/fields';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInputField } from '../../../../../redesign/components';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
-import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, getIsFormDisabled, readFileAsText } from '../utils';
 import { YBLoading } from '../../../../common/indicators';
 import { api, suggestedKubernetesConfigQueryKey } from '../../../../../redesign/helpers/api';
 import { adaptSuggestedKubernetesConfig } from './utils';
@@ -116,7 +116,10 @@ export const K8sProviderCreateForm = ({
     }
   );
 
-  if (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle) {
+  if (
+    enableSuggestedConfigFeature &&
+    (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)
+  ) {
     return <YBLoading />;
   }
 
@@ -159,15 +162,21 @@ export const K8sProviderCreateForm = ({
             [ProviderCode.KUBERNETES]: {
               ...(formValues.kubeConfigContent && {
                 kubeConfigContent: (await readFileAsText(formValues.kubeConfigContent)) ?? '',
-                kubeConfigName: formValues.kubeConfigContent?.name ?? ''
+                ...(formValues.kubeConfigContent.name && {
+                  kubeConfigName: formValues.kubeConfigContent.name
+                })
               }),
               kubernetesImageRegistry: formValues.kubernetesImageRegistry,
               kubernetesProvider: formValues.kubernetesProvider.value,
               ...(formValues.kubernetesPullSecretContent && {
                 kubernetesPullSecretContent:
                   (await readFileAsText(formValues.kubernetesPullSecretContent)) ?? '',
-                kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name ?? '',
-                kubernetesImagePullSecretName: kubernetesPullSecretYAML?.metadata?.name ?? ''
+                ...(formValues.kubernetesPullSecretContent.name && {
+                  kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
+                }),
+                ...(kubernetesPullSecretYAML?.metadata?.name && {
+                  kubernetesImagePullSecretName: kubernetesPullSecretYAML?.metadata?.name
+                })
               })
             }
           }
@@ -185,18 +194,29 @@ export const K8sProviderCreateForm = ({
                     [ProviderCode.KUBERNETES]: {
                       ...(azFormValues.kubeConfigContent && {
                         kubeConfigContent:
-                          (await readFileAsText(azFormValues.kubeConfigContent)) ?? ''
+                          (await readFileAsText(azFormValues.kubeConfigContent)) ?? '',
+                        ...(azFormValues.kubeConfigContent.name && {
+                          kubeConfigName: azFormValues.kubeConfigContent.name
+                        })
                       }),
-                      kubeDomain: azFormValues.kubeDomain,
-                      kubeNamespace: azFormValues.kubeNamespace,
-                      kubePodAddressTemplate: azFormValues.kubePodAddressTemplate,
-                      kubernetesStorageClass: azFormValues.kubernetesStorageClass,
-                      overrides: azFormValues.overrides,
-                      ...(azFormValues.certIssuerType === K8sCertIssuerType.CLUSTER_ISSUER && {
-                        certManagerClusterIssuer: azFormValues.certIssuerName
+                      ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
+                      ...(azFormValues.kubeNamespace && {
+                        kubeNamespace: azFormValues.kubeNamespace
                       }),
-                      ...(azFormValues.certIssuerType === K8sCertIssuerType.ISSUER && {
-                        certManagerIssuer: azFormValues.certIssuerName
+                      ...(azFormValues.kubePodAddressTemplate && {
+                        kubePodAddressTemplate: azFormValues.kubePodAddressTemplate
+                      }),
+                      ...(azFormValues.kubernetesStorageClass && {
+                        kubernetesStorageClass: azFormValues.kubernetesStorageClass
+                      }),
+                      ...(azFormValues.overrides && { overrides: azFormValues.overrides }),
+                      ...(azFormValues.certIssuerName && {
+                        ...(azFormValues.certIssuerType === K8sCertIssuerType.CLUSTER_ISSUER && {
+                          certManagerClusterIssuer: azFormValues.certIssuerName
+                        }),
+                        ...(azFormValues.certIssuerType === K8sCertIssuerType.ISSUER && {
+                          certManagerIssuer: azFormValues.certIssuerName
+                        })
                       })
                     }
                   }
@@ -256,7 +276,7 @@ export const K8sProviderCreateForm = ({
   };
   const onDeleteRegionSubmit = (currentRegion: K8sRegionField) =>
     deleteItem(currentRegion, regions, setRegions);
-  const isFormDisabled = formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const isFormDisabled = getIsFormDisabled(formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -363,6 +383,7 @@ export const K8sProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -381,7 +402,7 @@ export const K8sProviderCreateForm = ({
               btnText="Create Provider Configuration"
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
@@ -397,6 +418,7 @@ export const K8sProviderCreateForm = ({
       {isRegionFormModalOpen && (
         <ConfigureK8sRegionModal
           configuredRegions={regions}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}

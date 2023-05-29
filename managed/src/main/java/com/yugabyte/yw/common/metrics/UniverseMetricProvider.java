@@ -17,25 +17,32 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceTypeKey;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId.TargetType;
 import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -54,6 +61,8 @@ public class UniverseMetricProvider implements MetricsProvider {
 
   @Inject AccessManager accessManager;
 
+  @Inject Config config;
+
   private static final List<PlatformMetrics> UNIVERSE_METRICS =
       ImmutableList.of(
           PlatformMetrics.UNIVERSE_EXISTS,
@@ -64,7 +73,9 @@ public class UniverseMetricProvider implements MetricsProvider {
           PlatformMetrics.UNIVERSE_NODE_PROCESS_STATUS,
           PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
           PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
-          PlatformMetrics.UNIVERSE_REPLICATION_FACTOR);
+          PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
+          PlatformMetrics.UNIVERSE_NODE_PROVISIONED_IOPS,
+          PlatformMetrics.UNIVERSE_NODE_PROVISIONED_THROUGHPUT);
 
   @Override
   public List<MetricSaveGroup> getMetricGroups() throws Exception {
@@ -76,7 +87,23 @@ public class UniverseMetricProvider implements MetricsProvider {
         KmsConfig.listAllKMSConfigs().stream()
             .collect(Collectors.toMap(config -> config.getConfigUUID(), Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
+
+    Map<String, InstanceType> mapInstanceTypes = new HashMap<String, InstanceType>();
     for (Customer customer : Customer.getAll()) {
+      /*
+      To prevent excessive memory usage when dealing with multiple providers
+      and a large instanceType table, we load only a small subset of instanceTypes
+      with each iteration & clear the map during next iteration.
+      */
+      mapInstanceTypes.clear();
+      // Get all providers for the customer
+      List<Provider> providers = Provider.getAll(customer.getUuid());
+      // Build instanceTypeMap.
+      for (Provider provider : providers) {
+        for (InstanceType instanceType : InstanceType.findByProvider(provider, config)) {
+          mapInstanceTypes.put(instanceType.getIdKey().toString(), instanceType);
+        }
+      }
       for (Universe universe : Universe.getAllWithoutResources(customer)) {
         try {
           MetricSaveGroup.MetricSaveGroupBuilder universeGroup = MetricSaveGroup.builder();
@@ -138,7 +165,6 @@ public class UniverseMetricProvider implements MetricsProvider {
                 // Node IP is missing - node is being created
                 continue;
               }
-
               String ipAddress = nodeDetails.cloudInfo.private_ip;
               universeGroup.metric(
                   createNodeMetric(
@@ -203,8 +229,8 @@ public class UniverseMetricProvider implements MetricsProvider {
                       nodeDetails.redisServerHttpPort,
                       "redis_export",
                       statusValue(nodeDetails.isRedisServer)));
-              boolean hasNodeExporter =
-                  !CloudType.kubernetes.equals(universe.getNodeDeploymentMode(nodeDetails));
+              boolean isK8SUniverse =
+                  CloudType.kubernetes.equals(universe.getNodeDeploymentMode(nodeDetails));
               universeGroup.metric(
                   createNodeMetric(
                       customer,
@@ -213,7 +239,7 @@ public class UniverseMetricProvider implements MetricsProvider {
                       ipAddress,
                       nodeDetails.nodeExporterPort,
                       "node_export",
-                      statusValue(hasNodeExporter)));
+                      statusValue(!isK8SUniverse)));
               universeGroup.metric(
                   createNodeMetric(
                       customer,
@@ -222,7 +248,68 @@ public class UniverseMetricProvider implements MetricsProvider {
                       ipAddress,
                       nodeDetails.nodeExporterPort,
                       "node_export",
-                      statusValue(hasNodeExporter && nodeDetails.isActive())));
+                      statusValue(!isK8SUniverse && nodeDetails.isActive())));
+              // Add provisioned disk iops and throughput metrics.
+              if (nodeDetails.placementUuid != null) {
+                UniverseDefinitionTaskParams.Cluster cluster =
+                    universe.getCluster(nodeDetails.placementUuid);
+                if (cluster != null && cluster.userIntent.deviceInfo != null) {
+                  Integer iops = cluster.userIntent.deviceInfo.diskIops;
+                  Integer throughput = cluster.userIntent.deviceInfo.throughput;
+                  if (iops != null) {
+                    universeGroup.metric(
+                        createNodeMetric(
+                            customer,
+                            universe,
+                            PlatformMetrics.UNIVERSE_NODE_PROVISIONED_IOPS,
+                            nodeDetails.cloudInfo.private_ip,
+                            nodeDetails.nodeExporterPort,
+                            "node_export",
+                            iops));
+                  }
+                  if (throughput != null) {
+                    universeGroup.metric(
+                        createNodeMetric(
+                            customer,
+                            universe,
+                            PlatformMetrics.UNIVERSE_NODE_PROVISIONED_THROUGHPUT,
+                            nodeDetails.cloudInfo.private_ip,
+                            nodeDetails.nodeExporterPort,
+                            "node_export",
+                            throughput));
+                  }
+                  if (isK8SUniverse) {
+                    // Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+                    InstanceType instanceType =
+                        mapInstanceTypes.get(
+                            InstanceTypeKey.create(
+                                    cluster.userIntent.instanceType,
+                                    UUID.fromString(cluster.userIntent.provider))
+                                .toString());
+                    if (instanceType == null) {
+                      log.warn(
+                          "Matching instance type is not found for cluster:  ",
+                          cluster.uuid,
+                          cluster.userIntent.instanceType,
+                          cluster.userIntent.provider);
+                      continue;
+                    } else {
+                      // After PLAT-1584 is completed, read core count from user intent.
+                      universeGroup.metric(
+                          createContainerMetric(
+                              customer,
+                              universe,
+                              PlatformMetrics.CONTAINER_RESOURCE_REQUESTS_CPU_CORES,
+                              ipAddress,
+                              nodeDetails.getK8sNamespace(),
+                              nodeDetails.getK8sPodName(),
+                              nodeDetails.isTserver,
+                              KubernetesUtil.getCoreCountFromInstanceType(
+                                  instanceType, nodeDetails.isMaster)));
+                    }
+                  }
+                }
+              }
             }
           }
           universeGroup.cleanMetricFilter(
@@ -267,6 +354,26 @@ public class UniverseMetricProvider implements MetricsProvider {
         .setKeyLabel(KnownAlertLabels.NODE_PREFIX, nodePrefix)
         .setKeyLabel(KnownAlertLabels.INSTANCE, ipAddress + ":" + port)
         .setLabel(KnownAlertLabels.EXPORT_TYPE, exportType)
+        .setValue(value);
+  }
+
+  // Create k8s node metric.
+  private Metric createContainerMetric(
+      Customer customer,
+      Universe universe,
+      PlatformMetrics metric,
+      String ipAddress,
+      String namespace,
+      String podName,
+      boolean isTserver,
+      double value) {
+    String nodePrefix = universe.getUniverseDetails().nodePrefix;
+    return buildMetricTemplate(metric, customer, universe)
+        .setKeyLabel(KnownAlertLabels.NODE_PREFIX, nodePrefix)
+        .setKeyLabel(KnownAlertLabels.INSTANCE, ipAddress)
+        .setKeyLabel(KnownAlertLabels.NAMESPACE, namespace)
+        .setKeyLabel(KnownAlertLabels.POD_NAME, podName)
+        .setKeyLabel(KnownAlertLabels.CONTAINER_NAME, isTserver ? "yb-tserver" : "yb-master")
         .setValue(value);
   }
 

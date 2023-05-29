@@ -155,6 +155,9 @@ typedef struct PgTypeEntity {
   // - Set to (-1) for types of variable in-memory size - VARSIZE_ANY should be used.
   int64_t datum_fixed_size;
 
+  // Whether we could use cast to convert value to datum.
+  bool direct_datum;
+
   // Converting Postgres datum to YugaByte expression.
   YBCPgDatumToData datum_to_yb;
 
@@ -356,6 +359,8 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_ddl_rollback_enabled;
   const bool*     ysql_enable_read_request_caching;
   const bool*     ysql_enable_profile;
+  const bool*     ysql_disable_global_impact_ddl_statements;
+  const bool*     ysql_disable_per_tuple_memory_context_in_update_relattrs;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

@@ -1,6 +1,7 @@
 import _ from 'lodash';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
+import { useSelector } from 'react-redux';
 import {
   CloudType,
   ClusterType,
@@ -40,6 +41,13 @@ export const getPrimaryCluster = (universeData: UniverseDetails) =>
 export const getAsyncCluster = (universeData: UniverseDetails) =>
   getClusterByType(universeData, ClusterType.ASYNC);
 
+export const getCurrentVersion = (universeData: UniverseDetails) => {
+  let currentVersion = null;
+  const primaryCluster = getPrimaryCluster(universeData);
+  currentVersion = primaryCluster?.userIntent?.ybSoftwareVersion;
+  return currentVersion;
+};
+
 export const getUniverseName = (universeData: UniverseDetails) =>
   _.get(getClusterByType(universeData, ClusterType.PRIMARY), 'userIntent.universeName');
 
@@ -77,7 +85,10 @@ export const filterFormDataByClusterType = (
   clusterType: ClusterType
 ) => {
   const formFields = clusterType === ClusterType.PRIMARY ? PRIMARY_FIELDS : ASYNC_FIELDS;
-  return (_.pick(formData, formFields) as unknown) as UniverseFormData;
+  const defaultFormData = _.pick(DEFAULT_FORM_DATA, formFields);
+  const currentFormData = _.pick(formData, formFields);
+  return _.merge(defaultFormData, currentFormData) as UniverseFormData;
+  // return (_.pick(formData, formFields) as unknown) as UniverseFormData;
 };
 
 //transform gflags - to consume it in the form
@@ -100,6 +111,12 @@ export const transformGFlagToFlagsArray = (
       _.keyBy(tranformFlagsByFlagType(tserverGFlags, 'TSERVER'), 'Name')
     )
   );
+};
+
+export const transformSpecificGFlagToFlagsArray = (specificGFlags: Record<string, any> = {}) => {
+  const masterFlags = specificGFlags?.perProcessFlags?.value?.MASTER;
+  const tserverFlags = specificGFlags?.perProcessFlags?.value?.TSERVER;
+  return transformGFlagToFlagsArray(masterFlags, tserverFlags);
 };
 
 //transform gflags - for universe configure route
@@ -185,9 +202,12 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       ybcPackagePath: null //** */
     },
     instanceTags: transformInstanceTags(userIntent.instanceTags),
-    gFlags: transformGFlagToFlagsArray(userIntent.masterGFlags, userIntent.tserverGFlags),
+    gFlags: userIntent?.specificGFlags
+      ? transformSpecificGFlagToFlagsArray(userIntent?.specificGFlags)
+      : transformGFlagToFlagsArray(userIntent.masterGFlags, userIntent.tserverGFlags),
     azOverrides: userIntent.azOverrides,
-    universeOverrides: userIntent.universeOverrides
+    universeOverrides: userIntent.universeOverrides,
+    inheritFlagsFromPrimary: userIntent?.specificGFlags?.inheritFromPrimary
   };
 
   if (data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
@@ -199,7 +219,13 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
 };
 
 //Transform form data to intent
-export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
+
+export const getUserIntent = (
+  { formData }: { formData: UniverseFormData },
+  clusterType: ClusterType = ClusterType.PRIMARY,
+  featureFlags: Record<string, any>
+) => {
+  const enableRRGflags = featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
   const {
     cloudConfig,
     instanceConfig,
@@ -207,7 +233,8 @@ export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
     instanceTags,
     gFlags,
     azOverrides,
-    universeOverrides
+    universeOverrides,
+    inheritFlagsFromPrimary
   } = formData;
   const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
 
@@ -238,8 +265,30 @@ export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
     useSystemd: advancedConfig.useSystemd
   };
 
-  if (!_.isEmpty(masterGFlags)) intent.masterGFlags = masterGFlags;
-  if (!_.isEmpty(tserverGFlags)) intent.tserverGFlags = tserverGFlags;
+  if (enableRRGflags) {
+    if (clusterType === ClusterType.ASYNC && inheritFlagsFromPrimary) {
+      intent.specificGFlags = {
+        inheritFromPrimary: true,
+        perProcessFlags: {},
+        perAZ: {}
+      };
+    } else {
+      intent.specificGFlags = {
+        inheritFromPrimary: false,
+        perProcessFlags: {
+          value: {
+            MASTER: masterGFlags,
+            TSERVER: tserverGFlags
+          }
+        },
+        perAZ: {}
+      };
+    }
+  } else {
+    if (!_.isEmpty(masterGFlags)) intent.masterGFlags = masterGFlags;
+    if (!_.isEmpty(tserverGFlags)) intent.tserverGFlags = tserverGFlags;
+  }
+
   if (!_.isEmpty(advancedConfig.awsArnString)) intent.awsArnString = advancedConfig.awsArnString;
   if (!_.isEmpty(instanceTags)) intent.instanceTags = transformTagsArrayToObject(instanceTags);
   if (!_.isEmpty(azOverrides)) intent.azOverrides = azOverrides;

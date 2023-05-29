@@ -1612,9 +1612,10 @@ Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetUnderReplicatedTablets
 
   for (TabletInfoPtr t : nonsystem_tablets) {
     auto rm = t.get()->GetReplicaLocations();
+    bool is_deleted = t.get()->LockForRead()->is_deleted();
 
-    // Find out the tablets which have been replicated less than the replication factor
-    if (rm->size() < cluster_rf) {
+    // Find out the non-deleted tablets which have been replicated less than the replication factor.
+    if (rm->size() < cluster_rf && !is_deleted) {
       underreplicated_tablets.push_back(t);
     }
   }

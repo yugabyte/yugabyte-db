@@ -329,10 +329,17 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
 class XClusterTabletSplitITest : public CdcTabletSplitITest {
  public:
   void SetUp() override {
-    CdcTabletSplitITest::SetUp();
+    {
+      TEST_SetThreadPrefixScoped prefix_se("P");
+      CdcTabletSplitITest::SetUp();
+    }
 
     // Also create the consumer cluster.
-    consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_table_));
+    {
+      TEST_SetThreadPrefixScoped prefix_se("C");
+      consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_table_));
+    }
+
     consumer_client_ = ASSERT_RESULT(consumer_cluster_->CreateClient());
 
     ASSERT_OK(SetupReplication());
@@ -352,10 +359,18 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
 
     SwitchToConsumer();
 
-    cluster_->Shutdown();
+    {
+      TEST_SetThreadPrefixScoped prefix_se("C");
+      cluster_->Shutdown();
+    }
 
     SwitchToProducer();
     CdcTabletSplitITest::DoBeforeTearDown();
+  }
+
+  void DoTearDown() override {
+    TEST_SetThreadPrefixScoped prefix_se("P");
+    CdcTabletSplitITest::DoTearDown();
   }
 
   Status WaitForOngoingSplitsToComplete(bool wait_for_parent_deletion) {
@@ -470,7 +485,12 @@ class xClusterTabletMapTest : public XClusterTabletSplitITest,
 
   void RunSetUp(int producer_tablet_count, int consumer_tablet_count) {
     FLAGS_cdc_state_table_num_tablets = 1;
-    TabletSplitITest::SetUp();
+
+    {
+      TEST_SetThreadPrefixScoped prefix_se("P");
+      TabletSplitITest::SetUp();
+    }
+
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
 
@@ -488,7 +508,11 @@ class xClusterTabletMapTest : public XClusterTabletSplitITest,
     opts.num_tablet_servers = 3;
     opts.cluster_id = "consumer";
     consumer_cluster_ = std::make_unique<MiniCluster>(opts);
-    ASSERT_OK(consumer_cluster_->Start());
+    {
+      TEST_SetThreadPrefixScoped prefix_se("C");
+      ASSERT_OK(consumer_cluster_->Start());
+    }
+
     ASSERT_OK(consumer_cluster_->WaitForTabletServerCount(3));
     consumer_client_ = ASSERT_RESULT(consumer_cluster_->CreateClient());
 

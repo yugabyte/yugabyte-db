@@ -38,7 +38,7 @@ public abstract class AlertChannelBase implements AlertChannelInterface {
     this.alertTemplateVariableService = alertTemplateVariableService;
   }
 
-  public static String getNotificationTitle(Alert alert, Context context) {
+  public static String getNotificationTitle(Alert alert, Context context, boolean escapeHtml) {
     AlertChannel channel = context.getChannel();
     AlertChannelTemplatesExt templates = context.getTemplates();
     String template = null;
@@ -52,7 +52,7 @@ public abstract class AlertChannelBase implements AlertChannelInterface {
       template = templates.getDefaultTitleTemplate();
     }
     String notificationTemplate = convertToNotificationTemplate(template);
-    return alertSubstitutions(alert, context, notificationTemplate);
+    return alertSubstitutions(alert, context, notificationTemplate, escapeHtml);
   }
 
   /**
@@ -63,7 +63,7 @@ public abstract class AlertChannelBase implements AlertChannelInterface {
    * @param context
    * @return
    */
-  public static String getNotificationText(Alert alert, Context context) {
+  public static String getNotificationText(Alert alert, Context context, boolean escapeHtml) {
     AlertChannel channel = context.getChannel();
     AlertChannelTemplatesExt templates = context.getTemplates();
     String template = null;
@@ -77,7 +77,7 @@ public abstract class AlertChannelBase implements AlertChannelInterface {
       template = templates.getDefaultTextTemplate();
     }
     String notificationTemplate = convertToNotificationTemplate(template);
-    return alertSubstitutions(alert, context, notificationTemplate);
+    return alertSubstitutions(alert, context, notificationTemplate, escapeHtml);
   }
 
   private static String convertToNotificationTemplate(String template) {
@@ -101,7 +101,8 @@ public abstract class AlertChannelBase implements AlertChannelInterface {
     return substitutor.replace(template);
   }
 
-  private static String alertSubstitutions(Alert alert, Context context, String template) {
+  private static String alertSubstitutions(
+      Alert alert, Context context, String template, boolean escapeHtml) {
     AlertChannel channel = context.getChannel();
     ChannelType channelType;
     if (channel.getParams() != null) {
@@ -112,7 +113,11 @@ public abstract class AlertChannelBase implements AlertChannelInterface {
     }
     AlertNotificationTemplateSubstitutor substitutor =
         new AlertNotificationTemplateSubstitutor(
-            alert, channel, context.getLabelDefaultValues(), channelType == ChannelType.WebHook);
+            alert,
+            channel,
+            context.getLabelDefaultValues(),
+            channelType == ChannelType.WebHook,
+            escapeHtml);
     return substitutor.replace(template).trim();
   }
 

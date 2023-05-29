@@ -174,6 +174,7 @@ constexpr int kNumTablets = 2;
 const std::string kKeyspaceName = "my_keyspace";
 const std::string kPgsqlKeyspaceID = "1234567890abcdef1234567890abcdef";
 const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
+const std::string kPgsqlSchemaName = "my_schema";
 
 } // namespace
 
@@ -758,7 +759,7 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsInvalidArgument());
 #ifndef NDEBUG
-  }, ".*Upped bound must not be exclusive when points to the first partition.*");
+  }, ".*Upper bound must not be exclusive when it points to the first partition.*");
 #endif
 }
 
@@ -1644,7 +1645,7 @@ TEST_F(ClientTest, TestCreateCDCStreamAsync) {
   std::promise<Result<CDCStreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
-      client_table_.table()->id(), options,
+      client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse,
       [&promise](const auto& stream) { promise.set_value(stream); });
   auto stream = promise.get_future().get();
   ASSERT_OK(stream);
@@ -1655,7 +1656,7 @@ TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
   std::promise<Result<CDCStreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
-      "MissingTableId", options,
+      "MissingTableId", options, cdc::StreamModeTransactional::kFalse,
       [&promise](const auto& stream) { promise.set_value(stream); });
   auto stream = promise.get_future().get();
   ASSERT_NOK(stream);
@@ -1664,7 +1665,8 @@ TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
 
 TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
   std::unordered_map<std::string, std::string> options;
-  auto result = client_->CreateCDCStream(client_table_.table()->id(), options);
+  auto result = client_->CreateCDCStream(
+      client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse);
   ASSERT_TRUE(result.ok());
 
   // Delete the created CDC stream.
@@ -2411,16 +2413,19 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 
   auto yql_table_name = YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "yqlrangepartitionedtable");
 
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::STRING)->NotNull();
-  schemaBuilder.AddColumn("value")->Type(yb::INT64)->NotNull();
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("key")->PrimaryKey()->Type(yb::STRING)->NotNull();
+  schema_builder.AddColumn("value")->Type(yb::INT64)->NotNull();
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // in GetTableSchema (part of OpenTable).
+  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
   EXPECT_OK(client_->CreateNamespaceIfNotExists(kPgsqlKeyspaceName,
                                                 YQLDatabase::YQL_DATABASE_PGSQL,
                                                 "" /* creator_role_name */,
                                                 kPgsqlKeyspaceID));
   // Create a PGSQL table using range partition.
-  EXPECT_OK(schemaBuilder.Build(&schema));
+  EXPECT_OK(schema_builder.Build(&schema));
   Status s = table_creator->table_name(pgsql_table_name)
       .table_id(kPgsqlTableId)
       .schema(&schema)
@@ -2900,11 +2905,14 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
       /* txn =*/ nullptr,
       /* colocated =*/ true));
 
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::INT64);
-  schemaBuilder.AddColumn("value")->Type(yb::INT64);
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("key")->PrimaryKey()->Type(yb::INT64);
+  schema_builder.AddColumn("value")->Type(yb::INT64);
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // in GetTableSchema (part of OpenTable).
+  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
-  ASSERT_OK(schemaBuilder.Build(&schema));
+  ASSERT_OK(schema_builder.Build(&schema));
 
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   std::vector<YBTableName> table_names;

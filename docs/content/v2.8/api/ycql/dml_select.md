@@ -53,6 +53,7 @@ Where
 - `*` means all columns of the table will be retrieved.
 - `LIMIT` clause sets the maximum number of results (rows) to be returned.
 - `OFFSET` clause sets the number of rows to be skipped before returning results.
+- `ALLOW FILTERING` is provided for syntax compatibility with Cassandra. You can always filter on all columns.
 
 ### `ORDER BY` clause
 
@@ -204,7 +205,7 @@ ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id 
 ### Select with condition on a regular column, using WHERE clause
 
 ```sql
-ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John' ALLOW FILTERING;
+ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John';
 ```
 
 ```

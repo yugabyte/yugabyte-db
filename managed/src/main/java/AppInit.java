@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
@@ -45,7 +46,7 @@ import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.List;
 import java.util.Map;
@@ -111,13 +112,13 @@ public class AppInit {
 
           List<?> all =
               yaml.load(environment.resourceAsStream("db_seed.yml"), application.classloader());
-          Ebean.saveAll(all);
+          DB.saveAll(all);
           Customer customer = Customer.getAll().get(0);
           alertDestinationService.createDefaultDestination(customer.getUuid());
           alertConfigurationService.createDefaultConfigs(customer);
         }
 
-        String storagePath = config.getString("yb.storage.path");
+        String storagePath = AppConfigHelper.getStoragePath();
         // Fix up DB paths if necessary
         if (config.getBoolean("yb.fixPaths")) {
           log.debug("Fixing up file paths.");

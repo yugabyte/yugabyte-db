@@ -53,6 +53,8 @@ public abstract class KubernetesManager {
 
   @Inject Config appConfig;
 
+  @Inject FileHelperService fileHelperService;
+
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesManager.class);
 
   private static final String LEGACY_HELM_CHART_FILENAME = "yugabyte-2.7-helm-legacy.tar.gz";
@@ -71,7 +73,30 @@ public abstract class KubernetesManager {
       String helmReleaseName,
       String namespace,
       String overridesFile) {
+
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+
+    // List Helm releases to check if the release already exists
+    List<String> listCmd = ImmutableList.of("helm", "list", "--short", "--namespace", namespace);
+
+    ShellResponse responseList = execCommand(config, listCmd);
+    responseList.processErrors();
+
+    boolean helmReleaseExists = false;
+    String output = responseList.getMessage();
+    LOG.info("helm list command output {} ", output);
+    if (output.contains(helmReleaseName)) {
+      // The release already exists
+      helmReleaseExists = true;
+    }
+    if (helmReleaseExists) {
+      List<String> deleteCmd =
+          ImmutableList.of(
+              "helm", "uninstall", helmReleaseName, "--wait", "--namespace", namespace);
+      ShellResponse responseDelete = execCommand(config, deleteCmd);
+      responseDelete.processErrors();
+    }
+
     List<String> commandList =
         ImmutableList.of(
             "helm",
@@ -108,13 +133,7 @@ public abstract class KubernetesManager {
       String overridesFile) {
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
 
-    Path tempOutputFile;
-    try {
-      tempOutputFile = Files.createTempFile("helm-template", ".output");
-    } catch (Exception ex) {
-      LOG.error("Failed to create a tempfile");
-      return null;
-    }
+    Path tempOutputFile = fileHelperService.createTempFile("helm-template", ".output");
     String tempOutputPath = tempOutputFile.toAbsolutePath().toString();
     List<String> templateCommandList =
         ImmutableList.of(
@@ -131,16 +150,16 @@ public abstract class KubernetesManager {
             "--is-upgrade",
             "--no-hooks",
             "--skip-crds",
-            " > ",
+            ">",
             tempOutputPath);
 
     ShellResponse response = execCommand(config, templateCommandList);
     if (response != null && !response.isSuccess()) {
       try {
         String templateOutput = Files.readAllLines(tempOutputFile).get(0);
-        LOG.error("Output from the template command %s", templateOutput);
+        LOG.error("Output from the template command {}", templateOutput);
       } catch (Exception ex) {
-        LOG.error("Got exception in reading template output %s", ex.getMessage());
+        LOG.error("Got exception in reading template output {}", ex.getMessage());
       }
 
       return null;
@@ -356,7 +375,7 @@ public abstract class KubernetesManager {
   private String createTempFile(Map<String, Object> valuesMap) {
     Path tempFile;
     try {
-      tempFile = Files.createTempFile("values", ".yml");
+      tempFile = fileHelperService.createTempFile("values", ".yml");
       try (BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile())); ) {
         new Yaml().dump(valuesMap, bw);
         return tempFile.toAbsolutePath().toString();

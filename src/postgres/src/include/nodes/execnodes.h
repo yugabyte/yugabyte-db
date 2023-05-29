@@ -31,7 +31,8 @@
 #include "nodes/tidbitmap.h"
 #include "storage/condition_variable.h"
 
-#include "pg_yb_utils.h"
+/* YB includes. */
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 struct PlanState;				/* forward references in this file */
 struct ParallelHashJoinState;
@@ -685,14 +686,14 @@ typedef struct YbPgExecOutParam {
 	int64_t status_code;
 } YbPgExecOutParam;
 
-typedef struct YbExprParamDesc {
+typedef struct YbExprColrefDesc {
 	NodeTag type;
 
 	int32_t attno;
 	int32_t typid;
 	int32_t typmod;
 	int32_t collid;
-} YbExprParamDesc;
+} YbExprColrefDesc;
 
 
 /* ----------------------------------------------------------------

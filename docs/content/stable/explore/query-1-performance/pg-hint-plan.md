@@ -28,7 +28,7 @@ To use `pg_hint_plan` effectively, you need thorough knowledge of how your appli
 
 ## Configure pg_hint_plan
 
-pg_hint_plan is pre-configured, and enabled by default. The following parameters control pg_hint_plan:
+pg_hint_plan is pre-configured, and enabled by default. The following YSQL parameters control pg_hint_plan:
 
 | Option | Description | Default |
 | :----- | :---------- | :------ |
@@ -43,6 +43,10 @@ To enable pg_hint_plan, run the following command:
 ```sql
 yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
+
+{{<note title="Enable pg_hint_plan for all sessions">}}
+You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-options).
+{{</note>}}
 
 ### Turn on debug output
 

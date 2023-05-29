@@ -71,6 +71,7 @@
 #include "yb/master/master_dcl.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_rpc.h"
@@ -260,6 +261,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Encryption, GetFullUniverseKeyRegistry);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, WaitForYsqlBackendsCatalogVersion);
@@ -799,10 +801,10 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
           strings::Substitute("Unable to check the schema of parent table $0",
                               table_name.ToString()));
 
-      YBSchemaBuilder schemaBuilder;
-      schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
+      YBSchemaBuilder schema_builder;
+      schema_builder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey();
       YBSchema ybschema;
-      CHECK_OK(schemaBuilder.Build(&ybschema));
+      CHECK_OK(schema_builder.Build(&ybschema));
 
       if (!ybschema.Equals(info.schema)) {
         string msg = Format("Table $0 already exists with a different "
@@ -1545,11 +1547,13 @@ void GetColocatedTabletSchemaRpc::ProcessResponse(const Status& status) {
 class CreateCDCStreamRpc
     : public ClientMasterRpc<CreateCDCStreamRequestPB, CreateCDCStreamResponsePB> {
  public:
-  CreateCDCStreamRpc(YBClient* client,
-                     CreateCDCStreamCallback user_cb,
-                     const TableId& table_id,
-                     const std::unordered_map<std::string, std::string>& options,
-                     CoarseTimePoint deadline);
+  CreateCDCStreamRpc(
+      YBClient* client,
+      CreateCDCStreamCallback user_cb,
+      const TableId& table_id,
+      const std::unordered_map<std::string, std::string>& options,
+      cdc::StreamModeTransactional transactional,
+      CoarseTimePoint deadline);
 
   string ToString() const override;
 
@@ -1559,23 +1563,24 @@ class CreateCDCStreamRpc
   void CallRemoteMethod() override;
   void ProcessResponse(const Status& status) override;
 
-  CreateCDCStreamCallback user_cb_;
-  std::string table_id_;
-  std::unordered_map<std::string, std::string> options_;
+  const CreateCDCStreamCallback user_cb_;
+  const std::string table_id_;
 };
 
-CreateCDCStreamRpc::CreateCDCStreamRpc(YBClient* client,
-                                       CreateCDCStreamCallback user_cb,
-                                       const TableId& table_id,
-                                       const std::unordered_map<std::string, std::string>& options,
-                                       CoarseTimePoint deadline)
+CreateCDCStreamRpc::CreateCDCStreamRpc(
+    YBClient* client,
+    CreateCDCStreamCallback user_cb,
+    const TableId& table_id,
+    const std::unordered_map<std::string, std::string>& options,
+    cdc::StreamModeTransactional transactional,
+    CoarseTimePoint deadline)
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
-      table_id_(table_id),
-      options_(options) {
+      table_id_(table_id) {
   req_.set_table_id(table_id_);
-  req_.mutable_options()->Reserve(narrow_cast<int>(options_.size()));
-  for (const auto& option : options_) {
+  req_.mutable_options()->Reserve(narrow_cast<int>(options.size()));
+  req_.set_transactional(transactional);
+  for (const auto& option : options) {
     auto* op = req_.add_options();
     op->set_key(option.first);
     op->set_value(option.second);
@@ -1654,6 +1659,107 @@ void DeleteCDCStreamRpc::ProcessResponse(const Status& status) {
   }
   user_cb_.Run(status);
 }
+
+class BootstrapProducerRpc
+    : public ClientMasterRpc<BootstrapProducerRequestPB, BootstrapProducerResponsePB> {
+ public:
+  BootstrapProducerRpc(
+      YBClient* client, BootstrapProducerCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {}
+
+  Status Init(
+      const YQLDatabase& db_type,
+      const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName>& pg_schema_names,
+      const std::vector<TableName>& table_names) {
+    SCHECK(!namespace_name.empty(), InvalidArgument, "Table namespace name is empty");
+    SCHECK(!table_names.empty(), InvalidArgument, "Table names is empty");
+    table_names_ = table_names;
+    tables_count_ = table_names.size();
+
+    if (db_type == YQL_DATABASE_PGSQL) {
+      SCHECK_EQ(
+          pg_schema_names.size(), tables_count_, InvalidArgument,
+          "Number of tables and PG schemas must match");
+    } else {
+      SCHECK(pg_schema_names.empty(), InvalidArgument, "PG Schema only applies to PG databases");
+    }
+
+    req_.set_db_type(db_type);
+    req_.set_namespace_name(namespace_name);
+    for (size_t i = 0; i < tables_count_; i++) {
+      SCHECK(!table_names[i].empty(), InvalidArgument, "Table name is empty");
+      req_.add_table_name(table_names[i]);
+      if (db_type == YQL_DATABASE_PGSQL) {
+        SCHECK(
+            !pg_schema_names[i].empty(), InvalidArgument, "Table schema name at index $0 is empty",
+            i);
+        req_.add_pg_schema_name(pg_schema_names[i]);
+      }
+    }
+
+    return Status::OK();
+  }
+
+  string ToString() const override {
+    return Format(
+        "BootstrapProducerRpc(table_names: $0, num_attempts: $1)", yb::ToString(table_names_),
+        num_attempts());
+  }
+
+  virtual ~BootstrapProducerRpc() {}
+
+ private:
+  void CallRemoteMethod() override {
+    master_replication_proxy()->BootstrapProducerAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&BootstrapProducerRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+      user_cb_(status);
+      return;
+    }
+
+    auto result = ProcessResponseInternal();
+    if (!result) {
+      LOG(WARNING) << ToString() << " failed: " << result.status().ToString();
+    }
+
+    user_cb_(std::move(result));
+  }
+
+  BootstrapProducerResult ProcessResponseInternal() {
+    if (resp_.has_error()) {
+      return StatusFromPB(resp_.error().status());
+    }
+
+    SCHECK_EQ(
+        resp_.table_ids_size(), narrow_cast<int>(tables_count_), IllegalState,
+        "Unexpected number of results received");
+    std::vector<std::string> producer_table_ids{resp_.table_ids().begin(), resp_.table_ids().end()};
+
+    SCHECK_EQ(
+        resp_.bootstrap_ids_size(), narrow_cast<int>(tables_count_), IllegalState,
+        Format("Expected $0 results, received: $1", tables_count_, resp_.bootstrap_ids_size()));
+    std::vector<std::string> bootstrap_ids{
+        resp_.bootstrap_ids().begin(), resp_.bootstrap_ids().end()};
+
+    HybridTime bootstrap_time = HybridTime::kInvalid;
+    if (resp_.has_bootstrap_time()) {
+      bootstrap_time = HybridTime(resp_.bootstrap_time());
+    }
+
+    return std::make_tuple(std::move(producer_table_ids), std::move(bootstrap_ids), bootstrap_time);
+  }
+
+ private:
+  BootstrapProducerCallback user_cb_;
+  std::vector<TableName> table_names_;
+  size_t tables_count_ = 0;
+};
 
 class GetCDCDBStreamInfoRpc : public ClientMasterRpc<GetCDCDBStreamInfoRequestPB,
                                                      GetCDCDBStreamInfoResponsePB> {
@@ -2088,13 +2194,15 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
   return actual_index_permissions;
 }
 
-void YBClient::Data::CreateCDCStream(YBClient* client,
-                                     const TableId& table_id,
-                                     const std::unordered_map<std::string, std::string>& options,
-                                     CoarseTimePoint deadline,
-                                     CreateCDCStreamCallback callback) {
+void YBClient::Data::CreateCDCStream(
+    YBClient* client,
+    const TableId& table_id,
+    const std::unordered_map<std::string, std::string>& options,
+    cdc::StreamModeTransactional transactional,
+    CoarseTimePoint deadline,
+    CreateCDCStreamCallback callback) {
   auto rpc = StartRpc<internal::CreateCDCStreamRpc>(
-      client, callback, table_id, options, deadline);
+      client, callback, table_id, options, transactional, deadline);
 }
 
 void YBClient::Data::DeleteCDCStream(YBClient* client,
@@ -2103,6 +2211,22 @@ void YBClient::Data::DeleteCDCStream(YBClient* client,
                                      StatusCallback callback) {
   auto rpc = StartRpc<internal::DeleteCDCStreamRpc>(
       client, callback, stream_id, deadline);
+}
+
+Status YBClient::Data::BootstrapProducer(
+    YBClient* client,
+    const YQLDatabase& db_type,
+    const NamespaceName& namespace_name,
+    const std::vector<PgSchemaName>& pg_schema_names,
+    const std::vector<TableName>& table_names,
+    CoarseTimePoint deadline,
+    BootstrapProducerCallback callback) {
+  auto rpc =
+      std::make_shared<internal::BootstrapProducerRpc>(client, std::move(callback), deadline);
+  RETURN_NOT_OK(rpc->Init(db_type, namespace_name, pg_schema_names, table_names));
+  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+
+  return Status::OK();
 }
 
 void YBClient::Data::GetCDCDBStreamInfo(
@@ -2170,6 +2294,8 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
           proxy_cache_.get(), host_port);
       master_replication_proxy_ = std::make_shared<master::MasterReplicationProxy>(
           proxy_cache_.get(), host_port);
+       master_encryption_proxy_ = std::make_shared<master::MasterEncryptionProxy>(
+          proxy_cache_.get(), host_port);
     }
 
     rpcs_.Unregister(&leader_master_rpc_);
@@ -2183,7 +2309,6 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
 Status YBClient::Data::SetMasterServerProxy(CoarseTimePoint deadline,
                                             bool skip_resolution,
                                             bool wait_for_leader_election) {
-
   Synchronizer sync;
   SetMasterServerProxyAsync(deadline, skip_resolution,
       wait_for_leader_election, sync.AsStdStatusCallback());
@@ -2528,6 +2653,12 @@ shared_ptr<master::MasterReplicationProxy> YBClient::Data::master_replication_pr
   std::lock_guard<simple_spinlock> l(leader_master_lock_);
   return master_replication_proxy_;
 }
+
+shared_ptr<master::MasterEncryptionProxy> YBClient::Data::master_encryption_proxy() const {
+  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  return master_encryption_proxy_;
+}
+
 
 uint64_t YBClient::Data::GetLatestObservedHybridTime() const {
   return latest_observed_hybrid_time_.Load();

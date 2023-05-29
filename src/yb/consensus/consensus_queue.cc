@@ -122,12 +122,20 @@ TAG_FLAG(cdc_intent_retention_ms, advanced);
 DEFINE_test_flag(bool, disallow_lmp_failures, false,
                  "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
 
-DEFINE_UNKNOWN_bool(
-    remote_bootstrap_from_leader_only, true,
-    "Whether to instruct the peer to attempt bootstrap from the closest peer instead of "
-    "the leader. The leader too could be the closest peer depending on the new peer's "
-    "geographic placement. Setting the flag to false will enable remote bootstrap from "
-    "the closest peer.");
+DEFINE_RUNTIME_bool(
+    remote_bootstrap_from_leader_only, false,
+    "Whether to instruct the peer to attempt bootstrap from the closest peer instead of the "
+    "leader. The leader too could be the closest peer depending on the new peer's geographic "
+    "placement. Setting the flag to false will enable remote bootstrap from the closest peer. "
+    "On addition of a new node, it follows that most bootstrap sources would now be from a "
+    "single node and could result in increased load on the node. If bootstrap of a new node is "
+    "slow, it might be worth setting the flag to true and enable bootstrapping from leader only.");
+
+DEFINE_RUNTIME_uint32(
+    max_remote_bootstrap_attempts_from_non_leader, 5,
+    "When FLAGS_remote_bootstrap_from_leader_only is enabled, the flag represents the maximum "
+    "number of times we attempt to remote bootstrap a new peer from a closest non-leader peer "
+    "that result in a failure. We fallback to bootstrapping from the leader peer post this.");
 
 DEFINE_test_flag(
     bool, assert_remote_bootstrap_happens_from_same_zone, false,
@@ -810,13 +818,14 @@ const PeerMessageQueue::TrackedPeer* PeerMessageQueue::FindClosestPeerForBootstr
       continue;
     }
 
-    // consider only those peers as rbs source which are in the same term as the leader
+    // Consider only those followers as rbs source which are in the same term as the leader
     // and have last_applied_opid >= leader log's min available index
     // TODO: Add a gflag that sets the max allowed difference between the leader's last
     // applied log opid and that of the rbs source. Reject peer as an rbs source if
     // leader->last_applied.index - remote_peer->last_applied.index > flag
     OpId remote_last_applied_opid = it->second->last_applied;
-    if (remote_last_applied_opid.term != queue_state_.current_term ||
+    if (it->second->member_type != PeerMemberType::VOTER ||
+        remote_last_applied_opid.term != queue_state_.current_term ||
         remote_last_applied_opid.index < log_cache_.earliest_op_index()) {
       continue;
     }
@@ -856,16 +865,27 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                 << PeerMemberType_Name(peer->member_type);
     }
 
-    // try bootstrapping from the closest follower to the given tracked peer on the first attempt
-    // for remote bootstrap. If that fails, set the bootstrap source to the leader.
-    rbs_source = peer->cloud_info.has_value() && !FLAGS_remote_bootstrap_from_leader_only &&
-                         peer->bootstrap_attempts_from_non_leader < 5
-                     ? FindClosestPeerForBootstrap(peer)
-                     : local_peer_;
-    current_term = queue_state_.current_term;
-  }
+    // Check if a closest follower can serve as the RBS source.
+    auto rbs_from_leader_only =
+        FLAGS_remote_bootstrap_from_leader_only ||
+        !peer->cloud_info.has_value() ||
+        peer->failed_bootstrap_attempts_from_non_leader >=
+            FLAGS_max_remote_bootstrap_attempts_from_non_leader;
 
-  LOG(INFO) << "Remote bootstrapping peer " << uuid << " from closest peer " << rbs_source->uuid;
+    rbs_source = rbs_from_leader_only ? local_peer_ : FindClosestPeerForBootstrap(peer);
+    current_term = queue_state_.current_term;
+
+    // Acess/Edit peer's fields within queue_lock_'s scope to avoid race. For instance, this peer's
+    // information could be accessed while finding RBS source for another newly added peer.
+    peer->needs_remote_bootstrap = false;
+    if (PREDICT_FALSE(FLAGS_TEST_assert_remote_bootstrap_happens_from_same_zone)) {
+      CHECK_EQ(
+          PlacementInfoConverter::GetLocalityLevel(
+              rbs_source->cloud_info.value(), peer->cloud_info.value()),
+          LocalityLevel::kZone)
+          << "Expected rbs source to be in same zone as new peer";
+    }
+  }
 
   req->Clear();
   req->set_dest_uuid(uuid);
@@ -882,7 +902,6 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   if (rbs_source->cloud_info.has_value()) {
     *req->mutable_bootstrap_source_cloud_info() = rbs_source->cloud_info.value();
   }
-  peer->needs_remote_bootstrap = false; // Now reset the flag.
 
   if (rbs_source->uuid != local_peer_->uuid) {
     // rbs source is not the leader, hence set the leader info.
@@ -891,17 +910,8 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
     *req->mutable_tablet_leader_private_addr() = local_peer_pb_.last_known_private_addr();
     *req->mutable_tablet_leader_broadcast_addr() = local_peer_pb_.last_known_broadcast_addr();
     *req->mutable_tablet_leader_cloud_info() = local_peer_pb_.cloud_info();
-    peer->bootstrap_attempts_from_non_leader += 1;
   } else {
     req->set_is_served_by_tablet_leader(true);
-  }
-
-  if (FLAGS_TEST_assert_remote_bootstrap_happens_from_same_zone) {
-    CHECK_EQ(
-        PlacementInfoConverter::GetLocalityLevel(
-            *req->mutable_bootstrap_source_cloud_info(), peer->cloud_info.value()),
-        LocalityLevel::kZone)
-        << "Expected rbs source to be in same zone as new peer";
   }
 
   return Status::OK();
@@ -1186,6 +1196,15 @@ OpId PeerMessageQueue::OpIdWatermark() {
   };
 
   return GetWatermark<Policy>();
+}
+
+void PeerMessageQueue::IncrementFailedBootstrapAttemptsFromNonLeader(const std::string& peer_uuid) {
+  LockGuard l(queue_lock_);
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
+  if (!peer) {
+    return;
+  }
+  peer->failed_bootstrap_attempts_from_non_leader += 1;
 }
 
 void PeerMessageQueue::NotifyPeerIsResponsiveDespiteError(const std::string& peer_uuid) {

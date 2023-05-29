@@ -674,8 +674,8 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   bool subdoc_found_in_rocksdb = false;
   dockv::ReaderProjection projection;
   projection.columns = {
-    { .id = ColumnId(1), .subkey = KeyEntryValue("p1"), .type = nullptr },
-    { .id = ColumnId(2), .subkey = KeyEntryValue("p2"), .type = nullptr },
+    { .id = ColumnId(1), .subkey = KeyEntryValue("p1"), .data_type = DataType::NULL_VALUE_TYPE },
+    { .id = ColumnId(2), .subkey = KeyEntryValue("p2"), .data_type = DataType::NULL_VALUE_TYPE },
   };
 
   GetSubDocQl(
@@ -3801,7 +3801,7 @@ TEST_P(DocDBTestWrapper, CompactionWithTransactions) {
       EncodeValue(QLValue::Primitive("value7")) }
   };
   Uuid status_tablet = ASSERT_RESULT(Uuid::FromString("4c3e1d91-5ea7-4449-8bb3-8b0a3f9ae903"));
-  ASSERT_OK(AddExternalIntents(txn3, intents, status_tablet, kTxn3HT));
+  ASSERT_OK(AddExternalIntents(txn3, kMinSubTransactionId, intents, status_tablet, kTxn3HT));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
@@ -3995,6 +3995,41 @@ void ScanForwardWithMetricCheck(
   ASSERT_EQ(
       expected_number_of_keys_visited,
       regular_db_statistics->getTickerCount(rocksdb::NUMBER_DB_NEXT) - initial_stats);
+}
+
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterSingleFile) {
+  auto dwb = MakeDocWriteBatch();
+  for (int i = 1; i <= 4; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+
+  ASSERT_OK(FlushRocksDbAndWait());
+
+  CloseRocksDB();
+
+  RocksDBPatcher patcher(rocksdb_dir_, regular_db_options_);
+
+  ASSERT_OK(patcher.Load());
+  ASSERT_OK(patcher.SetHybridTimeFilter(HybridTime::FromMicros(2000)));
+
+  ASSERT_OK(OpenRocksDB());
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+  )#");
+
+  rocksdb::CompactRangeOptions options;
+  ASSERT_OK(ForceRocksDBCompact(rocksdb(), options));
+
+  RocksDBPatcher patcher2(rocksdb_dir_, regular_db_options_);
+  ASSERT_OK(patcher2.Load());
+  ASSERT_FALSE(patcher2.TEST_ContainsHybridTimeFilter());
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+  )#");
 }
 
 TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {

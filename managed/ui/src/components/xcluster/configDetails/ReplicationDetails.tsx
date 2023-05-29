@@ -93,17 +93,22 @@ export function ReplicationDetails({
     { enabled: xClusterConfigQuery.data?.sourceUniverseUUID !== undefined }
   );
 
-  const xClusterConfigTableUUIDs = xClusterConfigQuery.data?.tables ?? [];
+  const xClusterConfigTables = xClusterConfigQuery.data?.tableDetails ?? [];
   const tableLagQueries = useQueries(
-    xClusterConfigTableUUIDs.map((tableUUID) => ({
+    xClusterConfigTables.map((xClusterTable) => ({
       queryKey: [
         'xcluster-metric',
         sourceUniverseQuery.data?.universeDetails.nodePrefix,
-        tableUUID,
+        xClusterTable.tableId,
+        xClusterTable.streamId,
         'metric'
       ],
       queryFn: () =>
-        queryLagMetricsForTable(tableUUID, sourceUniverseQuery.data?.universeDetails.nodePrefix),
+        queryLagMetricsForTable(
+          xClusterTable.streamId,
+          xClusterTable.tableId,
+          sourceUniverseQuery.data?.universeDetails.nodePrefix
+        ),
       enabled: !!sourceUniverseQuery.data
     }))
   ) as UseQueryResult<Metrics<'tserver_async_replication_lag_micros'>>[];
@@ -269,7 +274,7 @@ export function ReplicationDetails({
     for (const tableLagQuery of tableLagQueries) {
       if (tableLagQuery.isSuccess) {
         const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
-        if (maxNodeLag === undefined || maxNodeLag > maxAcceptableLag) {
+        if (maxNodeLag && maxNodeLag > maxAcceptableLag) {
           numTablesAboveLagThreshold += 1;
         }
       }
@@ -295,7 +300,7 @@ export function ReplicationDetails({
   const shouldShowTableLagWarning =
     maxAcceptableLagQuery.isSuccess &&
     numTablesAboveLagThreshold > 0 &&
-    xClusterConfigTableUUIDs.length > 0;
+    xClusterConfigTables.length > 0;
   const isAddTableModalVisible =
     showModal && visibleModal === XClusterModalName.ADD_TABLE_TO_CONFIG;
   const isEditConfigModalVisible = showModal && visibleModal === XClusterModalName.EDIT_CONFIG;
@@ -414,8 +419,8 @@ export function ReplicationDetails({
               <YBBanner variant={YBBannerVariant.WARNING}>
                 <b>Warning!</b>
                 {` Replication lag for ${numTablesAboveLagThreshold} out of ${
-                  xClusterConfigTableUUIDs.length
-                } ${xClusterConfigTableUUIDs.length > 1 ? 'tables' : 'table'} ${
+                  xClusterConfigTables.length
+                } ${xClusterConfigTables.length > 1 ? 'tables' : 'table'} ${
                   numTablesAboveLagThreshold > 1 ? 'have' : 'has'
                 }
                 exceeded the maximum acceptable lag time.`}

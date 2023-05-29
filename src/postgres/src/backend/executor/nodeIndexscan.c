@@ -126,9 +126,9 @@ IndexNext(IndexScanState *node)
 		node->iss_ScanDesc = scandesc;
 		scandesc->yb_scan_plan = (Scan *) plan;
 		scandesc->yb_rel_pushdown =
-			YbInstantiateRemoteParams(&plan->rel_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
 		scandesc->yb_idx_pushdown =
-			YbInstantiateRemoteParams(&plan->index_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -281,9 +281,9 @@ IndexNextWithReorder(IndexScanState *node)
 		node->iss_ScanDesc = scandesc;
 		scandesc->yb_scan_plan = (Scan *) plan;
 		scandesc->yb_rel_pushdown =
-			YbInstantiateRemoteParams(&plan->rel_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
 		scandesc->yb_idx_pushdown =
-			YbInstantiateRemoteParams(&plan->index_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -669,9 +669,9 @@ ExecReScanIndexScan(IndexScanState *node)
 		IndexScan *plan = (IndexScan *) scandesc->yb_scan_plan;
 		EState *estate = node->ss.ps.state;
 		scandesc->yb_rel_pushdown =
-			YbInstantiateRemoteParams(&plan->rel_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
 		scandesc->yb_idx_pushdown =
-			YbInstantiateRemoteParams(&plan->index_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 		index_rescan(node->iss_ScanDesc,
 					 node->iss_ScanKeys, node->iss_NumScanKeys,
 					 node->iss_OrderByKeys, node->iss_NumOrderByKeys);
@@ -1229,7 +1229,8 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
  * Unfortunately, this means that we have to special case certain SAOP
  * processing logic to check for this RowExpr case.
  * For now, these cases are generated for batched nested loop joins in
- * zip_batched_exprs() in restrictinfo.c during indexscan plan node generation.
+ * yb_zip_batched_exprs() in restrictinfo.c during indexscan
+ * plan node generation.
  * 
  *
  * 5. NullTest ("indexkey IS NULL/IS NOT NULL").  We just fill in the

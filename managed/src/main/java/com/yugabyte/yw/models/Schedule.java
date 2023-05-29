@@ -56,10 +56,8 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
@@ -188,11 +186,30 @@ public class Schedule extends Model {
     save();
   }
 
+  @Column
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Time on which schedule is expected to run for incremental backups",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
+  private Date nextIncrementScheduleTaskTime;
+
+  public void updateNextIncrementScheduleTaskTime(Date nextIncrementScheduleTime) {
+    this.nextIncrementScheduleTaskTime = nextIncrementScheduleTime;
+    save();
+  }
+
   @ApiModelProperty(
       value = "Backlog status of schedule arose due to conflicts",
       accessMode = READ_ONLY)
   @Column(nullable = false)
   private boolean backlogStatus;
+
+  @ApiModelProperty(
+      value = "Backlog status of schedule of incremental backups arose due to conflicts",
+      accessMode = READ_ONLY)
+  @Column(nullable = false)
+  private boolean incrementBacklogStatus;
 
   @Column
   @ApiModelProperty(value = "User who created the schedule policy", accessMode = READ_ONLY)
@@ -200,6 +217,11 @@ public class Schedule extends Model {
 
   public void updateBacklogStatus(boolean backlogStatus) {
     this.backlogStatus = backlogStatus;
+    save();
+  }
+
+  public void updateIncrementBacklogStatus(boolean incrementBacklogStatus) {
+    this.incrementBacklogStatus = incrementBacklogStatus;
     save();
   }
 
@@ -220,6 +242,15 @@ public class Schedule extends Model {
     // Update old next Expected Task time if it expired due to non-active state.
     if (Util.isTimeExpired(this.nextScheduleTaskTime)) {
       updateNextScheduleTaskTime(nextExpectedTaskTime(null, this));
+    }
+    save();
+  }
+
+  public void resetIncrementSchedule() {
+    this.status = State.Active;
+    // Update old next Expected Task time if it expired due to non-active state.
+    if (Util.isTimeExpired(this.nextIncrementScheduleTaskTime)) {
+      updateNextIncrementScheduleTaskTime(ScheduleUtil.nextExpectedIncrementTaskTime(this));
     }
     save();
   }
@@ -258,6 +289,7 @@ public class Schedule extends Model {
     params.incrementalBackupFrequencyTimeUnit = incrementalBackupFrequencyTimeUnit;
     this.taskParams = Json.toJson(params);
     save();
+    resetIncrementSchedule();
   }
 
   public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
@@ -286,6 +318,7 @@ public class Schedule extends Model {
     schedule.scheduleName =
         scheduleName != null ? scheduleName : "schedule-" + schedule.getScheduleUUID();
     schedule.nextScheduleTaskTime = nextExpectedTaskTime(null, schedule);
+    schedule.nextIncrementScheduleTaskTime = ScheduleUtil.nextExpectedIncrementTaskTime(schedule);
     schedule.save();
     return schedule;
   }
@@ -457,7 +490,7 @@ public class Schedule extends Model {
   private static SchedulePagedApiResponse createResponse(SchedulePagedResponse response) {
     List<Schedule> schedules = response.getEntities();
     List<ScheduleResp> schedulesList =
-        schedules.parallelStream().map(s -> toScheduleResp(s)).collect(Collectors.toList());
+        schedules.stream().map(Schedule::toScheduleResp).collect(Collectors.toList());
     SchedulePagedApiResponse responseMin = new SchedulePagedApiResponse();
     responseMin.setEntities(schedulesList);
     responseMin.setHasPrev(response.isHasPrev());
@@ -467,16 +500,23 @@ public class Schedule extends Model {
   }
 
   private static ScheduleResp toScheduleResp(Schedule schedule) {
+    boolean isIncrementalBackup =
+        ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID());
     Date nextScheduleTaskTime = schedule.nextScheduleTaskTime;
+    Date nextIncrementScheduleTaskTime = schedule.nextIncrementScheduleTaskTime;
     // In case of a schedule with a backlog, the next task can be executed in the next scheduler
     // run.
     if (schedule.backlogStatus) {
       nextScheduleTaskTime = DateUtils.addMinutes(new Date(), Util.YB_SCHEDULER_INTERVAL);
     }
+    if (isIncrementalBackup && schedule.incrementBacklogStatus) {
+      nextIncrementScheduleTaskTime = DateUtils.addMinutes(new Date(), Util.YB_SCHEDULER_INTERVAL);
+    }
     // No need to show the next expected task time as it won't be able to execute due to non-active
     // state.
     if (!schedule.getStatus().equals(State.Active)) {
       nextScheduleTaskTime = null;
+      nextIncrementScheduleTaskTime = null;
     }
     ScheduleRespBuilder builder =
         ScheduleResp.builder()
@@ -491,7 +531,8 @@ public class Schedule extends Model {
             .cronExpression(schedule.cronExpression)
             .runningState(schedule.runningState)
             .failureCount(schedule.failureCount)
-            .backlogStatus(schedule.backlogStatus);
+            .backlogStatus(schedule.backlogStatus)
+            .incrementBacklogStatus(schedule.incrementBacklogStatus);
 
     ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
     Date lastScheduledTime = null;
@@ -508,15 +549,26 @@ public class Schedule extends Model {
         builder.backupInfo(getV2ScheduleBackupInfo(params));
         builder.incrementalBackupFrequency(params.incrementalBackupFrequency);
         builder.incrementalBackupFrequencyTimeUnit(params.incrementalBackupFrequencyTimeUnit);
-        if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
+        builder.tableByTableBackup(params.tableByTableBackup);
+        if (isIncrementalBackup) {
           Backup latestSuccessfulIncrementalBackup =
               ScheduleUtil.fetchLatestSuccessfulBackupForSchedule(
                   schedule.customerUUID, schedule.getScheduleUUID());
           if (latestSuccessfulIncrementalBackup != null) {
-            Date incrementalBackupExpectedTaskTime =
-                new Date(
-                    latestSuccessfulIncrementalBackup.getCreateTime().getTime()
-                        + params.incrementalBackupFrequency);
+            Date incrementalBackupExpectedTaskTime;
+            if (nextIncrementScheduleTaskTime != null) {
+              incrementalBackupExpectedTaskTime = nextIncrementScheduleTaskTime;
+            } else {
+              if (schedule.incrementBacklogStatus) {
+                incrementalBackupExpectedTaskTime =
+                    DateUtils.addMinutes(new Date(), Util.YB_SCHEDULER_INTERVAL);
+              } else {
+                incrementalBackupExpectedTaskTime =
+                    new Date(
+                        latestSuccessfulIncrementalBackup.getCreateTime().getTime()
+                            + params.incrementalBackupFrequency);
+              }
+            }
             if (nextScheduleTaskTime != null
                 && nextScheduleTaskTime.after(incrementalBackupExpectedTaskTime)) {
               nextScheduleTaskTime = incrementalBackupExpectedTaskTime;
@@ -571,12 +623,10 @@ public class Schedule extends Model {
         KeyspaceTablesListBuilder keySpaceTableListBuilder =
             KeyspaceTablesList.builder().keyspace(keyspaceTable.keyspace);
         if (keyspaceTable.tableUUIDList != null) {
-          keySpaceTableListBuilder.tableUUIDList(
-              keyspaceTable.tableUUIDList.stream().collect(Collectors.toSet()));
+          keySpaceTableListBuilder.tableUUIDList(keyspaceTable.tableUUIDList);
         }
         if (keyspaceTable.tableNameList != null) {
-          keySpaceTableListBuilder.tablesList(
-              keyspaceTable.tableNameList.stream().collect(Collectors.toSet()));
+          keySpaceTableListBuilder.tablesList(keyspaceTable.tableNameList);
         }
         keySpaceResponseList.add(keySpaceTableListBuilder.build());
       }
@@ -596,19 +646,13 @@ public class Schedule extends Model {
   }
 
   private static BackupInfo getV1ScheduleBackupInfo(MultiTableBackup.Params params) {
-    Set<UUID> tableUUIDList = null;
     List<KeyspaceTablesList> keySpaceResponseList = null;
-    if (params.tableUUID != null) {
-      tableUUIDList = Stream.of(params.tableUUID).collect(Collectors.toSet());
-    } else if (params.tableUUIDList != null) {
-      tableUUIDList = params.tableUUIDList.stream().collect(Collectors.toSet());
-    }
     if (!StringUtils.isEmpty(params.getKeyspace())) {
       KeyspaceTablesList kTList =
           KeyspaceTablesList.builder()
               .keyspace(params.getKeyspace())
-              .tablesList(params.getTableNames())
-              .tableUUIDList(tableUUIDList)
+              .tablesList(params.getTableNameList())
+              .tableUUIDList(params.getTableUUIDList())
               .build();
       keySpaceResponseList = Arrays.asList(kTList);
     }

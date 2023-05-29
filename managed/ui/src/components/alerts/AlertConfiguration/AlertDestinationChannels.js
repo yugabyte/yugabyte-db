@@ -18,6 +18,7 @@ import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { useMount } from 'react-use';
 import { YBLoadingCircleIcon } from '../../common/indicators';
+import { startCase, toLower } from 'lodash';
 import './AlertDestinationChannels.scss';
 
 const Composer = React.lazy(() => import('../../../redesign/features/alerts/TemplateComposer/Composer'));
@@ -36,7 +37,7 @@ const prepareInitialValues = (values) => {
 
   switch (values.params.channelType) {
     case 'Slack':
-      initialValues['webhookURL'] = values.params.webhookUrl;
+      initialValues['webhookURLSlack'] = values.params.webhookUrl;
       initialValues['username'] = values.name;
       break;
     case 'Email':
@@ -61,6 +62,20 @@ const prepareInitialValues = (values) => {
       break;
     case 'WebHook':
       initialValues['webhookURL'] = values.params.webhookUrl;
+      if (!values.params.httpAuth?.type) {
+        break;
+      }
+      initialValues['webhookAuthType'] = startCase(toLower(values.params.httpAuth.type));
+      if (values.params.httpAuth?.type === 'BASIC') {
+        const { username, password } = values.params.httpAuth;
+        initialValues['webhookBasicUsername'] = username;
+        initialValues['webhookBasicPassword'] = password;
+      }
+      if (values.params.httpAuth?.type === 'TOKEN') {
+        const { tokenHeader, tokenValue } = values.params.httpAuth;
+        initialValues['webhookTokenHeader'] = tokenHeader;
+        initialValues['webhookTokenValue'] = tokenValue;
+      }
       break;
     default:
       throw new Error(`Unknown Channel type ${values.params.channelType}`);

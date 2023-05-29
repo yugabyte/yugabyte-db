@@ -74,6 +74,7 @@ type Postgres struct {
 
 // NewPostgres creates a new postgres service struct at installRoot with specific version.
 func NewPostgres(version string) Postgres {
+
 	return Postgres{
 		name:                "postgres",
 		version:             version,
@@ -98,19 +99,25 @@ func (pg Postgres) getPgUserName() string {
 // Install postgres and create the yugaware DB for YBA.
 func (pg Postgres) Install() error {
 	config.GenerateTemplate(pg)
-	pg.extractPostgresPackage()
+	if err := pg.extractPostgresPackage(); err != nil {
+		return err
+	}
 
 	// First let initdb create its config and data files in the software/pg../conf location
-	pg.runInitDB()
+	if err := pg.runInitDB(); err != nil {
+		return nil
+	}
 	// Then copy over data files to the intended data dir location
 	pg.setUpDataDir()
+
 	// Finally update the conf file location to match this new data dir location
 	pg.modifyPostgresConf()
-
 	pg.Start()
+
 	if viper.GetBool("postgres.install.enabled") {
 		pg.createYugawareDatabase()
 	}
+
 	if !common.HasSudoAccess() {
 		pg.CreateCronJob()
 	}
@@ -223,6 +230,12 @@ func (pg Postgres) Uninstall(removeData bool) error {
 			log.Info(fmt.Sprintf("Error %s removing postgres data dir %s.", err.Error(), pg.dataDir))
 			return err
 		}
+
+		if err := common.RemoveAll(pg.ConfFileLocation); err != nil {
+			log.Info(fmt.Sprintf("Error %s removing postgres conf dir %s.", err.Error(),
+				pg.ConfFileLocation))
+			return err
+		}
 	}
 
 	if common.HasSudoAccess() {
@@ -270,20 +283,37 @@ func (pg Postgres) CreateBackup() {
 	log.Debug("postgres backup comlete")
 }
 
-func (pg Postgres) RestoreBackup() {
+func (pg Postgres) CreateYugawareBackup(outFile string) {
+	log.Debug("Starting postgres yugaware database backup.")
+	pg_dump := filepath.Join(common.GetActiveSymlink(), "/pgsql/bin/pg_dump")
+	args := []string{
+		"-p", viper.GetString("postgres.install.port"),
+		"-h", "localhost",
+		"-U", pg.getPgUserName(),
+		"-Fp",
+		"-f", outFile,
+		"yugaware",
+	}
+	out := shell.Run(pg_dump, args...)
+	if !out.SucceededOrLog() {
+		log.Fatal("Yugaware postgres backup failed: " + out.Error.Error())
+	}
+	log.Debug("yugware postgres backup complete")
+}
+
+func (pg Postgres) RestoreBackup(backupPath string) {
 	log.Debug("postgres starting restore from backup")
-	inFile := filepath.Join(common.GetBaseInstall(), "data", "postgres_backup")
-	if _, err := os.Stat(inFile); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(backupPath); errors.Is(err, os.ErrNotExist) {
 		log.Fatal("backup file does not exist")
 	}
 
 	psql := filepath.Join(pg.PgBin, "psql")
 	args := []string{
-		"-d", "postgres",
-		"-f", inFile,
+		"-d", "yugaware",
+		"-f", backupPath,
 		"-h", "localhost",
 		"-p", viper.GetString("postgres.port"),
-		"-U", viper.GetString("service_username"),
+		"-U", pg.getPgUserName(),
 	}
 	out := shell.Run(psql, args...)
 	if !out.SucceededOrLog() {
@@ -296,23 +326,29 @@ func (pg Postgres) RestoreBackup() {
 // Upgrade will NOT restart the service, the old version is expected to still be running
 // This function should be primarily used for major version changes for postgres.
 // TODO: we should gate this to only postgres.install.enabled = true
-func (pg Postgres) UpgradeMajorVersion() {
+func (pg Postgres) UpgradeMajorVersion() error {
 	log.Info("Starting Postgres major upgrade")
 	pg.CreateBackup()
 	pg.Stop()
 	pg.postgresDirectories = newPostgresDirectories()
 	config.GenerateTemplate(pg) // NOTE: This does not require systemd reload, start does it for us.
-	pg.extractPostgresPackage()
-	pg.runInitDB()
+	if err := pg.extractPostgresPackage(); err != nil {
+		return err
+	}
+	if err := pg.runInitDB(); err != nil {
+		return nil
+	}
 	pg.setUpDataDir()
 	pg.modifyPostgresConf()
 	pg.Start()
-	pg.RestoreBackup()
+	backupFile := filepath.Join(common.GetBaseInstall(), "data", "postgres_backup")
+	pg.RestoreBackup(backupFile)
 
 	if !common.HasSudoAccess() {
 		pg.CreateCronJob()
 	}
 	log.Info("Completed Postgres major upgrade")
+	return nil
 }
 
 // Upgrade will do a minor version upgrade of postgres
@@ -320,7 +356,9 @@ func (pg Postgres) Upgrade() error {
 	log.Info("Starting Postgres upgrade")
 	pg.postgresDirectories = newPostgresDirectories()
 	config.GenerateTemplate(pg) // NOTE: This does not require systemd reload, start does it for us.
-	pg.extractPostgresPackage()
+	if err := pg.extractPostgresPackage(); err != nil {
+		return err
+	}
 	pg.copyConfFiles()
 	pg.modifyPostgresConf()
 
@@ -330,16 +368,26 @@ func (pg Postgres) Upgrade() error {
 	return nil
 }
 
-func (pg Postgres) extractPostgresPackage() {
+func (pg Postgres) extractPostgresPackage() error {
 	postgresPackagePath := common.GetPostgresPackagePath()
-	shell.Run("tar", "-zxf", postgresPackagePath, "-C", common.GetSoftwareRoot())
+	out := shell.Run("tar", "-zxf", postgresPackagePath, "-C", common.GetSoftwareRoot())
+	if !out.SucceededOrLog() {
+		return out.Error
+	}
+	return nil
 }
 
-func (pg Postgres) runInitDB() {
+func (pg Postgres) runInitDB() error {
 
-	common.Create(common.GetBaseInstall() + "/data/logs/postgres.log")
+	if _, err := common.Create(common.GetBaseInstall() + "/data/logs/postgres.log"); err != nil {
+		log.Error("Failed to create postgres logfile: " + err.Error())
+		return err
+	}
 	// Needed for socket acceptance in the non-root case.
-	common.MkdirAllOrFail(pg.MountPath, os.ModePerm)
+	if err := common.MkdirAll(pg.MountPath, os.ModePerm); err != nil {
+		log.Error("failed to create " + pg.MountPath + ": " + err.Error())
+		return err
+	}
 
 	cmdName := pg.PgBin + "/initdb"
 	initDbArgs := []string{
@@ -355,21 +403,31 @@ func (pg Postgres) runInitDB() {
 		// directory.
 		userName := viper.GetString("service_username")
 
-		common.Chown(filepath.Dir(pg.ConfFileLocation), userName, userName, true)
-		common.Chown(filepath.Dir(pg.LogFile), userName, userName, true)
-		common.Chown(pg.MountPath, userName, userName, true)
+		confDir := filepath.Dir(pg.ConfFileLocation)
+		if err := common.Chown(confDir, userName, userName, true); err != nil {
+			return err
+		}
+		if err := common.Chown(filepath.Dir(pg.LogFile), userName, userName, true); err != nil {
+			return err
+		}
+		if err := common.Chown(pg.MountPath, userName, userName, true); err != nil {
+			return err
+		}
 
 		out := shell.RunAsUser(userName, cmdName, initDbArgs...)
 		if !out.SucceededOrLog() {
-			log.Fatal("Failed to run initdb for postgres")
+			log.Error("Failed to run initdb for postgres")
+			return out.Error
 		}
 
 	} else {
 		out := shell.Run(cmdName, initDbArgs...)
 		if !out.SucceededOrLog() {
-			log.Fatal("Failed to run initdb for postgres")
+			log.Error("Failed to run initdb for postgres")
+			return out.Error
 		}
 	}
+	return nil
 }
 
 // Set the data directory in postgresql.conf
@@ -414,14 +472,16 @@ func (pg Postgres) copyConfFiles() {
 		pg.ConfFileLocation, ";"}
 	if common.HasSudoAccess() {
 		common.MkdirAllOrFail(pg.ConfFileLocation, 0700)
-		common.Chown(pg.ConfFileLocation, userName, userName, false)
+		if err := common.Chown(pg.ConfFileLocation, userName, userName, false); err != nil {
+			log.Fatal("failed to change ownership of " + pg.ConfFileLocation + ": " + err.Error())
+		}
 		if out := shell.RunAsUser(userName, "find", findArgs...); !out.SucceededOrLog() {
-			log.Fatal("failed to move config fails")
+			log.Fatal("failed to move config fails: " + out.Error.Error())
 		}
 	} else {
 		common.MkdirAllOrFail(pg.ConfFileLocation, 0775)
 		if out := shell.Run("find", findArgs...); !out.SucceededOrLog() {
-			log.Fatal("failed to move config fails")
+			log.Fatal("failed to move config fails: " + out.Error.Error())
 		}
 	}
 }

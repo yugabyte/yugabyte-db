@@ -9,9 +9,12 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.File;
 import java.io.IOException;
@@ -40,6 +43,8 @@ public class ShellProcessHandlerTest extends TestCase {
 
   @Mock PlatformScheduler mockPlatformScheduler;
 
+  @Mock RuntimeConfGetter runtimeConfGetter;
+
   static String TMP_STORAGE_PATH = "/tmp/yugaware_tests/spht_certs";
   static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
 
@@ -50,8 +55,9 @@ public class ShellProcessHandlerTest extends TestCase {
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(mockConfig.getBoolean(COMMAND_OUTPUT_LOGS_DELETE)).thenReturn(true);
     when(mockConfig.getBytes(YB_LOGS_MAX_MSG_SIZE)).thenReturn(2000L);
+    when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath))).thenReturn("/tmp");
     ShellLogsManager shellLogsManager =
-        new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory);
+        new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory, runtimeConfGetter);
     shellProcessHandler = new ShellProcessHandler(mockConfig, shellLogsManager);
   }
 

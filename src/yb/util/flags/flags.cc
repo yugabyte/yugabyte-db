@@ -81,8 +81,9 @@ DEFINE_NON_RUNTIME_int64(profiler_sample_freq_bytes, 10_MB, "The frequency at wh
     "TCMalloc should sample allocations (if enable_process_lifetime_heap_profiling is set to "
     "true).");
 
-DEFINE_RUNTIME_string(heap_profile_path, "", "Output path to store heap profiles. If not set " \
-    "profiles are stored in /tmp/<process-name>.<pid>.<n>.heap.");
+DEFINE_RUNTIME_string(heap_profile_path, "",
+    "Output path to store heap profiles. If not set, profiles are stored in the directory "
+    "specified by the tmp_dir flag as $FLAGS_tmp_dir/<process-name>.<pid>.<n>.heap.");
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
 
@@ -101,6 +102,14 @@ DEFINE_UNKNOWN_bool(help_auto_flag_json, false,
     "Dump a JSON document describing all of the AutoFlags available in this binary.");
 TAG_FLAG(help_auto_flag_json, stable);
 TAG_FLAG(help_auto_flag_json, advanced);
+
+DEFINE_RUNTIME_string(allowed_preview_flags_csv, "",
+    "CSV formatted list of Preview flag names. Flags that are tagged Preview cannot be modified "
+    "unless they have been added to this list. By adding flags to this list, you acknowledge any "
+    "risks associated with modifying them.");
+
+DEFINE_NON_RUNTIME_string(tmp_dir, "/tmp",
+    "Directory to store temporary files. By default, the value of '/tmp' is used.");
 
 DECLARE_bool(TEST_promote_all_auto_flags);
 
@@ -430,6 +439,34 @@ void InvokeAllCallbacks(const std::vector<google::CommandLineFlagInfo>& flag_inf
   }
 }
 
+bool ValidateAllPreviewFlags(string* err_msg, const string& allowed_flags_csv) {
+  std::unordered_set<string> allowed_flags = strings::Split(allowed_flags_csv, ",");
+  std::vector<google::CommandLineFlagInfo> flag_infos;
+  google::GetAllFlags(&flag_infos);
+
+  for (const auto& flag : flag_infos) {
+    unordered_set<FlagTag> tags;
+    GetFlagTags(flag.name, &tags);
+
+    if (ContainsKey(tags, FlagTag::kPreview) && (flag.current_value != flag.default_value)) {
+      if (!ContainsKey(allowed_flags, flag.name)) {
+        (*err_msg) = Format("Preview flag '$0' not found in the allow list", flag.name);
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool IsPreviewFlagAllowed(const CommandLineFlagInfo& flag_info, const string& new_value) {
+  if (new_value != flag_info.default_value) {
+    std::unordered_set<string> allowed_flags = strings::Split(FLAGS_allowed_preview_flags_csv, ",");
+    return ContainsKey(allowed_flags, flag_info.name);
+  }
+  return true;
+}
+
 }  // anonymous namespace
 
 void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
@@ -444,6 +481,14 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     SetFlagDefaultsToCurrent(flag_infos);
 
     google::ParseCommandLineNonHelpFlags(argc, argv, remove_flags);
+
+    // Ensure all preview flags overridden are in allow list before invoking any callbacks.
+    string err_msg;
+    if (!ValidateAllPreviewFlags(&err_msg, FLAGS_allowed_preview_flags_csv)) {
+      LOG(FATAL) << err_msg;
+      return;
+    }
+
     InvokeAllCallbacks(flag_infos);
 
     // flag_infos is no longer valid as default and current values have changed.
@@ -471,9 +516,14 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     google::HandleCommandLineHelpFlags();
   }
 
+  // Disallow relative path for tmp_dir.
+  if (!FLAGS_tmp_dir.starts_with('/')) {
+    LOG(FATAL) << "tmp_dir must be an absolute path, found value to be " << FLAGS_tmp_dir;
+  }
+
   if (FLAGS_heap_profile_path.empty()) {
-    const auto path =
-        strings::Substitute("/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
+    const auto path = strings::Substitute(
+        "$0/$1.$2", FLAGS_tmp_dir, google::ProgramInvocationShortName(), getpid());
     CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(heap_profile_path, path));
   }
 
@@ -678,6 +728,22 @@ SetFlagResult SetFlag(
     } else {
       *output_msg = "Flag is not safe to change at runtime";
       return SetFlagResult::NOT_SAFE;
+    }
+  }
+
+  // Only allowed preview flags can be changed.
+  if (flag_name == "allowed_preview_flags_csv") {
+    string err_msg;
+    if (!ValidateAllPreviewFlags(&err_msg, new_value)) {
+      *output_msg = err_msg;
+      return SetFlagResult::BAD_VALUE;
+    }
+  } else if (ContainsKey(tags, FlagTag::kPreview)) {
+    if (!IsPreviewFlagAllowed(flag_info, new_value)) {
+      *output_msg =
+          "Cannot modify Preview flags unless you acknowledge the risks "
+          "by adding their name to allowed_preview_flags_csv flag.";
+      return SetFlagResult::BAD_VALUE;
     }
   }
 

@@ -749,30 +749,17 @@ bool TableInfo::IsCreateInProgress() const {
   return l->pb.state() == SysTablesEntryPB::PREPARING;
 }
 
-bool TableInfo::TransitionTableFromPreparingToRunning(
-    const std::unordered_map<TabletId, const TabletInfo::WriteLock*>& new_running_tablets) {
-  auto* mutable_table_info = mutable_metadata()->mutable_dirty();
-  if (!mutable_table_info->IsPreparing()) {
-    return false;
-  }
-
+bool TableInfo::AreAllTabletsRunning(const std::set<TabletId>& new_running_tablets) {
   SharedLock l(lock_);
   for (const auto& [key, tablet_info] : partitions_) {
-    TabletInfo::ReadLock read_lock;
-    const PersistentTabletInfo* persisted_tablet_info = nullptr;
     if (new_running_tablets.contains(tablet_info->id())) {
-      persisted_tablet_info = new_running_tablets.at(tablet_info->id())->mutable_data();
-    } else {
-      read_lock = tablet_info->LockForRead();
-      persisted_tablet_info = &read_lock.data();
+      continue;
     }
-
-    if (!persisted_tablet_info->is_running() && persisted_tablet_info->pb.split_depth() == 0) {
+    if (!tablet_info->LockForRead()->is_running()) {
       return false;
     }
   }
 
-  mutable_table_info->pb.set_state(SysTablesEntryPB::RUNNING);
   return true;
 }
 
@@ -1289,7 +1276,8 @@ Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfo::GetOrCreateCDCRpcT
     return cdc_rpc_tasks_;
   }
 
-  auto rpc_task = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(producer_id_, master_addrs));
+  auto rpc_task =
+      VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(replication_group_id_, master_addrs));
   cdc_rpc_tasks_ = rpc_task;
   master_addrs_ = master_addrs;
   return rpc_task;

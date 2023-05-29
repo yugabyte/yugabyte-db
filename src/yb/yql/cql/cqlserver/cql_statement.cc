@@ -17,11 +17,10 @@
 
 #include <openssl/md5.h>
 
-DEFINE_RUNTIME_bool(cql_use_metadata_cache_for_schema_version_check, false,
+DEFINE_RUNTIME_bool(cql_use_metadata_cache_for_schema_version_check, true,
                     "Use the internal Table Metadata Cache in TS to check the Table "
                     "Schema Version when processing the YCQL PREPARE query."
-                    "Use the flag with caution: with the flag enabled PREPARE works "
-                    "faster, but it may return a stale table schema.");
+                    "If disabled - the Table Schema Version is requested from the Master.");
 TAG_FLAG(cql_use_metadata_cache_for_schema_version_check, advanced);
 
 using std::string;
@@ -31,9 +30,9 @@ namespace cqlserver {
 
 //------------------------------------------------------------------------------------------------
 CQLStatement::CQLStatement(
-    const string& keyspace, const string& query, const CQLStatementListPos pos)
-    : Statement(keyspace, query), pos_(pos) {
-}
+    const string& keyspace, const string& query, const CQLStatementListPos pos,
+    const MemTrackerPtr& mem_tracker)
+    : Statement(keyspace, query), pos_(pos), consumption_(mem_tracker, DynamicMemoryUsage()) {}
 
 CQLStatement::~CQLStatement() {
 }

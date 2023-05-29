@@ -12,8 +12,7 @@ import {
   DEFAULT_RUNTIME_GLOBAL_SCOPE
 } from '../../../actions/customers';
 import { RuntimeConfig } from './RuntimeConfig';
-
-const TOAST_AUTO_CLOSE_INTERVAL = 2000; //ms
+import { ToastNotificationDuration } from '../../../redesign/helpers/constants';
 
 const mapDispatchToProps = (dispatch: any) => {
   return {
@@ -42,11 +41,11 @@ const mapDispatchToProps = (dispatch: any) => {
                 ? 'Could not save config, try again'
                 : responseError;
             toast.error(errorMessage, {
-              autoClose: TOAST_AUTO_CLOSE_INTERVAL
+              autoClose: ToastNotificationDuration.SHORT
             });
           } else {
             toast.success('Config saved successfully', {
-              autoClose: TOAST_AUTO_CLOSE_INTERVAL
+              autoClose: ToastNotificationDuration.SHORT
             });
             dispatch(setRunTimeConfigResponse(response.payload));
           }
@@ -69,11 +68,11 @@ const mapDispatchToProps = (dispatch: any) => {
         try {
           if (response.payload.isAxiosError || response.payload.status !== 200) {
             toast.error('Could not delete config, try again', {
-              autoClose: TOAST_AUTO_CLOSE_INTERVAL
+              autoClose: ToastNotificationDuration.SHORT
             });
           } else {
             toast.success('Config resetted to parent scope successfully', {
-              autoClose: TOAST_AUTO_CLOSE_INTERVAL
+              autoClose: ToastNotificationDuration.SHORT
             });
             dispatch(deleteRunTimeConfigResponse(response.payload));
           }

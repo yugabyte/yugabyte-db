@@ -57,6 +57,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 
+#include "yb/encryption/encryption.pb.h"
+
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/gutil/macros.h"
@@ -86,9 +88,6 @@ class CloudInfoPB;
 class MemTracker;
 class MetricEntity;
 
-namespace cdc {
-struct StreamMetaData;
-}
 namespace master {
 class ReplicationInfoPB;
 class TabletLocationsPB;
@@ -537,9 +536,11 @@ class YBClient {
       bool active = true,
       const NamespaceId& namespace_id = "");
 
-  void CreateCDCStream(const TableId& table_id,
-                       const std::unordered_map<std::string, std::string>& options,
-                       CreateCDCStreamCallback callback);
+  void CreateCDCStream(
+      const TableId& table_id,
+      const std::unordered_map<std::string, std::string>& options,
+      cdc::StreamModeTransactional transactional,
+      CreateCDCStreamCallback callback);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(const std::vector<CDCStreamId>& streams,
@@ -568,7 +569,8 @@ class YBClient {
   Status GetCDCStream(const CDCStreamId &stream_id,
                       NamespaceId* ns_id,
                       std::vector<TableId>* table_ids,
-                      std::unordered_map<std::string, std::string>* options);
+                      std::unordered_map<std::string, std::string>* options,
+                      cdc::StreamModeTransactional* transactional);
 
   void GetCDCStream(const CDCStreamId& stream_id,
                     std::shared_ptr<TableId> table_id,
@@ -584,31 +586,28 @@ class YBClient {
   Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
 
-  // Bootstrap the given list of tables. Returns the corresponding list of table ids, bootstrap ids
-  // and the bootstrap time.
   Status BootstrapProducer(
       const YQLDatabase& db_type,
       const NamespaceName& namespace_name,
-      const std::vector<PgSchemaName> pg_schema_names,
-      const std::vector<TableName>& table_name,
-      std::vector<TableId>* producer_table_ids,
-      std::vector<std::string>* bootstrap_ids,
-      HybridTime* bootstrap_time);
+      const std::vector<PgSchemaName>& pg_schema_names,
+      const std::vector<TableName>& table_names,
+      BootstrapProducerCallback callback);
 
   // Update consumer pollers after a producer side tablet split.
-  Status UpdateConsumerOnProducerSplit(const std::string& producer_id,
-                                       const TableId& table_id,
-                                       const master::ProducerSplitTabletInfoPB& split_info);
+  Status UpdateConsumerOnProducerSplit(
+      const cdc::ReplicationGroupId& replication_group_id,
+      const TableId& table_id,
+      const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
   Status UpdateConsumerOnProducerMetadata(
-      const std::string& producer_id,
+      const cdc::ReplicationGroupId& replication_group_id,
       const CDCStreamId& stream_id,
       const tablet::ChangeMetadataRequestPB& meta_info,
       uint32_t colocation_id,
       uint32_t producer_schema_version,
       uint32_t consumer_schema_version,
-      master::UpdateConsumerOnProducerMetadataResponsePB *resp);
+      master::UpdateConsumerOnProducerMetadataResponsePB* resp);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
@@ -843,6 +842,8 @@ class YBClient {
   void LookupAllTablets(const std::shared_ptr<YBTable>& table,
                         CoarseTimePoint deadline,
                         LookupTabletRangeCallback callback);
+
+  Result<encryption::UniverseKeyRegistryPB> GetFullUniverseKeyRegistry();
 
   // Get the AutoFlagConfig from master. Returns std::nullopt if master is runnning on an older
   // version that does not support AutoFlags.

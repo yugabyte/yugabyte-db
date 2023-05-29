@@ -2,7 +2,7 @@
 title: BEGIN statement [YSQL]
 headerTitle: BEGIN
 linkTitle: BEGIN
-description: Use the `BEGIN` statement to start a transaction with the default (or given) isolation level.
+description: Use the `BEGIN` statement to start a transaction with the default (or specified) isolation level.
 menu:
   stable:
     identifier: txn_begin
@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `BEGIN` statement to start a transaction with the default (or given) isolation level.
+Use the `BEGIN` statement to start a transaction with the default (or specified) isolation level.
 
 ## Syntax
 
@@ -60,7 +60,7 @@ Add optional keyword — has no effect.
 
 Supports Serializable, Snapshot, and Read Committed Isolation<sup>$</sup> using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
 
-<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ## Examples
 
@@ -165,3 +165,5 @@ yugabyte=# SELECT * FROM sample; -- run in second shell.
 - [`END`](../txn_end)
 - [`ROLLBACK`](../txn_rollback)
 - [`SET TRANSACTION`](../txn_set)
+- [`START TRANSACTION`](../txn_start)
+

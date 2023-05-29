@@ -221,14 +221,15 @@ public class RestoreKeyspace extends Model {
     return Optional.of(restoreKeyspace);
   }
 
-  public static Optional<RestoreKeyspace> fetchRestoreKeyspaceByRestoreIdAndKeyspaceName(
-      UUID restoreUUID, String targetKeyspace) {
+  public static Optional<RestoreKeyspace> fetchRestoreKeyspace(
+      UUID restoreUUID, String targetKeyspace, String location) {
     ExpressionList<RestoreKeyspace> query =
         RestoreKeyspace.find
             .query()
             .where()
             .eq("restore_uuid", restoreUUID)
-            .eq("target_keyspace", targetKeyspace);
+            .eq("target_keyspace", targetKeyspace)
+            .eq("storage_location", location);
     List<RestoreKeyspace> restoreKeyspaceList = query.findList();
     if (restoreKeyspaceList.size() == 0) {
       LOG.trace(

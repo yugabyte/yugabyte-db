@@ -94,6 +94,7 @@ lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
+lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
@@ -119,6 +120,7 @@ lazy val root = (project in file("."))
   })
 
 scalaVersion := "2.12.10"
+javacOptions ++= Seq("-source", "17", "-target", "17")
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 // These are needed to prevent (reduce possibility?) or incremental compilation infinite loop issue:
@@ -136,7 +138,8 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
+  "com.google.inject"            % "guice"                % "5.1.0",
+  "com.google.inject.extensions" % "guice-assistedinject" % "5.1.0",
   "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.9",
@@ -149,7 +152,7 @@ libraryDependencies ++= Seq(
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "2.0",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
-  "org.springframework.security" % "spring-security-core" % "5.8.1",
+  "org.springframework.security" % "spring-security-core" % "5.8.3",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.129",
@@ -188,7 +191,7 @@ libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-kms" % "2.4.4",
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.4.0",
   "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
-  "org.projectlombok" % "lombok" % "1.18.20",
+  "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
   "io.kamon" %% "kamon-bundle" % "2.5.9",
   "io.kamon" %% "kamon-prometheus" % "2.5.9",
@@ -206,12 +209,12 @@ libraryDependencies ++= Seq(
   "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
   // Prod dependency temporary as we use HSQLDB as a dummy perf_advisor DB for YBM scenario
   // Remove once YBM starts using real PG DB.
-  "org.hsqldb" % "hsqldb" % "2.3.4",
+  "org.hsqldb" % "hsqldb" % "2.7.1",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
-  "org.mockito" % "mockito-core" % "2.13.0" % Test,
-  "org.mockito" % "mockito-inline" % "3.8.0" % Test,
+  "org.mockito" % "mockito-core" % "5.3.1" % Test,
+  "org.mockito" % "mockito-inline" % "5.2.0" % Test,
   "org.mindrot" % "jbcrypt" % "0.4" % Test,
   "com.h2database" % "h2" % "2.1.212" % Test,
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
@@ -309,8 +312,11 @@ externalResolvers := {
 (Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
 
 (Compile / compilePlatform) := {
-  ((Compile / compile) dependsOn buildModules).value
-  buildVenv.value
+  (Compile / compile).value
+  Def.sequential(
+      buildVenv,
+      releaseModulesLocally
+    ).value
   buildUI.value
   versionGenerate.value
 }
@@ -328,7 +334,7 @@ lazy val moveYbcPackage = getBoolEnvVar(moveYbcPackageEnvName)
 
 versionGenerate := {
   val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
-  val status = Process("../build-support/gen_version_info.py --build-type=" + buildType + " " +
+  val status = Process("../python/yugabyte/gen_version_info.py --build-type=" + buildType + " " +
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
@@ -353,15 +359,15 @@ buildUI := {
   status
 }
 
-buildModules := {
+releaseModulesLocally := {
   ybLog("Building modules...")
-  val status = Process("mvn install -DskipTests=true", baseDirectory.value / "parent-module").!
+  val status = Process("mvn install -DskipTests=true -P releaseLocally", baseDirectory.value / "parent-module").!
   status
 }
 
 buildDependentArtifacts := {
   ybLog("Building dependencies...")
-  val status = Process("mvn install -DskipTests=true -DplatformDependenciesOnly=true", baseDirectory.value / "parent-module").!
+  val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
   status
 }
 
@@ -378,7 +384,7 @@ cleanUI := {
 }
 
 cleanModules := {
-  ybLog("Cleaning Node Agent...")
+  ybLog("Cleaning modules...")
   val status = Process("mvn clean", baseDirectory.value / "parent-module").!
   status
 }
@@ -443,9 +449,9 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b26"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.51-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b24"
+libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b3"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.55-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -460,7 +466,7 @@ dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 // SSO functionality only works on the older version of nimbusds.
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
-dependencyOverrides += "org.reflections" % "reflections" % "0.9.12"
+dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
 dependencyOverrides += "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2"
 dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0"
 

@@ -298,6 +298,7 @@ class YBClient::Data {
   void CreateCDCStream(YBClient* client,
                        const TableId& table_id,
                        const std::unordered_map<std::string, std::string>& options,
+                       cdc::StreamModeTransactional transactional,
                        CoarseTimePoint deadline,
                        CreateCDCStreamCallback callback);
 
@@ -305,6 +306,15 @@ class YBClient::Data {
                        const CDCStreamId& stream_id,
                        CoarseTimePoint deadline,
                        StatusCallback callback);
+
+  Status BootstrapProducer(
+      YBClient* client,
+      const YQLDatabase& db_type,
+      const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName>& pg_schema_names,
+      const std::vector<TableName>& table_names,
+      CoarseTimePoint deadline,
+      BootstrapProducerCallback callback);
 
   void GetCDCDBStreamInfo(YBClient *client,
     const std::string &db_stream_id,
@@ -382,6 +392,7 @@ class YBClient::Data {
   std::shared_ptr<master::MasterDclProxy> master_dcl_proxy() const;
   std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy() const;
   std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy() const;
+  std::shared_ptr<master::MasterEncryptionProxy> master_encryption_proxy() const;
 
   HostPort leader_master_hostport() const;
 
@@ -494,6 +505,7 @@ class YBClient::Data {
   std::shared_ptr<master::MasterDclProxy> master_dcl_proxy_;
   std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy_;
   std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy_;
+  std::shared_ptr<master::MasterEncryptionProxy> master_encryption_proxy_;
 
   // Ref-counted RPC instance: since 'SetMasterServerProxyAsync' call
   // is asynchronous, we need to hold a reference in this class

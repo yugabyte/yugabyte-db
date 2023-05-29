@@ -62,7 +62,7 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
   <li>
     <a href="nodejs/cloud-ysql-node/" class="orange">
       <i class="fa-brands fa-node-js"></i>
-      NodeJS
+      Node.js
     </a>
   </li>
 

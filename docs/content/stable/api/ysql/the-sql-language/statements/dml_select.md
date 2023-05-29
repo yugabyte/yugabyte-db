@@ -57,7 +57,7 @@ The `fn_over_window` rule denotes the special kind of `SELECT` list item that mu
 
 The `ordinary_aggregate_fn_invocation` rule and the `within_group_aggregate_fn_invocation` rule denote the special kinds of `SELECT` list item that are used to invoke an aggregate function (when it isn't invoked as a window function). When an aggregate function is invoked in either of these two ways, it's very common to do so in conjunction with the `GROUP BY` and `HAVING` clauses. All of this is explained in the [Aggregate function invocation—SQL syntax and semantics](../../../exprs/aggregate_functions/invocation-syntax-semantics/) section within the major section [Aggregate functions](../../../exprs/aggregate_functions/).
 
-When you understand the story of the invocation of these two kinds of functions from the accounts in the [Window functions](../../../exprs/window_functions/) section and the [Aggregate functions](../../../exprs/aggregate_functions/) section, you can use the `\df` metacommand in `ysqlsh` to discover the status of a particular function, thus:
+When you understand the story of the invocation of these two kinds of functions from the accounts in the [Window functions](../../../exprs/window_functions/) section and the [Aggregate functions](../../../exprs/aggregate_functions/) section, you can use the `\df` meta-command in `ysqlsh` to discover the status of a particular function, thus:
 
 ```
 \df row_number

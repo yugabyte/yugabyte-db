@@ -1,5 +1,5 @@
 ---
-title: Bulk import
+title: Bulk import YCQL
 headerTitle: Bulk import for YCQL
 linkTitle: Bulk import
 description: Import data from Apache Cassandra to YugabyteDB.

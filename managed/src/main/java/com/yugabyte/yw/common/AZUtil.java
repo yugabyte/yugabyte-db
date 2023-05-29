@@ -2,32 +2,48 @@
 
 package com.yugabyte.yw.common;
 
+import static org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.EXPECTATION_FAILED;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.core.http.rest.PagedResponse;
+import com.azure.core.util.BinaryData;
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobContainerClientBuilder;
 import com.azure.storage.blob.models.BlobItem;
 import com.azure.storage.blob.models.BlobStorageException;
 import com.azure.storage.blob.models.ListBlobsOptions;
+import com.azure.storage.blob.specialized.BlobInputStream;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
+import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
+import play.libs.Json;
 
 @Singleton
 @Slf4j
@@ -38,6 +54,14 @@ public class AZUtil implements CloudUtil {
   public static final String YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
 
   public static final String YBC_AZURE_STORAGE_END_POINT_FIELDNAME = "AZURE_STORAGE_END_POINT";
+
+  private static final String PRICING_JSON_URL =
+      "https://prices.azure.com/api/retail/prices?$filter=";
+
+  private static final String PRICE_QUERY =
+      "armRegionName eq '%s' and armSkuName eq '%s' and "
+          + "endsWith(productName, 'Series') and "
+          + "priceType eq 'Consumption' and contains(meterName, 'Spot')";
 
   public static String[] getSplitLocationValue(String backupLocation) {
     backupLocation = backupLocation.substring(8);
@@ -129,6 +153,14 @@ public class AZUtil implements CloudUtil {
             .containerName(container)
             .buildClient();
     return blobContainerClient;
+  }
+
+  public BlobContainerClient createBlobContainerClient(String sasToken, String location)
+      throws BlobStorageException {
+    String[] splitLocation = getSplitLocationValue(location);
+    String azureUrl = "https://" + splitLocation[0];
+    String container = splitLocation.length > 1 ? splitLocation[1] : "";
+    return createBlobContainerClient(azureUrl, sasToken, container);
   }
 
   @Override
@@ -229,6 +261,9 @@ public class AZUtil implements CloudUtil {
 
   private Map<String, String> createCredsMapYbc(String azureSasToken, String azureContainerUrl) {
     Map<String, String> azCredsMap = new HashMap<>();
+    if (!azureSasToken.startsWith("?")) {
+      azureSasToken = "?" + azureSasToken;
+    }
     azCredsMap.put(YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME, azureSasToken);
     azCredsMap.put(YBC_AZURE_STORAGE_END_POINT_FIELDNAME, azureContainerUrl);
     return azCredsMap;
@@ -252,5 +287,175 @@ public class AZUtil implements CloudUtil {
   public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
       throws Exception {
     throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "This method is not implemented yet");
+  }
+
+  /**
+   * Validates create and delete permissions on the azure configuration on default region and other
+   * regions, apart from other permissions if specified.
+   */
+  @Override
+  public void validate(CustomerConfigData configData, List<ExtraPermissionToValidate> permissions)
+      throws Exception {
+    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+    if (!StringUtils.isEmpty(azData.azureSasToken)) {
+      validateTokenAndLocation(azData.azureSasToken, azData.backupLocation, permissions);
+      if (CollectionUtils.isNotEmpty(azData.regionLocations)) {
+        azData.regionLocations.stream()
+            .forEach(
+                location -> {
+                  validateTokenAndLocation(location.azureSasToken, location.location, permissions);
+                });
+      }
+    } else {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Not carrying out Azure Storage Config validation because sas token is empty!");
+    }
+  }
+
+  /**
+   * Validates create permission on a BlobContainerClient, apart from read, list or delete
+   * permissions if specified.
+   */
+  public void validateOnBlobContainerClient(
+      BlobContainerClient blobContainerClient, List<ExtraPermissionToValidate> permissions) {
+    Optional<ExtraPermissionToValidate> unsupportedPermission =
+        permissions.stream()
+            .filter(
+                permission ->
+                    permission != ExtraPermissionToValidate.READ
+                        && permission != ExtraPermissionToValidate.LIST)
+            .findAny();
+
+    if (unsupportedPermission.isPresent()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Unsupported permission "
+              + unsupportedPermission.get().toString()
+              + " validation is not supported!");
+    }
+
+    String fileName = getRandomUUID().toString() + ".txt";
+    createDummyBlob(blobContainerClient, DUMMY_DATA, fileName);
+
+    if (permissions.contains(ExtraPermissionToValidate.READ)) {
+      validateReadBlob(fileName, DUMMY_DATA, blobContainerClient);
+    }
+
+    if (permissions.contains(ExtraPermissionToValidate.LIST)) {
+      validateListBlobs(blobContainerClient, fileName);
+    }
+
+    validateDelete(blobContainerClient, fileName);
+  }
+
+  /**
+   * Validates create permissions on an azure sas token and location, apart from read, list or
+   * delete permissions if specified.
+   */
+  private void validateTokenAndLocation(
+      String sasToken, String location, List<ExtraPermissionToValidate> permissions) {
+    BlobContainerClient blobContainerClient = createBlobContainerClient(sasToken, location);
+    validateOnBlobContainerClient(blobContainerClient, permissions);
+  }
+
+  /**
+   * Deletes the given fileName from the container. Checks absence of deleted blob via list
+   * operation in case list operation validation has already been done successfully. Throws
+   * exception in case anything fails, hence validating.
+   */
+  private void validateDelete(BlobContainerClient blobContainerClient, String fileName) {
+    blobContainerClient.getBlobClient(fileName).delete();
+    if (containsBlobWithName(blobContainerClient, fileName)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED, "Deleted blob \"" + fileName + "\" is still in the container");
+    }
+  }
+
+  /** Checks if the given fileName blob's existence can be verified via the list operation. */
+  private void validateListBlobs(BlobContainerClient blobContainerClient, String fileName) {
+    if (!listContainsBlobWithName(blobContainerClient, fileName)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED, "Created blob with name \"" + fileName + "\" not found in list.");
+    }
+  }
+
+  private boolean listContainsBlobWithName(
+      BlobContainerClient blobContainerClient, String fileName) {
+    Optional<BlobItem> blobItem =
+        StreamSupport.stream(blobContainerClient.listBlobs().spliterator(), true)
+            .filter(b -> b.getName().equals(fileName))
+            .findAny();
+    return blobItem.isPresent();
+  }
+
+  private boolean containsBlobWithName(BlobContainerClient blobContainerClient, String fileName) {
+    BlobClient blobClient = blobContainerClient.getBlobClient(fileName);
+    return blobClient.exists();
+  }
+
+  private String createDummyBlob(
+      BlobContainerClient blobContainerClient, String content, String dummyFileName) {
+    BlobClient blobClient = blobContainerClient.getBlobClient(dummyFileName);
+    blobClient.upload(BinaryData.fromString(content));
+    return dummyFileName;
+  }
+
+  private void validateReadBlob(
+      String fileName, String content, BlobContainerClient blobContainerClient) {
+    String readString = readBlob(blobContainerClient, fileName, content.getBytes().length);
+    if (!readString.equals(content)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Error reading test blob "
+              + fileName
+              + ", expected: \""
+              + content
+              + "\", got: \""
+              + readString
+              + "\"");
+    }
+  }
+
+  private String readBlob(
+      BlobContainerClient blobContainerClient, String fileName, int bytesToRead) {
+    BlobClient blobClient = blobContainerClient.getBlobClient(fileName);
+    BlobInputStream blobIS = blobClient.openInputStream();
+    byte[] data = new byte[bytesToRead];
+    try {
+      blobIS.read(data);
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Error reading test blob " + fileName + ", exception occurred: " + getStackTrace(e));
+    }
+    return new String(data);
+  }
+
+  public static Double getAzuSpotPrice(String region, String instanceType) {
+    try {
+      String query = String.format(PRICE_QUERY, region, instanceType);
+      query = URLEncoder.encode(query, StandardCharsets.UTF_8.toString());
+      URL url = new URL(PRICING_JSON_URL + query);
+      HttpURLConnection con = (HttpURLConnection) url.openConnection();
+      con.setRequestMethod("GET");
+      con.setRequestProperty("Accept-Charset", StandardCharsets.UTF_8.toString());
+      con.connect();
+      BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+      String inputLine;
+      StringBuffer content = new StringBuffer();
+      while ((inputLine = in.readLine()) != null) {
+        content.append(inputLine);
+      }
+      in.close();
+      JsonNode response = Json.mapper().readTree(content.toString());
+      Double spotPrice = response.findValue("retailPrice").asDouble();
+      log.info(
+          "AZU spot price for instance {} in region {} is {}", instanceType, region, spotPrice);
+      return spotPrice;
+    } catch (Exception e) {
+      log.error("Fetch Azure spot prices failed with error {}", e.getMessage());
+    }
+    return Double.NaN;
   }
 }

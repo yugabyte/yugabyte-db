@@ -69,10 +69,10 @@ import play.libs.Json;
 public class CommonUtils {
 
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
-  public static final String DEFAULT_YBC_DIR = "/tmp/yugabyte";
+  public static final String DEFAULT_YBC_DIR = "%s/yugabyte";
 
   private static final Pattern RELEASE_REGEX =
-      Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+).*$");
+      Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)(.+)?$");
 
   public static final String maskRegex = "(?<!^.?).(?!.?$)";
 
@@ -629,9 +629,16 @@ public class CommonUtils {
           actualRelease);
       return afterMatches;
     }
-    for (int i = 1; i < 5; i++) {
-      int thresholdPart = Integer.parseInt(thresholdMatcher.group(i));
-      int actualPart = Integer.parseInt(actualMatcher.group(i));
+    for (int i = 1; i < 6; i++) {
+      String thresholdPartStr = thresholdMatcher.group(i);
+      String actualPartStr = actualMatcher.group(i);
+      if (i == 5) {
+        // Build number.
+        thresholdPartStr = String.valueOf(convertBuildNumberForComparison(thresholdPartStr, true));
+        actualPartStr = String.valueOf(convertBuildNumberForComparison(actualPartStr, false));
+      }
+      int thresholdPart = Integer.parseInt(thresholdPartStr);
+      int actualPart = Integer.parseInt(actualPartStr);
       if (actualPart > thresholdPart) {
         return afterMatches;
       }
@@ -641,6 +648,20 @@ public class CommonUtils {
     }
     // Equal releases.
     return equalMatches;
+  }
+
+  private static int convertBuildNumberForComparison(String buildNumberStr, boolean threshold) {
+    if (StringUtils.isEmpty(buildNumberStr) || !buildNumberStr.startsWith("-b")) {
+      // Threshold without a build or with invalid build is treated as -b0,
+      // while actual build is custom build and is always treated as later build.
+      return threshold ? 0 : Integer.MAX_VALUE;
+    }
+    try {
+      return Integer.parseInt(buildNumberStr.substring(2));
+    } catch (Exception e) {
+      // Same logic as above.
+      return threshold ? 0 : Integer.MAX_VALUE;
+    }
   }
 
   @FunctionalInterface
@@ -665,25 +686,6 @@ public class CommonUtils {
       return Optional.of(annotation);
     }
     return isAnnotatedWith(clazz.getSuperclass(), annotationClass);
-  }
-
-  /**
-   * Prints the stack for called function
-   *
-   * @return printable string of stack information.
-   */
-  public static String getStackTraceHere() {
-    String rVal;
-    rVal = "***Stack trace Here****:\n";
-    StackTraceElement[] elements = Thread.currentThread().getStackTrace();
-    int depth = elements.length;
-    if (depth > 10) depth = 10; // limit stack trace length
-    for (int i = 2; i < depth; i++) {
-      StackTraceElement s = elements[i];
-      rVal += "\tat " + s.getClassName() + "." + s.getMethodName();
-      rVal += "(" + s.getFileName() + ":" + s.getLineNumber() + ")\n";
-    }
-    return rVal;
   }
 
   public static NodeDetails getARandomLiveTServer(Universe universe) {
@@ -718,16 +720,16 @@ public class CommonUtils {
    */
   public static String extractJsonisedSqlResponse(ShellResponse shellResponse) {
     String data = null;
-    if (shellResponse.message != null && !shellResponse.message.isEmpty()) {
-      Scanner scanner = new Scanner(shellResponse.message);
-      int i = 0;
-      while (scanner.hasNextLine()) {
-        data = scanner.nextLine();
-        if (i++ == 3) {
-          break;
+    if (StringUtils.isNotBlank(shellResponse.message)) {
+      try (Scanner scanner = new Scanner(shellResponse.message)) {
+        int i = 0;
+        while (scanner.hasNextLine()) {
+          data = scanner.nextLine();
+          if (i++ == 3) {
+            break;
+          }
         }
       }
-      scanner.close();
     }
     return data;
   }

@@ -33,6 +33,18 @@ patch_binary() {
   )
 }
 
+patch_library() {
+  if [[ $# -ne 1 ]]; then
+    echo >&2 "patch_binary expects exactly one argument, the shared library name to patch"
+    exit 1
+  fi
+  local f=$1
+  (
+    set -x;
+    "$patchelf_path" --set-rpath "$rpath" "$f";
+  )
+}
+
 # Use pwd -P to resolve any symlinks on the path. Otherwise the find command at the bottom of this
 # script will not actually find any files.
 bin_dir=$( cd "${BASH_SOURCE%/*}" && pwd -P )
@@ -99,9 +111,15 @@ if [[ $install_mode == "true" ]]; then
   done
 
   cd "$bin_dir/../postgres/bin"
-  for f in ${postgres_elf_names_to_patch}; do
+  for f in ${postgres_executable_names_to_patch}; do
     patch_binary "$f"
   done
+
+  cd "$bin_dir/../postgres/lib"
+  for f in ${postgres_lib_rel_paths_to_patch}; do
+    patch_library "$f"
+  done
+
 fi
 
 if [[ $ext_mode == "true" ]]; then
@@ -165,7 +183,8 @@ if [[ $install_mode == "true" ]]; then
   find "$distribution_dir" \( \
      -type f -and \
      -not -path "$distribution_dir/var/*" -and \
-     -not -name "post_install.sh" \
+     -not -name "post_install.sh" -and \
+     -not -name "yugabyted-ui" \
   \) -exec sed -i --binary "s%$ORIG_BREW_HOME%$BREW_HOME%g" {} \;
 
   touch "$completion_file"

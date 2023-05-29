@@ -38,9 +38,9 @@ METRIC_DEFINE_counter(tablet, log_bytes_logged, "Bytes Written to WAL",
                       yb::MetricUnit::kBytes,
                       "Number of bytes logged since service start");
 
-METRIC_DEFINE_counter(tablet, log_wal_size, "Size of WAL Files",
-                      yb::MetricUnit::kBytes,
-                      "Size of wal files");
+METRIC_DEFINE_gauge_uint64(tablet, log_wal_size, "Size of WAL Files",
+                           yb::MetricUnit::kBytes,
+                           "Size of wal files");
 
 METRIC_DEFINE_coarse_histogram(table, log_sync_latency, "Log Sync Latency",
                                yb::MetricUnit::kMicroseconds,
@@ -66,10 +66,11 @@ namespace yb {
 namespace log {
 
 #define MINIT(metric_entity, x) x(METRIC_log_##x.Instantiate(metric_entity))
+#define GINIT(metric_entity, x) x(METRIC_log_##x.Instantiate(metric_entity, 0))
 LogMetrics::LogMetrics(const scoped_refptr<MetricEntity>& table_metric_entity,
                        const scoped_refptr<MetricEntity>& tablet_metric_entity)
     : MINIT(tablet_metric_entity, bytes_logged),
-      MINIT(tablet_metric_entity, wal_size),
+      GINIT(tablet_metric_entity, wal_size),
       MINIT(table_metric_entity, sync_latency),
       MINIT(table_metric_entity, append_latency),
       MINIT(table_metric_entity, group_commit_latency),

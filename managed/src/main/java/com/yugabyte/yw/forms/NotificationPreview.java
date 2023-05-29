@@ -7,4 +7,6 @@ public class NotificationPreview {
 
   private String title;
   private String text;
+  private String highlightedTitle;
+  private String highlightedText;
 }

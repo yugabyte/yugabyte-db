@@ -207,11 +207,11 @@ DEFINE_UNKNOWN_int64(time_based_wal_gc_clock_delta_usec, 0,
              "skewed hybrid clock, because the clock used for time-based WAL GC is the wall clock, "
              "not hybrid clock.");
 
-DEFINE_UNKNOWN_int64(reuse_unclosed_segment_threshold, -1,
+DEFINE_UNKNOWN_int64(reuse_unclosed_segment_threshold_bytes, 512_KB,
             "If the last left in-progress segment size is smaller or equal to this threshold, "
-            "Log will reuse this last segment as writable active_segment at startup."
-            "Otherwise, Log will create a new segment. If the value is negative, it means"
-            "reuse unclosed segment feature is disabled");
+            "Log will reuse this last segment as writable active_segment at tablet bootstrap. "
+            "Otherwise, Log will create a new segment. If this threshold is negative, it means "
+            "WAL reuse feature is disabled");
 
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
@@ -958,15 +958,34 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
   int64_t file_size = read_entries.end_offset;
   // For now, we want to test reuse unclosed segment feature aggressively in debug builds.
   // Thus, by using IsDebug(), we can trigger this feature in most restart from a crash scenario.
-  int64_t reuse_unclosed_segment_threshold = FLAGS_reuse_unclosed_segment_threshold;
-  if (IsDebug() && reuse_unclosed_segment_threshold >= 0) {
-    reuse_unclosed_segment_threshold = max_segment_size_;
+  int64_t reuse_unclosed_segment_threshold_bytes = FLAGS_reuse_unclosed_segment_threshold_bytes;
+  if (IsDebug() && reuse_unclosed_segment_threshold_bytes >= 0) {
+    reuse_unclosed_segment_threshold_bytes = max_segment_size_;
   }
-  if (file_size > reuse_unclosed_segment_threshold) {
-    LOG(INFO) << "Fail to reuse " << recover_segment->path() << " as active_segment due to "
-              << "its actual file size is greater than reuse_unclosed_segment_threshold";
+  if (file_size > reuse_unclosed_segment_threshold_bytes) {
+    LOG(INFO) << "Cannot reuse last WAL segment " << recover_segment->path()
+              << " as active_segment due to its actual file size " << file_size
+              << " is greater than reuse threshold " << reuse_unclosed_segment_threshold_bytes;
     RETURN_NOT_OK(recover_segment->RebuildFooterByScanning(read_entries));
     return false;
+  }
+  next_segment_path_ = recover_segment->path();
+  auto opts = GetNewSegmentWritableFileOptions();
+  opts.mode = Env::OPEN_EXISTING;
+  opts.initial_offset = file_size;
+  // There are two reasons of why we want to set the initial offset:
+  // 1. Overwrite corrupted entry, because last entry in the segment is possible to be corrupted
+  //    under the case that server crashed in the middle of writing entry.
+  // 2. Before server crash, file might get preallocated to certain size.
+  //    This set intial offset option ensure we start with offset at last valid entry,
+  //    instead of at the end of preallocated block.
+  auto status = env_util::OpenFileForWrite(opts, get_env(), next_segment_path_,
+                                           &next_segment_file_);
+  if (!status.ok()) {
+      LOG(INFO) << "Cannot reuse last WAL segment " << next_segment_path_
+                << " as active_segment due to file could not be reopened: " << status.ToString();
+      RETURN_NOT_OK(recover_segment->RebuildFooterByScanning(read_entries));
+      return false;
   }
 
   uint64_t real_size = recover_segment->file_size();
@@ -989,18 +1008,6 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
     min_replicate_index_.store(footer_builder_.min_replicate_index(),
                                std::memory_order_release);
   }
-  next_segment_path_ = recover_segment->path();
-  auto opts = GetNewSegmentWritableFileOptions();
-  opts.mode = Env::OPEN_EXISTING;
-  opts.initial_offset = file_size;
-  // There are two reasons of why we want to set the initial offset:
-  // 1. Overwrite corrupted entry, because last entry in the segment is possible to be corrupted
-  //    under the case that server crashed in the middle of writing entry.
-  // 2. Before server crash, file might get preallocated to certain size.
-  //    This set intial offset option ensure we start with offset at last valid entry,
-  //    instead of at the end of preallocated block.
-  RETURN_NOT_OK(env_util::OpenFileForWrite(opts, get_env(), next_segment_path_,
-                                           &next_segment_file_));
   std::unique_ptr<WritableLogSegment> new_segment(
       new WritableLogSegment(next_segment_path_, next_segment_file_));
 
@@ -1012,7 +1019,6 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
     std::lock_guard<std::mutex> lock(active_segment_mutex_);
     active_segment_ = std::move(new_segment);
   }
-
   LOG(INFO) << "Successfully restored footer_builder_ and log_index_ for segment: "
             << recover_segment->path() << ". Reopen the file for write with starting offset: "
             << file_size;
@@ -1036,7 +1042,7 @@ Status Log::EnsureSegmentInitializedUnlocked() {
 
   bool reuse_last_segment = false;
   // For last segment that doesn't have a footer, if its file size (last readable offset)
-  // is within the reuse_unclosed_segment_threshold, we will reuse it as active_segment_.
+  // is within the reuse_unclosed_segment_threshold_bytes, we will reuse it as active_segment_.
   // Otherwise, close this segment by building a footer in memory.
   SegmentSequence segments;
   RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));

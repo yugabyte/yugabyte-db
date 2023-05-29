@@ -40,8 +40,11 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/client-test-util.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
@@ -205,7 +208,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       }
     }
 
-    Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()), 0);
+    Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()));
     qlexpr::QLRowBlock result(schema);
     auto data_buffer = ASSERT_RESULT(rpc.ExtractSidecar(0));
     auto data = data_buffer.AsSlice();
@@ -2002,6 +2005,68 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
     ASSERT_STR_CONTAINS(results[3], Substitute("term: $0 index: 5", leader_term));
     ASSERT_STR_CONTAINS(results[4], Substitute("term: $0 index: 6", leader_term));
   }
+}
+
+TEST_F(RaftConsensusITest, TestExpiredOperationWithSchemaChange) {
+  FLAGS_num_tablet_servers = 3;
+
+  vector<string> ts_flags = {
+    "--enable_leader_failure_detection=false"s,
+  };
+  vector<string> master_flags = {
+    "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
+    "--use_create_table_leader_hint=false"s,
+  };
+  ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
+
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
+
+  // Become leader.
+  ASSERT_OK(StartElection(tservers[0], tablet_id_, MonoDelta::FromSeconds(10)));
+  ASSERT_OK(WaitUntilLeader(tservers[0], tablet_id_, MonoDelta::FromSeconds(10)));
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 1));
+
+  // Make the the prepare thread to delay.
+  auto* const ts = cluster_->tablet_server(0);
+  ASSERT_OK(cluster_->SetFlag(ts, "TEST_block_prepare_batch", "true"));
+  // And the following write will also get delayed in prepare phase.
+  ASSERT_NOK(WriteSimpleTestRow(
+      tservers[0], tablet_id_, kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(2)));
+
+  LOG(INFO) << "Stepping down leader " << tservers[0];
+  // Step down and verify that leadership gracefully transitions to a new leader
+  // despite failure detection being disabled.
+  bool allow_graceful_leader_transfer = true;
+  ASSERT_OK(LeaderStepDown(
+      tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10),
+      !allow_graceful_leader_transfer));
+  TServerDetails* new_leader_ts = nullptr;
+  ASSERT_OK(
+      FindTabletLeader(tablet_servers_, tablet_id_, MonoDelta::FromSeconds(10), &new_leader_ts));
+  ASSERT_TRUE(new_leader_ts != nullptr);
+  LOG(INFO) << "Identified new leader " << new_leader_ts;
+
+  // Schema change.
+  client::YBTableName index_name(YQL_DATABASE_CQL, "test", "TestExpiredOperationWithSchemaChange");
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(index_name.namespace_name()));
+  auto client_schema = client::YBSchemaFromSchema(GetSimpleTestSchema());
+  client::TableHandle table;
+  ASSERT_OK(table.Open(kTableName, client_.get()));
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  ASSERT_OK(table_creator->table_name(index_name)
+      .table_type(client::YBTableType::YQL_TABLE_TYPE)
+      .indexed_table_id(table->id())
+      .schema(&client_schema)
+      .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
+      .timeout(MonoDelta::FromSeconds(10))
+      .wait(true)
+      .TEST_use_old_style_create_request()
+      .Create());
+
+  // The previous delayed write operation's term and schema version is less than the current.
+  // Because of smaller term, we expect WriteQuery::Finish() will skip CHECK on schema version.
+  ASSERT_OK(cluster_->SetFlag(ts, "TEST_block_prepare_batch", "false"));
+  SleepFor(MonoDelta::FromMilliseconds(1000));
 }
 
 TEST_F(RaftConsensusITest, TestLeaderStepDown) {

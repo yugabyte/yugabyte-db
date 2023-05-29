@@ -33,7 +33,6 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import play.Environment;
-import play.libs.Json;
 
 @Singleton
 @Slf4j
@@ -118,7 +117,7 @@ public class AlertChannelTemplateService {
         customerUUID);
   }
 
-  private void validate(AlertChannelTemplates templates) {
+  public void validate(AlertChannelTemplates templates) {
     beanValidator.validate(templates);
 
     AlertChannelParams.validateTemplateString(
@@ -157,14 +156,8 @@ public class AlertChannelTemplateService {
         for (String jsonVariablePattern : JSON_OBJECT_VARIABLE_PATTERNS) {
           jsonizedTemplate = jsonizedTemplate.replaceAll(jsonVariablePattern, "{}");
         }
-        try {
-          Json.parse(jsonizedTemplate);
-        } catch (Exception e) {
-          beanValidator
-              .error()
-              .forField("textTemplate", "Only JSON body is supported for WebHook template")
-              .throwError();
-        }
+        beanValidator.validateValidJson(
+            "textTemplate", jsonizedTemplate, "Only JSON body is supported for WebHook template");
       }
     }
   }

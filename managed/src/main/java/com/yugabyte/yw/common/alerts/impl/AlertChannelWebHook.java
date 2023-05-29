@@ -44,7 +44,7 @@ public class AlertChannelWebHook extends AlertChannelWebBase {
     AlertChannelWebHookParams params = (AlertChannelWebHookParams) channel.getParams();
     List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customer.getUuid());
     Context context = new Context(channel, channelTemplates, variables);
-    String text = getNotificationText(alert, context);
+    String text = getNotificationText(alert, context, false);
     JsonNode body = Json.parse(text);
 
     try {

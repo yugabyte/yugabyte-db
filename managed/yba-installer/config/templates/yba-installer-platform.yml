@@ -39,6 +39,15 @@ services:
             pg_dump_path="{{ .PgBin }}/pg_dump"
             pg_restore_path="{{ .PgBin }}/pg_restore"
             {{end}}
+
+            {{if eq (yamlPath "ybdb.install.enabled") "true" }}
+            username="yugabyte"
+            password=""
+            host="localhost"
+            port="{{ yamlPath "ybdb.install.port" }}"
+            dbname="yugaware"
+            {{end}}
+
             username=${?DB_USERNAME}
             password=${?DB_PASSWORD}
             driver="org.postgresql.Driver"
@@ -164,7 +173,7 @@ services:
       Group={{ yamlPath "service_username" }}
       Type=simple
 
-      Environment="JAVA_HOME={{ installVersionDir }}/jdk8u362-b09/"
+      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7/"
       Environment="YB_OIDC_SECRET={{ yamlPath "platform.ybOidcSecret" }}"
       Environment="PLATFORM_APP_SECRET={{ yamlPath "platform.appSecret" }}"
 

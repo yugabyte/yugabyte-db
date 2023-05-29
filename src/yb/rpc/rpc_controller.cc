@@ -148,5 +148,12 @@ CallResponsePtr RpcController::response() const {
   return CallResponsePtr(call_, &call_->call_response_);
 }
 
+Result<CallResponsePtr> RpcController::CheckedResponse() const {
+  if (status().ok()) {
+    return response();
+  }
+  return status();
+}
+
 } // namespace rpc
 } // namespace yb

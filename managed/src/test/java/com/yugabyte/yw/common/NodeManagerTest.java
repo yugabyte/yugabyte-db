@@ -279,9 +279,7 @@ public class NodeManagerTest extends FakeDBApplication {
     return getCertificatePaths(
         userIntent,
         configureParams,
-        configureParams.enableNodeToNodeEncrypt
-            || (configureParams.rootAndClientRootCASame
-                && configureParams.enableClientToNodeEncrypt),
+        configureParams.enableNodeToNodeEncrypt,
         configureParams.enableClientToNodeEncrypt,
         ybHomeDir);
   }
@@ -549,6 +547,7 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleLocalTemp)))
         .thenReturn("/tmp/ansible_tmp/");
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath))).thenReturn("/tmp");
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -1081,7 +1080,9 @@ public class NodeManagerTest extends FakeDBApplication {
 
         if (configureParams.type != Everything
             && configureParams.type != Software
-            && configureParams.type != Certs) {
+            && configureParams.type != Certs
+            && !(configureParams.type == ToggleTls
+                && configureParams.getProperty("taskSubType").equals("CopyCerts"))) {
           expectedCommand.add("--gflags");
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
           if (canConfigureYbc) {
@@ -1223,6 +1224,8 @@ public class NodeManagerTest extends FakeDBApplication {
     if (type == NodeManager.NodeCommandType.Create) {
       expectedCommand.add("--as_json");
     }
+    expectedCommand.add("--remote_tmp_dir");
+    expectedCommand.add("/tmp");
     expectedCommand.add(params.nodeName);
     return expectedCommand;
   }
@@ -1512,7 +1515,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 7;
+      int accessKeyIndexOffset = 9;
       if (t.cloudType.equals(Common.CloudType.aws)
           && params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
         accessKeyIndexOffset += 2;
@@ -1731,7 +1734,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 6;
+      int accessKeyIndexOffset = 8;
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyIndexOffset += 2;
         if (params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
@@ -1993,7 +1996,7 @@ public class NodeManagerTest extends FakeDBApplication {
               "/path/to/private.key",
               "--custom_ssh_port",
               "3333");
-      expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommand);
+      expectedCommand.addAll(expectedCommand.size() - 7, accessKeyCommand);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
@@ -3155,35 +3158,35 @@ public class NodeManagerTest extends FakeDBApplication {
       params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       params.rootCA = createUniverseWithCert(data, params);
+      params.deviceInfo = new DeviceInfo();
+      params.deviceInfo.mountPoints = "/fake/path/d0,/fake/path/d1";
       params.setClientRootCA(params.rootCA);
-      try {
-        reset(shellProcessHandler);
-        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-        List<String> expectedCommand = data.baseCommand;
-        expectedCommand.addAll(
-            nodeCommand(
-                NodeManager.NodeCommandType.Configure, params, data, userIntent, NODE_IPS[idx]));
-        reset(shellProcessHandler);
-        verify(shellProcessHandler, times(1)).run(captor.capture(), contextCaptor.capture());
-        contextCaptor
-            .getValue()
-            .getDescription()
-            .equals(
-                String.format(
-                    "bin/ybcloud.sh %s --region %s instance configure %s",
-                    data.region.getProvider().getName(),
-                    data.region.getCode(),
-                    data.node.getNodeName()));
-        List<String> actualCommand = captor.getValue();
-        int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
-        int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
-        expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
-        expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
-        assertEquals(expectedCommand, actualCommand);
-      } catch (RuntimeException re) {
-        // TODO: This test seems to be broken since PLAT-2131
-        assertNull(re.getMessage());
-      }
+      reset(shellProcessHandler);
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      List<String> expectedCommand = data.baseCommand;
+      expectedCommand.addAll(
+          nodeCommand(
+              NodeManager.NodeCommandType.Configure, params, data, userIntent, NODE_IPS[idx]));
+      verify(shellProcessHandler, times(1)).run(captor.capture(), contextCaptor.capture());
+      contextCaptor
+          .getValue()
+          .getDescription()
+          .equals(
+              String.format(
+                  "bin/ybcloud.sh %s --region %s instance configure %s",
+                  data.region.getProvider().getName(),
+                  data.region.getCode(),
+                  data.node.getNodeName()));
+      List<String> actualCommand = captor.getValue();
+      int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
+      int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
+      expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
+      expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
+      int clientCertPathIndex = expectedCommand.indexOf("--server_cert_path_client_to_server") + 1;
+      int clientKeyPathIndex = expectedCommand.indexOf("--server_key_path_client_to_server") + 1;
+      expectedCommand.set(clientCertPathIndex, actualCommand.get(clientCertPathIndex));
+      expectedCommand.set(clientKeyPathIndex, actualCommand.get(clientKeyPathIndex));
+      assertEquals(expectedCommand, actualCommand);
       idx++;
     }
   }
@@ -3663,7 +3666,7 @@ public class NodeManagerTest extends FakeDBApplication {
                   "/path/to/private.key"));
       accessKeyCommands.add("--custom_ssh_port");
       accessKeyCommands.add("3333");
-      expectedCommand.addAll(expectedCommand.size() - 1, accessKeyCommands);
+      expectedCommand.addAll(expectedCommand.size() - 3, accessKeyCommands);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.CronCheck, params);
       verify(shellProcessHandler, times(1))

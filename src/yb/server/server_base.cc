@@ -189,15 +189,18 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
     common_mem_trackers = std::make_unique<CommonMemTrackers>();
 
 #if defined(YB_GOOGLE_TCMALLOC)
-    RegisterTCMallocTracker("Thread Cache", "tcmalloc.thread_cache_free");
-    RegisterTCMallocTracker("Central Cache", "tcmalloc.central_cache_free");
-    RegisterTCMallocTracker("Transfer Cache", "tcmalloc.transfer_cache_free");
+    RegisterTCMallocTracker("Sum of CPU Cache Freelists", "tcmalloc.cpu_free");
+    RegisterTCMallocTracker("Central Cache Freelist", "tcmalloc.central_cache_free");
+    RegisterTCMallocTracker("Transfer Cache Freelist", "tcmalloc.transfer_cache_free");
+    RegisterTCMallocTracker("Sharded Transfer Cache Freelist",
+        "tcmalloc.sharded_transfer_cache_free");
 #else
-    RegisterTCMallocTracker("Thread Cache", "tcmalloc.thread_cache_free_bytes");
-    RegisterTCMallocTracker("Central Cache", "tcmalloc.central_cache_free_bytes");
-    RegisterTCMallocTracker("Transfer Cache", "tcmalloc.transfer_cache_free_bytes");
+    RegisterTCMallocTracker("Sum of Thread Cache Freelists", "tcmalloc.thread_cache_free_bytes");
+    RegisterTCMallocTracker("Central Cache Freelist", "tcmalloc.central_cache_free_bytes");
+    RegisterTCMallocTracker("Transfer Cache Freelist", "tcmalloc.transfer_cache_free_bytes");
 #endif
-    RegisterTCMallocTracker("PageHeap Free", "tcmalloc.pageheap_free_bytes");
+    RegisterTCMallocTracker("PageHeap Freelist (Mapped)", "tcmalloc.pageheap_free_bytes");
+    RegisterTCMallocTracker("PageHeap Freelist (Unmapped)", "tcmalloc.pageheap_unmapped_bytes");
 
     auto root = MemTracker::GetRootTracker();
     root->SetPollChildrenConsumptionFunctors([]() {

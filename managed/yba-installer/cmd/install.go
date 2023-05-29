@@ -8,6 +8,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight/checks"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
 )
 
@@ -35,7 +36,13 @@ var installCmd = &cobra.Command{
 		}
 
 		// Preflight checks
-		results := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
+		// TODO: Add preflight checks for ybdb.
+		var results *checks.MappedResults
+		if common.IsPostgresEnabled() {
+			results = preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
+		} else {
+			results = preflight.Run(preflight.InstallChecks, skippedPreflightChecks...)
+		}
 		// Only print results if we should fail.
 		if preflight.ShouldFail(results) {
 			preflight.PrintPreflightResults(results)
@@ -55,7 +62,7 @@ var installCmd = &cobra.Command{
 			log.Info("Completed installing component " + name)
 		}
 		if err := ybaCtl.Install(); err != nil {
-			log.Fatal("failed to install yba-ctl")
+			log.Fatal("failed to install yba-ctl: " + err.Error())
 		}
 		state := ybactlstate.New()
 		if err := ybactlstate.StoreState(state); err != nil {
@@ -64,8 +71,8 @@ var installCmd = &cobra.Command{
 		common.WaitForYBAReady()
 
 		var statuses []common.Status
-		for _, service := range services {
-			status, err := service.Status()
+		for _, name := range serviceOrder {
+			status, err := services[name].Status()
 			if err != nil {
 				log.Fatal("failed to get status: " + err.Error())
 			}

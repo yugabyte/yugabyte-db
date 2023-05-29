@@ -96,12 +96,14 @@ Result<boost::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTableReplic
   auto tablespace_id = VERIFY_RESULT(GetTablespaceForTable(table));
 
   if (!tablespace_id) {
+    VLOG(1) << "Tablespace not found for table " << table->id();
     return boost::none;
   }
 
   // Lookup the placement info associated with the above tablespace.
   const auto iter = tablespace_id_to_replication_info_map_->find(tablespace_id.value());
   if (iter == tablespace_id_to_replication_info_map_->end()) {
+    VLOG(1) << "Tablespace found for table " << table->id() << " but placement not found";
     return STATUS(InternalError, "Placement policy not found for " + tablespace_id.value());
   }
   return iter->second;

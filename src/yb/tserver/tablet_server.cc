@@ -50,6 +50,9 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/encryption/encrypted_file_factory.h"
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+#include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/universe_key_manager.h"
 
 #include "yb/fs/fs_manager.h"
@@ -203,6 +206,11 @@ DEFINE_RUNTIME_bool(xcluster_external_transactions_ignore_safe_time, false,
 TAG_FLAG(xcluster_external_transactions_ignore_safe_time, advanced);
 TAG_FLAG(xcluster_external_transactions_ignore_safe_time, unsafe);
 
+DEFINE_NON_RUNTIME_bool(allow_encryption_at_rest, true,
+                        "Whether or not to allow encryption at rest to be enabled. Toggling this "
+                        "flag does not turn on or off encryption at rest, but rather allows or "
+                        "disallows a user from enabling it on in the future.");
+
 namespace yb {
 namespace tserver {
 
@@ -348,14 +356,6 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   return Status::OK();
 }
 
-void TabletServer::SetUniverseKeys(const encryption::UniverseKeysPB& universe_keys) {
-  opts_.universe_key_manager->SetUniverseKeys(universe_keys);
-}
-
-void TabletServer::GetUniverseKeyRegistrySync() {
-  universe_key_client_->GetUniverseKeyRegistrySync();
-}
-
 Status TabletServer::Init() {
   CHECK(!initted_.load(std::memory_order_acquire));
 
@@ -373,6 +373,24 @@ Status TabletServer::Init() {
 
   heartbeater_ = CreateHeartbeater(opts_, this);
 
+  if (GetAtomicFlag(&FLAGS_allow_encryption_at_rest)) {
+    // Create the encrypted environment that will allow users to enable encryption.
+    std::vector<std::string> master_addresses;
+    for (const auto& list : *opts_.GetMasterAddresses()) {
+      for (const auto& hp : list) {
+        master_addresses.push_back(hp.ToString());
+      }
+    }
+    auto universe_key_registry =
+        VERIFY_RESULT(client::UniverseKeyClient::GetFullUniverseKeyRegistry(
+            options_.HostsString(), JoinStrings(master_addresses, ","), *fs_manager()));
+    universe_key_manager_ = std::make_unique<encryption::UniverseKeyManager>();
+    universe_key_manager_->SetUniverseKeyRegistry(universe_key_registry);
+    rocksdb_env_ = NewRocksDBEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get()));
+    fs_manager()->SetEncryptedEnv(
+        NewEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get())));
+  }
+
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     metrics_snapshotter_.reset(new MetricsSnapshotter(opts_, this));
   }
@@ -381,20 +399,6 @@ Status TabletServer::Init() {
     pg_table_mutation_count_sender_.reset(new TableMutationCountSender(this));
   }
 
-  std::vector<HostPort> hps;
-  for (const auto& master_addr_vector : *opts_.GetMasterAddresses()) {
-    for (const auto& master_addr : master_addr_vector) {
-      hps.push_back(master_addr);
-    }
-  }
-
-  universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
-      hps, proxy_cache_.get(), [&] (const encryption::UniverseKeysPB& universe_keys) {
-        opts_.universe_key_manager->SetUniverseKeys(universe_keys);
-  });
-  opts_.universe_key_manager->SetGetUniverseKeysCallback([&]() {
-    universe_key_client_->GetUniverseKeyRegistrySync();
-  });
   RETURN_NOT_OK_PREPEND(tablet_manager_->Init(),
                         "Could not init Tablet Manager");
 
@@ -708,11 +712,11 @@ Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
 }
 
 Env* TabletServer::GetEnv() {
-  return opts_.env;
+  return fs_manager()->encrypted_env();
 }
 
 rocksdb::Env* TabletServer::GetRocksDBEnv() {
-  return opts_.rocksdb_env;
+  return rocksdb_env_ ? rocksdb_env_.get() : rocksdb::Env::Default();
 }
 
 uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
@@ -1028,12 +1032,13 @@ XClusterConsumer* TabletServer::GetXClusterConsumer() const {
 }
 
 encryption::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
-  return opts_.universe_key_manager;
+  return universe_key_manager_.get();
 }
 
 Status TabletServer::SetUniverseKeyRegistry(
     const encryption::UniverseKeyRegistryPB& universe_key_registry) {
-  opts_.universe_key_manager->SetUniverseKeyRegistry(universe_key_registry);
+  SCHECK_NOTNULL(universe_key_manager_);
+  universe_key_manager_->SetUniverseKeyRegistry(universe_key_registry);
   return Status::OK();
 }
 

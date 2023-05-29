@@ -6,9 +6,12 @@
 
 #include "yb/common/jsonb.h"
 #include "yb/common/pgsql_protocol.messages.h"
-#include "yb/qlexpr/ql_bfunc.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+
+#include "yb/dockv/pg_row.h"
+
+#include "yb/qlexpr/ql_bfunc.h"
 
 #include "yb/util/result.h"
 
@@ -171,8 +174,8 @@ Status QLExprExecutor::ReadExprValue(const QLExpressionPB& ql_expr,
 
 //--------------------------------------------------------------------------------------------------
 
-template <class OpCode, class Expr>
-Result<QLValuePB> QLExprExecutor::EvalBFCall(const Expr& bfcall, const QLTableRow& table_row) {
+template <class OpCode, class Expr, class Row>
+Result<QLValuePB> QLExprExecutor::EvalBFCall(const Expr& bfcall, const Row& table_row) {
   // TODO(neil)
   // - Use TSOpode for collection expression if only TabletServer can execute.
   // OR
@@ -230,9 +233,9 @@ Status QLExprExecutor::EvalCondition(const QLConditionPB& condition,
   return Status::OK();
 }
 
-template <class Operands, class Res>
+template <class Operands, class Row, class Res>
 Result<bool> In(
-    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, Res* lhs) {
+    QLExprExecutor* executor, const Operands& operands, const Row& table_row, Res* lhs) {
   Res rhs(lhs);
   RETURN_NOT_OK(EvalOperands(executor, operands, table_row, lhs->Writer(), rhs.Writer()));
   for (const auto& rhs_elem : rhs.Value().list_value().elems()) {
@@ -270,9 +273,9 @@ Result<bool> In(
   return false;
 }
 
-template <class Operands, class Op, class Res>
+template <class Operands, class Row, class Op, class Res>
 Result<bool> EvalRelationalOp(
-    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, const Op& op,
+    QLExprExecutor* executor, const Operands& operands, const Row& table_row, const Op& op,
     Res* lhs) {
   Res rhs(lhs);
   RETURN_NOT_OK(EvalOperands(executor, operands, table_row, lhs->Writer(), rhs.Writer()));
@@ -282,9 +285,9 @@ Result<bool> EvalRelationalOp(
   return op(lhs->Value(), rhs.Value());
 }
 
-template<bool Value, class Operands, class Res>
+template<bool Value, class Operands, class Row, class Res>
 Result<bool> Is(
-  QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, Res* result) {
+  QLExprExecutor* executor, const Operands& operands, const Row& table_row, Res* result) {
   RETURN_NOT_OK(EvalOperands(executor, operands, table_row, result->Writer()));
   if (result->Value().value_case() != InternalType::kBoolValue) {
     return STATUS(RuntimeError, "not a bool value");
@@ -292,9 +295,9 @@ Result<bool> Is(
   return !IsNull(result->Value()) && result->Value().bool_value() == Value;
 }
 
-template<class Operands, class Res>
+template<class Operands, class Row, class Res>
 Result<bool> Between(
-  QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, Res* temp) {
+  QLExprExecutor* executor, const Operands& operands, const Row& table_row, Res* temp) {
   CHECK_EQ(operands.size(), 3);
   Res lower(temp), upper(temp);
   RETURN_NOT_OK(EvalOperands(
@@ -441,15 +444,15 @@ bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr) {
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
-                                const QLTableRow* table_row,
+                                const dockv::PgTableRow* table_row,
                                 QLExprResultWriter result_writer,
                                 const Schema *schema) {
   return DoEvalExpr(ql_expr, table_row, result_writer, schema);
 }
 
-template <class PB, class Writer>
+template <class PB, class Row, class Writer>
 Status QLExprExecutor::DoEvalExpr(const PB& ql_expr,
-                                  const QLTableRow* table_row,
+                                  const Row* table_row,
                                   Writer result_writer,
                                   const Schema *schema) {
   switch (ql_expr.expr_case()) {
@@ -484,7 +487,7 @@ Status QLExprExecutor::DoEvalExpr(const PB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::ReadExprValue(const PgsqlExpressionPB& ql_expr,
-                                     const QLTableRow& table_row,
+                                     const dockv::PgTableRow& table_row,
                                      QLExprResultWriter result_writer) {
   if (ql_expr.expr_case() == PgsqlExpressionPB::ExprCase::kTscall) {
     return ReadTSCallValue(ql_expr.tscall(), table_row, result_writer);
@@ -495,33 +498,25 @@ Status QLExprExecutor::ReadExprValue(const PgsqlExpressionPB& ql_expr,
 
 //--------------------------------------------------------------------------------------------------
 
-Status QLExprExecutor::EvalColumnRef(ColumnIdRep col_id,
-                                     const QLTableRow* table_row,
-                                     QLExprResultWriter result_writer) {
-  return DoEvalColumnRef(col_id, table_row, result_writer);
-}
-
-Status QLExprExecutor::EvalColumnRef(ColumnIdRep col_id,
-                                     const QLTableRow* table_row,
-                                     LWExprResultWriter result_writer) {
-  return DoEvalColumnRef(col_id, table_row, result_writer);
-}
-
-template <class Writer>
-Status QLExprExecutor::DoEvalColumnRef(
-    ColumnIdRep col_id, const QLTableRow* table_row, Writer result_writer) {
+template <class Row, class Writer>
+Status QLExprExecutor::EvalColumnRef(
+    ColumnIdRep col_id, const Row* table_row, Writer result_writer) {
   if (table_row == nullptr) {
     result_writer.SetNull();
-  } else {
-    RETURN_NOT_OK(table_row->ReadColumn(col_id, result_writer));
+    return Status::OK();
   }
-  return Status::OK();
+  if (col_id >= 0) {
+    result_writer.NewValue() = table_row->GetQLValuePB(col_id);
+    return Status::OK();
+  }
+
+  return GetSpecialColumn(col_id, &result_writer.NewValue());
 }
 
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
-                                  const QLTableRow& table_row,
+                                  const dockv::PgTableRow& table_row,
                                   QLValuePB *result,
                                   const Schema *schema) {
   SetNull(result);
@@ -529,7 +524,7 @@ Status QLExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
 }
 
 Status QLExprExecutor::ReadTSCallValue(const PgsqlBCallPB& ql_expr,
-                                       const QLTableRow& table_row,
+                                       const dockv::PgTableRow& table_row,
                                        QLExprResultWriter result_writer) {
   result_writer.SetNull();
   return STATUS(RuntimeError, "Only tablet server can execute this operator");
@@ -538,7 +533,7 @@ Status QLExprExecutor::ReadTSCallValue(const PgsqlBCallPB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
-                                     const QLTableRow& table_row,
+                                     const dockv::PgTableRow& table_row,
                                      bool* result) {
   QLValuePB result_pb;
   RETURN_NOT_OK(EvalCondition(condition, table_row, &result_pb));
@@ -546,9 +541,9 @@ Status QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
   return Status::OK();
 }
 
-template <class PB, class Value>
+template <class PB, class Row, class Value>
 Status QLExprExecutor::EvalCondition(
-    const PB& condition, const QLTableRow& table_row, Value* result) {
+    const PB& condition, const Row& table_row, Value* result) {
 #define QL_EVALUATE_RELATIONAL_OP(op) \
   result->set_bool_value(VERIFY_RESULT(EvalRelationalOp(this, operands, table_row, op, &temp))); \
   return Status::OK();
@@ -637,11 +632,11 @@ Status QLExprExecutor::EvalCondition(
       // DocRowwiseIterator and only when it exists. Therefore, the row exists if and only if
       // the row (value-map) is not empty.
     case QL_OP_EXISTS:
-      result->set_bool_value(!table_row.IsEmpty());
+      result->set_bool_value(table_row.Exists());
       return Status::OK();
 
     case QL_OP_NOT_EXISTS:
-      result->set_bool_value(table_row.IsEmpty());
+      result->set_bool_value(!table_row.Exists());
       return Status::OK();
 
     case QL_OP_IN:

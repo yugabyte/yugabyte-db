@@ -1,7 +1,7 @@
 ---
 title: Prepare the Google Cloud Platform (GCP) environment
-headerTitle: Prepare the Google Cloud Platform (GCP) environment
-linkTitle: Prepare the environment
+headerTitle: Cloud prerequisites - GCP
+linkTitle: Cloud prerequisites
 description: Prepare the Google Cloud Platform (GCP) environment
 menu:
   preview_yugabyte-platform:

@@ -36,6 +36,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
@@ -246,20 +247,20 @@ export const GCPProviderCreateForm = ({
           [ProviderCode.GCP]: {
             ...vpcConfig,
             ...gcpCredentials,
-            ybFirewallTags: formValues.ybFirewallTags
+            ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
           }
         },
         ntpServers: formValues.ntpServers,
         setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-        sshPort: formValues.sshPort,
-        sshUser: formValues.sshUser
+        ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+        ...(formValues.sshUser && { sshUser: formValues.sshUser })
       },
       regions: formValues.regions.map<GCPRegionMutation>((regionFormValues) => ({
         code: regionFormValues.code,
         details: {
           cloudInfo: {
             [ProviderCode.GCP]: {
-              ybImage: regionFormValues.ybImage
+              ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
             }
           }
         },
@@ -347,7 +348,7 @@ export const GCPProviderCreateForm = ({
     }
   ];
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
-  const isFormDisabled = formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const isFormDisabled = getIsFormDisabled(formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -451,6 +452,7 @@ export const GCPProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -474,7 +476,7 @@ export const GCPProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -553,7 +555,7 @@ export const GCPProviderCreateForm = ({
               btnText="Create Provider Configuration"
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
@@ -569,6 +571,8 @@ export const GCPProviderCreateForm = ({
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           configuredRegions={regions}
+          isEditProvider={false}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}

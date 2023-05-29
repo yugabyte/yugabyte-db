@@ -45,7 +45,7 @@ class ConsoleLoggingErrorHandler(object):
 
             if console_output:
                 timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-                out_file_path = f"/tmp/{args.search_pattern}-{timestamp}-console.log"
+                out_file_path = f"{args.remote_tmp_dir}/{args.search_pattern}-{timestamp}-console.log"
                 logging.warning(f"Dumping latest console output to {out_file_path}")
 
                 with open(out_file_path, 'a') as f:
@@ -88,6 +88,7 @@ class AbstractMethod(object):
         self.parser.add_argument("--connection_type", default=None, required=False)
         self.parser.add_argument("--architecture", required=False, help="Architecture for machine "
                                  + "image. Defaults to x86_64.", default="x86_64")
+        self.parser.add_argument("--remote_tmp_dir", default="/tmp")
 
     def preprocess_args(self, args):
         """Hook for pre-processing args before actually executing the callback. Useful for shared
@@ -99,6 +100,7 @@ class AbstractMethod(object):
         """Hook for setting up actual command execution.
         """
         logging.debug("...calling {}".format(self.name))
+        self.cloud.init(args)
         if self.need_validation:
             self.cloud.validate_credentials()
         self.cloud.init_cloud_api(args)
@@ -219,7 +221,8 @@ class AbstractInstancesMethod(AbstractMethod):
             "tags": args.tags,
             "skip_tags": args.skip_tags,
             "private_key_file": args.private_key_file,
-            "ssh2_enabled": args.ssh2_enabled
+            "ssh2_enabled": args.ssh2_enabled,
+            "remote_tmp_dir": args.remote_tmp_dir
         }
         if args.vars_file:
             updated_args["vars_file"] = args.vars_file
@@ -1362,7 +1365,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         args.itest_s3_package_path,
                         args.search_pattern, time.time() - start_time))
                 else:
-                    if copy_to_tmp(self.extra_vars, args.package):
+                    if copy_to_tmp(self.extra_vars, args.package, remote_tmp_dir=args.remote_tmp_dir):
                         raise YBOpsRecoverableError(
                             f"[app] Failed to copy package {args.package} to {args.search_pattern}")
 
@@ -1373,7 +1376,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 ybc_package_path = args.ybc_package
                 if os.path.isfile(ybc_package_path):
                     start_time = time.time()
-                    if copy_to_tmp(self.extra_vars, ybc_package_path):
+                    if copy_to_tmp(self.extra_vars, ybc_package_path, remote_tmp_dir=args.remote_tmp_dir):
                         raise YBOpsRecoverableError(f"[app] Failed to copy package "
                                                     f"{ybc_package_path} to {args.search_pattern}")
                     logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
@@ -1508,7 +1511,7 @@ class InitYSQLMethod(AbstractInstancesMethod):
                                     args.search_pattern))
         connect_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         logging.info("Initializing YSQL on Instance: {}".format(args.search_pattern))
-        self.cloud.initYSQL(args.master_addresses, connect_options)
+        self.cloud.initYSQL(args.master_addresses, connect_options, args)
 
 
 class ControlInstanceMethod(AbstractInstancesMethod):
@@ -1662,6 +1665,8 @@ class AbstractAccessMethod(AbstractMethod):
         self.parser.add_argument("--public_key_file", required=False, help="Public key filename.")
         self.parser.add_argument("--private_key_file", required=False, help="Private key filename.")
         self.parser.add_argument("--delete_remote", action="store_true", help="Delete from cloud.")
+        self.parser.add_argument("--skip_add_keypair_aws", action="store_true", default=False,
+                                 help="Skip Access Key Upload for AWS Region")
         self.parser.add_argument("--ignore_auth_failure", action="store_true",
                                  help="Ignore cloud auth failure.")
 
@@ -1851,7 +1856,7 @@ class RunHooks(AbstractInstancesMethod):
                                     args.execution_lang)
 
     def get_exec_command(self, args):
-        dest_path = os.path.join("/tmp", os.path.basename(args.hook_path))
+        dest_path = os.path.join(args.remote_tmp_dir, os.path.basename(args.hook_path))
         lang_command = args.execution_lang.lower()
 
         cmd = "sudo " if args.use_sudo else ""
@@ -1893,7 +1898,7 @@ class RunHooks(AbstractInstancesMethod):
         self.wait_for_host(args, use_default_ssh_port)
 
         # Copy the hook to the remote node
-        scp_result = copy_to_tmp(self.extra_vars, args.hook_path)
+        scp_result = copy_to_tmp(self.extra_vars, args.hook_path, remote_tmp_dir=args.remote_tmp_dir)
         if scp_result:
             raise YBOpsRuntimeError("Could not transfer hook to target node.")
 
@@ -1903,7 +1908,7 @@ class RunHooks(AbstractInstancesMethod):
             raise YBOpsRuntimeError("Failed running custom hook:\n" + ''.join(stderr))
 
         # Delete custom hook
-        remove_command = "rm " + os.path.join("/tmp", os.path.basename(args.hook_path))
+        remove_command = "rm " + os.path.join(args.remote_tmp_dir, os.path.basename(args.hook_path))
         rc, _, stderr = remote_exec_command(self.extra_vars, remove_command)
         if rc:
             logging.warn("Failed deleting custom hook:\n" + ''.join(stderr))

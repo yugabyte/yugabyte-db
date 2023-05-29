@@ -464,12 +464,14 @@ LINE 3:        lateral (select a, b, sum(v.x) from gstest_data(v.x) ...
 -- min max optimization should still work with GROUP BY ()
 explain (costs off)
   select min(unique1) from tenk1 GROUP BY ();
-       QUERY PLAN
--------------------------
- Aggregate
-   Group Key: ()
-   ->  Seq Scan on tenk1
-(3 rows)
+                         QUERY PLAN
+------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan using tenk1_unique1 on tenk1
+                 Index Cond: (unique1 IS NOT NULL)
+(5 rows)
 
 -- Views with GROUPING SET queries
 CREATE VIEW gstest_view AS select a, b, grouping(a,b), sum(c), count(*), max(c)

@@ -615,7 +615,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			Relids outer_relids =
 				bms_difference(rinfo->required_relids, inner_relids);
 			RestrictInfo *tmp_batched =
-				get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
+				yb_get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
 
 			/* Disabling batching the same inner attno twice for now. */
 			if (tmp_batched)
@@ -676,7 +676,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	{
 		RestrictInfo *rinfo = lfirst(lc);
 		RestrictInfo *batched =
-			get_batched_restrictinfo(rinfo,
+			yb_get_batched_restrictinfo(rinfo,
 									 batchedrelids,
 									 index->rel->relids);
 		if (!bms_is_subset(batched_and_inner_relids, rinfo->clause_relids))
@@ -2415,6 +2415,55 @@ static bool is_yb_hash_code_call(Node *clause)
 				&& (((FuncExpr *) clause)->funcid == YB_HASH_CODE_OID);
 }
 
+
+/*
+ * yb_hash_code_call_matches_indexcol
+ * 	  Returns true if the index is on yb_hash_code(a, b, ...) and this index column is
+ *	  a matching yb_hash_code(a, b, ...) clause.
+ */
+static bool
+yb_hash_code_call_matches_indexcol(Node *yb_hash_code_clause,
+								   IndexOptInfo *index,
+								   int indexcol)
+{
+	if (!index->indexprs)
+		return false;
+	int			pos;
+	ListCell   *indexpr_item;
+
+	/* Iterate over each column of the index until the column of interest. */
+	indexpr_item = list_head(index->indexprs);
+	for (pos = 0; pos <= indexcol; pos++)
+	{
+		if (index->indexkeys[pos] == 0)
+		{
+			/* The index column refers to the next expression of indexprs. */
+			Node	   *indexkey;
+
+			if (indexpr_item == NULL)
+			{
+				elog(WARNING, "too few entries in indexprs list");
+				return false;
+			}
+
+			if (pos == indexcol)
+			{
+				indexkey = (Node *) lfirst(indexpr_item);
+				if (indexkey && IsA(indexkey, RelabelType))
+						indexkey = (Node *) ((RelabelType *) indexkey)->arg;
+				if (equal(yb_hash_code_clause, indexkey))
+				{
+					return true;
+				}
+			}
+
+			indexpr_item = lnext(indexpr_item);
+		}
+	}
+
+	return false;
+}
+
 /*
  * match_clause_to_indexcol()
  *	  Determines whether a restriction clause matches a column of an index.
@@ -2552,8 +2601,8 @@ match_clause_to_indexcol(IndexOptInfo *index,
 		if (!nt->argisrow &&
 			match_index_to_operand((Node *) nt->arg, indexcol, index)) {
 				/* Cannot push down IS NOT NULL on hash columns in LSM Index */
-				if (IsYBRelationById(index->indexoid) && 
-				    nt->nulltesttype == IS_NOT_NULL && 
+				if (IsYBRelationById(index->indexoid) &&
+				    nt->nulltesttype == IS_NOT_NULL &&
 					is_hash_column_in_lsm_index(index, indexcol))
 					return false;
 				return true;
@@ -2571,14 +2620,20 @@ match_clause_to_indexcol(IndexOptInfo *index,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
-		if (is_yb_hash_code_call(leftop)) {
-				return is_indexable_operator(expr_op,
-							INTEGER_LSM_FAM_OID, true)
-						&& is_opclause(clause);
+		/*
+		 * Do not use the yb_hash_code special case if we have an applicable
+		 * functional index on yb_hash_code. For example, if the call is an
+		 * index on yb_hash_code(x, y) and the clause is yb_hash_code(x, y),
+		 * we will take the typical index path.
+		 */
+		if (is_yb_hash_code_call(leftop) &&
+			!yb_hash_code_call_matches_indexcol(leftop, index, indexcol)) {
+			return is_indexable_operator(expr_op, INTEGER_LSM_FAM_OID, true)
+				&& is_opclause(clause);
 		}
 
 		/*
-		 * If the column in the filter clause is part of the hash key for this 
+		 * If the column in the filter clause is part of the hash key for this
 		 * index and the clause uses an inequality operator, then index scan
 		 * cannot be used. This is because a hash index is sorted by the hash
 		 * value and not by the value of the column. #13241
@@ -2610,14 +2665,20 @@ match_clause_to_indexcol(IndexOptInfo *index,
 		!bms_is_member(index_relid, left_relids) &&
 		!contain_volatile_functions(leftop))
 	{
-		if (is_yb_hash_code_call(rightop)) {
-				return is_indexable_operator(expr_op,
-							INTEGER_LSM_FAM_OID, true)
-						&& is_opclause(clause);
+		/*
+		 * Do not use the yb_hash_code special case if we have an applicable
+		 * functional index on yb_hash_code. For example, if the call is an
+		 * index on yb_hash_code(x, y) and the clause is yb_hash_code(x, y),
+		 * we will take the typical index path.
+		 */
+		if (is_yb_hash_code_call(rightop) &&
+			!yb_hash_code_call_matches_indexcol(rightop, index, indexcol)) {
+			return is_indexable_operator(expr_op, INTEGER_LSM_FAM_OID, false)
+				&& is_opclause(clause);
 		}
 
 		/*
-		 * If the column in the filter clause is part of the hash key for this 
+		 * If the column in the filter clause is part of the hash key for this
 		 * index and the clause uses an inequality operator, then index scan
 		 * cannot be used. This is because a hash index is sorted by the hash
 		 * value and not by the value of the column. #13241
@@ -3510,7 +3571,7 @@ match_index_to_operand(Node *operand,
 		/*
 		 * Simple index column; operand must be a matching Var
 		 */
-		
+
 		Var *operand_var = NULL;
 		if (operand && IsA(operand, Var))
 			operand_var = (Var *) operand;
@@ -4634,8 +4695,8 @@ string_to_const(const char *str, Oid datatype)
 					 conval, false, false);
 }
 
-static bool 
-is_hash_column_in_lsm_index(const IndexOptInfo* index, int columnIndex) 
+static bool
+is_hash_column_in_lsm_index(const IndexOptInfo* index, int columnIndex)
 {
 	return (index->relam == LSM_AM_OID && columnIndex < index->nhashcolumns);
 }

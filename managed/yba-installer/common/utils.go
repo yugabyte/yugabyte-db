@@ -35,6 +35,8 @@ const Systemctl string = "systemctl"
 
 const PostgresPackageGlob = "yba_installer-*linux*/postgres-linux-*.tar.gz"
 
+const ybdbPackageGlob = "yba_installer-*linux*/yugabyte-*-linux-x86_64.tar.gz"
+
 var skipConfirmation = false
 
 var yumList = []string{"RedHat", "CentOS", "Oracle", "Alma", "Amazon"}
@@ -45,7 +47,7 @@ const GoBinaryName = "yba-ctl"
 
 const versionMetadataJSON = "version_metadata.json"
 
-const javaBinaryGlob = "yba_installer-*linux*/OpenJDK8U-jdk_x64_linux_*.tar.gz"
+const javaBinaryGlob = "yba_installer-*linux*/OpenJDK17U-jdk_x64_linux_*.tar.gz"
 
 const tarTemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
 
@@ -143,8 +145,8 @@ func HasSudoAccess() bool {
 // Create a file at a relative path for the non-root case. Have to make the directory before
 // inserting the file in that directory.
 func Create(p string) (*os.File, error) {
+	log.Debug("creating file (and parent directories) " + p)
 	if err := MkdirAll(filepath.Dir(p), 0777); err != nil {
-		log.Fatal(fmt.Sprintf("Error creating %s. Failed with %s", p, err.Error()))
 		return nil, err
 	}
 	return os.Create(p)
@@ -273,6 +275,20 @@ func InitViper() {
 	}
 	viper.SetConfigFile(InputFile())
 	viper.ReadInConfig()
+
+	//Enable ybdb only when YBA_MODE = dev and USE_YBDB = 1 in the env.
+	if !IsPostgresEnabled() && os.Getenv("YBA_MODE") == "dev" && os.Getenv("USE_YBDB") == "1" {
+		//TODO: Move this control to yba-ctl.yml eventually.
+		viper.Set("ybdb.install.enabled", true)
+		viper.Set("ybdb.install.port", 5433)
+		viper.Set("ybdb.install.restartSeconds", 10)
+		viper.Set("ybdb.install.read_committed_isolation", true)
+	}
+}
+
+//Checks if Postgres is enabled in config.
+func IsPostgresEnabled() bool {
+	return viper.GetBool("postgres.install.enabled") || viper.GetBool("postgres.useExisting.enabled")
 }
 
 func GetBinaryDir() string {
@@ -482,18 +498,18 @@ func GuessPrimaryIP() string {
 	return localAddr.IP.String()
 }
 
-func GetFileMatchingGlob(glob string) (string, error) {
+func GetFileMatchingGlob(glob string) (string, int, error) {
 	matches, err := filepath.Glob(glob)
 	if err != nil || len(matches) != 1 {
-		return "", fmt.Errorf(
+		return "", len(matches), fmt.Errorf(
 			"Expect to find one match for glob %s (err %s, matches %v)",
 			glob, err, matches)
 	}
-	return matches[0], nil
+	return matches[0], 1, nil
 }
 
 func GetFileMatchingGlobOrFatal(glob string) string {
-	result, err := GetFileMatchingGlob(glob)
+	result, _, err := GetFileMatchingGlob(glob)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -537,7 +553,7 @@ func GetPostgresConnection(dbname string) (*sql.DB, string, error) {
 	log.Debug(fmt.Sprintf("Attempting to connect to db with conn str %s", nonPwdConnStr))
 	// add pwd later so we don't log it above
 	if pwd != "" {
-		connStr = nonPwdConnStr + fmt.Sprintf(" password='%s'")
+		connStr = nonPwdConnStr + fmt.Sprintf(" password='%s'", pwd)
 	} else {
 		connStr = nonPwdConnStr
 	}

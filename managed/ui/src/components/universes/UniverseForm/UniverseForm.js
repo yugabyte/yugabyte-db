@@ -46,7 +46,6 @@ const initialState = {
 
 const DEFAULT_SUBMIT_TIMEOUT = 5000;
 const TASK_REFETCH_DELAY = 2000;
-const TOAST_DISMISS_TIME_MS = 3000;
 
 class UniverseForm extends Component {
   static propTypes = {
@@ -144,9 +143,7 @@ class UniverseForm extends Component {
         const responseData = response?.payload?.data;
         if (responseData) {
           this.transitionToDefaultRoute(responseData.universeUUID);
-          toast.success(`Creating universe "${responseData.name}"`, {
-            autoClose: TOAST_DISMISS_TIME_MS
-          });
+          toast.success(`Creating universe "${responseData.name}"`);
         }
       });
     } else if (type === 'Async') {

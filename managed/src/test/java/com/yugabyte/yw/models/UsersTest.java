@@ -18,7 +18,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -148,5 +148,16 @@ public class UsersTest extends FakeDBApplication {
     JsonNode json = Json.toJson(u);
     assertEquals(false, json.has("passwordHash"));
     assertEquals(false, json.has("apiToken"));
+  }
+
+  @Test
+  public void testRoleUnion() {
+    Role[] roles = {null, Role.ReadOnly, Role.BackupAdmin, Role.Admin, Role.SuperAdmin};
+
+    for (int i = 0; i < roles.length; i++) {
+      for (int j = 0; j < roles.length; j++) {
+        assertEquals(Role.union(roles[i], roles[j]), roles[i > j ? i : j]);
+      }
+    }
   }
 }

@@ -16,20 +16,22 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/dockv/partition.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-#include "yb/common/ybc_util.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/qlexpr/doc_scanspec_util.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/primitive_value_util.h"
+
+#include "yb/qlexpr/doc_scanspec_util.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
-
-#include "yb/util/scope_exit.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 namespace yb {
 namespace pggate {
@@ -91,6 +93,8 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
   req->clear_backfill_spec();
 
   if (paging_state.has_read_time()) {
+    VLOG(4) << "Setting read time for next request: "
+            << paging_state.read_time().ShortDebugString();
     read_op->set_read_time(ReadHybridTime::FromPB(paging_state.read_time()));
   }
 

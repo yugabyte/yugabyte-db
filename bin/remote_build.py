@@ -26,8 +26,8 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'python'))  # noqa
 
 
-from yb import remote
-from yb.common_util import init_logging
+from yugabyte import remote
+from yugabyte.common_util import init_logging
 
 
 def add_extra_yb_build_args(yb_build_args: List[str], extra_args: List[str]) -> List[str]:

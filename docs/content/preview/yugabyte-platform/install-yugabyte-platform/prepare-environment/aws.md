@@ -1,7 +1,7 @@
 ---
 title: Prepare the Amazon Web Services (AWS) cloud environment
-headerTitle: Prepare the Amazon Web Services (AWS) cloud environment
-linkTitle: Prepare the environment
+headerTitle: Cloud prerequisites - AWS
+linkTitle: Cloud prerequisites
 description: Prepare the Amazon Web Services (AWS) environment for YugabyteDB Anywhere.
 menu:
   preview_yugabyte-platform:
@@ -161,7 +161,8 @@ In order for YugabyteDB Anywhere to manage YugabyteDB nodes, limited access to y
 You need to create an instance to run the YugabyteDB Anywhere server. To do this, navigate to **EC2 > Instances**, click **Launch Instance**, and enter the following values:
 
 - Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration:
-![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
+
+  ![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
 
 - Select c5.xlarge as the instance type (4 vCPUs are recommended for production).
 
@@ -214,10 +215,3 @@ aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-resp
 ```
 
 For more information, see [Configure the instance metadata service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html).
-
-When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/), you need to complete the following fields in the **Configs > Cloud Provider Configuration > AWS** page of the YugabyteDB Anywhere UI:
-
-- Set the **Credential Type** field to Use IAM Role on instance.
-- Set the **VPC Setup** field to Create a new VPC.
-- Add **US West 1** as a region.
-- Click **Save**.

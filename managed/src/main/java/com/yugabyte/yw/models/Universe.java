@@ -26,7 +26,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -75,6 +75,7 @@ public class Universe extends Model {
   public static final String HELM2_LEGACY = "helm2Legacy";
   public static final String DUAL_NET_LEGACY = "dualNetLegacy";
   public static final String USE_CUSTOM_IMAGE = "useCustomImage";
+  public static final String IS_MULTIREGION = "isMultiRegion";
   // Flag for whether we have https on for master/tserver UI
   public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
 
@@ -92,8 +93,7 @@ public class Universe extends Model {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Universe UUID: %s doesn't belong " + "to Customer UUID: %s",
-              universeUUID, customer.getUuid()));
+              "Universe %s doesn't belong to Customer %s", universeUUID, customer.getUuid()));
     }
     return universe;
   }
@@ -373,7 +373,7 @@ public class Universe extends Model {
             "select universe_details_json::jsonb->>'%s' as field from universe"
                 + " where universe_uuid = :universeUUID",
             fieldName);
-    SqlQuery sqlQuery = Ebean.createSqlQuery(query);
+    SqlQuery sqlQuery = DB.sqlQuery(query);
     sqlQuery.setParameter("universeUUID", universeUUID);
     return sqlQuery.findOneOrEmpty().map(row -> clazz.cast(row.get("field")));
   }
@@ -382,15 +382,20 @@ public class Universe extends Model {
    * Find a single attribute from universe_details_json column of all Universe records.
    *
    * @param clazz the attribute type.
+   * @param customerId the customer ID primary key.
    * @param fieldName the name of the field.
    * @return the attribute values for all universes.
    */
-  public static <T> Map<UUID, T> getUniverseDetailsFields(Class<T> clazz, String fieldName) {
+  public static <T> Map<UUID, T> getUniverseDetailsFields(
+      Class<T> clazz, Long customerId, String fieldName) {
     String query =
         String.format(
-            "select universe_uuid, universe_details_json::jsonb->>'%s' as field from universe",
+            "select universe_uuid, universe_details_json::jsonb->>'%s' as field from universe"
+                + " where customer_id = :customerId",
             fieldName);
-    return Ebean.createSqlQuery(query).findList().stream()
+    SqlQuery sqlQuery = DB.sqlQuery(query);
+    sqlQuery.setParameter("customerId", customerId);
+    return sqlQuery.findList().stream()
         .filter(r -> r.get("field") != null && clazz.isAssignableFrom(r.get("field").getClass()))
         .collect(
             Collectors.toMap(r -> (UUID) r.get("universe_uuid"), r -> clazz.cast(r.get("field"))));
@@ -1076,5 +1081,13 @@ public class Universe extends Model {
     return isNodeUIHttpsEnabled
         && enableNodeToNodeEncrypt
         && (Util.compareYbVersions(ybSoftwareVersion, "2.17.1.0-b13", true) > 0);
+  }
+
+  public Optional<TaskInfo> maybeGetLastTaskInfo() {
+    if (getUniverseDetails().updatingTaskUUID != null
+        && getUniverseDetails().updatingTask != null) {
+      return TaskInfo.maybeGet(getUniverseDetails().updatingTaskUUID);
+    }
+    return Optional.empty();
   }
 }

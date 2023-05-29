@@ -112,7 +112,7 @@ submodules/
 .netlify/
 
 *.log
-!python/yb/test_data/org_yb_pgsql_TestDropTableWithConcurrentTxn_testDmlTxnDrop_1pct_sample.log
+!python/yugabyte/test_data/org_yb_pgsql_TestDropTableWithConcurrentTxn_testDmlTxnDrop_1pct_sample.log
 
 managed/yba-installer/bin/yba-ctl
 managed/yba-installer/yba-ctl

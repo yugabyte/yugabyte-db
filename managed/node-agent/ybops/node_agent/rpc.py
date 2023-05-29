@@ -138,7 +138,6 @@ class RpcClient(object):
                     output.stdout = response.output if output.stdout is None \
                         else output.stdout + response.output
         except Exception as e:
-            traceback.print_exc()
             output.rc = 1
             output.stderr = str(e)
         return output
@@ -189,7 +188,6 @@ class RpcClient(object):
                         continue
                     raise e
         except Exception as e:
-            traceback.print_exc()
             self.abort_task(task_id, **kwargs)
             output.rc = 1
             output.stderr = str(e)
@@ -233,7 +231,6 @@ class RpcClient(object):
                         continue
                     raise e
         except Exception as e:
-            traceback.print_exc()
             self.abort_task(task_id, **kwargs)
             output.rc = 1
             output.stderr = str(e)

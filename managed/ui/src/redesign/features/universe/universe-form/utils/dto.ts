@@ -128,6 +128,7 @@ export interface UserIntent {
   enableIPV6?: boolean;
   ybcPackagePath?: string | null;
   instanceTags?: Record<string, string>;
+  specificGFlags?: Record<string, any>;
   masterGFlags?: Record<string, any>;
   tserverGFlags?: Record<string, any>;
   universeOverrides?: string;
@@ -208,6 +209,7 @@ export interface UniverseDetails {
   userAZSelected: boolean;
   enableYbc: boolean;
   updateOptions: string[];
+  useSpotInstance: boolean;
 }
 
 export type UniverseConfigure = Partial<UniverseDetails>;
@@ -508,6 +510,7 @@ export interface Gflag {
   Name: string;
   MASTER?: string | boolean | number;
   TSERVER?: string | boolean | number;
+  tags?: string;
 }
 
 export interface UniverseFormData {
@@ -516,6 +519,7 @@ export interface UniverseFormData {
   advancedConfig: AdvancedConfigFormValue;
   instanceTags: InstanceTags;
   gFlags: Gflag[];
+  inheritFlagsFromPrimary?: boolean;
   universeOverrides?: string;
   azOverrides?: Record<string, string>;
 }
@@ -600,6 +604,7 @@ export const DEFAULT_FORM_DATA: UniverseFormData = {
   advancedConfig: DEFAULT_ADVANCED_CONFIG,
   instanceTags: DEFAULT_USER_TAGS,
   gFlags: DEFAULT_GFLAGS,
+  inheritFlagsFromPrimary: true,
   universeOverrides: DEFAULT_UNIVERSE_OVERRIDES,
   azOverrides: DEFAULT_AZ_OVERRIDES
 };

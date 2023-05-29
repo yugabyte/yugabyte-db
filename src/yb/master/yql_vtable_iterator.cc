@@ -33,6 +33,10 @@ YQLVTableIterator::YQLVTableIterator(
   Advance(false /* increment */);
 }
 
+Result<bool> YQLVTableIterator::PgFetchNext(dockv::PgTableRow* table_row) {
+  return STATUS_FORMAT(NotSupported, "$0 on system table", __func__);
+}
+
 Result<bool> YQLVTableIterator::DoFetchNext(
     qlexpr::QLTableRow* table_row,
     const dockv::ReaderProjection* projection,

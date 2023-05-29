@@ -16,7 +16,7 @@
 
 #include <stdint.h>
 
-#include "yb/common/ybc_util.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #ifdef __cplusplus
@@ -404,6 +404,7 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle,
                                    YBCPgExpr lhs,
                                    int n_attr_values,
                                    YBCPgExpr *attr_values);
+YBCStatus YBCPgDmlBindColumnCondIsNotNull(YBCPgStatement handle, int attr_num);
 
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 

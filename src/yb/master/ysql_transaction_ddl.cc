@@ -128,7 +128,7 @@ YsqlTransactionDdl::GetPgCatalogTableScanIterator(const PgTableReadData& read_da
   const dockv::KeyEntryValues empty_key_components;
   docdb::DocPgsqlScanSpec spec(
       read_data.schema(), rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-      &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+      &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
   RETURN_NOT_OK(iter->Init(spec));
   return iter;
 }
@@ -159,14 +159,16 @@ void YsqlTransactionDdl::VerifyTransaction(
       pointer_cast<const char*>(transaction_metadata.transaction_id.data()),
       transaction_metadata.transaction_id.size());
 
-  auto rpc_handle = rpcs_.Prepare();
-  if (rpc_handle == rpcs_.InvalidHandle()) {
-    LOG(WARNING) << "Shutting down. Cannot send GetTransactionStatus: " << transaction_metadata;
-    return;
-  }
   auto client = client_future_.get();
   if (!client) {
     LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << transaction_metadata;
+    return;
+  }
+  // Prepare the rpc after checking if it is shutting down in case it returns because of
+  // client is null and leave the reserved rpc as uninitialized.
+  auto rpc_handle = rpcs_.Prepare();
+  if (rpc_handle == rpcs_.InvalidHandle()) {
+    LOG(WARNING) << "Shutting down. Cannot send GetTransactionStatus: " << transaction_metadata;
     return;
   }
   // We need to query the TransactionCoordinator here.  Can't use TransactionStatusResolver in

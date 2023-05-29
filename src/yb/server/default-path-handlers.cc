@@ -89,6 +89,9 @@ DEFINE_RUNTIME_uint64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");
 TAG_FLAG(web_log_bytes, advanced);
 
+DEFINE_RUNTIME_bool(export_help_and_type_in_prometheus_metrics, true,
+    "Include #TYPE and #HELP in promethus metrics output");
+
 DECLARE_int32(max_tables_metrics_breakdowns);
 DECLARE_bool(TEST_mini_cluster_mode);
 
@@ -454,7 +457,7 @@ bool ParseEntityOptions(const std::string& entity_prefix,
 
 static void ParseRequestOptions(const Webserver::WebRequest& req,
                                 MeticEntitiesOptions *entities_options,
-                                MetricPrometheusOptions *promethus_opts,
+                                MetricPrometheusOptions *prometheus_opts,
                                 MetricJsonOptions *json_opts = nullptr,
                                 JsonWriter::Mode *json_mode = nullptr) {
   if (entities_options) {
@@ -484,13 +487,13 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
     SetParsedValue(&json_opts->level, MetricLevelFromName(arg));
   }
 
-  if (promethus_opts) {
+  if (prometheus_opts) {
     arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
-    promethus_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
+    prometheus_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
 
-    SetParsedValue(&promethus_opts->level,
+    SetParsedValue(&prometheus_opts->level,
                    MetricLevelFromName(FindWithDefault(req.parsed_args, "level", "debug")));
-    promethus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
+    prometheus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
       "max_tables_metrics_breakdowns", std::to_string(FLAGS_max_tables_metrics_breakdowns)));
   }
 
@@ -538,8 +541,12 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
     }
     entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
   }
+
+  ExportHelpAndType export_help_and_type_in_prometheus_metrics(
+      GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
   for (const auto& entity_options : entities_opts) {
-    PrometheusWriter writer(output, entity_options.first);
+    PrometheusWriter writer(output, export_help_and_type_in_prometheus_metrics,
+        entity_options.first);
     WARN_NOT_OK(metrics->WriteForPrometheus(&writer, entity_options.second, opts),
                 "Couldn't write text metrics for Prometheus");
   }

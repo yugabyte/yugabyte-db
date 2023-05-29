@@ -152,6 +152,19 @@ class ByteBuffer {
     DoAppend(size_, a, size);
   }
 
+  void AppendWithPrefix(char prefix, Slice data) {
+    AppendWithPrefix(prefix, data.cdata(), data.size());
+  }
+
+  void AppendWithPrefix(char prefix, const char* data, size_t len) {
+    const size_t old_size = size_;
+    const size_t new_size = old_size + 1 + len;
+    char* out = EnsureCapacity(new_size, old_size) + old_size;
+    *out++ = prefix;
+    memcpy(out, data, len);
+    size_ = new_size;
+  }
+
   void Reserve(size_t capacity) {
     EnsureCapacity(capacity, size_);
   }
@@ -178,6 +191,10 @@ class ByteBuffer {
 
   Slice AsSlice() const {
     return Slice(ptr(), size_);
+  }
+
+  const uint8_t* data() const {
+    return pointer_cast<const uint8_t*>(ptr());
   }
 
   uint8_t* mutable_data() {

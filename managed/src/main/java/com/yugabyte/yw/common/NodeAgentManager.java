@@ -5,16 +5,15 @@ package com.yugabyte.yw.common;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.JWTVerifier;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
-import com.yugabyte.yw.models.Provider;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import java.io.BufferedInputStream;
@@ -54,7 +53,6 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.commons.compress.utils.IOUtils;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.WildcardFileFilter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -82,14 +80,11 @@ public class NodeAgentManager {
 
   private final Config appConfig;
   private final ConfigHelper configHelper;
-  private final RuntimeConfGetter confGetter;
 
   @Inject
-  public NodeAgentManager(
-      Config appConfig, ConfigHelper configHelper, RuntimeConfGetter confGetter) {
+  public NodeAgentManager(Config appConfig, ConfigHelper configHelper) {
     this.appConfig = appConfig;
     this.configHelper = configHelper;
-    this.confGetter = confGetter;
   }
 
   @Getter
@@ -122,7 +117,7 @@ public class NodeAgentManager {
   @VisibleForTesting
   public Path getNodeAgentBaseCertDirectory(NodeAgent nodeAgent) {
     return Paths.get(
-        appConfig.getString("yb.storage.path"),
+        AppConfigHelper.getStoragePath(),
         "node-agent",
         "certs",
         nodeAgent.getCustomerUuid().toString(),
@@ -265,15 +260,6 @@ public class NodeAgentManager {
   }
 
   /**
-   * Returns if server needs to be installed on a node.
-   *
-   * @return true if yes, false otherwise.
-   */
-  public boolean isServerToBeInstalled(Provider provider) {
-    return confGetter.getConfForScope(provider, ProviderConfKeys.installNodeAgentServer);
-  }
-
-  /**
    * Returns the private key of the given node agent.
    *
    * @param nodeAgentUuid node agent UUID.
@@ -337,7 +323,7 @@ public class NodeAgentManager {
   // Returns the YBA software version.
   public String getSoftwareVersion() {
     return Objects.requireNonNull(
-        (String) configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version"));
+        (String) configHelper.getConfig(ConfigType.SoftwareVersion).get("version"));
   }
 
   /**
@@ -530,7 +516,7 @@ public class NodeAgentManager {
           "Deleting current cert dir {} for node agent {}",
           currentCertDirPath,
           nodeAgent.getUuid());
-      FileUtils.deleteDirectory(currentCertDirPath.toFile());
+      FileData.deleteFiles(currentCertDirPath.toString(), true);
     } catch (Exception e) {
       // Ignore error.
       log.warn("Error deleting old cert directory {}", currentCertDirPath, e);

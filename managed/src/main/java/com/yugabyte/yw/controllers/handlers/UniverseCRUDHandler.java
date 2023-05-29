@@ -28,6 +28,7 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -77,7 +78,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -172,7 +173,7 @@ public class UniverseCRUDHandler {
 
     boolean smartResizePossible =
         ResizeNodeParams.checkResizeIsPossible(
-            currentCluster.userIntent, cluster.userIntent, universe, true);
+            cluster.uuid, currentCluster.userIntent, cluster.userIntent, universe, true);
 
     for (NodeDetails node : nodesInCluster) {
       if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
@@ -333,9 +334,7 @@ public class UniverseCRUDHandler {
         if (cert.getCertType() == CertConfigType.HashicorpVault) {
           try {
             VaultPKI certProvider = VaultPKI.getVaultPKIInstance(cert);
-            certProvider.dumpCACertBundle(
-                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
-                customer.getUuid());
+            certProvider.dumpCACertBundle(AppConfigHelper.getStoragePath(), customer.getUuid());
           } catch (Exception e) {
             throw new PlatformServiceException(
                 INTERNAL_SERVER_ERROR,
@@ -386,9 +385,7 @@ public class UniverseCRUDHandler {
       if (cert.getCertType() == CertConfigType.HashicorpVault) {
         try {
           VaultPKI certProvider = VaultPKI.getVaultPKIInstance(cert);
-          certProvider.dumpCACertBundle(
-              runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
-              customer.getUuid());
+          certProvider.dumpCACertBundle(AppConfigHelper.getStoragePath(), customer.getUuid());
         } catch (Exception e) {
           throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR,
@@ -628,8 +625,7 @@ public class UniverseCRUDHandler {
     // for this customer id.
     Universe universe;
     TaskType taskType = TaskType.CreateUniverse;
-
-    Ebean.beginTransaction();
+    DB.beginTransaction();
     try {
       universe = Universe.create(taskParams, customer.getId());
       LOG.info("Created universe {} : {}.", universe.getUniverseUUID(), universe.getName());
@@ -650,6 +646,12 @@ public class UniverseCRUDHandler {
         UniverseDefinitionTaskParams.UserIntent primaryIntent = primaryCluster.userIntent;
         primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
         primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
+
+        // Check if universe has multi-regions configured at creation time.
+        int numRegions = primaryIntent.regionList.size();
+        boolean isMultiRegion = numRegions > 1;
+        universe.updateConfig(
+            ImmutableMap.of(Universe.IS_MULTIREGION, Boolean.toString(isMultiRegion)));
 
         if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
@@ -744,13 +746,13 @@ public class UniverseCRUDHandler {
               Boolean.toString(taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi))));
       universe.save();
 
-      Ebean.commitTransaction();
+      DB.commitTransaction();
 
     } catch (Exception e) {
       LOG.info("Universe wasn't created because of the error: {}", e.getMessage());
       throw e;
     } finally {
-      Ebean.endTransaction();
+      DB.endTransaction();
     }
 
     // Submit the task to create the universe.

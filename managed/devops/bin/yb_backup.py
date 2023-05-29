@@ -1433,9 +1433,9 @@ class YBBackup:
             if not sas_token:
                 raise BackupException(
                     "Set SAS for Azure Storage in AZURE_STORAGE_SAS_TOKEN environment variable.")
-            if '?sv' not in sas_token:
+            if '?' not in sas_token:
                 raise BackupException(
-                    "SAS tokens must begin with '?sv'.")
+                    "SAS tokens must begin with '?'.")
 
         self.storage = BACKUP_STORAGE_ABSTRACTIONS[self.args.storage_type](options)
 
@@ -3486,6 +3486,7 @@ class YBBackup:
                             num_ts += 1
                         else:
                             # Bad/temporary roles: LEARNER, NON_PARTICIPANT, UNKNOWN_ROLE.
+                            broadcast_ip = rpc_ip
                             found_bad_ts = True
                             logging.warning("Found TS {} with bad role: {} for tablet {}. "
                                             "Retry searching.".format(broadcast_ip, role,

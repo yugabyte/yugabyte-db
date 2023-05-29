@@ -83,8 +83,6 @@ public class FileDataService {
     try {
       long fileSyncStartTime = System.currentTimeMillis();
       Collection<File> diskFiles = Collections.emptyList();
-      List<FileData> dbFiles = FileData.getAll();
-      int currentFileCountDB = dbFiles.size();
 
       for (String fileDirectoryName : FILE_DIRECTORY_TO_SYNC) {
         File ywDir = new File(storagePath + "/" + fileDirectoryName);
@@ -108,7 +106,7 @@ public class FileDataService {
 
       if (!ywFileDataSynced) {
         Set<String> fileOnlyOnDisk = Sets.difference(filesOnDisk, filesInDB);
-        if (currentFileCountDB + fileOnlyOnDisk.size() > fileCountThreshold) {
+        if (FileData.getCount() + fileOnlyOnDisk.size() > fileCountThreshold) {
           // We fail in case the count exceeds the threshold.
           throw new RuntimeException(
               "The Maximum files count to be persisted in the DB exceeded the "

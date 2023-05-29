@@ -8,6 +8,8 @@ import * as Yup from 'yup';
 
 import './AddDestinationChannelForm.scss';
 
+const WebHookAuthTypesList = ['None', 'Basic', 'Token'];
+
 export const AddDestinationChannelForm = (props) => {
   const { customer, visible, onHide, onError, defaultChannel, enableNotificationTemplates } = props;
   const [channelType, setChannelType] = useState(defaultChannel);
@@ -15,6 +17,9 @@ export const AddDestinationChannelForm = (props) => {
   const [defaultRecipients, setDefaultRecipients] = useState(
     props.defaultRecipients ? props.defaultRecipients : false
   );
+
+  const [webhookAuthType, setWebhookAuthType] = useState(props.editValues?.webhookAuthType ?? WebHookAuthTypesList[0]);
+
   const isReadOnly = isNonAvailable(
     customer.data.features, 'alert.channels.actions');
 
@@ -84,11 +89,28 @@ export const AddDestinationChannelForm = (props) => {
         payload['params']['apiKey'] = values.apiKey;
         payload['params']['routingKey'] = values.routingKey;
         break;
-      case 'webhook':
+      case 'webhook': {
         payload['name'] = values['webHook_name'];
         payload['params']['channelType'] = 'WebHook';
         payload['params']['webhookUrl'] = values.webhookURL;
+
+        const httpAuth = {
+          type: webhookAuthType.toUpperCase()
+        };
+
+        if (webhookAuthType === 'Basic') {
+          httpAuth['username'] = values['webhookBasicUsername'];
+          httpAuth['password'] = values['webhookBasicPassword'];
+        }
+
+        if (webhookAuthType === 'Token') {
+          httpAuth['tokenHeader'] = values['webhookTokenHeader'];
+          httpAuth['tokenValue'] = values['webhookTokenValue'];
+        }
+
+        payload['params']['httpAuth'] = httpAuth;
         break;
+      }
       default:
         break;
     }
@@ -155,7 +177,23 @@ export const AddDestinationChannelForm = (props) => {
 
   const validationSchemaWebHook = Yup.object().shape({
     webHook_name: Yup.string().required('Name is Required'),
-    webhookURL: Yup.string().required('Web hook Url is Required')
+    webhookURL: Yup.string().required('Web hook Url is Required'),
+    webhookBasicUsername: Yup.string().when('webhookAuthType', {
+      is: () => webhookAuthType === 'Basic',
+      then: Yup.string().required('Username is required')
+    }),
+    webhookBasicPassword: Yup.string().when('webhookAuthType', {
+      is: () => webhookAuthType === 'Basic',
+      then: Yup.string().required('Password is required')
+    }),
+    webhookTokenHeader: Yup.string().when('webhookAuthType', {
+      is: () => webhookAuthType === 'Token',
+      then: Yup.string().required('Token Header is required')
+    }),
+    webhookTokenValue: Yup.string().when('webhookAuthType', {
+      is: () => webhookAuthType === 'Token',
+      then: Yup.string().required('Token Value is required')
+    })
   });
 
   const getNotificationTemplateRows = () => {
@@ -195,6 +233,70 @@ export const AddDestinationChannelForm = (props) => {
         </Row>
       </>
     );
+  };
+
+  const getWebhookAuthForm = () => {
+    if (webhookAuthType === 'Basic') {
+      return (
+        <>
+          <Row key="BasicUsername">
+            <Col lg={12}>
+              <Field
+                name="webhookBasicUsername"
+                type="text"
+                placeholder="Enter Username"
+                label="Username"
+                component={YBFormInput}
+                disabled={isReadOnly}
+              />
+            </Col>
+          </Row>
+          <Row key="BasicPassword">
+            <Col lg={12}>
+              <Field
+                name="webhookBasicPassword"
+                type="text"
+                placeholder="Enter Password"
+                label="Password"
+                component={YBFormInput}
+                disabled={isReadOnly}
+              />
+            </Col>
+          </Row>
+        </>
+      );
+    }
+    if (webhookAuthType === 'Token') {
+      return (
+        <>
+          <Row>
+            <Col lg={12}>
+              <Field
+                name="webhookTokenHeader"
+                type="text"
+                placeholder="Enter Token Header"
+                label="Token Header"
+                component={YBFormInput}
+                disabled={isReadOnly}
+              />
+            </Col>
+          </Row>
+          <Row>
+            <Col lg={12}>
+              <Field
+                name="webhookTokenValue"
+                type="text"
+                placeholder="Enter Token value"
+                label="Token Value"
+                component={YBFormInput}
+                disabled={isReadOnly}
+              />
+            </Col>
+          </Row>
+        </>
+      );
+    }
+    return null;
   };
 
   const getChannelForm = () => {
@@ -268,6 +370,20 @@ export const AddDestinationChannelForm = (props) => {
                 />
               </Col>
             </Row>
+            <Row>
+              <Col lg={12}>
+                <Field
+                  name="webhookAuthType"
+                  label="Authentication Type"
+                  component={YBControlledSelectWithLabel}
+                  disabled={isReadOnly}
+                  selectVal={webhookAuthType}
+                  onInputChanged={v => setWebhookAuthType(v.target.value)}
+                  options={WebHookAuthTypesList.map((v) => <option key={v} value={v}>{v}</option>)}
+                />
+              </Col>
+            </Row>
+            {getWebhookAuthForm()}
             {getNotificationTemplateRows()}
           </>
         );

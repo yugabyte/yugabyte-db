@@ -11,7 +11,7 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.PlatformServiceException;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Junction;
@@ -121,6 +121,10 @@ public class InstanceType extends Model {
   private static final Finder<InstanceTypeKey, InstanceType> find =
       new Finder<InstanceTypeKey, InstanceType>(InstanceType.class) {};
 
+  public static List<InstanceType> getAllInstanceTypes() {
+    return find.all();
+  }
+
   public static InstanceType get(UUID providerUuid, String instanceTypeCode) {
     return find.byId(InstanceTypeKey.create(instanceTypeCode, providerUuid));
   }
@@ -192,9 +196,8 @@ public class InstanceType extends Model {
     String updateQuery =
         "UPDATE instance_type "
             + "SET instance_type_details = '{}' WHERE provider_uuid = :providerUuid";
-    SqlUpdate update =
-        Ebean.createSqlUpdate(updateQuery).setParameter("providerUuid", providerUuid);
-    int modifiedCount = Ebean.execute(update);
+    SqlUpdate update = DB.sqlUpdate(updateQuery).setParameter("providerUuid", providerUuid);
+    int modifiedCount = DB.getDefault().execute(update);
     LOG.info("Query [" + updateQuery + "] updated " + modifiedCount + " rows");
     if (modifiedCount == 0) {
       LOG.warn("Failed to update any SQL row");

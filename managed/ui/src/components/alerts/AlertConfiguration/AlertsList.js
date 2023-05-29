@@ -596,7 +596,7 @@ export const AlertsList = (props) => {
               (universe) => universe.label === filters[FILTER_TYPE_UNIVERSE]
             );
             reqPayload['target'] = {
-              all: false,
+              all: true,
               uuids: [targetUniverse.value]
             };
           }

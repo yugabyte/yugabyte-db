@@ -85,6 +85,7 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_dcl.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
@@ -1415,17 +1416,21 @@ Result<CDCStreamId> YBClient::CreateCDCStream(
   return resp.stream_id();
 }
 
-void YBClient::CreateCDCStream(const TableId& table_id,
-                               const std::unordered_map<std::string, std::string>& options,
-                               CreateCDCStreamCallback callback) {
+void YBClient::CreateCDCStream(
+    const TableId& table_id,
+    const std::unordered_map<std::string, std::string>& options,
+    cdc::StreamModeTransactional transactional,
+    CreateCDCStreamCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  data_->CreateCDCStream(this, table_id, options, deadline, callback);
+  data_->CreateCDCStream(this, table_id, options, transactional, deadline, callback);
 }
 
-Status YBClient::GetCDCStream(const CDCStreamId& stream_id,
-                              NamespaceId* ns_id,
-                              std::vector<ObjectId>* object_ids,
-                              std::unordered_map<std::string, std::string>* options) {
+Status YBClient::GetCDCStream(
+    const CDCStreamId& stream_id,
+    NamespaceId* ns_id,
+    std::vector<ObjectId>* object_ids,
+    std::unordered_map<std::string, std::string>* options,
+    cdc::StreamModeTransactional* transactional) {
   // Setting up request.
   GetCDCStreamRequestPB req;
   req.set_stream_id(stream_id);
@@ -1452,6 +1457,8 @@ Status YBClient::GetCDCStream(const CDCStreamId& stream_id,
   if (!resp.stream().has_namespace_id()) {
     options->emplace(cdc::kIdType, cdc::kTableId);
   }
+
+  *transactional = cdc::StreamModeTransactional(resp.stream().transactional());
 
   return Status::OK();
 }
@@ -1594,81 +1601,23 @@ Result<bool> YBClient::IsBootstrapRequired(const std::vector<TableId>& table_ids
 Status YBClient::BootstrapProducer(
     const YQLDatabase& db_type,
     const NamespaceName& namespace_name,
-    const std::vector<PgSchemaName>
-        pg_schema_names,
+    const std::vector<PgSchemaName>& pg_schema_names,
     const std::vector<TableName>& table_names,
-    std::vector<TableId>* producer_table_ids,
-    std::vector<std::string>* bootstrap_ids,
-    HybridTime* bootstrap_time) {
-  SCHECK(!namespace_name.empty(), InvalidArgument, "Table namespace name is empty");
-  SCHECK(!table_names.empty(), InvalidArgument, "Table names is empty");
-  if (db_type == YQL_DATABASE_PGSQL) {
-    SCHECK_EQ(
-        pg_schema_names.size(), table_names.size(), InvalidArgument,
-        "Number of tables and pg schemas must match");
-  } else {
-    SCHECK(pg_schema_names.empty(), InvalidArgument, "Pg Schema only applies to pg databases");
-  }
-
-  master::BootstrapProducerRequestPB req;
-  master::BootstrapProducerResponsePB resp;
-  req.set_db_type(db_type);
-  req.set_namespace_name(namespace_name);
-  for (size_t i = 0; i < table_names.size(); i++) {
-    SCHECK(!table_names[i].empty(), InvalidArgument, "Table name is empty");
-    req.add_table_name(table_names[i]);
-    if (db_type == YQL_DATABASE_PGSQL) {
-      SCHECK(!pg_schema_names[i].empty(), InvalidArgument, "Table schema name is empty");
-      req.add_pg_schema_name(pg_schema_names[i]);
-    }
-  }
-
-  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, BootstrapProducer);
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
-  SCHECK_EQ(
-      resp.table_ids_size(), narrow_cast<int>(table_names.size()), IllegalState,
-      Format("Expected $0 results, received: $1", table_names.size(), resp.table_ids_size()));
-
-  producer_table_ids->reserve(resp.table_ids_size());
-  for (auto& bootstrapped_table_id : resp.table_ids()) {
-    producer_table_ids->push_back(bootstrapped_table_id);
-  }
-
-  SCHECK_EQ(
-      resp.bootstrap_ids_size(), narrow_cast<int>(table_names.size()), IllegalState,
-      Format("Expected $0 results, received: $1", table_names.size(), resp.bootstrap_ids_size()));
-
-  bootstrap_ids->reserve(resp.bootstrap_ids_size());
-  for (auto& bootstrap_id : resp.bootstrap_ids()) {
-    bootstrap_ids->push_back(bootstrap_id);
-  }
-
-  if (resp.has_bootstrap_time()) {
-    *bootstrap_time = HybridTime(resp.bootstrap_time());
-  } else {
-    *bootstrap_time = HybridTime::kInvalid;
-  }
-
-  return Status::OK();
+    BootstrapProducerCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->BootstrapProducer(
+      this, db_type, namespace_name, pg_schema_names, table_names, deadline, std::move(callback));
 }
 
 Status YBClient::UpdateConsumerOnProducerSplit(
-    const string& producer_id,
+    const cdc::ReplicationGroupId& replication_group_id,
     const CDCStreamId& stream_id,
     const master::ProducerSplitTabletInfoPB& split_info) {
-  if (producer_id.empty()) {
-    return STATUS(InvalidArgument, "Producer id is required.");
-  }
-  if (stream_id.empty()) {
-    return STATUS(InvalidArgument, "Stream id is required.");
-  }
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Producer id is required.");
+  SCHECK(!stream_id.empty(), InvalidArgument, "Stream id is required.");
 
   UpdateConsumerOnProducerSplitRequestPB req;
-  req.set_producer_id(producer_id);
+  req.set_producer_id(replication_group_id.ToString());
   req.set_stream_id(stream_id);
   req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
 
@@ -1678,25 +1627,19 @@ Status YBClient::UpdateConsumerOnProducerSplit(
 }
 
 Status YBClient::UpdateConsumerOnProducerMetadata(
-    const string& producer_id,
+    const cdc::ReplicationGroupId& replication_group_id,
     const CDCStreamId& stream_id,
     const tablet::ChangeMetadataRequestPB& meta_info,
     uint32_t colocation_id,
     uint32_t producer_schema_version,
     uint32_t consumer_schema_version,
-    master::UpdateConsumerOnProducerMetadataResponsePB *resp) {
-  if (producer_id.empty()) {
-    return STATUS(InvalidArgument, "Producer id is required.");
-  }
-  if (stream_id.empty()) {
-    return STATUS(InvalidArgument, "Stream id is required.");
-  }
-  if (resp == nullptr) {
-    return STATUS(InvalidArgument, "Response pointer is required.");
-  }
+    master::UpdateConsumerOnProducerMetadataResponsePB* resp) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "ReplicationGroup id is required.");
+  SCHECK(!stream_id.empty(), InvalidArgument, "Stream id is required.");
+  SCHECK(resp != nullptr, InvalidArgument, "Response pointer is required.");
 
   master::UpdateConsumerOnProducerMetadataRequestPB req;
-  req.set_producer_id(producer_id);
+  req.set_producer_id(replication_group_id.ToString());
   req.set_stream_id(stream_id);
   req.set_colocation_id(colocation_id);
   req.set_producer_schema_version(producer_schema_version);
@@ -2490,6 +2433,17 @@ Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name) {
 
 const std::string& YBClient::LogPrefix() const {
   return data_->log_prefix_;
+}
+
+Result<encryption::UniverseKeyRegistryPB> YBClient::GetFullUniverseKeyRegistry() {
+  master::GetFullUniverseKeyRegistryRequestPB req;
+  master::GetFullUniverseKeyRegistryResponsePB resp;
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Encryption, req, resp, GetFullUniverseKeyRegistry);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.universe_key_registry();
 }
 
 Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {

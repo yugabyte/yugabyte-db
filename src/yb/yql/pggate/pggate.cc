@@ -1227,7 +1227,7 @@ Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual, bool is_prima
   return down_cast<PgDml*>(handle)->AppendQual(qual, is_primary);
 }
 
-Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgExpr *colref, bool is_primary) {
+Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_primary) {
   return down_cast<PgDml*>(handle)->AppendColumnRef(colref, is_primary);
 }
 
@@ -1245,6 +1245,10 @@ Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,
                                                               start_inclusive,
                                                               attr_value_end,
                                                               end_inclusive);
+}
+
+Status PgApiImpl::DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num) {
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondIsNotNull(attr_num);
 }
 
 Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, YBCPgExpr lhs, int n_attr_values,
@@ -1575,8 +1579,8 @@ Status PgApiImpl::NewColumnRef(
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  *expr_handle = stmt->arena().NewObject<PgColumnRef>(
-      attr_num, type_entity, collate_is_valid_non_c, type_attrs);
+  *expr_handle = PgColumnRef::Create(
+     &stmt->arena(), attr_num, type_entity, collate_is_valid_non_c, type_attrs);
 
   return Status::OK();
 }
@@ -1655,8 +1659,7 @@ Status PgApiImpl::NewOperator(
   RETURN_NOT_OK(PgExpr::CheckOperatorName(opname));
 
   // Create operator.
-  *op_handle = stmt->arena().NewObject<PgOperator>(
-      &stmt->arena(), opname, type_entity, collate_is_valid_non_c);
+  *op_handle = PgOperator::Create(&stmt->arena(), opname, type_entity, collate_is_valid_non_c);
 
   return Status::OK();
 }

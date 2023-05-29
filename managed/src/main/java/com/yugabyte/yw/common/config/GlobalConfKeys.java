@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import java.time.Duration;
 import java.util.List;
+import org.apache.directory.api.ldap.model.message.SearchScope;
 
 public class GlobalConfKeys extends RuntimeConfigKeysModule {
 
@@ -49,6 +50,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Use New Helm Naming",
           "TODO - Leave this for feature owners to fill in",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+
+  public static final ConfKeyInfo<Boolean> usek8sCustomResources =
+      new ConfKeyInfo<>(
+          "yb.use_k8s_custom_resources",
+          ScopeType.GLOBAL,
+          "Specify custom CPU/memory values for k8s universes",
+          "Use custom CPU/Memory for kubernetes nodes. Once enabled, shouldn't be disabled.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> useOauth =
@@ -88,6 +98,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.security.discoveryURI",
           ScopeType.GLOBAL,
           "Discovery URI",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<String> oidcProviderMetadata =
+      new ConfKeyInfo<>(
+          "yb.security.oidcProviderMetadata",
+          ScopeType.GLOBAL,
+          "Provider Metadata from discoveryURI",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.UIDriven));
@@ -354,7 +372,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.start_master_on_stop_node",
           ScopeType.GLOBAL,
           "Start Master On Stop Node",
-          "TODO",
+          "Auto-start master process on a similar available node on stopping a master node",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> startMasterOnRemoveNode =
+      new ConfKeyInfo<>(
+          "yb.start_master_on_remove_node",
+          ScopeType.GLOBAL,
+          "Start Master On Remove Node",
+          "Auto-start master process on a similar available node on removal of a master node",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Boolean> useLdap =
@@ -453,6 +479,47 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<String> ldapGroupSearchFilter =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_group_search_filter",
+          ScopeType.GLOBAL,
+          "LDAP Group Search Filter Query",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<SearchScope> ldapGroupSearchScope =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_group_search_scope",
+          ScopeType.GLOBAL,
+          "LDAP group search scope in case of filter query",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.LdapSearchScopeEnum,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<String> ldapGroupMemberOfAttribute =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_group_member_of_attribute",
+          ScopeType.GLOBAL,
+          "memberOf attribute in user LDAP entry to be used for group memberships",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<Boolean> ldapGroupUseQuery =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_group_use_query",
+          ScopeType.GLOBAL,
+          "Whether to use query search filter or user attribute "
+              + "for establishing LDAP group membership",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<Boolean> ldapGroupUseRoleMapping =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_group_use_role_mapping",
+          ScopeType.GLOBAL,
+          "Whether to use ldap group to role mapping",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
   public static ConfKeyInfo<Boolean> enableDetailedLogs =
       new ConfKeyInfo<>(
           "yb.security.enable_detailed_logs",
@@ -550,14 +617,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Retention duration for a dead node agent before deletion",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> maxParallelNodeAgentUpgrades =
-      new ConfKeyInfo<>(
-          "yb.node_agent.max_parallel_upgrades",
-          ScopeType.GLOBAL,
-          "Max Parallel Node Agent Upgrades",
-          "Maximum number of parallel node agent upgrades",
-          ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> backwardCompatibleDate =
       new ConfKeyInfo<>(
           "yb.api.backward_compatible_date",
@@ -584,6 +643,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "It indicates whether YBA should support transactional xCluster configs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
+      new ConfKeyInfo<>(
+          "yb.xcluster.use_ybc",
+          ScopeType.GLOBAL,
+          "Enable YBC for xCluster",
+          "Enable YBC to take backup and restore during xClsuter bootstrap",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowDbVersionMoreThanYbaVersion =
       new ConfKeyInfo<>(
           "yb.allow_db_version_more_than_yba_version",
@@ -651,5 +718,37 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "When enabled YBA will try to replace all filepaths in the database with updated values "
               + "for the configurable part of the path (like storage or releases path)",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> awsDiskResizeCooldownHours =
+      new ConfKeyInfo<>(
+          "yb.aws.disk_resize_cooldown_hours",
+          ScopeType.GLOBAL,
+          "Cooldown after disk resize in aws (in hours)",
+          "Cooldown after disk resize in aws (in hours)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> ybTmpDirectoryPath =
+      new ConfKeyInfo<>(
+          "yb.filepaths.tmpDirectory",
+          ScopeType.GLOBAL,
+          "tmp directory path",
+          "Path to the tmp directory to be used by YBA",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentTokenLifetime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.client.token_lifetime",
+          ScopeType.GLOBAL,
+          "Node Agent Token Lifetime",
+          "Lifetime oftoken used by node agent clients",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> nodeAgentServerPort =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.port",
+          ScopeType.GLOBAL,
+          "Node Agent Server Port",
+          "Listening port for node agent servers",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

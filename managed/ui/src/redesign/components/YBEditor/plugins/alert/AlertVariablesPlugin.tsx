@@ -7,10 +7,11 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useCallback, useState } from 'react';
+import React, { FC, useCallback, useRef, useState } from 'react';
 
 import clsx from 'clsx';
 import pluralize from 'pluralize';
+import { useClickAway } from 'react-use';
 import { BaseSelection, Element, Text, Transforms } from 'slate';
 import { ReactEditor, useSlate } from 'slate-react';
 import { jsx } from 'slate-hyperscript';
@@ -55,7 +56,8 @@ const useStyle = makeStyles((theme) => ({
     fontWeight: 500,
     padding: theme.spacing(0.5),
     cursor: 'pointer',
-    display: 'inline-flex'
+    display: 'inline-flex',
+    userSelect: 'none'
   },
   custom: {
     background: theme.palette.primary[200]
@@ -100,6 +102,12 @@ const useStyle = makeStyles((theme) => ({
 export const useAlertVariablesPlugin: IYBSlatePlugin = ({ editor, enabled }) => {
   const classes = useStyle();
   const [position, setPosition] = useState<DOMRect | null>(null);
+
+  const alertPopupRef = useRef(null);
+
+  useClickAway(alertPopupRef, () => {
+    hidePopver();
+  });
 
   const { t } = useTranslation();
 
@@ -194,9 +202,7 @@ export const useAlertVariablesPlugin: IYBSlatePlugin = ({ editor, enabled }) => 
             {...attributes}
           >
             {children}
-            {element.view === 'PREVIEW'
-              ? element.variableValue
-              : `${ALERT_VARIABLE_START_TAG}${element.variableName}${ALERT_VARIABLE_END_TAG}`}
+            {element.variableValue ? element.variableValue : 'null'}
           </span>
         </Tooltip>
       );
@@ -306,6 +312,7 @@ export const useAlertVariablesPlugin: IYBSlatePlugin = ({ editor, enabled }) => 
                   position: 'absolute',
                   zIndex: '999'
                 }}
+                ref={alertPopupRef}
               >
                 <AddAlertVariablesPopup
                   show={Boolean(position)}
@@ -458,7 +465,7 @@ const serialize = (node: CustomElement | CustomText, children: string) => {
   }
 
   if (node.type === ALERT_VARIABLE_ELEMENT_TYPE) {
-    return `<span type="${node.type}" variableType="${node.variableType}" variableName="${node.variableName}" variableValue="${ALERT_VARIABLE_START_TAG}${node.variableName}${ALERT_VARIABLE_END_TAG}">${ALERT_VARIABLE_START_TAG}${node.variableName}${ALERT_VARIABLE_END_TAG}${children}</span>`;
+    return `<span type="${node.type}" variableType="${node.variableType}" variableName="${node.variableName}">${ALERT_VARIABLE_START_TAG}${node.variableName}${ALERT_VARIABLE_END_TAG}${children}</span>`;
   }
 
   return undefined;
@@ -482,7 +489,7 @@ const deSerialize = (
         type: ALERT_VARIABLE_ELEMENT_TYPE,
         variableType: el.getAttribute('variableType'),
         variableName: el.getAttribute('variableName'),
-        variableValue: el.getAttribute('variableValue'),
+        variableValue: el.textContent,
         view: 'EDIT'
       },
       [{ text: '' }]

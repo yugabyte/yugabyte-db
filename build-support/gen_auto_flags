@@ -18,4 +18,4 @@ set -euo pipefail
 
 activate_virtualenv
 set_pythonpath
-"$YB_SRC_ROOT"/python/yb/gen_auto_flags_json.py "$@"
+"$YB_SCRIPT_PATH_GEN_AUTO_FLAGS_JSON" "$@"

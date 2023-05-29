@@ -45,7 +45,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.Environment;
 import play.Mode;
 import play.libs.Json;
@@ -273,6 +273,23 @@ public class SwamperHelperTest extends FakeDBApplication {
     assertThat(configUuids, containsInAnyOrder(universeUuid1, universeUuid2));
   }
 
+  @Test
+  public void testGetTargetNodeAgentUuids() throws IOException {
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
+    UUID nodeAgentUuid = UUID.randomUUID();
+    UUID nodeAgentUuid2 = UUID.randomUUID();
+    String configFilePath = generateNodeAgentFileName(nodeAgentUuid.toString());
+    String configFilePath2 = generateNodeAgentFileName(nodeAgentUuid2.toString());
+    String wrongFilePath = generateNodeAgentFileName("blablabla");
+
+    new File(configFilePath).createNewFile();
+    new File(configFilePath2).createNewFile();
+    new File(wrongFilePath).createNewFile();
+
+    List<UUID> nodeUUids = swamperHelper.getTargetNodeAgentUuids();
+    assertThat(nodeUUids, containsInAnyOrder(nodeAgentUuid, nodeAgentUuid2));
+  }
+
   private String generateRulesFileName(String definitionUuid) {
     return SWAMPER_TMP_PATH + SwamperHelper.ALERT_CONFIG_FILE_PREFIX + definitionUuid + ".yml";
   }
@@ -283,5 +300,9 @@ public class SwamperHelperTest extends FakeDBApplication {
 
   private String generateYugabyteFileName(String universeUuid) {
     return SWAMPER_TMP_PATH + SwamperHelper.TARGET_FILE_YUGABYTE_PREFIX + universeUuid + ".json";
+  }
+
+  private String generateNodeAgentFileName(String nodeAgentUuid) {
+    return SWAMPER_TMP_PATH + SwamperHelper.TARGET_FILE_NODE_AGENT_PREFIX + nodeAgentUuid + ".json";
   }
 }

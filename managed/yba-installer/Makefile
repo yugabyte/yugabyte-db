@@ -15,7 +15,7 @@ USE_LICENSE := true
 
 BUILD_TAGS = ${BUILD_TYPE}
 ifeq ($(USE_LICENSE), false)
-	BUILD_TAGS := ${BUILD_TAGS},nolicense 
+	BUILD_TAGS := ${BUILD_TAGS},nolicense
 endif
 
 # build requirements
@@ -40,8 +40,13 @@ PG_BINARY_NAME ?= postgres-linux-14.6.tar.gz
 PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/postgres-linux-14.6.tar.gz
 
 # https://adoptium.net/temurin/releases/
-JDK_BINARY_NAME ?= OpenJDK8U-jdk_x64_linux_hotspot_8u362b09.tar.gz
-JDK_BINARY_URL ?= https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u362-b09/OpenJDK8U-jdk_x64_linux_hotspot_8u362b09.tar.gz
+JDK_BINARY_NAME ?= OpenJDK17U-jdk_x64_linux_hotspot_17.0.7_7.tar.gz
+JDK_BINARY_URL ?= https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.7%2B7/OpenJDK17U-jdk_x64_linux_hotspot_17.0.7_7.tar.gz
+# Package stable ybdb release in yba-installer.
+# Currently disabled.
+YBDB_BINARY_NAME ?= yugabyte-2.17.2.0-b216-linux-x86_64.tar.gz
+YBDB_BINARY_URL ?= https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/releases/2.17.2.0/yugabyte-2.17.2.0-b216-linux-x86_64.tar.gz
+
 
 
 all: prereqs test yba-ctl package
@@ -63,7 +68,10 @@ ${PREREQS_DIR}/${JDK_BINARY_NAME}:
 	curl -Lo $@ ${JDK_BINARY_URL}
 	@echo downloaded $@
 
-
+ybdb: ${PREREQS_DIR}/${YBDB_BINARY_NAME}
+${PREREQS_DIR}/${YBDB_BINARY_NAME}:
+	curl -Lo $@ ${YBDB_BINARY_URL}
+	@echo downloaded $@
 
 yba-ctl: test ${BIN_DIR}/${BIN_NAME}
 ${BIN_DIR}/${BIN_NAME}:
@@ -76,7 +84,7 @@ package: ${PACKAGE_NAME}
 ${PACKAGE_NAME}: prereqs yba-ctl
 	mkdir $(PACKAGE_DIR)
 	cp -RL ${BIN_DIR}/${BIN_NAME} ${PREREQS_DIR}/* ${CONFIG_FILE_FOLDER} ${CRONTAB_SCRIPT_FOLDER} ${CONFIG_INPUT_FILE_NAME} ${VERSION_METADATA_JSON} ${VERSION_TXT} ${PACKAGE_DIR}
-	tar -czvf ${PACKAGE_NAME} --remove-files ${PACKAGE_DIR}
+	tar -czvf ${PACKAGE_NAME} ${PACKAGE_DIR} && rm -R ${PACKAGE_DIR}
 
 
 licensectl: test ${BIN_DIR}/${LICENSE_GEN}

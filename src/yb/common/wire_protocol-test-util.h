@@ -50,10 +50,9 @@ using dockv::DocKey;
 using dockv::PrimitiveValue;
 
 inline Schema GetSimpleTestSchema() {
-  return Schema({ ColumnSchema("key", INT32, false, true),
+  return Schema({ ColumnSchema("key", INT32, ColumnKind::HASH),
                   ColumnSchema("int_val", INT32),
-                  ColumnSchema("string_val", STRING, true) },
-                1);
+                  ColumnSchema("string_val", STRING, ColumnKind::VALUE, Nullable::kTrue) });
 }
 
 template <class WriteRequestPB, class Type>

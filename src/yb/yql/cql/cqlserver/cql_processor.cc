@@ -242,8 +242,9 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   parse_begin_ = MonoTime::Now();
   const auto& context = static_cast<const CQLConnectionContext&>(call_->connection()->context());
   const auto compression_scheme = context.compression_scheme();
-  if (!CQLRequest::ParseRequest(call_->serialized_request(), compression_scheme,
-                                &request, &response)) {
+  if (!CQLRequest::ParseRequest(
+          call_->serialized_request(), compression_scheme, &request, &response,
+          service_impl_->requests_mem_tracker())) {
     cql_metrics_->num_errors_parsing_cql_->Increment();
     PrepareAndSendResponse(response);
     return;

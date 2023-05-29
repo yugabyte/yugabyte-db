@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value_type.h"
 
@@ -17,6 +18,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_state.h"
 
@@ -167,8 +169,9 @@ void RestorationState::PrepareOperations(
 
 std::optional<SysSnapshotEntryPB::State> RestorationState::GetTerminalStateForStatus(
     const Status& status) {
-  if (status.IsAborted() ||
-      tserver::TabletServerError(status) == tserver::TabletServerErrorPB::INVALID_SNAPSHOT) {
+  if (status.IsAborted() || status.IsNotFound() ||
+      tserver::TabletServerError(status) == tserver::TabletServerErrorPB::INVALID_SNAPSHOT  ||
+      master::MasterError(status) == MasterErrorPB::TABLE_NOT_RUNNING) {
     return SysSnapshotEntryPB::FAILED;
   }
   return std::nullopt;

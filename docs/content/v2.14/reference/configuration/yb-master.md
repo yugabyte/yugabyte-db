@@ -446,11 +446,17 @@ Default: `3`
 
 The number of shards per YB-TServer for each YCQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `4`. For three or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+Default: `-1` (the value is calculated at runtime). For servers with up to two CPU cores, the default value is considered as `4`. For three or more CPU cores, the default value is considered as `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
 
 {{< note title="Important" >}}
 
 This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< /note >}}
+
+{{< note title="Important" >}}
+
+When the value is set to *Default* (`-1`), then the server internally *updates* the flag with intended value during startup prior to version `2.14.10` and the flag remains *unchanged* starting from version `2.14.10`.
 
 {{< /note >}}
 
@@ -462,7 +468,7 @@ On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api
 
 {{< note title="Note" >}}
 
-If `enable_automatic_tablet_splitting` is `true`, this value will be overridden and tables will begin with 1 tablet per node.
+If [`enable_automatic_tablet_splitting`](#enable-automatic-tablet-splitting) is `true`: the default value is considered as `1` and tables will begin with 1 tablet *per node*; from version `2.14.10` for servers with up to 4 CPU cores, the value *is not defined* and tables will begin with 1 tablet (for servers with up to 2 CPU cores) or 2 tablets (for servers with up to 4 CPU cores) *per cluster*.
 
 {{< /note >}}
 
@@ -470,7 +476,19 @@ If `enable_automatic_tablet_splitting` is `true`, this value will be overridden 
 
 The number of shards per YB-TServer for each YSQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `2`. For servers with three or four CPU cores, the default value is `4`. Beyond four cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+Default: `-1` (the value is calculated at runtime). For servers with up to two CPU cores, the default value is considered as `2`. For servers with three or four CPU cores, the default value is considered as `4`. Beyond four cores, the default value is considered as `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+
+{{< note title="Important" >}}
+
+This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< /note >}}
+
+{{< note title="Important" >}}
+
+When the value is set to *Default* (`-1`), then the server internally *updates* the flag with intended value during startup prior to version `2.14.10` and the flag remains *unchanged* starting from version `2.14.10`.
+
+{{< /note >}}
 
 {{< note title="Note" >}}
 
@@ -480,7 +498,7 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-s
 
 {{< note title="Note" >}}
 
-If `enable_automatic_tablet_splitting` is `true`, this value will be overridden and tables will begin with 1 tablet per node.
+If [`enable_automatic_tablet_splitting`](#enable-automatic-tablet-splitting) is `true`: the default value is considered as `1` and tables will begin with 1 tablet *per node*; from version `2.14.10` for servers with up to 4 CPU cores, the value *is not defined* and tables will begin with 1 tablet (for servers with up to 2 CPU cores) or 2 tablets (for servers with up to 4 CPU cores) *per cluster*.
 
 {{< /note >}}
 

@@ -5,10 +5,6 @@ package com.yugabyte.yw.controllers.handlers;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -18,7 +14,6 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
@@ -46,7 +41,6 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private NodeAgentClient mockNodeAgentClient;
 
-  @Mock private RuntimeConfGetter runtimeConfGetter;
   private NodeAgentManager nodeAgentManager;
   private NodeAgentHandler nodeAgentHandler;
   private Customer customer;
@@ -54,11 +48,9 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, runtimeConfGetter);
+    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper);
     nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
-
     nodeAgentHandler.enableConnectionValidation(false);
-    when(mockAppConfig.getString(eq("yb.storage.path"))).thenReturn("/tmp");
   }
 
   private void verifyKeys(UUID nodeAgentUuid) {
@@ -95,7 +87,6 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     NodeAgent nodeAgent = nodeAgentHandler.register(customer.getUuid(), payload);
     assertNotNull(nodeAgent.getUuid());
     UUID nodeAgentUuid = nodeAgent.getUuid();
-    verify(mockAppConfig, times(1)).getString(eq("yb.storage.path"));
     String serverCert = nodeAgent.getConfig().getServerCert();
     assertNotNull(serverCert);
     Path serverCertPath = nodeAgent.getServerCertFilePath();

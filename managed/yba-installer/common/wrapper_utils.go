@@ -2,6 +2,8 @@ package common
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/user"
 
@@ -64,4 +66,29 @@ func GetCurrentUser() string {
 		log.Fatal(fmt.Sprintf("Error %s getting current user", err.Error()))
 	}
 	return user.Username
+}
+
+//Util function to download files to tmp dir.
+func DownloadFileToTmp(url string, name string) (string, error) {
+	//Create file in tmp.
+	filePath := fmt.Sprintf("/tmp/%s", name)
+	file, err := os.Create(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	data, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer data.Body.Close()
+
+	if data.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Status not ok - %s", data.Status)
+	}
+
+	//Copy bits to the file.
+	_, err = io.Copy(file, data.Body)
+	return filePath, err
 }

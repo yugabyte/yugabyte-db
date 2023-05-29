@@ -77,6 +77,7 @@
 #include "storage/pg_shmem.h"
 #include "storage/proc.h"
 #include "storage/predicate.h"
+#include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
 #include "tsearch/ts_cache.h"
 #include "utils/builtins.h"
@@ -455,6 +456,13 @@ const struct config_enum_entry ssl_protocol_versions_info[] = {
 	{"TLSv1.2", PG_TLS1_2_VERSION, false},
 	{"TLSv1.3", PG_TLS1_3_VERSION, false},
 	{NULL, 0, false}
+};
+
+const struct config_enum_entry yb_pg_batch_detection_mechanism_options[] = {
+  {"detect_by_peeking", DETECT_BY_PEEKING, false},
+  {"assume_all_batch_executions", ASSUME_ALL_BATCH_EXECUTIONS, false},
+  {"ignore_batch_delete_and_update_may_fail", IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL, false},
+  {NULL, 0, false}
 };
 
 static struct config_enum_entry shared_memory_options[] = {
@@ -2019,6 +2027,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_pushdown_is_not_null", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, IS NOT NULL is pushed down."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_pushdown_is_not_null,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -3550,6 +3569,22 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_wait_for_backends_catalog_version_timeout", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Timeout in milliseconds to wait for backends to reach"
+						 " desired catalog versions."),
+			gettext_noop("The actual time spent may be longer than that by as"
+						 " much as master flag"
+						 " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms."
+						 " Setting to zero or less results in no timeout."
+						 " Currently used by concurrent CREATE INDEX."),
+			GUC_UNIT_MS
+		},
+		&yb_wait_for_backends_catalog_version_timeout,
+		5 * 60 * 1000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_planner_custom_plan_threshold", PGC_USERSET, QUERY_TUNING,
 			gettext_noop("The number of times to force custom plan generation "
 						 "for prepared statements before considering a "
@@ -4815,6 +4850,28 @@ static struct config_enum ConfigureNamesEnum[] =
 		NULL, NULL, NULL
 	},
 
+	  {
+		{"yb_pg_batch_detection_mechanism", PGC_SIGHUP, COMPAT_OPTIONS_CLIENT,
+			gettext_noop("The drivers use message protocol to communicate "
+						 "with PG. The driver does not inform PG in advance "
+						 "about a Batch execution. We need to identify a batch " 
+						 "because in that case the single-shard optimization "
+						 "should be disabled. Postgres drivers pipeline "
+						 "messages and we exploit this to peek the message "
+						 "following 'Execute' to detect a batch. This may "
+						 "lead to some unforeseen bugs, so this GUC provides "
+						 "a way to disable the single-shard optimization "
+						 "completely or go back to the behavior before "
+						 "#16446 was fixed."),
+		 NULL,
+		 GUC_SUPERUSER_ONLY
+		},
+		&yb_pg_batch_detection_mechanism,
+		DETECT_BY_PEEKING,
+		yb_pg_batch_detection_mechanism_options,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, NULL, NULL, NULL, NULL
@@ -5309,7 +5366,13 @@ add_placeholder_variable(const char *name, int elevel)
 static struct config_generic *
 find_option(const char *name, bool create_placeholders, int elevel)
 {
+#ifdef ADDRESS_SANITIZER
+	struct config_generic config_placeholder;
+	config_placeholder.name = name;
+	const char **key = &config_placeholder.name;
+#else
 	const char **key = &name;
+#endif
 	struct config_generic **res;
 	int			i;
 
@@ -8770,7 +8833,13 @@ static void
 define_custom_variable(struct config_generic *variable)
 {
 	const char *name = variable->name;
+#ifdef ADDRESS_SANITIZER
+	struct config_generic config_placeholder;
+	config_placeholder.name = name;
+	const char **nameAddr = &config_placeholder.name;
+#else
 	const char **nameAddr = &name;
+#endif
 	struct config_string *pHolder;
 	struct config_generic **res;
 

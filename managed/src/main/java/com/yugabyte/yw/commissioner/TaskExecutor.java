@@ -25,7 +25,6 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -34,7 +33,6 @@ import io.prometheus.client.Summary;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -147,8 +145,6 @@ public class TaskExecutor {
 
   // Skip or perform abortable check for subtasks.
   private final boolean skipSubTaskAbortableCheck;
-
-  private static Map<UUID, Universe> kubernetesOperatorMap = new HashMap<UUID, Universe>();
 
   private static final String COMMISSIONER_TASK_WAITING_SEC_METRIC =
       "ybp_commissioner_task_waiting_sec";
@@ -492,12 +488,6 @@ public class TaskExecutor {
     default void beforeTask(TaskInfo taskInfo) {};
 
     void afterTask(TaskInfo taskInfo, Throwable t);
-
-    default void afterSubtaskGroup(
-        String name, TaskInfo taskInfo, Map<UUID, Universe> kubernetesOperatorMap, Throwable t) {};
-
-    default void afterParentTask(
-        String name, TaskInfo taskInfo, Map<UUID, Universe> kubernetesOperatorMap, Throwable t) {};
   }
 
   /**
@@ -879,6 +869,8 @@ public class TaskExecutor {
 
     protected abstract TaskExecutionListener getTaskExecutionListener();
 
+    protected abstract UUID getUserTaskUUID();
+
     Duration getTimeLimit() {
       return timeLimit;
     }
@@ -925,6 +917,8 @@ public class TaskExecutor {
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       taskInfo.refresh();
       ObjectNode taskDetails = taskInfo.getDetails().deepCopy();
+      // Method maskConfig does not modify the input as it makes a deep-copy.
+      String maskedTaskDetails = CommonUtils.maskConfig(taskDetails).toString();
       String errorString;
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
         errorString = "Platform shutdown";
@@ -936,27 +930,25 @@ public class TaskExecutor {
           cause = cause.getCause();
         }
         errorString =
-            "Failed to execute task "
-                + StringUtils.abbreviate(CommonUtils.maskConfig(taskDetails).toString(), 500)
-                + ", hit error:\n\n"
-                + StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000)
-                + ".";
+            String.format(
+                "Failed to execute task %s, git error:\n\n %s.",
+                StringUtils.abbreviate(maskedTaskDetails, 500),
+                StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
       }
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),
           taskInfo.getTaskUUID(),
-          CommonUtils.maskConfig(taskDetails),
+          maskedTaskDetails,
           t);
 
       if (log.isDebugEnabled()) {
         log.debug("Task creator callstack:\n{}", String.join("\n", creatorCallstack));
       }
 
-      ObjectNode details = taskDetails.deepCopy();
-      details.put("errorString", errorString);
+      taskDetails.put("errorString", errorString);
       taskInfo.setTaskState(state);
-      taskInfo.setDetails(details);
+      taskInfo.setDetails(taskDetails);
       taskInfo.update();
     }
 
@@ -971,20 +963,6 @@ public class TaskExecutor {
       TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
       if (taskExecutionListener != null) {
         taskExecutionListener.afterTask(taskInfo, t);
-      }
-    }
-
-    void publishAfterSubtaskGroup(String name, TaskInfo taskInfo, Throwable t) {
-      TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
-      if (taskExecutionListener != null) {
-        taskExecutionListener.afterSubtaskGroup(name, taskInfo, kubernetesOperatorMap, t);
-      }
-    }
-
-    void publishAfterParentTask(String name, TaskInfo taskInfo, Throwable t) {
-      TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
-      if (taskExecutionListener != null) {
-        taskExecutionListener.afterParentTask(name, taskInfo, kubernetesOperatorMap, t);
       }
     }
 
@@ -1090,6 +1068,11 @@ public class TaskExecutor {
       return taskExecutionListenerRef.get();
     }
 
+    @Override
+    protected UUID getUserTaskUUID() {
+      return getTaskUUID();
+    }
+
     public synchronized void doHeartbeat() {
       log.trace("Heartbeating task {}", getTaskUUID());
       TaskInfo taskInfo = TaskInfo.getOrBadRequest(getTaskUUID());
@@ -1163,14 +1146,11 @@ public class TaskExecutor {
               throw new RuntimeException(subTaskGroup + " failed.", e);
             }
             anyRe = e;
-          } finally {
-            publishAfterSubtaskGroup(subTaskGroup.name, taskInfo, throwable);
           }
         }
       } finally {
         // Clear the subtasks so that new subtasks can be run from the clean state.
         subTaskGroups.clear();
-        publishAfterParentTask(task.getClass().getSimpleName(), taskInfo, throwable);
       }
       if (anyRe != null) {
         throw new RuntimeException("One or more SubTaskGroups failed while running.", anyRe);
@@ -1227,7 +1207,7 @@ public class TaskExecutor {
     @Override
     public void run() {
       // Sets the top-level user task UUID.
-      task.setUserTaskUUID(parentRunnableTask.getTaskUUID());
+      task.setUserTaskUUID(getUserTaskUUID());
       int currentAttempt = 0;
       int retryLimit = task.getRetryLimit();
 
@@ -1259,6 +1239,11 @@ public class TaskExecutor {
     @Override
     protected synchronized TaskExecutionListener getTaskExecutionListener() {
       return parentRunnableTask == null ? null : parentRunnableTask.getTaskExecutionListener();
+    }
+
+    @Override
+    protected synchronized UUID getUserTaskUUID() {
+      return parentRunnableTask == null ? null : parentRunnableTask.getUserTaskUUID();
     }
 
     public synchronized void setSubTaskGroupType(SubTaskGroupType subTaskGroupType) {

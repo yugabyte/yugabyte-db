@@ -106,8 +106,8 @@ Status CDCSDKTestBase::CreateDatabase(
     const std::string& namespace_name,
     bool colocated) {
   auto conn = VERIFY_RESULT(cluster->Connect());
-      RETURN_NOT_OK(conn.ExecuteFormat(
-      "CREATE DATABASE $0$1", namespace_name, colocated ? " colocated = true" : ""));
+  RETURN_NOT_OK(conn.ExecuteFormat(
+      "CREATE DATABASE $0$1", namespace_name, colocated ? " with colocation = true" : ""));
   return Status::OK();
 }
 
@@ -145,7 +145,6 @@ Status CDCSDKTestBase::SetUpWithParams(
   FLAGS_master_auto_run_initdb = true;
   FLAGS_hide_pg_catalog_table_creation_logs = true;
   FLAGS_pggate_rpc_timeout_secs = 120;
-  FLAGS_cdc_enable_replicate_intents = true;
   FLAGS_replication_factor = replication_factor;
   FLAGS_ysql_enable_pack_full_row_update = true;
 

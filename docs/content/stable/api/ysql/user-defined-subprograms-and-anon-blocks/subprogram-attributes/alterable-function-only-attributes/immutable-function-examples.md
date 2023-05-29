@@ -87,6 +87,7 @@ drop function f1(int);
 ```
 
 It cause this error:
+
 ```output
 2BP01: cannot drop function f1(integer) because other objects depend on it
 ```
@@ -184,6 +185,7 @@ when the constraint's expression is written explicitly in the table's definition
 ```output
 new row for relation "t" violates check constraint "t_v_ok"
 ```
+
 But with the function encapsulation, as shown here, you get this error:
 
 ```output
@@ -237,7 +239,7 @@ set x.a = '19';
 execute q;
 ```
 
-The result is unchanged—and so it's now _wrong_ with respect the function's intended behavior. The reason is that the results for the actual arguments _"2"_ and _"3"_ have been cached in the execution plan that hangs off the prepared statement _"q"_. You can demonstrate this by using [`discard plans`](https://www.postgresql.org/docs/11/sql-discard.html), thus:
+The result is unchanged—and so it's now _wrong_ with respect the function's intended behavior. The reason is that the results for the actual arguments _"2"_ and _"3"_ have been cached in the execution plan that hangs off the prepared statement _"q"_. You can demonstrate this by using _[discard plans](https://www.postgresql.org/docs/11/sql-discard.html)_, thus:
 
 ```plpgsql
 discard plans;
@@ -257,7 +259,7 @@ Don't consider this to be an acceptable workaround. The problem is that the func
 {{< tip title="Using DISCARD PLANS, to clear the 'immutable' cache, is generally unsafe." >}}
 The present example showed a deliberate error for the sake of pedagogy. And the pedagogy was served simply by clearing the stale cached results in the present session—and only here. But there will be ordinary situations where you don't want cached results for an _immutable_ function to persist after a change that makes these no longer correct.
 
-`discard plans` affects only the session that issues it. But many concurrent sessions each could have cached such to-be-purged stale results. To do this safely in a way that handles all situations, cluster-wide, you must drop and re-create the _immutable_ function in question. See the tip [Always use 'drop' followed by a fresh bare 'create'](#always-drop-re-create) above.
+_discard plans_ affects only the session that issues it. But many concurrent sessions each could have cached such to-be-purged stale results. To do this safely in a way that handles all situations, cluster-wide, you must drop and re-create the _immutable_ function in question. See the tip [Always use 'drop' followed by a fresh bare 'create'](#always-drop-re-create) above.
 {{< /tip >}}
 
 ## Immutable function that depends, functionally, on another immutable function
@@ -323,7 +325,7 @@ $body$;
 execute q;
 ```
 
-You might have expected to see _"39"_—but the result is unchanged! The reason is that PostgreSQL (and therefore YSQL) do not track what the human sees as the dependency of _f2()_ upon _f1()_. This outcome is a consequence of how PL/pgSQL source text is interpreted and executed. This is explained in the section [PL/pgSQL's execution model](../../../plpgsql-execution-model/).
+You might have expected to see _"39"_—but the result is unchanged! The reason is that PostgreSQL (and therefore YSQL) do not track what the human sees as the dependency of _f2()_ upon _f1()_. This outcome is a consequence of how PL/pgSQL source text is interpreted and executed. This is explained in the section [PL/pgSQL's execution model](../../../language-plpgsql-subprograms/plpgsql-execution-model/).
 
 You must therefore track functional dependencies like _f2()_ upon _f1()_ manually in external documentation. And you must understand that you must intervene manually after changing the definition of _f1()_ by dropping and re-creating _f2()_—even though you use the same source text and other attributes for the new _f2()_ as defined the old _f2()_.
 

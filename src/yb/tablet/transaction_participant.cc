@@ -132,8 +132,8 @@ const std::string kParentMemTrackerId = "transactions";
 
 std::string TransactionApplyData::ToString() const {
   return YB_STRUCT_TO_STRING(
-      leader_term, transaction_id, op_id, commit_ht, log_ht, sealed, status_tablet, apply_state,
-      is_external);
+      leader_term, transaction_id, aborted, op_id, commit_ht, log_ht, sealed, status_tablet,
+      apply_state, is_external);
 }
 
 class TransactionParticipant::Impl
@@ -296,11 +296,11 @@ class TransactionParticipant::Impl
 
     std::pair<size_t, size_t> result(0, 0);
     // There is possibility that a shutdown race could happen during this iterating
-    // operation in RocksDB. To prevent the race, we should increase the pending_op_counter_
-    // before the operation, then shutdown will be delayed if it detects there is still
-    // operation hasn't finished yet. In another case, if RocksDB has already been shutted down,
-    // the operation will have NOT_OK status.
-    ScopedRWOperation operation(pending_op_counter_);
+    // operation in RocksDB. To prevent the race, we should increase the
+    // pending_op_counter_blocking_rocksdb_shutdown_start_  before the operation, then shutdown will
+    // be delayed if it detects there is still operation hasn't finished yet. In another case, if
+    // RocksDB has already been shutdown, the operation will have NOT_OK status.
+    ScopedRWOperation operation(pending_op_counter_blocking_rocksdb_shutdown_start_);
     if (!operation.ok()) {
       return STATUS(NotFound, "RocksDB has been shut down.");
     }
@@ -526,9 +526,14 @@ class TransactionParticipant::Impl
     }
   }
 
-  void NotifyAborted (const TransactionId& id) override {
-    VLOG_WITH_PREFIX(4) << "Transaction: " << id << " is aborted" << GetStackTrace();
+  void NotifyAbortedTransactionIncrement (const TransactionId& id) override {
+    VLOG_WITH_PREFIX(4) << "Transaction: " << id << " is aborted";
     metric_aborted_transactions_pending_cleanup_->Increment();
+  }
+
+  void NotifyAbortedTransactionDecrement (const TransactionId& id) override {
+    VLOG_WITH_PREFIX(4) << "Aborted Transaction: " << id << " is removed";
+    metric_aborted_transactions_pending_cleanup_->Decrement();
   }
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
@@ -544,7 +549,7 @@ class TransactionParticipant::Impl
       callback(STATUS_FORMAT(NotFound, "Abort of unknown transaction: $0", id));
       return;
     }
-    auto client_result = client();
+    auto client_result = participant_context_.client();
     if (!client_result.ok()) {
       callback(client_result.status());
       return;
@@ -677,7 +682,7 @@ class TransactionParticipant::Impl
 
     RETURN_NOT_OK(loader_.WaitLoaded(data.transaction_id));
 
-    ScopedRWOperation operation(pending_op_counter_);
+    ScopedRWOperation operation(pending_op_counter_blocking_rocksdb_shutdown_start_);
     if (!operation.ok()) {
       LOG_WITH_PREFIX(WARNING) << "Process apply rejected";
       return Status::OK();
@@ -784,7 +789,7 @@ class TransactionParticipant::Impl
     state.set_transaction_id(transaction_id.data(), transaction_id.size());
     state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
     state.add_tablets(participant_context_.tablet_id());
-    auto client_result = client();
+    auto client_result = participant_context_.client();
     if (!client_result.ok()) {
       LOG_WITH_PREFIX(WARNING) << "Get client failed: " << client_result.status();
       return;
@@ -853,16 +858,17 @@ class TransactionParticipant::Impl
 
   Status SetDB(
       const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
-      RWOperationCounter* pending_op_counter) {
+      RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start) {
     bool had_db = db_.intents != nullptr;
     db_ = db;
     key_bounds_ = key_bounds;
-    pending_op_counter_ = pending_op_counter;
+    pending_op_counter_blocking_rocksdb_shutdown_start_ =
+        pending_op_counter_blocking_rocksdb_shutdown_start;
 
     // We should only load transactions on the initial call to SetDB (when opening the tablet), not
     // in case of truncate/restore.
     if (!had_db) {
-      loader_.Start(pending_op_counter, db_);
+      loader_.Start(pending_op_counter_blocking_rocksdb_shutdown_start, db_);
       return Status::OK();
     }
 
@@ -1238,7 +1244,7 @@ class TransactionParticipant::Impl
         return;
       }
       while (operations.size() < pending_applies.size()) {
-        ScopedRWOperation operation(pending_op_counter_);
+        ScopedRWOperation operation(pending_op_counter_blocking_rocksdb_shutdown_start_);
         if (!operation.ok()) {
           break;
         }
@@ -1509,21 +1515,6 @@ class TransactionParticipant::Impl
     TransactionsModifiedUnlocked(&min_running_notifier);
   }
 
-  Result<client::YBClient*> client() const {
-    auto cached_value = client_cache_.load(std::memory_order_acquire);
-    if (cached_value != nullptr) {
-      return cached_value;
-    }
-    auto future_status = participant_context_.client_future().wait_for(
-        TransactionRpcTimeout().ToSteadyDuration());
-    if (future_status != std::future_status::ready) {
-      return STATUS(TimedOut, "Client not ready");
-    }
-    auto result = participant_context_.client_future().get();
-    client_cache_.store(result, std::memory_order_release);
-    return result;
-  }
-
   const std::string& LogPrefix() const override {
     return log_prefix_;
   }
@@ -1552,9 +1543,6 @@ class TransactionParticipant::Impl
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
-    if (transaction.WasAborted()) {
-      metric_aborted_transactions_pending_cleanup_->Decrement();
-    }
     transactions_.erase(it);
     mem_tracker_->Release(kRunningTransactionSize);
     TransactionsModifiedUnlocked(min_running_notifier);
@@ -1594,7 +1582,7 @@ class TransactionParticipant::Impl
       }
       if ((**it).UpdateStatus(
           info.status, info.status_ht, info.coordinator_safe_time, info.aborted_subtxn_set)) {
-        NotifyAborted(info.transaction_id);
+        NotifyAbortedTransactionIncrement(info.transaction_id);
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier);
       } else {
@@ -1806,7 +1794,7 @@ class TransactionParticipant::Impl
   docdb::DocDB db_;
   const docdb::KeyBounds* key_bounds_;
   // Owned externally, should be guaranteed that would not be destroyed before this.
-  RWOperationCounter* pending_op_counter_ = nullptr;
+  RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start_ = nullptr;
 
   Transactions transactions_;
   // Ids of running requests, stored in increasing order.
@@ -1867,8 +1855,6 @@ class TransactionParticipant::Impl
   std::atomic<CoarseTimePoint> next_check_min_running_{CoarseTimePoint()};
   HybridTime waiting_for_min_running_ht_ = HybridTime::kMax;
   std::atomic<bool> shutdown_done_{false};
-
-  mutable std::atomic<client::YBClient*> client_cache_{nullptr};
 
   LRUCache<TransactionId> cleanup_cache_{FLAGS_transactions_cleanup_cache_size};
 
@@ -1990,8 +1976,8 @@ Result<boost::optional<TabletId>> TransactionParticipant::FindStatusTablet(
 
 Status TransactionParticipant::SetDB(
     const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
-    RWOperationCounter* pending_op_counter) {
-  return impl_->SetDB(db, key_bounds, pending_op_counter);
+    RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start) {
+  return impl_->SetDB(db, key_bounds, pending_op_counter_blocking_rocksdb_shutdown_start);
 }
 
 void TransactionParticipant::GetStatus(

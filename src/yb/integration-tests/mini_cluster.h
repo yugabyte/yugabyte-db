@@ -152,6 +152,7 @@ class MiniCluster : public MiniClusterBase {
   Status AddTabletServer();
 
   Status AddTServerToBlacklist(const tserver::MiniTabletServer& ts);
+  Status AddTServerToLeaderBlacklist(const tserver::MiniTabletServer& ts);
   Status ClearBlacklist();
 
   // If this cluster is configured for a single non-distributed
@@ -307,6 +308,8 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
     MiniCluster* cluster, const TableId& table_id);
 
 tserver::MiniTabletServer* GetLeaderForTablet(MiniCluster* cluster, const std::string& tablet_id);
+Result<tablet::TabletPeerPtr> GetLeaderPeerForTablet(
+    MiniCluster* cluster, const std::string& tablet_id);
 
 std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(
     MiniCluster* cluster);
@@ -354,9 +357,6 @@ Result<scoped_refptr<master::TableInfo>> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name);
 
 Status WaitForInitDb(MiniCluster* cluster);
-
-// Counts the total number of external transactions on coordinator tablets.
-size_t CountExternalTransactions(MiniCluster* cluster);
 
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = TabletPeerFilter());
 

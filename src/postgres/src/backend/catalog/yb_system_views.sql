@@ -1337,3 +1337,10 @@ GRANT EXECUTE ON FUNCTION pg_ls_waldir() TO pg_monitor;
 GRANT pg_read_all_settings TO pg_monitor;
 GRANT pg_read_all_stats TO pg_monitor;
 GRANT pg_stat_scan_tables TO pg_monitor;
+
+--
+-- Grant and revoke statements on YB objects.
+--
+REVOKE EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) FROM public;
+GRANT EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_fix_catalog_version_table(boolean) FROM public;

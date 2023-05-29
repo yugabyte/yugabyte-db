@@ -5,9 +5,13 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.Pair;
@@ -17,10 +21,13 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -28,6 +35,7 @@ import java.util.function.Function;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.time.DateUtils;
 import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -37,8 +45,14 @@ import play.mvc.Http.Status;
 @Slf4j
 public class ResizeNodeParams extends UpgradeTaskParams {
 
+  public static final int AZU_DISK_LIMIT_NO_DOWNTIME = 4 * 1024; // 4 TiB
+
   private static final Set<Common.CloudType> SUPPORTED_CLOUD_TYPES =
-      EnumSet.of(Common.CloudType.gcp, Common.CloudType.aws, Common.CloudType.kubernetes);
+      EnumSet.of(
+          Common.CloudType.gcp,
+          Common.CloudType.aws,
+          Common.CloudType.kubernetes,
+          Common.CloudType.azu);
 
   private boolean forceResizeNode;
   public Map<String, String> masterGFlags;
@@ -58,8 +72,8 @@ public class ResizeNodeParams extends UpgradeTaskParams {
   public void verifyParams(Universe universe, NodeDetails.NodeState nodeState) {
     super.verifyParams(universe, nodeState); // we call verifyParams which will fail
 
-    RuntimeConfigFactory runtimeConfigFactory =
-        StaticInjectorHolder.injector().instanceOf(RuntimeConfigFactory.class);
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
 
     // Both master and tserver can be null. But if one is provided, both should be provided.
     if ((masterGFlags == null && tserverGFlags != null)
@@ -69,7 +83,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     }
     if (masterGFlags != null) {
       // We want this flow to only be enabled for cloud in the first go.
-      if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+      if (!runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.cloudEnabled)) {
         throw new PlatformServiceException(
             Status.METHOD_NOT_ALLOWED, "Cannot resize with gflag changes.");
       }
@@ -94,7 +108,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
 
       String errorStr =
           getResizeIsPossibleError(
-              currentUserIntent, newUserIntent, universe, runtimeConfigFactory, true);
+              cluster.uuid, currentUserIntent, newUserIntent, universe, runtimeConfGetter, true);
       if (errorStr != null) {
         throw new IllegalArgumentException(errorStr);
       }
@@ -118,6 +132,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
   /**
    * Checks if smart resize is available
    *
+   * @param clusterUUID cluster UUID
    * @param currentUserIntent current user intent
    * @param newUserIntent desired user intent
    * @param universe current universe
@@ -125,37 +140,50 @@ public class ResizeNodeParams extends UpgradeTaskParams {
    * @return
    */
   public static boolean checkResizeIsPossible(
+      UUID clusterUUID,
       UserIntent currentUserIntent,
       UserIntent newUserIntent,
       Universe universe,
       boolean verifyVolumeSize) {
 
-    RuntimeConfigFactory runtimeConfigFactory =
-        StaticInjectorHolder.injector().instanceOf(RuntimeConfigFactory.class);
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
 
     return checkResizeIsPossible(
-        currentUserIntent, newUserIntent, universe, runtimeConfigFactory, verifyVolumeSize);
+        clusterUUID,
+        currentUserIntent,
+        newUserIntent,
+        universe,
+        runtimeConfGetter,
+        verifyVolumeSize);
   }
 
   /**
    * Checks if smart resize is available
    *
+   * @param clusterUUID cluster UUID
    * @param currentUserIntent current user intent
    * @param newUserIntent desired user intent
    * @param universe current universe
-   * @param runtimeConfigFactory config factory
+   * @param runtimeConfGetter config factory
    * @param verifyVolumeSize whether to check volume size
    * @return
    */
   public static boolean checkResizeIsPossible(
+      UUID clusterUUID,
       UserIntent currentUserIntent,
       UserIntent newUserIntent,
       Universe universe,
-      RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter runtimeConfGetter,
       boolean verifyVolumeSize) {
     String res =
         getResizeIsPossibleError(
-            currentUserIntent, newUserIntent, universe, runtimeConfigFactory, verifyVolumeSize);
+            clusterUUID,
+            currentUserIntent,
+            newUserIntent,
+            universe,
+            runtimeConfGetter,
+            verifyVolumeSize);
     if (res != null) {
       log.debug("resize is forbidden: " + res);
     }
@@ -165,6 +193,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
   /**
    * Checks if smart resize is available and returns error message
    *
+   * @param clusterUUID cluster UUID
    * @param currentUserIntent current user intent
    * @param newUserIntent desired user intent
    * @param universe current universe
@@ -172,23 +201,26 @@ public class ResizeNodeParams extends UpgradeTaskParams {
    * @return null if available, otherwise returns error message
    */
   private static String getResizeIsPossibleError(
+      UUID clusterUUID,
       UserIntent currentUserIntent,
       UserIntent newUserIntent,
       Universe universe,
-      RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter runtimeConfGetter,
       boolean verifyVolumeSize) {
-
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(currentUserIntent.provider));
     boolean allowUnsupportedInstances =
-        runtimeConfigFactory
-            .forUniverse(universe)
-            .getBoolean("yb.internal.allow_unsupported_instances");
+        runtimeConfGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances);
     if (currentUserIntent == null || newUserIntent == null) {
       return "Should have both intents, but got: " + currentUserIntent + ", " + newUserIntent;
     }
     // Check valid provider.
     if (!SUPPORTED_CLOUD_TYPES.contains(currentUserIntent.providerType)) {
-      return "Smart resizing is only supported for AWS / GCP / K8S, It is: "
+      return "Smart resizing is only supported for AWS / GCP / K8S/ Azu, It is: "
           + currentUserIntent.providerType.toString();
+    }
+    if (currentUserIntent.providerType == Common.CloudType.azu
+        && !runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.cloudEnabled)) {
+      return "Not yet supported in YBA";
     }
     if (currentUserIntent.dedicatedNodes != newUserIntent.dedicatedNodes) {
       return "Smart resize is not possible if is dedicated mode changed";
@@ -241,6 +273,37 @@ public class ResizeNodeParams extends UpgradeTaskParams {
             currentUserIntent.deviceInfo)) {
       return "ResizeNode operation is not supported for instances with ephemeral drives";
     }
+    if ((diskChanged || masterDiskChanged)
+        && currentUserIntent.providerType == Common.CloudType.azu) {
+      if (diskChanged
+          && currentUserIntent.deviceInfo.storageType
+              == PublicCloudConstants.StorageType.UltraSSD_LRS) {
+        return "UltraSSD doesn't support resizing without downtime";
+      }
+      if (masterDiskChanged
+          && currentUserIntent.masterDeviceInfo.storageType
+              == PublicCloudConstants.StorageType.UltraSSD_LRS) {
+        return "UltraSSD doesn't support resizing without downtime";
+      }
+      if (diskChanged
+          && currentUserIntent.deviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
+          && newUserIntent.deviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
+        return "Cannot expand from "
+            + currentUserIntent.deviceInfo.volumeSize
+            + "GB to "
+            + newUserIntent.deviceInfo.volumeSize
+            + "GB without VM deallocation";
+      }
+      if (masterDiskChanged
+          && currentUserIntent.masterDeviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
+          && newUserIntent.masterDeviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
+        return "Cannot expand from "
+            + currentUserIntent.masterDeviceInfo.volumeSize
+            + "GB to "
+            + newUserIntent.masterDeviceInfo.volumeSize
+            + "GB without VM deallocation";
+      }
+    }
     if ((masterDiskChanged || masterInstanceTypeChanged)
         && hasEphemeralStorage(
             currentUserIntent.providerType,
@@ -248,6 +311,16 @@ public class ResizeNodeParams extends UpgradeTaskParams {
             currentUserIntent.masterDeviceInfo)) {
       return "ResizeNode operation is not supported for instances with ephemeral drives";
     }
+    if (currentUserIntent.providerType == Common.CloudType.aws) {
+      int cooldownInHours =
+          runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsDiskResizeCooldownHours);
+      boolean checkTservers = diskChanged || !verifyVolumeSize;
+      if ((checkTservers && isAwsCooldown(universe, clusterUUID, true, cooldownInHours))
+          || masterDiskChanged && isAwsCooldown(universe, clusterUUID, false, cooldownInHours)) {
+        return String.format("Resize cooldown in aws (%d hours) is still active", cooldownInHours);
+      }
+    }
+
     if (verifyVolumeSize
         && !diskChanged
         && !instanceTypeChanged
@@ -255,7 +328,20 @@ public class ResizeNodeParams extends UpgradeTaskParams {
         && !masterInstanceTypeChanged) {
       return "Nothing changed!";
     }
+
     return null;
+  }
+
+  private static boolean isAwsCooldown(
+      Universe universe, UUID clusterUUID, boolean isTserver, int cooldownInHours) {
+    Optional<Date> lastDiskUpdate =
+        universe.getUniverseDetails().getNodesInCluster(clusterUUID).stream()
+            .filter(n -> n.isTserver == isTserver)
+            .map(n -> n.lastVolumeUpdateTime)
+            .filter(Objects::nonNull)
+            .max(Comparator.naturalOrder());
+    return lastDiskUpdate.isPresent()
+        && DateUtils.addHours(lastDiskUpdate.get(), cooldownInHours).after(new Date());
   }
 
   private static boolean checkDiskChanged(

@@ -61,7 +61,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.SqlUpdate;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -88,8 +88,10 @@ import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListMastersResponse;
+import org.yb.client.UpgradeYsqlResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
@@ -225,6 +227,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
                     SysClusterConfigEntryPB.newBuilder().setVersion(defaultUniverse.getVersion());
                 return new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
               });
+      UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
+      when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(mockUpgradeYsqlResponse);
+      IsInitDbDoneResponse mockIsInitDbDoneResponse =
+          new IsInitDbDoneResponse(1000, "", true, true, null, null);
+      when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
     } catch (Exception ignored) {
       fail();
     }
@@ -959,13 +967,13 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
             + "instance_type_details )"
             + "VALUES ("
             + ":providerUUID, :typeCode, true, :numCores, :memSize, :details)";
-    SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
+    SqlUpdate update = DB.sqlUpdate(updateQuery);
     update.setParameter("providerUUID", defaultProvider.getUuid());
     update.setParameter("typeCode", intendedInstanceType);
     update.setParameter("numCores", 8);
     update.setParameter("memSize", 16);
     update.setParameter("details", "{\"volumeDetailsList\":[],\"tenancy\":\"Shared\"}");
-    int modifiedCount = Ebean.execute(update);
+    int modifiedCount = DB.getDefault().execute(update);
     assertEquals(1, modifiedCount);
 
     Region secondRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");

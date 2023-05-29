@@ -10,6 +10,7 @@ import { useQueries, useQuery, UseQueryResult } from 'react-query';
 import Select, { ValueType } from 'react-select';
 import clsx from 'clsx';
 import { Field } from 'formik';
+import { Box } from '@material-ui/core';
 
 import {
   fetchTablesInUniverse,
@@ -22,10 +23,16 @@ import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import {
   adaptTableUUID,
   formatBytes,
+  getAllXClusterConfigs,
   getSharedXClusterConfigs,
   tableSort
 } from '../../ReplicationUtils';
-import { XClusterConfigAction, XCLUSTER_TABLE_INELIGIBLE_STATUSES } from '../../constants';
+import {
+  TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+  XClusterConfigAction,
+  XCLUSTER_REPLICATION_DOCUMENTATION_URL,
+  XCLUSTER_TABLE_INELIGIBLE_STATUSES
+} from '../../constants';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { CollapsibleNote } from '../CollapsibleNote';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
@@ -37,6 +44,9 @@ import {
   YBTableRelationType
 } from '../../../../redesign/helpers/constants';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../../actions/customers';
+import { YBTooltip } from '../../../../redesign/components';
+import InfoMessageIcon from '../../../../redesign/assets/info-message.svg';
+import { compareYBSoftwareVersions, getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
 
 import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { XClusterConfig, XClusterTableType } from '../../XClusterTypes';
@@ -130,23 +140,16 @@ const NOTE_EXPAND_CONTENT = (
   <div>
     <b>Which tables are considered eligible for xCluster replication?</b>
     <p>
-      We have 2 criteria for <b>eligible tables</b>:
-      <ol>
-        <li>
+      We have the following criteria for <b>eligible tables</b>:
+      <ul>
+        <li style={{ listStyle: 'disc' }}>
           <b>Table not already in use</b>
           <p>
             The table is not involved in another xCluster configuration between the same two
             universes in the same direction.
           </p>
         </li>
-        <li>
-          <b>Matching table exists on target universe</b>
-          <p>
-            A table with the same name in the same keyspace and schema exists on the target
-            universe.
-          </p>
-        </li>
-      </ol>
+      </ul>
       If a table fails to meet any of the above criteria, then it is considered an <b>ineligible</b>{' '}
       table for xCluster purposes.
     </p>
@@ -190,6 +193,8 @@ export const TableSelect = (props: TableSelectProps) => {
   const [activePage, setActivePage] = useState(1);
   const [sortField, setSortField] = useState<keyof KeyspaceRow>('keyspace');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
+  const [isTooltipOpen, setIsTooltipOpen] = useState<boolean>(false);
+  const [isMouseOverTooltip, setIsMouseOverTooltip] = useState<boolean>(false);
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(sourceUniverseUUID, { excludeColocatedTables: true }),
@@ -399,21 +404,72 @@ export const TableSelect = (props: TableSelectProps) => {
     }
   };
   const runtimeConfigEntries = globalRuntimeConfigQuery.data.configEntries ?? [];
-  const isTransactionalAtomicitySupported = runtimeConfigEntries.some(
+  const isTransactionalAtomicityEnabled = runtimeConfigEntries.some(
     (config: any) =>
       config.key === RuntimeConfigKey.XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG &&
       config.value === 'true'
   );
+  const ybSoftwareVersion = getPrimaryCluster(sourceUniverseQuery.data.universeDetails.clusters)
+    ?.userIntent.ybSoftwareVersion;
+  const hasExisitingReplicationConfig =
+    [
+      ...getAllXClusterConfigs(sourceUniverseQuery.data),
+      ...getAllXClusterConfigs(targetUniverseQuery.data)
+    ].length > 0;
+  const isTransactionalAtomicitySupported =
+    !!ybSoftwareVersion &&
+    compareYBSoftwareVersions(
+      TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+      ybSoftwareVersion,
+      true
+    ) < 0 &&
+    !hasExisitingReplicationConfig;
   return (
     <>
-      {isTransactionalAtomicitySupported &&
+      {isTransactionalAtomicityEnabled &&
         props.configAction === XClusterConfigAction.CREATE &&
         tableType === TableType.PGSQL_TABLE_TYPE && (
-          <Field
-            name="isTransactionalConfig"
-            component={YBCheckBox}
-            label="Enable transactional atomicity"
-          />
+          <Box display="flex" gridGap="5px">
+            <Field
+              name="isTransactionalConfig"
+              component={YBCheckBox}
+              label="Enable transactional atomicity"
+              disabled={!isTransactionalAtomicitySupported}
+            />
+            {/* This tooltip needs to be have a z-index greater than the z-index on the modal (3100)*/}
+            <YBTooltip
+              open={isTooltipOpen || isMouseOverTooltip}
+              title={
+                <p>
+                  YBA support for transactional atomicity has the following constraints:
+                  <ol>
+                    <li>
+                      The minimum YBDB version that supports transactional atomicity is 2.17.3.0-b2.
+                    </li>
+                    <li>PITR must be enabled on the target universe.</li>
+                    <li>enable_pg_savepoint must be set to false for both tserver and master</li>
+                    <li>
+                      Neither the source universe nor the target universe universe is a participant
+                      in any other xCluster configuration.
+                    </li>
+                  </ol>
+                  You may find further information on this feature on our{' '}
+                  <a href={XCLUSTER_REPLICATION_DOCUMENTATION_URL}>public docs.</a>
+                </p>
+              }
+              PopperProps={{ style: { zIndex: 4000, pointerEvents: 'auto' } }}
+              style={{ marginBottom: '5px' }}
+            >
+              <img
+                className={styles.transactionalSupportTooltip}
+                alt="Info"
+                src={InfoMessageIcon}
+                onClick={() => setIsTooltipOpen(!isTooltipOpen)}
+                onMouseOver={() => setIsMouseOverTooltip(true)}
+                onMouseOut={() => setIsMouseOverTooltip(false)}
+              />
+            </YBTooltip>
+          </Box>
         )}
       <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
       <div className={styles.tableToolbar}>
@@ -626,10 +682,11 @@ const getTableIdentifier = (table: YBTable): string =>
 
 /**
  * A table is eligible for replication if all of the following holds true:
- * - there exists another table with same keyspace, table name, and schema name
- *   in target universe
- * - the table is NOT part of another existing xCluster config between the same universes
- *   in the same direction
+ * - There exists another table with same keyspace, table name, and schema name
+ *   in target universe OR the user is selecting tables for a new xCluster config (YBA will do a backup/restore
+ *   to handle it during xCluster config creation).
+ * - The table is NOT part of another existing xCluster config between the same universes
+ *   in the same direction.
  */
 function getXClusterTableEligibilityDetails(
   sourceTable: YBTable,
@@ -637,11 +694,15 @@ function getXClusterTableEligibilityDetails(
   sharedXClusterConfigs: XClusterConfig[],
   currentXClusterConfigUUID?: string
 ): EligibilityDetails {
-  const targetUniverseTableIds = new Set(
-    targetUniverseTables.map((table) => getTableIdentifier(table))
-  );
-  if (!targetUniverseTableIds.has(getTableIdentifier(sourceTable))) {
-    return { status: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+  if (currentXClusterConfigUUID) {
+    // Adding a table to an existing xCluster config requires that there exists another table
+    // with same keyspace, table name, and schema name on the target universe.
+    const targetUniverseTableIds = new Set(
+      targetUniverseTables.map((table) => getTableIdentifier(table))
+    );
+    if (!targetUniverseTableIds.has(getTableIdentifier(sourceTable))) {
+      return { status: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+    }
   }
 
   for (const xClusterConfig of sharedXClusterConfigs) {

@@ -3,7 +3,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.helpers.TimeUnit;
@@ -11,9 +11,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -23,6 +21,7 @@ import play.data.validation.Constraints;
 
 @ApiModel(description = "Backup table parameters")
 @NoArgsConstructor
+@JsonIgnoreProperties({"currentYbcTaskId", "currentIdx", "backupDBStates"})
 public class BackupRequestParams extends UniverseTaskParams {
 
   @Constraints.Required
@@ -39,7 +38,9 @@ public class BackupRequestParams extends UniverseTaskParams {
   private UUID universeUUID = null;
 
   @Constraints.Required
-  @ApiModelProperty(value = "Backup type")
+  @ApiModelProperty(
+      value = "Backup type",
+      allowableValues = "PGSQL_TABLE_TYPE, YQL_TABLE_TYPE, REDIS_TABLE_TYPE")
   public TableType backupType;
 
   // Specifies the time in millisecs before deleting the backup from the storage
@@ -111,6 +112,9 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Schedule Name")
   public String scheduleName = null;
 
+  @ApiModelProperty(value = "Take table by table backups")
+  public boolean tableByTableBackup = false;
+
   // Specifies number of backups to retain in case of recurring backups.
   @ApiModelProperty(value = "Minimum number of backups to retain for a particular backup schedule")
   public int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN;
@@ -124,41 +128,10 @@ public class BackupRequestParams extends UniverseTaskParams {
   // Intermediate states to resume ybc backups
   public UUID backupUUID;
 
-  public int currentIdx;
-
-  public String currentYbcTaskId;
-
-  @ApiModelProperty(hidden = true)
-  public final Map<String, ParallelBackupState> backupDBStates = new ConcurrentHashMap<>();
-
   // This param precedes in value even if YBC is installed and enabled on the universe.
   // If null, proceeds with usual behaviour.
   @ApiModelProperty(value = "Overrides whether you want to use YBC based or script based backup.")
   public BackupCategory backupCategory = null;
-
-  @ToString
-  public static class ParallelBackupState {
-    public String nodeIp;
-    public String currentYbcTaskId;
-    public boolean alreadyScheduled = false;
-
-    public void resetOnComplete() {
-      this.nodeIp = null;
-      this.currentYbcTaskId = null;
-      this.alreadyScheduled = true;
-    }
-
-    public void setIntermediate(String nodeIp, String currentYbcTaskId) {
-      this.nodeIp = nodeIp;
-      this.currentYbcTaskId = currentYbcTaskId;
-    }
-  }
-
-  @JsonIgnore
-  public void initializeBackupDBStates(List<BackupTableParams> backupsList) {
-    backupsList.stream()
-        .forEach(bTP -> this.backupDBStates.put(bTP.getKeyspace(), new ParallelBackupState()));
-  }
 
   public BackupRequestParams(BackupRequestParams backupRequestParams) {
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
@@ -215,10 +188,10 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ToString
   public static class KeyspaceTable {
     @ApiModelProperty(value = "Tables")
-    public List<String> tableNameList;
+    public List<String> tableNameList = new ArrayList<>();
 
     @ApiModelProperty(value = "Table UUIDs")
-    public List<UUID> tableUUIDList;
+    public List<UUID> tableUUIDList = new ArrayList<>();
 
     @ApiModelProperty(value = "keyspace")
     public String keyspace;

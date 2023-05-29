@@ -45,6 +45,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
@@ -84,7 +85,7 @@ export interface AZUProviderEditFormFieldValues {
   regions: CloudVendorRegionField[];
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
-  sshPort: number;
+  sshPort: number | null;
   sshPrivateKeyContent: File;
   sshUser: string;
   version: number;
@@ -154,8 +155,8 @@ export const AZUProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT_NEW);
+  const showEditRegionFormModal = (regionOperation: RegionOperation) => {
+    setRegionOperation(regionOperation);
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -207,8 +208,8 @@ export const AZUProviderEditForm = ({
   const keyPairManagement = formMethods.watch('sshKeypairManagement');
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
-  const isFormDisabled =
-    isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const existingRegions = providerConfig.regions.map((region) => region.code);
+  const isFormDisabled = getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -302,12 +303,14 @@ export const AZUProviderEditForm = ({
               <RegionList
                 providerCode={ProviderCode.AZU}
                 regions={regions}
+                existingRegions={existingRegions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={isProviderInUse}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -331,7 +334,7 @@ export const AZUProviderEditForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -421,7 +424,7 @@ export const AZUProviderEditForm = ({
               btnText="Apply Changes"
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled}
+              disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
@@ -438,6 +441,8 @@ export const AZUProviderEditForm = ({
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           configuredRegions={regions}
+          isEditProvider={true}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -480,7 +485,7 @@ const constructDefaultFormValues = (
     zones: region.zones
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort ?? '',
+  sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version
 });
@@ -515,7 +520,7 @@ const constructProviderPayload = async (
         [ProviderCode.AZU]: {
           azuClientId: formValues.azuClientId,
           azuClientSecret: formValues.azuClientSecret,
-          azuHostedZoneId: formValues.azuHostedZoneId,
+          ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
           azuRG: formValues.azuRG,
           azuSubscriptionId: formValues.azuSubscriptionId,
           azuTenantId: formValues.azuTenantId
@@ -523,8 +528,8 @@ const constructProviderPayload = async (
       },
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: [
       ...formValues.regions.map<AZURegionMutation>((regionFormValues) => {
@@ -541,9 +546,15 @@ const constructProviderPayload = async (
           details: {
             cloudInfo: {
               [ProviderCode.AZU]: {
-                securityGroupId: regionFormValues.securityGroupId,
-                vnet: regionFormValues.vnet,
-                ybImage: regionFormValues.ybImage
+                ...(regionFormValues.securityGroupId && {
+                  securityGroupId: regionFormValues.securityGroupId
+                }),
+                ...(regionFormValues.vnet && {
+                  vnet: regionFormValues.vnet
+                }),
+                ...(regionFormValues.ybImage && {
+                  ybImage: regionFormValues.ybImage
+                })
               }
             }
           },

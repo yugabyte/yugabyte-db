@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.CustomerLicenseManager;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.CustomerLicenseFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -33,6 +34,8 @@ import play.mvc.Result;
 public class CustomerLicenseController extends AuthenticatedController {
 
   @Inject CustomerLicenseManager cLicenseManager;
+
+  @Inject FileHelperService fileHelperService;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerLicenseController.class);
 
@@ -70,7 +73,7 @@ public class CustomerLicenseController extends AuthenticatedController {
     } else if (licenseContent != null && !licenseContent.isEmpty()) {
       String fileName = licenseType + ".txt";
       // Create temp file and fill with content
-      Path tempFile = Files.createTempFile(UUID.randomUUID().toString(), ".txt");
+      Path tempFile = fileHelperService.createTempFile(UUID.randomUUID().toString(), ".txt");
       Files.write(tempFile, licenseContent.getBytes());
 
       // Upload temp file to upload the license and return success/failure

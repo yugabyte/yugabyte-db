@@ -17,18 +17,6 @@
 
 namespace yb {
 
-const char* WriteBuffer::CopyToLastBlock(const char* data, const char* end) {
-  if (blocks_.empty()) {
-    return data;
-  }
-  auto& last_block = blocks_.back();
-  auto len = std::min<size_t>(last_block.size() - filled_bytes_in_last_block_, end - data);
-  memcpy(last_block.data() + filled_bytes_in_last_block_, data, len);
-  filled_bytes_in_last_block_ += len;
-
-  return data + len;
-}
-
 Status WriteBuffer::Write(const WriteBufferPos& pos, const char* data, const char* end) {
   SCHECK_LT(pos.index, blocks_.size(), InvalidArgument, "Write to out of bounds buffer");
   auto len = std::min<size_t>(blocks_[pos.index].size() - pos.offset, end - data);
@@ -40,21 +28,95 @@ Status WriteBuffer::Write(const WriteBufferPos& pos, const char* data, const cha
   return Write(WriteBufferPos {.index = pos.index + 1, .offset = 0}, data, end);
 }
 
-void WriteBuffer::Append(const char* data, const char* end) {
-  size_ += end - data;
-  // Copy start of sidecar to existing buffer if present.
-  data = CopyToLastBlock(data, end);
+void WriteBuffer::AppendToNewBlock(const char* data, size_t len) {
+  AllocateBlock(std::max(len, block_size_));
+  memcpy(blocks_.back().data(), data, len);
+  filled_bytes_in_last_block_ = len;
+}
 
-  // If sidecar did not fit into last buffer, then we should allocate a new one.
-  size_t len = end - data;
-  if (len) {
-    DCHECK(blocks_.empty() || filled_bytes_in_last_block_ == blocks_.back().size());
+void WriteBuffer::PushBack(char value) {
+  size_ += 1;
 
-    // Allocate new sidecar buffer and copy remaining part of sidecar to it.
-    AllocateBlock(std::max<size_t>(len, block_size_));
-    memcpy(blocks_.back().data(), data, len);
-    filled_bytes_in_last_block_ = len;
+  if (PREDICT_FALSE(blocks_.empty())) {
+    AppendToNewBlock(&value, 1);
+    return;
   }
+
+  auto& last_block = blocks_.back();
+  auto filled_bytes_in_last_block = filled_bytes_in_last_block_;
+  if (PREDICT_FALSE(last_block.size() == filled_bytes_in_last_block)) {
+    AppendToNewBlock(&value, 1);
+    return;
+  }
+
+  last_block.data()[filled_bytes_in_last_block] = value;
+  filled_bytes_in_last_block_ += 1;
+}
+
+void WriteBuffer::Append(const char* data, size_t len) {
+  size_ += len;
+
+  if (PREDICT_FALSE(blocks_.empty())) {
+    AppendToNewBlock(data, len);
+    return;
+  }
+
+  auto& last_block = blocks_.back();
+  auto filled_bytes_in_last_block = filled_bytes_in_last_block_;
+  auto left = last_block.size() - filled_bytes_in_last_block;
+  if (PREDICT_FALSE(left == 0)) {
+    AppendToNewBlock(data, len);
+    return;
+  }
+
+  auto* out = last_block.data() + filled_bytes_in_last_block;
+  if (left >= len) {
+    filled_bytes_in_last_block_ += len;
+    memcpy(out, data, len);
+    return;
+  }
+
+  memcpy(out, data, left);
+  AppendToNewBlock(data + left, len - left);
+}
+
+// len_with_prefix is the total size, i.e. prefix size (1 byte) + data size.
+void WriteBuffer::AppendWithPrefixToNewBlock(
+    char prefix, const char* data, size_t len_with_prefix) {
+  AllocateBlock(std::max(len_with_prefix, block_size_));
+  auto& block = blocks_.back();
+  *block.data() = prefix;
+  filled_bytes_in_last_block_ = len_with_prefix;
+  memcpy(block.data() + 1, data, --len_with_prefix);
+}
+
+void WriteBuffer::AppendWithPrefix(char prefix, const char* data, size_t len) {
+  ++len;
+  size_ += len;
+
+  if (PREDICT_FALSE(blocks_.empty())) {
+    AppendWithPrefixToNewBlock(prefix, data, len);
+    return;
+  }
+
+  auto& last_block = blocks_.back();
+  auto filled_bytes_in_last_block = filled_bytes_in_last_block_;
+  auto left = last_block.size() - filled_bytes_in_last_block;
+  if (PREDICT_FALSE(left == 0)) {
+    AppendWithPrefixToNewBlock(prefix, data, len);
+    return;
+  }
+
+  auto* out = last_block.data() + filled_bytes_in_last_block;
+  *out++ = prefix;
+  if (left >= len) {
+    filled_bytes_in_last_block_ += len;
+    memcpy(out, data, --len);
+    return;
+  }
+
+  memcpy(out, data, --left);
+  AppendToNewBlock(data + left, --len - left);
 }
 
 void WriteBuffer::AddBlock(const RefCntBuffer& buffer, size_t skip) {

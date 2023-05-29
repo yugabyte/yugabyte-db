@@ -13,7 +13,7 @@ package com.yugabyte.yw.models;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlUpdate;
@@ -141,12 +141,12 @@ public class KmsHistory extends Model {
   }
 
   public static void addAllKmsHistory(List<KmsHistory> kmsHistoryList) {
-    Ebean.beginTransaction();
+    DB.beginTransaction();
     try {
-      Ebean.saveAll(kmsHistoryList);
-      Ebean.commitTransaction();
+      DB.saveAll(kmsHistoryList);
+      DB.commitTransaction();
     } finally {
-      Ebean.endTransaction();
+      DB.endTransaction();
     }
   }
 
@@ -165,7 +165,7 @@ public class KmsHistory extends Model {
             + " AND type = ?"
             + " AND key_ref = ?";
     SqlUpdate update =
-        Ebean.createSqlUpdate(sql)
+        DB.sqlUpdate(sql)
             .setParameter(1, active)
             .setParameter(2, targetUUID)
             .setParameter(3, confidUUID)
@@ -178,7 +178,7 @@ public class KmsHistory extends Model {
 
   public static void activateKeyRef(
       UUID targetUUID, UUID configUUID, KmsHistoryId.TargetType targetType, String keyRef) {
-    Ebean.beginTransaction();
+    DB.beginTransaction();
     try {
       KmsHistory currentlyActiveKeyRef = KmsHistory.getActiveHistory(targetUUID, targetType);
       if (currentlyActiveKeyRef != null) {
@@ -194,9 +194,9 @@ public class KmsHistory extends Model {
       if (toBeActiveKeyRef != null) {
         updateKeyRefStatus(targetUUID, toBeActiveKeyRef.getConfigUuid(), targetType, keyRef, true);
       }
-      Ebean.commitTransaction();
+      DB.commitTransaction();
     } finally {
-      Ebean.endTransaction();
+      DB.endTransaction();
     }
   }
 

@@ -311,27 +311,73 @@ Default: `64`
 
 The number of shards per YB-TServer for each YCQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `4`. For three or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+Default: `-1` (the value is calculated at runtime). For servers with up to two CPU cores, the default value is considered as `4`. For three or more CPU cores, the default value is considered as `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+
+{{< note title="Important" >}}
 
 This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
 
+{{< /note >}}
+
+{{< note title="Important" >}}
+
+When the value is set to *Default* (`-1`), then the server internally *updates* the flag with intended value during startup prior to version `2.18` and the flag remains *unchanged* starting from version `2.18`.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
 On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used to override the `yb_num_shards_per_tserver` value.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+If [`enable_automatic_tablet_splitting`](#enable-automatic-tablet-splitting) is `true`: the default value is considered as `1` and tables will begin with 1 tablet *per node*; from version `2.18` for servers with up to 4 CPU cores, the value *is not defined* and tables will begin with 1 tablet (for servers with up to 2 CPU cores) or 2 tablets (for servers with up to 4 CPU cores) *per cluster*.
+
+{{< /note >}}
 
 ##### --ysql_num_shards_per_tserver
 
 The number of shards per YB-TServer for each YSQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `2`. For servers with three or four CPU cores, the default value is `4`. Beyond four cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+Default: `-1` (the value is calculated at runtime). For servers with up to two CPU cores, the default value is considered as `2`. For servers with three or four CPU cores, the default value is considered as `4`. Beyond four cores, the default value is considered as `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+
+{{< note title="Important" >}}
 
 This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
 
+{{< /note >}}
+
+{{< note title="Important" >}}
+
+When the value is set to *Default* (`-1`), then the server internally *updates* the flag with intended value during startup prior to version `2.18.0` and the flag remains *unchanged* starting from version `2.18.0`.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
 On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+If [`enable_automatic_tablet_splitting`](#enable-automatic-tablet-splitting) is `true`: the default value is considered as `1` and tables will begin with 1 tablet *per node*; from version `2.18` for servers with up to 4 CPU cores, the value *is not defined* and tables will begin with 1 tablet (for servers with up to 2 CPU cores) or 2 tablets (for servers with up to 4 CPU cores) *per cluster*.
+
+{{< /note >}}
 
 ##### --cleanup_split_tablets_interval_sec
 
 Interval at which the tablet manager tries to cleanup split tablets that are no longer needed. Setting this to 0 disables cleanup of split tablets.
 
 Default: `60`
+
+##### --enable_automatic_tablet_splitting
+
+Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
+
+Default: `true`
 
 ##### --post_split_trigger_compaction_pool_max_threads
 
@@ -501,7 +547,7 @@ For example:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the exception of some logging options. Refer to [PostgreSQL logging options](#postgresql-logging-options).
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL server options](#postgresql-server-options).
 
 ##### --ysql_timezone
 
@@ -578,18 +624,6 @@ Default: `-1` (disables logging statement durations)
 ##### --ysql_log_min_messages
 
 Specifies the lowest YSQL message level to log.
-
-##### --temp_file_limit
-
-Specifies the amount of disk space used for temp files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
-
-Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
-
-You can remove the limit (set the size to unlimited) using `SET temp_file_limit=-1`.
-
-Valid values are `-1` (unlimited), `integer` (in kilobytes), `xMB` (in megabytes), and `xGB` (in gigabytes).
-
-Default: `1GB`
 
 ### YCQL
 
@@ -697,13 +731,31 @@ Only change this flag to `three_shared_parts` after you migrate the whole cluste
 
 Used to control rate of memstore flush and SSTable file compaction.
 
-Default: `256MB` (256 MB/second)
+Default: `1GB` (1 GB/second)
 
 ##### --rocksdb_universal_compaction_min_merge_width
 
 Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `4`
+
+##### --rocksdb_max_background_compactions
+
+Maximum number of threads to do background compactions (used when compactions need to catch up.) Unless `rocksdb_disable_compactions=true`, this cannot be set to zero.
+
+Default: `-1` (the value is calculated at runtime). For servers with up to 4 CPU cores, the default value is considered as `1`. For servers with up to 8 CPU cores, the default value is considered as `2`. For servers with up to 32 CPU cores, the default value is considered as `3`. Beyond 32 cores, the default value is considered as `4`.
+
+##### --rocksdb_compaction_size_threshold_bytes
+
+Threshold beyond which a compaction is considered large.
+
+Default: `2GB`
+
+##### --rocksdb_level0_file_num_compaction_trigger
+
+Number of files to trigger level-0 compaction. Set to `-1` if compaction should not be triggered by number of files at all.
+
+Default: `5`. 
 
 ##### --rocksdb_universal_compaction_size_ratio
 
@@ -1033,15 +1085,51 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
-## PostgreSQL logging options
+## PostgreSQL server options
 
-YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters using the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag.
+YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
+
+You can modify these parameters in the following ways:
+
+- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
+
+- Set the option per-database:
+
+    ```sql
+    ALTER DATABASE database_name SET temp_file_limit=-1;
+    ```
+
+- Set the option per-role:
+
+    ```sql
+    ALTER ROLE yugabyte SET temp_file_limit=-1;
+    ```
+
+    When setting a parameter at the role or database level, you have to open a new session for the changes to take effect.
+
+- Set the option for the current session:
+
+    ```sql
+    SET temp_file_limit=-1;
+    --- alternative way
+    SET SESSION temp_file_limit=-1;
+    ```
+
+    If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
+
+    If the surrounding transaction commits, the effects will persist for the whole session.
+
+- Set the option for the current transaction:
+
+    ```sql
+    SET LOCAL temp_file_limit=-1;
+    ```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions.
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
 
-### log_line_prefix
+##### log_line_prefix
 
 YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
 
@@ -1054,11 +1142,23 @@ YugabyteDB supports the following additional options for the `log_line_prefix` p
 
 For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
 
-### suppress_nonpg_logs (boolean)
+##### suppress_nonpg_logs (boolean)
 
 When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file in the `tserver/logs` directory.
 
 Default: `off`
+
+##### temp_file_limit
+
+Specifies the amount of disk space used for temporary files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
+
+Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
+
+You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
+
+Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
+
+Default: `1GB`
 
 ## Admin UI
 

@@ -55,7 +55,7 @@ YugabyteDB supports many languages and client drivers, including Java, Go, NodeJ
 
 # What's being worked on?
 
-> This section was last updated in **April, 2023**.
+> This section was last updated in **May, 2023**.
 
 ## Current roadmap
 
@@ -64,9 +64,10 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
 | [Automatic tablet splitting enabled by default](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PROGRESS  | v2.18 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |Enables changing the number of tablets (which are splits of data) at runtime.|
-|[Upgrade to PostgreSQL v15](https://github.com/yugabyte/yugabyte-db/issues/9797)| PROGRESS| v2.19 |[Track](https://github.com/yugabyte/yugabyte-db/issues/9797)| For latest features, new PostgreSQL extensions, performance, and community fixes
+|[Upgrade to PostgreSQL v15](https://github.com/yugabyte/yugabyte-db/issues/9797)| PROGRESS| v2.21 |[Track](https://github.com/yugabyte/yugabyte-db/issues/9797)| For latest features, new PostgreSQL extensions, performance, and community fixes
+|Database live migration using YugabyteDB Voyager| PROGRESS| | [Track](https://github.com/yugabyte/yb-voyager/issues/50)|Database live migration using YugabyteDB Voyager| 
 | Support wait-on-conflict concurrency control | PROGRESS  | v2.19  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) | Support wait-on-conflict concurrency control |
-| Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-xcluster-async-replication.md) | PROGRESS  |  v2.19  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1808) | Apply transactions atomically on consumer cluster. |
+| Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-xcluster-async-replication.md) | PROGRESS  |  v2.19  | [Track](https://github.com/yugabyte/yugabyte-db/issues/10976) | Apply transactions atomically on target cluster. |
 | YSQL-table statistics and cost based optimizer(CBO) | PROGRESS  |  v2.21 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) | Improve YSQL query performance |
 | [YSQL-Feature support - ALTER TABLE](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.21 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) | Support for various `ALTER TABLE` variants |
 | Support for GiST indexes | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1337) |Suppor for GiST (Generalized Search Tree) based index|

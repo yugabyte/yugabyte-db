@@ -13,13 +13,15 @@ type PlacementBlock struct {
     MinNumReplicas int             `json:"min_num_replicas"`
 }
 
-type LiveReplicasStruct struct {
+type ReplicasStruct struct {
     NumReplicas     int              `json:"num_replicas"`
     PlacementBlocks []PlacementBlock `json:"placement_blocks"`
+    PlacementUuid   string           `json:"placement_uuid"`
 }
 
 type ReplicationInfoStruct struct {
-    LiveReplicas LiveReplicasStruct `json:"live_replicas"`
+    LiveReplicas ReplicasStruct   `json:"live_replicas"`
+    ReadReplicas []ReplicasStruct `json:"read_replicas"`
 }
 
 type EncryptionInfoStruct struct {

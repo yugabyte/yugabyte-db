@@ -19,9 +19,6 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/client/yb_table_name.h"
-
-#include "yb/common/ybc_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 
@@ -47,12 +44,15 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
+#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
@@ -104,6 +104,9 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 
+METRIC_DECLARE_entity(tablet);
+METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
+
 namespace yb {
 namespace pgwrapper {
 namespace {
@@ -154,6 +157,8 @@ class PgMiniTest : public PgMiniTestBase {
   void VerifyFileSizeAfterCompaction(PGConn* conn, const int num_tables);
 
   void RunManyConcurrentReadersTest();
+
+  void ValidateAbortedTxnMetric();
 };
 
 class PgMiniPgClientServiceCleanupTest : public PgMiniTest {
@@ -455,6 +460,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Tracing)) {
   value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_OK(conn.Execute("ABORT"));
   LOG(INFO) << "Done block transaction";
+  ValidateAbortedTxnMetric();
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TracingSushant)) {
@@ -585,6 +591,7 @@ void PgMiniTest::TestReadRestart(const bool deferrable) {
       << num_reads;
   ASSERT_EQ(num_read_restarts.load(std::memory_order_acquire), 0);
   ASSERT_GT(num_read_successes.load(std::memory_order_acquire), kRequiredNumReads);
+  ValidateAbortedTxnMetric();
 }
 
 class PgMiniLargeClockSkewTest : public PgMiniTest {
@@ -1282,16 +1289,15 @@ class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
                                       ToPostgresKeyType(key_type),
                                       TableSplitOptions(key_type)));
     RETURN_NOT_OK(conn->Execute("CREATE TABLE ref_t (k INT,"
-                                "                    fk_1 INT REFERENCES t2(k),"
+                                "                    fk_1 INT REFERENCES t1(k),"
                                 "                    fk_2 INT REFERENCES t2(k))"));
     constexpr int kNumRows = 100;
     RETURN_NOT_OK(conn->ExecuteFormat(
         "INSERT INTO t1 SELECT s FROM generate_series(1, $0) AS s", kNumRows));
     RETURN_NOT_OK(conn->ExecuteFormat(
         "INSERT INTO t2 SELECT s FROM generate_series(1, $0) AS s", kNumRows));
-    RETURN_NOT_OK(conn->ExecuteFormat(
-        "INSERT INTO ref_t SELECT s, s, s FROM generate_series(1, $0) AS s", kNumRows));
-    return Status::OK();
+    return conn->ExecuteFormat(
+        "INSERT INTO ref_t SELECT s, s, s FROM generate_series(1, $0) AS s", kNumRows);
   }
 
  private:
@@ -1364,8 +1370,11 @@ class PgMiniTabletSplitTest : public PgMiniTest {
     FLAGS_heartbeat_interval_ms = 1000;
     FLAGS_tserver_heartbeat_metrics_interval_ms = 1000;
     FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms = 4000;
-    yb_fetch_row_limit = 32;
     PgMiniTest::SetUp();
+  }
+
+  Status SetupConnection(PGConn* conn) const override {
+    return conn->Execute("SET yb_fetch_row_limit = 32");
   }
 };
 
@@ -1470,6 +1479,20 @@ TEST_F_EX(
   DestroyTable(table_name);
 }
 
+void PgMiniTest::ValidateAbortedTxnMetric() {
+  auto tablet_peers = cluster_->GetTabletPeers(0);
+  for(size_t i = 0; i < tablet_peers.size(); ++i) {
+    auto tablet = ASSERT_RESULT(tablet_peers[i]->shared_tablet_safe());
+    const auto& metric_map = tablet->GetTabletMetricsEntity()->UnsafeMetricsMapForTests();
+    std::reference_wrapper<const MetricPrototype> metric =
+        METRIC_aborted_transactions_pending_cleanup;
+    auto item = metric_map.find(&metric.get());
+    if (item != metric_map.end()) {
+      EXPECT_EQ(0, down_cast<const AtomicGauge<uint64>&>(*item->second).value());
+    }
+  }
+}
+
 void PgMiniTest::RunManyConcurrentReadersTest() {
   constexpr int kNumConcurrentRead = 8;
   constexpr int kMinNumNonEmptyReads = 10;
@@ -1556,6 +1579,7 @@ void PgMiniTest::RunManyConcurrentReadersTest() {
       }
       reader_threads_are_stopped.CountDown(1);
     });
+    ValidateAbortedTxnMetric();
   }
 
   std::this_thread::sleep_for(60s);
@@ -1617,6 +1641,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithAbortedIntentsAndRestart
       EXPECT_EQ(value, row_num) << "Expected to find " << row_num << ", found " << value << ".";
     }
   }
+  ValidateAbortedTxnMetric();
 }
 
 TEST_F(
@@ -1673,6 +1698,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST(TestSerializableStrongReadLockNotAborted)) {
       << "fail.\n"
       << "Commit status: " << commit_status << ".\n"
       << "Update status: " << update_status << ".\n";
+  ValidateAbortedTxnMetric();
 }
 
 void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, const int num_tables) {
