@@ -120,6 +120,6 @@ When you have received a change for a row for timestamp `t`, you do not receive 
 
 {{< note title="Note" >}}
 
-Please check the [reference page](../../../explore/change-data-capture/) for more details & limitations.
+See the [reference page](../../../explore/change-data-capture/) for more details & limitations.
 
 {{< /note >}}
