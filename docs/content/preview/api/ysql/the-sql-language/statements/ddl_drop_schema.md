@@ -89,7 +89,6 @@ NOTICE:  drop cascades to table sch1.t1
 DROP SCHEMA
 ```
 
-
 ## See also
 
 - [`CREATE SCHEMA`](../ddl_create_schema)
