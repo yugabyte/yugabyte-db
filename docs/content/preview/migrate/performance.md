@@ -62,7 +62,7 @@ Use one or more of the following techniques to improve import data performance:
 
 **Performance test results**
 
-Following are the performance test results to demonstrate the preceding techniques:
+The following performance test results demonstrate the preceding techniques.
 
 yb-voyager was tested using varying configurations, including more parallel jobs, multiple disks, and a larger cluster. The tests were run using a 28GB CSV file with 350 million rows on YugabyteDB version 2.16.0.0-b90.
 
