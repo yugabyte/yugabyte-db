@@ -64,7 +64,7 @@ Refuse to drop the schema if it contains any objects. This is the default.
 
 ## Example
 
-Create a schema with a table inside:
+Create a schema with a table:
 
 ```sql
 CREATE SCHEMA sch1;
@@ -72,6 +72,7 @@ CREATE TABLE sch1.t1(id BIGSERIAL PRIMARY KEY);
 ```
 
 Try to drop the schema:
+
 ```sql
 DROP SCHEMA sch1;
 ERROR:  cannot drop schema sch1 because other objects depend on it
@@ -80,12 +81,12 @@ HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 ```
 
 Drop a schema with `CASCADE`:
+
 ```sql
 DROP SCHEMA sch1 CASCADE;
 NOTICE:  drop cascades to table sch1.t1
 DROP SCHEMA
 ```
-
 
 ## See also
 
