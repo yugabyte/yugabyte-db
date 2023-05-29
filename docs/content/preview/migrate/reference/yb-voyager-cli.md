@@ -148,7 +148,7 @@ The valid *arguments* for export data are described in the following table:
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. Oracle migrations only. |
 | [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. Oracle migrations only.|
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
-| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
+| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel jobs to extract data from source database (default 4) |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
 | [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
 | [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
@@ -496,13 +496,21 @@ Specifies the schema of the target database. MySQL and Oracle migrations only.
 
 ### --parallel-jobs
 
+#### For export data
+
+Specifies the number of tables to be exported in parallel from the source database at a time.
+
+Default: 4; exports 4 tables at a time by default.
+
+If you use [BETA_FAST_DATA_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle) to accelerate data export, yb-voyager exports only one table at a time and the --parallel-jobs argument is ignored.
+
+#### For import data
+
 Specifies the number of parallel COPY commands issued to the target database.
 
-Depending on the target YugabyteDB configuration, the value of `--parallel-jobs` should be tweaked such that *at most* 50% of target cores are utilised.
+Depending on the target YugabyteDB configuration, the value of --parallel-jobs should be tweaked such that at most 50% of target cores are utilised.
 
-Default: If yb-voyager can determine the total number of cores `N` in the target YugabyteDB cluster, it uses `N/2` as the default. Otherwise, it defaults to twice the number of nodes in the cluster.
-
-Note that the `--parallel-jobs` argument is unsupported with [BETA_FAST_DATA_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle).
+Default: If yb-voyager can determine the total number of cores N in the target YugabyteDB cluster, it uses N/2 as the default. Otherwise, it defaults to twice the number of nodes in the cluster.
 
 ### --batch-size
 
