@@ -17,7 +17,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 ### Key enhancements
 
-* Export data for MySQL and Oracle is now 2-4x faster. You can set an environment variable `BETA_FAST_DATA_EXPORT=1` to leverage this performance improvement. Most features such as migrating partitioned tables, sequences, and so on are supported in this mode. Refer to the [Export data](../migrate-steps/#export-data) for more details.
+* Export data for MySQL and Oracle is now 2-4x faster. To leverage this performance improvement, set the environment variable `BETA_FAST_DATA_EXPORT=1`. Most features, such as migrating partitioned tables, sequences, and so on, are supported in this mode. Refer to [Export data](../migrate-steps/#export-data) for more details.
 
 * Added support for characters such as backspace(\b) in quote and escape character with `--file-opts` in import data file.
 
