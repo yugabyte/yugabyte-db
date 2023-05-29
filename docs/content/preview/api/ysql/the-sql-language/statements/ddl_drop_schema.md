@@ -66,7 +66,7 @@ Refuse to drop the schema if it contains any objects. This is the default.
 
 ## Example
 
-Create a schema with a table inside:
+Create a schema with a table:
 
 ```sql
 CREATE SCHEMA sch1;
