@@ -83,6 +83,7 @@ HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 ```
 
 Drop a schema with `CASCADE`:
+
 ```sql
 DROP SCHEMA sch1 CASCADE;
 NOTICE:  drop cascades to table sch1.t1
