@@ -129,6 +129,6 @@ public class WaitForServerReady extends ServerSubTaskBase {
     }
 
     // Sleep for the remaining portion of user specified time, if any.
-    sleepRemaining(userWaitTimeMs, numIters);
+    // sleepRemaining(userWaitTimeMs, numIters);
   }
 }
