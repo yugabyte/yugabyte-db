@@ -13,7 +13,7 @@
     "analyze": "source-map-explorer 'build/static/js/*.js'",
     "eject": "react-scripts eject",
     "test": "craco test --env=jest-environment-jsdom-sixteen",
-    "test:ci": "CI=true craco test --reporters=jest-junit --env=jest-environment-jsdom-sixteen",
+    "test:ci": "CI=true craco test --env=jest-environment-jsdom-sixteen",
     "test:debug": "react-scripts --inspect-brk test --runInBand --no-cache --env=jest-environment-jsdom-sixteen",
     "start": "craco start",
     "prepare": "cd ../../ && husky install ./managed/ui/.husky"
