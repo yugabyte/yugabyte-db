@@ -27,7 +27,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 ### Bug fixes
 
-* yb-voyager can now parse CREATE TABLE DDL having complex check constraints.
+* yb-voyager can now parse `CREATE TABLE` statements that have complex check constraints.
 
 * Import data file with AWS S3 now works when yb-voyager is installed via Docker.
 
