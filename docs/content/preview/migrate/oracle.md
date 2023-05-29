@@ -4,8 +4,6 @@ private=true
 +++
 -->
 
-Note that if you want to [accelerate data export](#accelerate-data-export-for-mysql-and-oracle), refer to [Database setup for accelerated data export](#database-setup-for-accelerated-data-export).
-
 Create a role and a database user, and provide the user with READ access to all the resources which need to be migrated.
 
 1. Create a role that has the privileges as listed in the following table:

@@ -56,15 +56,15 @@ Use one or more of the following techniques to improve import data performance:
 
 - **Add disks** to reduce disk write contention. YugabyteDB servers can be configured with one or multiple disk volumes to store tablet data. If all tablets are writing to a single disk, write contention can slow down the ingestion speed. Configuring the [YB-TServers](../../reference/configuration/yb-tserver/) with multiple disks can reduce disk write contention, thereby increasing throughput. Disks with higher IOPS and better throughput also improve write performance.
 
-- **Enable packed rows** (Early Access) to increase the throughput by more than two times. Enable packed rows on the YugabyteDB cluster by setting the YB-TServer flag `ysql_enable_packed_row` to true.
+- **Enable packed rows** ([Early Access](../../faq/general/#what-is-the-definition-of-the-beta-feature-tag)) to increase the throughput by more than two times. Enable packed rows on the YugabyteDB cluster by setting the YB-TServer flag [ysql_enable_packed_row](../../reference/configuration/yb-tserver/#ysql-enable-packed-row) to true.
 
 - **Configure the host machine's disk** with higher IOPS and better throughput to improve the performance of the splitter, which splits the large data file into smaller splits of 20000 rows. Splitter performance depends on the host machine's disk.
 
-**Performance test results**
+#### Performance test results
 
 The following performance test results demonstrate the preceding techniques.
 
-yb-voyager was tested using varying configurations, including more parallel jobs, multiple disks, and a larger cluster. The tests were run using a 28GB CSV file with 350 million rows on YugabyteDB version 2.16.0.0-b90.
+[Import data](../migrate-steps/#import-data) was tested using varying configurations, including more parallel jobs, multiple disks, and a larger cluster. The tests were run using a 28GB CSV file with 350 million rows on YugabyteDB version 2.16.0.0-b90.
 
 The table schema for the test was as follows:
 
@@ -102,6 +102,6 @@ As more optimizations are introduced, average throughput increases. The followin
 
 ## Improve export performance
 
-By default, yb-voyager exports four tables at a time. To speed up data export, parallelize the export of data from multiple tables using the [–-parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can, however, negatively impact performance; a setting of 4 typically performs well.
+By default, yb-voyager exports four tables at a time. To speed up data export, parallelize the export of data from multiple tables using the [–-parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can, however, negatively impact performance; so a setting of 4 typically performs well.
 
 If you use BETA_FAST_DATA_EXPORT to [accelerate data export](../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), yb-voyager exports only one table at a time and the `--parallel-jobs` argument is ignored.
