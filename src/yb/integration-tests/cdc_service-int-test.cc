@@ -88,6 +88,7 @@ DECLARE_bool(TEST_cdc_inject_replication_index_update_failure);
 DECLARE_double(cdc_get_changes_free_rpc_ratio);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_uint64(transaction_manager_workers_limit);
+DECLARE_bool(cdc_populate_end_markers_transactions);
 
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
@@ -845,6 +846,7 @@ TEST_F(CDCServiceTest, TestGetChanges) {
 }
 
 TEST_F(CDCServiceTest, TestGetChangesWithDeadline) {
+  FLAGS_cdc_populate_end_markers_transactions = false;
   docdb::DisableYcqlPackedRow();
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;

@@ -33,15 +33,21 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage))
   const uint32_t expected_count_with_packed_row[] = {1, 3, 0, 1, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
-  ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {1, 3}, {0, 0}, {1, 3}, {9, 3}, {0, 0}};
-  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {}, {1, 3}, {}, {}};
+  ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {1, 3}, {1, 3}, {9, 3}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 3}, {}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {
@@ -90,16 +96,22 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaChangeBeforeImage)) {
 
   // If the packed row is enabled and there are multiple tables altered, if CDC fail to get before
   // image row with the current running schema version, then it will ignore the before image tuples.
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    if (i <= 6) {
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    if (seen_dml_records <= 6) {
       CheckRecordWithThreeColumns(
-          record, expected_records[i], count, true, expected_before_image_records[i]);
+          record, expected_records[seen_dml_records], count, true,
+          expected_before_image_records[seen_dml_records]);
     } else {
       CheckRecordWithThreeColumns(
-          record, expected_records[i], count, true, expected_before_image_records[i], true);
+          record, expected_records[seen_dml_records], count, true,
+          expected_before_image_records[seen_dml_records], true);
     }
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   CheckCount(FLAGS_ysql_enable_packed_row ? expected_count_packed_row : expected_count, count);
@@ -141,10 +153,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageRetention)) {
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {
@@ -208,7 +226,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageExpiration)) {
   for (uint32_t i = 0; i < record_size; ++i) {
     const CDCSDKProtoRecordPB record = change_resp2.cdc_sdk_proto_records(i);
     // Ignore DDL records which are created due to leadership changes.
-    if (record.row_message().op() == RowMessage::DDL) {
+    if (record.row_message().op() == RowMessage::DDL ||
+        record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
       continue;
     }
 
@@ -262,10 +282,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImage)
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {
@@ -306,17 +332,22 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImage))
   const uint32_t expected_count_with_packed_row[] = {1, 6, 0, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
-  ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {0, 0},   {1, 88}, {1, 888}, {0, 0},
-                                       {2, 3}, {0, 0}, {1, 999}, {2, 99}, {0, 0}};
-  ExpectedRecord expected_before_image_records[] = {{}, {}, {},       {1, 2}, {1, 2}, {},
-                                                    {}, {}, {1, 888}, {2, 3}, {}};
+  ExpectedRecord expected_records[] = {{0, 0}, {1, 2},   {1, 88}, {1, 888},
+                                       {2, 3}, {1, 999}, {2, 99}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 2}, {}, {1, 888}, {2, 3}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {
@@ -361,17 +392,23 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleMultiShardUpdateBeforeI
   const uint32_t expected_count_with_packed_row[] = {1, 9, 0, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
-  ExpectedRecord expected_records[] = {{0, 0},   {1, 2}, {1, 3}, {1, 4}, {2, 3},   {0, 0},  {2, 88},
-                                       {2, 888}, {0, 0}, {3, 4}, {0, 0}, {2, 999}, {3, 99}, {0, 0}};
-  ExpectedRecord expected_before_image_records[] = {
-      {}, {}, {1, 2}, {1, 3}, {}, {}, {2, 3}, {2, 3}, {}, {}, {}, {2, 888}, {3, 4}, {}};
+  ExpectedRecord expected_records[] = {{0, 0},  {1, 2},   {1, 3}, {1, 4},   {2, 3},
+                                       {2, 88}, {2, 888}, {3, 4}, {2, 999}, {3, 99}};
+  ExpectedRecord expected_before_image_records[] = {{},     {0, 0}, {1, 2}, {1, 3},   {0, 0},
+                                                    {2, 3}, {2, 3}, {0, 0}, {2, 888}, {3, 4}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {
@@ -416,18 +453,23 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiSingleShardUpdateBeforeI
   const uint32_t expected_count_with_packed_row[] = {1, 9, 0, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
-  ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {0, 0}, {1, 88},  {1, 888},
-                                       {0, 0}, {2, 3}, {0, 0}, {1, 999}, {2, 99},
-                                       {0, 0}, {3, 4}, {3, 5}, {3, 6}};
-  ExpectedRecord expected_before_image_records[] = {
-      {}, {}, {}, {1, 2}, {1, 2}, {}, {}, {}, {1, 888}, {2, 3}, {}, {}, {3, 4}, {3, 5}};
+  ExpectedRecord expected_records[] = {{0, 0},   {1, 2},  {1, 88}, {1, 888}, {2, 3},
+                                       {1, 999}, {2, 99}, {3, 4},  {3, 5},   {3, 6}};
+  ExpectedRecord expected_before_image_records[] = {{},       {},     {1, 2}, {1, 2}, {},
+                                                    {1, 888}, {2, 3}, {},     {3, 4}, {3, 5}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {
@@ -470,14 +512,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateMultiColumnBefor
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    LOG(INFO) << change_resp.cdc_sdk_proto_records(i).DebugString();
-  }
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
     CheckRecordWithThreeColumns(
-        record, expected_records[i], count, true, expected_before_image_records[i], true);
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records], true);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {
@@ -778,11 +822,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
     CheckRecordWithThreeColumns(
-        record, expected_records[i], count, true, expected_before_image_records[i]);
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
 
@@ -1008,11 +1057,17 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWithBeforeI
   ExpectedRecordWithThreeColumns expected_before_image_records[] = {
       {}, {}, {}, {}, {}, {}, {1, 2, INT_MAX}};
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+
     CheckRecordWithThreeColumns(
-        record, expected_records[i], count, true, expected_before_image_records[i]);
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   CheckCount(FLAGS_ysql_enable_packed_row ? expected_count_packed_row : expected_count, count);
@@ -1047,11 +1102,17 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWithBeforeI
 
   GetChangesResponsePB change_resp_2 =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
-  uint32_t record_size_2 = change_resp_2.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size_2; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp_2.cdc_sdk_proto_records(i);
+  seen_dml_records = 0;
+  for (const auto& record : change_resp_2.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+
     CheckRecordWithThreeColumns(
-        record, expected_records_2[i], count_2, true, expected_before_image_records_2[i]);
+        record, expected_records_2[seen_dml_records], count_2, true,
+        expected_before_image_records_2[seen_dml_records]);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count_2[1] << " insert record and " << count_2[2] << " update record";
   CheckCount(
@@ -1090,10 +1151,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageO
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {
@@ -1138,17 +1205,22 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImageOn
   const uint32_t expected_count_with_packed_row[] = {1, 6, 0, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
-  ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {0, 0},   {1, 88}, {1, 888}, {0, 0},
-                                       {2, 3}, {0, 0}, {1, 999}, {2, 99}, {0, 0}};
-  ExpectedRecord expected_before_image_records[] = {{}, {}, {},       {1, 2}, {1, 2}, {},
-                                                    {}, {}, {1, 888}, {2, 3}, {}};
+  ExpectedRecord expected_records[] = {{0, 0}, {1, 2},   {1, 88}, {1, 888},
+                                       {2, 3}, {1, 999}, {2, 99}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 2}, {}, {1, 888}, {2, 3}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {

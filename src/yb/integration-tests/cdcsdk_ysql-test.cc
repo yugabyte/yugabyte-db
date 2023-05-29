@@ -72,10 +72,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardInsertWithAutoCommit))
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(record, expected_records[seen_dml_records], count);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record";
   CheckCount(expected_count, count);
@@ -109,12 +113,17 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardDMLWithAutoCommit)) {
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  ASSERT_EQ(record_size, 5);
+  ASSERT_EQ(record_size, 13);
 
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    ASSERT_EQ(record.row_message().op(), expected_record_types[i]);
-    CheckRecord(record, expected_records[i], count);
+  uint32_t expected_record_count = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    ASSERT_EQ(record.row_message().op(), expected_record_types[expected_record_count]);
+    CheckRecord(record, expected_records[expected_record_count], count);
+    expected_record_count++;
   }
 
   LOG(INFO) << "Got " << record_size << " records";
@@ -171,11 +180,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMultipleTabl
   ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
 
-  const int expected_total_records = 1008;
+  const int expected_total_records = 3006;
   const int expected_total_splits = 4;
   // The array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in that
   // order.
-  const int expected_records_count[] = {9, 999, 0, 0, 0, 0, 0, 0};
+  const int expected_records_count[] = {9, 999, 0, 0, 0, 0, 999, 999};
 
   int total_records = 0;
   int total_splits = 0;
@@ -324,10 +333,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateWithAutoCommit))
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(record, expected_records[seen_dml_records], count);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {
@@ -365,10 +378,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardMultiColUpdateWithAuto
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, num_cols);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(record, expected_records[seen_dml_records], count, num_cols);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   CheckCount(expected_count, count);
@@ -390,7 +407,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSafeTimePersistedFromGetChang
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, nullptr, 0, safe_hybrid_time));
 
   auto record_count = change_resp.cdc_sdk_proto_records_size();
-  ASSERT_EQ(record_count, 2);
+  ASSERT_EQ(record_count, 4);
 
   auto received_safe_time = ASSERT_RESULT(
       GetSafeHybridTimeFromCdcStateTable(stream_id, tablets[0].tablet_id(), test_client()));
@@ -398,6 +415,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSafeTimePersistedFromGetChang
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleStreams)) {
+  FLAGS_cdc_populate_end_markers_transactions = false;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
 
@@ -563,10 +581,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateRows)) {
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(record, expected_records[seen_dml_records], count);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   if (FLAGS_ysql_enable_packed_row) {
@@ -610,10 +632,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateMultiColumn)) {
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count, num_cols);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(record, expected_records[seen_dml_records++], count, num_cols);
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   CheckCount(expected_count, count);
@@ -801,10 +826,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardDeleteWithAutoCommit))
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(record, expected_records[seen_dml_records], count);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[3] << " delete record";
   CheckCount(expected_count, count);
@@ -829,10 +858,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardInsert4Rows)) {
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count);
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(record, expected_records[seen_dml_records], count);
+    seen_dml_records++;
   }
   LOG(INFO) << "Got " << count[1] << " insert records";
   CheckCount(expected_count, count);
@@ -860,19 +893,26 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertBeforeAfterSnapshot)) {
   GetChangesResponsePB change_resp_updated =
       ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
 
-  uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp_updated.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records_before_snapshot[i], count);
+  uint32_t expected_record_count = 0;
+  for (const auto& record : change_resp_updated.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(record, expected_records_before_snapshot[expected_record_count++], count);
   }
 
   ASSERT_OK(WriteRows(2 /* start */, 3 /* end */, &test_cluster_));
   GetChangesResponsePB change_resp_after_snapshot =
       ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp_updated));
-  uint32_t record_size_after_snapshot = change_resp_after_snapshot.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size_after_snapshot; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp_after_snapshot.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records_after_snapshot[i], count);
+
+  expected_record_count = 0;
+  for (const auto& record : change_resp_after_snapshot.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(record, expected_records_after_snapshot[expected_record_count++], count);
   }
   CheckCount(expected_count, count);
 }
@@ -1226,10 +1266,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTruncateTable)) {
   const uint32_t expected_count_truncate_disable[] = {1, 2, 0, 0, 0, 0};
   uint32_t count_truncate_disable[] = {0, 0, 0, 0, 0, 0};
   ExpectedRecord expected_records_truncate_disable[] = {{0, 0}, {0, 1}, {1, 2}};
-  uint32_t record_size = resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records_truncate_disable[i], count_truncate_disable);
+
+  uint32_t expected_record_count = 0;
+  for (const auto& record : resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(
+        record, expected_records_truncate_disable[expected_record_count], count_truncate_disable);
+    expected_record_count++;
   }
   CheckCount(expected_count_truncate_disable, count_truncate_disable);
 
@@ -1242,10 +1288,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTruncateTable)) {
   const uint32_t expected_count_truncate_enable[] = {1, 2, 0, 0, 0, 1};
   uint32_t count_truncate_enable[] = {0, 0, 0, 0, 0, 0};
   ExpectedRecord expected_records_truncate_enable[] = {{0, 0}, {0, 1}, {0, 0}, {1, 2}};
-  record_size = resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records_truncate_enable[i], count_truncate_enable);
+  expected_record_count = 0;
+  for (const auto& record : resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    CheckRecord(
+        record, expected_records_truncate_enable[expected_record_count], count_truncate_enable);
+    expected_record_count++;
   }
   CheckCount(expected_count_truncate_enable, count_truncate_enable);
 
@@ -7823,6 +7874,51 @@ TEST_F(
   auto set_resp3 =
       ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, op_id2, change_resp2.safe_hybrid_time()));
   ASSERT_FALSE(set_resp2.has_error());
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeginAndCommitRecordsForSingleShardTxns)) {
+  FLAGS_cdc_populate_end_markers_transactions = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  // Create a table with default number of tablets.
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  const int total_rows_inserted = 100;
+  for (int i = 1; i <= total_rows_inserted; ++i) {
+    ASSERT_OK(WriteRows(i, i + 1, &test_cluster_));
+  }
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  int seen_begin_records = 0, seen_commit_records = 0, seen_insert_records = 0;
+  bool expected_begin_record = true, expected_insert_record = false, expected_commit_record = false;
+  // Confirm that we place a "BEGIN" record before, and "COMMIT" record after every "INSERT" record.
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ++seen_insert_records;
+      ASSERT_TRUE(expected_insert_record);
+      expected_insert_record = false;
+      expected_commit_record = true;
+    } else if (record.row_message().op() == RowMessage::BEGIN) {
+      ++seen_begin_records;
+      ASSERT_TRUE(expected_begin_record);
+      expected_begin_record = false;
+      expected_insert_record = true;
+    } else if (record.row_message().op() == RowMessage::COMMIT) {
+      ++seen_commit_records;
+      ASSERT_TRUE(expected_commit_record);
+      expected_commit_record = false;
+      expected_begin_record = true;
+    }
+  }
+
+  ASSERT_EQ(seen_insert_records, total_rows_inserted);
+  ASSERT_EQ(seen_begin_records, total_rows_inserted);
+  ASSERT_EQ(seen_commit_records, total_rows_inserted);
 }
 
 }  // namespace cdc

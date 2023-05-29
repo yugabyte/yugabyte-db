@@ -120,6 +120,7 @@ DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(cdc_populate_safepoint_record);
 DECLARE_string(vmodule);
 DECLARE_int32(ysql_num_shards_per_tserver);
+DECLARE_bool(cdc_populate_end_markers_transactions);
 
 namespace yb {
 
@@ -1788,14 +1789,19 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       return StatusFromPB(resp.error().status());
     }
 
-    auto record = resp.cdc_sdk_proto_records(0);
+    for (const auto& record : resp.cdc_sdk_proto_records()) {
+      if (record.row_message().op() == RowMessage::BEGIN) {
+        continue;
+      }
 
-    // If it's the first call to GetChanges, we will get a DDL record irrespective of the
-    // value of need_schema_info.
-    if (is_first_call || expect_ddl_record) {
-      EXPECT_EQ(record.row_message().op(), RowMessage::DDL);
-    } else {
-      EXPECT_NE(record.row_message().op(), RowMessage::DDL);
+      // If it's the first call to GetChanges, we will get a DDL record irrespective of the
+      // value of need_schema_info.
+      if (is_first_call || expect_ddl_record) {
+        EXPECT_EQ(record.row_message().op(), RowMessage::DDL);
+      } else {
+        EXPECT_NE(record.row_message().op(), RowMessage::DDL);
+      }
+      break;
     }
 
     return resp;
