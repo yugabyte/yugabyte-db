@@ -66,6 +66,11 @@ DEFINE_test_flag(
     bool, cdc_snapshot_failure, false,
     "For testing only, When it is set to true, the CDC snapshot operation will fail.");
 
+DEFINE_RUNTIME_bool(
+    cdc_populate_end_markers_transactions, true,
+    "If 'true', we will also send 'BEGIN' and 'COMMIT' records for both single shard and multi "
+    "shard transactions");
+
 DECLARE_bool(ysql_enable_packed_row);
 
 namespace yb {
@@ -824,6 +829,64 @@ Status PopulateCDCSDKIntentRecord(
   return Status::OK();
 }
 
+void FillBeginRecordForSingleShardTransaction(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, GetChangesResponsePB* resp,
+    const uint64_t& commit_timestamp) {
+  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    auto tablet_result = tablet_peer->shared_tablet_safe();
+    if (!tablet_result.ok()) {
+      LOG(WARNING) << tablet_result.status();
+      continue;
+    }
+    auto tablet = *tablet_result;
+    auto table_name = tablet->metadata()->table_name(table_id);
+    // Ignore the DDL information of the parent table.
+    if (tablet->metadata()->colocated() &&
+        (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
+         boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
+      continue;
+    }
+    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
+    RowMessage* row_message = proto_record->mutable_row_message();
+    row_message->set_op(RowMessage_Op_BEGIN);
+    row_message->set_table(table_name);
+    row_message->set_commit_time(commit_timestamp);
+    // No need to add record_time to the Begin record since it does not have any intent associated
+    // with it.
+  }
+}
+
+void FillCommitRecordForSingleShardTransaction(
+    const OpId& op_id, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    GetChangesResponsePB* resp, const uint64_t& commit_timestamp) {
+  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    auto tablet_result = tablet_peer->shared_tablet_safe();
+    if (!tablet_result.ok()) {
+      LOG(WARNING) << tablet_result.status();
+      continue;
+    }
+    auto tablet = *tablet_result;
+    auto table_name = tablet->metadata()->table_name(table_id);
+    // Ignore the DDL information of the parent table.
+    if (tablet->metadata()->colocated() &&
+        (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
+         boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
+      continue;
+    }
+    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
+    RowMessage* row_message = proto_record->mutable_row_message();
+
+    row_message->set_op(RowMessage_Op_COMMIT);
+    row_message->set_table(table_name);
+    row_message->set_commit_time(commit_timestamp);
+    // No need to add record_time to the Commit record since it does not have any intent associated
+    // with it.
+
+    CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
+    SetCDCSDKOpId(op_id.term, op_id.index, 0, "", cdc_sdk_op_id_pb);
+  }
+}
+
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
 Status PopulateCDCSDKWriteRecord(
     const ReplicateMsgPtr& msg,
@@ -834,6 +897,10 @@ Status PopulateCDCSDKWriteRecord(
     SchemaDetailsMap* cached_schema_details,
     GetChangesResponsePB* resp,
     client::YBClient* client) {
+  if (FLAGS_cdc_populate_end_markers_transactions) {
+    FillBeginRecordForSingleShardTransaction(tablet_peer, resp, msg->hybrid_time());
+  }
+
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   const auto& batch = msg->write().write_batch();
   CDCSDKProtoRecordPB* proto_record = nullptr;
@@ -1052,6 +1119,11 @@ Status PopulateCDCSDKWriteRecord(
     }
   }
 
+  if (FLAGS_cdc_populate_end_markers_transactions) {
+    FillCommitRecordForSingleShardTransaction(
+        OpId(msg->id().term(), msg->id().index()), tablet_peer, resp, msg->hybrid_time());
+  }
+
   return Status::OK();
 }
 
@@ -1200,7 +1272,8 @@ Status ProcessIntents(
     SchemaDetailsMap* cached_schema_details,
     const uint64_t& commit_time) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-  if (stream_state->key.empty() && stream_state->write_id == 0) {
+  if (stream_state->key.empty() && stream_state->write_id == 0 &&
+      FLAGS_cdc_populate_end_markers_transactions) {
     FillBeginRecord(transaction_id, tablet_peer, resp, commit_time);
   }
 
@@ -1247,7 +1320,9 @@ Status ProcessIntents(
   SetTermIndex(op_id.term, op_id.index, checkpoint);
 
   if (stream_state->key.empty() && stream_state->write_id == 0) {
-    FillCommitRecord(op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time);
+    if (FLAGS_cdc_populate_end_markers_transactions) {
+      FillCommitRecord(op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time);
+    }
   } else {
     SetKeyWriteId(reverse_index_key, write_id, checkpoint);
   }
