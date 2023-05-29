@@ -13,7 +13,7 @@ type: docs
 
 Included here are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
-## v1.3 - May 26, 2023
+## v1.3 - May 30, 2023
 
 ### Key enhancements
 
