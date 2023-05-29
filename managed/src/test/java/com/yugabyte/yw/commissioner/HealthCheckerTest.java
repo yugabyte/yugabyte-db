@@ -61,6 +61,8 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -141,6 +143,13 @@ public class HealthCheckerTest extends FakeDBApplication {
             any(Universe.class), eq(UniverseConfKeys.nodeCheckTimeoutSec)))
         .thenReturn(1);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate))).thenReturn(false);
+    when(mockFileHelperService.createTempFile(anyString(), anyString()))
+        .thenAnswer(
+            i -> {
+              String fileName = i.getArgument(0);
+              String fileExtension = i.getArgument(1);
+              return Files.createTempFile(Paths.get("/tmp"), fileName, fileExtension);
+            });
     doAnswer(
             i -> {
               Runnable runnable = i.getArgument(0);
@@ -166,7 +175,8 @@ public class HealthCheckerTest extends FakeDBApplication {
             null,
             mockNodeUniverseManager,
             executorService,
-            executorService) {
+            executorService,
+            mockFileHelperService) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
             return new RuntimeConfig<>(mockRuntimeConfig);

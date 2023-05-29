@@ -139,7 +139,6 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-      when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
       when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);

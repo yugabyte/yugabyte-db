@@ -4,7 +4,6 @@ headerTitle: Redpanda
 linkTitle: Redpanda
 description: Redpanda for Change Data Capture in YugabyteDB.
 headcontent: Use YugabyteDB CDC with Redpanda as message broker
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     parent: cdc-tutorials

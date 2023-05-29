@@ -44,8 +44,6 @@
 
 namespace yb {
 
-using ColumnListVector = std::vector<int>;
-
 //--------------------------------------------------------------------------------------------------
 void AppendToKey(const QLValuePB &value_pb, std::string *bytes);
 void AppendToKey(const LWQLValuePB &value_pb, std::string *bytes);
@@ -599,10 +597,6 @@ inline void AppendToKey(const QLValue &value_pb, std::string *bytes) {
 void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValuePB* result);
 void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValue* result);
 void ConcatStrings(const Slice& lhs, const Slice& rhs, LWQLValuePB* result);
-
-std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
-    const QLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
-    const ColumnListVector& col_idxs);
 
 #define YB_SET_INT_VALUE(ql_valuepb, input, bits) \
   case DataType::BOOST_PP_CAT(INT, bits): { \

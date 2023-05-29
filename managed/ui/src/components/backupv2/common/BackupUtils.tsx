@@ -135,8 +135,9 @@ export const CALDENDAR_ICON = () => ({
 export const convertArrayToMap = (arr: IUniverse[], keyStr: string, valueStr: string) =>
   mapValues(keyBy(arr, keyStr), valueStr);
 
-export const PARALLEL_THREADS_RANGE = {
+export const ParallelThreads = {
   MIN: 1,
+  XCLUSTER_DEFAULT: 8,
   MAX: 100
 };
 
@@ -156,7 +157,7 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
       label: backup.backupType === TableType.PGSQL_TABLE_TYPE ? 'YSQL' : 'YCQL'
     },
     selected_ycql_tables: [] as any[],
-    parallel_threads: PARALLEL_THREADS_RANGE.MIN,
+    parallel_threads: ParallelThreads.MIN,
     storage_config: null as any,
     baseBackupUUID: backup.commonBackupInfo.baseBackupUUID,
     isTableByTableBackup: backup.commonBackupInfo.tableByTableBackup
@@ -200,15 +201,17 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
     };
   }
 
-  if(backup.expiryTime) {
-    formValues['retention_interval'] = Math.ceil((backup.hasIncrementalBackups ? 
-      Date.parse(backup.expiryTime) - backup.lastIncrementalBackupTime : 
-      Date.parse(backup.expiryTime) - Date.parse(backup.commonBackupInfo.createTime)) / MILLISECONDS_IN[backup.expiryTimeUnit]);
+  if (backup.expiryTime) {
+    formValues['retention_interval'] = Math.ceil(
+      (backup.hasIncrementalBackups
+        ? Date.parse(backup.expiryTime) - backup.lastIncrementalBackupTime
+        : Date.parse(backup.expiryTime) - Date.parse(backup.commonBackupInfo.createTime)) /
+        MILLISECONDS_IN[backup.expiryTimeUnit]
+    );
     const interval_type = capitalize(lowerCase(backup.expiryTimeUnit));
-    formValues['retention_interval_type'] = {value: interval_type, label: interval_type};
+    formValues['retention_interval_type'] = { value: interval_type, label: interval_type };
     formValues['keep_indefinitely'] = false;
-  }
-  else {
+  } else {
     formValues['keep_indefinitely'] = true;
   }
 

@@ -7,6 +7,8 @@ import com.google.common.collect.Iterables;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformUniverseNodeConfig;
@@ -52,6 +54,8 @@ import org.yb.perf_advisor.services.generation.PlatformPerfAdvisor;
 @Slf4j
 public class PerfAdvisorScheduler {
 
+  public static final String DATABASE_DRIVER_PARAM = "db.perf_advisor.driver";
+
   private static final String PERF_ADVISOR_RUN_IN_PROGRESS = "Perf advisor run in progress";
 
   private final PlatformScheduler platformScheduler;
@@ -84,6 +88,15 @@ public class PerfAdvisorScheduler {
   }
 
   public void start() {
+    if (!configFactory
+        .staticApplicationConf()
+        .getString(DATABASE_DRIVER_PARAM)
+        .equals("org.postgresql.Driver")) {
+      log.debug(
+          "Skipping perf advisor scheduler initialization for tests"
+              + " or other non-postgresql environment");
+      return;
+    }
     platformScheduler.schedule(
         getClass().getSimpleName(),
         Duration.ZERO,
@@ -259,13 +272,19 @@ public class PerfAdvisorScheduler {
               dbQueryRecommendationTypes,
               ysqlAuth,
               tlsClient);
+      // In K8S environment we may have no permissions to write to YB home dir
+      String perfAdvisorScriptDestPath =
+          (provider.getCloudCode().equals(CloudType.kubernetes)
+                  ? KubernetesTaskBase.K8S_NODE_YW_DATA_DIR
+                  : provider.getYbHome())
+              + "/bin";
       UniverseConfig uConfig =
           new UniverseConfig(
               customer.getUuid(),
               universe.getUniverseUUID(),
               universeNodeConfigList,
               scriptConfig,
-              provider.getYbHome() + "/bin",
+              perfAdvisorScriptDestPath,
               universeConfig);
       platformPerfAdvisor.run(uConfig);
       run.setEndTime(new Date()).setState(State.COMPLETED).save();

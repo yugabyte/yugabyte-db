@@ -1247,6 +1247,10 @@ Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,
                                                               end_inclusive);
 }
 
+Status PgApiImpl::DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num) {
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondIsNotNull(attr_num);
+}
+
 Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, YBCPgExpr lhs, int n_attr_values,
                                       PgExpr **attr_values) {
   return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(lhs, n_attr_values, attr_values);

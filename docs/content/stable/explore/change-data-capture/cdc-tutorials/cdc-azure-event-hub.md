@@ -4,7 +4,6 @@ headerTitle: Azure Event Hubs
 linkTitle: Azure Event Hubs
 description: Azure Synapse Analytics Integration using Azure Event Hubs for Change Data Capture in YugabyteDB.
 headcontent: Azure Synapse Analytics integration using Azure Event Hubs
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable:
     parent: cdc-tutorials

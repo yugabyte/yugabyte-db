@@ -240,7 +240,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             xClusterConfig,
             createFormData.bootstrapParams,
             requestedTableInfoList,
-            Collections.emptyMap());
+            Collections.emptyMap(),
+            Collections.emptySet());
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateXClusterConfig, taskParams);
 
@@ -376,7 +377,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     try {
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", null);
-      when(mockClient.setupUniverseReplication(any(), any(), any())).thenReturn(mockSetupResponse);
+      when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
+          .thenReturn(mockSetupResponse);
       IsSetupUniverseReplicationDoneResponse mockIsSetupDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, null);
       when(mockClient.isSetupUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
@@ -386,13 +388,14 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            createFormData.tables,
-            createFormData.bootstrapParams,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                createFormData.tables,
+                createFormData.bootstrapParams,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
@@ -420,7 +423,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     try {
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", null);
-      when(mockClient.setupUniverseReplication(any(), any(), any())).thenReturn(mockSetupResponse);
+      when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
+          .thenReturn(mockSetupResponse);
       IsSetupUniverseReplicationDoneResponse mockIsSetupDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, null);
       when(mockClient.isSetupUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
@@ -430,13 +434,14 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            createFormData.tables,
-            createFormData.bootstrapParams,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                createFormData.tables,
+                createFormData.bootstrapParams,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
@@ -471,19 +476,21 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
               .setCode(Code.UNKNOWN_ERROR);
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", masterErrorBuilder.build());
-      when(mockClient.setupUniverseReplication(any(), any(), any())).thenReturn(mockSetupResponse);
+      when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
+          .thenReturn(mockSetupResponse);
     } catch (Exception ignore) {
     }
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            createFormData.tables,
-            createFormData.bootstrapParams,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                createFormData.tables,
+                createFormData.bootstrapParams,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
@@ -515,7 +522,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     try {
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", null);
-      when(mockClient.setupUniverseReplication(any(), any(), any())).thenReturn(mockSetupResponse);
+      when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
+          .thenReturn(mockSetupResponse);
 
       AppStatusPB.Builder appStatusBuilder =
           AppStatusPB.newBuilder().setMessage(isSetupDoneErrMsg).setCode(ErrorCode.UNKNOWN_ERROR);
@@ -528,13 +536,14 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
-            mockYBClient,
-            createFormData.tables,
-            createFormData.bootstrapParams,
-            sourceUniverse,
-            targetUniverse,
-            null,
-            ConfigType.Basic);
+                mockYBClient,
+                createFormData.tables,
+                createFormData.bootstrapParams,
+                sourceUniverse,
+                targetUniverse,
+                null,
+                ConfigType.Basic)
+            .getFirst();
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);

@@ -248,6 +248,7 @@ public class UniverseResp {
         sampleAppCommandTxt = secretCommandTxt + "\n---\n" + sampleAppCommandTxt;
         sampleAppCommand = "echo -n \"" + sampleAppCommandTxt + "\" | kubectl create -f -";
       } else {
+        // should we change this? Given that it can run on any host.
         sampleAppCommand =
             ("export FILE_NAME=/tmp/<file_name>.crt "
                     + "&& echo -n \"<root_cert_content>\" > $FILE_NAME "

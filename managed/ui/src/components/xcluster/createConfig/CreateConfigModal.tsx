@@ -8,13 +8,16 @@ import {
   createXClusterReplication,
   fetchTablesInUniverse,
   fetchTaskUntilItCompletes,
-  fetchUniverseDiskUsageMetric,
-  isBootstrapRequired
+  fetchUniverseDiskUsageMetric
 } from '../../../actions/xClusterReplication';
-import { PARALLEL_THREADS_RANGE } from '../../backupv2/common/BackupUtils';
+import { ParallelThreads } from '../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../common/forms';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { adaptTableUUID, parseFloatIfDefined } from '../ReplicationUtils';
+import {
+  adaptTableUUID,
+  getTablesForBootstrapping,
+  parseFloatIfDefined
+} from '../ReplicationUtils';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 import { YBButton, YBModal } from '../../common/forms/fields';
@@ -84,7 +87,7 @@ const INITIAL_VALUES: Partial<CreateXClusterConfigFormValues> = {
   isTransactionalConfig: false,
   tableUUIDs: [],
   // Bootstrap fields
-  parallelThreads: PARALLEL_THREADS_RANGE.MIN
+  parallelThreads: ParallelThreads.XCLUSTER_DEFAULT
 };
 
 export const CreateConfigModal = ({
@@ -344,6 +347,7 @@ export const CreateConfigModal = ({
         validateForm(
           values,
           currentStep,
+          tablesQuery.data,
           universeQuery.data,
           isTableSelectionValidated,
           setBootstrapRequiredTableUUIDs,
@@ -449,7 +453,8 @@ export const CreateConfigModal = ({
 const validateForm = async (
   values: CreateXClusterConfigFormValues,
   currentStep: FormStep,
-  sourceUniveres: Universe,
+  sourceUniverseTables: YBTable[],
+  sourceUniverse: Universe,
   isTableSelectionValidated: boolean,
   setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void,
   setFormWarnings: (formWarnings: CreateXClusterConfigFormWarnings) => void
@@ -474,7 +479,7 @@ const validateForm = async (
       } else if (
         getPrimaryCluster(values.targetUniverse.value.universeDetails.clusters)?.userIntent
           ?.enableNodeToNodeEncrypt !==
-        getPrimaryCluster(sourceUniveres?.universeDetails.clusters)?.userIntent
+        getPrimaryCluster(sourceUniverse?.universeDetails.clusters)?.userIntent
           ?.enableNodeToNodeEncrypt
       ) {
         errors.targetUniverse =
@@ -493,12 +498,12 @@ const validateForm = async (
             body: 'Select at least 1 table to proceed'
           };
         }
-        // Check if bootstrap is required, for each selected table
-        let bootstrapTest: { [tableUUID: string]: boolean } = {};
+        let bootstrapTableUUIDs: string[] | null = null;
         try {
-          bootstrapTest = await isBootstrapRequired(
-            sourceUniveres.universeUUID,
+          bootstrapTableUUIDs = await getTablesForBootstrapping(
             values.tableUUIDs.map(adaptTableUUID),
+            sourceUniverse.universeUUID,
+            sourceUniverseTables,
             values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC
           );
         } catch (error: any) {
@@ -520,17 +525,14 @@ const validateForm = async (
               'An error occured while verifying whether the selected tables require bootstrapping.'
           };
         }
-        if (bootstrapTest) {
-          const bootstrapTableUUIDs = Object.keys(bootstrapTest).filter(
-            (tableUUID) => bootstrapTest?.[tableUUID]
-          );
+        if (bootstrapTableUUIDs !== null) {
           setBootstrapRequiredTableUUIDs(bootstrapTableUUIDs);
 
           // If some tables require bootstrapping, we need to validate the source universe has enough
           // disk space.
           if (bootstrapTableUUIDs.length > 0) {
             // Disk space validation
-            const currentUniverseNodePrefix = sourceUniveres.universeDetails.nodePrefix;
+            const currentUniverseNodePrefix = sourceUniverse.universeDetails.nodePrefix;
             const diskUsageMetric = await fetchUniverseDiskUsageMetric(currentUniverseNodePrefix);
             const freeSpaceTrace = diskUsageMetric.disk_usage.data.find(
               (trace) => trace.name === 'free'
@@ -557,14 +559,11 @@ const validateForm = async (
         errors.storageConfig = 'Backup storage configuration is required.';
       }
       const shouldValidateParallelThread =
-        values.parallelThreads && isYbcEnabledUniverse(sourceUniveres?.universeDetails);
-      if (shouldValidateParallelThread && values.parallelThreads > PARALLEL_THREADS_RANGE.MAX) {
-        errors.parallelThreads = `Parallel threads must be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`;
-      } else if (
-        shouldValidateParallelThread &&
-        values.parallelThreads < PARALLEL_THREADS_RANGE.MIN
-      ) {
-        errors.parallelThreads = `Parallel threads must be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`;
+        values.parallelThreads && isYbcEnabledUniverse(sourceUniverse?.universeDetails);
+      if (shouldValidateParallelThread && values.parallelThreads > ParallelThreads.MAX) {
+        errors.parallelThreads = `Parallel threads must be less than or equal to ${ParallelThreads.MAX}`;
+      } else if (shouldValidateParallelThread && values.parallelThreads < ParallelThreads.MIN) {
+        errors.parallelThreads = `Parallel threads must be greater than or equal to ${ParallelThreads.MIN}`;
       }
 
       throw errors;

@@ -273,7 +273,7 @@ class FilteringIterator {
       bool is_explicit_request_read_time,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       const DocDBStatistics* statistics) {
-    RETURN_NOT_OK(InitCommon(request, read_context.get().schema));
+    RETURN_NOT_OK(InitCommon(request, read_context.get().schema()));
     iterator_holder_ = VERIFY_RESULT(CreateIterator(
         ql_storage, request, projection, read_context, txn_op_context, deadline,
         read_time, is_explicit_request_read_time, pending_op, statistics));
@@ -292,7 +292,7 @@ class FilteringIterator {
       const QLValuePB& max_ybctid,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       const docdb::DocDBStatistics* statistics) {
-    RETURN_NOT_OK(InitCommon(request, read_context.get().schema));
+    RETURN_NOT_OK(InitCommon(request, read_context.get().schema()));
     return ql_storage.GetIterator(
         request.stmt_id(), projection, read_context, txn_op_context, deadline,
         read_time, min_ybctid, max_ybctid, pending_op, &iterator_holder_, statistics);
@@ -508,7 +508,7 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   // Initialize operation inputs.
   response_ = response;
 
-  doc_key_ = VERIFY_RESULT(FetchDocKey(doc_read_context_->schema, request_));
+  doc_key_ = VERIFY_RESULT(FetchDocKey(doc_read_context_->schema(), request_));
   encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
 
   return Status::OK();
@@ -565,8 +565,8 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, ReadHybridTime read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
-  DocPgsqlScanSpec spec(doc_read_context_->schema, request_.stmt_id(), *doc_key_);
-  dockv::ReaderProjection projection(doc_read_context_->schema);
+  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), *doc_key_);
+  dockv::ReaderProjection projection(doc_read_context_->schema());
   auto iterator = DocRowwiseIterator(
       projection,
       *doc_read_context_,
@@ -699,7 +699,7 @@ Status PgsqlWriteOperation::InsertColumn(
             "Illegal write instruction");
 
   const ColumnId column_id(column_value.column_id());
-  const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema.column_by_id(column_id));
+  const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema().column_by_id(column_id));
 
   // Evaluate column value.
   RSTATUS_DCHECK_EQ(column_value.expr().expr_case(), PgsqlExpressionPB::ExprCase::kValue,
@@ -741,7 +741,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  if (ShouldYsqlPackRow(doc_read_context_->schema.is_colocated())) {
+  if (ShouldYsqlPackRow(doc_read_context_->schema().is_colocated())) {
     RowPackContext pack_context(
         request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
@@ -789,9 +789,9 @@ Status PgsqlWriteOperation::UpdateColumn(
     return STATUS(InternalError, "column id missing", column_value.DebugString());
   }
   const ColumnId column_id(column_value.column_id());
-  const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema.column_by_id(column_id));
+  const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema().column_by_id(column_id));
 
-  DCHECK(!doc_read_context_->schema.is_key_column(column_id));
+  DCHECK(!doc_read_context_->schema().is_key_column(column_id));
 
   // Evaluate column value.
   QLExprResult result_holder;
@@ -802,7 +802,7 @@ Status PgsqlWriteOperation::UpdateColumn(
            "Unsupported DocDB Expression");
 
     RETURN_NOT_OK(EvalExpr(
-        column_value.expr(), table_row, result_holder.Writer(), &doc_read_context_->schema));
+        column_value.expr(), table_row, result_holder.Writer(), &doc_read_context_->schema()));
     result = &result_holder;
   }
 
@@ -839,7 +839,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   bool skipped = true;
 
   if (request_.has_ybctid_column_value()) {
-    const auto& schema = doc_read_context_->schema;
+    const auto& schema = doc_read_context_->schema();
     ExpressionHelper expression_helper;
     RETURN_NOT_OK(expression_helper.Init(schema, request_, table_row));
 
@@ -905,7 +905,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         }
         const ColumnId column_id(column_value.column_id());
         const ColumnSchema& column = VERIFY_RESULT(
-            doc_read_context_->schema.column_by_id(column_id));
+            doc_read_context_->schema().column_by_id(column_id));
 
         // Check column-write operator.
         RSTATUS_DCHECK_EQ(
@@ -1011,9 +1011,9 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
   ColumnId last_value_column_id(request_.col_refs()[0].column_id());
   ColumnId is_called_column_id(request_.col_refs()[1].column_id());
   const auto& last_value_column = VERIFY_RESULT_REF(
-      doc_read_context_->schema.column_by_id(last_value_column_id));
+      doc_read_context_->schema().column_by_id(last_value_column_id));
   const auto& is_called_column = VERIFY_RESULT_REF(
-      doc_read_context_->schema.column_by_id(is_called_column_id));
+      doc_read_context_->schema().column_by_id(is_called_column_id));
   const auto& last_value = table_row.GetValueByColumnId(last_value_column_id);
   const auto& is_called = table_row.GetValueByColumnId(is_called_column_id);
 
@@ -1085,7 +1085,7 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
 
 const dockv::ReaderProjection& PgsqlWriteOperation::projection() const {
   if (projection_.columns.empty() && doc_key_) {
-    InitProjection(doc_read_context_->schema, request_, &projection_);
+    InitProjection(doc_read_context_->schema(), request_, &projection_);
     VLOG_WITH_FUNC(4)
         << "projection: " << projection_.ToString() << ", request: " << AsString(request_);
   }
@@ -1100,7 +1100,7 @@ Result<bool> PgsqlWriteOperation::ReadColumns(
     return false;
   }
 
-  DocPgsqlScanSpec spec(doc_read_context_->schema, request_.stmt_id(), *doc_key_);
+  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), *doc_key_);
   auto iterator = DocRowwiseIterator(
       projection(),
       *doc_read_context_,
@@ -1307,7 +1307,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(
 
   VLOG(2) << "Start sampling tablet with sampling_state=" << sampling_state.ShortDebugString();
 
-  auto projection = CreateProjection(doc_read_context.schema, request_);
+  auto projection = CreateProjection(doc_read_context.schema(), request_);
   table_iter_ = VERIFY_RESULT(CreateIterator(
       ql_storage, request_, projection, doc_read_context, txn_op_context_,
       deadline, read_time, is_explicit_request_read_time, pending_op, statistics));
@@ -1383,7 +1383,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(
   // Return paging state if scan has not been completed
   if (request_.return_paging_state() && scan_time_exceeded) {
     *has_paging_state = VERIFY_RESULT(SetPagingState(
-        table_iter_.get(), doc_read_context.schema, read_time));
+        table_iter_.get(), doc_read_context.schema(), read_time));
   }
 
   VLOG(2) << "End sampling with new_sampling_state=" << new_sampling_state->ShortDebugString();
@@ -1423,7 +1423,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
   // the WHERE condition. When DocRowwiseIterator::NextRow() populates the value map, it uses this
   // projection only to scan sub-documents. The query schema is used to select only referenced
   // columns and key columns.
-  auto doc_projection = CreateProjection(doc_read_context.schema, request_);
+  auto doc_projection = CreateProjection(doc_read_context.schema(), request_);
   FilteringIterator table_iter(&table_iter_);
   RETURN_NOT_OK(table_iter.Init(
       ql_storage, request_, doc_projection, doc_read_context, txn_op_context_, deadline, read_time,
@@ -1431,7 +1431,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
 
   std::optional<IndexState> index_state;
   if (index_doc_read_context) {
-    const auto& index_schema = index_doc_read_context->schema;
+    const auto& index_schema = index_doc_read_context->schema();
     const auto idx = index_schema.find_column("ybidxbasectid");
     SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
     index_state.emplace(
@@ -1501,7 +1501,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
       read_context = index_doc_read_context;
     }
     DCHECK(iterator && read_context);
-    *has_paging_state = VERIFY_RESULT(SetPagingState(iterator, read_context->schema, read_time));
+    *has_paging_state = VERIFY_RESULT(SetPagingState(iterator, read_context->schema(), read_time));
   }
   return fetched_rows;
 }
@@ -1528,7 +1528,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     }
   }
 
-  auto projection = CreateProjection(doc_read_context.schema, request_);
+  auto projection = CreateProjection(doc_read_context.schema(), request_);
   dockv::PgTableRow row(projection);
   std::optional<FilteringIterator> iter;
   size_t row_count = 0;

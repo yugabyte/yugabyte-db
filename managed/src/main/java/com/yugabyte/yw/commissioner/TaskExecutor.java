@@ -25,7 +25,6 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -34,7 +33,6 @@ import io.prometheus.client.Summary;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -147,8 +145,6 @@ public class TaskExecutor {
 
   // Skip or perform abortable check for subtasks.
   private final boolean skipSubTaskAbortableCheck;
-
-  private static Map<UUID, Universe> kubernetesOperatorMap = new HashMap<UUID, Universe>();
 
   private static final String COMMISSIONER_TASK_WAITING_SEC_METRIC =
       "ybp_commissioner_task_waiting_sec";
@@ -492,12 +488,6 @@ public class TaskExecutor {
     default void beforeTask(TaskInfo taskInfo) {};
 
     void afterTask(TaskInfo taskInfo, Throwable t);
-
-    default void afterSubtaskGroup(
-        String name, TaskInfo taskInfo, Map<UUID, Universe> kubernetesOperatorMap, Throwable t) {};
-
-    default void afterParentTask(
-        String name, TaskInfo taskInfo, Map<UUID, Universe> kubernetesOperatorMap, Throwable t) {};
   }
 
   /**
@@ -976,20 +966,6 @@ public class TaskExecutor {
       }
     }
 
-    void publishAfterSubtaskGroup(String name, TaskInfo taskInfo, Throwable t) {
-      TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
-      if (taskExecutionListener != null) {
-        taskExecutionListener.afterSubtaskGroup(name, taskInfo, kubernetesOperatorMap, t);
-      }
-    }
-
-    void publishAfterParentTask(String name, TaskInfo taskInfo, Throwable t) {
-      TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
-      if (taskExecutionListener != null) {
-        taskExecutionListener.afterParentTask(name, taskInfo, kubernetesOperatorMap, t);
-      }
-    }
-
     void onCancelled() {
       try {
         task.onCancelled(taskInfo);
@@ -1170,14 +1146,11 @@ public class TaskExecutor {
               throw new RuntimeException(subTaskGroup + " failed.", e);
             }
             anyRe = e;
-          } finally {
-            publishAfterSubtaskGroup(subTaskGroup.name, taskInfo, throwable);
           }
         }
       } finally {
         // Clear the subtasks so that new subtasks can be run from the clean state.
         subTaskGroups.clear();
-        publishAfterParentTask(task.getClass().getSimpleName(), taskInfo, throwable);
       }
       if (anyRe != null) {
         throw new RuntimeException("One or more SubTaskGroups failed while running.", anyRe);

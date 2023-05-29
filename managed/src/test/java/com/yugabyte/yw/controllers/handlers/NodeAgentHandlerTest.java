@@ -5,10 +5,6 @@ package com.yugabyte.yw.controllers.handlers;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -54,9 +50,7 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper);
     nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
-
     nodeAgentHandler.enableConnectionValidation(false);
-    when(mockAppConfig.getString(eq("yb.storage.path"))).thenReturn("/tmp");
   }
 
   private void verifyKeys(UUID nodeAgentUuid) {
@@ -93,7 +87,6 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     NodeAgent nodeAgent = nodeAgentHandler.register(customer.getUuid(), payload);
     assertNotNull(nodeAgent.getUuid());
     UUID nodeAgentUuid = nodeAgent.getUuid();
-    verify(mockAppConfig, times(1)).getString(eq("yb.storage.path"));
     String serverCert = nodeAgent.getConfig().getServerCert();
     assertNotNull(serverCert);
     Path serverCertPath = nodeAgent.getServerCertFilePath();

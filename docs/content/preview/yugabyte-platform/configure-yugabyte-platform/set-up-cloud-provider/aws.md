@@ -5,7 +5,6 @@ linkTitle: Configure cloud providers
 description: Configure the Amazon Web Services (AWS) cloud provider.
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
-  - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
   - /preview/yugabyte-platform/deploy/configure-cloud-providers/aws
 menu:
   preview_yugabyte-platform:
@@ -128,10 +127,10 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 **Credential Type**. YugabyteDB Anywhere requires the ability to create VMs in AWS. To do this, you can do one of the following:
 
-- Create an AWS Service Account with the required permissions (refer to [Prepare the AWS cloud environment](../../../install-yugabyte-platform/prepare-environment/aws/)), and provide your AWS Access Key ID and Secret Access Key.
-- Provision the YugabyteDB Anywhere VM instance with an IAM role that has sufficient permissions by attaching an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YugabyteDB Anywhere VM in the **EC2** tab. For more information, see [Deploy the YugabyteDB universe using an IAM role](../../../install-yugabyte-platform/prepare-environment/aws/#deploy-the-yugabytedb-universe-using-an-iam-role).
+- **Specify Access ID and Secret Key** - Create an AWS Service Account with the required permissions (refer to [Prepare the AWS cloud environment](../../../install-yugabyte-platform/prepare-environment/aws/)), and provide your AWS Access Key ID and Secret Access Key.
+- **Use IAM Role from this YBA host's instance** - Provision the YugabyteDB Anywhere VM instance with an IAM role that has sufficient permissions by attaching an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YugabyteDB Anywhere VM in the **EC2** tab. For more information, see [Deploy the YugabyteDB universe using an IAM role](../../../install-yugabyte-platform/prepare-environment/aws/#deploy-the-yugabytedb-universe-using-an-iam-role). This option is only available if YugabyteDB Anywhere is installed on AWS.
 
-** Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](../../../../drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YugabyteDB Anywhere integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
+**Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](../../../../drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YugabyteDB Anywhere integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
 
 ### Regions
 

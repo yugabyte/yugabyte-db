@@ -34,6 +34,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.EmailHelper;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
@@ -162,6 +163,8 @@ public class HealthChecker {
 
   private final NodeUniverseManager nodeUniverseManager;
 
+  private final FileHelperService fileHelperService;
+
   @Inject
   public HealthChecker(
       Environment environment,
@@ -174,7 +177,8 @@ public class HealthChecker {
       RuntimeConfigFactory runtimeConfigFactory,
       RuntimeConfGetter confGetter,
       ApplicationLifecycle lifecycle,
-      NodeUniverseManager nodeUniverseManager) {
+      NodeUniverseManager nodeUniverseManager,
+      FileHelperService fileHelperService) {
     this(
         environment,
         config,
@@ -187,7 +191,8 @@ public class HealthChecker {
         lifecycle,
         nodeUniverseManager,
         createUniverseExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
-        createNodeExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()));
+        createNodeExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
+        fileHelperService);
   }
 
   HealthChecker(
@@ -202,7 +207,8 @@ public class HealthChecker {
       ApplicationLifecycle lifecycle,
       NodeUniverseManager nodeUniverseManager,
       ExecutorService universeExecutor,
-      ExecutorService nodeExecutor) {
+      ExecutorService nodeExecutor,
+      FileHelperService fileHelperService) {
     this.environment = environment;
     this.config = config;
     this.platformScheduler = platformScheduler;
@@ -215,6 +221,7 @@ public class HealthChecker {
     this.universeExecutor = universeExecutor;
     this.nodeExecutor = nodeExecutor;
     this.nodeUniverseManager = nodeUniverseManager;
+    this.fileHelperService = fileHelperService;
   }
 
   public void initialize() {
@@ -725,7 +732,12 @@ public class HealthChecker {
               .setEnableYbc(true)
               .setYbcPort(
                   params.universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort)
-              .setYbcDir(nodeInfo.isK8s() ? CommonUtils.DEFAULT_YBC_DIR : nodeInfo.getYbHomeDir());
+              .setYbcDir(
+                  nodeInfo.isK8s()
+                      ? String.format(
+                          CommonUtils.DEFAULT_YBC_DIR,
+                          GFlagsUtil.getCustomTmpDirectory(nodeDetails, params.universe))
+                      : nodeInfo.getYbHomeDir());
         }
         nodeMetadata.add(nodeInfo);
       }
@@ -942,8 +954,8 @@ public class HealthChecker {
       // For now it has no universe/cluster specific info. Add placeholder substitution here once
       // they are added.
       Path path =
-          Paths.get("/tmp/collect_metrics_" + universeUuid + "_" + nodeInfo.nodeName + ".sh");
-
+          fileHelperService.createTempFile(
+              "collect_metrics_" + universeUuid + "_" + nodeInfo.nodeName, ".sh");
       Files.write(path, scriptContent.getBytes(StandardCharsets.UTF_8));
 
       return path.toString();
@@ -957,11 +969,15 @@ public class HealthChecker {
     try (InputStream templateStream =
         environment.resourceAsStream("health/node_health.py.template")) {
       template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+      Universe universe = Universe.getOrBadRequest(universeUuid);
+      String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(nodeInfo.nodeDetails, universe);
       String scriptContent = template.replace("{{NODE_INFO}}", Json.toJson(nodeInfo).toString());
+      scriptContent = scriptContent.replace("{{TMP_DIR}}", customTmpDirectory);
       // For now it has no universe/cluster specific info. Add placeholder substitution here once
       // they are added.
-      Path path = Paths.get("/tmp/node_health_" + universeUuid + "_" + nodeInfo.nodeName + ".py");
-
+      Path path =
+          fileHelperService.createTempFile(
+              "node_health_" + universeUuid + "_" + nodeInfo.nodeName, ".py");
       Files.write(path, scriptContent.getBytes(StandardCharsets.UTF_8));
 
       return path.toString();

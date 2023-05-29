@@ -755,7 +755,7 @@ Result<bool> XClusterOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record)
     }
 
     RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
-        producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
+        producer_tablet_info_.replication_group_id, producer_tablet_info_.stream_id, split_info));
   } else if (record.operation() == cdc::CDCRecordPB::CHANGE_METADATA) {
     if (!VERIFY_RESULT(ProcessChangeMetadataOp(record))) {
       return false;
@@ -882,8 +882,8 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
   meta.set_tablet_id(producer_tablet_info_.tablet_id);
   master::UpdateConsumerOnProducerMetadataResponsePB response;
   Status s = local_client_->client->UpdateConsumerOnProducerMetadata(
-      producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, meta, colocation_id,
-      producer_schema_version, resp.compatible_schema_version(), &response);
+      producer_tablet_info_.replication_group_id, producer_tablet_info_.stream_id, meta,
+      colocation_id, producer_schema_version, resp.compatible_schema_version(), &response);
   if (!s.ok()) {
     HandleError(s);
     return;

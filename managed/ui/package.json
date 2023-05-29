@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "lint": "lint-staged",
+    "lint": "eslint --ext .js,.jsx,.ts,.tsx src/",
     "prettier": "prettier --write src/redesign/**/*",
     "cleanup": "rimraf build && rimraf ../src/main/public",
     "fetch-map": "mkdir -p build/static && curl 'http://s3-us-west-2.amazonaws.com/map.yugabyte.com/map/yb_map.tar.gz' | tar -zx -C build/static",
@@ -13,15 +13,9 @@
     "analyze": "source-map-explorer 'build/static/js/*.js'",
     "eject": "react-scripts eject",
     "test": "craco test --env=jest-environment-jsdom-sixteen",
-    "test:ci": "CI=true craco test --reporters=jest-junit --env=jest-environment-jsdom-sixteen",
+    "test:ci": "CI=true craco test --env=jest-environment-jsdom-sixteen",
     "test:debug": "react-scripts --inspect-brk test --runInBand --no-cache --env=jest-environment-jsdom-sixteen",
-    "start": "craco start",
-    "prepare": "cd ../../ && husky install ./managed/ui/.husky"
-  },
-  "lint-staged": {
-    "*.{js,jsx,ts,tsx}": [
-      "eslint --ext .js,.jsx,.ts,.tsx src/"
-    ]
+    "start": "craco start"
   },
   "engines": {
     "node": ">=16.10.x",
@@ -49,10 +43,8 @@
     "eslint-import-resolver-typescript": "^3.5.2",
     "eslint-plugin-import": "2.20.2",
     "eslint-plugin-react-hooks": "4.3.0",
-    "husky": "8.0.2",
     "jest-environment-jsdom-sixteen": "1.0.3",
     "jest-junit": "12.0.0",
-    "lint-staged": "13.1.0",
     "ncp": "2.0.0",
     "prettier": "2.1.0",
     "rimraf": "2.7.1",

@@ -19,12 +19,14 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -186,10 +188,13 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
+      updateYBUniverseStatus(getUniverse(), null);
     } catch (Throwable t) {
+      updateYBUniverseStatus(getUniverse(), t);
       // If for any reason destroy fails we would just unlock the universe for update
       try {
         unlockUniverseForUpdate();
+        updateYBUniverseStatusAfterUnlock();
       } catch (Throwable t1) {
         // Ignore the error
       }
@@ -199,6 +204,26 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       unlockXClusterUniverses(lockedXClusterUniversesUuidSet, params().isForceDelete);
     }
     log.info("Finished {} task.", getName());
+  }
+
+  private void updateYBUniverseStatus(Universe universe, Throwable t) {
+    if (getUniverse().getUniverseDetails().isKubernetesOperatorControlled) {
+      try {
+        String name = TaskType.DestroyKubernetesUniverse.name();
+        // Updating Kubernetes Custom Resource (if done through operator).
+        String status = (t != null ? "Failed" : "Success");
+        log.info("ybUniverseStatus info: {}: {}", name, status);
+        KubernetesOperatorStatusUpdater.updateStatus(universe, name.concat(" ").concat(status));
+      } catch (Exception e) {
+        log.warn("Error in creating Kubernetes Operator Universe", e);
+      }
+    }
+  }
+
+  private void updateYBUniverseStatusAfterUnlock() {
+    if (getUniverse().getUniverseDetails().isKubernetesOperatorControlled) {
+      KubernetesOperatorStatusUpdater.updateStatus(getUniverse(), "Completed task");
+    }
   }
 
   protected KubernetesCommandExecutor createDestroyKubernetesTask(

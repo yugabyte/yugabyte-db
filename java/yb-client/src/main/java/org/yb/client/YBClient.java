@@ -31,9 +31,6 @@
 //
 package org.yb.client;
 
-import com.google.common.net.HostAndPort;
-import com.stumbleupon.async.Callback;
-import com.stumbleupon.async.Deferred;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -48,6 +45,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
@@ -64,6 +62,10 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
+
+import com.google.common.net.HostAndPort;
+import com.stumbleupon.async.Callback;
+import com.stumbleupon.async.Deferred;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -965,6 +967,15 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * @see AsyncYBClient#upgradeYsql(HostAndPort, boolean)
+   */
+  public UpgradeYsqlResponse upgradeYsql(HostAndPort hp, boolean useSingleConnection)
+    throws Exception {
+    Deferred<UpgradeYsqlResponse> d = asyncClient.upgradeYsql(hp, useSingleConnection);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Check if the server is ready to serve requests.
    * @param hp the host and port of the server.
    * @param isTserver true if host/port is for tserver, else its master.
@@ -1540,21 +1551,34 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
-   * It is the same as {@link AsyncYBClient#setupUniverseReplication(String, Map, Set)}
+   * It is the same as {@link AsyncYBClient#setupUniverseReplication(String, Map, Set, Boolean)}
    * except that it is synchronous.
    *
-   * @see AsyncYBClient#setupUniverseReplication(String, Map, Set)
+   * @see AsyncYBClient#setupUniverseReplication(String, Map, Set, Boolean)
    */
   public SetupUniverseReplicationResponse setupUniverseReplication(
     String replicationGroupName,
     Map<String, String> sourceTableIdsBootstrapIdMap,
-    Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
+    Set<CommonNet.HostPortPB> sourceMasterAddresses,
+    @Nullable Boolean isTransactional) throws Exception {
     Deferred<SetupUniverseReplicationResponse> d =
       asyncClient.setupUniverseReplication(
         replicationGroupName,
         sourceTableIdsBootstrapIdMap,
-        sourceMasterAddresses);
+        sourceMasterAddresses,
+        isTransactional);
     return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetupUniverseReplicationResponse setupUniverseReplication(
+    String replicationGroupName,
+    Map<String, String> sourceTableIdsBootstrapIdMap,
+    Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
+    return setupUniverseReplication(
+      replicationGroupName,
+      sourceTableIdsBootstrapIdMap,
+      sourceMasterAddresses,
+      null /* isTransactional */);
   }
 
   public IsSetupUniverseReplicationDoneResponse isSetupUniverseReplicationDone(

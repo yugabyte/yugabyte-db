@@ -148,10 +148,10 @@ Status QLRocksDBStorage::GetIterator(
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     YQLRowwiseIteratorIf::UniPtr* iter,
     const docdb::DocDBStatistics* statistics) const {
-  DocKey lower_doc_key(doc_read_context.get().schema);
+  DocKey lower_doc_key(doc_read_context.get().schema());
   RETURN_NOT_OK(lower_doc_key.DecodeFrom(min_ybctid.binary_value()));
 
-  DocKey upper_doc_key(doc_read_context.get().schema);
+  DocKey upper_doc_key(doc_read_context.get().schema());
   RETURN_NOT_OK(upper_doc_key.DecodeFrom(max_ybctid.binary_value()));
   upper_doc_key.AddRangeComponent(dockv::KeyEntryValue(dockv::KeyEntryType::kHighest));
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
@@ -160,7 +160,7 @@ Status QLRocksDBStorage::GetIterator(
 
   dockv::KeyEntryValues empty_vec;
   RETURN_NOT_OK(doc_iter->Init(
-      DocPgsqlScanSpec(doc_read_context.get().schema, stmt_id,
+      DocPgsqlScanSpec(doc_read_context.get().schema(), stmt_id,
         empty_vec, /* hashed_components */
         empty_vec /* range_components */,
         nullptr /* condition */,
@@ -185,7 +185,7 @@ Status QLRocksDBStorage::GetIterator(
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     YQLRowwiseIteratorIf::UniPtr* iter,
     const docdb::DocDBStatistics* statistics) const {
-  const auto& schema = doc_read_context.get().schema;
+  const auto& schema = doc_read_context.get().schema();
   // Populate dockey from QL key columns.
   auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
       request.partition_column_values(), schema, 0 /* start_idx */));

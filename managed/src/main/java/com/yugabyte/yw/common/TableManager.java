@@ -428,6 +428,7 @@ public class TableManager extends DevopsBase {
       commandArgs.add("--nfs_storage_path");
       commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
     }
+    // TODO: add custom CA certs here
 
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");

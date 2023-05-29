@@ -253,7 +253,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     if (!instanceType.getInstanceTypeCode().equals("xsmall")
         && !instanceType.getInstanceTypeCode().equals("dev")) {
-      masterResource.put("cpu", 2);
+      masterResource.put("cpu", 2.0);
       masterResource.put("memory", "4Gi");
       masterLimit.put("cpu", 2 * burstVal);
       masterLimit.put("memory", "4Gi");

@@ -103,6 +103,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -430,6 +431,32 @@ public class AsyncYBClient implements AutoCloseable {
     return d;
   }
 
+  public Deferred<CreateCDCStreamResponse> createCDCStream(YBTable table,
+                                                           String nameSpaceName,
+                                                           String format,
+                                                           String checkpointType,
+                                                           String recordType,
+                                                           CommonTypes.YQLDatabase dbType) {
+    checkIsClosed();
+    CreateCDCStreamRequest rpc = new CreateCDCStreamRequest(table,
+      table.getTableId(),
+      nameSpaceName,
+      format,
+      checkpointType,
+      recordType,
+      dbType);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<CreateCDCStreamResponse> d = rpc.getDeferred().addErrback(
+      new Callback<Object, Object>() {
+        @Override
+        public Object call(Object o) throws Exception {
+          return o;
+        }
+      });
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
   /**
    * Get changes for a given tablet and stream.
    * @param table the table to get changes for.
@@ -628,6 +655,28 @@ public class AsyncYBClient implements AutoCloseable {
     Deferred<PromoteAutoFlagsResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
+    return d;
+  }
+
+  /**
+   * Check whether YSQL has finished upgrading.
+   * @param hp the host and port of the tserver.
+   * @param useSingleConnection whether or not to use a single connection.
+   * @return a deferred object containing whether or not YSQL has completed upgrading.
+   */
+  public Deferred<UpgradeYsqlResponse> upgradeYsql(
+      HostAndPort hp,
+      boolean useSingleConnection) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+
+    UpgradeYsqlRequest rpc = new UpgradeYsqlRequest(useSingleConnection);
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    Deferred<UpgradeYsqlResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
     return d;
   }
 
@@ -1066,14 +1115,16 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<SetupUniverseReplicationResponse> setupUniverseReplication(
     String replicationGroupName,
     Map<String, String> sourceTableIdsBootstrapIdMap,
-    Set<CommonNet.HostPortPB> sourceMasterAddresses) {
+    Set<CommonNet.HostPortPB> sourceMasterAddresses,
+    @Nullable Boolean isTransactional) {
     checkIsClosed();
     SetupUniverseReplicationRequest request =
       new SetupUniverseReplicationRequest(
         this.masterTable,
         replicationGroupName,
         sourceTableIdsBootstrapIdMap,
-        sourceMasterAddresses);
+        sourceMasterAddresses,
+        isTransactional);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

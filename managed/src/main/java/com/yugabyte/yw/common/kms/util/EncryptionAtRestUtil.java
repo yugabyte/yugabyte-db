@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
@@ -316,7 +317,7 @@ public class EncryptionAtRestUtil {
 
   public static File getUniverseBackupKeysFile(String storageLocation) {
     Config appConfig = StaticInjectorHolder.injector().instanceOf(Config.class);
-    File backupKeysDir = new File(appConfig.getString("yb.storage.path"), "backupKeys");
+    File backupKeysDir = new File(AppConfigHelper.getStoragePath(), "backupKeys");
 
     String[] dirParts = storageLocation.split("/");
 

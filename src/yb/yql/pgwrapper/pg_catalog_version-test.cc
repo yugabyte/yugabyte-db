@@ -39,21 +39,22 @@ class PgCatalogVersionTest : public LibPqTestBase {
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
   using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
 
-  // Prepare the table pg_yb_catalog_version to have one row per database.
-  // The pg_yb_catalog_version row for a database is inserted at CREATE DATABASE time
-  // when the gflag --TEST_enable_db_catalog_version_mode is true. It is expected for
-  // users to add the rows for existing databases manually. If we change to always
-  // insert a row into pg_yb_catalog_version at CREATE DATABASE time regardless of
-  // the value of --TEST_enable_db_catalog_version_mode, then a new YSQL upgrade
-  // migration will take care of adding rows for existing databases.
-  Status PrepareDBCatalogVersion(PGConn* conn) {
-    LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
+  // Prepare the table pg_yb_catalog_version according to 'per_database_mode':
+  // * if 'per_database_mode' is true, we prepare table pg_yb_catalog_version
+  //   for per-database catalog version mode by updating the table to have one
+  //   row per database.
+  // * if 'per_database_mode' is false, we prepare table pg_yb_catalog_version
+  //   for global catalog version mode by deleting all its rows except for
+  //   template1.
+  Status PrepareDBCatalogVersion(PGConn* conn, bool per_database_mode = true) {
+    if (per_database_mode) {
+      LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
+    } else {
+      LOG(INFO) << "Preparing pg_yb_catalog_version to only have one row for template1";
+    }
     RETURN_NOT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-    // "ON CONFLICT DO NOTHING" is only needed for the case where the cluster already has
-    // those rows (e.g., when initdb is run with --TEST_enable_db_catalog_version_mode=true).
-    RETURN_NOT_OK(conn->Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
-                                "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1 "
-                                "ON CONFLICT DO NOTHING"));
+    VERIFY_RESULT(conn->FetchFormat(
+        "SELECT yb_fix_catalog_version_table($0)", per_database_mode ? "true" : "false"));
     return Status::OK();
   }
 
@@ -237,6 +238,33 @@ class PgCatalogVersionTest : public LibPqTestBase {
   static Result<PGConn> EnableCacheEventLog(Result<PGConn> connection) {
     return VLOG_IS_ON(1) ? Execute(std::move(connection), "SET yb_debug_log_catcache_events = ON")
                          : std::move(connection);
+  }
+
+  // Verify the table pg_yb_catalog_version has the expected set of db_oids:
+  // * when single_row is true, return true if pg_yb_catalog_version has one row
+  //   for db_oid 1.
+  // * when single_row is false, return true if pg_yb_catalog_version has the same set
+  //   of db_oids as the set of oids of pg_database.
+  Result<bool> VerifyCatalogVersionTableDbOids(PGConn* conn, bool single_row) {
+    auto res = VERIFY_RESULT(conn->Fetch("SELECT db_oid FROM pg_yb_catalog_version"));
+    auto lines = PQntuples(res.get());
+    std::unordered_set<PgOid> pg_yb_catalog_version_db_oids;
+    for (int i = 0; i != lines; ++i) {
+      const auto oid = VERIFY_RESULT(GetValue<PGOid>(res.get(), i, 0));
+      pg_yb_catalog_version_db_oids.insert(oid);
+    }
+    if (single_row) {
+      return pg_yb_catalog_version_db_oids.size() == 1 &&
+             *pg_yb_catalog_version_db_oids.begin() == 1;
+    }
+    res = VERIFY_RESULT(conn->Fetch("SELECT oid FROM pg_database"));
+    lines = PQntuples(res.get());
+    std::unordered_set<PgOid> pg_database_oids;
+    for (int i = 0; i != lines; ++i) {
+      const auto oid = VERIFY_RESULT(GetValue<PGOid>(res.get(), i, 0));
+      pg_database_oids.insert(oid);
+    }
+    return pg_database_oids == pg_yb_catalog_version_db_oids;
   }
 
   // A global DDL statement is a DDL statement that has a cluster-wide impact.
@@ -590,27 +618,13 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionPrematureOn
   ASSERT_OK(PrepareDBCatalogVersion(&conn));
   LOG(INFO) << "Preparing pg_yb_catalog_version to have a single row for template1";
   ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-  ASSERT_OK(conn.Execute("DELETE FROM pg_catalog.pg_yb_catalog_version WHERE db_oid > 1"));
+  ASSERT_RESULT(conn.Fetch("SELECT yb_fix_catalog_version_table(false)"));
   const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn, kYugabyteDatabase));
 
   // Manually switch back to per-db catalog version mode, but this step is
   // done prematurely before running the following script to prepare the
   // table pg_yb_catalog_version to have one row per database.
   RestartClusterWithDBCatalogVersionMode();
-
-  // Now run a SQL script to prepare pg_yb_catalog_version to have one row
-  // per database.
-  string sql_text = R"(
-    DO $$
-    DECLARE
-      template1_db_oid CONSTANT INTEGER = 1;
-    BEGIN
-      -- The pg_yb_catalog_version will changed to have one row per database.
-      IF (SELECT count(db_oid) FROM pg_catalog.pg_yb_catalog_version) = 1 THEN
-        INSERT INTO pg_catalog.pg_yb_catalog_version
-          SELECT oid, 1, 1 FROM pg_catalog.pg_database WHERE oid != template1_db_oid;
-      END IF;
-    END $$;)";
 
   // Trying to connect to kYugabyteDatabase before it has a row in the table
   // pg_yb_catalog_version should not cause master CHECK failure.
@@ -620,12 +634,12 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionPrematureOn
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("catalog version for database $0 was not found", yugabyte_db_oid));
 
+  // Now prepare pg_yb_catalog_version to have one row per database.
   // The pg_yb_catalog_version has only one row for template1. So connect to
-  // template1 to run sql_text.
+  // template1 to run yb_fix_catalog_version_table(true).
   conn = ASSERT_RESULT(ConnectToDB("template1"));
-  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
   // We should not see any master CHECK failure.
-  ASSERT_OK(conn.Execute(sql_text));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn));
   size_t num_initial_databases = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn)).size();
   LOG(INFO) << "num_initial_databases: " << num_initial_databases;
   ASSERT_GT(num_initial_databases, 1);
@@ -685,6 +699,70 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(IncrementAllDBCatalogVersio
     ASSERT_OK(CheckMatch(entry.second, kThirdCatalogVersion));
   }
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
+}
+
+// Test yb_fix_catalog_version_table, that will sync up pg_yb_catalog_version
+// with pg_database according to 'per_database_mode' argument.
+TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(FixCatalogVersionTable)) {
+  RestartClusterWithDBCatalogVersionMode();
+  auto conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
+  // Prepare the table pg_yb_catalog_version for per-db catalog version mode.
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_template1, true /* per_database_mode */));
+  // Verify pg_database and pg_yb_catalog_version are in sync.
+  ASSERT_TRUE(ASSERT_RESULT(
+      VerifyCatalogVersionTableDbOids(&conn_template1, false /* single_row */)));
+
+  const auto max_oid = ASSERT_RESULT(
+      conn_template1.FetchValue<PGOid>("SELECT max(oid) FROM pg_database"));
+  // Delete the row with max_oid from pg_catalog.pg_yb_catalog_version.
+  ASSERT_OK(conn_template1.ExecuteFormat(
+      "DELETE FROM pg_catalog.pg_yb_catalog_version WHERE db_oid = $0", max_oid));
+  // Add an extra row to pg_catalog.pg_yb_catalog_version.
+  ASSERT_OK(conn_template1.ExecuteFormat(
+      "INSERT INTO pg_catalog.pg_yb_catalog_version VALUES ($0, 1, 1)", max_oid + 1));
+  // Verify pg_database and pg_yb_catalog_version are not in sync.
+  ASSERT_FALSE(ASSERT_RESULT(
+      VerifyCatalogVersionTableDbOids(&conn_template1, false /* single_row */)));
+
+  // Prepare the table pg_yb_catalog_version for per-db catalog version mode, which
+  // automatically sync up pg_yb_catalog_version with pg_database.
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_template1, true /* per_database_mode */));
+  // Verify pg_database and pg_yb_catalog_version are in sync.
+  ASSERT_TRUE(ASSERT_RESULT(
+      VerifyCatalogVersionTableDbOids(&conn_template1, false /* single_row */)));
+
+  // Connect to database "yugabyte".
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  // Prepare the table pg_yb_catalog_version for global catalog version mode.
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, false /* per_database_mode */));
+  // Verify there is one row in pg_yb_catalog_version.
+  ASSERT_TRUE(ASSERT_RESULT(
+      VerifyCatalogVersionTableDbOids(&conn_yugabyte, true /* single_row */)));
+
+  // At this time, the cluster is still in per-db catalog version mode, but the table
+  // pg_yb_catalog_version has only one row for template1 and is out of sync with
+  // pg_database. Even though the row for "yugabyte" is gone, we can still execute
+  // queries on this connection. Try some simple queries to verify they still work.
+  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE test_table(id int)"));
+  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table VALUES(1), (2), (3)"));
+  const auto max_id = ASSERT_RESULT(
+      conn_yugabyte.FetchValue<int32_t>("SELECT max(id) FROM test_table"));
+  ASSERT_EQ(max_id, 3);
+  // We cannot make a new connection to database "yugabyte".
+  auto status = ResultToStatus(ConnectToDB("yugabyte"));
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
+
+  // We can only make a new connection to database "template1" because now it is the only
+  // database that has a row in pg_yb_catalog_version table.
+  conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
+  // Sync up pg_yb_catalog_version with pg_database.
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_template1, true /* per_database_mode */));
+  // Verify pg_database and pg_yb_catalog_version are in sync.
+  ASSERT_TRUE(ASSERT_RESULT(
+      VerifyCatalogVersionTableDbOids(&conn_template1, false /* single_row */)));
+  // Now we can connect to "yugabyte" again.
+  conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
 }
 
 TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {

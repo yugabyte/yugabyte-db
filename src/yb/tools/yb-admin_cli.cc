@@ -1683,12 +1683,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
         }
 
         const string namespace_name = args[0];
-
-        const TypedNamespaceName database =
-            VERIFY_RESULT(ParseNamespaceName(args[0], YQL_DATABASE_PGSQL));
-        SCHECK_EQ(
-            database.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
-            Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));
+        const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
         RETURN_NOT_OK_PREPEND(
             client->CreateCDCSDKDBStream(database, checkpoint_type, record_type),
@@ -1772,7 +1767,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
         if (args.size() < 3) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        const string producer_uuid = args[0];
+        const string replication_group_id = args[0];
 
         vector<string> producer_addresses;
         boost::split(producer_addresses, args[1], boost::is_any_of(","));
@@ -1805,9 +1800,9 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
 
         RETURN_NOT_OK_PREPEND(
             client->SetupUniverseReplication(
-                producer_uuid, producer_addresses, table_uuids, producer_bootstrap_ids,
+                replication_group_id, producer_addresses, table_uuids, producer_bootstrap_ids,
                 transactional),
-            Substitute("Unable to setup replication from universe $0", producer_uuid));
+            Substitute("Unable to setup replication from universe $0", replication_group_id));
         return Status::OK();
       });
 
@@ -1844,7 +1839,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
           return ClusterAdminCli::kInvalidArguments;
         }
 
-        const string producer_uuid = args[0];
+        const string replication_group_id = args[0];
         vector<string> master_addresses;
         vector<string> add_tables;
         vector<string> remove_tables;
@@ -1880,14 +1875,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
 
         RETURN_NOT_OK_PREPEND(
             client->AlterUniverseReplication(
-                producer_uuid,
+                replication_group_id,
                 master_addresses,
                 add_tables,
                 remove_tables,
                 bootstrap_ids_to_add,
                 new_producer_universe_id,
                 remove_table_ignore_errors),
-            Substitute("Unable to alter replication for universe $0", producer_uuid));
+            Substitute("Unable to alter replication for universe $0", replication_group_id));
 
         return Status::OK();
       });
@@ -1991,15 +1986,16 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
       " <producer_universe_uuid> <producer_master_addresses> <namespace>",
       [client](const CLIArguments& args) -> Status {
         RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 3));
-        const string producer_uuid = args[0];
+        const string replication_group_id = args[0];
         vector<string> producer_addresses;
         boost::split(producer_addresses, args[1], boost::is_any_of(","));
         TypedNamespaceName producer_namespace = VERIFY_RESULT(ParseNamespaceName(args[2]));
 
         RETURN_NOT_OK_PREPEND(
             client->SetupNSUniverseReplication(
-                producer_uuid, producer_addresses, producer_namespace),
-            Substitute("Unable to setup namespace replication from universe $0", producer_uuid));
+                replication_group_id, producer_addresses, producer_namespace),
+            Substitute(
+                "Unable to setup namespace replication from universe $0", replication_group_id));
         return Status::OK();
       });
 

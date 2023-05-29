@@ -47,6 +47,7 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -92,6 +93,7 @@ public class CreateBackup extends UniverseTaskBase {
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
+    boolean isAbort = false;
     boolean ybcBackup =
         !BackupCategory.YB_BACKUP_SCRIPT.equals(params().backupCategory)
             && universe.isYbcEnabled()
@@ -142,8 +144,8 @@ public class CreateBackup extends UniverseTaskBase {
             createAllBackupSubtasks(
                 params(),
                 UserTaskDetails.SubTaskGroupType.CreatingTableBackup,
-                tablesToBackup,
-                ybcBackup);
+                ybcBackup,
+                tablesToBackup);
         log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
@@ -155,23 +157,9 @@ public class CreateBackup extends UniverseTaskBase {
         getRunnableTask().runSubTasks(true);
         unlockUniverseForUpdate();
         isUniverseLocked = false;
-
-        Backup currentBackup =
-            Backup.getOrBadRequest(params().customerUUID, backup.getBackupUUID());
-        if (ybcBackup) {
-          currentBackup.onCompletion();
-          if (!currentBackup.getBaseBackupUUID().equals(currentBackup.getBackupUUID())) {
-            Backup baseBackup =
-                Backup.getOrBadRequest(params().customerUUID, currentBackup.getBaseBackupUUID());
-            // Refresh backup object to get the updated completed time.
-            currentBackup.refresh();
-            baseBackup.onIncrementCompletion(currentBackup.getCompletionTime());
-          }
-        }
         BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setOkStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
-
       } catch (CancellationException ce) {
         log.error("Aborting backups for task: {}", userTaskUUID);
         Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
@@ -183,31 +171,14 @@ public class CreateBackup extends UniverseTaskBase {
                 });
         unlockUniverseForUpdate(false);
         isUniverseLocked = false;
+        isAbort = true;
         throw ce;
-      } catch (Throwable t) {
-        if (params().alterLoadBalancer) {
-          // If the task failed, we don't want the loadbalancer to be
-          // disabled, so we enable it again in case of errors.
-          setTaskQueueAndRun(
-              () ->
-                  createLoadBalancerStateChangeTask(true)
-                      .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse));
-        }
-        throw t;
       }
     } catch (Throwable t) {
       try {
         log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-        // Ensures that backup reaches a final state
-        Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
-            .forEach(
-                backup -> {
-                  if (backup.getState().equals(BackupState.InProgress)) {
-                    backup.transitionState(BackupState.Failed);
-                    backup.setCompletionTime(new Date());
-                    backup.save();
-                  }
-                });
+        List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(userTaskUUID);
+        handleFailedBackupAndRestore(backupList, null, isAbort, params().alterLoadBalancer);
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));

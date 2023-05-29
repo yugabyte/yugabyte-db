@@ -404,6 +404,7 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle,
                                    YBCPgExpr lhs,
                                    int n_attr_values,
                                    YBCPgExpr *attr_values);
+YBCStatus YBCPgDmlBindColumnCondIsNotNull(YBCPgStatement handle, int attr_num);
 
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 

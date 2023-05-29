@@ -48,6 +48,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
   @Override
   public void run() {
+    Throwable th = null;
     try {
       checkUniverseVersion();
 
@@ -153,10 +154,12 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           () ->
               createLoadBalancerStateChangeTask(true /*enable*/)
                   .setSubTaskGroupType(getTaskSubGroupType()));
-
+      th = t;
       throw t;
     } finally {
+      updateYBUniverseStatus(getUniverse(), th);
       unlockUniverseForUpdate();
+      updateYBUniverseStatusAfterUnlock();
     }
     log.info("Finished {} task.", getName());
   }

@@ -214,6 +214,7 @@ alter_table_action =
     | 'ADD' alter_table_constraint
     | 'DROP' 'CONSTRAINT' constraint_name [ 'RESTRICT' | 'CASCADE' ]
     | 'RENAME' [ 'COLUMN' ] column_name 'TO' column_name
+    | 'RENAME' 'CONSTRAINT' constraint_name 'TO' constraint_name
     | 'DISABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'ENABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'FORCE' 'ROW' 'LEVEL' 'SECURITY'
@@ -829,6 +830,9 @@ drop_cast = 'DROP' 'CAST' [ 'IF' 'EXISTS' ] '(' cast_signature ')' [ 'CASCADE' |
 
 (* 'DROP' 'DATABASE' *)
 drop_database = 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
+
+(* 'DROP' 'SCHEMA' *)
+drop_schema = 'DROP' 'SCHEMA' [ 'IF' 'EXISTS' ] schema_name [, ...] [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'DOMAIN' *)
 drop_domain = 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE' | 'RESTRICT' ] ;

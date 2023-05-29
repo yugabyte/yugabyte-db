@@ -977,11 +977,10 @@ TEST_F(BootstrapTest, ColocatedSchemaBoostrap) {
   ColocationId colocation_id = 123456789;
   Schema schema{
       {
-          ColumnSchema("key", INT32, false, true),
+          ColumnSchema("key", INT32, ColumnKind::HASH),
           ColumnSchema("int_val", INT32),
-          ColumnSchema("string_val", STRING, true)
+          ColumnSchema("string_val", STRING, ColumnKind::VALUE, Nullable::kTrue)
       },
-      1,
       TableProperties(),
       Uuid::Nil(),
       colocation_id,

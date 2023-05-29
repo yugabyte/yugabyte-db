@@ -144,6 +144,8 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   Status AssignHasNextStatus(const Status& status);
 
+  Slice shared_key_prefix() const;
+
   bool is_initialized_ = false;
 
  private:

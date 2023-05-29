@@ -533,6 +533,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "true"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "true"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(true /* expect_target_value */));
 }
@@ -552,6 +553,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "false"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(false /* expect_target_value */));
 }

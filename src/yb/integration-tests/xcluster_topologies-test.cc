@@ -191,10 +191,10 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
       MiniCluster* consumer_cluster_mini_cluster = consumer_cluster->mini_cluster_.get();
       master::IsSetupUniverseReplicationDoneResponsePB resp;
       RETURN_NOT_OK(SetupUniverseReplication(
-          producer_cluster(), consumer_cluster_mini_cluster, consumer_cluster_client, kUniverseId,
-          producer_tables_[producer_cluster()->GetClusterId()]));
+          producer_cluster(), consumer_cluster_mini_cluster, consumer_cluster_client,
+          kReplicationGroupId, producer_tables_[producer_cluster()->GetClusterId()]));
       RETURN_NOT_OK(WaitForSetupUniverseReplication(
-          consumer_cluster_mini_cluster, consumer_cluster_client, kUniverseId, &resp));
+          consumer_cluster_mini_cluster, consumer_cluster_client, kReplicationGroupId, &resp));
     }
     return Status::OK();
   }
@@ -339,17 +339,17 @@ TEST_F(XClusterTopologiesTest, TestNToOneReplicationFails) {
 
   for (size_t i = 0; i < producer_clusters_.size(); ++i) {
     MiniCluster* producer_cluster_mini_cluster = producer_clusters_[i]->mini_cluster_.get();
-    const std::string universe_id = Format("$0$1", kUniverseId, i);
+    const cdc::ReplicationGroupId replication_group_id(Format("$0$1", kReplicationGroupId, i));
     master::IsSetupUniverseReplicationDoneResponsePB setup_resp;
     master::GetUniverseReplicationResponsePB verify_resp;
     if (i == 0) {
       ASSERT_OK(SetupUniverseReplication(
-          producer_cluster_mini_cluster, consumer_cluster(), consumer_client(), universe_id,
-          producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
+          producer_cluster_mini_cluster, consumer_cluster(), consumer_client(),
+          replication_group_id, producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
     } else {
-       ASSERT_NOK(SetupUniverseReplication(
-          producer_cluster_mini_cluster, consumer_cluster(), consumer_client(), universe_id,
-          producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
+      ASSERT_NOK(SetupUniverseReplication(
+          producer_cluster_mini_cluster, consumer_cluster(), consumer_client(),
+          replication_group_id, producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
     }
   }
 }

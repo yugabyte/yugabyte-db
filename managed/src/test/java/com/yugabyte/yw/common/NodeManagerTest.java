@@ -547,6 +547,7 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleLocalTemp)))
         .thenReturn("/tmp/ansible_tmp/");
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath))).thenReturn("/tmp");
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -1223,6 +1224,8 @@ public class NodeManagerTest extends FakeDBApplication {
     if (type == NodeManager.NodeCommandType.Create) {
       expectedCommand.add("--as_json");
     }
+    expectedCommand.add("--remote_tmp_dir");
+    expectedCommand.add("/tmp");
     expectedCommand.add(params.nodeName);
     return expectedCommand;
   }
@@ -1512,7 +1515,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 7;
+      int accessKeyIndexOffset = 9;
       if (t.cloudType.equals(Common.CloudType.aws)
           && params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
         accessKeyIndexOffset += 2;
@@ -1731,7 +1734,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 6;
+      int accessKeyIndexOffset = 8;
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyIndexOffset += 2;
         if (params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
@@ -1993,7 +1996,7 @@ public class NodeManagerTest extends FakeDBApplication {
               "/path/to/private.key",
               "--custom_ssh_port",
               "3333");
-      expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommand);
+      expectedCommand.addAll(expectedCommand.size() - 7, accessKeyCommand);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
@@ -3663,7 +3666,7 @@ public class NodeManagerTest extends FakeDBApplication {
                   "/path/to/private.key"));
       accessKeyCommands.add("--custom_ssh_port");
       accessKeyCommands.add("3333");
-      expectedCommand.addAll(expectedCommand.size() - 1, accessKeyCommands);
+      expectedCommand.addAll(expectedCommand.size() - 3, accessKeyCommands);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.CronCheck, params);
       verify(shellProcessHandler, times(1))

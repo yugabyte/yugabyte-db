@@ -239,7 +239,12 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
 
     // e.g in cotable, row may point outside table bounds.
-    if (!dockv::DocKeyBelongsTo(key_data.key, schema())) {
+    auto in_table = dockv::DocKeyBelongsTo(key_data.key, schema());
+    DCHECK_EQ(in_table, key_data.key.starts_with(shared_key_prefix()))
+        << "Shared prefix: " << shared_key_prefix().ToDebugHexString()
+        << ", key: " << key_data.key.ToDebugHexString()
+        << ", schema: " << schema().ToString();
+    if (!in_table) {
       done_ = true;
       return false;
     }

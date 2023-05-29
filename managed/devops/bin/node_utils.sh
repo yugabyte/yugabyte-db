@@ -8,13 +8,18 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-
+# This function creates a tar file with a list of files paths on the DB node.
+# Params:
+# change_to_dir = directory to cd into for the file paths, usually yb-home dir.
+# tar_file_name = name of the tar file to create.
+# file_list_text_path = path to the text file containing list of file paths to collect.
 create_tar_file() {
   change_to_dir=$1
   shift
   tar_file_name=$1
   shift
-  files_list=("$@")
+  file_list_text_path=$1
+  mapfile -t files_list < "$file_list_text_path"
   filtered_files_list=()
 
   # Exit if no file paths are passed as arguments
@@ -41,8 +46,9 @@ create_tar_file() {
   fi
 
   echo "Starting tar process: Adding files to archive."
+  printf '%s\n' "${filtered_files_list[@]}" > "$file_list_text_path"
   # Archive all existing files paths into bundle
-  tar -czvf "$tar_file_name" -h -C "$change_to_dir" "${filtered_files_list[@]}"
+  tar -czvf "$tar_file_name" -h -C "$change_to_dir" -T "$file_list_text_path"
   echo "Successfully added files to tar:  ${filtered_files_list[@]}"
 }
 
@@ -53,6 +59,18 @@ check_file_exists() {
   else
     echo "0"
   fi
+}
+
+find_paths_in_dir() {
+  remote_dir_path=$1
+  shift
+  max_depth=$1
+  shift
+  file_type=$1
+  shift
+  temp_file_path=$1
+
+  find "$remote_dir_path" -maxdepth "$max_depth" -type "$file_type" > "$temp_file_path"
 }
 
 "$@"

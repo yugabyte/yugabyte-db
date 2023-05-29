@@ -86,10 +86,10 @@ Status GetChangesForXCluster(
     const client::YBSessionPtr& session,
     UpdateOnSplitOpFunc update_on_split_op_func,
     const std::shared_ptr<MemTracker>& mem_tracker,
+    const CoarseTimePoint& deadline,
     StreamMetadata* stream_metadata,
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
-    int64_t* last_readable_opid_index = nullptr,
-    const CoarseTimePoint deadline = CoarseTimePoint::max());
+    int64_t* last_readable_opid_index = nullptr);
 }  // namespace cdc
 }  // namespace yb

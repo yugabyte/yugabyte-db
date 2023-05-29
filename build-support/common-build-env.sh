@@ -537,13 +537,19 @@ set_build_type_based_on_jenkins_job_name() {
 }
 
 set_default_compiler_type() {
+  expect_vars_to_be_set build_type
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     if is_mac; then
       YB_COMPILER_TYPE=clang
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      YB_COMPILER_TYPE=clang15
+      if [[ ${build_type} =~ ^(asan|debug|fastdebug)$ ]]; then
+        YB_COMPILER_TYPE=clang16
+      else
+        # Use Clang 15 for release builds and TSAN builds until perf evaluation and TSAN fixes.
+        YB_COMPILER_TYPE=clang15
+      fi
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -1251,7 +1257,7 @@ create_llvm_toolchain_symlink() {
 }
 
 download_toolchain() {
-  expect_vars_to_be_set YB_COMPILER_TYPE
+  expect_vars_to_be_set YB_COMPILER_TYPE YB_THIRDPARTY_DIR
   local toolchain_urls=()
   local linuxbrew_url=""
   if [[ -n ${YB_THIRDPARTY_DIR:-} && -f "$YB_THIRDPARTY_DIR/linuxbrew_url.txt" ]]; then
@@ -1271,10 +1277,32 @@ download_toolchain() {
   if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} &&
         -z ${YB_LLVM_TOOLCHAIN_DIR:-} &&
         ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]]; then
-    YB_LLVM_TOOLCHAIN_URL=$(
-      activate_virtualenv &>/dev/null
-      python3 -m llvm_installer --print-url "--llvm-major-version=${YB_COMPILER_TYPE#clang}"
-    )
+    local llvm_major_version=${YB_COMPILER_TYPE#clang}
+    if [[ ${build_type} =~ ^(asan|tsan)$ ]]; then
+      # For ASAN and possibly TSAN builds, we need to use the same LLVM toolchain that was used
+      # to build the third-party dependencies, so that the compiler-rt libraries match.
+      local thirdparty_llvm_url_file_path=${YB_THIRDPARTY_DIR}/toolchain_url.txt
+      if [[ -e $thirdparty_llvm_url_file_path ]]; then
+        YB_LLVM_TOOLCHAIN_URL=$(<"$thirdparty_llvm_url_file_path")
+        if [[ ${YB_LLVM_TOOLCHAIN_URL} != */yb-llvm-v${llvm_major_version}.* ]]; then
+          fatal "LLVM toolchain URL ${YB_LLVM_TOOLCHAIN_URL} from the third-party directory" \
+                "${YB_THIRDPARTY_DIR} does not match the compiler type ${YB_COMPILER_TYPE}:" \
+                "${YB_LLVM_TOOLCHAIN_URL}"
+        fi
+      else
+        log "Warning: could not find ${thirdparty_llvm_url_file_path}, will try to use the" \
+            "llvm-installer utility to determine the LLVM toolchain URL to download. Note that a" \
+            "mismatch between LLVM versions used to build yugabyte-db-thirdparty and YugabyteDB" \
+            "can cause ASAN/TSAN tests to fail."
+      fi
+    fi
+
+    if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
+      YB_LLVM_TOOLCHAIN_URL=$(
+        activate_virtualenv &>/dev/null
+        python3 -m llvm_installer --print-url "--llvm-major-version=$llvm_major_version"
+      )
+    fi
     if [[ ${YB_LLVM_TOOLCHAIN_URL} != https://* ]]; then
       fatal "Failed to determine LLVM toolchain URL using the llvm-installer utility." \
             "YB_LLVM_TOOLCHAIN_URL=${YB_LLVM_TOOLCHAIN_URL}. See" \
@@ -1561,6 +1589,13 @@ add_brew_bin_to_path() {
     if [[ -n ${homebrew_path} ]]; then
       put_path_entry_first "$homebrew_path/bin"
     fi
+  fi
+}
+
+remove_linuxbrew_bin_from_path() {
+  if using_linuxbrew; then
+    ensure_linuxbrew_dir_is_set
+    remove_path_entry "$YB_LINUXBREW_DIR/bin"
   fi
 }
 
@@ -2235,6 +2270,7 @@ run_shellcheck() {
     build-support/jenkins/yb-jenkins-build.sh
     build-support/jenkins/yb-jenkins-test.sh
     build-support/run-test.sh
+    yugabyted-ui/build.sh
     yb_build.sh
   )
   pushd "$YB_SRC_ROOT"
@@ -2267,8 +2303,9 @@ activate_virtualenv() {
     virtualenv_dir+="-${YB_TARGET_ARCH}"
   fi
 
-  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]] && \
-     ! "$yb_readonly_virtualenv"; then
+  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" &&
+        -d $virtualenv_dir &&
+        ${yb_readonly_virtualenv} == "false" ]]; then
     log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
     rm -rf "$virtualenv_dir"
     # We don't want to be re-creating the virtual environment over and over again.
@@ -2339,9 +2376,10 @@ activate_virtualenv() {
   fi
 
   local pip_executable=pip3
-  if ! "$yb_readonly_virtualenv"; then
+  if [[ ${yb_readonly_virtualenv} == "false" ]]; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
+    pip3 install --upgrade pip
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache
@@ -2725,8 +2763,9 @@ adjust_compiler_type_on_mac() {
   # A workaround for old macOS build workers where the default Clang version is 13 or older.
   if is_mac &&
     ! is_apple_silicon &&
-    [[ ${YB_COMPILER_TYPE:-clang} == "clang" ]] &&
-    [[ $(clang --version) =~ clang\ version\ ([0-9]+) ]]
+    [[ ${YB_COMPILER_TYPE:-clang} == "clang" &&
+       -f /usr/bin/clang &&
+       $(clang --version) =~ clang\ version\ ([0-9]+) ]]
   then
     clang_major_version=${BASH_REMATCH[1]}
     if [[ ${clang_major_version} -lt 14 ]]; then

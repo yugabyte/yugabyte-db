@@ -1390,6 +1390,68 @@ public class TestPgSelect extends BasePgSQLTest {
   }
 
   @Test
+  public void testIsNotNull() throws Exception {
+    String query = "CREATE TABLE sample_table(k INT PRIMARY KEY, v INT, v2 INT)";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+      query = "CREATE INDEX sample_table_v_idx ON sample_table(v ASC)";
+      statement.execute(query);
+
+      // There are 10 rows with v IS NOT NULL, 100 rows with v IS NULL.
+      query = "INSERT INTO sample_table SELECT i, NULL, i + 1000 FROM generate_series(1, 100) i";
+      statement.execute(query);
+      query = "INSERT INTO sample_table SELECT i, i, i + 1000 FROM generate_series(101, 110) i";
+      statement.execute(query);
+
+      query = "SELECT v2 FROM sample_table WHERE v IS NOT NULL";
+      Set<Row> expectedRows = new HashSet<>();
+      for (int i = 101; i <= 110; ++i) {
+        expectedRows.add(new Row(i + 1000));
+      }
+      assertRowSet(statement, query, expectedRows);
+
+      RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "sample_table");
+      // The index on sample_table means that each IS NOT NULL row can be found by key,
+      // but the "SELECT v2" query requires referencing sample_table for each of these
+      // rows. Running an experiment without pushdown code, the number of seeks is 113
+      // (regardless of whether max_nexts_to_avoid_seek is set to 0, though nextCount
+      // does change in that case). With pushdown code, it's 13. Setting the assert to be
+      // below 26 (2*13) to allow for some extra seeks to occur without being flaky, but
+      // still likely to catch the pushdown failing.
+      assertLessThanOrEqualTo(metrics.seekCount, 26);
+
+      // Now do the same thing with a descending index.
+      query = "DROP INDEX sample_table_v_idx";
+      statement.execute(query);
+      query = "CREATE INDEX sample_table_v_idx ON sample_table(v DESC)";
+      statement.execute(query);
+
+      query = "SELECT v2 FROM sample_table WHERE v IS NOT NULL";
+      assertRowSet(statement, query, expectedRows);
+
+      metrics = assertFullDocDBFilter(statement, query, "sample_table");
+      // Same numbers of seeks between code with/without pushdown for a descending index.
+      assertLessThanOrEqualTo(metrics.seekCount, 26);
+
+      // To ensure nothing breaks in the future, force an index scan using a hash index.
+      query = "DROP INDEX sample_table_v_idx";
+      statement.execute(query);
+      query = "CREATE INDEX sample_table_v_idx ON sample_table(v HASH)";
+      statement.execute(query);
+
+      query = "/*+Set(enable_seqscan false)*/ SELECT v FROM sample_table WHERE v IS NOT NULL";
+      expectedRows = new HashSet<>();
+      for (int i = 101; i <= 110; ++i) {
+        expectedRows.add(new Row(i));
+      }
+      assertRowSet(statement, query, expectedRows);
+      // In practice, only sample_table_v_idx is touched. Its seek count is 3, and its
+      // next count is 110. However, this part of the test is only about making sure the
+      // results aren't broken, so there is no assertion on performance.
+    }
+  }
+
+  @Test
   public void testInequalitiesRangePartitioned() throws Exception {
       String query = "CREATE TABLE sample (key int, val int, primary key(key asc) ) " +
                      "SPLIT AT VALUES ((65535), (2000000000), (2100000000) )";

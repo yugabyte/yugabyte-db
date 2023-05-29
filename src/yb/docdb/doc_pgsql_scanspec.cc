@@ -247,7 +247,7 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
         // Push them into the options groups and options indexes as hybrid scan utilizes to match
         // target elements with their corresponding columns.
         int start_range_col_idx = 0;
-        ColumnListVector col_idxs;
+        qlexpr::ColumnListVector col_idxs;
         options_groups_.BeginNewGroup();
 
         for (const auto& elem : lhs.tuple().elems()) {
@@ -306,8 +306,8 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
             reverse.push_back(get_scan_direction(col_idxs[i]));
           }
 
-          const auto sorted_options =
-              GetTuplesSortedByOrdering(options, schema(), is_forward_scan(), col_idxs);
+          const auto sorted_options = qlexpr::GetTuplesSortedByOrdering(
+              options, schema(), is_forward_scan(), col_idxs);
 
           // Step 3: Add the sorted options into the options_ vector for HybridScan to use them to
           // perform seeks and nexts.

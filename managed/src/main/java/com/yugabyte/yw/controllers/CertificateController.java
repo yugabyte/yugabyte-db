@@ -1,3 +1,5 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -5,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Strings;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
@@ -118,10 +121,7 @@ public class CertificateController extends AuthenticatedController {
           try {
             UUID certUUID =
                 EncryptionInTransitUtil.createHashicorpCAConfig(
-                    customerUUID,
-                    label,
-                    runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
-                    hcVaultParams);
+                    customerUUID, label, AppConfigHelper.getStoragePath(), hcVaultParams);
             auditService()
                 .createAuditEntryWithReqBody(
                     request,
@@ -156,7 +156,7 @@ public class CertificateController extends AuthenticatedController {
         CertificateHelper.uploadRootCA(
             label,
             customerUUID,
-            runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
+            AppConfigHelper.getStoragePath(),
             certContent,
             keyContent,
             certType,
@@ -339,10 +339,7 @@ public class CertificateController extends AuthenticatedController {
       }
 
       EncryptionInTransitUtil.editEITHashicorpConfig(
-          info.getUuid(),
-          customerUUID,
-          runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
-          formParams);
+          info.getUuid(), customerUUID, AppConfigHelper.getStoragePath(), formParams);
     }
     auditService()
         .createAuditEntry(

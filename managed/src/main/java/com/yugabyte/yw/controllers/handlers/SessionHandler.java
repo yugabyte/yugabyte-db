@@ -8,6 +8,8 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Universe;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -34,6 +36,8 @@ public class SessionHandler {
 
   @Inject private ShellProcessHandler shellProcessHandler;
 
+  @Inject private RuntimeConfGetter confGetter;
+
   public Path getFilteredLogs(
       Integer maxLines,
       Universe universe,
@@ -53,8 +57,9 @@ public class SessionHandler {
       regexBuilder.add(queryRegex);
     }
 
+    String tmpDirectory = confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath);
     String grepRegex = buildRegexString(regexBuilder);
-    String saveFileStr = "/tmp/" + UUID.randomUUID().toString() + "-logs";
+    String saveFileStr = tmpDirectory + "/" + UUID.randomUUID().toString() + "-logs";
     ShellResponse response =
         execCommand(
             logPath.toAbsolutePath().toString(),

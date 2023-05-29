@@ -115,3 +115,9 @@ For example, a CDC client has received changes for a row at times `t1` and `t3`.
 #### No gaps in change stream
 
 When you have received a change for a row for timestamp `t`, you do not receive a previously unseen change for that row from an earlier timestamp. This guarantees that receiving any change implies that all earlier changes have been received for a row.
+
+{{< note title="Note" >}}
+
+See the [reference page](../../../explore/change-data-capture/) for more details & limitations.
+
+{{< /note >}}

@@ -129,10 +129,10 @@ dockv::KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
     return dockv::KeyEntryValue::FromQLValuePB(ql_bound->GetValue(), sorting_type);
   }
 
-  // If there is any constraint on this range then NULL's should not be included
-  // in this range. Note that GetQLRangeBoundIsInclusive defaults to false in
-  // the absence of a range.
-  if (ql_range.min_bound || ql_range.max_bound) {
+  // If there is any constraint on this range, or if this is explicitly an IS NOT NULL condition,
+  // then NULLs should not be included in this range. Note that GetQLRangeBoundIsInclusive defaults
+  // to false in the absence of a range.
+  if (ql_range.min_bound || ql_range.max_bound || ql_range.is_not_null) {
     return dockv::KeyEntryValue(
         lower_bound ? dockv::KeyEntryType::kNullLow : dockv::KeyEntryType::kNullHigh);
   }

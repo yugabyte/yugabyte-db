@@ -13,7 +13,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -30,7 +29,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -59,7 +57,9 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.IsServerReadyResponse;
+import org.yb.client.UpgradeYsqlResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -81,10 +81,6 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
-    ShellResponse successResponse = new ShellResponse();
-    successResponse.message = "YSQL successfully upgraded to the latest version";
-    when(mockNodeUniverseManager.runYbAdminCommand(any(), any(), any(), anyList(), anyLong()))
-        .thenReturn(successResponse);
   }
 
   private void setupUniverse(
@@ -118,17 +114,22 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     }
 
     YBClient mockClient = mock(YBClient.class);
+    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     String masterLeaderName = "yb-master-0.yb-masters.demo-universe.svc.cluster.local";
     if (placementInfo.cloudList.get(0).regionList.get(0).azList.size() > 1) {
       masterLeaderName = "yb-master-0.yb-masters.demo-universe-az-2.svc.cluster.local";
     }
-    when(mockClient.getLeaderMasterHostAndPort())
-        .thenReturn(HostAndPort.fromString(masterLeaderName).withDefaultPort(11));
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
+    UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
+    IsInitDbDoneResponse mockIsInitDbDoneResponse =
+        new IsInitDbDoneResponse(1000, "", true, true, null, null);
     try {
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
+      when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(mockUpgradeYsqlResponse);
+      when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
     } catch (Exception ex) {
       fail();
     }

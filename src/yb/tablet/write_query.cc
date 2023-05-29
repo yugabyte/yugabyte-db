@@ -225,7 +225,9 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
   auto& metadata = *tablet->metadata();
 
   for (const auto& sv : operation->request()->write_batch().table_schema_version()) {
-    CHECK_LE(metadata.schema_version(), sv.schema_version());
+    if (!status.IsAborted()) {
+      CHECK_LE(metadata.schema_version(), sv.schema_version()) << ", status: " << status;
+    }
   }
 
   Complete(status);

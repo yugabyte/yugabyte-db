@@ -151,6 +151,14 @@ METRIC_DEFINE_counter(tablet, docdb_obsolete_keys_found_past_cutoff,
 namespace yb {
 namespace tablet {
 
+namespace {
+
+// Keeps track of the number of TabletMetrics instances that have been created for the purpose
+// of assigning an instance identifier.
+std::atomic<uint64_t> tablet_metrics_instance_counter;
+
+} // namespace
+
 #define MINIT(entity, x) x(METRIC_##x.Instantiate(entity))
 TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& table_entity,
                              const scoped_refptr<MetricEntity>& tablet_entity)
@@ -172,7 +180,8 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& table_entity,
     MINIT(tablet_entity, failed_batch_lock),
     MINIT(tablet_entity, docdb_keys_found),
     MINIT(tablet_entity, docdb_obsolete_keys_found),
-    MINIT(tablet_entity, docdb_obsolete_keys_found_past_cutoff) {
+    MINIT(tablet_entity, docdb_obsolete_keys_found_past_cutoff),
+    instance_id(tablet_metrics_instance_counter.fetch_add(1, std::memory_order_relaxed)) {
 }
 #undef MINIT
 

@@ -80,6 +80,7 @@ typedef struct catcache
 	long		cc_invals;		/* # of entries invalidated from cache */
 	long		cc_lsearches;	/* total # list-searches */
 	long		cc_lhits;		/* # of matches against existing lists */
+	long 		yb_cc_size_bytes;  /* size of this cache in bytes */
 #endif
 } CatCache;
 

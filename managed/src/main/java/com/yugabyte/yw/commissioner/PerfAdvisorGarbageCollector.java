@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.commissioner.PerfAdvisorScheduler.DATABASE_DRIVER_PARAM;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
@@ -79,6 +81,15 @@ public class PerfAdvisorGarbageCollector {
   }
 
   public void start() {
+    if (!confGetter
+        .getStaticConf()
+        .getString(DATABASE_DRIVER_PARAM)
+        .equals("org.postgresql.Driver")) {
+      log.debug(
+          "Skipping perf advisor GC initialization for tests"
+              + " or other non-postgresql environment");
+      return;
+    }
     Duration gcInterval = this.gcCheckInterval();
     if (gcInterval.isZero()) {
       log.info("yb.perf_advisor.cleanup.gc_check_interval set to 0.");

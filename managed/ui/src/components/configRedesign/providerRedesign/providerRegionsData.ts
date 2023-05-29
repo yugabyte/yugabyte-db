@@ -13,6 +13,7 @@ export const AWS_REGIONS = {
   'eu-central-1': { zones: ['eu-central-1a', 'eu-central-1b', 'eu-central-1c'] },
   'eu-west-1': { zones: ['eu-west-1a', 'eu-west-1b', 'eu-west-1c'] },
   'eu-west-2': { zones: ['eu-west-2a', 'eu-west-2b', 'eu-west-2c'] },
+  'eu-west-3': { zones: ['eu-west-3a', 'eu-west-3b', 'eu-west-3c'] },
   'sa-east-1': { zones: ['sa-east-1a', 'sa-east-1b', 'sa-east-1c'] },
   'us-east-1': {
     zones: ['us-east-1a', 'us-east-1b', 'us-east-1c', 'us-east-1d', 'us-east-1e', 'us-east-1f']
@@ -20,6 +21,11 @@ export const AWS_REGIONS = {
   'us-east-2': { zones: ['us-east-2a', 'us-east-2b', 'us-east-2c'] },
   'us-west-1': { zones: ['us-west-1a', 'us-west-1b'] },
   'us-west-2': { zones: ['us-west-2a', 'us-west-2b', 'us-west-2c'] },
+  'af-south-1': { zones: ['af-south-1a', 'af-south-1b', 'af-south-1c'] },
+  'me-south-1': { zones: ['me-south-1a', 'me-south-1b', 'me-south-1c'] },
+  'ap-east-1': { zones: ['ap-east-1a', 'ap-east-1b', 'ap-east-1c'] },
+  'eu-south-1': { zones: ['eu-south-1a', 'eu-south-1b', 'eu-south-1c'] },
+  'eu-north-1': { zones: ['eu-north-1a', 'eu-north-1b', 'eu-north-1c'] },
   'us-gov-east-1': { zones: ['us-gov-east-1a', 'us-gov-east-1b', 'us-gov-east-1c'] },
   'us-gov-west-1': { zones: ['us-gov-west-1a', 'us-gov-west-1b', 'us-gov-west-1c'] }
 } as const;

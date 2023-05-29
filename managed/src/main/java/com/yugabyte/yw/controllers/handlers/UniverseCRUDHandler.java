@@ -28,6 +28,7 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -333,9 +334,7 @@ public class UniverseCRUDHandler {
         if (cert.getCertType() == CertConfigType.HashicorpVault) {
           try {
             VaultPKI certProvider = VaultPKI.getVaultPKIInstance(cert);
-            certProvider.dumpCACertBundle(
-                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
-                customer.getUuid());
+            certProvider.dumpCACertBundle(AppConfigHelper.getStoragePath(), customer.getUuid());
           } catch (Exception e) {
             throw new PlatformServiceException(
                 INTERNAL_SERVER_ERROR,
@@ -386,9 +385,7 @@ public class UniverseCRUDHandler {
       if (cert.getCertType() == CertConfigType.HashicorpVault) {
         try {
           VaultPKI certProvider = VaultPKI.getVaultPKIInstance(cert);
-          certProvider.dumpCACertBundle(
-              runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
-              customer.getUuid());
+          certProvider.dumpCACertBundle(AppConfigHelper.getStoragePath(), customer.getUuid());
         } catch (Exception e) {
           throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR,
