@@ -136,6 +136,8 @@ public class NodeDetails {
     UpdateCert(),
     // Set when TLS params (node-to-node and client-to-node) is being toggled
     ToggleTls(),
+    // Set when configuring DB Apis
+    ConfigureDBApis(),
     // Set when the node is being resized to a new intended type
     Resizing(),
     // Set when the node is being upgraded to systemd from cron

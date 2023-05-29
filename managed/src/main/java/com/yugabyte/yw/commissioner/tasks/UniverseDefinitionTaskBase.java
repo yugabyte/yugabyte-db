@@ -21,6 +21,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseTags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.common.NodeManager;
@@ -33,11 +36,13 @@ import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
@@ -2227,5 +2232,115 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /** Creates a task to update DB Api in universe details. */
+  protected SubTaskGroup createUpdateDBApiDetailsTask(
+      boolean enableYSQL, boolean enableYSQLAuth, boolean enableYCQL, boolean enableYCQLAuth) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterAPIDetails");
+    UpdateClusterAPIDetails.Params params = new UpdateClusterAPIDetails.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.enableYCQL = enableYCQL;
+    params.enableYCQLAuth = enableYCQLAuth;
+    params.enableYSQL = enableYSQL;
+    params.enableYSQLAuth = enableYSQLAuth;
+    UpdateClusterAPIDetails task = createTask(UpdateClusterAPIDetails.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Creates a task to update DB communication ports in universe details. */
+  protected SubTaskGroup createUpdateUniverseCommunicationPortsTask(CommunicationPorts ports) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateUniverseCommunicationPorts");
+    UpdateUniverseCommunicationPorts.Params params = new UpdateUniverseCommunicationPorts.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.communicationPorts = ports;
+    UpdateUniverseCommunicationPorts task = createTask(UpdateUniverseCommunicationPorts.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Creates a task to update node info in universe details. */
+  protected SubTaskGroup createNodeDetailsUpdateTask(
+      NodeDetails node, boolean updateCustomImageUsage) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateNodeDetails");
+    UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
+    updateNodeDetailsParams.setUniverseUUID(taskParams().getUniverseUUID());
+    updateNodeDetailsParams.azUuid = node.azUuid;
+    updateNodeDetailsParams.nodeName = node.nodeName;
+    updateNodeDetailsParams.details = node;
+    updateNodeDetailsParams.updateCustomImageUsage = updateCustomImageUsage;
+
+    UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
+    updateNodeTask.initialize(updateNodeDetailsParams);
+    updateNodeTask.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(updateNodeTask);
+
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Creates a task to reset api password from custom to default password. */
+  protected void createResetAPIPasswordTask(
+      ConfigureDBApiParams params, SubTaskGroupType subTaskGroupType) {
+    if (!params.enableYCQLAuth && !StringUtils.isEmpty(params.ycqlPassword)) {
+      createChangeAdminPasswordTask(
+              null /* primaryCluster */,
+              null /* ysqlPassword */,
+              null /* ysqlCurrentPassword */,
+              null /* ysqlUserName */,
+              null /* ysqlDbName */,
+              Util.DEFAULT_YCQL_PASSWORD,
+              params.ycqlPassword,
+              Util.DEFAULT_YCQL_USERNAME,
+              true /* validateCurrentPassword */)
+          .setSubTaskGroupType(subTaskGroupType);
+    }
+    if (!params.enableYSQLAuth && !StringUtils.isEmpty(params.ysqlPassword)) {
+      createChangeAdminPasswordTask(
+              null /* primaryCluster */,
+              Util.DEFAULT_YSQL_PASSWORD,
+              params.ysqlPassword,
+              Util.DEFAULT_YSQL_USERNAME,
+              Util.YUGABYTE_DB,
+              null /* ycqlPassword */,
+              null /* ycqlCurrentPassword */,
+              null /* ycqlUserName */,
+              true /* validateCurrentPassword */)
+          .setSubTaskGroupType(subTaskGroupType);
+    }
+  }
+
+  /** Creates a task to update API password from default to custom password. */
+  protected void createUpdateAPIPasswordTask(
+      ConfigureDBApiParams params, SubTaskGroupType subTaskGroupType) {
+    if (params.enableYCQLAuth && !StringUtils.isEmpty(params.ycqlPassword)) {
+      createChangeAdminPasswordTask(
+              null /* primaryCluster */,
+              null /* ysqlPassword */,
+              null /* ysqlCurrentPassword */,
+              null /* ysqlUserName */,
+              null /* ysqlDbName */,
+              params.ycqlPassword,
+              Util.DEFAULT_YCQL_PASSWORD,
+              Util.DEFAULT_YCQL_USERNAME)
+          .setSubTaskGroupType(subTaskGroupType);
+    }
+    if (params.enableYSQLAuth && !StringUtils.isEmpty(params.ysqlPassword)) {
+      createChangeAdminPasswordTask(
+              null /* primaryCluster */,
+              params.ysqlPassword,
+              Util.DEFAULT_YSQL_PASSWORD,
+              Util.DEFAULT_YSQL_USERNAME,
+              Util.YUGABYTE_DB,
+              null /* ycqlPassword */,
+              null /* ycqlCurrentPassword */,
+              null /* ycqlUserName */)
+          .setSubTaskGroupType(subTaskGroupType);
+    }
   }
 }

@@ -15,8 +15,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static play.libs.Json.newObject;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -229,6 +231,15 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       lenient()
           .when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
           .thenReturn(autoFlagsPerServer);
+      lenient()
+          .doAnswer(
+              inv -> {
+                ObjectNode res = newObject();
+                res.put("response", "success");
+                return res;
+              })
+          .when(mockYsqlQueryExecutor)
+          .executeQueryInNodeShell(any(), any(), any());
     } catch (Exception ignored) {
       fail();
     }

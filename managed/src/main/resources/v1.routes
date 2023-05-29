@@ -567,4 +567,8 @@ DELETE  /customers/:cUUID/licenses/:lUUID                                      c
 
 # LDAP Mapping API
 GET /customers/:cUUID/ldap_mappings                                            com.yugabyte.yw.controllers.LdapDnToYbaRoleController.list(cUUID: java.util.UUID)
-PUT /customers/:cUUID/ldap_mappings                                            com.yugabyte.yw.controllers.LdapDnToYbaRoleController.update(cUUID: java.util.UUID, request: Request) 
+PUT /customers/:cUUID/ldap_mappings                                            com.yugabyte.yw.controllers.LdapDnToYbaRoleController.update(cUUID: java.util.UUID, request: Request)
+
+# Configure DB APIs
+POST /customers/:cUUID/universes/:univUUID/configure/ycql                      com.yugabyte.yw.controllers.UniverseYbDbAdminController.configureYCQL(cUUID: java.util.UUID, univUUID: java.util.UUID, request: Request)
+POST /customers/:cUUID/universes/:univUUID/configure/ysql                      com.yugabyte.yw.controllers.UniverseYbDbAdminController.configureYSQL(cUUID: java.util.UUID, univUUID: java.util.UUID, request: Request)

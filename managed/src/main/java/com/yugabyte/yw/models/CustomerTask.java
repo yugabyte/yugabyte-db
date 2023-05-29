@@ -296,6 +296,12 @@ public class CustomerTask extends Model {
     @EnumValue("DisableYbc")
     DisableYbc,
 
+    @EnumValue("ConfigureDBApis")
+    ConfigureDBApis,
+
+    @EnumValue("ConfigureDBApisKubernetes")
+    ConfigureDBApisKubernetes,
+
     @EnumValue("CreateImageBundle")
     CreateImageBundle,
 
@@ -430,6 +436,9 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Ybc" : "Upgrading Ybc";
         case DisableYbc:
           return completed ? "Disabled Ybc" : "Disabling Ybc";
+        case ConfigureDBApisKubernetes:
+        case ConfigureDBApis:
+          return completed ? "Configured DB APIs" : "Configuring DB APIs";
         case CreateImageBundle:
           return completed ? "Created" : "Creating";
         case ReprovisionNode:

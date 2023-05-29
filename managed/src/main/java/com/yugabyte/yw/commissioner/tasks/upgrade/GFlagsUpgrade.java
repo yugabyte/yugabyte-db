@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -274,35 +273,5 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             DEFAULT_CONTEXT);
         break;
     }
-  }
-
-  private void createServerConfFileUpdateTasks(
-      UniverseDefinitionTaskParams.UserIntent userIntent,
-      List<NodeDetails> nodes,
-      Set<ServerType> processTypes,
-      UniverseDefinitionTaskParams.Cluster curCluster,
-      Collection<UniverseDefinitionTaskParams.Cluster> curClusters,
-      UniverseDefinitionTaskParams.Cluster newCluster,
-      Collection<UniverseDefinitionTaskParams.Cluster> newClusters) {
-    // If the node list is empty, we don't need to do anything.
-    if (nodes.isEmpty()) {
-      return;
-    }
-    String subGroupDescription =
-        String.format(
-            "AnsibleConfigureServers (%s) for: %s",
-            SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
-    for (NodeDetails node : nodes) {
-      ServerType processType = getSingle(processTypes);
-      Map<String, String> newGFlags =
-          GFlagsUtil.getGFlagsForNode(node, processType, newCluster, newClusters);
-      Map<String, String> oldGFlags =
-          GFlagsUtil.getGFlagsForNode(node, processType, curCluster, curClusters);
-      subTaskGroup.addSubTask(
-          getAnsibleConfigureServerTask(userIntent, node, processType, oldGFlags, newGFlags));
-    }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

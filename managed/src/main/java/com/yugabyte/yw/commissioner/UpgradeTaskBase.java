@@ -10,7 +10,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -557,25 +556,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
-  protected SubTaskGroup createNodeDetailsUpdateTask(
-      NodeDetails node, boolean updateCustomImageUsage) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateNodeDetails");
-    UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
-    updateNodeDetailsParams.setUniverseUUID(taskParams().getUniverseUUID());
-    updateNodeDetailsParams.azUuid = node.azUuid;
-    updateNodeDetailsParams.nodeName = node.nodeName;
-    updateNodeDetailsParams.details = node;
-    updateNodeDetailsParams.updateCustomImageUsage = updateCustomImageUsage;
-
-    UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
-    updateNodeTask.initialize(updateNodeDetailsParams);
-    updateNodeTask.setUserTaskUUID(userTaskUUID);
-    subTaskGroup.addSubTask(updateNodeTask);
-
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
   protected SubTaskGroup createClusterUserIntentUpdateTask(UUID clutserUUID, UUID imageBundleUUID) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterUserIntent");
     UpdateClusterUserIntent.Params updateClusterUserIntentParams =
@@ -643,6 +623,47 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     return task;
+  }
+
+  /**
+   * Create a task to update server conf files on DB nodes.
+   *
+   * @param userIntent modified user intent of the current cluster.
+   * @param nodes set of nodes on which the file needs to be updated.
+   * @param processTypes set of processes whose conf files need to be updated.
+   * @param curCluster current cluster.
+   * @param curClusters set of current clusters.
+   * @param newCluster updated new cluster.
+   * @param newClusters set of updated new clusters.
+   */
+  protected void createServerConfFileUpdateTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      Set<ServerType> processTypes,
+      UniverseDefinitionTaskParams.Cluster curCluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> curClusters,
+      UniverseDefinitionTaskParams.Cluster newCluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> newClusters) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
+    for (NodeDetails node : nodes) {
+      ServerType processType = getSingle(processTypes);
+      Map<String, String> newGFlags =
+          GFlagsUtil.getGFlagsForNode(node, processType, newCluster, newClusters);
+      Map<String, String> oldGFlags =
+          GFlagsUtil.getGFlagsForNode(node, processType, curCluster, curClusters);
+      subTaskGroup.addSubTask(
+          getAnsibleConfigureServerTask(userIntent, node, processType, oldGFlags, newGFlags));
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   protected void checkForbiddenToOverrideGFlags(

@@ -197,6 +197,9 @@ public class UserTaskDetails {
     // Add certificates and toggle TLS gflags
     ToggleTls,
 
+    // Configure DB Apis
+    ConfigureDBApis,
+
     // Rebooting the node.
     RebootingNode,
 
@@ -481,6 +484,10 @@ public class UserTaskDetails {
       case ToggleTls:
         title = "Toggle TLS";
         description = "Add certificates and toggle TLS gflags";
+        break;
+      case ConfigureDBApis:
+        title = "Configure DB APIs";
+        description = "Configuring DB APIs";
         break;
       case RotateAccessKey:
         title = "Rotate Access Key";
