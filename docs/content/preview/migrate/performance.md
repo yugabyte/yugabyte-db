@@ -94,7 +94,7 @@ As more optimizations are introduced, average throughput increases. The followin
 
 {{< note title="Note" >}}
 
-- With increased optimisations, the CPU usage also shoots up. Permitting the CPU usage beyond 60% may not be advisable as the database requires some cycles to do it's internal operations.
+- The more optimizations you use, the more CPU you will require. Allowing CPU use greater than 60% may not be advisable as the database requires some cycles for internal operations.
 
 - These performance optimizations apply whether you are importing data using the yb-voyager [import data command](../migrate-steps/#import-data) or the [import data file command](../migrate-steps/#import-data-file).
 
