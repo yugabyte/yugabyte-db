@@ -32,7 +32,7 @@ You can install YugabyteDB Voyager on the following:
 
 ### Software requirement
 
-- Java 17 or later
+- Java 11 or later. For better performance, the recommended version is Java 17.
 
 ### Prepare the host
 
