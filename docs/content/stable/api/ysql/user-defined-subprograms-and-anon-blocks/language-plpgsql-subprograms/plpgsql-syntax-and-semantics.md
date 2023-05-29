@@ -27,13 +27,13 @@ This section, and its subsections, specify:
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar-2" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar-2" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-2" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram-2" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -41,10 +41,10 @@ This section, and its subsections, specify:
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar-2" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql_block_stmt,plpgsql_declaration_section,plpgsql_executable_section,plpgsql_exception_section.grammar.md" %}}
   </div>
-  <div id="diagram-2" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql_block_stmt,plpgsql_declaration_section,plpgsql_executable_section,plpgsql_exception_section.diagram.md" %}}
   </div>
 </div>
@@ -116,13 +116,13 @@ Here is the decomposition of the _plpgsql_stmt_ grammar rule, down to its termin
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar-3" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-3" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -130,10 +130,10 @@ Here is the decomposition of the _plpgsql_stmt_ grammar rule, down to its termin
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql_stmt,plpgsql_basic_stmt,plpgsql_compound_stmt.grammar.md" %}}
   </div>
-  <div id="diagram-3" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql_stmt,plpgsql_basic_stmt,plpgsql_compound_stmt.diagram.md" %}}
   </div>
 </div>
