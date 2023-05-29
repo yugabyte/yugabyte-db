@@ -43,7 +43,7 @@ Create a database user and provide the user with READ access to all the resource
    GRANT LOCK TABLES ON <source_db_name>.* TO 'ybvoyager'@'<client_IP>';
    ```
 
-1. If you are running MySQL version >= 8.0.20, grant the global `SHOW_ROUTINE` permission. For older versions, grant the global `SELECT` permission. These permissions are necessary to dump stored procedure/function definitions.
+1. If you are running MySQL version 8.0.20 or later, grant the global `SHOW_ROUTINE` permission. For older versions, grant the global `SELECT` permission. These permissions are necessary to dump stored procedure/function definitions.
 
    ```sql
    --For MySQL >= 8.0.20
