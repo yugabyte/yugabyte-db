@@ -5460,7 +5460,7 @@
           "type" : "string"
         },
         "ybaRole" : {
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "type" : "string"
         }
       },
@@ -11878,7 +11878,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "example" : "Admin",
           "type" : "string"
         },
@@ -11918,7 +11918,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "example" : "Admin",
           "type" : "string"
         },
@@ -11969,7 +11969,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "type" : "string"
         },
         "timezone" : {
@@ -12029,7 +12029,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "type" : "string"
         },
         "timezone" : {
@@ -15253,8 +15253,9 @@
     },
     "/api/v1/customers/{cUUID}/create_backup_schedule" : {
       "post" : {
+        "deprecated" : true,
         "description" : "",
-        "operationId" : "createbackupSchedule",
+        "operationId" : "createBackupSchedule",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -15286,6 +15287,44 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Create Backup Schedule",
+        "tags" : [ "Backups" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/create_backup_schedule_async" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "createBackupScheduleAsync",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Parameters of the backup to be restored",
+          "in" : "body",
+          "name" : "backup",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/BackupRequestParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create Backup Schedule Async",
         "tags" : [ "Backups" ]
       }
     },
