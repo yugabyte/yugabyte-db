@@ -168,7 +168,12 @@ class TransactionStatusResolver::Impl {
 
     AtomicFlagSleepMs(&FLAGS_TEST_inject_status_resolver_delay_ms);
 
-    auto client = participant_context_.client_future().get();
+    auto client_result = participant_context_.client();
+    if (!client_result.ok()) {
+      Complete(client_result.status());
+      return;
+    }
+    auto client = client_result.get();
     if (!client || !rpcs_.RegisterAndStart(
         client::GetTransactionStatus(
             std::min(deadline_, TransactionRpcDeadline()),
