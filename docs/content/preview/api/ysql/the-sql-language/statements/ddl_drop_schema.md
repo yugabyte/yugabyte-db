@@ -74,6 +74,7 @@ CREATE TABLE sch1.t1(id BIGSERIAL PRIMARY KEY);
 ```
 
 Try to drop the schema:
+
 ```sql
 DROP SCHEMA sch1;
 ERROR:  cannot drop schema sch1 because other objects depend on it
