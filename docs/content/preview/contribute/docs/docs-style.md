@@ -62,7 +62,7 @@ Tag YSQL code blocks as `plpgsql`, and YCQL code blocks as `cql`. The source hig
 
 ### Tables
 
-Markdown supports [tables](https://www.markdownguide.org/extended-syntax/#tables). By design the table rows have to be in one line. This makes adding bullets and multi-line code blocks impossible in table cells. For this, use the shortcode `table`. For example,
+Markdown supports [tables](https://www.markdownguide.org/extended-syntax/#tables). By design, Markdown table rows are on a single line, and adding bullets and multi-line code blocks in table cells has to be done using HTML on a single line. To make creating custom tables simpler, use the _table_ shortcode. For example:
 
 ```md
 {{</*table*/>}}
