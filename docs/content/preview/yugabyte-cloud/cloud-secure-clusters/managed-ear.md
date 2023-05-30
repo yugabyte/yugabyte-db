@@ -39,7 +39,7 @@ Enabling EAR can impact cluster performance. You should monitor your workload af
 
   {{% tab header="AWS" lang="aws" %}}
 
-- Single-region [symmetric encryption key](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#symmetric-cmks) created in AWS KMS. The key resource should have the following permissions:
+- Single-region [symmetric encryption key](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#symmetric-cmks) created in AWS KMS. The key resource policy should include the [following actions](https://docs.aws.amazon.com/kms/latest/developerguide/key-policy-default.html#key-policy-users-crypto):
   - kms:Encrypt
   - kms:Decrypt
   - kms:GenerateDataKeyWithoutPlaintext
@@ -54,7 +54,7 @@ For more information on AWS KMS, refer to [AWS Key Management Service](https://d
 
   {{% tab header="GCP" lang="gcp" %}}
 
-- CMK created in Cloud KMS. The key should have the following permissions:
+- CMK (AKA customer-managed encryption key or CMEK) created in Cloud KMS. The key should have the following permissions:
   - cloudkms.keyRings.get
   - cloudkms.cryptoKeys.get
   - cloudkms.cryptoKeyVersions.useToEncrypt
