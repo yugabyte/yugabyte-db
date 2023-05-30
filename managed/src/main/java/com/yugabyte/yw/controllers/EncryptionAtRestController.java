@@ -110,7 +110,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
               SERVICE_UNAVAILABLE, "Cloud not create CloudAPI to validate the credentials");
         }
         if (!cloudAPI.isValidCredsKms(formData, customerUUID)) {
-          throw new PlatformServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Invalid AWS Credentials or it has insuffient permissions.");
         }
         break;
       case SMARTKEY:
