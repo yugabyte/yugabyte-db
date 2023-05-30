@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strconv"
 
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 // FailEarlyError is raised when yba-installer decides to fail even if a step is successful. this is
