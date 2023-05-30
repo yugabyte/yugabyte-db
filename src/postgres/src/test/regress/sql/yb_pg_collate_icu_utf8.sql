@@ -464,6 +464,12 @@ CREATE INDEX tab5_id_idx ON tab5(id text_pattern_ops asc); -- fail;
 CREATE INDEX tab5_id_idx ON tab5(id collate "C" asc); -- ok;
 \d tab5
 
+-- No index scan when collation does not match
+CREATE TABLE collate_filter_pushdown (k text collate "C", v text, PRIMARY KEY(k hash));
+INSERT INTO collate_filter_pushdown (SELECT s, s FROM generate_series(1,1000) s);
+EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' collate "C"; -- should push down filter and result in Index scan.
+EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' collate "en_US"; -- should NOT push down filter and result in Seq scan.
+
 -- cleanup
 SET client_min_messages = WARNING; -- suppress cascading notice
 DROP SCHEMA collate_tests CASCADE;
