@@ -121,3 +121,23 @@ Specify TLS versions via **Application config**, as shown in the following illus
 ![Application Config](/images/replicated/application-config-tls.png)
 
 The recommended TLS version is 1.2.
+
+## Set HTTP/HTTPS proxy
+
+You can setup HTTP and HTTPS proxy via **Application config** and selecting **Enable Proxy** as per the following illustration:
+
+The following information describes details about the **Enable Proxy** setting and some considerations.
+
+- If your proxy is using default ports for protocol, then use the defaults for HTTP and HTTPS, 80 and 443 respectively, instead of 8080 and 8443 as shown in the above illustration.
+
+- If you have only one proxy setup (HTTP or HTTPS), then set the same values for both. This configuration ends up setting OS environment variables or java system properties.
+
+- Below each field, you can notice which java system property or environment variable gets set by the field. System properties will have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
+
+- Note that the fields listed with "No proxy" refers to a list of exception hosts, in which the earlier-specified web proxy should be bypassed. You may also want to add any other IP addresses that you deem safe to bypass the proxy.
+
+- For the fields "HTTP no proxy setting" and "HTTP no proxy setting for Java", you need to add the docker gateway address (which is 172.17.0.1 by default).
+
+- Fields with Java system properties include a slightly different format like the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
+
+- There is no authoritative source for the format of environment variables; YBA follows the community standards for setting proxy. So you have to set both UPPERCASE and lowercase for each environment variable.
