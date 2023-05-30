@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.DevopsBase.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,6 +56,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
   @Mock RuntimeConfigFactory runtimeConfigFactory;
 
   @Mock Config mockConfig;
+  @Mock Config mockConfigUniverseScope;
 
   @InjectMocks RestoreManagerYb restoreManagerYb;
 
@@ -125,6 +127,8 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     testCustomer.addUniverseUUID(testUniverse.universeUUID);
     testCustomer.save();
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    when(runtimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
+    when(mockConfigUniverseScope.getBoolean("yb.backup.enable_sse")).thenReturn(false);
   }
 
   @Test
