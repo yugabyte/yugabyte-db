@@ -27,6 +27,8 @@ This page documents known issues you may encounter and suggested workarounds whe
 - [Key defined for a table in functions/procedures cause issues](#key-defined-for-a-table-in-functions-procedures-cause-issues)
 - [Multiple declarations of variables in functions](#multiple-declarations-of-variables-in-functions)
 - [Exporting text type columns with default value](#exporting-text-type-columns-with-default-value)
+- [json_valid() does not exist in PostgreSQL/YugabyteDB](#json-valid-does-not-exist-in-postgresql-yugabytedb)
+- [json_value() does not exist in PostgreSQL/YugabyteDB](#json-value-does-not-exist-in-postgresql-yugabytedb)
 
 ### Approaching MAX/MIN double precision values are not imported
 
@@ -500,4 +502,81 @@ CREATE TABLE text_types (
     mt text DEFAULT 'abc',
     lt text DEFAULT 'abc'
 ) ;
+```
+
+---
+
+### json_valid() does not exist in PostgreSQL/YugabyteDB
+
+**GitHub**: [Issue #833](https://github.com/yugabyte/yb-voyager/issues/833)
+
+**Description**: The MYSQL function `json_valid()` which returns 0 or 1 to indicate whether a value is valid JSON, does not exist in PostgreSQL or YugabyteDB.
+
+**Workaround**: Manually create the function on the target.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE test(id int, address json);
+ALTER TABLE test ADD CONSTRAINT add_ck CHECK ((json_valid(address)));
+```
+
+The contents of schema/failed.sql is as follows:
+
+```sql
+ALTER TABLE test ADD CONSTRAINT add_ck CHECK ((json_valid(address)));
+```
+
+Suggested solution is as follows:
+
+1. Add the following function to the file "schema/functions/functions.sql" as follows:
+
+    ```sql
+    CREATE OR REPLACE FUNCTION json_valid(p_json text)
+      RETURNS boolean
+    AS
+    $$
+    BEGIN
+      RETURN (p_json::json is not null);
+    EXCEPTION
+      WHEN OTHERS THEN
+        RETURN false;
+    END;
+    $$
+    LANGUAGE PLPGSQL
+    IMMUTABLE;
+    ```
+
+1. Create the preceding function manually on the target before importing the schema.
+
+---
+
+### json_value() does not exist in PostgreSQL/YugabyteDB
+
+**GitHub**: [Issue #834](https://github.com/yugabyte/yb-voyager/issues/834)
+
+**Description**: The MySQL function `json_value()` which extracts scalar value at the specified path from the given JSON document and returns it as the specified type, does not exist in PostgreSQL or YugabyteDB.
+
+**Workaround**: Use the alternative function `json_extract_path_text()`.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+json_value(key_value_pair_variable, '$.key');
+```
+
+The exported schema is as follows:
+
+```sql
+json_value(key_value_pair_variable, '$.key');
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+json_extract_path_text(key_value_pair_variable::json,'key');
 ```
