@@ -85,7 +85,7 @@ Markdown supports [tables](https://www.markdownguide.org/extended-syntax/#tables
 {{</*/table*/>}}
 ```
 
-The above markdown should render as,
+The above markdown should render a table as follows:
 
 {{<table>}}
 | col-1 | col-2 |
