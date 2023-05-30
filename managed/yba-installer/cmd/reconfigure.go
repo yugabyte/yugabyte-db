@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 var reconfigureCmd = &cobra.Command{

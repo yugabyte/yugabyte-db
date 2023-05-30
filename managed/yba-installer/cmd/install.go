@@ -5,11 +5,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight/checks"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 var installCmd = &cobra.Command{
