@@ -125,6 +125,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(mockConfig);
+    when(mockConfig.getBoolean("yb.backup.enable_sse")).thenReturn(false);
   }
 
   @Test

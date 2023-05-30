@@ -162,9 +162,6 @@ public class TableManagerYb extends DevopsBase {
           }
         }
         commandArgs.add("--no_auto_name");
-        if (taskParams.sse) {
-          commandArgs.add("--sse");
-        }
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
         CustomerConfigStorageData configData =
@@ -189,6 +186,7 @@ public class TableManagerYb extends DevopsBase {
           commandArgs.add(backupKeysFile.getAbsolutePath());
         }
         addCommonCommandArgs(
+            universe,
             backupTableParams,
             accessKey,
             region,
@@ -245,6 +243,7 @@ public class TableManagerYb extends DevopsBase {
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
         log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
+            universe,
             backupTableParams,
             accessKey,
             region,
@@ -270,6 +269,7 @@ public class TableManagerYb extends DevopsBase {
   }
 
   private void addCommonCommandArgs(
+      Universe universe,
       BackupTableParams backupTableParams,
       AccessKey accessKey,
       Region region,
@@ -305,7 +305,6 @@ public class TableManagerYb extends DevopsBase {
       commandArgs.add("--certs_dir");
       commandArgs.add(getCertsDir(region, provider));
     }
-    Universe universe = Universe.getOrBadRequest(backupTableParams.universeUUID);
     boolean verboseLogsEnabled =
         runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
     if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
@@ -328,6 +327,9 @@ public class TableManagerYb extends DevopsBase {
     }
     if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.backup.disable_xxhash_checksum")) {
       commandArgs.add("--disable_xxhash_checksum");
+    }
+    if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.enable_sse")) {
+      commandArgs.add("--sse");
     }
   }
 

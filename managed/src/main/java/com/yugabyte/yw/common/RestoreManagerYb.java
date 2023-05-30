@@ -164,10 +164,6 @@ public class RestoreManagerYb extends DevopsBase {
     }
 
     commandArgs.add("--no_auto_name");
-    if (backupStorageInfo.sse) {
-      commandArgs.add("--sse");
-    }
-
     if (actionType.equals(ActionType.RESTORE)) {
       if (restoreBackupParams.restoreTimeStamp != null) {
         String backupLocation = customerConfig.data.get(BACKUP_LOCATION_FIELDNAME).asText();
@@ -189,6 +185,7 @@ public class RestoreManagerYb extends DevopsBase {
     }
 
     addCommonCommandArgs(
+        universe,
         restoreBackupParams,
         accessKey,
         region,
@@ -244,6 +241,7 @@ public class RestoreManagerYb extends DevopsBase {
   }
 
   private void addCommonCommandArgs(
+      Universe universe,
       RestoreBackupParams restoreBackupParams,
       AccessKey accessKey,
       Region region,
@@ -282,11 +280,13 @@ public class RestoreManagerYb extends DevopsBase {
       commandArgs.add(getCertsDir(region, provider));
     }
     commandArgs.add(restoreBackupParams.actionType.name().toLowerCase());
-    Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
     boolean verboseLogsEnabled =
         runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
     if (restoreBackupParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
+    }
+    if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.enable_sse")) {
+      commandArgs.add("--sse");
     }
     if (restoreBackupParams.useTablespaces) {
       commandArgs.add("--use_tablespaces");
