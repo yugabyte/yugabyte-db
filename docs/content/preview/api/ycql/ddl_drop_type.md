@@ -51,4 +51,3 @@ ycqlsh:example> DROP TYPE person;
 ## See also
 
 - [`CREATE TABLE`](../ddl_create_table)
-- [`DROP TYPE`](../ddl_drop_keyspace)
