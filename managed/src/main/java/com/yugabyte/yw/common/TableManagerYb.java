@@ -161,9 +161,6 @@ public class TableManagerYb extends DevopsBase {
           }
         }
         commandArgs.add("--no_auto_name");
-        if (taskParams.sse) {
-          commandArgs.add("--sse");
-        }
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
 
@@ -191,6 +188,7 @@ public class TableManagerYb extends DevopsBase {
           commandArgs.add(backupKeysFile.getAbsolutePath());
         }
         addCommonCommandArgs(
+            universe,
             backupTableParams,
             accessKey,
             region,
@@ -247,6 +245,7 @@ public class TableManagerYb extends DevopsBase {
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
         log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
+            universe,
             backupTableParams,
             accessKey,
             region,
@@ -272,6 +271,7 @@ public class TableManagerYb extends DevopsBase {
   }
 
   private void addCommonCommandArgs(
+      Universe universe,
       BackupTableParams backupTableParams,
       AccessKey accessKey,
       Region region,
@@ -318,6 +318,9 @@ public class TableManagerYb extends DevopsBase {
 
     if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
       commandArgs.add("--ssh2_enabled");
+    }
+    if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.enable_sse")) {
+      commandArgs.add("--sse");
     }
   }
 

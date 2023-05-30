@@ -227,9 +227,6 @@ public class TableManager extends DevopsBase {
           commandArgs.add(taskParams.tableUUID.toString().replace("-", ""));
         }
         commandArgs.add("--no_auto_name");
-        if (taskParams.sse) {
-          commandArgs.add("--sse");
-        }
         if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
           if (backupTableParams.restoreTimeStamp != null) {
             String backupLocation = customerConfig.data.get(BACKUP_LOCATION_FIELDNAME).asText();
@@ -272,6 +269,7 @@ public class TableManager extends DevopsBase {
           }
         }
         addCommonCommandArgs(
+            universe,
             backupTableParams,
             accessKey,
             region,
@@ -330,6 +328,7 @@ public class TableManager extends DevopsBase {
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
         log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
+            universe,
             backupTableParams,
             accessKey,
             region,
@@ -391,6 +390,7 @@ public class TableManager extends DevopsBase {
   }
 
   private void addCommonCommandArgs(
+      Universe universe,
       BackupTableParams backupTableParams,
       AccessKey accessKey,
       Region region,
@@ -439,6 +439,9 @@ public class TableManager extends DevopsBase {
 
     if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
       commandArgs.add("--ssh2_enabled");
+    }
+    if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.enable_sse")) {
+      commandArgs.add("--sse");
     }
   }
 

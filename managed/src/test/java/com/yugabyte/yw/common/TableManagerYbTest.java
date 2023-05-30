@@ -206,9 +206,6 @@ public class TableManagerYbTest extends FakeDBApplication {
         }
       }
       cmd.add("--no_auto_name");
-      if (backupTableParams.sse) {
-        cmd.add("--sse");
-      }
     }
     if (testProvider.code.equals("kubernetes")) {
       cmd.add("--k8s_config");
@@ -257,6 +254,7 @@ public class TableManagerYbTest extends FakeDBApplication {
     testCustomer.save();
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
     when(mockConfigUniverseScope.getBoolean("yb.backup.pg_based")).thenReturn(false);
+    when(mockConfigUniverseScope.getBoolean("yb.backup.enable_sse")).thenReturn(false);
     when(mockruntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfigUniverseScope);
   }
 
