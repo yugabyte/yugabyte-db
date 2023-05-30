@@ -84,7 +84,6 @@ The valid *arguments* for export schema are described in the following table:
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | [--start-clean](#start-clean) | Clean the schema data directories. |
 | [--use-orafce](#use-orafce) | Use the Orafce extension. Oracle migrations only. |
-| [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
@@ -120,8 +119,6 @@ The valid *arguments* for analyze schema are described in the following table:
 | [-h, --help](#command-line-help) | Command line help. |
 | [--output-format](#output-format) <format> | One of `html`, `txt`, `json`, or `xml`. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--verbose](#verbose) | Display extra information in the output. |
-| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 
@@ -151,7 +148,7 @@ The valid *arguments* for export data are described in the following table:
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. Oracle migrations only. |
 | [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. Oracle migrations only.|
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
-| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
+| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel jobs to extract data from source database (default 4) |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
 | [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
 | [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
@@ -166,7 +163,6 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
-| [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
@@ -198,9 +194,6 @@ The valid *arguments* for export data status are described in the following tabl
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
-| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--verbose](#verbose) | Display extra information in the output. |
-| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 
@@ -216,7 +209,7 @@ During migration, run the import schema command twice, first without the [--post
 
 {{< note title="For Oracle migrations" >}}
 
-For Oracle migrations using YugabyteDB Voyager v1.1, the Orafce extension is installed on the target database by default. This enables you to use a subset of predefined functions, operators, and packages from Oracle. The extension is installed in the public schema, and when listing functions or views, extra objects will be visible on the target database which may confuse you. You can remove the extension using the [DROP EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_drop_extension) command.
+For Oracle migrations using YugabyteDB Voyager v1.1 or later, the Orafce extension is installed on the target database by default. This enables you to use a subset of predefined functions, operators, and packages from Oracle. The extension is installed in the public schema, and when listing functions or views, extra objects will be visible on the target database which may confuse you. You can remove the extension using the [DROP EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_drop_extension) command.
 
 {{< /note >}}
 
@@ -341,6 +334,7 @@ The valid *arguments* for import data file are described in the following table:
 | [--disable-pb](#disable-pb) | Hide progress bars. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
 | [--file-opts](#file-opts) <string> | Comma-separated string options for CSV file format. |
+| [--null-string](#null-string) | String that represents null value in the data file. |
 | [--file-table-map](#file-table-map) <filename1:tablename1> | Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database. |
 | [--format](#format) <format> | One of `CSV` or `text` format of the data file. |
 | [--has-header](#has-header) | Applies only to CSV file type. |
@@ -404,9 +398,6 @@ The valid *arguments* for import data status are described in the following tabl
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
-| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
-| [--verbose](#verbose) | Displays extra information in the output. |
-| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 
@@ -505,11 +496,21 @@ Specifies the schema of the target database. MySQL and Oracle migrations only.
 
 ### --parallel-jobs
 
+#### For export data
+
+Specifies the number of tables to be exported in parallel from the source database at a time.
+
+Default: 4; exports 4 tables at a time by default.
+
+If you use [BETA_FAST_DATA_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle) to accelerate data export, yb-voyager exports only one table at a time and the --parallel-jobs argument is ignored.
+
+#### For import data
+
 Specifies the number of parallel COPY commands issued to the target database.
 
-Depending on the target YugabyteDB configuration, the value of `--parallel-jobs` should be tweaked such that *at most* 50% of target cores are utilised.
+Depending on the target YugabyteDB configuration, the value of --parallel-jobs should be tweaked such that at most 50% of target cores are utilised.
 
-Default: If yb-voyager can determine the total number of cores `N` in the target YugabyteDB cluster, it uses `N/2` as the default. Otherwise, it defaults to twice the number of nodes in the cluster.
+Default: If yb-voyager can determine the total number of cores N in the target YugabyteDB cluster, it uses N/2 as the default. Otherwise, it defaults to twice the number of nodes in the cluster.
 
 ### --batch-size
 
@@ -563,6 +564,12 @@ Default: double quotes (") for both escape and quote characters
 Note that `escape_char` and `quote_char` are only valid and required for CSV file format.
 
 Example: `--file-opts "escape_char=\",quote_char=\""` or `--file-opts 'escape_char=",quote_char="'`
+
+### --null-string
+
+String that represents null value in the data file.
+
+Default: ""(empty string) for CSV, and '\N' for text.
 
 ### --format
 
@@ -636,6 +643,8 @@ Default: false
 ## SSL Connectivity
 
 You can instruct yb-voyager to connect to the source or target database over an SSL connection. Connecting securely to PostgreSQL, MySQL, and YugabyteDB requires you to pass a similar set of arguments to yb-voyager. Oracle requires a different set of arguments.
+
+Note that the SSL arguments are unsupported with [BETA_FAST_DATA_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle).
 
 The following table summarizes the arguments and options you can pass to yb-voyager to establish an SSL connection.
 
