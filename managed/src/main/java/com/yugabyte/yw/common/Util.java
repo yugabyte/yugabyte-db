@@ -105,10 +105,6 @@ public class Util {
   public static final String S3 = "S3";
   public static final String NFS = "NFS";
 
-  public static final String BLACKLIST_LEADERS = "yb.upgrade.blacklist_leaders";
-  public static final String BLACKLIST_LEADER_WAIT_TIME_MS =
-      "yb.upgrade.blacklist_leader_wait_time_ms";
-
   public static final String AVAILABLE_MEMORY = "MemAvailable";
 
   public static final String UNIVERSE_NAME_REGEX = "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$";

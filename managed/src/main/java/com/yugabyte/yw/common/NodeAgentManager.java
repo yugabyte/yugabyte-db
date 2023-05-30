@@ -117,7 +117,7 @@ public class NodeAgentManager {
   @VisibleForTesting
   public Path getNodeAgentBaseCertDirectory(NodeAgent nodeAgent) {
     return Paths.get(
-        appConfig.getString("yb.storage.path"),
+        AppConfigHelper.getStoragePath(),
         "node-agent",
         "certs",
         nodeAgent.getCustomerUuid().toString(),

@@ -1,7 +1,7 @@
 - name: Download ybc package | Set temporary package path
   set_fact:
     tmp_ybc_package_location: "{{ yb_software_dir }}/TEMP_YBC"
-    remote_ybc_tmp_package: "/tmp/{{ ybc_dir }}.tar.gz"
+    remote_ybc_tmp_package: "{{ remote_tmp_dir | default('/tmp') }}/{{ ybc_dir }}.tar.gz"
   tags: always
 
 - name: Download ybc package | Create temporary release ybc directory

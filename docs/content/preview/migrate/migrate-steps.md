@@ -224,6 +224,30 @@ Refer to [export data](../reference/yb-voyager-cli/#export-data) for details abo
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
+{{< note title="Sequence migration considerations" >}}
+
+Sequence migration consists of two steps: sequence creation and setting resume value (resume value refers to the `NEXTVAL` of a sequence on a source database). A sequence object is generated during export schema and the resume values for sequences are generated during export data. These resume values are then set on the target database just after the data is imported for all tables.
+
+Note that there are some special cases involving sequences such as the following:
+
+- In MySQL, auto-increment column is migrated to YugbayteDB as a normal column with a sequence attached to it.
+- For PostgreSQL, `SERIAL` datatype and `GENERATED AS IDENTITY` columns use sequence object internally, so resume values for them are also generated during data export.
+
+{{< /note >}}
+
+#### Accelerate data export for MySQL and Oracle
+
+For MySQL and Oracle, you can optionally speed up data export by setting the environment variable `BETA_FAST_DATA_EXPORT=1` when you run `export data` using yb-voyager.
+
+Consider the following caveats before using the feature:
+
+- You need to perform additional steps when you [prepare the source database](#prepare-the-source-database).
+- Some data types are unsupported. For a detailed list, refer to [datatype mappings](../reference/datatype-mapping-mysql/).
+- [--parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument will have no effect.
+- SSL is unsupported.
+- In MySQL RDS, writes are not allowed during the data export process.
+- For Oracle where sequences are not attached to a column, resume value generation is unsupported.
+
 ### Import schema
 
 Import the schema using the `yb-voyager import schema` command.
@@ -305,7 +329,9 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
         –-data-dir </path/to/files/dir/> \
         --file-table-map <filename1:table1,filename2:table2> \
         --delimiter <DELIMITER> \
-        –-has-header
+        –-has-header \
+        --null-string "<NULL_STRING>"
+
 ```
 
 Refer to [import data file](../reference/yb-voyager-cli/#import-data-file) for details about the arguments.

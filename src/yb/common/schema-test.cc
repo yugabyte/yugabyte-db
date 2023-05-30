@@ -52,12 +52,12 @@ TEST(TestSchema, TestSchema) {
   Schema empty_schema;
   ASSERT_GT(empty_schema.memory_footprint_excluding_this(), 0);
 
-  ColumnSchema col1("key", STRING);
-  ColumnSchema col2("uint32val", UINT32, true);
+  ColumnSchema col1("key", STRING, ColumnKind::RANGE_ASC_NULL_FIRST);
+  ColumnSchema col2("uint32val", UINT32, ColumnKind::VALUE, Nullable::kTrue);
   ColumnSchema col3("int32val", INT32);
 
   vector<ColumnSchema> cols = { col1, col2, col3 };
-  Schema schema(cols, 1);
+  Schema schema(cols);
 
   ASSERT_EQ(sizeof(Slice) + sizeof(uint32_t) + sizeof(int32_t),
             schema.byte_size());
@@ -68,9 +68,9 @@ TEST(TestSchema, TestSchema) {
             empty_schema.memory_footprint_excluding_this());
 
   EXPECT_EQ(Format("Schema [\n"
-                   "\tkey[string NOT NULL NOT A PARTITION KEY],\n"
-                   "\tuint32val[uint32 NULLABLE NOT A PARTITION KEY],\n"
-                   "\tint32val[int32 NOT NULL NOT A PARTITION KEY]\n"
+                   "\tkey[string NOT NULL RANGE_ASC_NULL_FIRST],\n"
+                   "\tuint32val[uint32 NULLABLE VALUE],\n"
+                   "\tint32val[int32 NOT NULL VALUE]\n"
                    "]\nproperties: contain_counters: false is_transactional: false "
                    "consistency_level: STRONG "
                    "use_mangled_column_name: false "
@@ -79,45 +79,17 @@ TEST(TestSchema, TestSchema) {
                    "partitioning_version: $0",
                    kCurrentPartitioningVersion),
             schema.ToString());
-  EXPECT_EQ("key[string NOT NULL NOT A PARTITION KEY]", schema.column(0).ToString());
-  EXPECT_EQ("uint32 NULLABLE NOT A PARTITION KEY", schema.column(1).TypeToString());
-}
-
-TEST(TestSchema, TestSwap) {
-  TableProperties properties1;
-  properties1.SetDefaultTimeToLive(1000);
-  Schema schema1({ ColumnSchema("col1", STRING),
-                   ColumnSchema("col2", STRING),
-                   ColumnSchema("col3", UINT32) },
-                 2, properties1);
-  TableProperties properties2;
-  properties2.SetDefaultTimeToLive(2000);
-  Schema schema2({ ColumnSchema("col3", UINT32),
-                   ColumnSchema("col2", STRING) },
-                 1, properties2);
-  schema1.swap(schema2);
-  ASSERT_EQ(2, schema1.num_columns());
-  ASSERT_EQ(1, schema1.num_key_columns());
-  ASSERT_EQ(3, schema2.num_columns());
-  ASSERT_EQ(2, schema2.num_key_columns());
-  ASSERT_EQ(2000, schema1.table_properties().DefaultTimeToLive());
-  ASSERT_EQ(1000, schema2.table_properties().DefaultTimeToLive());
+  EXPECT_EQ("key[string NOT NULL RANGE_ASC_NULL_FIRST]", schema.column(0).ToString());
+  EXPECT_EQ("uint32 NULLABLE VALUE", schema.column(1).TypeToString());
 }
 
 TEST(TestSchema, TestReset) {
   Schema schema;
   ASSERT_FALSE(schema.initialized());
 
-  ASSERT_OK(schema.Reset({ ColumnSchema("col3", UINT32),
-                           ColumnSchema("col2", STRING) },
-                         1));
+  ASSERT_OK(schema.Reset({ ColumnSchema("col3", UINT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+                           ColumnSchema("col2", STRING) }));
   ASSERT_TRUE(schema.initialized());
-
-  // Swap the initialized schema with an uninitialized one.
-  Schema schema2;
-  schema2.swap(schema);
-  ASSERT_FALSE(schema.initialized());
-  ASSERT_TRUE(schema2.initialized());
 }
 
 // Test for KUDU-943, a bug where we suspected that Variant didn't behave
@@ -135,14 +107,12 @@ TEST(TestSchema, TestEmptyVariant) {
 }
 
 TEST(TestSchema, TestProjectSubset) {
-  Schema schema1({ ColumnSchema("col1", STRING),
+  Schema schema1({ ColumnSchema("col1", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
                    ColumnSchema("col2", STRING),
-                   ColumnSchema("col3", UINT32) },
-                 1);
+                   ColumnSchema("col3", UINT32) });
 
   Schema schema2({ ColumnSchema("col3", UINT32),
-                   ColumnSchema("col2", STRING) },
-                 0);
+                   ColumnSchema("col2", STRING) });
 
   RowProjector row_projector(&schema1, &schema2);
   ASSERT_OK(row_projector.Init());
@@ -161,10 +131,9 @@ TEST(TestSchema, TestProjectSubset) {
 // Test projection when the type of the projected column
 // doesn't match the original type.
 TEST(TestSchema, TestProjectTypeMismatch) {
-  Schema schema1({ ColumnSchema("key", STRING),
-                   ColumnSchema("val", UINT32) },
-                 1);
-  Schema schema2({ ColumnSchema("val", STRING) }, 0);
+  Schema schema1({ ColumnSchema("key", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("val", UINT32) });
+  Schema schema2({ ColumnSchema("val", STRING) });
 
   RowProjector row_projector(&schema1, &schema2);
   Status s = row_projector.Init();
@@ -175,9 +144,11 @@ TEST(TestSchema, TestProjectTypeMismatch) {
 // Test projection when the some columns in the projection
 // are not present in the base schema
 TEST(TestSchema, TestProjectMissingColumn) {
-  Schema schema1({ ColumnSchema("key", STRING), ColumnSchema("val", UINT32) }, 1);
-  Schema schema2({ ColumnSchema("val", UINT32), ColumnSchema("non_present", STRING) }, 0);
-  Schema schema3({ ColumnSchema("val", UINT32), ColumnSchema("non_present", UINT32, true) }, 0);
+  Schema schema1({ ColumnSchema("key", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("val", UINT32) });
+  Schema schema2({ ColumnSchema("val", UINT32), ColumnSchema("non_present", STRING) });
+  Schema schema3({ ColumnSchema("val", UINT32),
+                   ColumnSchema("non_present", UINT32, ColumnKind::VALUE, Nullable::kTrue) });
 
   RowProjector row_projector(&schema1, &schema2);
   Status s = row_projector.Init();
@@ -223,21 +194,20 @@ TEST(TestSchema, TestProjectRename) {
 }
 
 TEST(TestSchema, TestCreateProjection) {
-  Schema schema({ ColumnSchema("col1", STRING),
-                  ColumnSchema("col2", STRING),
+  Schema schema({ ColumnSchema("col1", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                  ColumnSchema("col2", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
                   ColumnSchema("col3", STRING),
                   ColumnSchema("col4", STRING),
-                  ColumnSchema("col5", STRING) },
-                2);
+                  ColumnSchema("col5", STRING) });
   Schema schema_with_ids = SchemaBuilder(schema).Build();
   Schema partial_schema;
 
   // By names, without IDs
-  ASSERT_OK(schema.CreateProjectionByNames({ "col1", "col2", "col4" }, &partial_schema));
+  ASSERT_OK(schema.TEST_CreateProjectionByNames({ "col1", "col2", "col4" }, &partial_schema));
   EXPECT_EQ(Format("Schema [\n"
-                   "\tcol1[string NOT NULL NOT A PARTITION KEY],\n"
-                   "\tcol2[string NOT NULL NOT A PARTITION KEY],\n"
-                   "\tcol4[string NOT NULL NOT A PARTITION KEY]\n"
+                   "\tcol1[string NOT NULL RANGE_ASC_NULL_FIRST],\n"
+                   "\tcol2[string NOT NULL RANGE_ASC_NULL_FIRST],\n"
+                   "\tcol4[string NOT NULL VALUE]\n"
                    "]\nproperties: contain_counters: false is_transactional: false "
                    "consistency_level: STRONG "
                    "use_mangled_column_name: false "
@@ -248,11 +218,12 @@ TEST(TestSchema, TestCreateProjection) {
             partial_schema.ToString());
 
   // By names, with IDS
-  ASSERT_OK(schema_with_ids.CreateProjectionByNames({ "col1", "col2", "col4" }, &partial_schema));
+  ASSERT_OK(schema_with_ids.TEST_CreateProjectionByNames(
+      { "col1", "col2", "col4" }, &partial_schema));
   EXPECT_EQ(Format("Schema [\n"
-                   "\t$0:col1[string NOT NULL NOT A PARTITION KEY],\n"
-                   "\t$1:col2[string NOT NULL NOT A PARTITION KEY],\n"
-                   "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
+                   "\t$0:col1[string NOT NULL RANGE_ASC_NULL_FIRST],\n"
+                   "\t$1:col2[string NOT NULL RANGE_ASC_NULL_FIRST],\n"
+                   "\t$2:col4[string NOT NULL VALUE]\n"
                    "]\nproperties: contain_counters: false is_transactional: false "
                    "consistency_level: STRONG "
                    "use_mangled_column_name: false "
@@ -266,7 +237,7 @@ TEST(TestSchema, TestCreateProjection) {
             partial_schema.ToString());
 
   // By names, with missing names.
-  Status s = schema.CreateProjectionByNames({ "foobar" }, &partial_schema);
+  Status s = schema.TEST_CreateProjectionByNames({ "foobar" }, &partial_schema);
   EXPECT_EQ("Not found: Column not found: foobar", s.ToString(/* no file/line */ false));
 
   // By IDs
@@ -276,9 +247,9 @@ TEST(TestSchema, TestCreateProjection) {
                                                                  schema_with_ids.column_id(3) },
                                                                &partial_schema));
   EXPECT_EQ(Format("Schema [\n"
-                   "\t$0:col1[string NOT NULL NOT A PARTITION KEY],\n"
-                   "\t$1:col2[string NOT NULL NOT A PARTITION KEY],\n"
-                   "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
+                   "\t$0:col1[string NOT NULL RANGE_ASC_NULL_FIRST],\n"
+                   "\t$1:col2[string NOT NULL RANGE_ASC_NULL_FIRST],\n"
+                   "\t$2:col4[string NOT NULL VALUE]\n"
                    "]\nproperties: contain_counters: false is_transactional: false "
                    "consistency_level: STRONG "
                    "use_mangled_column_name: false "
@@ -295,10 +266,9 @@ TEST(TestSchema, TestCreateProjection) {
 TEST(TestSchema, TestCopyFrom) {
   TableProperties properties;
   properties.SetDefaultTimeToLive(1000);
-  Schema schema1({ ColumnSchema("col1", STRING),
-                     ColumnSchema("col2", STRING),
-                     ColumnSchema("col3", UINT32) },
-                 2, properties);
+  Schema schema1({ ColumnSchema("col1", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("col2", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("col3", UINT32) }, properties);
   Schema schema2;
   schema2.CopyFrom(schema1);
   ASSERT_EQ(3, schema2.num_columns());
@@ -309,10 +279,9 @@ TEST(TestSchema, TestCopyFrom) {
 TEST(TestSchema, TestSchemaBuilder) {
   TableProperties properties;
   properties.SetDefaultTimeToLive(1000);
-  Schema schema1({ ColumnSchema("col1", STRING),
-                     ColumnSchema("col2", STRING),
-                     ColumnSchema("col3", UINT32) },
-                 2, properties);
+  Schema schema1({ ColumnSchema("col1", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("col2", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("col3", UINT32) }, properties);
   SchemaBuilder builder(schema1);
   Schema schema2 = builder.Build();
   ASSERT_TRUE(schema1.Equals(schema2));

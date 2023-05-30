@@ -102,7 +102,7 @@ You can create a backup of a database that was colocated with the deprecated syn
 All the tables in a colocated database are colocated by default. There is no need to enable colocation when creating tables. You can choose to opt specific tables out of colocation in a colocated database. To do this, use the following command:
 
 ```sql
-CREATE TABLE <name> WITH COLOCATION = false
+CREATE TABLE <name> (WITH COLOCATION = false);
 ```
 
 Note that you cannot create a colocated table in a non-colocated database.

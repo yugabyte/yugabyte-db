@@ -1082,4 +1082,12 @@ public class Universe extends Model {
         && enableNodeToNodeEncrypt
         && (Util.compareYbVersions(ybSoftwareVersion, "2.17.1.0-b13", true) > 0);
   }
+
+  public Optional<TaskInfo> maybeGetLastTaskInfo() {
+    if (getUniverseDetails().updatingTaskUUID != null
+        && getUniverseDetails().updatingTask != null) {
+      return TaskInfo.maybeGet(getUniverseDetails().updatingTaskUUID);
+    }
+    return Optional.empty();
+  }
 }

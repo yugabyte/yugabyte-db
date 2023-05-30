@@ -43,12 +43,13 @@ class IntentIteratorTest : public DocDBTestBase {
 
   Schema CreateSchema() override {
     return Schema(
-      {ColumnSchema("a", DataType::STRING, /* is_nullable = */ false),
-       ColumnSchema("b", DataType::INT64, false),
+      {ColumnSchema("a", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+       ColumnSchema("b", DataType::INT64, ColumnKind::RANGE_ASC_NULL_FIRST),
        // Non-key columns
-       ColumnSchema("c", DataType::STRING, true), ColumnSchema("d", DataType::INT64, true),
-       ColumnSchema("e", DataType::STRING, true)},
-      {10_ColId, 20_ColId, 30_ColId, 40_ColId, 50_ColId}, 2);
+       ColumnSchema("c", DataType::STRING, ColumnKind::VALUE, Nullable::kTrue),
+       ColumnSchema("d", DataType::INT64, ColumnKind::VALUE, Nullable::kTrue),
+       ColumnSchema("e", DataType::STRING, ColumnKind::VALUE, Nullable::kTrue)},
+      {10_ColId, 20_ColId, 30_ColId, 40_ColId, 50_ColId});
   }
 };
 

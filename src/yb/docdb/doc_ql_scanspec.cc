@@ -36,7 +36,7 @@ using dockv::KeyEntryValue;
 
 namespace {
 
-bool AreColumnsContinous(ColumnListVector col_idxs) {
+bool AreColumnsContinous(qlexpr::ColumnListVector col_idxs) {
   std::sort(col_idxs.begin(), col_idxs.end());
   for (size_t i = 0; i < col_idxs.size() - 1; ++i) {
     if (col_idxs[i] == kYbHashCodeColId) {
@@ -192,7 +192,7 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
         size_t total_cols = lhs.tuple().elems_size();
         DCHECK_GT(total_cols, 0);
 
-        ColumnListVector col_idxs;
+        qlexpr::ColumnListVector col_idxs;
         col_idxs.reserve(total_cols);
         options_groups_.BeginNewGroup();
 
@@ -233,8 +233,8 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
             reverse.push_back(get_scan_direction(col_idxs[i]));
           }
 
-          const auto sorted_options =
-              GetTuplesSortedByOrdering(options, schema(), is_forward_scan(), col_idxs);
+          const auto sorted_options = qlexpr::GetTuplesSortedByOrdering(
+              options, schema(), is_forward_scan(), col_idxs);
 
           int num_options = options.elems_size();
           for (int i = 0; i < num_options; i++) {

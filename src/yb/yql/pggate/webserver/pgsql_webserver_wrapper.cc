@@ -315,7 +315,7 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
 static void PgPrometheusMetricsHandler(
     const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
-  PrometheusWriter writer(output);
+  PrometheusWriter writer(output, ExportHelpAndType::kFalse);
 
   // Max size of ybpgm_table name (100 incl \0 char) + max size of "_count"/"_sum" (6 excl \0).
   char copied_name[106];

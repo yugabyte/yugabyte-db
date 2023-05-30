@@ -31,7 +31,7 @@ LDAP provides means for querying directory services. A directory typically store
 
 LDAP authentication is similar to a direct password authentication, except that it employs the LDAP protocol to verify the password. This means that only users who already exist in the database and have appropriate permissions can be authenticated via LDAP.
 
-YugabyteDB Anywhere's integration with LDAP enables you to use your LDAP server for authentication purposes instead of having to create user accounts on YugabyteDB Anywhere.
+YugabyteDB Anywhere integration with LDAP enables you to use your LDAP server for authentication purposes instead of having to create user accounts on YugabyteDB Anywhere.
 
 Because YugabyteDB Anywhere and the LDAP server are synchronized during login, YugabyteDB Anywhere always uses the up-to-date credentials and roles information (such as role and password changes), as well as removal of users deleted in the LDAP server.
 

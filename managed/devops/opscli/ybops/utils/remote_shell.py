@@ -60,10 +60,12 @@ def can_connect(connect_options):
 
 # Similar method exists for SSH.
 def copy_to_tmp(connect_options, filepath, retries=3, retry_delay=CONNECT_RETRY_DELAY, **kwargs):
-    """This method copies the given file to /tmp on remote host and return the output.
+    """This method copies the given file to the specified tmp directory on remote host
+    and return the output.
     """
 
-    dest_path = os.path.join("/tmp", os.path.basename(filepath))
+    remote_tmp_dir = kwargs.get("remote_tmp_dir", "/tmp")
+    dest_path = os.path.join(remote_tmp_dir, os.path.basename(filepath))
     chmod = kwargs.get('chmod', 0)
     if chmod == 0:
         chmod = os.stat(filepath).st_mode

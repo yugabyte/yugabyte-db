@@ -300,9 +300,12 @@ public class MetricQueryHelper {
     if (metricQueryParams.getXClusterConfigUuid() != null) {
       XClusterConfig xClusterConfig =
           XClusterConfig.getOrBadRequest(metricQueryParams.getXClusterConfigUuid());
-      String tableIdRegex =
-          String.join("|", xClusterConfig.getTableIds(true /* includeTxnTableIfExists */));
+      String tableIdRegex = String.join("|", xClusterConfig.getTableIds());
       filterJson.put("table_id", tableIdRegex);
+      String streamIdRegex = String.join("|", xClusterConfig.getStreamIdsWithReplicationSetup());
+      // We add `|` to the end of streamIdRegex for backward compatibility where a YBDB version
+      // does not have stream id as a label matcher.
+      filterJson.put("stream_id", streamIdRegex + "|");
     }
     params.put("filters", Json.stringify(filterJson));
     return query(

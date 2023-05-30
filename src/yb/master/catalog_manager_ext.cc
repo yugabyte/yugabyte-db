@@ -1995,12 +1995,11 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
     // Ignore 'nullable' attribute - due to difference in implementation
     // of PgCreateTable::AddColumn() and PgAlterTable::AddColumn().
-    struct CompareColumnsExceptNullable {
-      bool operator ()(const ColumnSchema& a, const ColumnSchema& b) {
-        return ColumnSchema::CompHashKey(a, b) && ColumnSchema::CompSortingType(a, b) &&
-            ColumnSchema::CompTypeInfo(a, b) && ColumnSchema::CompName(a, b);
-      }
-    } comparator;
+    auto comparator = [](const ColumnSchema& a, const ColumnSchema& b) {
+      return ColumnSchema::CompKind(a, b) &&
+             ColumnSchema::CompTypeInfo(a, b) &&
+             ColumnSchema::CompName(a, b);
+    };
     // Schema::Equals() compares only column names & types. It does not compare the column ids.
     if (!persisted_schema.Equals(schema, comparator)
         || persisted_schema.column_ids().size() != column_ids.size()) {
@@ -3105,7 +3104,8 @@ Status CatalogManager::ValidateTableSchema(
 
     // Check that schema name matches for YSQL tables, if the field is empty, fill in that
     // information during GetTableSchema call later.
-    if (is_ysql_table && t.has_pgschema_name() &&
+    bool has_valid_pgschema_name = !t.pgschema_name().empty();
+    if (is_ysql_table && has_valid_pgschema_name &&
         t.pgschema_name() != source_schema.SchemaName()) {
       continue;
     }
@@ -3117,10 +3117,8 @@ Status CatalogManager::ValidateTableSchema(
            Substitute("Error while getting table schema: $0", status.ToString()));
 
     // Double-check schema name here if the previous check was skipped.
-    if (is_ysql_table && !t.has_pgschema_name()) {
-      std::string target_schema_name = resp->schema().has_pgschema_name()
-          ? resp->schema().pgschema_name()
-          : "";
+    if (is_ysql_table && !has_valid_pgschema_name) {
+      std::string target_schema_name = resp->schema().pgschema_name();
       if (target_schema_name != source_schema.SchemaName()) {
         table->clear_table_id();
         continue;
@@ -3146,8 +3144,9 @@ Status CatalogManager::ValidateTableSchema(
     break;
   }
 
-  SCHECK(table->has_table_id(), NotFound,
-         Substitute("Could not find matching table for $0", info->table_name.ToString()));
+  SCHECK(table->has_table_id(), NotFound, Substitute(
+      "Could not find matching table for $0$1", info->table_name.ToString(),
+      (is_ysql_table ? " pgschema_name: " + source_schema.SchemaName() : "")));
 
   // Still need to make map of table id to resp table id (to add to validated map)
   // For colocated tables, only add the parent table since we only added the parent table to the

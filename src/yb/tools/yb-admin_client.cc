@@ -3705,11 +3705,11 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   cdc::CreateCDCStreamResponsePB resp;
 
   req.set_namespace_name(ns.name);
-
+  req.set_db_type(ns.db_type);
   if (record_type == yb::ToString("ALL")) {
-        req.set_record_type(cdc::CDCRecordType::ALL);
+    req.set_record_type(cdc::CDCRecordType::ALL);
   } else {
-        req.set_record_type(cdc::CDCRecordType::CHANGE);
+    req.set_record_type(cdc::CDCRecordType::CHANGE);
   }
 
   req.set_record_format(cdc::CDCRecordFormat::PROTO);
@@ -3867,9 +3867,10 @@ Status ClusterAdminClient::GetCDCDBStreamInfo(const std::string& db_stream_id) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(const string& producer_uuid) {
+Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(
+    const string& replication_group_id) {
   master::IsSetupUniverseReplicationDoneRequestPB req;
-  req.set_producer_id(producer_uuid);
+  req.set_producer_id(replication_group_id);
   for (;;) {
         master::IsSetupUniverseReplicationDoneResponsePB resp;
         RpcController rpc;
@@ -3890,12 +3891,12 @@ Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(const string&
 }
 
 Status ClusterAdminClient::SetupUniverseReplication(
-    const string& producer_uuid, const vector<string>& producer_addresses,
+    const string& replication_group_id, const vector<string>& producer_addresses,
     const vector<TableId>& tables, const vector<string>& producer_bootstrap_ids,
     bool transactional) {
   master::SetupUniverseReplicationRequestPB req;
   master::SetupUniverseReplicationResponsePB resp;
-  req.set_producer_id(producer_uuid);
+  req.set_producer_id(replication_group_id);
   req.set_transactional(transactional);
 
   req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
@@ -3918,7 +3919,7 @@ Status ClusterAdminClient::SetupUniverseReplication(
   rpc.set_timeout(timeout_);
   auto setup_result_status = master_replication_proxy_->SetupUniverseReplication(req, &resp, &rpc);
 
-  setup_result_status = WaitForSetupUniverseReplicationToFinish(producer_uuid);
+  setup_result_status = WaitForSetupUniverseReplicationToFinish(replication_group_id);
 
   if (resp.has_error()) {
         cout << "Error setting up universe replication: " << resp.error().status().message()
@@ -3968,7 +3969,7 @@ Status ClusterAdminClient::DeleteUniverseReplication(
 }
 
 Status ClusterAdminClient::AlterUniverseReplication(
-    const std::string& producer_uuid,
+    const std::string& replication_group_id,
     const std::vector<std::string>& producer_addresses,
     const std::vector<TableId>& add_tables,
     const std::vector<TableId>& remove_tables,
@@ -3977,7 +3978,7 @@ Status ClusterAdminClient::AlterUniverseReplication(
     bool remove_table_ignore_errors) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
-  req.set_producer_id(producer_uuid);
+  req.set_producer_id(replication_group_id);
   req.set_remove_table_ignore_errors(remove_table_ignore_errors);
 
   if (!producer_addresses.empty()) {
@@ -4035,7 +4036,8 @@ Status ClusterAdminClient::AlterUniverseReplication(
   if (!add_tables.empty()) {
         // If we are adding tables, then wait for the altered producer to be deleted (this happens
         // once it is merged with the original).
-        RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(producer_uuid + ".ALTER"));
+        RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(
+            cdc::GetAlterReplicationGroupId(replication_group_id).ToString()));
   }
 
   cout << "Replication altered successfully" << endl;
@@ -4193,7 +4195,7 @@ Status ClusterAdminClient::WaitForReplicationDrain(
 }
 
 Status ClusterAdminClient::SetupNSUniverseReplication(
-    const std::string& producer_uuid,
+    const std::string& replication_group_id,
     const std::vector<std::string>& producer_addresses,
     const TypedNamespaceName& producer_namespace) {
   switch (producer_namespace.db_type) {
@@ -4208,7 +4210,7 @@ Status ClusterAdminClient::SetupNSUniverseReplication(
 
   master::SetupNSUniverseReplicationRequestPB req;
   master::SetupNSUniverseReplicationResponsePB resp;
-  req.set_producer_id(producer_uuid);
+  req.set_producer_id(replication_group_id);
   req.set_producer_ns_name(producer_namespace.name);
   req.set_producer_ns_type(producer_namespace.db_type);
 

@@ -2,6 +2,12 @@
 
 package com.yugabyte.yw.common.operator;
 
+import com.yugabyte.yw.models.helpers.DeviceInfo;
+import io.fabric8.kubernetes.api.model.Affinity;
+import io.fabric8.kubernetes.api.model.ResourceRequirements;
+import java.util.List;
+import java.util.Map;
+
 @com.fasterxml.jackson.annotation.JsonInclude(
     com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
 @com.fasterxml.jackson.annotation.JsonPropertyOrder({
@@ -29,7 +35,9 @@ package com.yugabyte.yw.common.operator;
   "version",
   "ybSoftwareVersion",
   "ycqlPassword",
-  "ysqlPassword"
+  "ysqlPassword",
+  "kubernetesOverrides",
+  "deviceInfo",
 })
 @com.fasterxml.jackson.databind.annotation.JsonDeserialize(
     using = com.fasterxml.jackson.databind.JsonDeserializer.None.class)
@@ -334,5 +342,58 @@ public class YBUniverseSpec implements io.fabric8.kubernetes.api.model.Kubernete
 
   public void setYsqlPassword(String ysqlPassword) {
     this.ysqlPassword = ysqlPassword;
+  }
+
+  @com.fasterxml.jackson.annotation.JsonProperty("kubernetesOverrides")
+  @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
+  private KubernetesOverrides kubernetesOverrides;
+
+  public static class KubernetesOverrides {
+    public static class TServer {
+      public Affinity affinity;
+    }
+
+    public static class Master {
+      public Affinity affinity;
+    }
+
+    public static class Resource {
+      public ResourceRequirements tserver;
+      public ResourceRequirements master;
+    }
+
+    public static class ServiceEndpoints {
+      public String name;
+      public String type;
+      public Map<String, String> annotations;
+      public String app;
+      public Map<String, String> ports;
+    }
+
+    public TServer tserver;
+    public Master master;
+    public Resource resource;
+    public Map<String, String> nodeSelector;
+    public List<ServiceEndpoints> serviceEndpoints;
+  }
+
+  public KubernetesOverrides getKubernetesOverrides() {
+    return kubernetesOverrides;
+  }
+
+  public void setKubernetesOverrides(KubernetesOverrides kubernetesOverrides) {
+    this.kubernetesOverrides = kubernetesOverrides;
+  }
+
+  @com.fasterxml.jackson.annotation.JsonProperty("deviceInfo")
+  @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
+  private DeviceInfo deviceInfo;
+
+  public DeviceInfo getDeviceInfo() {
+    return deviceInfo;
+  }
+
+  public void setDeviceInfo(DeviceInfo deviceInfo) {
+    this.deviceInfo = deviceInfo;
   }
 }

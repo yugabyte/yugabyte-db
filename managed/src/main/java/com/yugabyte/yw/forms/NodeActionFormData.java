@@ -12,4 +12,7 @@ public class NodeActionFormData {
 
   @ApiModelProperty(value = "Should a master auto-restart on a stop node action")
   public static Boolean startMasterOnStopNode = true;
+
+  @ApiModelProperty(value = "Should a master auto-restart on a remove node action")
+  public static Boolean startMasterOnRemoveNode = true;
 }

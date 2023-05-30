@@ -44,6 +44,8 @@ public abstract class DevopsBase {
 
   @Inject NodeAgentClient nodeAgentClient;
 
+  @Inject FileHelperService fileHelperService;
+
   protected NodeAgentClient getNodeAgentClient() {
     return nodeAgentClient;
   }

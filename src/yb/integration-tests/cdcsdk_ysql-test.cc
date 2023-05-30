@@ -223,7 +223,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
         return metrics->cdcsdk_sent_lag_micros->value() == 0;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
@@ -242,7 +242,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
         return metrics->cdcsdk_sent_lag_micros->value() > 0;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag > 0"));
@@ -253,7 +253,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
         return metrics->cdcsdk_sent_lag_micros->value() == 0;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
@@ -270,7 +270,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
         return metrics->cdcsdk_sent_lag_micros->value() >= 5000000;
       },
       MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
@@ -3656,7 +3656,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKActiveTimeCacheInSyncWi
                                                        ->TEST_get_service()
                                                        .get());
   auto tablet_info = ASSERT_RESULT(
-      cdc_service->TEST_GetTabletInfoFromCache({"", stream_id, tablets[0].tablet_id()}));
+      cdc_service->TEST_GetTabletInfoFromCache({{}, stream_id, tablets[0].tablet_id()}));
   auto first_last_active_time = tablet_info.last_active_time;
   auto last_active_time_from_table = ASSERT_RESULT(
       GetLastActiveTimeFromCdcStateTable(stream_id, tablets[0].tablet_id(), test_client()));
@@ -3684,7 +3684,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKActiveTimeCacheInSyncWi
                                                   ->TEST_get_service()
                                                   .get());
   tablet_info = ASSERT_RESULT(
-      cdc_service->TEST_GetTabletInfoFromCache({"", stream_id, tablets[0].tablet_id()}));
+      cdc_service->TEST_GetTabletInfoFromCache({{}, stream_id, tablets[0].tablet_id()}));
   auto second_last_active_time = tablet_info.last_active_time;
 
   last_active_time_from_table = ASSERT_RESULT(
@@ -3893,7 +3893,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetrics)) {
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
         return metrics->cdcsdk_sent_lag_micros->value() == 0;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
@@ -3912,7 +3912,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetrics)) {
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
         return metrics->cdcsdk_sent_lag_micros->value() > 0;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag > 0"));
@@ -3925,7 +3925,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetrics)) {
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {"" /* UUID */, stream_id[0], tablets[0].tablet_id()},
+                {{}, stream_id[0], tablets[0].tablet_id()},
                 /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
         return metrics == nullptr;
       },
@@ -3963,7 +3963,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLastSentTimeMetric)) {
 
   auto metrics =
       std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          {{}, stream_id, tablets[0].tablet_id()},
           /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
   uint64_t last_sent_time = metrics->cdcsdk_last_sent_physicaltime->value();
 
@@ -3977,7 +3977,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLastSentTimeMetric)) {
 
   auto metrics_ =
       std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          {{}, stream_id, tablets[0].tablet_id()},
           /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
 
   ASSERT_TRUE(
@@ -4017,7 +4017,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKExpiryMetric)) {
   ASSERT_GT(record_size, 100);
   auto metrics =
       std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          {{}, stream_id, tablets[0].tablet_id()},
           /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
   uint64_t current_stream_expiry_time = metrics->cdcsdk_expiry_time_ms->value();
   LOG(INFO) << "stream expiry time in milli seconds after GetChanges call: "
@@ -4026,7 +4026,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKExpiryMetric)) {
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {"" /* UUID */, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
         return current_stream_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
@@ -4064,7 +4064,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKTrafficSentMetric)) {
   ASSERT_GT(record_size, 100);
   auto metrics =
       std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          {{}, stream_id, tablets[0].tablet_id()},
           /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
   int64_t current_traffic_sent_bytes = metrics->cdcsdk_traffic_sent->value();
 
@@ -4085,7 +4085,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKTrafficSentMetric)) {
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {"" /* UUID */, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
         return current_traffic_sent_bytes < metrics->cdcsdk_traffic_sent->value();
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier,
@@ -4125,7 +4125,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKChangeEventCountMetric)
   ASSERT_GT(record_size, 100);
   auto metrics =
       std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          {{}, stream_id, tablets[0].tablet_id()},
           /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
   LOG(INFO) << "Total event counts after GetChanges call: "
             << metrics->cdcsdk_change_event_count->value();
@@ -4190,7 +4190,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleS
 
     metrics[idx] =
         std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-            {"" /* UUID */, stream_id, tablets[idx][0].tablet_id()},
+            {{}, stream_id, tablets[idx][0].tablet_id()},
             /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
     total_traffic_sent += metrics[idx]->cdcsdk_traffic_sent->value();
     total_change_event_count += metrics[idx]->cdcsdk_change_event_count->value();
@@ -4200,7 +4200,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleS
         [&]() -> Result<bool> {
           auto metrics =
               std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                  {"" /* UUID */, stream_id, tablets[idx][0].tablet_id()}, nullptr, CDCSDK));
+                  {{}, stream_id, tablets[idx][0].tablet_id()}, nullptr, CDCSDK));
           return current_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
         },
         MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
@@ -4262,7 +4262,7 @@ TEST_F(
 
     auto metrics =
         std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-            {"" /* UUID */, stream_id[idx], tablets[idx][0].tablet_id()},
+            {{}, stream_id[idx], tablets[idx][0].tablet_id()},
             /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
 
     auto current_expiry_time = metrics->cdcsdk_expiry_time_ms->value();
@@ -4270,7 +4270,7 @@ TEST_F(
         [&]() -> Result<bool> {
           auto metrics =
               std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                  {"" /* UUID */, stream_id[idx], tablets[idx][0].tablet_id()}, nullptr, CDCSDK));
+                  {{}, stream_id[idx], tablets[idx][0].tablet_id()}, nullptr, CDCSDK));
           return current_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
         },
         MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
@@ -4335,14 +4335,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesTwoStre
 
       auto metrics =
           std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-              {"" /* UUID */, stream_id[stream_idx], tablets[idx][0].tablet_id()},
+              {{}, stream_id[stream_idx], tablets[idx][0].tablet_id()},
               /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
       auto current_expiry_time = metrics->cdcsdk_expiry_time_ms->value();
       ASSERT_OK(WaitFor(
           [&]() -> Result<bool> {
             auto metrics =
                 std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                    {"" /* UUID */, stream_id[idx], tablets[idx][0].tablet_id()}, nullptr, CDCSDK));
+                    {{}, stream_id[idx], tablets[idx][0].tablet_id()}, nullptr, CDCSDK));
             return current_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
           },
           MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
@@ -4389,7 +4389,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsWithAddStream)) 
 
   auto metrics =
       std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          {{}, stream_id, tablets[0].tablet_id()},
           /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
 
   auto current_expiry_time = metrics->cdcsdk_expiry_time_ms->value();
@@ -4397,7 +4397,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsWithAddStream)) 
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {"" /* UUID */, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
         return current_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
@@ -4426,7 +4426,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsWithAddStream)) 
 
   auto new_metrics =
       std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {"" /* UUID */, new_stream_id, tablets[0].tablet_id()},
+          {{}, new_stream_id, tablets[0].tablet_id()},
           /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
 
   current_expiry_time = new_metrics->cdcsdk_expiry_time_ms->value();
@@ -4434,7 +4434,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsWithAddStream)) 
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {"" /* UUID */, new_stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, new_stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
         return current_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
@@ -5170,7 +5170,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupportSafeTime)) {
-  FLAGS_update_min_cdc_indices_interval_secs = 60;
+  FLAGS_update_metrics_interval_ms = 1;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
   // We want to force every GetChanges to update the cdc_state table.
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
 
@@ -5442,7 +5443,7 @@ TEST_F(
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   auto metrics =
       std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          {{}, stream_id, tablets[0].tablet_id()},
           /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
   // The 'cdcsdk_change_event_count' will be 1 due to the DDL record on the first GetChanges call.
   ASSERT_EQ(metrics->cdcsdk_change_event_count->value(), 1);
@@ -5454,7 +5455,7 @@ TEST_F(
         ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
 
     metrics = std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-        {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+        {{}, stream_id, tablets[0].tablet_id()},
         /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
 
     ASSERT_EQ(metrics->cdcsdk_change_event_count->value(), 1);
@@ -5473,7 +5474,7 @@ TEST_F(
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GT(record_size, 100);
   metrics = std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-      {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+      {{}, stream_id, tablets[0].tablet_id()},
       /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
   LOG(INFO) << "Total event counts after GetChanges call: "
             << metrics->cdcsdk_change_event_count->value();
@@ -5526,7 +5527,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetricUnchangedOnEmp
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
   auto metrics =
       std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          {{}, stream_id, tablets[0].tablet_id()},
           /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
 
   auto current_lag = metrics->cdcsdk_sent_lag_micros->value();
@@ -5538,7 +5539,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetricUnchangedOnEmp
         ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
 
     metrics = std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-        {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+        {{}, stream_id, tablets[0].tablet_id()},
         /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
 
     ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), current_lag);
@@ -5557,7 +5558,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetricUnchangedOnEmp
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GT(record_size, 100);
   metrics = std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-      {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+      {{}, stream_id, tablets[0].tablet_id()},
       /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
   ASSERT_GE(metrics->cdcsdk_sent_lag_micros->value(), current_lag);
 }
@@ -6931,7 +6932,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
   ASSERT_EQ(insert_count, expected_key2);
   ASSERT_EQ(ddl_count, 5);
 
-  for (int idx = 0; idx < 1; idx++) {
+  for (int idx = 0; idx < 3; idx++) {
     test_cluster()->mini_tablet_server(idx)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(idx)->Start());
     ASSERT_OK(test_cluster()->mini_tablet_server(idx)->WaitStarted());

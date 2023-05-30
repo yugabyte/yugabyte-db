@@ -46,7 +46,7 @@ type: indexpage
         <div class="title">Enable high availability</div>
       </div>
       <div class="body">
-        Enable YugabyteDB Anywhere's high-availability features.
+        Configure standby instances of YugabyteDB Anywhere.
       </div>
     </a>
   </div>

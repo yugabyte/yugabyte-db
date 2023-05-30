@@ -94,7 +94,10 @@ public class AuditService {
           // Hashicorp token
           "$..HC_VAULT_TOKEN",
           "$..vaultToken",
-          "$..token");
+          "$..token",
+          // Custom hooks
+          "$..hook.hookText",
+          "$..hook.runtimeArgs");
 
   public static final List<JsonPath> SECRET_JSON_PATHS =
       SECRET_PATHS.stream().map(JsonPath::compile).collect(Collectors.toList());
@@ -119,6 +122,10 @@ public class AuditService {
    */
   public void createAuditEntry(Http.Request request, JsonNode params) {
     createAuditEntry(request, null, null, null, params, null);
+  }
+
+  public void createAuditEntry(Http.Request request, JsonNode params, Audit.ActionType action) {
+    createAuditEntry(request, null, null, action, params, null);
   }
 
   public void createAuditEntry(

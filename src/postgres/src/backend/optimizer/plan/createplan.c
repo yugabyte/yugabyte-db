@@ -144,10 +144,10 @@ static void bitmap_subplan_mark_shared(Plan *plan);
 static List *flatten_partitioned_rels(List *partitioned_rels);
 static void extract_pushdown_clauses(List *restrictinfo_list,
 						 IndexOptInfo *indexinfo,
-						 List **local_qual,
-						 List **rel_remote_qual,
+						 List **local_quals,
+						 List **rel_remote_quals,
 						 List **rel_colrefs,
-						 List **idx_remote_qual,
+						 List **idx_remote_quals,
 						 List **idx_colrefs);
 static TidScan *create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 					List *tlist, List *scan_clauses);
@@ -187,22 +187,22 @@ static void label_sort_with_costsize(PlannerInfo *root, Sort *plan,
 						 double limit_tuples);
 static SeqScan *make_seqscan(List *qptlist, List *qpqual, Index scanrelid);
 static YbSeqScan *make_yb_seqscan(List *qptlist,
-				List *local_qual,
-				List *remote_qual,
-				List *colrefs,
+				List *local_quals,
+				List *yb_pushdown_quals,
+				List *yb_pushdown_colrefs,
 				Index scanrelid);
 static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 				TableSampleClause *tsc);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
-			   List *rel_colrefs, List *rel_remote_qual,
-			   List *idx_colrefs, List *idx_remote_qual,
+			   List *yb_rel_pushdown_colrefs, List *yb_rel_pushdown_quals,
+			   List *yb_idx_pushdown_colrefs, List *yb_idx_pushdown_quals,
 			   Index scanrelid, Oid indexid,
 			   List *indexqual, List *indexqualorig,
 			   List *indexorderby, List *indexorderbyorig,
 			   List *indexorderbyops, List *indextlist,
 			   ScanDirection indexscandir);
 static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
-				   List *colrefs, List *remote_qual,
+				   List *yb_pushdown_colrefs, List *yb_pushdown_quals,
 				   Index scanrelid, Oid indexid,
 				   List *indexqual, List *indexorderby,
 				   List *indextlist,
@@ -2727,7 +2727,7 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
  * limited supports for Postgres expression evaluation, so we push supported
  * set clause expressions down to DocDB if pushdown is enabled in GUC. Those
  * expressions go to the modify_tlist. These may refer columns of the current
- * rows, and these references go to the column_refs list as YbExprParamDesc
+ * rows, and these references go to the column_refs list as YbExprColrefDesc
  * nodes. DocDB uses it to convert values from native format to Postgres before
  * evaluation.
  *
@@ -2739,7 +2739,7 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
  * extracted from the WHERE clause. Primary key values in the result_tlist are
  * defined in both UPDATE and DELETE cases.
  *
- * The returning_cols list contains YbExprParamDesc nodes that represent
+ * The returning_cols list contains YbExprColrefDesc nodes that represent
  * columns that need to be fetched from DocDB. The reason why we may need to
  * fetch some values is that the tuple produced by the Result node is generally
  * incomplete, it contains only the primary key values, and values from
@@ -3239,7 +3239,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		{
 			Var *var_expr = lfirst_node(Var, lc);
 			AttrNumber attno = var_expr->varattno;
-			YbExprParamDesc *reference;
+			YbExprColrefDesc *reference;
 
 			/* DocDB does not store system attributes */
 			if (!AttrNumberIsForUserDefinedAttr(attno))
@@ -3262,7 +3262,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			/*
 			 * Create column reference entry
 			 */
-			reference =  makeNode(YbExprParamDesc);
+			reference =  makeNode(YbExprColrefDesc);
 			reference->attno = attno;
 			reference->typid = var_expr->vartype;
 			reference->typmod = var_expr->vartypmod;
@@ -3434,8 +3434,8 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 {
 	SeqScan    *scan_plan;
 	Index		scan_relid = best_path->parent->relid;
-	List	   *local_qual = NIL;
-	List	   *remote_qual = NIL;
+	List	   *local_quals = NIL;
+	List	   *remote_quals = NIL;
 	List	   *colrefs = NIL;
 
 	/* it should be a base rel... */
@@ -3447,23 +3447,24 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 
 	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
 	if (best_path->parent->is_yb_relation)
-		extract_pushdown_clauses(scan_clauses, NULL, &local_qual,
-								 &remote_qual, &colrefs, NULL, NULL);
+		extract_pushdown_clauses(scan_clauses, NULL, &local_quals,
+								 &remote_quals, &colrefs, NULL, NULL);
 	else
-		local_qual = extract_actual_clauses(scan_clauses, false);
+		local_quals = extract_actual_clauses(scan_clauses, false);
 
 	/* Replace any outer-relation variables with nestloop params */
 	if (best_path->param_info)
 	{
-		local_qual = (List *)
-			replace_nestloop_params(root, (Node *) local_qual);
+		local_quals = (List *)
+			replace_nestloop_params(root, (Node *) local_quals);
 	}
 
 	if (best_path->parent->is_yb_relation)
-		scan_plan = (SeqScan *) make_yb_seqscan(tlist, local_qual, remote_qual,
-												colrefs, scan_relid);
+		scan_plan = (SeqScan *) make_yb_seqscan(tlist, local_quals,
+												remote_quals, colrefs,
+												scan_relid);
 	else
-		scan_plan = make_seqscan(tlist, local_qual, scan_relid);
+		scan_plan = make_seqscan(tlist, local_quals, scan_relid);
 
 	copy_generic_path_info(&scan_plan->plan, best_path);
 
@@ -3632,10 +3633,10 @@ create_indexscan_plan(PlannerInfo *root,
 	Index		baserelid = best_path->path.parent->relid;
 	Oid			indexoid = best_path->indexinfo->indexoid;
 	List	   *qpqual;
-	List	   *local_qual = NIL;
-	List	   *rel_remote_qual = NIL;
+	List	   *local_quals = NIL;
+	List	   *rel_remote_quals = NIL;
 	List	   *rel_colrefs = NIL;
-	List	   *idx_remote_qual = NIL;
+	List	   *idx_remote_quals = NIL;
 	List	   *idx_colrefs = NIL;
 	List	   *stripped_indexquals;
 	List	   *fixed_indexquals;
@@ -3743,11 +3744,11 @@ create_indexscan_plan(PlannerInfo *root,
 		}
 		extract_pushdown_clauses(qpqual,
 								 need_idx_remote ? best_path->indexinfo : NULL,
-								 &local_qual, &rel_remote_qual, &rel_colrefs,
-								 &idx_remote_qual, &idx_colrefs);
+								 &local_quals, &rel_remote_quals, &rel_colrefs,
+								 &idx_remote_quals, &idx_colrefs);
 	}
 	else
-		local_qual = extract_actual_clauses(qpqual, false);
+		local_quals = extract_actual_clauses(qpqual, false);
 
 	/*
 	 * We have to replace any outer-relation variables with nestloop params in
@@ -3762,8 +3763,8 @@ create_indexscan_plan(PlannerInfo *root,
 	{
 		stripped_indexquals = (List *)
 			replace_nestloop_params(root, (Node *) stripped_indexquals);
-		local_qual = (List *)
-			replace_nestloop_params(root, (Node *) local_qual);
+		local_quals = (List *)
+			replace_nestloop_params(root, (Node *) local_quals);
 		indexorderbys = (List *)
 			replace_nestloop_params(root, (Node *) indexorderbys);
 	}
@@ -3806,9 +3807,9 @@ create_indexscan_plan(PlannerInfo *root,
 	if (indexonly)
 	{
 		IndexOnlyScan* index_only_scan_plan = make_indexonlyscan(tlist,
-												local_qual,
+												local_quals,
 												rel_colrefs,
-												rel_remote_qual,
+												rel_remote_quals,
 												baserelid,
 												indexoid,
 												fixed_indexquals,
@@ -3822,11 +3823,11 @@ create_indexscan_plan(PlannerInfo *root,
 	}
 	else
 		scan_plan = (Scan *) make_indexscan(tlist,
-											local_qual,
+											local_quals,
 											rel_colrefs,
-											rel_remote_qual,
+											rel_remote_quals,
 											idx_colrefs,
-											idx_remote_qual,
+											idx_remote_quals,
 											baserelid,
 											indexoid,
 											fixed_indexquals,
@@ -6217,13 +6218,13 @@ flatten_partitioned_rels(List *partitioned_rels)
  *		index described by the indexinfo.
  */
 static bool
-is_index_only_refs(List *expr_refs, IndexOptInfo *indexinfo)
+is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo)
 {
 	ListCell *lc;
-	foreach (lc, expr_refs)
+	foreach (lc, colrefs)
 	{
 		bool found = false;
-		YbExprParamDesc *colref = castNode(YbExprParamDesc, lfirst(lc));
+		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, lfirst(lc));
 		for (int i = 0; i < indexinfo->ncolumns; i++)
 		{
 			if (colref->attno == indexinfo->indexkeys[i])
@@ -6251,28 +6252,28 @@ is_index_only_refs(List *expr_refs, IndexOptInfo *indexinfo)
  * extract_pushdown_clauses
  *	  Extract actual clauses from RestrictInfo list and distribute them
  * 	  between three groups:
- *	  - local_qual - conditions not eligible for pushdown. They are evaluated
+ *	  - local_quals - conditions not eligible for pushdown. They are evaluated
  *	  on the Postgres side on the rows fetched from DocDB;
- *	  - rel_remote_qual - conditions to pushdown with the request to the main
+ *	  - rel_remote_quals - conditions to pushdown with the request to the main
  *	  scanned relation. In the case of sequential scan or index only scan
  *	  the DocDB table or DocDB index respectively is the main (and only)
  *	  scanned relation, so the function returns only two groups;
- *	  - idx_remote_qual - conditions to pushdown with the request to the
+ *	  - idx_remote_quals - conditions to pushdown with the request to the
  *	  secondary (index) relation. Used with the index scan on a secondary
  *	  index, and caller must provide IndexOptInfo record for the index.
  *	  - rel_colrefs, idx_colrefs are columns referenced by respective
- *	  rel_remote_qual or idx_remote_qual.
- *	  The output parameters local_qual, rel_remote_qual, rel_colrefs must
- *	  point to valid lists. The output parameters idx_remote_qual and
+ *	  rel_remote_quals or idx_remote_quals.
+ *	  The output parameters local_quals, rel_remote_quals, rel_colrefs must
+ *	  point to valid lists. The output parameters idx_remote_quals and
  *	  idx_colrefs may be NULL if the indexinfo is NULL.
  */
 static void
 extract_pushdown_clauses(List *restrictinfo_list,
 						 IndexOptInfo *indexinfo,
-						 List **local_qual,
-						 List **rel_remote_qual,
+						 List **local_quals,
+						 List **rel_remote_quals,
 						 List **rel_colrefs,
-						 List **idx_remote_qual,
+						 List **idx_remote_quals,
 						 List **idx_colrefs)
 {
 	ListCell *lc;
@@ -6285,14 +6286,14 @@ extract_pushdown_clauses(List *restrictinfo_list,
 
 		if (ri->yb_pushable)
 		{
-			List *expr_refs = NIL;
+			List *colrefs = NIL;
 			bool pushable PG_USED_FOR_ASSERTS_ONLY;
 
 			/*
 			 * Find column references. It has already been determined that
 			 * the expression is pushable.
 			 */
-			pushable = YbCanPushdownExpr(ri->clause, &expr_refs);
+			pushable = YbCanPushdownExpr(ri->clause, &colrefs);
 			Assert(pushable);
 
 			/*
@@ -6302,20 +6303,20 @@ extract_pushdown_clauses(List *restrictinfo_list,
 			 * necessary columns.
 			 */
 			if (indexinfo == NULL ||
-				!is_index_only_refs(expr_refs, indexinfo))
+				!is_index_only_refs(colrefs, indexinfo))
 			{
-				*rel_colrefs = list_concat(*rel_colrefs, expr_refs);
-				*rel_remote_qual = lappend(*rel_remote_qual, ri->clause);
+				*rel_colrefs = list_concat(*rel_colrefs, colrefs);
+				*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
 			}
 			else
 			{
-				*idx_colrefs = list_concat(*idx_colrefs, expr_refs);
-				*idx_remote_qual = lappend(*idx_remote_qual, ri->clause);
+				*idx_colrefs = list_concat(*idx_colrefs, colrefs);
+				*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
 			}
 		}
 		else
 		{
-			*local_qual = lappend(*local_qual, ri->clause);
+			*local_quals = lappend(*local_quals, ri->clause);
 		}
 	}
 }
@@ -6353,22 +6354,21 @@ make_seqscan(List *qptlist,
 
 static YbSeqScan *
 make_yb_seqscan(List *qptlist,
-				List *local_qual,
-				List *remote_qual,
-				List *colrefs,
+				List *local_quals,
+				List *yb_pushdown_quals,
+				List *yb_pushdown_colrefs,
 				Index scanrelid)
 {
 	YbSeqScan  *node = makeNode(YbSeqScan);
 	Plan	   *plan = &node->scan.plan;
-	PushdownExprs *remote = &node->remote;
 
 	plan->targetlist = qptlist;
-	plan->qual = local_qual;
+	plan->qual = local_quals;
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
-	remote->qual = remote_qual;
-	remote->colrefs = colrefs;
 	node->scan.scanrelid = scanrelid;
+	node->yb_pushdown.quals = yb_pushdown_quals;
+	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 
 	return node;
 }
@@ -6395,10 +6395,10 @@ make_samplescan(List *qptlist,
 static IndexScan *
 make_indexscan(List *qptlist,
 			   List *qpqual,
-			   List *rel_colrefs,
-			   List *rel_remote_qual,
-			   List *idx_colrefs,
-			   List *idx_remote_qual,
+			   List *yb_rel_pushdown_colrefs,
+			   List *yb_rel_pushdown_quals,
+			   List *yb_idx_pushdown_colrefs,
+			   List *yb_idx_pushdown_quals,
 			   Index scanrelid,
 			   Oid indexid,
 			   List *indexqual,
@@ -6425,10 +6425,10 @@ make_indexscan(List *qptlist,
 	node->indexorderbyops = indexorderbyops;
 	node->indextlist = indextlist;
 	node->indexorderdir = indexscandir;
-	node->rel_remote.colrefs = rel_colrefs;
-	node->rel_remote.qual = rel_remote_qual;
-	node->index_remote.colrefs = idx_colrefs;
-	node->index_remote.qual = idx_remote_qual;
+	node->yb_rel_pushdown.colrefs = yb_rel_pushdown_colrefs;
+	node->yb_rel_pushdown.quals = yb_rel_pushdown_quals;
+	node->yb_idx_pushdown.colrefs = yb_idx_pushdown_colrefs;
+	node->yb_idx_pushdown.quals = yb_idx_pushdown_quals;
 
 	return node;
 }
@@ -6436,8 +6436,8 @@ make_indexscan(List *qptlist,
 static IndexOnlyScan *
 make_indexonlyscan(List *qptlist,
 				   List *qpqual,
-				   List *colrefs,
-				   List *remote_qual,
+				   List *yb_pushdown_colrefs,
+				   List *yb_pushdown_quals,
 				   Index scanrelid,
 				   Oid indexid,
 				   List *indexqual,
@@ -6458,8 +6458,8 @@ make_indexonlyscan(List *qptlist,
 	node->indexorderby = indexorderby;
 	node->indextlist = indextlist;
 	node->indexorderdir = indexscandir;
-	node->remote.colrefs = colrefs;
-	node->remote.qual = remote_qual;
+	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
+	node->yb_pushdown.quals = yb_pushdown_quals;
 
 	return node;
 }

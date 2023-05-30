@@ -20,6 +20,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
@@ -52,6 +53,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -82,6 +84,13 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultProvider = ModelFactory.onpremProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "us-west-2", "yb-image");
+    when(mockFileHelperService.createTempFile(anyString(), anyString()))
+        .thenAnswer(
+            i -> {
+              String fileName = i.getArgument(0);
+              String fileExtension = i.getArgument(1);
+              return Files.createTempFile(Paths.get("/tmp"), fileName, fileExtension);
+            });
   }
 
   private Result getAccessKey(UUID providerUUID, String keyCode) {

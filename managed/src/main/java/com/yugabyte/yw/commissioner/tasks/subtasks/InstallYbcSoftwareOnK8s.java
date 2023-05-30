@@ -1,10 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.commissioner.tasks;
+package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -20,23 +21,14 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends UniverseDefinitionTaskParams {
-    public boolean lockUniverse = false;
-  }
-
-  public Params taskParams() {
-    return (Params) taskParams;
+  protected UniverseDefinitionTaskParams taskParams() {
+    return (UniverseDefinitionTaskParams) taskParams;
   }
 
   @Override
   public void run() {
     try {
-      if (taskParams().lockUniverse) {
-        lockUniverse(-1 /* expectedUniverseVersion */);
-      }
-
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-
       Set<NodeDetails> allTservers = new HashSet<>();
       Set<NodeDetails> primaryTservers =
           new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
@@ -65,10 +57,6 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
-    } finally {
-      if (taskParams().lockUniverse) {
-        unlockUniverseForUpdate();
-      }
     }
     log.info("Finished {} task.", getName());
   }

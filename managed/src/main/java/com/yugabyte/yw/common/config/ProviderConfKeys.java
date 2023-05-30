@@ -314,7 +314,6 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Use spot instances instead of On-Demand during universe creation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<Boolean> enableYbcOnK8s =
       new ConfKeyInfo<>(
           "ybc.k8s.enabled",
@@ -323,4 +322,12 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "To enable ybc on k8s universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<String> remoteTmpDirectory =
+      new ConfKeyInfo<>(
+          "yb.filepaths.remoteTmpDirectory",
+          ScopeType.PROVIDER,
+          "Remote tmp directory",
+          "A remote temporary directory should be used for performing operations on nodes within the provider scope.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

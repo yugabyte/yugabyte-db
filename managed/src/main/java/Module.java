@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
@@ -96,13 +97,10 @@ import play.Environment;
  */
 @Slf4j
 public class Module extends AbstractModule {
-
-  private final Environment environment;
   private final Config config;
   private final String[] TLD_OVERRIDE = {"local"};
 
   public Module(Environment environment, Config config) {
-    this.environment = environment;
     this.config = config;
   }
 
@@ -197,6 +195,7 @@ public class Module extends AbstractModule {
       bind(PerfAdvisorScheduler.class).asEagerSingleton();
       requestStaticInjection(CertificateInfo.class);
       requestStaticInjection(HealthCheck.class);
+      requestStaticInjection(AppConfigHelper.class);
     }
 
     bind(YbClientConfigFactory.class).asEagerSingleton();

@@ -40,7 +40,7 @@ namespace yb {
 namespace master {
 
 Result<std::shared_ptr<CDCRpcTasks>> CDCRpcTasks::CreateWithMasterAddrs(
-    const std::string& universe_id, const std::string& master_addrs) {
+    const cdc::ReplicationGroupId& replication_group_id, const std::string& master_addrs) {
   // NOTE: This is currently an expensive call (5+ sec). Encountered during Task #10611.
   auto cdc_rpc_tasks = std::make_shared<CDCRpcTasks>();
   std::string dir;
@@ -48,8 +48,9 @@ Result<std::shared_ptr<CDCRpcTasks>> CDCRpcTasks::CreateWithMasterAddrs(
   if (FLAGS_use_node_to_node_encryption) {
     rpc::MessengerBuilder messenger_builder("cdc-rpc-tasks");
     if (!FLAGS_certs_for_cdc_dir.empty()) {
-      dir = JoinPathSegments(FLAGS_certs_for_cdc_dir,
-                             cdc::GetOriginalReplicationUniverseId(universe_id));
+      dir = JoinPathSegments(
+          FLAGS_certs_for_cdc_dir,
+          cdc::GetOriginalReplicationGroupId(replication_group_id).ToString());
     }
     cdc_rpc_tasks->secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
         dir, "", "", server::SecureContextType::kInternal, &messenger_builder));

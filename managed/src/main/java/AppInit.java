@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
@@ -117,7 +118,7 @@ public class AppInit {
           alertConfigurationService.createDefaultConfigs(customer);
         }
 
-        String storagePath = config.getString("yb.storage.path");
+        String storagePath = AppConfigHelper.getStoragePath();
         // Fix up DB paths if necessary
         if (config.getBoolean("yb.fixPaths")) {
           log.debug("Fixing up file paths.");

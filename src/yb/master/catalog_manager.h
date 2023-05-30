@@ -807,9 +807,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp);
 
   Result<size_t> GetReplicationFactor() override;
-  Result<size_t> GetReplicationFactorForTablet(const scoped_refptr<TabletInfo>& tablet);
+  Result<size_t> GetNumTabletReplicas(const scoped_refptr<TabletInfo>& tablet);
 
-  void GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas);
+  // Lookup tablet by ID, then call GetExpectedNumberOfReplicasForTable below.
+  Status GetExpectedNumberOfReplicasForTablet(const TabletId& tablet_id,
+                                              int* num_live_replicas,
+                                              int* num_read_replicas);
+
+  // Get the number of live and read replicas for a given table.
+  void GetExpectedNumberOfReplicasForTable(const scoped_refptr<TableInfo>& table,
+                                           int* num_live_replicas,
+                                           int* num_read_replicas);
 
   // Get the percentage of tablets that have been moved off of the black-listed tablet servers.
   Status GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
@@ -1110,7 +1118,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status InitXClusterConsumer(
       const std::vector<CDCConsumerStreamInfo>& consumer_info,
       const std::string& master_addrs,
-      const std::string& producer_universe_uuid,
+      const cdc::ReplicationGroupId& producer_universe_uuid,
       std::shared_ptr<CDCRpcTasks>
           cdc_rpc_tasks);
 
@@ -2553,18 +2561,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const SetupReplicationInfo& setup_info);
 
   void GetTableSchemaCallback(
-      const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& producer_info,
-      const SetupReplicationInfo& setup_info,
-      const Status& s);
+      const cdc::ReplicationGroupId& replication_group_id,
+      const std::shared_ptr<client::YBTableInfo>& producer_info,
+      const SetupReplicationInfo& setup_info, const Status& s);
   void GetTablegroupSchemaCallback(
-      const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
-      const TablegroupId& producer_tablegroup_id,
-      const SetupReplicationInfo& setup_info,
+      const cdc::ReplicationGroupId& replication_group_id,
+      const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
+      const TablegroupId& producer_tablegroup_id, const SetupReplicationInfo& setup_info,
       const Status& s);
   void GetColocatedTabletSchemaCallback(
-      const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
-      const SetupReplicationInfo& setup_info,
-      const Status& s);
+      const cdc::ReplicationGroupId& replication_group_id,
+      const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
+      const SetupReplicationInfo& setup_info, const Status& s);
   typedef std::vector<
       std::tuple<CDCStreamId, TableId, std::unordered_map<std::string, std::string>>>
       StreamUpdateInfos;
@@ -2574,7 +2582,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
           table_id,
       std::shared_ptr<std::unordered_map<std::string, std::string>>
           options,
-      const std::string& universe_id,
+      const cdc::ReplicationGroupId& replication_group_id,
       const TableId& table,
       std::shared_ptr<CDCRpcTasks>
           cdc_rpc,
@@ -2584,15 +2592,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       std::shared_ptr<std::mutex>
           update_infos_lock);
   void AddCDCStreamToUniverseAndInitConsumer(
-      const std::string& universe_id, const TableId& table, const Result<CDCStreamId>& stream_id,
-      std::function<void()> on_success_cb = nullptr);
+      const cdc::ReplicationGroupId& replication_group_id, const TableId& table,
+      const Result<CDCStreamId>& stream_id, std::function<void()> on_success_cb = nullptr);
 
   void MergeUniverseReplication(
-      scoped_refptr<UniverseReplicationInfo> info, std::string original_id);
+      scoped_refptr<UniverseReplicationInfo> info, cdc::ReplicationGroupId original_id);
 
   Status DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
   Status DeleteUniverseReplication(
-      const std::string& producer_id,
+      const cdc::ReplicationGroupId& replication_group_id,
       bool ignore_errors,
       DeleteUniverseReplicationResponsePB* resp);
 
@@ -2604,8 +2612,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const Status& failure_status, CowWriteLock<PersistentUniverseReplicationInfo>* universe_lock,
       scoped_refptr<UniverseReplicationInfo> universe);
 
-  // Maps producer universe id to the corresponding cdc stream for that table.
-  typedef std::unordered_map<std::string, CDCStreamId> XClusterConsumerTableStreamInfoMap;
+  // Maps replication group id to the corresponding cdc stream for that table.
+  typedef std::unordered_map<cdc::ReplicationGroupId, CDCStreamId>
+      XClusterConsumerTableStreamInfoMap;
 
   std::shared_ptr<cdc::CDCServiceProxy> GetCDCServiceProxy(
       client::internal::RemoteTabletServer* ts);
@@ -2668,7 +2677,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
 
   Result<scoped_refptr<UniverseReplicationInfo>> CreateUniverseReplicationInfoForProducer(
-      const std::string& producer_id,
+      const cdc::ReplicationGroupId& replication_group_id,
       const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
       const google::protobuf::RepeatedPtrField<std::string>& table_ids,
       bool transactional);
@@ -2684,40 +2693,42 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       REQUIRES_SHARED(mutex_);
 
   Status StoreReplicationErrors(
-      const std::string& universe_id,
+      const cdc::ReplicationGroupId& replication_group_id,
       const std::string& consumer_table_id,
       const std::string& stream_id,
       const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
       EXCLUDES(mutex_);
 
   Status StoreReplicationErrorsUnlocked(
-      const std::string& universe_id,
+      const cdc::ReplicationGroupId& replication_group_id,
       const std::string& consumer_table_id,
       const std::string& stream_id,
       const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
       REQUIRES_SHARED(mutex_);
 
   Status ClearReplicationErrors(
-      const std::string& universe_id,
+      const cdc::ReplicationGroupId& replication_group_id,
       const std::string& consumer_table_id,
       const std::string& stream_id,
       const std::vector<ReplicationErrorPb>& replication_error_codes) EXCLUDES(mutex_);
 
   Status ClearReplicationErrorsUnlocked(
-      const std::string& universe_id,
+      const cdc::ReplicationGroupId& replication_group_id,
       const std::string& consumer_table_id,
       const std::string& stream_id,
       const std::vector<ReplicationErrorPb>& replication_error_codes) REQUIRES_SHARED(mutex_);
 
   // Update the UniverseReplicationInfo object when toggling replication.
-  Status SetUniverseReplicationInfoEnabled(const std::string& producer_id, bool is_enabled)
-      EXCLUDES(mutex_);
+  Status SetUniverseReplicationInfoEnabled(
+      const cdc::ReplicationGroupId& replication_group_id, bool is_enabled) EXCLUDES(mutex_);
 
   // Update the cluster config and consumer registry objects when toggling replication.
   Status SetConsumerRegistryEnabled(
-      const std::string& producer_id, bool is_enabled, ClusterConfigInfo::WriteLock* l);
+      const cdc::ReplicationGroupId& replication_group_id, bool is_enabled,
+      ClusterConfigInfo::WriteLock* l);
 
-  void XClusterAddTableToNSReplication(std::string universe_id, CoarseTimePoint deadline);
+  void XClusterAddTableToNSReplication(
+      const cdc::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline);
 
   // Find the list of producer table IDs that can be added to the current NS-level replication.
   Status XClusterNSReplicationSyncWithProducer(
@@ -2736,7 +2747,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::atomic<bool> namespace_replication_enabled_{false};
 
   Status WaitForSetupUniverseReplicationToFinish(
-      const std::string& producer_uuid, CoarseTimePoint deadline);
+      const cdc::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline);
 
   void RemoveTableFromCDCSDKUnprocessedMap(const TableId& table_id, const NamespaceId& ns_id);
 
@@ -2757,15 +2768,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       EXCLUDES(mutex_);
 
   // Schedule AddTableToXClusterTask if needed. Returns true if task is needed and false otherwise.
+  // Write lock is required on the table.
   bool ScheduleAddTableToXClusterTaskIfNeeded(TableInfoPtr table_info, const SysTablesEntryPB& pb)
       EXCLUDES(mutex_);
 
   void ScheduleAddTableToXClusterTaskForAllTables() EXCLUDES(mutex_);
 
-  Result<std::string> GetIndexesTableReplicationGroup(const TableInfo& index_info);
+  Result<cdc::ReplicationGroupId> GetIndexesTableReplicationGroup(const TableInfo& index_info);
 
   Status BootstrapTable(
-      const std::string& replication_group, const TableInfo& index_info,
+      const cdc::ReplicationGroupId& replication_group_id, const TableInfo& index_info,
       client::BootstrapProducerCallback callback);
 
   // Wait for all tables under xCluster replication to catch up to the current xCluster safe time.
@@ -2874,12 +2886,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::unordered_map<TableId, std::unordered_set<CDCStreamId>> cdcsdk_tables_to_stream_map_
       GUARDED_BY(mutex_);
 
-  typedef std::unordered_map<std::string, scoped_refptr<UniverseReplicationInfo>>
+  typedef std::unordered_map<cdc::ReplicationGroupId, scoped_refptr<UniverseReplicationInfo>>
       UniverseReplicationInfoMap;
   UniverseReplicationInfoMap universe_replication_map_ GUARDED_BY(mutex_);
 
   // List of universe ids to universes that must be deleted
-  std::deque<std::string> universes_to_clear_ GUARDED_BY(mutex_);
+  std::deque<cdc::ReplicationGroupId> universes_to_clear_ GUARDED_BY(mutex_);
 
   // mutex on should_send_consumer_registry_mutex_.
   mutable simple_spinlock should_send_consumer_registry_mutex_;
@@ -2899,7 +2911,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     CoarseTimePoint next_add_table_task_time = CoarseTimePoint::max();
     int num_accumulated_errors;
   };
-  std::unordered_map<std::string, NSReplicationInfo> namespace_replication_map_ GUARDED_BY(mutex_);
+  std::unordered_map<cdc::ReplicationGroupId, NSReplicationInfo> namespace_replication_map_
+      GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

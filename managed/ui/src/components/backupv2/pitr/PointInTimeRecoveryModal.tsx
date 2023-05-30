@@ -78,8 +78,6 @@ const initialValues: Form_Values = {
   recovery_interval: 1
 };
 
-const TOAST_AUTO_CLOSE_INTERVAL = 3000;
-
 export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
   visible,
   onHide,
@@ -98,15 +96,14 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
             here
           </a>
           &nbsp; for task details.
-        </span>,
-        { autoClose: TOAST_AUTO_CLOSE_INTERVAL }
+        </span>
       );
 
       queryClient.invalidateQueries(['scheduled_sanpshots']);
       onHide();
     },
     onError: () => {
-      toast.error(`Failed to recover ${config.dbName}.`, { autoClose: TOAST_AUTO_CLOSE_INTERVAL });
+      toast.error(`Failed to recover ${config.dbName}.`);
       onHide();
     }
   });

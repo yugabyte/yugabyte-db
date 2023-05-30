@@ -2,12 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import * as Yup from 'yup';
+import clsx from 'clsx';
 import { trimStart, trimEnd, isString } from 'lodash';
 import { toast } from 'react-toastify';
 import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
 import { YBFormInput, YBButton, YBModal, YBToggle } from '../../common/forms/fields';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import OIDCMetadataModal from './OIDCMetadataModal';
 import { setSSO } from '../../../config';
 import WarningIcon from '../icons/warning_icon';
 
@@ -24,6 +26,7 @@ const OIDC_FIELDS = [
   'clientID',
   'secret',
   'discoveryURI',
+  'oidcProviderMetadata',
   'oidcScope',
   'oidcEmailAttribute'
 ];
@@ -42,10 +45,15 @@ export const OIDCAuth = (props) => {
   const [showToggle, setToggleVisible] = useState(false);
   const [dialog, showDialog] = useState(false);
   const [oidcEnabled, setOIDC] = useState(false);
+  const [OIDCMetadata, setOIDCMetadata] = useState(null);
+  const [showMetadataModel, setShowMetadataModal] = useState(false);
 
   const transformData = (values) => {
+    const escStr = values.oidcProviderMetadata.replace(/[\r\n]/gm, '');
+    const str = JSON.stringify(JSON.parse(escStr));
     const transformedData = {
       ...values,
+      oidcProviderMetadata: '""' + str + '""',
       type: 'OIDC'
     };
 
@@ -63,7 +71,12 @@ export const OIDCAuth = (props) => {
     const oidcConfigs = configEntries.filter((config) => oidcFields.includes(config.key));
     const formData = oidcConfigs.reduce((fData, config) => {
       const [, key] = config.key.split(`${OIDC_PATH}.`);
-      fData[key] = escapeStr(config.value);
+      if (key === 'oidcProviderMetadata') {
+        const escapedStr = config.value ? escapeStr(config.value).replace(/\\/g, '') : null;
+        fData[key] = escapedStr ? JSON.stringify(JSON.parse(escapedStr), null, 2) : null;
+      } else {
+        fData[key] = escapeStr(config.value);
+      }
       return fData;
     }, {});
 
@@ -155,31 +168,33 @@ export const OIDCAuth = (props) => {
 
   return (
     <div className="bottom-bar-padding">
-      <YBModal
-        title="Disable OIDC"
-        visible={dialog}
-        showCancelButton={true}
-        submitLabel="Disable OIDC"
-        cancelLabel="Cancel"
-        cancelBtnProps={{
-          className: 'btn btn-default pull-left oidc-cancel-btn'
-        }}
-        onHide={handleDialogClose}
-        onFormSubmit={handleDialogSubmit}
-      >
-        <div className="oidc-modal-c">
-          <div className="oidc-modal-c-icon">
-            <WarningIcon />
-          </div>
-          <div className="oidc-modal-c-content">
-            <b>Note!</b>{' '}
-            {
-              "By disabling OIDC users won't be able to login with your current\
+      {dialog && (
+        <YBModal
+          title="Disable OIDC"
+          visible={dialog}
+          showCancelButton={true}
+          submitLabel="Disable OIDC"
+          cancelLabel="Cancel"
+          cancelBtnProps={{
+            className: 'btn btn-default pull-left oidc-cancel-btn'
+          }}
+          onHide={handleDialogClose}
+          onFormSubmit={handleDialogSubmit}
+        >
+          <div className="oidc-modal-c">
+            <div className="oidc-modal-c-icon">
+              <WarningIcon />
+            </div>
+            <div className="oidc-modal-c-content">
+              <b>Note!</b>{' '}
+              {
+                "By disabling OIDC users won't be able to login with your current\
             authentication provider. Are you sure"
-            }
+              }
+            </div>
           </div>
-        </div>
-      </YBModal>
+        </YBModal>
+      )}
       <Col>
         <Formik
           validationSchema={VALIDATION_SCHEMA}
@@ -191,7 +206,7 @@ export const OIDCAuth = (props) => {
             resetForm(values);
           }}
         >
-          {({ handleSubmit, isSubmitting, dirty }) => {
+          {({ handleSubmit, setFieldValue, isSubmitting, dirty, values }) => {
             const isDisabled = !oidcEnabled && showToggle;
             const isSaveDisabled = !dirty;
 
@@ -221,6 +236,22 @@ export const OIDCAuth = (props) => {
                 </div>
               </OverlayTrigger>
             );
+
+            const renderOIDCMetadata = () => {
+              return (
+                <OIDCMetadataModal
+                  open={showMetadataModel}
+                  value={OIDCMetadata}
+                  onClose={() => {
+                    setShowMetadataModal(false);
+                  }}
+                  onSubmit={(value) => {
+                    setFieldValue('oidcProviderMetadata', value);
+                    setShowMetadataModal(false);
+                  }}
+                ></OIDCMetadataModal>
+              );
+            };
 
             return (
               <Form name="OIDCConfigForm" onSubmit={handleSubmit}>
@@ -376,6 +407,28 @@ export const OIDCAuth = (props) => {
                   </Col>
                 </Row>
 
+                <Row key="oidc_provider_meta">
+                  <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                    <Row className="ua-field-row">
+                      <div
+                        className={clsx('ua-provider-meta', isDisabled && 'ua-btn-disabled')}
+                        onClick={() => {
+                          if (isDisabled) return;
+                          const escapedStr = values?.oidcProviderMetadata
+                            ? escapeStr(values.oidcProviderMetadata).replace(/\\/g, '')
+                            : '';
+                          setOIDCMetadata(
+                            escapedStr ? JSON.stringify(JSON.parse(escapedStr), null, 2) : ''
+                          );
+                          setShowMetadataModal(true);
+                        }}
+                      >
+                        Configure OIDC Provider Metadata
+                      </div>
+                    </Row>
+                  </Col>
+                </Row>
+
                 <br />
 
                 <Row key="oidc_submit">
@@ -388,6 +441,8 @@ export const OIDCAuth = (props) => {
                     />
                   </Col>
                 </Row>
+
+                {showMetadataModel && renderOIDCMetadata()}
               </Form>
             );
           }}

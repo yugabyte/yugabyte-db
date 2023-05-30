@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 
@@ -26,6 +27,9 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
   private static final Collection<String> AZ_URL_SCHEMES = Arrays.asList(new String[] {"https"});
 
   private final CloudClientsFactory factory;
+
+  private final List<ExtraPermissionToValidate> permissions =
+      ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST);
 
   @Inject
   public CustomerConfigStorageAzureValidator(
@@ -85,12 +89,7 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
         BlobContainerClient blobContainerClient =
             factory.createBlobContainerClient(azUrl, azSasToken, container);
         ((AZUtil) (CloudUtil.getCloudUtil(Util.AZ)))
-            .validateOnBlobContainerClient(
-                blobContainerClient,
-                ImmutableList.of(
-                    ExtraPermissionToValidate.READ,
-                    ExtraPermissionToValidate.LIST,
-                    ExtraPermissionToValidate.DELETE));
+            .validateOnBlobContainerClient(blobContainerClient, permissions);
       } catch (BlobStorageException e) {
         String exceptionMsg = e.getMessage();
         throwBeanValidatorError(fieldName, exceptionMsg);

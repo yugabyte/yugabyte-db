@@ -17,6 +17,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.ConfigException;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -58,8 +59,6 @@ public class PlatformReplicationHelper {
   static final String BACKUP_FILE_PATTERN = "backup_*.tgz";
 
   // Config keys:
-  public static final String STORAGE_PATH_KEY = "yb.storage.path";
-  private static final String LOG_SHELL_CMD_OUTPUT_KEY = "yb.ha.logScriptOutput";
   private static final String REPLICATION_SCHEDULE_ENABLED_KEY =
       "yb.ha.replication_schedule_enabled";
   private static final String PROMETHEUS_FEDERATED_CONFIG_DIR_KEY = "yb.ha.prometheus_config_dir";
@@ -102,7 +101,8 @@ public class PlatformReplicationHelper {
   }
 
   Path getBackupDir() {
-    return Paths.get(confGetter.getStaticConf().getString(STORAGE_PATH_KEY), BACKUP_DIR)
+    return Paths.get(
+            confGetter.getStaticConf().getString(AppConfigHelper.YB_STORAGE_PATH), BACKUP_DIR)
         .toAbsolutePath();
   }
 
@@ -159,7 +159,7 @@ public class PlatformReplicationHelper {
   }
 
   String getBaseInstall() {
-    return Paths.get(confGetter.getStaticConf().getString(STORAGE_PATH_KEY))
+    return Paths.get(confGetter.getStaticConf().getString(AppConfigHelper.YB_STORAGE_PATH))
         .getParent()
         .getParent()
         .toString();
@@ -211,7 +211,7 @@ public class PlatformReplicationHelper {
   }
 
   Path getReplicationDirFor(String leader) {
-    String storagePath = confGetter.getStaticConf().getString(STORAGE_PATH_KEY);
+    String storagePath = confGetter.getStaticConf().getString(AppConfigHelper.YB_STORAGE_PATH);
     return Paths.get(storagePath, REPLICATION_DIR, leader);
   }
 

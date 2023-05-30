@@ -423,11 +423,11 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
   const auto extra_table = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
                                        kTableName.namespace_name(),
                                        "extra-table");
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("k")->HashPrimaryKey()->Type(yb::BINARY)->NotNull();
-  schemaBuilder.AddColumn("v")->Type(yb::BINARY)->NotNull();
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("k")->HashPrimaryKey()->Type(yb::BINARY)->NotNull();
+  schema_builder.AddColumn("v")->Type(yb::BINARY)->NotNull();
   YBSchema schema;
-  ASSERT_OK(schemaBuilder.Build(&schema));
+  ASSERT_OK(schema_builder.Build(&schema));
   ASSERT_OK(client_->NewTableCreator()->table_name(extra_table)
       .schema(&schema).table_type(yb::client::YBTableType::YQL_TABLE_TYPE).Create());
   const auto tables = ASSERT_RESULT(client_->ListTables(kTableName.table_name(),
@@ -934,7 +934,7 @@ TEST_F(AdminCliTest, DdlLog) {
   }
   ASSERT_EQ(actions[0], "Drop column text_column");
   ASSERT_EQ(actions[1], "Drop index test_idx");
-  ASSERT_EQ(actions[2], "Add column int_column[int32 NULLABLE NOT A PARTITION KEY]");
+  ASSERT_EQ(actions[2], "Add column int_column[int32 NULLABLE VALUE]");
 }
 
 TEST_F(AdminCliTest, FlushSysCatalog) {
@@ -1125,10 +1125,10 @@ TEST_F_EX(AdminCliTest, ListTabletDefaultTenTablets, AdminCliListTabletsTest) {
   ASSERT_NO_FATALS(BuildAndStart({}, {"--replication_factor=1"}));
 
   YBSchema schema;
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("k")->HashPrimaryKey()->Type(yb::BINARY)->NotNull();
-  schemaBuilder.AddColumn("v")->Type(yb::BINARY)->NotNull();
-  ASSERT_OK(schemaBuilder.Build(&schema));
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("k")->HashPrimaryKey()->Type(yb::BINARY)->NotNull();
+  schema_builder.AddColumn("v")->Type(yb::BINARY)->NotNull();
+  ASSERT_OK(schema_builder.Build(&schema));
 
   const auto client =
       ASSERT_RESULT(YBClientBuilder().add_master_server_addr(GetMasterAddresses()).Build());

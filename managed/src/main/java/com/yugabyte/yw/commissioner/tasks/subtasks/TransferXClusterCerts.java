@@ -204,24 +204,6 @@ public class TransferXClusterCerts extends NodeTaskBase {
               sourceCertificatePath,
               "600")
           .processErrors("Copying the certificate file to the node failed");
-
-      // `Kubectl cp` does not assign the owner properly. Also, the permission needs to `755` for
-      // K8s universes because the owner is root.
-      if (targetUniverse
-          .getUniverseDetails()
-          .getPrimaryCluster()
-          .userIntent
-          .providerType
-          .equals(CloudType.kubernetes)) {
-        nodeUniverseManager
-            .runCommand(
-                node, targetUniverse, ImmutableList.of("chown", "root:root", sourceCertificatePath))
-            .processErrors("Changing owner of the certificate to `root:root` failed");
-        nodeUniverseManager
-            .runCommand(
-                node, targetUniverse, ImmutableList.of("chmod", "755", sourceCertificatePath))
-            .processErrors("Changing the permissions of the certificate file to `755` failed");
-      }
     } else if (taskParams().action.equals(Params.Action.REMOVE)) {
       log.info(
           "Removing server cert located at {} from node {} in universe {}",

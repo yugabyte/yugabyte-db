@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -183,7 +184,7 @@ public class KubernetesUtil {
       Map<String, String> azConfig,
       boolean newNamingStyle,
       boolean isReadOnlyCluster) {
-    String namespace = azConfig.get("KUBENAMESPACE");
+    String namespace = azConfig != null ? azConfig.get("KUBENAMESPACE") : "";
     if (StringUtils.isBlank(namespace)) {
       int suffixLen = isMultiAZ ? azName.length() + 1 : 0;
       // Avoid using "-readcluster" so user has more room for
@@ -238,6 +239,22 @@ public class KubernetesUtil {
     }
 
     return namespaceToConfig;
+  }
+
+  // Returns the cpu core count give instance type.
+  public static double getCoreCountFromInstanceType(InstanceType instanceType, boolean isMaster) {
+    if (!isMaster) {
+      return instanceType.getNumCores();
+    }
+    double cpu = 2.0; // default value from chart.
+    String instanceTypeCode = instanceType.getInstanceTypeCode();
+    if (instanceTypeCode.equals("dev")) {
+      cpu = 0.5;
+    } else if (instanceTypeCode.equals("cloud")) {
+      cpu = 0.3;
+    }
+
+    return cpu;
   }
 
   /**

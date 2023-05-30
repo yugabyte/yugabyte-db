@@ -69,32 +69,23 @@ YBColumnSpec::~YBColumnSpec() {
 }
 
 YBColumnSpec* YBColumnSpec::Type(const std::shared_ptr<QLType>& type) {
-  data_->has_type = true;
   data_->type = type;
   return this;
 }
 
 YBColumnSpec* YBColumnSpec::Order(int32_t order) {
-  data_->has_order = true;
   data_->order = order;
   return this;
 }
 
-YBColumnSpec* YBColumnSpec::SetSortingType(SortingType sorting_type) {
-  data_->sorting_type = sorting_type;
-  return this;
-}
-
-YBColumnSpec* YBColumnSpec::PrimaryKey() {
-  NotNull();
-  data_->primary_key = true;
-  return this;
+YBColumnSpec* YBColumnSpec::PrimaryKey(SortingType sorting_type) {
+  data_->kind = SortingTypeToColumnKind(sorting_type);
+  return NotNull();
 }
 
 YBColumnSpec* YBColumnSpec::HashPrimaryKey() {
-  PrimaryKey();
-  data_->hash_primary_key = true;
-  return this;
+  data_->kind = ColumnKind::HASH;
+  return NotNull();
 }
 
 YBColumnSpec* YBColumnSpec::StaticColumn() {
@@ -103,14 +94,12 @@ YBColumnSpec* YBColumnSpec::StaticColumn() {
 }
 
 YBColumnSpec* YBColumnSpec::NotNull() {
-  data_->has_nullable = true;
-  data_->nullable = false;
+  data_->nullable = Nullable::kFalse;
   return this;
 }
 
 YBColumnSpec* YBColumnSpec::Nullable() {
-  data_->has_nullable = true;
-  data_->nullable = true;
+  data_->nullable = Nullable::kTrue;
   return this;
 }
 
@@ -120,13 +109,11 @@ YBColumnSpec* YBColumnSpec::Counter() {
 }
 
 YBColumnSpec* YBColumnSpec::PgTypeOid(int32_t oid) {
-  data_->has_pg_type_oid = true;
   data_->pg_type_oid = oid;
   return this;
 }
 
 YBColumnSpec* YBColumnSpec::RenameTo(const std::string& new_name) {
-  data_->has_rename_to = true;
   data_->rename_to = new_name;
   return this;
 }
@@ -134,22 +121,20 @@ YBColumnSpec* YBColumnSpec::RenameTo(const std::string& new_name) {
 Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
   // Verify that the user isn't trying to use any methods that
   // don't make sense for CREATE.
-  if (data_->has_rename_to) {
+  if (data_->rename_to) {
     // TODO(KUDU-861): adjust these errors as this method will also be used for
     // ALTER TABLE ADD COLUMN support.
     return STATUS(NotSupported, "cannot rename a column during CreateTable",
                                 data_->name);
   }
 
-  if (!data_->has_type) {
+  if (!data_->type) {
     return STATUS(InvalidArgument, "no type provided for column", data_->name);
   }
 
-  bool nullable = data_->has_nullable ? data_->nullable : true;
-
-  *col = YBColumnSchema(data_->name, data_->type, nullable, data_->hash_primary_key,
-                        data_->static_column, data_->is_counter, data_->order,
-                        data_->sorting_type, data_->pg_type_oid);
+  *col = YBColumnSchema(
+      data_->name, data_->type, data_->kind, data_->nullable, data_->static_column,
+      data_->is_counter, data_->order, data_->pg_type_oid);
 
   return Status::OK();
 }
@@ -169,12 +154,6 @@ class YBSchemaBuilder::Data {
     // ~YBSchemaBuilder(), to avoid a circular dependency in the
     // headers declaring friend classes with nested classes.
   }
-
-  // These members can be used to specify a subset of columns are primary or hash primary keys.
-  // NOTE: "key_col_names" and "key_hash_col_count" are not used unless "has_key_col_names" is true.
-  bool has_key_col_names = false;
-  vector<string> key_col_names;
-  size_t key_hash_col_count = 0;
 
   vector<YBColumnSpec*> specs;
   TableProperties table_properties;
@@ -201,15 +180,6 @@ YBColumnSpec* YBSchemaBuilder::AddColumn(const std::string& name) {
   return c;
 }
 
-YBSchemaBuilder* YBSchemaBuilder::SetPrimaryKey(
-    const std::vector<std::string>& key_col_names,
-    size_t key_hash_col_count) {
-  data_->has_key_col_names = true;
-  data_->key_col_names = key_col_names;
-  data_->key_hash_col_count = key_hash_col_count;
-  return this;
-}
-
 YBSchemaBuilder* YBSchemaBuilder::SetTableProperties(const TableProperties& table_properties) {
   data_->table_properties = table_properties;
   return this;
@@ -230,98 +200,46 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     RETURN_NOT_OK(data_->specs[i]->ToColumnSchema(&cols[i]));
   }
 
-  size_t num_key_cols = 0;
-  if (!data_->has_key_col_names) {
-    // Change the API to allow specifying each column individually as part of a primary key.
-    // Previously, we must pass an extra list of columns if the key is a compound of columns.
-    //
-    // Removing the following restriction from Kudu:
-    //   If they didn't explicitly pass the column names for key,
-    //   then they should have set it on exactly one column.
-    const YBColumnSpec::Data* reached_primary_column = nullptr;
-    const YBColumnSpec::Data* reached_regular_column = nullptr;
-    for (size_t i = 0; i < cols.size(); i++) {
-      auto& column_data = *data_->specs[i]->data_;
-      if (column_data.hash_primary_key) {
-        num_key_cols++;
-        if (reached_primary_column) {
-          return STATUS_FORMAT(
-              InvalidArgument, "Hash primary key column '$0' should be before primary key '$1'",
-              column_data.name, reached_primary_column->name);
-        }
-        if (reached_regular_column) {
-          return STATUS_FORMAT(
-              InvalidArgument, "Hash primary key column '$0' should be before regular column '$1'",
-              column_data.name, reached_regular_column->name);
-        }
-
-      } else if (column_data.primary_key) {
-        num_key_cols++;
-        if (reached_regular_column) {
-          return STATUS_FORMAT(
-              InvalidArgument, "Primary key column '$0' should be before regular column '$1'",
-              column_data.name, reached_regular_column->name);
-        }
-
-        reached_primary_column = &column_data;
-      } else {
-        reached_regular_column = &column_data;
+  // Change the API to allow specifying each column individually as part of a primary key.
+  // Previously, we must pass an extra list of columns if the key is a compound of columns.
+  //
+  // Removing the following restriction from Kudu:
+  //   If they didn't explicitly pass the column names for key,
+  //   then they should have set it on exactly one column.
+  const YBColumnSpec::Data* reached_range_column = nullptr;
+  const YBColumnSpec::Data* reached_regular_column = nullptr;
+  for (size_t i = 0; i < cols.size(); i++) {
+    auto& column_data = *data_->specs[i]->data_;
+    if (column_data.kind == ColumnKind::HASH) {
+      if (reached_range_column) {
+        return STATUS_FORMAT(
+            InvalidArgument, "Hash primary key column '$0' should be before primary key '$1'",
+            column_data.name, reached_range_column->name);
       }
-    }
-
-    if (num_key_cols <= 0) {
-      return STATUS(InvalidArgument, "No primary key specified");
-    }
-  } else {
-    // Build a map from name to index of all of the columns.
-    unordered_map<string, size_t> name_to_idx_map;
-    size_t i = 0;
-    for (YBColumnSpec* spec : data_->specs) {
-      // If they did pass the key column names, then we should not have explicitly
-      // set it on any columns.
-      if (spec->data_->primary_key) {
-        return STATUS(InvalidArgument, "Primary key specified by both SetPrimaryKey() and on a "
-                                       "specific column", spec->data_->name);
+      if (reached_regular_column) {
+        return STATUS_FORMAT(
+            InvalidArgument, "Hash primary key column '$0' should be before regular column '$1'",
+            column_data.name, reached_regular_column->name);
       }
 
-      // Set the primary keys here to make sure the two different APIs for ColumnSpecs yield the
-      // same result.
-      if (i < data_->key_hash_col_count) {
-        spec->HashPrimaryKey();
-      } else {
-        spec->PrimaryKey();
+    } else if (column_data.kind != ColumnKind::VALUE) {
+      if (reached_regular_column) {
+        return STATUS_FORMAT(
+            InvalidArgument, "Primary key column '$0' should be before regular column '$1'",
+            column_data.name, reached_regular_column->name);
       }
 
-      // If we have a duplicate column name, the Schema::Reset() will catch it later,
-      // anyway.
-      name_to_idx_map[spec->data_->name] = i++;
+      reached_range_column = &column_data;
+    } else {
+      reached_regular_column = &column_data;
     }
-
-    // Convert the key column names to a set of indexes.
-    vector<size_t> key_col_indexes;
-    for (const string& key_col_name : data_->key_col_names) {
-      size_t idx;
-      if (!FindCopy(name_to_idx_map, key_col_name, &idx)) {
-        return STATUS(InvalidArgument, "Primary key column not defined", key_col_name);
-      }
-      key_col_indexes.push_back(idx);
-    }
-
-    // Currently we require that the key columns be contiguous at the front
-    // of the schema. We'll lift this restriction later -- hence the more
-    // flexible user-facing API.
-    for (size_t i = 0; i < key_col_indexes.size(); i++) {
-      if (key_col_indexes[i] != i) {
-        return STATUS(InvalidArgument, "Primary key columns must be listed first in the schema",
-                                       data_->key_col_names[i]);
-      }
-    }
-
-    // Indicate the first "num_key_cols" are primary key.
-    num_key_cols = key_col_indexes.size();
   }
 
-  RETURN_NOT_OK(schema->Reset(cols, num_key_cols, data_->table_properties));
+  if (cols.empty() || !cols.front().is_key()) {
+    return STATUS(InvalidArgument, "No primary key specified");
+  }
+
+  RETURN_NOT_OK(schema->Reset(cols, data_->table_properties));
   internal::GetSchema(schema).SetSchemaName(data_->schema_name);
 
   return Status::OK();
@@ -333,15 +251,14 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
 
 YBColumnSchema::YBColumnSchema(const std::string &name,
                                const shared_ptr<QLType>& type,
-                               bool is_nullable,
-                               bool is_hash_key,
+                               ColumnKind kind,
+                               Nullable is_nullable,
                                bool is_static,
                                bool is_counter,
                                int32_t order,
-                               SortingType sorting_type,
                                int32_t pg_type_oid) {
-  col_ = std::make_unique<ColumnSchema>(name, type, is_nullable, is_hash_key, is_static, is_counter,
-                                        order, sorting_type, pg_type_oid);
+  col_ = std::make_unique<ColumnSchema>(
+      name, type, kind, is_nullable, is_static, is_counter, order, pg_type_oid);
 }
 
 YBColumnSchema::YBColumnSchema(const YBColumnSchema& other) {
@@ -376,6 +293,10 @@ const std::string& YBColumnSchema::name() const {
 
 bool YBColumnSchema::is_nullable() const {
   return DCHECK_NOTNULL(col_)->is_nullable();
+}
+
+bool YBColumnSchema::is_key() const {
+  return DCHECK_NOTNULL(col_)->is_key();
 }
 
 bool YBColumnSchema::is_hash_key() const {
@@ -542,14 +463,14 @@ void YBSchema::Reset(std::unique_ptr<Schema> schema) {
   schema_ = std::move(schema);
 }
 
-Status YBSchema::Reset(const vector<YBColumnSchema>& columns, size_t key_columns,
-                       const TableProperties& table_properties) {
+Status YBSchema::Reset(
+    const vector<YBColumnSchema>& columns, const TableProperties& table_properties) {
   vector<ColumnSchema> cols_private;
   for (const YBColumnSchema& col : columns) {
     cols_private.push_back(*col.col_);
   }
   std::unique_ptr<Schema> new_schema(new Schema());
-  RETURN_NOT_OK(new_schema->Reset(cols_private, key_columns, table_properties));
+  RETURN_NOT_OK(new_schema->Reset(cols_private, table_properties));
 
   schema_ = std::move(new_schema);
   return Status::OK();
@@ -587,8 +508,8 @@ const TableProperties& YBSchema::table_properties() const {
 
 YBColumnSchema YBSchema::Column(size_t idx) const {
   ColumnSchema col(schema_->column(idx));
-  return YBColumnSchema(col.name(), col.type(), col.is_nullable(), col.is_hash_key(),
-                        col.is_static(), col.is_counter(), col.order(), col.sorting_type());
+  return YBColumnSchema(col.name(), col.type(), col.kind(), Nullable(col.is_nullable()),
+                        col.is_static(), col.is_counter(), col.order());
 }
 
 YBColumnSchema YBSchema::ColumnById(int32_t column_id) const {

@@ -753,33 +753,35 @@ To create a secure multi-node cluster, ensure you have [generated and copied the
 
 To create a cluster without encryption and authentication, omit the `--secure` flag.
 
-Start the first node by running the following command:
+To create the cluster, do the following:
 
-```sh
-./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
-    --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 \
-    --cloud_location=aws.us-east-1.us-east-1a
-```
+1. Start the first node by running the following command:
 
-On macOS, the additional nodes need loopback addresses configured, as follows:
+    ```sh
+    ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 \
+        --cloud_location=aws.us-east-1.us-east-1a
+    ```
 
-```sh
-sudo ifconfig lo0 alias 127.0.0.2
-sudo ifconfig lo0 alias 127.0.0.3
-```
+1. On macOS, configure loopback addresses for the additional nodes as follows:
 
-Add two more nodes to the cluster using the `join` option, as follows:
+    ```sh
+    sudo ifconfig lo0 alias 127.0.0.2
+    sudo ifconfig lo0 alias 127.0.0.3
+    ```
 
-```sh
-./bin/yugabyted start --secure --advertise_address=127.0.0.2 \
-    --join=127.0.0.1 \
-    --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 \
-    --cloud_location=aws.us-east-1.us-east-1b
-./bin/yugabyted start --secure --advertise_address=127.0.0.3 \
-    --join=127.0.0.1 \
-    --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
-    --cloud_location=aws.us-east-1.us-east-1c
-```
+1. Add two more nodes to the cluster using the `--join` flag, as follows:
+
+    ```sh
+    ./bin/yugabyted start --secure --advertise_address=127.0.0.2 \
+        --join=127.0.0.1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 \
+        --cloud_location=aws.us-east-1.us-east-1b
+    ./bin/yugabyted start --secure --advertise_address=127.0.0.3 \
+        --join=127.0.0.1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
+        --cloud_location=aws.us-east-1.us-east-1c
+    ```
 
 ### Create a multi-zone cluster
 
@@ -787,69 +789,73 @@ Add two more nodes to the cluster using the `join` option, as follows:
 
   {{% tab header="Secure" lang="secure" %}}
 
-To create a secure multi-zone cluster, start the first node by running the `yugabyted start` command, using the `--secure` flag and passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
+To create a secure multi-zone cluster:
 
-```sh
-./bin/yugabyted start --secure --advertise_address=<host-ip> \
-    --cloud_location=aws.us-east-1.us-east-1a \
-    --fault_tolerance=zone
-```
+1. Start the first node by running the `yugabyted start` command, using the `--secure` flag and passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
 
-Create certificates for the second and third virtual machine (VM) for SSL and TLS connection, as follows:
+    ```sh
+    ./bin/yugabyted start --secure --advertise_address=<host-ip> \
+        --cloud_location=aws.us-east-1.us-east-1a \
+        --fault_tolerance=zone
+    ```
 
-```sh
-./bin/yugabyted cert generate_server_certs --hostnames=<IP_of_VM_2>,<IP_of_VM_3>
-```
+1. Create certificates for the second and third virtual machine (VM) for SSL and TLS connection, as follows:
 
-Manually copy the generated certificates in the first VM to the second and third VM, as follows:
+    ```sh
+    ./bin/yugabyted cert generate_server_certs --hostnames=<IP_of_VM_2>,<IP_of_VM_3>
+    ```
 
-- Copy the certificates for the second VM from `$HOME/var/generated_certs/<IP_of_VM_2>` in the first VM to `$HOME/var/certs` in the second VM.
+1. Manually copy the generated certificates in the first VM to the second and third VM, as follows:
 
-- Copy the certificates for the third VM from `$HOME/var/generated_certs/<IP_of_VM_3>` in first VM to `$HOME/var/certs` in the third VM.
+    - Copy the certificates for the second VM from `$HOME/var/generated_certs/<IP_of_VM_2>` in the first VM to `$HOME/var/certs` in the second VM.
 
-Start the second and the third node on two separate VMs, as follows:
+    - Copy the certificates for the third VM from `$HOME/var/generated_certs/<IP_of_VM_3>` in first VM to `$HOME/var/certs` in the third VM.
 
-```sh
-./bin/yugabyted start --secure --advertise_address=<host-ip> \
-    --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-east-1.us-east-1b \
-    --fault_tolerance=zone
-```
+1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
 
-```sh
-./bin/yugabyted start --secure --advertise_address=<host-ip> \
-    --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-east-1.us-east-1c \
-    --fault_tolerance=zone
-```
+    ```sh
+    ./bin/yugabyted start --secure --advertise_address=<host-ip> \
+        --join=<ip-address-first-yugabyted-node> \
+        --cloud_location=aws.us-east-1.us-east-1b \
+        --fault_tolerance=zone
+    ```
+
+    ```sh
+    ./bin/yugabyted start --secure --advertise_address=<host-ip> \
+        --join=<ip-address-first-yugabyted-node> \
+        --cloud_location=aws.us-east-1.us-east-1c \
+        --fault_tolerance=zone
+    ```
 
   {{% /tab %}}
 
   {{% tab header="Insecure" lang="basic" %}}
 
-To create a multi-zone cluster, start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
+To create a multi-zone cluster:
 
-```sh
-./bin/yugabyted start --advertise_address=<host-ip> \
-    --cloud_location=aws.us-east-1.us-east-1a \
-    --fault_tolerance=zone
-```
+1. Start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
 
-Start the second and the third node on two separate VMs as follows:
+    ```sh
+    ./bin/yugabyted start --advertise_address=<host-ip> \
+        --cloud_location=aws.us-east-1.us-east-1a \
+        --fault_tolerance=zone
+    ```
 
-```sh
-./bin/yugabyted start --advertise_address=<host-ip> \
-    --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-east-1.us-east-1b \
-    --fault_tolerance=zone
-```
+1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
 
-```sh
-./bin/yugabyted start --advertise_address=<host-ip> \
-    --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-east-1.us-east-1c \
-    --fault_tolerance=zone
-```
+    ```sh
+    ./bin/yugabyted start --advertise_address=<host-ip> \
+        --join=<ip-address-first-yugabyted-node> \
+        --cloud_location=aws.us-east-1.us-east-1b \
+        --fault_tolerance=zone
+    ```
+
+    ```sh
+    ./bin/yugabyted start --advertise_address=<host-ip> \
+        --join=<ip-address-first-yugabyted-node> \
+        --cloud_location=aws.us-east-1.us-east-1c \
+        --fault_tolerance=zone
+    ```
 
   {{% /tab %}}
 
@@ -886,68 +892,72 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 
   {{% tab header="Secure" lang="secure-2" %}}
 
-To create a secure multi-region cluster, start the first node by running the `yugabyted start` command, using the `--secure` flag and passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
+To create a secure multi-region cluster:
 
-```sh
-./bin/yugabyted start --secure --advertise_address=<host-ip> \
-    --cloud_location=aws.us-east-1.us-east-1a \
-    --fault_tolerance=region
-```
+1. Start the first node by running the `yugabyted start` command, using the `--secure` flag and passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
 
-Create certificates for the second and third virtual machine (VM) for SSL and TLS connection, as follows:
+    ```sh
+    ./bin/yugabyted start --secure --advertise_address=<host-ip> \
+        --cloud_location=aws.us-east-1.us-east-1a \
+        --fault_tolerance=region
+    ```
 
-```sh
-./bin/yugabyted cert generate_server_certs --hostnames=<IP_of_VM_2>,<IP_of_VM_3>
-```
+1. Create certificates for the second and third virtual machine (VM) for SSL and TLS connection, as follows:
 
-Manually copy the generated certificates in the first VM to the second and third VM:
+    ```sh
+    ./bin/yugabyted cert generate_server_certs --hostnames=<IP_of_VM_2>,<IP_of_VM_3>
+    ```
 
-- Copy the certificates for the second VM from `$HOME/var/generated_certs/<IP_of_VM_2>` in the first VM to `$HOME/var/certs` in the second VM.
-- Copy the certificates for third VM from `$HOME/var/generated_certs/<IP_of_VM_3>` in first VM to `$HOME/var/certs` in the third VM.
+1. Manually copy the generated certificates in the first VM to the second and third VM:
 
-Start the second and the third node on two separate VMs, as follows:
+    - Copy the certificates for the second VM from `$HOME/var/generated_certs/<IP_of_VM_2>` in the first VM to `$HOME/var/certs` in the second VM.
+    - Copy the certificates for third VM from `$HOME/var/generated_certs/<IP_of_VM_3>` in first VM to `$HOME/var/certs` in the third VM.
 
-```sh
-./bin/yugabyted start --secure --advertise_address=<host-ip> \
-    --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-west-1.us-west-1a \
-    --fault_tolerance=region
-```
+1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
 
-```sh
-./bin/yugabyted start --secure --advertise_address=<host-ip> \
-    --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-central-1.us-central-1a \
-    --fault_tolerance=region
-```
+    ```sh
+    ./bin/yugabyted start --secure --advertise_address=<host-ip> \
+        --join=<ip-address-first-yugabyted-node> \
+        --cloud_location=aws.us-west-1.us-west-1a \
+        --fault_tolerance=region
+    ```
+
+    ```sh
+    ./bin/yugabyted start --secure --advertise_address=<host-ip> \
+        --join=<ip-address-first-yugabyted-node> \
+        --cloud_location=aws.us-central-1.us-central-1a \
+        --fault_tolerance=region
+    ```
 
   {{% /tab %}}
 
   {{% tab header="Insecure" lang="basic-2" %}}
 
-To create a multi-region cluster, start the first node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flags to set the node location details as follows:
+To create a multi-region cluster:
 
-```sh
-./bin/yugabyted start --advertise_address=<host-ip> \
-    --cloud_location=aws.us-east-1.us-east-1a \
-    --fault_tolerance=region
-```
+1. Start the first node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flags to set the node location details as follows:
 
-Start the second and the third nodes on two separate VMs as follows:
+    ```sh
+    ./bin/yugabyted start --advertise_address=<host-ip> \
+        --cloud_location=aws.us-east-1.us-east-1a \
+        --fault_tolerance=region
+    ```
 
-```sh
-./bin/yugabyted start --advertise_address=<host-ip> \
-    --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-west-1.us-west-1a \
-    --fault_tolerance=region
-```
+1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
 
-```sh
-./bin/yugabyted start --advertise_address=<host-ip> \
-    --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-central-1.us-central-1a \
-    --fault_tolerance=region
-```
+    ```sh
+    ./bin/yugabyted start --advertise_address=<host-ip> \
+        --join=<ip-address-first-yugabyted-node> \
+        --cloud_location=aws.us-west-1.us-west-1a \
+        --fault_tolerance=region
+    ```
+
+    ```sh
+    ./bin/yugabyted start --advertise_address=<host-ip> \
+        --join=<ip-address-first-yugabyted-node> \
+        --cloud_location=aws.us-central-1.us-central-1a \
+        --fault_tolerance=region
+    ```
 
   {{% /tab %}}
 

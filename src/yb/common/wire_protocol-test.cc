@@ -49,10 +49,9 @@ namespace yb {
 class WireProtocolTest : public YBTest {
  public:
   WireProtocolTest()
-    : schema_({ ColumnSchema("col1", STRING),
+    : schema_({ ColumnSchema("col1", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
                 ColumnSchema("col2", STRING),
-                ColumnSchema("col3", UINT32, true /* nullable */) },
-              1) {
+                ColumnSchema("col3", UINT32, ColumnKind::VALUE, Nullable::kTrue) }) {
   }
 
  protected:

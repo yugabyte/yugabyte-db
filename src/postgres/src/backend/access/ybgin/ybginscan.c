@@ -95,68 +95,26 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 								  YBCIsRegionLocal(scan->heapRelation),
 								  &ybso->handle));
 
-	/*
-	 * Add any pushdown expression to the main table scan
-	 * TODO dedup with YbSetupScanQual
-	 */
+	/* Add any pushdown expression to the main table scan. */
 	if (scan->yb_rel_pushdown != NULL)
 	{
-		ListCell   *lc;
-		foreach(lc, scan->yb_rel_pushdown->qual)
-		{
-			Expr *expr = (Expr *) lfirst(lc);
-			YBCPgExpr yb_expr = YBCNewEvalExprCall(ybso->handle, expr);
-			HandleYBStatus(YbPgDmlAppendQual(ybso->handle,
-											 yb_expr,
-											 true /* is_primary */));
-		}
-		foreach(lc, scan->yb_rel_pushdown->colrefs)
-		{
-			YbExprParamDesc *param = lfirst_node(YbExprParamDesc, lc);
-			YBCPgTypeAttrs type_attrs = { param->typmod };
-			/* Create new PgExpr wrapper for the column reference */
-			YBCPgExpr yb_expr = YBCNewColumnRef(ybso->handle,
-												param->attno,
-												param->typid,
-												param->collid,
-												&type_attrs);
-			/* Add the PgExpr to the statement */
-			HandleYBStatus(YbPgDmlAppendColumnRef(ybso->handle,
-												  yb_expr,
-												  true /* is_primary */));
-		}
+		YbDmlAppendQuals(scan->yb_rel_pushdown->quals,
+						 true /* is_primary */,
+						 ybso->handle);
+		YbDmlAppendColumnRefs(scan->yb_rel_pushdown->colrefs,
+							  true /* is_primary */,
+							  ybso->handle);
 	}
 
-	/*
-	 * Add any pushdown expression to the index relation scan
-	 * TODO dedup with YbSetupScanColumnRefs
-	 */
+	/* Add any pushdown expression to the index relation scan. */
 	if (scan->yb_idx_pushdown != NULL)
 	{
-		ListCell   *lc;
-		foreach(lc, scan->yb_idx_pushdown->qual)
-		{
-			Expr *expr = (Expr *) lfirst(lc);
-			YBCPgExpr yb_expr = YBCNewEvalExprCall(ybso->handle, expr);
-			HandleYBStatus(YbPgDmlAppendQual(ybso->handle,
-											 yb_expr,
-											 false /* is_primary */));
-		}
-		foreach(lc, scan->yb_idx_pushdown->colrefs)
-		{
-			YbExprParamDesc *param = lfirst_node(YbExprParamDesc, lc);
-			YBCPgTypeAttrs type_attrs = { param->typmod };
-			/* Create new PgExpr wrapper for the column reference */
-			YBCPgExpr yb_expr = YBCNewColumnRef(ybso->handle,
-												param->attno,
-												param->typid,
-												param->collid,
-												&type_attrs);
-			/* Add the PgExpr to the statement */
-			HandleYBStatus(YbPgDmlAppendColumnRef(ybso->handle,
-												  yb_expr,
-												  false /* is_primary */));
-		}
+		YbDmlAppendQuals(scan->yb_idx_pushdown->quals,
+						 false /* is_primary */,
+						 ybso->handle);
+		YbDmlAppendColumnRefs(scan->yb_idx_pushdown->colrefs,
+							  false /* is_primary */,
+							  ybso->handle);
 	}
 
 	/* Initialize ybgin scan opaque is_exec_done. */

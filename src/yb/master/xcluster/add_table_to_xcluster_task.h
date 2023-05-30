@@ -20,6 +20,7 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/monitored_task.h"
 #include "yb/gutil/thread_annotations.h"
+#include "yb/cdc/cdc_util.h"
 
 namespace yb::master {
 class AddTableToXClusterTask : public server::RunnableMonitoredTask {
@@ -68,6 +69,6 @@ class AddTableToXClusterTask : public server::RunnableMonitoredTask {
   rpc::ScheduledTaskId reactor_task_id_ GUARDED_BY(schedule_task_mutex_) = rpc::kInvalidTaskId;
   HybridTime bootstrap_time_ = HybridTime::kInvalid;
   HybridTime initial_xcluster_safe_time_ = HybridTime::kInvalid;
-  std::string replication_group_;
+  cdc::ReplicationGroupId replication_group_id_;
 };
 }  // namespace yb::master

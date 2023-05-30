@@ -69,10 +69,10 @@ import play.libs.Json;
 public class CommonUtils {
 
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
-  public static final String DEFAULT_YBC_DIR = "/tmp/yugabyte";
+  public static final String DEFAULT_YBC_DIR = "%s/yugabyte";
 
   private static final Pattern RELEASE_REGEX =
-      Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+).*$");
+      Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)(.+)?$");
 
   public static final String maskRegex = "(?<!^.?).(?!.?$)";
 
@@ -629,9 +629,16 @@ public class CommonUtils {
           actualRelease);
       return afterMatches;
     }
-    for (int i = 1; i < 5; i++) {
-      int thresholdPart = Integer.parseInt(thresholdMatcher.group(i));
-      int actualPart = Integer.parseInt(actualMatcher.group(i));
+    for (int i = 1; i < 6; i++) {
+      String thresholdPartStr = thresholdMatcher.group(i);
+      String actualPartStr = actualMatcher.group(i);
+      if (i == 5) {
+        // Build number.
+        thresholdPartStr = String.valueOf(convertBuildNumberForComparison(thresholdPartStr, true));
+        actualPartStr = String.valueOf(convertBuildNumberForComparison(actualPartStr, false));
+      }
+      int thresholdPart = Integer.parseInt(thresholdPartStr);
+      int actualPart = Integer.parseInt(actualPartStr);
       if (actualPart > thresholdPart) {
         return afterMatches;
       }
@@ -641,6 +648,20 @@ public class CommonUtils {
     }
     // Equal releases.
     return equalMatches;
+  }
+
+  private static int convertBuildNumberForComparison(String buildNumberStr, boolean threshold) {
+    if (StringUtils.isEmpty(buildNumberStr) || !buildNumberStr.startsWith("-b")) {
+      // Threshold without a build or with invalid build is treated as -b0,
+      // while actual build is custom build and is always treated as later build.
+      return threshold ? 0 : Integer.MAX_VALUE;
+    }
+    try {
+      return Integer.parseInt(buildNumberStr.substring(2));
+    } catch (Exception e) {
+      // Same logic as above.
+      return threshold ? 0 : Integer.MAX_VALUE;
+    }
   }
 
   @FunctionalInterface

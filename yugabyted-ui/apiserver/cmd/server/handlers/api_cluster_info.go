@@ -58,7 +58,7 @@ type DetailObj struct {
 }
 
 // return hostname of each node
-func getNodes() ([]string, error) {
+func getNodes(clusterType ...string) ([]string, error) {
         hostNames := []string{}
         tabletServersFuture := make(chan helpers.TabletServersFuture)
         go helpers.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
@@ -66,12 +66,42 @@ func getNodes() ([]string, error) {
         if tabletServersResponse.Error != nil {
                 return hostNames, tabletServersResponse.Error
         }
-        // to get hostnames, get all second level keys and only keep if net.SpliHostPort succeeds.
-        for _, obj := range tabletServersResponse.Tablets {
-                for hostport := range obj {
-                        host, _, err := net.SplitHostPort(hostport)
-                        if err == nil {
-                                hostNames = append(hostNames, host)
+
+        if len(clusterType) == 0 {
+                // to get hostnames, get all second level keys and only keep if
+                // net.SpliHostPort succeeds.
+                for _, obj := range tabletServersResponse.Tablets {
+                        for hostport := range obj {
+                                host, _, err := net.SplitHostPort(hostport)
+                                if err == nil {
+                                        hostNames = append(hostNames, host)
+                                }
+                        }
+                }
+        } else {
+                clusterConfigFuture := make(chan helpers.ClusterConfigFuture)
+                go helpers.GetClusterConfigFuture(helpers.HOST, clusterConfigFuture)
+                clusterConfigResponse := <-clusterConfigFuture
+                if clusterConfigResponse.Error != nil {
+                        return hostNames, clusterConfigResponse.Error
+                }
+                replicationInfo := clusterConfigResponse.ClusterConfig.ReplicationInfo
+                if clusterType[0] == "READ_REPLICA" {
+                        readReplicaUuid := replicationInfo.ReadReplicas[0].PlacementUuid
+                        // readReplicaTablets := tabletServersResponse.Tablets[readReplicaUuid]
+                        for hostport := range tabletServersResponse.Tablets[readReplicaUuid] {
+                                host, _, err := net.SplitHostPort(hostport)
+                                if err == nil {
+                                        hostNames = append(hostNames, host)
+                                }
+                        }
+                } else if clusterType[0] == "PRIMARY" {
+                        primaryUuid := replicationInfo.LiveReplicas.PlacementUuid
+                        for hostport := range tabletServersResponse.Tablets[primaryUuid] {
+                                host, _, err := net.SplitHostPort(hostport)
+                                if err == nil {
+                                        hostNames = append(hostNames, host)
+                                }
                         }
                 }
         }
@@ -366,11 +396,18 @@ func divideMetricByConstant(metricValues [][]float64, constant float64) {
 // GetClusterMetric - Get a metric for a cluster
 func (c *Container) GetClusterMetric(ctx echo.Context) error {
         metricsParam := strings.Split(ctx.QueryParam("metrics"), ",")
+        clusterType := ctx.QueryParam("cluster_type")
         nodeParam := ctx.QueryParam("node_name")
         nodeList := []string{nodeParam}
         var err error = nil
         if nodeParam == "" {
-                nodeList, err = getNodes()
+                if clusterType == "" {
+                        nodeList, err = getNodes()
+                } else if clusterType == "PRIMARY" {
+                        nodeList, err = getNodes("PRIMARY")
+                } else if clusterType == "READ_REPLICA" {
+                        nodeList, err = getNodes("READ_REPLICA")
+                }
                 if err != nil {
                         return ctx.String(http.StatusInternalServerError, err.Error())
                 }
@@ -392,9 +429,9 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
         }
 
         metricResponse := models.MetricResponse{
-                Data:           []models.MetricData{},
-                StartTimestamp: startTime,
-                EndTimestamp:   endTime,
+                Data:             []models.MetricData{},
+                StartTimestamp:   startTime,
+                EndTimestamp:     endTime,
         }
 
         session, err := c.GetSession()
@@ -629,13 +666,23 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 Data: []models.NodeData{},
         }
         tabletServersFuture := make(chan helpers.TabletServersFuture)
+        clusterConfigFuture := make(chan helpers.ClusterConfigFuture)
         go helpers.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
+        go helpers.GetClusterConfigFuture(helpers.HOST, clusterConfigFuture)
         tabletServersResponse := <-tabletServersFuture
         if tabletServersResponse.Error != nil {
                 return ctx.String(http.StatusInternalServerError,
                         tabletServersResponse.Error.Error())
         }
-
+        // Use the cluster config API to get the read-replica (If any) placement UUID
+        clusterConfigResponse := <-clusterConfigFuture
+        readReplicaUuid := ""
+        if clusterConfigResponse.Error == nil {
+                for _, replica := range clusterConfigResponse.
+                                             ClusterConfig.ReplicationInfo.ReadReplicas {
+                        readReplicaUuid = replica.PlacementUuid
+                }
+        }
         mastersFuture := make(chan helpers.MastersFuture)
         go helpers.GetMastersFuture(helpers.HOST, mastersFuture)
 
@@ -675,7 +722,12 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
         }
         currentTime := time.Now().UnixMicro()
         hostToUuid, errHostToUuidMap := helpers.GetHostToUuidMap(helpers.HOST)
-        for _, obj := range tabletServersResponse.Tablets {
+        for placementUuid, obj := range tabletServersResponse.Tablets {
+                // Cross check the placement UUID of the node with that of read-replica cluster
+                isReadReplica := false
+                if readReplicaUuid == placementUuid {
+                        isReadReplica = true
+                }
                 for hostport, nodeData := range obj {
                         host, _, err := net.SplitHostPort(hostport)
                         // If we can split hostport, just use host as name.
@@ -764,6 +816,7 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                                 IsNodeUp:        nodeData.Status == "ALIVE",
                                 IsMaster:        true,
                                 IsTserver:       true,
+                                IsReadReplica:   isReadReplica,
                                 IsMasterUp:      isMasterUp,
                                 IsBootstrapping: isBootstrapping,
                                 Metrics: models.NodeDataMetrics{

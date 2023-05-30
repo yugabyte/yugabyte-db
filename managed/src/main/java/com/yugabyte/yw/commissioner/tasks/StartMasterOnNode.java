@@ -123,7 +123,7 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       // the node state moves to Starting.
       // and this node is already a master.
       // TODO Fix the above issue when there is a better state management of processes.
-      createStartMasterOnNodeTasks(universe, currentNode, null);
+      createStartMasterOnNodeTasks(universe, currentNode, null, false);
 
       // Update node state to running.
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
