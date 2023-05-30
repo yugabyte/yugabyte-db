@@ -138,4 +138,13 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
               + "\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]",
           ConfDataType.KeyValuesSetMultimapType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> enforceSecureUniversePassword =
+      new ConfKeyInfo<>(
+          "yb.security.enforce_secure_universe_passwords",
+          ScopeType.CUSTOMER,
+          "Enforce Secure Universe Passwords",
+          "Prevents universe creation when the Ysql/Ycql password isn't secure.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
