@@ -487,6 +487,21 @@ CREATE TABLE tbl19(
   primary key(a asc, b desc nulls last)
 ) SPLIT AT VALUES((100), (200, 5), (200, 5));
 
+CREATE TABLE tbl20 (
+	a			int4,
+	primary key (a hash)
+);
+
+CREATE INDEX ind20 on tbl20(a) SPLIT AT VALUES ((100));
+
+CREATE TABLE tbl21 (
+	a			int4,
+	b			int4,
+	primary key (a hash)
+);
+
+CREATE INDEX ind21 on tbl21(b) SPLIT AT VALUES ((100));
+
 -- Test ordering on splitted tables
 CREATE TABLE ordered_asc(
     k INT,
