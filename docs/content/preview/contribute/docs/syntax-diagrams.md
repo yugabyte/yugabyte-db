@@ -289,13 +289,13 @@ You must include this boilerplate text in `wants-to-include.md` at the location 
 ```html
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -303,10 +303,10 @@ You must include this boilerplate text in `wants-to-include.md` at the location 
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.grammar.md" */%}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.diagram.md" */%}}
   </div>
 </div>
