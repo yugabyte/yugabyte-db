@@ -34,9 +34,10 @@
 
 #include <algorithm>
 #include <limits>
-#include <list>
-#include <memory>
-#include <mutex>
+#include <sstream>
+#include <utility>
+
+#include <boost/range/algorithm_ext/erase.hpp>
 
 #ifdef YB_TCMALLOC_ENABLED
 #if defined(YB_GOOGLE_TCMALLOC)
@@ -437,7 +438,7 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
                                                MayExist may_exist,
                                                AddToParent add_to_parent,
                                                CreateMetrics create_metrics) {
-  std::lock_guard<std::mutex> lock(child_trackers_mutex_);
+  std::lock_guard lock(child_trackers_mutex_);
   if (may_exist) {
     auto result = FindChildUnlocked(id);
     if (result) {
@@ -513,7 +514,7 @@ void MemTracker::UnregisterFromParent() {
 }
 
 void MemTracker::UnregisterChild(const std::string& id) {
-  std::lock_guard<std::mutex> lock(child_trackers_mutex_);
+  std::lock_guard lock(child_trackers_mutex_);
   VLOG(1) << "Unregistering child tracker " << id << " from " << id_;
   child_trackers_.erase(id);
 }
@@ -538,7 +539,7 @@ MemTrackerPtr MemTracker::FindTracker(const std::string& id,
 }
 
 MemTrackerPtr MemTracker::FindChild(const std::string& id) {
-  std::lock_guard<std::mutex> lock(child_trackers_mutex_);
+  std::lock_guard lock(child_trackers_mutex_);
   return FindChildUnlocked(id);
 }
 
@@ -574,7 +575,7 @@ void MemTracker::ListDescendantTrackers(
     std::vector<MemTrackerPtr>* out, OnlyChildren only_children) {
   size_t begin = out->size();
   {
-    std::lock_guard<std::mutex> lock(child_trackers_mutex_);
+    std::lock_guard lock(child_trackers_mutex_);
     for (auto it = child_trackers_.begin(); it != child_trackers_.end();) {
       auto child = it->second.lock();
       if (child) {
@@ -819,23 +820,20 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
     }
 
     // Create vector of alive garbage collectors. Also remove stale garbage collectors.
-    std::vector<std::shared_ptr<GarbageCollector>> collectors;
+    GarbageCollectorsContainer<std::shared_ptr<GarbageCollector>> collectors;
     {
-      std::lock_guard<simple_spinlock> l(gc_mutex_);
+      std::lock_guard l(gc_mutex_);
       collectors.reserve(gcs_.size());
-      auto w = gcs_.begin();
-      for (auto i = gcs_.begin(); i != gcs_.end(); ++i) {
-        auto gc = i->lock();
-        if (!gc) {
-          continue;
-        }
-        collectors.push_back(gc);
-        if (w != i) {
-          *w = *i;
-        }
-        ++w;
-      }
-      gcs_.erase(w, gcs_.end());
+      boost::remove_erase_if(
+          gcs_,
+          [&collectors](const std::weak_ptr<GarbageCollector>& gc_weak) {
+              auto gc = gc_weak.lock();
+              if (!gc) {
+                return true;
+              }
+              collectors.push_back(std::move(gc));
+              return false;
+          });
     }
 
     // Try to free up some memory
@@ -852,16 +850,16 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
   if (current_consumption > max_consumption) {
     std::vector<MemTrackerPtr> children;
     {
-      std::lock_guard<std::mutex> lock(child_trackers_mutex_);
-      for (auto it = child_trackers_.begin(); it != child_trackers_.end();) {
-        auto child = it->second.lock();
-        if (child) {
-          children.push_back(std::move(child));
-          ++it;
-        } else {
-          it = child_trackers_.erase(it);
+      std::lock_guard lock(child_trackers_mutex_);
+      children.reserve(child_trackers_.size());
+      std::erase_if(child_trackers_, [&children](const auto& item) {
+        auto child = item.second.lock();
+        if (!child) {
+          return true;
         }
-      }
+        children.push_back(std::move(child));
+        return false;
+      });
     }
 
     for (const auto& child : children) {
@@ -921,7 +919,7 @@ string MemTracker::LogUsage(const string& prefix, int64_t usage_threshold, int i
   stringstream prefix_ss;
   prefix_ss << prefix << "  ";
   string new_prefix = prefix_ss.str();
-  std::lock_guard<std::mutex> lock(child_trackers_mutex_);
+  std::lock_guard lock(child_trackers_mutex_);
   for (const auto& p : child_trackers_) {
     auto child = p.second.lock();
     if (child && child->consumption() >= usage_threshold) {
