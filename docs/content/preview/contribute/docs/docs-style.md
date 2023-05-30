@@ -72,7 +72,7 @@ Markdown supports [tables](https://www.markdownguide.org/extended-syntax/#tables
 |
 - 1
 - 2
-- 3|
+- 3 |
 ```output
  k | v
 ---+---
