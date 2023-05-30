@@ -17,6 +17,8 @@ Data residency laws require data about a nation's citizens or residents to be co
 
 Let's look at a few natural design patterns with YugabyteDB that you can choose from to help you comply with data residency laws with ease.
 
+## Latency-optimized geo-partitioning
+
 ## Geo local tables
 
 By default, all tables are distributed across all fault zones defined for the cluster. There may be scenarios where you just want some tables to be located in specific regions/zones, have a different replication factor, or have different leader preferences.

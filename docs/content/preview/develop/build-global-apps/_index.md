@@ -51,6 +51,13 @@ Running applications in multiple data centers with data split across them is not
 
 Let's look at a few classes of design patterns that you can adopt with YugabyteDB.
 
+|                | Follow the Application | Geo-Local Data |
+| -------------- | ---------------------- | -------------- |
+| **Single Active**  | [Global database](./design-patterns-ha#stretch-cluster)       |      N/A
+| **Multi Active**   | [Duplicate indexes](./global-performance#identity-indexes)      | Active-active multi master |
+| **Partitioned Multi Active** | Latency-optimized geo-partitioning | Locality-optimized geo-partitioning |
+
+
 ### Fault Tolerance and High Availability
 
 To provide uninterrupted service to your users, it's crucial to ensure that your applications can handle machine failures, network outages, and power failures. Global applications must be deployed in multiple locations with standby locations that can take over when the primary location fails. You can deploy YugabyteDB in the following configurations to ensure your applications are highly available.
@@ -119,7 +126,7 @@ For more details, see  [Pinning partitions](./design-patterns-compliance#geo-par
 | [Read Replicas](./design-patterns-ha#read-replica) | Separate follower cluster for reducing read latency |
 | [Geo Local Tables](./design-patterns-compliance#pinning-tables-to-local-geographies) | Place tables in different geographies |
 | [Geo Partition Tables](./design-patterns-compliance#pinning-partitions-to-local-geographies) | Split your table and place specific rows in a different geography |
-| [Identity Index](./global-performance#identity-indexes) | Consistent local reads in multiple regions |
+| [Duplicate Index](./global-performance#identity-indexes) | Consistent local reads in multiple regions |
 | [Cluster-aware load balancing](./global-apps-smart-driver#cluster-aware-load-balancing) | Load balance your cluster with no cost |
 | [Cluster-aware failover](./global-apps-smart-driver#cluster-aware-failover) | Failover to a different region automatically |
 
