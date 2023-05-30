@@ -384,4 +384,9 @@ macro(yb_find_third_party_dependencies)
   find_package(Cassandra REQUIRED)
   include_directories(SYSTEM ${LIBCASSANDRA_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(cassandra SHARED_LIB "${LIBCASSANDRA_SHARED_LIB}")
+
+  ## Hdr Histogram
+  find_package(HdrHistogram REQUIRED)
+  include_directories(SYSTEM ${LIBHDR__HISTOGRAM_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(hdr_histogram STATIC_LIB "${LIBHDR_HISTOGRAM_STATIC_LIB}")
 endmacro()
