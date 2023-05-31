@@ -343,7 +343,7 @@ For servers with three or four CPU cores, the default value is considered as `4`
 \
 Beyond four cores, the default value is considered as `8`.
 \
-If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`, then the default value is *considered* as `1` and tables will begin with 1 tablet *per node*; for versions `2.18`and later, for servers with up to 4 CPU cores, the value *is not defined* and tables will begin with 1 tablet (for servers with up to 2 CPU cores), or 2 tablets (for servers with up to 4 CPU cores) *per cluster*.
+If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`, then the default value is *considered* as `1` and tables will begin with 1 tablet *per node*; for versions `2.18` and later, for servers with up to 4 CPU cores, the value *is not defined* and tables will begin with 1 tablet (for servers with up to 2 CPU cores), or 2 tablets (for servers with up to 4 CPU cores) *per cluster*.
 
 Local cluster installations created with `yb-ctl` and `yb-docker-ctl` use a default value of `2`.
 \
