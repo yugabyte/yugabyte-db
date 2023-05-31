@@ -344,6 +344,28 @@ $(document).ready(() => {
   })();
 
   rightnavAppend();
+
+  /**
+   * Change all page tabs when single tab is changed.
+   */
+  (() => {
+    $('.td-content .nav-tabs-yb .nav-link').each((index, element) => {
+      const tabId = element.id;
+      if (tabId) {
+        $(element).addClass(tabId);
+      }
+    });
+
+    $(document).on('click', '.td-content .nav-tabs-yb .nav-link', (event) => {
+      if (event.target && event.originalEvent && event.originalEvent.isTrusted) {
+        const tabId = event.target.getAttribute('id');
+        if (tabId) {
+          $('.td-content .nav-tabs-yb .nav-link.' + tabId).trigger('click');
+        }
+      }
+    });
+  })();
+
   (() => {
     const header = document.querySelector('.scrolltop-btn');
     const scrollChange = 50;
