@@ -40,23 +40,32 @@ METRIC_DECLARE_counter(pg_response_cache_hits);
 METRIC_DECLARE_counter(pg_response_cache_renew_soft);
 METRIC_DECLARE_counter(pg_response_cache_renew_hard);
 DECLARE_bool(ysql_enable_read_request_caching);
+DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
 DECLARE_uint32(pg_cache_response_renew_soft_lifetime_limit_ms);
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
 namespace {
 
 Status EnableCatCacheEventLogging(PGConn* conn) {
   return conn->Execute("SET yb_debug_log_catcache_events = ON");
 }
 
-template<bool CacheEnabled>
-class ConfigurablePgCatalogPerfTest : public PgMiniTestBase {
+struct Configuration {
+  bool enable_read_request_caching;
+  bool minimal_catalog_caches_preload;
+};
+
+class PgCatalogPerfTestBase : public PgMiniTestBase {
+ public:
+  virtual ~PgCatalogPerfTestBase() = default;
+
  protected:
   void SetUp() override {
-    FLAGS_ysql_enable_read_request_caching = CacheEnabled;
+    auto config = GetConfig();
+    FLAGS_ysql_enable_read_request_caching = config.enable_read_request_caching;
+    FLAGS_ysql_minimal_catalog_caches_preload = config.minimal_catalog_caches_preload;
     PgMiniTestBase::SetUp();
     metrics_.emplace(
         *cluster_->mini_master()->master(), *cluster_->mini_tablet_server(0)->server());
@@ -127,6 +136,8 @@ class ConfigurablePgCatalogPerfTest : public PgMiniTestBase {
   }
 
  private:
+  virtual Configuration GetConfig() const = 0;
+
   class MetricDeltasCapturer {
    public:
     using Capturer = std::function<void(size_t)>;
@@ -171,8 +182,55 @@ class ConfigurablePgCatalogPerfTest : public PgMiniTestBase {
   std::optional<Metrics> metrics_;
 };
 
-using PgCatalogPerfTest = ConfigurablePgCatalogPerfTest<false>;
-using PgCatalogWithCachePerfTest = ConfigurablePgCatalogPerfTest<true>;
+class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
+ protected:
+  // Test checks number of RPC to a master caused by the first INSERT stmt into a table with primary
+  // key after cache refresh.
+  void TestAfterCacheRefreshRPCCountOnInsert(size_t expected_master_rpc_count) {
+    auto aux_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+    auto master_rpc_count_for_insert = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+      return conn->Execute("INSERT INTO t VALUES(0)");
+    }));
+    ASSERT_EQ(master_rpc_count_for_insert, expected_master_rpc_count);
+  }
+
+  // Test checks number of RPC to a master caused by the first SELECT stmt from a table with primary
+  // key after cache refresh.
+  void TestAfterCacheRefreshRPCCountOnSelect(size_t expected_master_rpc_count) {
+    auto aux_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+    auto master_rpc_count_for_select = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+      VERIFY_RESULT(conn->Fetch("SELECT * FROM t"));
+      return static_cast<Status>(Status::OK());
+    }));
+    ASSERT_EQ(master_rpc_count_for_select, expected_master_rpc_count);
+  }
+};
+
+constexpr Configuration kConfigDefault{
+    .enable_read_request_caching = false,
+    .minimal_catalog_caches_preload = false};
+
+constexpr Configuration kConfigWithCache{
+    .enable_read_request_caching = true,
+    .minimal_catalog_caches_preload = false};
+
+constexpr Configuration kConfigMinPreload{
+    .enable_read_request_caching = false,
+    .minimal_catalog_caches_preload = true};
+
+template<class Base, const Configuration& Config>
+class ConfigurableTest : public Base {
+ private:
+  Configuration GetConfig() const override {
+    return Config;
+  }
+};
+
+using PgCatalogPerfTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigDefault>;
+using PgCatalogMinPreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigMinPreload>;
+using PgCatalogWithCachePerfTest = ConfigurableTest<PgCatalogPerfTestBase, kConfigWithCache>;
 
 class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithCachePerfTest {
  protected:
@@ -236,27 +294,24 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithPartit
   ASSERT_EQ(cache_refresh_rpc_count, 6);
 }
 
-// Test checks number of RPC to a master caused by the first INSERT stmt into a table with primary
-// key after cache refresh.
 TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnInsert)) {
-  auto aux_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
-  auto master_rpc_count_for_insert = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
-    return conn->Execute("INSERT INTO t VALUES(0)");
-  }));
-  ASSERT_EQ(master_rpc_count_for_insert, 1);
+  TestAfterCacheRefreshRPCCountOnInsert(/*expected_master_rpc_count=*/ 1);
 }
 
-// Test checks number of RPC to a master caused by the first SELECT stmt from a table with primary
-// key after cache refresh.
+TEST_F_EX(PgCatalogPerfTest,
+          YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnInsertMinPreload),
+          PgCatalogMinPreloadTest) {
+  TestAfterCacheRefreshRPCCountOnInsert(/*expected_master_rpc_count=*/ 6);
+}
+
 TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnSelect)) {
-  auto aux_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
-  auto master_rpc_count_for_select = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
-    VERIFY_RESULT(conn->Fetch("SELECT * FROM t"));
-    return static_cast<Status>(Status::OK());
-  }));
-  ASSERT_EQ(master_rpc_count_for_select, 3);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 3);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnSelectMinPreload),
+          PgCatalogMinPreloadTest) {
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 11);
 }
 
 // The test checks number of hits in response cache in case of multiple connections and aggressive
@@ -355,5 +410,4 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(second_connection_metrics.cache_queries, 6);
 }
 
-} // namespace pgwrapper
-} // namespace yb
+} // namespace yb::pgwrapper
