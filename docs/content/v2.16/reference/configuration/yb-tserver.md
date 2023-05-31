@@ -367,6 +367,18 @@ Interval at which the tablet manager tries to cleanup split tablets that are no 
 
 Default: `60`
 
+##### --enable_automatic_tablet_splitting
+
+Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
+
+Default: `true`
+
+{{< note title="Important" >}}
+
+This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< /note >}}
+
 ##### --post_split_trigger_compaction_pool_max_threads
 
 Deprecated. Use [`full_compaction_pool_max_threads`](#full-compaction-pool-max-threads).
