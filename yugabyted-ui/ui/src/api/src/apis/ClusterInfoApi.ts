@@ -37,6 +37,7 @@ export interface GetClusterMetricForQuery {
   region?: string;
   start_time?: number;
   end_time?: number;
+  cluster_type?: string;
 }
 export interface GetClusterTablesForQuery {
   api?: GetClusterTablesApiEnum;
@@ -139,6 +140,7 @@ export const getClusterMetricAxiosRequest = (
         region: requestParameters['region'],
         start_time: requestParameters['start_time'],
         end_time: requestParameters['end_time'],
+        cluster_type: requestParameters['cluster_type'],
       }
     },
     customAxiosInstance

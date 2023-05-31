@@ -6,7 +6,7 @@ import clsx from 'clsx';
 import { ArrayParam, StringParam, useQueryParams, withDefault } from 'use-query-params';
 
 // Local imports
-import { countryToFlag, getRegionCode, RelativeInterval } from '@app/helpers';
+import { ClusterType, countryToFlag, getRegionCode, RelativeInterval } from '@app/helpers';
 import { ItemTypes } from '@app/helpers/dnd/types';
 import { YBButton, YBSelect, YBDragableAndDropable, YBDragableAndDropableItem } from '@app/components';
 import {
@@ -91,9 +91,6 @@ export const Metrics: FC = () => {
   const displayedCharts = savedCharts?.filter((chart) => chartConfig[chart] !== undefined);
   const [refresh, doRefresh] = useState(0);
 
-  const [tab, setTab] = React.useState<'primary' | 'readreplica'>('primary');
-  const [region, setRegion] = React.useState<string>('');
-
   // Check if feature flag enabled
   // const { data: runtimeConfig, isLoading: runtimeConfigLoading } = useRuntimeConfig();
   // const { data: runtimeConfigAccount, isLoading: runtimeConfigAccountLoading } =
@@ -115,20 +112,22 @@ export const Metrics: FC = () => {
     nodeName: withDefault(StringParam, ALL_NODES.value),
     interval: withDefault(StringParam, RelativeInterval.LastHour),
     region: withDefault(StringParam, ALL_REGIONS.value),
+    clusterType: withDefault(StringParam, 'PRIMARY')
   });
+
+  const [tab, setTab] = React.useState<ClusterType>(queryParams.clusterType as ClusterType);
+  const [region, setRegion] = React.useState<string>(queryParams.region || '');
 
   // const [ setIsMetricsOptionsModalOpen] = useState<boolean>(false);
   const [nodeName, setNodeName] = useState<string | undefined>(queryParams.nodeName);
   const [relativeInterval, setRelativeInterval] = useState<string>(queryParams.interval);
 
-  const [selectedRegion, setSelectedRegion] = useState<string | undefined>(queryParams.region);
-
   const { data: nodesResponse, isLoading: isClusterNodesLoading } = useGetClusterNodesQuery();
 
   const nodesNamesList = useMemo(() => [
     ALL_NODES,
-    ...(nodesResponse?.data.filter(node => (tab === "primary" && !node.is_read_replica) || 
-      (tab === "readreplica" && node.is_read_replica))
+    ...(nodesResponse?.data.filter(node => (tab === "PRIMARY" && !node.is_read_replica) || 
+      (tab === "READ_REPLICA" && node.is_read_replica))
       .map((node) => ({ label: node.name, value: node.name })) ?? [])
   ], [tab]);
 
@@ -137,6 +136,13 @@ export const Metrics: FC = () => {
     setNodeName(ALL_NODES.value);
     setRelativeInterval(RelativeInterval.LastHour);
     setRegion(ALL_REGIONS.value);
+    setQueryParams({
+      interval: RelativeInterval.LastHour,
+      nodeName: ALL_NODES.value,
+      showGraph: savedCharts,
+      region: ALL_REGIONS.value,
+      clusterType: newTab
+    });
   }
 
   const handleSetDndOrderedCharts = (newDisplayedChart: string[]) => {
@@ -158,6 +164,7 @@ export const Metrics: FC = () => {
       nodeName: newNodeName,
       showGraph: newChartList,
       region: newRegion,
+      clusterType: tab
     });
   };
 
@@ -183,8 +190,8 @@ export const Metrics: FC = () => {
   
   const regionData = useMemo(() => {
     const set = new Set<string>();
-    nodesResponse?.data.filter(node => (tab === "primary" && !node.is_read_replica) || 
-      (tab === "readreplica" && node.is_read_replica))
+    nodesResponse?.data.filter(node => (tab === "PRIMARY" && !node.is_read_replica) || 
+      (tab === "READ_REPLICA" && node.is_read_replica))
       .forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
     return Array.from(set).map(regionZone => {
       const [region, zone] = regionZone.split('#');
@@ -200,10 +207,6 @@ export const Metrics: FC = () => {
     return <LinearProgress />;
   }
 
-  // const onRegionChange = (region: string) => {
-  //   setSelectedRegion(region);
-  // };
-
   return (
     <>
       {/*<MetricsOptionsModal
@@ -217,9 +220,9 @@ export const Metrics: FC = () => {
     <Box className={classes.tablesRow}>
         <YBButton
           className={
-              clsx(classes.clusterButton, tab === 'primary' && classes.selected)
+              clsx(classes.clusterButton, tab === 'PRIMARY' && classes.selected)
           }
-          onClick={() => handleTabChange('primary')}
+          onClick={() => handleTabChange('PRIMARY')}
         >
           <Typography variant="body2" className={classes.buttonText}>
             {t('clusterDetail.performance.metrics.primaryCluster')}
@@ -227,9 +230,9 @@ export const Metrics: FC = () => {
         </YBButton>
         <YBButton
           className={
-              clsx(classes.clusterButton, tab === 'readreplica' && classes.selected)
+              clsx(classes.clusterButton, tab === 'READ_REPLICA' && classes.selected)
           }
-          onClick={() => handleTabChange('readreplica')}
+          onClick={() => handleTabChange('READ_REPLICA')}
         >
           <Typography variant="body2" className={classes.buttonText}>
           {t('clusterDetail.performance.metrics.readReplicas')}
@@ -251,9 +254,9 @@ export const Metrics: FC = () => {
             />*/}
                 <YBSelect
                   className={classes.selectBox}
-                  value={selectedRegion}
+                  value={region}
                   onChange={(e) => {
-                    setSelectedRegion((e.target as HTMLInputElement).value);
+                    setRegion((e.target as HTMLInputElement).value);
                   }}
                 >
                   {regionsNamesList?.map((el) => {
@@ -283,7 +286,7 @@ export const Metrics: FC = () => {
               </MenuItem>
               {/* <Divider className={classes.dropdownDivider} /> */}
               {regionData.map(data => (
-                <MenuItem key={data.region + '#' + data.zone} value={data.region + '#' + data.zone}>
+                <MenuItem key={data.region + '#' + data.zone} value={data.region}>
                   {data.flag && <Box mr={1}>{data.flag}</Box>} {data.region} ({data.zone})
                 </MenuItem>
               ))}
@@ -381,7 +384,8 @@ export const Metrics: FC = () => {
                     chartDrawingType={config.chartDrawingType}
                     relativeInterval={relativeInterval as RelativeInterval}
                     refreshFromParent={refresh}
-                    regionName={selectedRegion}
+                    regionName={region}
+                    clusterType={tab}
                   />
                 </YBDragableAndDropableItem>
               );

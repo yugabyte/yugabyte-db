@@ -75,6 +75,8 @@ export enum RelativeInterval {
   Last7days = 'last7days'
 }
 
+export type ClusterType = 'PRIMARY' | 'READ_REPLICA';
+
 // convert relative interval like "last 6 hours" to exact pair of start/end date objects
 export const getInterval = (relativeInterval: RelativeInterval): Interval => {
   let start: Date;

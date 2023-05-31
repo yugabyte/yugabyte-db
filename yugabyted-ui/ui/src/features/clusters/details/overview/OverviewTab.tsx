@@ -1,4 +1,4 @@
-import React, { FC, useMemo, useState } from 'react';
+import React, { FC, useMemo } from 'react';
 import { Box, Divider, Grid, makeStyles, MenuItem, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { useHistory, useLocation } from 'react-router-dom';
@@ -9,7 +9,7 @@ import { YBSelect } from '@app/components';
 import { ClusterInfo } from './ClusterInfo';
 import { ClusterInfoWidget } from './ClusterInfoWidget';
 import { ClusterStatusWidget } from './ClusterStatusWidget';
-import { countryToFlag, getRegionCode, RelativeInterval } from '@app/helpers';
+import { ClusterType, countryToFlag, getRegionCode, RelativeInterval } from '@app/helpers';
 import { useChartConfig } from '@app/features/clusters/details/overview/ChartConfig';
 import { ChartController } from '@app/features/clusters/details/overview/ChartControler';
 import { useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterQuery } from '@app/api/src';
@@ -50,7 +50,6 @@ export const OverviewTab: FC = () => {
   const history = useHistory();
   const location = useLocation();
   const chartConfig = useChartConfig();
-  const [selectedRegion] = useState<string>();
   const searchParams = new URLSearchParams(location.search);
 
   // validate interval search param to have the right value
@@ -97,11 +96,12 @@ export const OverviewTab: FC = () => {
   const [region, setRegion] = React.useState<string>('');
   React.useEffect(() => {
     setRegion(
-      (regionData.primary.length > 0 && regionData.primary[0].region + '#' + regionData.primary[0].zone) || 
-      (regionData.readReplica.length > 0 && regionData.readReplica[0].region + '#' + regionData.readReplica[0].zone) ||
+      (regionData.primary.length > 0 && regionData.primary[0].region + '#PRIMARY') || 
+      (regionData.readReplica.length > 0 && regionData.readReplica[0].region + '#READ_REPLICA') ||
       ''
     )
-  }, [regionData])
+  }, [regionData]);
+  const [selectedRegion, clusterType] = region ? region.split('#') : [undefined, undefined];
 
   const isMultiRegionEnabled = true;
 
@@ -131,7 +131,7 @@ export const OverviewTab: FC = () => {
               <Typography variant="body2" className={classes.dropdownTitle}>{t('clusterDetail.primaryCluster')}</Typography>
             }
             {regionData.primary.map(data => (
-              <MenuItem key={data.region + '#' + data.zone} value={data.region + '#' + data.zone}>
+              <MenuItem key={data.region + '#PRIMARY'} value={data.region + '#PRIMARY'}>
                 {data.flag && <Box mr={1}>{data.flag}</Box>} {data.region} ({data.zone})
               </MenuItem>
             ))}
@@ -142,7 +142,7 @@ export const OverviewTab: FC = () => {
                 <Typography variant="body2" className={classes.dropdownTitle}>{t('clusterDetail.readReplicas')}</Typography>
             }
             {regionData.readReplica.map(data => (
-              <MenuItem key={data.region + '#' + data.zone} value={data.region + '#' + data.zone}>
+              <MenuItem key={data.region + '#READ_REPLICA'} value={data.region + '#READ_REPLICA'}>
                 {data.flag && <Box mr={1}>{data.flag}</Box>} {data.region} ({data.zone})
               </MenuItem>
             ))}
@@ -185,6 +185,7 @@ export const OverviewTab: FC = () => {
                   chartDrawingType={config.chartDrawingType}
                   relativeInterval={interval}
                   regionName={selectedRegion}
+                  clusterType={clusterType as (ClusterType | undefined)}
                 />
               </Grid>
             )
