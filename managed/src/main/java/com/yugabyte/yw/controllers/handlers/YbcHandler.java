@@ -33,7 +33,7 @@ public class YbcHandler {
 
   public UUID disable(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     if (!universeDetails.isEnableYbc() || !universeDetails.isYbcInstalled()) {
@@ -70,7 +70,7 @@ public class YbcHandler {
 
   public UUID upgrade(UUID customerUUID, UUID universeUUID, String ybcVersion) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
     if (!universeDetails.isYbcInstalled() || !universeDetails.isEnableYbc()) {
@@ -119,7 +119,7 @@ public class YbcHandler {
 
   public UUID install(UUID customerUUID, UUID universeUUID, String ybcVersion) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     if (universe.nodesInTransit()) {
       throw new PlatformServiceException(

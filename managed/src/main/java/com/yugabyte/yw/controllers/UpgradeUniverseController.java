@@ -309,7 +309,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
           paramType = "body"))
   public Result upgradeVMImage(UUID customerUuid, UUID universeUuid, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUuid);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
+    Universe universe = Universe.getOrBadRequest(universeUuid, customer);
 
     // TODO yb.cloud.enabled is redundant here because many tests set it during runtime,
     // to enable this method in cloud. Clean it up later when the tests are fixed.
@@ -394,7 +394,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
       UUID customerUuid,
       UUID universeUuid) {
     Customer customer = Customer.getOrBadRequest(customerUuid);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
+    Universe universe = Universe.getOrBadRequest(universeUuid, customer);
     T requestParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(request, type, universe);
 

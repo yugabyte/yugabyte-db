@@ -105,7 +105,7 @@ public class UniverseClustersController extends AuthenticatedController {
           required = true))
   public Result updatePrimaryCluster(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
         bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
 
@@ -139,7 +139,7 @@ public class UniverseClustersController extends AuthenticatedController {
           required = true))
   public Result createReadOnlyCluster(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
         bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
@@ -170,7 +170,7 @@ public class UniverseClustersController extends AuthenticatedController {
       Boolean isForceDelete,
       Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     UUID taskUUID =
         universeCRUDHandler.clusterDelete(customer, universe, clusterUUID, isForceDelete);
@@ -207,7 +207,7 @@ public class UniverseClustersController extends AuthenticatedController {
           required = true))
   public Result updateReadOnlyCluster(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
         bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
 

@@ -164,7 +164,7 @@ public class TablesController extends AuthenticatedController {
   public Result create(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID and universe UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     Form<TableDefinitionTaskParams> formData =
         formFactory.getFormDataOrBadRequest(request, TableDefinitionTaskParams.class);
     TableDefinitionTaskParams taskParams = formData.get();
@@ -217,7 +217,7 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
@@ -366,7 +366,7 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     String universeVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
@@ -540,9 +540,9 @@ public class TablesController extends AuthenticatedController {
   public Result listNamespaces(
       UUID customerUUID, UUID universeUUID, boolean includeSystemNamespaces) {
     // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
@@ -598,9 +598,9 @@ public class TablesController extends AuthenticatedController {
       response = TableDefinitionTaskParams.class)
   public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     YBClient client = null;
     String masterAddresses = universe.getMasterAddresses(true);
 
@@ -648,7 +648,7 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     Form<MultiTableBackup.Params> formData =
         formFactory.getFormDataOrBadRequest(request, MultiTableBackup.Params.class);
@@ -733,7 +733,7 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     Form<BackupTableParams> formData =
         formFactory.getFormDataOrBadRequest(request, BackupTableParams.class);
@@ -835,7 +835,7 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     validateTables(Collections.singletonList(tableUUID), universe);
 
     // TODO: undo hardcode to AWS (required right now due to using EMR).
@@ -1028,8 +1028,8 @@ public class TablesController extends AuthenticatedController {
       response = TableSpaceInfo.class,
       responseContainer = "List")
   public Result listTableSpaces(UUID customerUUID, UUID universeUUID) {
-    Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
@@ -1104,7 +1104,7 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID.
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     // Extract tablespaces list.
     CreateTablespaceParams tablespacesInfo =

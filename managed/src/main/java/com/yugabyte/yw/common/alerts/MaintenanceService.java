@@ -120,6 +120,14 @@ public class MaintenanceService {
     return window;
   }
 
+  public MaintenanceWindow getOrBadRequest(UUID customerUUID, UUID uuid) {
+    MaintenanceWindow maintenanceWindow = getOrBadRequest(uuid);
+    if (!maintenanceWindow.getCustomerUUID().equals(customerUUID)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Maintenance Window UUID: " + uuid);
+    }
+    return maintenanceWindow;
+  }
+
   public List<MaintenanceWindow> list(MaintenanceWindowFilter filter) {
     return createQueryByFilter(filter).orderBy().desc("createTime").findList();
   }

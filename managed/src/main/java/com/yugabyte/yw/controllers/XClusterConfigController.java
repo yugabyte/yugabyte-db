@@ -124,10 +124,8 @@ public class XClusterConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfigCreateFormData createFormData = parseCreateFormData(customerUUID, request);
-    Universe sourceUniverse =
-        Universe.getValidUniverseOrBadRequest(createFormData.sourceUniverseUUID, customer);
-    Universe targetUniverse =
-        Universe.getValidUniverseOrBadRequest(createFormData.targetUniverseUUID, customer);
+    Universe sourceUniverse = Universe.getOrBadRequest(createFormData.sourceUniverseUUID, customer);
+    Universe targetUniverse = Universe.getOrBadRequest(createFormData.targetUniverseUUID, customer);
     checkConfigDoesNotAlreadyExist(
         createFormData.name, createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
     verifyTablesNotInReplication(
@@ -346,7 +344,8 @@ public class XClusterConfigController extends AuthenticatedController {
       String startTime = Long.toString(Instant.now().minus(Duration.ofMinutes(1)).getEpochSecond());
       metricParams.put("start", startTime);
       ObjectNode filterJson = Json.newObject();
-      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+      Universe sourceUniverse =
+          Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
       String nodePrefix = sourceUniverse.getUniverseDetails().nodePrefix;
       filterJson.put("node_prefix", nodePrefix);
       String streamIdFilter = String.join("|", streamIds);
@@ -442,9 +441,9 @@ public class XClusterConfigController extends AuthenticatedController {
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
     verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
     Universe sourceUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
     Map<String, List<String>> mainTableToAddIndexTablesMap = null;
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList = null;
@@ -637,9 +636,9 @@ public class XClusterConfigController extends AuthenticatedController {
         parseRestartFormData(customerUUID, xClusterConfig, request);
     verifyTaskAllowed(xClusterConfig, TaskType.RestartXClusterConfig);
     Universe sourceUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
     Set<String> tableIds = restartFormData.tables;
     // Add index tables.
@@ -734,12 +733,10 @@ public class XClusterConfigController extends AuthenticatedController {
     Universe sourceUniverse = null;
     Universe targetUniverse = null;
     if (xClusterConfig.getSourceUniverseUUID() != null) {
-      sourceUniverse =
-          Universe.getValidUniverseOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+      sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     }
     if (xClusterConfig.getTargetUniverseUUID() != null) {
-      targetUniverse =
-          Universe.getValidUniverseOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+      targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
     }
 
     // Submit task to delete xCluster config
@@ -790,7 +787,7 @@ public class XClusterConfigController extends AuthenticatedController {
     Universe targetUniverse;
     if (targetUniverseUUID != null) {
       log.info("Received sync XClusterConfig request for universe({})", targetUniverseUUID);
-      targetUniverse = Universe.getValidUniverseOrBadRequest(targetUniverseUUID, customer);
+      targetUniverse = Universe.getOrBadRequest(targetUniverseUUID, customer);
       params = new XClusterConfigTaskParams(targetUniverseUUID);
     } else {
       JsonNode requestBody = request.body().asJson();
@@ -800,7 +797,7 @@ public class XClusterConfigController extends AuthenticatedController {
           "Received sync XClusterConfig request for universe({}) replicationGroupName({})",
           formData.targetUniverseUUID,
           formData.replicationGroupName);
-      targetUniverse = Universe.getValidUniverseOrBadRequest(formData.targetUniverseUUID, customer);
+      targetUniverse = Universe.getOrBadRequest(formData.targetUniverseUUID, customer);
       params = new XClusterConfigTaskParams(formData);
     }
 
@@ -856,7 +853,7 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfigNeedBootstrapFormData needBootstrapFormData =
         formFactory.getFormDataOrBadRequest(
             request.body().asJson(), XClusterConfigNeedBootstrapFormData.class);
-    Universe.getValidUniverseOrBadRequest(sourceUniverseUuid, customer);
+    Universe.getOrBadRequest(sourceUniverseUuid, customer);
     needBootstrapFormData.tables =
         XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(needBootstrapFormData.tables);
 

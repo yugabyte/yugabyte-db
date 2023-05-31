@@ -32,7 +32,7 @@ public class AuditController extends AuthenticatedController {
       nickname = "ListOfAudit")
   public Result list(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
-    Users user = Users.getOrBadRequest(userUUID);
+    Users user = Users.getOrBadRequest(customerUUID, userUUID);
     List<Audit> auditList = auditService().getAllUserEntries(user.getUuid());
     return PlatformResults.withData(auditList);
   }
