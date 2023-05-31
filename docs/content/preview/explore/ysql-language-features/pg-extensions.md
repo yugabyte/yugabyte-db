@@ -50,7 +50,7 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 
 | Extension | Status | Description | Examples |
 | :-------- | :----- | :---------- | :------- |
-| [HypoPG](https://github.com/HypoPG/hypopg) | Pre-bundled | Create hypothetical indexes to test whether an index can increase performance for problematic queries, without consuming any actual resources. | [Example](#hypopg-example) |
+| [HypoPG](https://github.com/HypoPG/hypopg) | Pre-bundled | Create hypothetical indexes to test whether an index can increase performance for problematic queries without consuming any actual resources. | [Example](#hypopg-example) |
 | [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments. | [Example](../../query-1-performance/pg-hint-plan/#root) |
 | [PGAudit](https://www.pgaudit.org/) | Pre-bundled | The PostgreSQL Audit Extension (pgAudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. | [Install and example](../../../secure/audit-logging/audit-logging-ysql/) |
 | [pg_stat_monitor](https://github.com/percona/pg_stat_monitor) | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module. | |
@@ -207,7 +207,7 @@ CREATE TABLE up_and_down (up int primary key, down int);
 INSERT INTO up_and_down SELECT a AS up, 10001-a AS down FROM generate_series(1,10000) a;
 ```
 
-The `up_and_down` table has no indexes, but because it's defined with a primary key, it is ordered by, and the records can be directly retrieved using, the primary key:
+The `up_and_down` table has no indexes, but is defined with a primary key. As a result, when using the primary key, records are retrieved directly:
 
 ```sql
 EXPLAIN SELECT * FROM up_and_down WHERE up = 999;
@@ -220,7 +220,7 @@ EXPLAIN SELECT * FROM up_and_down WHERE up = 999;
    Index Cond: (up = 999)
 ```
 
-To fetch a value from the `down` column results in a sequential scan, because it does not have an index:
+However, because it doesn't have an index, fetching a value from the `down` column results in a sequential scan:
 
 ```sql
 EXPLAIN SELECT * FROM up_and_down WHERE down = 999;
@@ -233,7 +233,7 @@ EXPLAIN SELECT * FROM up_and_down WHERE down = 999;
    Filter: (down = 999)
 ```
 
-To see what would result if you created an index for the `down` column without actually creating the index, use HypoPG as follows:
+To see what would happen if you were to create an index for the `down` column without actually creating the index, use HypoPG as follows:
 
 ```sql
 SELECT * FROM hypopg_create_index('create index on up_and_down(down)');
@@ -287,7 +287,7 @@ SELECT * FROM hypopg();
  <13283>lsm_up_and_down_down |      13283 |    16927 |       1 | f           | 2      | 0            | 9942     |           |          |         | 9900
 ```
 
-If you create multiple hypothetical indexes, you can drop a single hypothetical index using its `indexrelid`:
+If you create multiple hypothetical indexes, you can drop a single hypothetical index using its `indexrelid` as follows:
 
 ```sql
 SELECT * FROM hypopg_drop_index(13283);
@@ -299,7 +299,11 @@ SELECT * FROM hypopg_drop_index(13283);
  t
 ```
 
-To remove all hypothetical indexes, logout or terminate your session.
+To remove all hypothetical indexes, log out or quit your session.
+
+```sql
+\q
+```
 
 For more information, refer to the [HypoPG documentation](https://hypopg.readthedocs.io/en/rel1_stable/).
 
