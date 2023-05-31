@@ -1361,6 +1361,13 @@ typedef struct YBLoadRelationsResult {
 	bool has_relations_with_row_security;
 } YBLoadRelationsResult;
 
+static bool
+YbIsNonAlterableRelation(Relation rel)
+{
+	/* Non-view system relations cannot currently be altered. */
+	return IsSystemRelation(rel) && rel->rd_rel->relkind != RELKIND_VIEW;
+}
+
 /*
  * YugaByte-mode only utility used to load up the relcache on initialization
  * to minimize the number on YB-master queries needed.
@@ -1389,8 +1396,10 @@ YBLoadRelations()
 	    pg_class_desc, RelationRelationId, false /* indexOk */, NULL, 0, NULL);
 
 	HeapTuple pg_class_tuple;
+	int num_tuples = 0;
 	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(scandesc)))
 	{
+		++num_tuples;
 		Oid relid = HeapTupleGetOid(pg_class_tuple);
 
 		/*
@@ -1401,14 +1410,15 @@ YBLoadRelations()
 		 * c. If it's a system view it could still be changed, either via YSQL
 		 *    upgrade or manually.
 		 */
-		Relation tmp_rel;
-		RelationIdCacheLookup(relid, tmp_rel);
+		Relation existing_rel;
+		RelationIdCacheLookup(relid, existing_rel);
 
-		/* Non-view system relations cannot currently be altered. */
-		if (tmp_rel && IsSystemRelation(tmp_rel) &&
-			tmp_rel->rd_rel->relkind != RELKIND_VIEW)
+		if (existing_rel)
 		{
-			continue;
+			if (YbIsNonAlterableRelation(existing_rel))
+				continue;
+			/* It is expected that cache doesn't contain alterable entries */
+			Assert(false);
 		}
 
 		/* get information from the pg_class_tuple */
@@ -1509,6 +1519,8 @@ YBLoadRelations()
 
 	systable_endscan(scandesc);
 	heap_close(pg_class_desc, AccessShareLock);
+	/* Check relation cache doesn't contain old entries */
+	Assert(hash_get_num_entries(RelationIdCache) == num_tuples);
 	return result;
 }
 
@@ -4272,6 +4284,37 @@ RelationCacheInvalidate(void)
 		RelationClearRelation(relation, true);
 	}
 	list_free(rebuildList);
+}
+
+/*
+ * YbRelationCacheInvalidate removes all the entries from the cache which can be
+ * updated on cache reloading. Entries assumed as non-updatable (non-alterable)
+ * are preserved to avoid their rebuilding from scratch.
+ * Implementation is based on RelationCacheInvalidate.
+ */
+void
+YbRelationCacheInvalidate()
+{
+	HASH_SEQ_STATUS status;
+	RelIdCacheEnt *idhentry;
+
+	hash_seq_init(&status, RelationIdCache);
+
+	while ((idhentry = (RelIdCacheEnt *) hash_seq_search(&status)) != NULL)
+	{
+		Relation relation = idhentry->reldesc;
+
+		if (YbIsNonAlterableRelation(relation))
+			continue;
+
+		/* Must close all smgr references to avoid leaving dangling ptrs */
+		RelationCloseSmgr(relation);
+
+		Assert(RelationHasReferenceCountZero(relation));
+		Assert(!relation->rd_isnailed);
+		/* Delete this entry immediately */
+		RelationClearRelation(relation, false);
+	}
 }
 
 /*
