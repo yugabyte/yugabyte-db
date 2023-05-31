@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.Api;
@@ -118,6 +119,7 @@ public class ReleaseController extends AuthenticatedController {
       nickname = "getListOfRegionReleases")
   public Result listByProvider(UUID customerUUID, UUID providerUUID, Boolean includeMetadata) {
     Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     List<Region> regionList = Region.getByProvider(providerUUID);
     if (CollectionUtils.isEmpty(regionList) || regionList.get(0) == null) {
       throw new PlatformServiceException(BAD_REQUEST, "No Regions configured for provider.");
@@ -201,6 +203,7 @@ public class ReleaseController extends AuthenticatedController {
       response = ReleaseManager.ReleaseMetadata.class,
       nickname = "deleteRelease")
   public Result delete(UUID customerUUID, String version, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     if (releaseManager.getReleaseByVersion(version) == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Release version: " + version);
     }

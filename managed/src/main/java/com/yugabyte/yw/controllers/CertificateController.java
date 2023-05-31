@@ -177,6 +177,7 @@ public class CertificateController extends AuthenticatedController {
           dataType = "java.lang.String",
           required = true))
   public Result createSelfSignedCert(UUID customerUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     ObjectNode formData = (ObjectNode) request.body().asJson();
     JsonNode jsonData = formData.get("label");
     if (jsonData == null) {
@@ -275,6 +276,7 @@ public class CertificateController extends AuthenticatedController {
           message = "If there was a server or database issue when listing the regions",
           response = YBPError.class))
   public Result list(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
     return PlatformResults.withData(convert(certs));
   }
@@ -284,7 +286,8 @@ public class CertificateController extends AuthenticatedController {
       response = UUID.class,
       nickname = "getCertificate")
   public Result get(UUID customerUUID, String label) {
-    CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
+    Customer.getOrBadRequest(customerUUID);
+    CertificateInfo cert = CertificateInfo.getOrBadRequest(customerUUID, label);
     return PlatformResults.withData(cert.getUuid());
   }
 
@@ -311,7 +314,7 @@ public class CertificateController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(request, CertificateParams.class);
 
     CertConfigType certType = formData.get().certType;
-    CertificateInfo info = CertificateInfo.get(reqCertUUID);
+    CertificateInfo info = CertificateInfo.getOrBadRequest(reqCertUUID, customerUUID);
 
     if (certType != CertConfigType.HashicorpVault
         || info.getCertType() != CertConfigType.HashicorpVault) {

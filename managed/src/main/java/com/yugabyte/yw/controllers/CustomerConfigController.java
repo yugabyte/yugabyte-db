@@ -62,6 +62,7 @@ public class CustomerConfigController extends AuthenticatedController {
         paramType = "body")
   })
   public Result create(UUID customerUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     CustomerConfig customerConfig = parseJson(request, CustomerConfig.class);
     customerConfig.setCustomerUUID(customerUUID);
 
@@ -202,6 +203,7 @@ public class CustomerConfigController extends AuthenticatedController {
         paramType = "body")
   })
   public Result edit(UUID customerUUID, UUID configUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     CustomerConfig customerConfig = parseJson(request, CustomerConfig.class);
     customerConfig.setConfigUUID(configUUID);
     customerConfig.setCustomerUUID(customerUUID);
@@ -233,7 +235,7 @@ public class CustomerConfigController extends AuthenticatedController {
         paramType = "body")
   })
   public Result editYb(UUID customerUUID, UUID configUUID, Http.Request request) {
-
+    Customer.getOrBadRequest(customerUUID);
     CustomerConfig existingConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
     if (existingConfig.getState().equals(ConfigState.QueuedForDeletion)) {
       throw new PlatformServiceException(

@@ -174,7 +174,12 @@ public class HookController extends AuthenticatedController {
           UNAUTHORIZED,
           "The execution of API Triggered custom hooks is not enabled on this Anywhere instance");
     }
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    if (clusterUUID != null) {
+      if (universe.getCluster(clusterUUID) == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Cannot find cluster: " + clusterUUID);
+      }
+    }
     RunApiTriggeredHooks.Params taskParams = new RunApiTriggeredHooks.Params();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskParams.creatingUser = CommonUtils.getUserFromContext();

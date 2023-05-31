@@ -77,7 +77,7 @@ public class PitrController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot enable PITR when the universe is in paused state");
@@ -140,7 +140,7 @@ public class PitrController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     List<PitrConfig> pitrConfigList = new LinkedList<>();
     String masterHostPorts = universe.getMasterAddresses();
@@ -203,7 +203,7 @@ public class PitrController extends AuthenticatedController {
           required = true))
   public Result restore(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     checkCompatibleYbVersion(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
@@ -272,7 +272,7 @@ public class PitrController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     checkCompatibleYbVersion(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     if (universe.getUniverseDetails().universePaused) {
