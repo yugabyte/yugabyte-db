@@ -220,7 +220,7 @@ EXPLAIN SELECT * FROM up_and_down WHERE up = 999;
    Index Cond: (up = 999)
 ```
 
-To fetch a value from the `down` column results in a Seq Scan, because it does not have an index:
+To fetch a value from the `down` column results in a sequential scan, because it does not have an index:
 
 ```sql
 EXPLAIN SELECT * FROM up_and_down WHERE down = 999;
