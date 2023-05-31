@@ -92,6 +92,21 @@ DROP INDEX i1;
 
 Use the `\d t1` meta-command to verify that the index no longer exists.
 
+```sql
+\d t1
+```
+
+```output
+                            Table "public.t1"
+ Column |  Type  | Collation | Nullable |            Default             
+--------+--------+-----------+----------+--------------------------------
+ id     | bigint |           | not null | nextval('t1_id_seq'::regclass)
+ v      | text   |           |          | 
+Indexes:
+    "t1_pkey" PRIMARY KEY, lsm (id HASH)
+```
+
+
 ## See also
 
 - [`CREATE INDEX`](../ddl_create_index)
