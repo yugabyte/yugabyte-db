@@ -4,7 +4,8 @@ export const YBTableRelationType = {
   SYSTEM_TABLE_RELATION: 'SYSTEM_TABLE_RELATION',
   USER_TABLE_RELATION: 'USER_TABLE_RELATION',
   INDEX_TABLE_RELATION: 'INDEX_TABLE_RELATION',
-  MATVIEW_TABLE_RELATION: 'MATVIEW_TABLE_RELATION'
+  MATVIEW_TABLE_RELATION: 'MATVIEW_TABLE_RELATION',
+  COLOCATED_PARENT_TABLE_RELATION: 'COLOCATED_PARENT_TABLE_RELATION'
 } as const;
 export type YBTableRelationType = typeof YBTableRelationType[keyof typeof YBTableRelationType];
 
@@ -32,10 +33,10 @@ export const RuntimeConfigKey = {
 } as const;
 
 /**
-* Toast notification duration in milliseconds.
-*/
+ * Toast notification duration in milliseconds.
+ */
 export const ToastNotificationDuration = {
   SHORT: 2000,
   DEFAULT: 3000,
   LONG: 5000
-}
+};
