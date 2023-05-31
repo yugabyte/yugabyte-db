@@ -37,7 +37,7 @@ Use the `DROP INDEX` statement to remove an index from the database.
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_index.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_index.diagram.md" %}}
   </div>
 </div>
