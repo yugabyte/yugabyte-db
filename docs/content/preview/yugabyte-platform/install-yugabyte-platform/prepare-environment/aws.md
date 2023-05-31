@@ -1,8 +1,9 @@
 ---
 title: Prepare the Amazon Web Services (AWS) cloud environment
-headerTitle: Cloud prerequisites - AWS
+headerTitle: Cloud prerequisites
 linkTitle: Cloud prerequisites
 description: Prepare the Amazon Web Services (AWS) environment for YugabyteDB Anywhere.
+headContent: Prepare AWS for YugabyteDB Anywhere
 menu:
   preview_yugabyte-platform:
     identifier: prepare-environment-1-aws

@@ -1,8 +1,9 @@
 ---
 title: Configure the GCP cloud provider
-headerTitle: Configure the GCP cloud provider
-linkTitle: Configure cloud providers
+headerTitle: Create provider configuration
+linkTitle: Create provider configuration
 description: Configure the Google Cloud Platform (GCP) cloud provider.
+headContent: Configure a GCP provider configuration
 menu:
   stable_yugabyte-platform:
     identifier: set-up-cloud-provider-2-gcp

@@ -1,8 +1,9 @@
 ---
 title: Prepare the Google Cloud Platform (GCP) environment
-headerTitle: Cloud prerequisites - GCP
+headerTitle: Cloud prerequisites
 linkTitle: Cloud prerequisites
 description: Prepare the Google Cloud Platform (GCP) environment
+headContent: Prepare GCP for YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform

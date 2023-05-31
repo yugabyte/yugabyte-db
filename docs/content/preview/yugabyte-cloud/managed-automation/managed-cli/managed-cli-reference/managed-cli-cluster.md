@@ -52,6 +52,15 @@ ybm cluster create \
 
 ## Commands
 
+### cert download
+
+Download the [cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/) to a specified location.
+
+| Flag | Description |
+| :--- | :--- |
+| --force | Overwrite the output file if it exists. |
+| --out | Full path with file name of the location to which to download the cluster certificate file. Default is `stdout`. |
+
 ### create
 
 Create a cluster.
@@ -68,15 +77,6 @@ Create a cluster.
 | --fault-tolerance | Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`. |
 | --database-version | Database version to use for the cluster. `Stable` or `Preview`. |
 | --encryption-spec | customer managed key (CMK) credentials for encryption at rest, provided as key-value pairs.<br>Arguments:<ul><li>cloud-provider - cloud provider (`AWS`); required</li><li>aws-access-key - access key ID (AWS only); required for AWS</li><li>aws-secret-key - secret access key (AWS only)</li></ul>If not provided, you are prompted for the secret access key.</br>Secret access key can also be configured using the YBM_AWS_SECRET_KEY [environment variable](../../managed-cli-overview/#environment-variables). |
-
-### cert download
-
-Download the [cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/) to a specified location.
-
-| Flag | Description |
-| :--- | :--- |
-| --force | Overwrite the output file if it exists. |
-| --out | Full path with file name of the location to which to download the cluster certificate file. Default is `stdout`. |
 
 ### delete
 
@@ -119,6 +119,18 @@ List all the clusters to which you have access.
 | :--- | :--- |
 | --cluster-name | The name of the cluster to filter. |
 
+### network
+
+Refer to [cluster network](../managed-cli-network/).
+
+### node list
+
+List all the nodes in the specified cluster.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | Required. The name of the cluster to list nodes for. |
+
 ### pause
 
 Pause the specified cluster.
@@ -126,6 +138,10 @@ Pause the specified cluster.
 | Flag | Description |
 | :--- | :--- |
 | --cluster-name | Required. Name of the cluster to pause. |
+
+### read-replica
+
+Refer to [cluster read-replica](../managed-cli-read-replica/).
 
 ### resume
 
