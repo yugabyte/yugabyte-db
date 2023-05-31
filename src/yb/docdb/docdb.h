@@ -164,28 +164,6 @@ class ExternalTxnIntentsState {
   std::mutex mutex_;
   std::unordered_map<TransactionId, IntraTxnWriteId, TransactionIdHash> map_;
 };
-// Adds external pair to write batch.
-// Returns true if add was skipped because pair is a regular (non external) record.
-bool AddExternalPairToWriteBatch(
-    const LWKeyValuePairPB& kv_pair,
-    HybridTime hybrid_time,
-    ExternalTxnApplyState* apply_external_transactions,
-    rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txn_intents_state);
-
-// Prepares external part of non transaction write batch.
-// Batch could contain intents for external transactions, in this case those intents
-// will be added to intents_write_batch.
-//
-// Returns true if batch contains regular entries.
-bool PrepareExternalWriteBatch(
-    const LWKeyValueWriteBatchPB& put_batch,
-    HybridTime hybrid_time,
-    rocksdb::DB* intents_db,
-    rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txn_intents_state);
 
 Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,
