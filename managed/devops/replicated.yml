@@ -788,8 +788,8 @@ config:
         default: ""
         when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: java_non_proxy
-        title: HTTP Proxy Port setting for Java
-        help_text: Specify  -Dhttps.nonProxyHosts.
+        title: HTTP NO Proxy setting for Java
+        help_text: Specify -Dhttp.nonProxyHosts
         type: text
         # default: TODO extract host out of http.proxy
         when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
