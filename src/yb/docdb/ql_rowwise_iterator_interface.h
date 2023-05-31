@@ -75,9 +75,9 @@ class YQLRowwiseIteratorIf {
   virtual Result<Slice> GetTupleId() const;
 
   // Seeks to the given tuple by its id. See DocRowwiseIterator for details.
-  virtual void SeekTuple(const Slice& tuple_id);
+  virtual void SeekTuple(Slice tuple_id);
 
-  virtual Result<bool> FetchTuple(const Slice& tuple_id, qlexpr::QLTableRow* row);
+  virtual Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row);
 
  protected:
   virtual Result<bool> DoFetchNext(

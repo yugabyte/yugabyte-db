@@ -1232,11 +1232,14 @@ Result<std::unique_ptr<docdb::DocRowwiseIterator>> Tablet::NewUninitializedDocRo
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
       /* transaction_id */ boost::none,
       table_info->schema().table_properties().is_ysql_catalog_table()));
-  const auto read_time = read_hybrid_time
-      ? read_hybrid_time
-      : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
+  docdb::ReadOperationData read_operation_data = {
+    .deadline = deadline,
+    .read_time = read_hybrid_time
+        ? read_hybrid_time
+        : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse))),
+  };
   return std::make_unique<DocRowwiseIterator>(
-      projection, table_info->doc_read_context, txn_op_ctx, doc_db(), deadline, read_time,
+      projection, table_info->doc_read_context, txn_op_ctx, doc_db(), read_operation_data,
       std::move(scoped_read_operation));
 }
 
@@ -1518,17 +1521,17 @@ void Tablet::WriteToRocksDB(
 
 //--------------------------------------------------------------------------------------------------
 // Redis Request Processing.
-Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
-                                      const ReadHybridTime& read_time,
+Status Tablet::HandleRedisReadRequest(const docdb::ReadOperationData& read_operation_data,
                                       const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
   // TODO: move this locking to the top-level read request handler in TabletService.
-  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart(deadline);
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart(
+      read_operation_data.deadline);
   RETURN_NOT_OK(scoped_read_operation);
 
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
-  docdb::RedisReadOperation doc_op(redis_read_request, doc_db(), deadline, read_time);
+  docdb::RedisReadOperation doc_op(redis_read_request, doc_db(), read_operation_data);
   RETURN_NOT_OK(doc_op.Execute());
   *response = std::move(doc_op.response());
   return Status::OK();
@@ -1553,13 +1556,13 @@ bool IsSchemaVersionCompatible(
 //--------------------------------------------------------------------------------------------------
 // CQL Request Processing.
 Status Tablet::HandleQLReadRequest(
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const docdb::ReadOperationData& read_operation_data,
     const QLReadRequestPB& ql_read_request,
     const TransactionMetadataPB& transaction_metadata,
     QLReadRequestResult* result,
     WriteBuffer* rows_data) {
-  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart(deadline);
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart(
+      read_operation_data.deadline);
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
@@ -1573,7 +1576,7 @@ Status Tablet::HandleQLReadRequest(
         CreateTransactionOperationContext(transaction_metadata, /* is_ysql_catalog_table */ false);
     RETURN_NOT_OK(txn_op_ctx);
     status = AbstractTablet::HandleQLReadRequest(
-        deadline, read_time, ql_read_request, *txn_op_ctx, scoped_read_operation, result,
+        read_operation_data, ql_read_request, *txn_op_ctx, scoped_read_operation, result,
         rows_data);
 
     schema_version_compatible = IsSchemaVersionCompatible(
@@ -1645,15 +1648,15 @@ Status Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
 // PGSQL Request Processing.
 //--------------------------------------------------------------------------------------------------
 Status Tablet::HandlePgsqlReadRequest(
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const docdb::ReadOperationData& read_operation_data,
     bool is_explicit_request_read_time,
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
     const SubTransactionMetadataPB& subtransaction_metadata,
     PgsqlReadRequestResult* result) {
   TRACE(LogPrefix());
-  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart(deadline);
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart(
+      read_operation_data.deadline);
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
@@ -1671,7 +1674,7 @@ Status Tablet::HandlePgsqlReadRequest(
 
   RETURN_NOT_OK(txn_op_ctx);
   auto status = ProcessPgsqlReadRequest(
-      deadline, read_time, is_explicit_request_read_time,
+      read_operation_data, is_explicit_request_read_time,
       pgsql_read_request, table_info, *txn_op_ctx, statistics, scoped_read_operation, result);
 
   if (statistics) {

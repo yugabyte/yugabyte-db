@@ -19,6 +19,7 @@
 #include "yb/common/transaction.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/read_operation_data.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -28,12 +29,19 @@ namespace docdb {
 
 struct DocOperationApplyData {
   DocWriteBatch* doc_write_batch;
-  CoarseTimePoint deadline;
-  ReadHybridTime read_time;
+  ReadOperationData read_operation_data;
   HybridTime* restart_read_ht;
 
+  CoarseTimePoint deadline() const {
+    return read_operation_data.deadline;
+  }
+
+  const ReadHybridTime& read_time() const {
+    return read_operation_data.read_time;
+  }
+
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(deadline, read_time, restart_read_ht);
+    return YB_STRUCT_TO_STRING(read_operation_data, restart_read_ht);
   }
 };
 

@@ -355,16 +355,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void KeyValueBatchFromRedisWriteBatch(std::unique_ptr<WriteQuery> query);
 
   Status HandleRedisReadRequest(
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const docdb::ReadOperationData& read_operation_data,
       const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) override;
 
   //------------------------------------------------------------------------------------------------
   // CQL Request Processing.
   Status HandleQLReadRequest(
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const docdb::ReadOperationData& read_operation_data,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
       QLReadRequestResult* result,
@@ -380,8 +378,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //------------------------------------------------------------------------------------------------
   // Postgres Request Processing.
   Status HandlePgsqlReadRequest(
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const docdb::ReadOperationData& read_operation_data,
       bool is_explicit_request_read_time,
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,

@@ -30,24 +30,20 @@ class KeyBytes {
  public:
   KeyBytes() = default;
   explicit KeyBytes(const std::string& data) : data_(data) {}
-  explicit KeyBytes(const Slice& slice) : data_(slice) {}
+  explicit KeyBytes(Slice slice) : data_(slice) {}
 
   KeyBytes(const KeyBytes& rhs) = default;
   KeyBytes& operator=(const KeyBytes& rhs) = default;
   KeyBytes(KeyBytes&& rhs) = default;
   KeyBytes& operator=(KeyBytes&& rhs) = default;
 
-  KeyBytes(const Slice& slice, char suffix) {
+  KeyBytes(Slice slice, char suffix) {
     data_.reserve(slice.size() + 1);
     data_.append(slice.cdata(), slice.size());
     data_.push_back(suffix);
   }
 
-  KeyBytes(const Slice& slice1, const Slice& slice2) {
-    data_.reserve(slice1.size() + slice2.size());
-    data_.append(slice1.cdata(), slice1.size());
-    data_.append(slice2.cdata(), slice2.size());
-  }
+  KeyBytes(Slice slice1, Slice slice2) : data_(slice1, slice2) {}
 
   void Reserve(size_t len) {
     data_.reserve(len);
@@ -75,7 +71,7 @@ class KeyBytes {
     data_.append(raw_bytes, n);
   }
 
-  void AppendRawBytes(const Slice& slice) {
+  void AppendRawBytes(Slice slice) {
     data_.append(slice);
   }
 
@@ -212,11 +208,11 @@ class KeyBytes {
     return slice.starts_with(data_.AsSlice());
   }
 
-  rocksdb::Slice AsSlice() const { return data_.AsSlice(); }
+  Slice AsSlice() const { return data_.AsSlice(); }
 
   operator Slice() const { return data_.AsSlice(); }
 
-  void Reset(const Slice& slice) {
+  void Reset(Slice slice) {
     data_.assign(slice.cdata(), slice.size());
   }
 
@@ -232,7 +228,7 @@ class KeyBytes {
     return data_.AsSlice().compare(other.data_.AsSlice());
   }
 
-  int CompareTo(const Slice& other) const {
+  int CompareTo(Slice other) const {
     return data_.AsSlice().compare(other);
   }
 

@@ -89,12 +89,11 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
       const DocDB &doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime &read_time,
+      const ReadOperationData& read_operation_data,
       std::reference_wrapper<const ScopedRWOperation> pending_op) {
     reader_projection_.Reset(projection, projection.column_ids());
     return std::make_unique<DocRowwiseIterator>(
-        reader_projection_, doc_read_context, txn_op_context, doc_db, deadline, read_time,
+        reader_projection_, doc_read_context, txn_op_context, doc_db, read_operation_data,
         pending_op);
   }
 
@@ -103,12 +102,11 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
       const DocDB &doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime &read_time,
+      const ReadOperationData& read_operation_data,
       const DocQLScanSpec &spec,
       std::reference_wrapper<const ScopedRWOperation> pending_op) {
     auto iter = MakeIterator(
-        projection, doc_read_context, txn_op_context, doc_db, deadline, read_time, pending_op);
+        projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op);
     RETURN_NOT_OK(iter->Init(spec));
     return iter;
   }
@@ -118,13 +116,12 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
       const DocDB &doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime &read_time,
+      const ReadOperationData& read_operation_data,
       const DocPgsqlScanSpec &spec,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       bool liveness_column_expected = false) {
     auto iter = MakeIterator(
-        projection, doc_read_context, txn_op_context, doc_db, deadline, read_time, pending_op);
+        projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op);
     RETURN_NOT_OK(iter->Init(spec));
     return iter;
   }
@@ -134,12 +131,11 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
       const DocDB &doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime &read_time,
+      const ReadOperationData& read_operation_data,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       bool liveness_column_expected = false) {
     auto iter = MakeIterator(
-        projection, doc_read_context, txn_op_context, doc_db, deadline, read_time, pending_op);
+        projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op);
     iter->Init(YQL_TABLE_TYPE);
     return iter;
   }
@@ -477,7 +473,7 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     auto pending_op = ScopedRWOperation::TEST_Create();
     auto iter = ASSERT_RESULT(CreateIterator(
         projection ? *projection : schema, doc_read_context, txn_op_context, doc_db(),
-        CoarseTimePoint::max() /* deadline */, read_time, spec, pending_op));
+        ReadOperationData::FromReadTime(read_time), spec, pending_op));
 
     ValidateIterator(
         iter.get(), mode, schema, projection, expected, expected_max_seen_ht);
@@ -495,7 +491,7 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     auto pending_op = ScopedRWOperation::TEST_Create();
     auto iter = ASSERT_RESULT(CreateIterator(
         projection ? *projection : schema, doc_read_context(), txn_op_context, doc_db(),
-        CoarseTimePoint::max() /* deadline */, read_time, pending_op));
+        ReadOperationData::FromReadTime(read_time), pending_op));
 
     ValidateIterator(iter.get(), mode, schema, projection, expected, expected_max_seen_ht);
   }
@@ -512,7 +508,7 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     auto pending_op = ScopedRWOperation::TEST_Create();
     auto iter = ASSERT_RESULT(CreateIterator(
         projection, doc_read_context(), txn_op_context, doc_db(),
-        CoarseTimePoint::max() /* deadline */, read_time, pending_op));
+        ReadOperationData::FromReadTime(read_time), pending_op));
 
     ValidateIterator(
         iter.get(), mode, doc_read_context().schema(), &doc_read_context().schema(), expected,
@@ -1063,7 +1059,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 800 w: 2 } -> \
     auto iter = CreateIntentAwareIterator(
         doc_db(), BloomFilterMode::USE_BLOOM_FILTER, doc_key_optional,
         rocksdb::kDefaultQueryId, kMockTransactionalOperationContext,
-        CoarseTimePoint::max(), ReadHybridTime::SingleTime(kSafeTime));
+        ReadOperationData::FromSingleReadTime(kSafeTime));
 
     {
       SubDocKey subkey(doc_key);
@@ -1103,7 +1099,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 800 w: 2 } -> \
     auto iter = CreateIntentAwareIterator(
         doc_db(), BloomFilterMode::USE_BLOOM_FILTER, doc_key_optional,
         rocksdb::kDefaultQueryId, kMockTransactionalOperationContext,
-        CoarseTimePoint::max(), ReadHybridTime::SingleTime(kSafeTime));
+        ReadOperationData::FromSingleReadTime(kSafeTime));
 
     {
       SubDocKey subkey(doc_key);
@@ -1143,7 +1139,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
         projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800), pending_op));
+        ReadOperationData::TEST_FromReadTimeMicros(2800), pending_op));
 
     qlexpr::QLTableRow row;
     QLValue value;
@@ -1226,7 +1222,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
   {
     auto iter = ASSERT_RESULT(CreateIterator(
         projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1500),
+        ReadOperationData::TEST_FromReadTimeMicros(1500),
         pending_op));
     ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(nullptr)));
   }
@@ -1234,8 +1230,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
   {
     auto iter = ASSERT_RESULT(CreateIterator(
         projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::Max(),
-        pending_op));
+        ReadOperationData(), pending_op));
     ASSERT_FALSE(ASSERT_RESULT(iter->FetchNext(nullptr)));
   }
 }
@@ -1611,8 +1606,9 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
   // Create a new IntentAwareIterator and seek to an empty DocKey. Verify that it returns the
   // first non-intent key.
   IntentAwareIterator iter(
-      doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::FromMicros(1000), TransactionOperationContext());
+      doc_db(), rocksdb::ReadOptions(),
+      ReadOperationData::TEST_FromReadTimeMicros(1000),
+      TransactionOperationContext());
   iter.Seek(DocKey());
   ASSERT_FALSE(iter.IsOutOfRecords());
   auto key_data = ASSERT_RESULT(iter.FetchKey());
@@ -1658,8 +1654,9 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
       )#");
 
   IntentAwareIterator iter(
-      doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::FromMicros(1000), TransactionOperationContext(*txn, &txn_status_manager));
+      doc_db(), rocksdb::ReadOptions(),
+      ReadOperationData::TEST_FromReadTimeMicros(1000),
+      TransactionOperationContext(*txn, &txn_status_manager));
   for (int i = 1; i <= 2; ++i) {
     iter.Seek(DocKey());
     ASSERT_FALSE(iter.IsOutOfRecords()) << "Seek #" << i << " failed";
@@ -1689,8 +1686,8 @@ void DocRowwiseIteratorTest::TestScanWithinTheSameTxn() {
 
   auto pending_op = ScopedRWOperation::TEST_Create();
   auto iter = ASSERT_RESULT(CreateIterator(
-      projection, doc_read_context(), txn_context, doc_db(), CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::FromMicros(1000), pending_op));
+      projection, doc_read_context(), txn_context, doc_db(),
+      ReadOperationData::TEST_FromReadTimeMicros(1000), pending_op));
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ASSERT_RESULT(ConvertIteratorRowsToString(
@@ -1916,8 +1913,8 @@ void DocRowwiseIteratorTest::TestPartialKeyColumnsProjection() {
 
   auto pending_op = ScopedRWOperation::TEST_Create();
   auto iter = ASSERT_RESULT(CreateIterator(
-      projection, doc_read_context, kNonTransactionalOperationContext,
-      doc_db(), CoarseTimePoint::max(), ReadHybridTime::FromMicros(1000), pending_op));
+      projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      ReadOperationData::TEST_FromReadTimeMicros(1000), pending_op));
 
   qlexpr::QLTableRow row;
   ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(&row)));

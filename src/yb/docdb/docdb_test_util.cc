@@ -279,7 +279,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
 
   if (is_deletion) {
     DOCDB_DEBUG_LOG("Iteration $0: deleting doc path $1", current_iteration, doc_path.ToString());
-    ASSERT_OK(dwb.DeleteSubDoc(doc_path, ReadHybridTime::Max()));
+    ASSERT_OK(dwb.DeleteSubDoc(doc_path, ReadOperationData()));
     ASSERT_OK(in_mem_docdb_.DeleteSubDoc(doc_path));
   } else {
     DOCDB_DEBUG_LOG("Iteration $0: setting value at doc path $1 to $2",
@@ -317,7 +317,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     auto encoded_sub_doc_key = sub_doc_key.EncodeWithoutHt();
     auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
       encoded_sub_doc_key, doc_db(), rocksdb::kDefaultQueryId, txn_op_context,
-      CoarseTimePoint::max() /* deadline */));
+      ReadOperationData()));
     if (is_deletion && (
             doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
             !doc_already_exists_in_mem)) {  // or the document did not exist in the first place.

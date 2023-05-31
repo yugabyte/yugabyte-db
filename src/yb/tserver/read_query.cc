@@ -72,13 +72,12 @@ namespace {
 
 void HandleRedisReadRequestAsync(
     tablet::AbstractTablet* tablet,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const docdb::ReadOperationData& read_operation_data,
     const RedisReadRequestPB& redis_read_request,
     RedisResponsePB* response,
     const std::function<void(const Status& s)>& status_cb
 ) {
-  status_cb(tablet->HandleRedisReadRequest(deadline, read_time, redis_read_request, response));
+  status_cb(tablet->HandleRedisReadRequest(read_operation_data, redis_read_request, response));
 }
 
 class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::ThreadPoolTask {
@@ -559,16 +558,20 @@ Result<ReadHybridTime> ReadQuery::DoRead() {
 }
 
 Result<ReadHybridTime> ReadQuery::DoReadImpl() {
-  ReadHybridTime read_time;
+  docdb::ReadOperationData read_operation_data = {
+    .deadline = context_.GetClientDeadline(),
+    .read_time = {},
+  };
+
   tablet::ScopedReadOperation read_tx;
   if (IsForBackfill()) {
-    read_time = read_time_;
+    read_operation_data.read_time = read_time_;
   } else {
     read_tx = VERIFY_RESULT(
         tablet::ScopedReadOperation::Create(abstract_tablet_.get(), require_lease_, read_time_));
-    read_time = read_tx.read_time();
+    read_operation_data.read_time = read_tx.read_time();
   }
-  used_read_time_ = read_time;
+  used_read_time_ = read_operation_data.read_time;
   if (!req_->redis_batch().empty()) {
     // Assert the primary table is a redis table.
     DCHECK_EQ(abstract_tablet_->table_type(), TableType::REDIS_TABLE_TYPE);
@@ -586,8 +589,7 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       auto func = Bind(
           &HandleRedisReadRequestAsync,
           Unretained(abstract_tablet_.get()),
-          context_.GetClientDeadline(),
-          read_time,
+          read_operation_data,
           redis_read_req,
           Unretained(resp_->add_redis_batch()),
           cb);
@@ -635,7 +637,7 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       tablet::QLReadRequestResult result;
       TRACE("Start HandleQLReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandleQLReadRequest(
-          context_.GetClientDeadline(), read_time, ql_read_req, req_->transaction(), &result,
+          read_operation_data, ql_read_req, req_->transaction(), &result,
           &context_.sidecars().Start()));
       TRACE("Done HandleQLReadRequest");
       if (result.restart_read_ht.is_valid()) {
@@ -655,9 +657,8 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       tablet::PgsqlReadRequestResult result(&context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(
-          context_.GetClientDeadline(), read_time,
-          !allow_retry_ /* is_explicit_request_read_time */, pgsql_read_req, req_->transaction(),
-          req_->subtransaction(), &result));
+          read_operation_data, !allow_retry_ /* is_explicit_request_read_time */, pgsql_read_req,
+          req_->transaction(), req_->subtransaction(), &result));
 
       total_num_rows_read += result.num_rows_read;
 
