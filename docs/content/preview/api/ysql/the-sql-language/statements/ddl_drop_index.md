@@ -26,7 +26,7 @@ Use the `DROP INDEX` statement to remove an index from the database.
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
