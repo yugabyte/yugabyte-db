@@ -59,6 +59,8 @@ export const DeleteProviderConfigModal = ({
               </a>
             </span>
           );
+        } else {
+          toast.success('Provider delete succeeded.');
         }
         queryClient.invalidateQueries(providerQueryKey.ALL);
         dispatch(fetchCloudMetadata());
