@@ -27,6 +27,7 @@ namespace yb {
 namespace cqlserver {
 
 class CQLStatement;
+struct Counters;
 
 // A map of CQL query id to the prepared statement for caching the prepared statments. Shared_ptr
 // is used so that a prepared statement can be aged out and removed from the cache without deleting
@@ -64,14 +65,38 @@ class CQLStatement : public ql::Statement {
   // Return the query id of a statement.
   static ql::CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& query);
 
-  // Stores the metrics for a prepared statements
-  std::shared_ptr<ql::Counters> counters;
+  std::shared_ptr<Counters> GetCounters() {
+    return counters_;
+  }
+
+  void SetCounters(const std::shared_ptr<Counters>& other) {
+    counters_ = other;
+  }
 
  private:
   // Position of the statement in the LRU.
   mutable CQLStatementListPos pos_;
 
+  // Stores the metrics for a prepared statements.
+  std::shared_ptr<Counters> counters_;
+
   ScopedTrackedConsumption consumption_;
+};
+
+struct Counters{
+  Counters() : calls_(0), total_time_(0.), min_time_(0.),
+               max_time_(0.), sum_var_time_(0.) {}
+
+  Counters(const std::shared_ptr<Counters>& other) : calls_(other->calls_),
+    total_time_(other->total_time_), min_time_(other->min_time_), max_time_(other->max_time_),
+    sum_var_time_(other->sum_var_time_), query_(other->query_) {}
+
+  int64 calls_;         // Number of times executed.
+  double total_time_;   // Total execution time, in msec.
+  double min_time_;     // Minimum execution time in msec.
+  double max_time_;     // Maximum execution time in msec.
+  double sum_var_time_; // Sum of variances in execution time in msec.
+  std::string query_;   // Stores the query text.
 };
 
 }  // namespace cqlserver

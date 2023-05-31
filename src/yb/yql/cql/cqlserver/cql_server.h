@@ -71,8 +71,6 @@ class CQLServer : public server::RpcAndWebServerBase {
 
   tserver::TabletServerIf* tserver() const { return tserver_; }
 
-  std::shared_ptr<CQLServiceImpl> cql_service() const { return cql_service_; }
-
   Status ReloadKeysAndCertificates() override;
 
   std::shared_ptr<CQLServiceImpl> TEST_cql_service() const { return cql_service_; }

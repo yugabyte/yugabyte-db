@@ -77,14 +77,5 @@ Status StatementParameters::GetBindVariable(const std::string& name,
   return STATUS(RuntimeError, "no bind variable available");
 }
 
-Counters::Counters() {
-  calls = 0;
-  total_time = 0;
-  min_time = 0;
-  max_time = 0;
-  sum_var_time = 0;
-  mean_time = 0;
-}
-
 } // namespace ql
 } // namespace yb

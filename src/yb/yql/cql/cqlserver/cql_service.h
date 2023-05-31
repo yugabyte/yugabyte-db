@@ -125,13 +125,18 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   void UpdateCounters(const ql::CQLMessage::QueryId& query_id, double execute_time);
 
+  // Update the counters for the prepared stmt. Acquires the "prepared_stmts_mutex_".
+  void UpdatePrepStmtCounters(const ql::CQLMessage::QueryId& query_id, double execute_time_in_sec);
+
   // Executes the update counters for both prepared and unprepared statements.
   // "prepared_stmts_mutex_" needs to be locked before this call.
-  void UpdateCountersUnlocked(double execute_time, std::shared_ptr<ql::Counters> counters);
+  void UpdateCountersUnlocked(double execute_time_in_sec, std::shared_ptr<Counters> counters);
 
-  // Returns the counters corresponding to the query with the given query id. Returns
-  // nullptr if query doesn't exist in the prepared_stmt_map_
-  std::shared_ptr<ql::Counters> GetCounters(const std::string& query_id);
+  void DumpStatementsJsonUnlocked(JsonWriter* jw, const Counters& counters);
+
+  // Returns the counters corresponding to the query with the given query id.
+  // Returns nullptr if query doesn't exist in the prepared_stmt_map_.
+  std::shared_ptr<Counters> GetCounters(const std::string& query_id);
 
  private:
   constexpr static int kRpcTimeoutSec = 5;
@@ -152,7 +157,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   void CollectGarbage(size_t required) override;
 
   // Get the list of prepared statements and metrics in an inmemory vector
-  void GetPreparedStatementsLocked(std::vector<std::shared_ptr<StatementMetrics>>* metrics);
+  void GetPreparedStatementsLocked(std::vector<std::shared_ptr<Counters>>* metrics);
 
   // CQLServer of this service.
   CQLServer* const server_;

@@ -114,6 +114,11 @@ class CQLProcessor : public ql::QLProcessor {
   void PrepareAndSendResponse(const std::unique_ptr<ql::CQLResponse>& response);
   void SendResponse(const ql::CQLResponse& response);
 
+  ql::CQLMessage::QueryId GetPrepQueryId() {
+    return request_ && request_->opcode() == ql::CQLMessage::Opcode::EXECUTE
+      ? static_cast<const ql::ExecuteRequest&>(*request_).query_id() : "";
+  }
+
   const std::unordered_map<std::string, std::vector<std::string>> kSupportedOptions = {
       {ql::CQLMessage::kCQLVersionOption,
           {"3.0.0" /* minimum */, "3.4.2" /* current */}},
@@ -144,9 +149,6 @@ class CQLProcessor : public ql::QLProcessor {
   // Parse and execute begin times.
   MonoTime parse_begin_;
   MonoTime execute_begin_;
-
-  // Tracks query id of prepared statement
-  ql::CQLMessage::QueryId prep_stmt_query_id_;
 
   // Statement executed callback.
   ql::StatementExecutedCallback statement_executed_cb_;

@@ -119,17 +119,5 @@ class StatementParameters {
   uint64_t request_id_ = 0;
 };
 
-class Counters{
- public:
-  int64     calls;        /* # of times executed */
-  double    total_time;   /* total execution time, in msec */
-  double    min_time;     /* minimum execution time in msec */
-  double    max_time;     /* maximum execution time in msec */
-  double    mean_time;    /* mean execution time in msec */
-  double    sum_var_time; /* sum of variances in execution time in msec */
-  std::string query;
-  Counters();
-};
-
 } // namespace ql
 } // namespace yb

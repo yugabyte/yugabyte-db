@@ -99,7 +99,8 @@ METRIC_DEFINE_counter(server, cql_parsers_created,
                       yb::MetricUnit::kUnits,
                       "Number of created CQL Parsers.");
 
-DECLARE_bool(ycql_enable_stat_statements);
+DEFINE_RUNTIME_bool(ycql_enable_stat_statements, true,
+    "If enabled, it will track queries and dump their metrics on localhost:12000/statements");
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -310,12 +311,9 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   cql_metrics_->time_to_queue_cql_response_->Increment(
       response_done.GetDeltaSince(response_begin).ToMicroseconds());
 
-  if(FLAGS_ycql_enable_stat_statements) {
-    if(!prep_stmt_query_id_.empty()) {
-      service_impl_->UpdateCounters(prep_stmt_query_id_,
-        response_done.GetDeltaSince(execute_begin_).ToSeconds());
-      prep_stmt_query_id_.clear();
-    }
+  if (FLAGS_ycql_enable_stat_statements && !GetPrepQueryId().empty()) {
+    service_impl_->UpdatePrepStmtCounters(GetPrepQueryId(),
+      response_done.GetDeltaSince(execute_begin_).ToSeconds());
   }
 
   Release();
@@ -449,7 +447,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) 
   if (!stmt_res.ok()) {
     return ProcessError(stmt_res.status(), req.query_id());
   }
-  prep_stmt_query_id_ = req.query_id();
+  
   LOG_IF(DFATAL, *stmt_res == nullptr) << "Null statement";
   const Status s = (*stmt_res)->ExecuteAsync(this, req.params(), statement_executed_cb_);
   return s.ok() ? nullptr : ProcessError(s, (*stmt_res)->query_id());
