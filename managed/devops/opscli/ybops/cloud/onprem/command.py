@@ -17,7 +17,7 @@ from ybops.cloud.common.method import ConfigureInstancesMethod, ListInstancesMet
 from ybops.cloud.onprem.method import OnPremCreateInstancesMethod, OnPremDestroyInstancesMethod, \
     OnPremProvisionInstancesMethod, OnPremValidateMethod, \
     OnPremFillInstanceProvisionTemplateMethod, OnPremListInstancesMethod, \
-    OnPremPrecheckInstanceMethod, OnPremAccessAddKeyMethod
+    OnPremPrecheckInstanceMethod, OnPremAccessAddKeyMethod, OnPremInstallNodeAgentMethod
 
 
 class OnPremInstanceCommand(InstanceCommand):
@@ -45,6 +45,7 @@ class OnPremInstanceCommand(InstanceCommand):
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
         self.add_method(WaitForConnection(self))
+        self.add_method(OnPremInstallNodeAgentMethod(self))
 
 
 class OnPremAccessCommand(AccessCommand):

@@ -832,7 +832,7 @@ drop_cast = 'DROP' 'CAST' [ 'IF' 'EXISTS' ] '(' cast_signature ')' [ 'CASCADE' |
 drop_database = 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
 
 (* 'DROP' 'SCHEMA' *)
-drop_schema = 'DROP' 'SCHEMA' [ 'IF' 'EXISTS' ] schema_name [, ...] [ 'CASCADE' | 'RESTRICT' ] ;
+drop_schema = 'DROP' 'SCHEMA' [ 'IF' 'EXISTS' ] schema_name { ',' schema_name } [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'DOMAIN' *)
 drop_domain = 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE' | 'RESTRICT' ] ;

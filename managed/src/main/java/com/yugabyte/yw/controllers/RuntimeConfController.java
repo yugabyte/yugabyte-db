@@ -135,7 +135,7 @@ public class RuntimeConfController extends AuthenticatedController {
     }
     String newValue = request.body().asText();
     if (newValue == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Cannot set null value");
+      newValue = "";
     }
     verifyGlobalScope(scopeUUID, request);
     boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);

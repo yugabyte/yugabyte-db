@@ -99,22 +99,22 @@ DELETE  /customers/:cUUID/configs/:configUUID/delete                           c
 #                       Runtime Config
 #---------------------------------------------------------------------------------------------------
 # List keys that we allow configuring - no auth needed
-GET /runtime_config/mutable_keys                                   com.yugabyte.yw.controllers.RuntimeConfController.listKeys()
-GET /runtime_config/mutable_key_info                               com.yugabyte.yw.controllers.RuntimeConfController.listKeyInfo()
+GET /runtime_config/mutable_keys                                               com.yugabyte.yw.controllers.RuntimeConfController.listKeys()
+GET /runtime_config/mutable_key_info                                           com.yugabyte.yw.controllers.RuntimeConfController.listKeyInfo()
 
 # List of Scopes for a given customer - static scope, the global scope, current customer scope and all its
 # sub-scopes (i.e. universes and providers owned by this customer)
-GET /customers/:cUUID/runtime_config/scopes                        com.yugabyte.yw.controllers.RuntimeConfController.listScopes(cUUID: java.util.UUID, request: Request)
+GET /customers/:cUUID/runtime_config/scopes                                    com.yugabyte.yw.controllers.RuntimeConfController.listScopes(cUUID: java.util.UUID, request: Request)
 
 # List of runtime config key values overridden in specific scope for a customer
-GET /customers/:cUUID/runtime_config/:scope                        com.yugabyte.yw.controllers.RuntimeConfController.getConfig(cUUID: java.util.UUID, scope: java.util.UUID, includeInherited: Boolean ?= false, request: Request)
+GET /customers/:cUUID/runtime_config/:scope                                    com.yugabyte.yw.controllers.RuntimeConfController.getConfig(cUUID: java.util.UUID, scope: java.util.UUID, includeInherited: Boolean ?= false, request: Request)
 
 # any customer can see values in global scope
-GET /customers/:cUUID/runtime_config/:scope/key/:key               com.yugabyte.yw.controllers.RuntimeConfController.getKey(cUUID: java.util.UUID, scope: java.util.UUID, key: String, request: Request)
+GET /customers/:cUUID/runtime_config/:scope/key/:key                           com.yugabyte.yw.controllers.RuntimeConfController.getKey(cUUID: java.util.UUID, scope: java.util.UUID, key: String, request: Request)
 
 # If scope is for global config than only super admin can mutate that
-PUT /customers/:cUUID/runtime_config/:scope/key/:key               com.yugabyte.yw.controllers.RuntimeConfController.setKey(cUUID: java.util.UUID, scope: java.util.UUID, key: String, request: Request)
-DELETE /customers/:cUUID/runtime_config/:scope/key/:key            com.yugabyte.yw.controllers.RuntimeConfController.deleteKey(cUUID: java.util.UUID, scope: java.util.UUID, key: String, request: Request)
+PUT /customers/:cUUID/runtime_config/:scope/key/:key                           com.yugabyte.yw.controllers.RuntimeConfController.setKey(cUUID: java.util.UUID, scope: java.util.UUID, key: String, request: Request)
+DELETE /customers/:cUUID/runtime_config/:scope/key/:key                        com.yugabyte.yw.controllers.RuntimeConfController.deleteKey(cUUID: java.util.UUID, scope: java.util.UUID, key: String, request: Request)
 
 #---------------------------------------------------------------------------------------------------
 
@@ -271,11 +271,11 @@ POST    /customers/:cUUID/universes/clusters                                   c
 
 # Universe update now split into two cluster updates
 PUT     /customers/:cUUID/universes/:uniUUID/clusters/primary                  com.yugabyte.yw.controllers.UniverseClustersController.updatePrimaryCluster(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
-PUT     /customers/:cUUID/universes/:uniUUID/clusters/read_only                 com.yugabyte.yw.controllers.UniverseClustersController.updateReadOnlyCluster(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+PUT     /customers/:cUUID/universes/:uniUUID/clusters/read_only                com.yugabyte.yw.controllers.UniverseClustersController.updateReadOnlyCluster(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 
 # Add and remove read_only cluster on existing universe
-POST    /customers/:cUUID/universes/:uniUUID/clusters/read_only                 com.yugabyte.yw.controllers.UniverseClustersController.createReadOnlyCluster(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
-DELETE  /customers/:cUUID/universes/:uniUUID/clusters/read_only/:clustUUID      com.yugabyte.yw.controllers.UniverseClustersController.deleteReadonlyCluster(cUUID: java.util.UUID, uniUUID: java.util.UUID, clustUUID: java.util.UUID, isForceDelete: Boolean ?= false, request: Request)
+POST    /customers/:cUUID/universes/:uniUUID/clusters/read_only                com.yugabyte.yw.controllers.UniverseClustersController.createReadOnlyCluster(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+DELETE  /customers/:cUUID/universes/:uniUUID/clusters/read_only/:clustUUID     com.yugabyte.yw.controllers.UniverseClustersController.deleteReadonlyCluster(cUUID: java.util.UUID, uniUUID: java.util.UUID, clustUUID: java.util.UUID, isForceDelete: Boolean ?= false, request: Request)
 # ----------------------------- END NEW API -------------------------------------------
 
 # Universe Read and Delete operations stays same as old and moved to become part of the new API

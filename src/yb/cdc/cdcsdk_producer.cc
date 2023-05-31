@@ -133,6 +133,7 @@ Status AddColumnToMap(
           ql_value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
           cdc_datum_message));
     } else {
+      cdc_datum_message->set_column_type(col_schema.pg_type_oid());
       cdc_datum_message->set_pg_type(col_schema.pg_type_oid());
     }
   } else {
@@ -1293,18 +1294,20 @@ Status PopulateCDCSDKSnapshotRecord(
               *value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
               cdc_datum_message));
         } else {
-          cdc_datum_message->mutable_cql_value()->CopyFrom(*value);
+          cdc_datum_message->set_column_type(col_schema.pg_type_oid());
+          cdc_datum_message->set_pg_type(col_schema.pg_type_oid());
         }
       } else {
         cdc_datum_message->mutable_cql_value()->CopyFrom(*value);
-
         col_schema.type()->ToQLTypePB(cdc_datum_message->mutable_cql_type());
       }
     } else {
-      if (is_ysql_table)
+      if (is_ysql_table) {
         cdc_datum_message->set_column_type(col_schema.pg_type_oid());
-      else
+        cdc_datum_message->set_pg_type(col_schema.pg_type_oid());
+      } else {
         col_schema.type()->ToQLTypePB(cdc_datum_message->mutable_cql_type());
+      }
     }
 
     row_message->add_old_tuple();

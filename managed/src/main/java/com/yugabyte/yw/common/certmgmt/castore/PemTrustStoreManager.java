@@ -25,12 +25,13 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 
-/** Relates to the Operating system's trust store */
+/** Relates to YBA's PEM trust store */
 @Slf4j
 @Singleton
-public class SystemTrustStoreManager implements TrustStoreManager {
+public class PemTrustStoreManager implements TrustStoreManager {
   public static final String TRUSTSTORE_FILE_NAME = "yb-ca-bundle.pem";
 
+  /** Creates a trust-store with only custom CA certificates in PEM format. */
   public boolean addCertificate(
       String certPath,
       String certAlias,
@@ -38,7 +39,7 @@ public class SystemTrustStoreManager implements TrustStoreManager {
       char[] trustStorePassword,
       boolean suppressErrors)
       throws KeyStoreException, CertificateException, IOException, PlatformServiceException {
-    log.debug("Trying to update YBA's system truststore ...");
+    log.debug("Trying to update YBA's PEM truststore ...");
 
     Certificate newCert = null;
     newCert = getX509Certificate(certPath);
@@ -53,7 +54,7 @@ public class SystemTrustStoreManager implements TrustStoreManager {
     if (!doesTrustStoreExist) {
       File sysTrustStoreFile = new File(trustStorePath);
       sysTrustStoreFile.createNewFile();
-      log.debug("Create an empty YBA system trust-store");
+      log.debug("Create an empty YBA PEM trust-store");
     } else {
       List<Certificate> trustCerts = getCertsInTrustStore(trustStorePath, trustStorePassword);
       if (trustCerts != null) {
@@ -73,10 +74,10 @@ public class SystemTrustStoreManager implements TrustStoreManager {
         (X509Certificate) newCert, trustStorePath, false, append);
     log.debug("Truststore '{}' now has the cert {}", trustStorePath, certAlias);
 
-    // Backup up YBA's system trust store in DB.
+    // Backup up YBA's PEM trust store in DB.
     FileData.addToBackup(Collections.singletonList(trustStorePath));
 
-    log.info("Custom CA certificate {} added in System truststore", certAlias);
+    log.info("Custom CA certificate {} added in PEM truststore", certAlias);
     return !doesTrustStoreExist;
   }
 
@@ -91,8 +92,8 @@ public class SystemTrustStoreManager implements TrustStoreManager {
 
     // Get the existing trust bundle.
     String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
-    log.debug("Trying to replace cert {} in the System truststore {}..", certAlias, trustStorePath);
-    List<Certificate> trustCerts = getCertificates(trustStorePath, trustStorePassword);
+    log.debug("Trying to replace cert {} in the PEM truststore {}..", certAlias, trustStorePath);
+    List<Certificate> trustCerts = getCertificates(trustStorePath);
 
     // Check if such a cert already exists.
     Certificate oldCert = getX509Certificate(oldCertPath);
@@ -111,7 +112,7 @@ public class SystemTrustStoreManager implements TrustStoreManager {
       log.info("Truststore '{}' updated with new cert at alias '{}'", trustStorePath, certAlias);
     }
 
-    // Backup up YBA's System trust store in DB.
+    // Backup up YBA's PEM trust store in DB.
     FileData.addToBackup(Collections.singletonList(trustStorePath));
   }
 
@@ -137,9 +138,9 @@ public class SystemTrustStoreManager implements TrustStoreManager {
       boolean suppressErrors)
       throws CertificateException, IOException, KeyStoreException {
 
-    log.info("Removing cert {} from System truststore ...", certAlias);
+    log.info("Removing cert {} from PEM truststore ...", certAlias);
     String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
-    List<Certificate> trustCerts = getCertificates(trustStorePath, trustStorePassword);
+    List<Certificate> trustCerts = getCertificates(trustStorePath);
 
     // Check if such an alias already exists.
     Certificate certToRemove = getX509Certificate(certPath);
@@ -157,7 +158,7 @@ public class SystemTrustStoreManager implements TrustStoreManager {
       saveTo(trustStorePath, trustCerts);
       log.debug("Certificate {} is now deleted from trust-store {}", certAlias, trustStorePath);
     }
-    log.info("custom CA certs deleted from YBA's System truststore");
+    log.info("custom CA certs deleted from YBA's PEM truststore");
   }
 
   private List<Certificate> getCertsInTrustStore(String trustStorePath, char[] trustStorePassword) {
@@ -169,13 +170,13 @@ public class SystemTrustStoreManager implements TrustStoreManager {
     if (new File(trustStorePath).exists()) {
       log.debug("YBA's truststore already exists, returning certs from it");
     }
-    List<Certificate> trustCerts = getCertificates(trustStorePath, null);
+    List<Certificate> trustCerts = getCertificates(trustStorePath);
     if (trustCerts.isEmpty()) log.info("Initiating empty YBA trust-store");
 
     return trustCerts;
   }
 
-  private List<Certificate> getCertificates(String trustStorePath, char[] trustStorePassword) {
+  private List<Certificate> getCertificates(String trustStorePath) {
     List<Certificate> certs = new ArrayList<>();
     try (FileInputStream certStream = new FileInputStream(trustStorePath)) {
       CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
