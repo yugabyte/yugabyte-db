@@ -44,6 +44,16 @@ func (o *Output) StderrString() string {
 	return o.stderr.String()
 }
 
+// StdoutBytes returns the stdout as a byte array
+func (o *Output) StdoutBytes() []byte {
+	return o.stdout.Bytes()
+}
+
+// StderrBytes returns the stderr as a byte array
+func (o *Output) StderrBytes() []byte {
+	return o.stderr.Bytes()
+}
+
 // SucceededOrLog can be called to log an error message if the command failed.
 func (o *Output) SucceededOrLog() bool {
 	if o.Succeeded() {
