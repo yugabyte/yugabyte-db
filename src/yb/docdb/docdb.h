@@ -130,8 +130,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 // Outputs: keys_locked, write_batch
 Status AssembleDocWriteBatch(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     const DocDB& doc_db,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     LWKeyValueWriteBatchPB* write_batch,

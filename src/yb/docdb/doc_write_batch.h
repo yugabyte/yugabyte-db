@@ -23,6 +23,7 @@
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/read_operation_data.h"
 #include "yb/dockv/value.h"
 
 #include "yb/rocksdb/cache.h"
@@ -168,8 +169,7 @@ class DocWriteBatch {
       const dockv::DocPath& doc_path,
       const dockv::ValueControlFields& control_fields,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::optional<IntraTxnWriteId> write_id = {});
 
@@ -182,13 +182,12 @@ class DocWriteBatch {
   Status SetPrimitive(
       const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp) {
     return SetPrimitive(
-        doc_path, dockv::ValueControlFields { .timestamp = user_timestamp }, value, read_ht,
-        deadline, query_id);
+        doc_path, dockv::ValueControlFields { .timestamp = user_timestamp }, value,
+        read_operation_data, query_id);
   }
 
   // Extend the SubDocument in the given key. We'll support List with Append and Prepend mode later.
@@ -198,8 +197,7 @@ class DocWriteBatch {
   Status ExtendSubDocument(
       const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
@@ -207,8 +205,7 @@ class DocWriteBatch {
   Status InsertSubDocument(
       const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp,
@@ -217,8 +214,7 @@ class DocWriteBatch {
   Status ExtendList(
       const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
@@ -228,8 +224,7 @@ class DocWriteBatch {
       const dockv::DocPath& doc_path,
       int64_t index,
       const ValueRef& value,
-      const ReadHybridTime& read_ht,
-      const CoarseTimePoint deadline,
+      const ReadOperationData& read_operation_data,
       const rocksdb::QueryId query_id,
       const Direction dir = Direction::kForward,
       const int64_t start_index = 0,
@@ -241,16 +236,14 @@ class DocWriteBatch {
       const dockv::DocPath &doc_path,
       const int index,
       const ValueRef& value,
-      const ReadHybridTime& read_ht,
-      const CoarseTimePoint deadline,
+      const ReadOperationData& read_operation_data,
       const rocksdb::QueryId query_id,
       MonoDelta default_ttl = dockv::ValueControlFields::kMaxTtl,
       MonoDelta write_ttl = dockv::ValueControlFields::kMaxTtl);
 
   Status DeleteSubDoc(
       const dockv::DocPath& doc_path,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
 

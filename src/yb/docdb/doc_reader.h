@@ -46,7 +46,7 @@ YB_DEFINE_ENUM(DocReaderResult, (kNotFound)(kFoundAndFinished)(kFoundNotFinished
 Result<DocHybridTime> GetTableTombstoneTime(
     const Slice& root_doc_key, const DocDB& doc_db,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline, const ReadHybridTime& read_time);
+    const ReadOperationData& read_operation_data);
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
@@ -68,8 +68,7 @@ Result<std::optional<dockv::SubDocument>> TEST_GetSubDocument(
     const DocDB& doc_db,
     const rocksdb::QueryId query_id,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time = ReadHybridTime::Max(),
+    const ReadOperationData& read_operation_data,
     const dockv::ReaderProjection* projection = nullptr);
 
 // This class reads SubDocument instances for a given table. The caller should initialize with

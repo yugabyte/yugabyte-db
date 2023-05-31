@@ -62,8 +62,7 @@ Result<HybridTime> SystemTablet::DoGetSafeTime(
   return HybridTime::kMax;
 }
 
-Status SystemTablet::HandleQLReadRequest(CoarseTimePoint deadline,
-                                         const ReadHybridTime& read_time,
+Status SystemTablet::HandleQLReadRequest(const docdb::ReadOperationData& read_operation_data,
                                          const QLReadRequestPB& ql_read_request,
                                          const TransactionMetadataPB& transaction_metadata,
                                          tablet::QLReadRequestResult* result,
@@ -71,8 +70,8 @@ Status SystemTablet::HandleQLReadRequest(CoarseTimePoint deadline,
   DCHECK(!transaction_metadata.has_transaction_id());
   // Passing empty ScopedRWOperation because we don't have underlying RocksDB here.
   auto pending_op = ScopedRWOperation();
-  return tablet::AbstractTablet::HandleQLReadRequest(
-      deadline, read_time, ql_read_request, TransactionOperationContext(), pending_op, result,
+  return AbstractTablet::HandleQLReadRequest(
+      read_operation_data, ql_read_request, TransactionOperationContext(), pending_op, result,
       rows_data);
 }
 

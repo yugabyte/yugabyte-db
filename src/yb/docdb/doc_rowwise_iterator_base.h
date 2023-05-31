@@ -25,6 +25,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/docdb/read_operation_data.h"
 
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/reader_projection.h"
@@ -45,8 +46,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const DocDB& doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const ReadOperationData& read_operation_data,
       std::reference_wrapper<const ScopedRWOperation> pending_op);
 
   DocRowwiseIteratorBase(
@@ -54,8 +54,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const DocDB& doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const ReadOperationData& read_operation_data,
       ScopedRWOperation&& pending_op);
 
   DocRowwiseIteratorBase(
@@ -63,8 +62,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
       std::shared_ptr<DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const DocDB& doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const ReadOperationData& read_operation_data,
       ScopedRWOperation&& pending_op);
 
   ~DocRowwiseIteratorBase() override;
@@ -72,13 +70,13 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   void SetSchema(const Schema& schema);
 
   // Init scan iterator.
-  void Init(TableType table_type, const Slice& sub_doc_key = Slice());
+  void Init(TableType table_type, Slice sub_doc_key = Slice());
   // Init QL read scan.
   Status Init(const qlexpr::YQLScanSpec& spec);
 
   bool IsFetchedRowStatic() const override;
 
-  const Slice& row_key() const { return row_key_; }
+  Slice row_key() const { return row_key_; }
 
   // Returns the tuple id of the current tuple. The tuple id returned is the serialized DocKey
   // and without the cotable id.
@@ -86,10 +84,10 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   // Seeks to the given tuple by its id. The tuple id should be the serialized DocKey and without
   // the cotable id.
-  void SeekTuple(const Slice& tuple_id) override;
+  void SeekTuple(Slice tuple_id) override;
 
   // Returns true if tuple was fetched, false otherwise.
-  Result<bool> FetchTuple(const Slice& tuple_id, qlexpr::QLTableRow* row) override;
+  Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row) override;
 
   // Retrieves the next key to read after the iterator finishes for the given page.
   Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) override;
@@ -109,8 +107,8 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
       const rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr) = 0;
 
-  virtual void Seek(const Slice& key) = 0;
-  virtual void PrevDocKey(const Slice& key) = 0;
+  virtual void Seek(Slice key) = 0;
+  virtual void PrevDocKey(Slice key) = 0;
 
   void CheckInitOnce();
   template <class T>
@@ -119,7 +117,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
  protected:
   // Initialize iter_key_ and update the row_key_.
   // full_row - whether is keys is related to full row value. For instance packed row.
-  Status InitIterKey(const Slice& key, bool full_row);
+  Status InitIterKey(Slice key, bool full_row);
 
   // Parse the row_key_ and copy key required key columns to row.
   Status CopyKeyColumnsToRow(const dockv::ReaderProjection& projection, qlexpr::QLTableRow* row);
@@ -128,10 +126,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   template <class Row>
   Status DoCopyKeyColumnsToRow(const dockv::ReaderProjection& projection, Row* row);
 
-  Result<DocHybridTime> GetTableTombstoneTime(const Slice& root_doc_key) const {
-    return docdb::GetTableTombstoneTime(
-        root_doc_key, doc_db_, txn_op_context_, deadline_, read_time_);
-  }
+  Result<DocHybridTime> GetTableTombstoneTime(Slice root_doc_key) const;
 
   // Increments statistics for total keys found, obsolete keys (past cutoff or no) if applicable.
   //
@@ -160,9 +155,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   bool is_forward_scan_ = true;
 
-  const CoarseTimePoint deadline_;
-
-  const ReadHybridTime read_time_;
+  const ReadOperationData read_operation_data_;
 
   const DocDB doc_db_;
 
@@ -182,13 +175,10 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // Indicates whether we've already finished iterating.
   bool done_ = false;
 
-  // The current row's primary key. It is set to lower bound in the beginning.
-  Slice row_key_;
-
   bool fetched_row_static_ = false;
 
-  // The current row's iterator key.
-  dockv::KeyBytes iter_key_;
+  // The current row's primary key. It is set to lower bound in the beginning.
+  dockv::KeyBytes row_key_;
 
   const dockv::ReaderProjection& projection_;
 

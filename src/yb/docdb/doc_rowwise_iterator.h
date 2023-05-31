@@ -57,8 +57,7 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      std::reference_wrapper<const DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
-                     CoarseTimePoint deadline,
-                     const ReadHybridTime& read_time,
+                     const ReadOperationData& read_operation_data,
                      std::reference_wrapper<const ScopedRWOperation> pending_op,
                      const DocDBStatistics* statistics = nullptr);
 
@@ -66,8 +65,7 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      std::shared_ptr<DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
-                     CoarseTimePoint deadline,
-                     const ReadHybridTime& read_time,
+                     const ReadOperationData& read_operation_data,
                      ScopedRWOperation&& pending_op,
                      const DocDBStatistics* statistics = nullptr);
 
@@ -109,8 +107,8 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   template <class TableRow>
   Result<bool> FetchNextImpl(TableRow table_row);
 
-  void Seek(const Slice& key) override;
-  void PrevDocKey(const Slice& key) override;
+  void Seek(Slice key) override;
+  void PrevDocKey(Slice key) override;
 
   void ConfigureForYsql();
   void InitResult();
@@ -132,8 +130,8 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
     const dockv::ReaderProjection* static_projection;
   };
 
-  Result<DocReaderResult> FetchRow(const Slice& doc_key, dockv::PgTableRow* table_row);
-  Result<DocReaderResult> FetchRow(const Slice& doc_key, QLTableRowPair table_row);
+  Result<DocReaderResult> FetchRow(dockv::PgTableRow* table_row);
+  Result<DocReaderResult> FetchRow(QLTableRowPair table_row);
 
   Status FillRow(QLTableRowPair table_row);
   Status FillRow(dockv::PgTableRow* table_row);

@@ -60,8 +60,7 @@ Status YQLVirtualTable::GetIterator(
     const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const docdb::ReadOperationData& read_operation_data,
     const qlexpr::QLScanSpec& spec,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const {

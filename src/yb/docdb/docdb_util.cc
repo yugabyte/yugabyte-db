@@ -314,7 +314,8 @@ Status DocDBRocksDBUtil::SetPrimitive(
     const HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.SetPrimitive(doc_path, control_fields, value, read_ht));
+  RETURN_NOT_OK(dwb.SetPrimitive(
+      doc_path, control_fields, value, ReadOperationData::FromReadTime(read_ht)));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -408,8 +409,8 @@ Status DocDBRocksDBUtil::InsertSubDocument(
     MonoDelta ttl,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.InsertSubDocument(doc_path, value, read_ht,
-                                      CoarseTimePoint::max(), rocksdb::kDefaultQueryId, ttl));
+  RETURN_NOT_OK(dwb.InsertSubDocument(
+      doc_path, value, ReadOperationData::FromReadTime(read_ht), rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -420,8 +421,8 @@ Status DocDBRocksDBUtil::ExtendSubDocument(
     MonoDelta ttl,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.ExtendSubDocument(doc_path, value, read_ht,
-                                      CoarseTimePoint::max(), rocksdb::kDefaultQueryId, ttl));
+  RETURN_NOT_OK(dwb.ExtendSubDocument(
+      doc_path, value, ReadOperationData::FromReadTime(read_ht), rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -431,7 +432,7 @@ Status DocDBRocksDBUtil::ExtendList(
     HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, read_ht, CoarseTimePoint::max()));
+  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, ReadOperationData::FromReadTime(read_ht)));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -447,8 +448,8 @@ Status DocDBRocksDBUtil::ReplaceInList(
     UserTimeMicros user_timestamp) {
   auto dwb = MakeDocWriteBatch();
   RETURN_NOT_OK(dwb.ReplaceCqlInList(
-      doc_path, target_cql_index, value, read_ht, CoarseTimePoint::max(), query_id, default_ttl,
-      ttl));
+      doc_path, target_cql_index, value, ReadOperationData::FromReadTime(read_ht), query_id,
+      default_ttl, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -457,7 +458,7 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
     HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.DeleteSubDoc(doc_path, read_ht));
+  RETURN_NOT_OK(dwb.DeleteSubDoc(doc_path, ReadOperationData::FromReadTime(read_ht)));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
