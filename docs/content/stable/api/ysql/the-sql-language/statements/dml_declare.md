@@ -80,7 +80,7 @@ This indicates that data retrieved from the _cursor_ should be unaffected by upd
 
 `NO SCROLL` specifies that the _cursor_ cannot be used to retrieve the current row or rows that lie before it.
 
-When you specify neither `SCROLL` nor `NO SCROLL`, then allow scrolling is allowed in only _some_ cases—and this is therefore different from specifying `SCROLL` explicitly. 
+When you specify neither `SCROLL` nor `NO SCROLL`, then allow scrolling is allowed in only _some_ cases—and this is therefore different from specifying `SCROLL` explicitly.
 
 {{< tip title="Always specify either SCROLL or NO SCROLL explicitly" >}}
 See the [tip](../../../cursors/#specify-no-scroll-or-scroll-explicitly) in the subsection [Scrollable cursors](../../../cursors/#scrollable-cursors) on the dedicated [Cursors](../../../cursors/) page.
@@ -90,14 +90,13 @@ Choose the mode that you want explicitly to honor the requirements that you must
 
 ### *WITHOUT HOLD and WITH HOLD*
 
-`WITHOUT HOLD` specifies that the _cursor_ cannot be used after the transaction that created it ends (even it it ends with a successful _commit_).
+`WITHOUT HOLD` specifies that the _cursor_ cannot be used after the transaction that created it ends (even if it ends with a successful _commit_).
 
 `WITH HOLD` specifies that the _cursor_ can continue to be used after the transaction that created it successfully commits.  (Of course, it vanishes if the transaction that created it rolls back.)
 
 Specifying neither `WITHOUT HOLD` nor `WITH HOLD` is the same as specifying `WITHOUT HOLD`.
 
-## Simple example
-
+## Basic example
 
 ```plpgsql
 drop table if exists t cascade;
