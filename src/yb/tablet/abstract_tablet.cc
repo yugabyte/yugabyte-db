@@ -39,8 +39,7 @@ Result<HybridTime> AbstractTablet::SafeTime(RequireLease require_lease,
 }
 
 Status AbstractTablet::HandleQLReadRequest(
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const docdb::ReadOperationData& read_operation_data,
     const QLReadRequestPB& ql_read_request,
     const TransactionOperationContext& txn_op_context,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
@@ -57,7 +56,7 @@ Status AbstractTablet::HandleQLReadRequest(
 
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
-      QLStorage(), deadline, read_time, *doc_read_context, pending_op, &resultset,
+      QLStorage(), read_operation_data, *doc_read_context, pending_op, &resultset,
       &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {
@@ -79,8 +78,7 @@ Status AbstractTablet::HandleQLReadRequest(
 }
 
 Status AbstractTablet::ProcessPgsqlReadRequest(
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const docdb::ReadOperationData& read_operation_data,
     bool is_explicit_request_read_time,
     const PgsqlReadRequestPB& pgsql_read_request,
     const std::shared_ptr<TableInfo>& table_info,
@@ -97,7 +95,7 @@ Status AbstractTablet::ProcessPgsqlReadRequest(
 
   TRACE("Start Execute");
   auto fetched_rows = doc_op.Execute(
-      QLStorage(), deadline, read_time, is_explicit_request_read_time, *doc_read_context,
+      QLStorage(), read_operation_data, is_explicit_request_read_time, *doc_read_context,
       index_doc_read_context.get(), pending_op, result->rows_data, &result->restart_read_ht,
       statistics);
   TRACE("Done Execute");

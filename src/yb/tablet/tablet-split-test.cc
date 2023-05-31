@@ -15,22 +15,25 @@
 
 #include <boost/algorithm/string/join.hpp>
 
-#include "yb/dockv/partition.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_debug.h"
+#include "yb/docdb/read_operation_data.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/schema_packing.h"
+
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/rocksdb/db.h"
 
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet-test-util.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
@@ -72,7 +75,8 @@ class TabletSplitTest : public YBTabletTest {
     QLReadRequestResult result;
     WriteBuffer rows_data(1024);
     EXPECT_OK(tablet->HandleQLReadRequest(
-        CoarseTimePoint::max(), read_time, req, TransactionMetadataPB(), &result, &rows_data));
+        docdb::ReadOperationData::FromReadTime(read_time), req, TransactionMetadataPB(), &result,
+        &rows_data));
 
     EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
 

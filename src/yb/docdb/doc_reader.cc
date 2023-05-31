@@ -26,6 +26,7 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/read_operation_data.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
 
 #include "yb/dockv/doc_key.h"
@@ -142,7 +143,7 @@ YB_STRONGLY_TYPED_BOOL(NeedValue);
 Result<DocHybridTime> GetTableTombstoneTime(
     const Slice& root_doc_key, const DocDB& doc_db,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline, const ReadHybridTime& read_time) {
+    const ReadOperationData& read_operation_data) {
   if (root_doc_key[0] == dockv::KeyEntryTypeAsChar::kColocationId ||
       root_doc_key[0] == dockv::KeyEntryTypeAsChar::kTableId) {
     dockv::DocKey table_id;
@@ -151,7 +152,7 @@ Result<DocHybridTime> GetTableTombstoneTime(
     auto table_id_encoded = table_id.Encode();
     auto iter = CreateIntentAwareIterator(
         doc_db, BloomFilterMode::USE_BLOOM_FILTER, table_id_encoded.AsSlice(),
-        rocksdb::kDefaultQueryId, txn_op_context, deadline, read_time);
+        rocksdb::kDefaultQueryId, txn_op_context, read_operation_data);
     iter->Seek(table_id_encoded);
 
     Slice value;
@@ -180,12 +181,11 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
     const DocDB& doc_db,
     const rocksdb::QueryId query_id,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     const dockv::ReaderProjection* projection) {
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, sub_doc_key, query_id,
-      txn_op_context, deadline, read_time);
+      txn_op_context, read_operation_data);
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());
   iter->SeekToLastDocKey();
@@ -201,9 +201,10 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
 
   dockv::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
   DocDBTableReader doc_reader(
-      iter.get(), deadline, projection, TableType::YQL_TABLE_TYPE, schema_packing_storage);
+      iter.get(), read_operation_data.deadline, projection, TableType::YQL_TABLE_TYPE,
+      schema_packing_storage);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(GetTableTombstoneTime(
-      sub_doc_key, doc_db, txn_op_context, deadline, read_time))));
+      sub_doc_key, doc_db, txn_op_context, read_operation_data))));
   SubDocument result;
   if (VERIFY_RESULT(doc_reader.Get(sub_doc_key, &result)) != DocReaderResult::kNotFound) {
     return result;

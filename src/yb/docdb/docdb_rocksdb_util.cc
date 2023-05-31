@@ -253,14 +253,14 @@ void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
   SeekForward(key_bytes.AsSlice(), iter);
 }
 
-KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht) {
+KeyBytes AppendDocHt(Slice key, const DocHybridTime& doc_ht) {
   char buf[kMaxBytesPerEncodedHybridTime + 1];
   buf[0] = dockv::KeyEntryTypeAsChar::kHybridTime;
   auto end = doc_ht.EncodedInDocDbFormat(buf + 1);
   return KeyBytes(key, Slice(buf, end));
 }
 
-void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter) {
+void SeekPastSubKey(Slice key, rocksdb::Iterator* iter) {
   char ch = dockv::KeyEntryTypeAsChar::kHybridTime + 1;
   SeekForward(KeyBytes(key, Slice(&ch, 1)), iter);
 }
@@ -273,7 +273,7 @@ void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
 
 namespace  {
 
-inline bool IsIterAfterOrAtKey(rocksdb::Iterator* iter, const Slice& key) {
+inline bool IsIterAfterOrAtKey(rocksdb::Iterator* iter, Slice key) {
   if (PREDICT_FALSE(!iter->Valid())) {
     if (PREDICT_FALSE(!iter->status().ok())) {
       VLOG(3) << "Iterator " << iter << " error: " << iter->status();
@@ -287,7 +287,7 @@ inline bool IsIterAfterOrAtKey(rocksdb::Iterator* iter, const Slice& key) {
 }
 
 inline SeekStats SeekPossiblyUsingNext(
-    rocksdb::Iterator* iter, const Slice& seek_key, int max_nexts) {
+    rocksdb::Iterator* iter, Slice seek_key, int max_nexts) {
   SeekStats result;
   for (int nexts = max_nexts; nexts-- > 0;) {
     if (IsIterAfterOrAtKey(iter, seek_key)) {
@@ -312,15 +312,11 @@ inline SeekStats SeekPossiblyUsingNext(
 
 } // namespace
 
-SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) {
+SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, Slice seek_key) {
   return SeekPossiblyUsingNext(iter, seek_key, FLAGS_max_nexts_to_avoid_seek);
 }
 
-void PerformRocksDBSeek(
-    rocksdb::Iterator* iter,
-    const rocksdb::Slice& seek_key,
-    const char* file_name,
-    int line) {
+void PerformRocksDBSeek(rocksdb::Iterator* iter, Slice seek_key, const char* file_name, int line) {
   SeekStats stats;
   if (seek_key.size() == 0) {
     iter->SeekToFirst();
@@ -417,8 +413,7 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
     const DocDBStatistics* statistics) {
@@ -427,7 +422,7 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
       user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound,
       statistics ? statistics->RegularDBStatistics() : nullptr);
   return std::make_unique<IntentAwareIterator>(
-      doc_db, read_opts, deadline, read_time, txn_op_context,
+      doc_db, read_opts, read_operation_data, txn_op_context,
       statistics ? statistics->IntentsDBStatistics() : nullptr);
 }
 
@@ -576,7 +571,7 @@ T* CreateOnArena(rocksdb::Arena* arena, Args&&... args) {
 }
 
 rocksdb::InternalIterator* WrapIterator(
-    rocksdb::InternalIterator* iterator, rocksdb::Arena* arena, const Slice& filter) {
+    rocksdb::InternalIterator* iterator, rocksdb::Arena* arena, Slice filter) {
   if (!filter.empty()) {
     HybridTime hybrid_time_filter;
     memcpy(&hybrid_time_filter, filter.data(), sizeof(hybrid_time_filter));
@@ -1071,7 +1066,7 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
   return nullptr;
 }
 
-void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter) {
+void SeekForward(Slice slice, rocksdb::Iterator *iter) {
   if (IsIterAfterOrAtKey(iter, slice)) {
     return;
   }

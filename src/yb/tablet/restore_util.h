@@ -39,8 +39,10 @@ class FetchState {
             boost::none,
             rocksdb::kDefaultQueryId,
             TransactionOperationContext(),
-            CoarseTimePoint::max(),
-            read_time)) {
+            docdb::ReadOperationData {
+              .deadline = CoarseTimePoint::max(),
+              .read_time = read_time,
+            })) {
   }
 
   Status SetPrefix(const Slice& prefix);

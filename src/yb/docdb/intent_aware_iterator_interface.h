@@ -54,26 +54,26 @@ class IntentAwareIteratorIf {
   //------------------------------------------------------------------------------------------------
   // Seek to specified encoded key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
-  virtual void Seek(const Slice& key) = 0;
+  virtual void Seek(Slice key) = 0;
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
   // doesn't have hybrid time). For efficiency, the method that takes a non-const KeyBytes pointer
   // avoids memory allocation by using the KeyBytes buffer to prepare the key to seek to, and may
   // append up to kMaxBytesPerEncodedHybridTime + 1 bytes of data to the buffer. The appended data
   // is removed when the method returns.
-  virtual void SeekForward(const Slice& key) = 0;
+  virtual void SeekForward(Slice key) = 0;
   virtual void SeekForward(dockv::KeyBytes* key) = 0;
 
   // Seek out of subdoc key (it is responsibility of caller to make sure it doesn't have hybrid
   // time). For efficiency, the method takes a non-const KeyBytes pointer avoids memory allocation
   // by using the KeyBytes buffer to prepare the key to seek to by appending an extra byte. The
   // appended byte is removed when the method returns.
-  virtual void SeekOutOfSubDoc(const Slice& key) = 0;
+  virtual void SeekOutOfSubDoc(Slice key) = 0;
   virtual void SeekOutOfSubDoc(dockv::KeyBytes* key_bytes) = 0;
 
   // Position the iterator at the beginning of the DocKey found before the doc_key
   // provided.
-  virtual void PrevDocKey(const Slice& encoded_doc_key) = 0;
+  virtual void PrevDocKey(Slice encoded_doc_key) = 0;
 
   virtual const ReadHybridTime& read_time() const = 0;
   virtual Result<HybridTime> RestartReadHt() const = 0;
@@ -87,7 +87,7 @@ class IntentAwareIteratorIf {
   virtual bool IsOutOfRecords() = 0;
   virtual Slice value() = 0;
 
-  virtual void SetUpperbound(const Slice& upperbound) = 0;
+  virtual void SetUpperbound(Slice upperbound) = 0;
 
   // Helper function to get the current position of the iterator.
   virtual std::string DebugPosToString() = 0;

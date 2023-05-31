@@ -269,8 +269,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 }
 
 Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_ops,
-                             CoarseTimePoint deadline,
-                             const ReadHybridTime& read_time,
+                             const ReadOperationData& read_operation_data,
                              const DocDB& doc_db,
                              std::reference_wrapper<const ScopedRWOperation> pending_op,
                              LWKeyValueWriteBatchPB* write_batch,
@@ -280,7 +279,7 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
                              const string& table_name) {
   DCHECK_ONLY_NOTNULL(restart_read_ht);
   DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, pending_op, monotonic_counter);
-  DocOperationApplyData data = {&doc_write_batch, deadline, read_time, restart_read_ht};
+  DocOperationApplyData data = {&doc_write_batch, read_operation_data, restart_read_ht};
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     Status s = doc_op->Apply(data);
     if (s.IsQLError() && doc_op->OpType() == DocOperation::Type::QL_WRITE_OPERATION) {
