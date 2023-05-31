@@ -489,6 +489,12 @@ Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-
 
 Default: `true`
 
+{{< note title="Important" >}}
+
+This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< /note >}}
+
 ##### --tablet_split_low_phase_shard_count_per_node
 
 The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [`--tablet_split_low_phase_size_threshold_bytes`](./#tablet-split-low-phase-size-threshold-bytes) to determine which tablets to split.
