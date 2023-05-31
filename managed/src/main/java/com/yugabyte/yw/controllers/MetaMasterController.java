@@ -78,10 +78,10 @@ public class MetaMasterController extends Controller {
 
   private Result getServerAddresses(UUID customerUUID, UUID universeUUID, ServerType type) {
     // Verify the customer with this universe is present.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Lookup the entry for the instanceUUID.
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     // In case of Kubernetes universe we would fetch the service ip
     // instead of the POD ip.
     String serviceIPPort = getKuberenetesServiceIPPort(type, universe);

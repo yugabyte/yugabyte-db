@@ -137,7 +137,7 @@ public class AlertController extends AuthenticatedController {
   public Result get(UUID customerUUID, UUID alertUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    Alert alert = alertService.getOrBadRequest(alertUUID);
+    Alert alert = alertService.getOrBadRequest(customerUUID, alertUUID);
     return PlatformResults.withData(convert(alert));
   }
 
@@ -215,7 +215,7 @@ public class AlertController extends AuthenticatedController {
     AlertFilter filter = AlertFilter.builder().uuid(alertUUID).build();
     alertService.acknowledge(filter);
 
-    Alert alert = alertService.getOrBadRequest(alertUUID);
+    Alert alert = alertService.getOrBadRequest(customerUUID, alertUUID);
     auditService()
         .createAuditEntry(
             request, Audit.TargetType.Alert, alertUUID.toString(), Audit.ActionType.Acknowledge);
@@ -254,7 +254,8 @@ public class AlertController extends AuthenticatedController {
   public Result getAlertConfiguration(UUID customerUUID, UUID configurationUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertConfiguration configuration = alertConfigurationService.getOrBadRequest(configurationUUID);
+    AlertConfiguration configuration =
+        alertConfigurationService.getOrBadRequest(customerUUID, configurationUUID);
 
     return PlatformResults.withData(configuration);
   }
@@ -371,7 +372,7 @@ public class AlertController extends AuthenticatedController {
   public Result updateAlertConfiguration(
       UUID customerUUID, UUID configurationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    alertConfigurationService.getOrBadRequest(configurationUUID);
+    alertConfigurationService.getOrBadRequest(customerUUID, configurationUUID);
 
     AlertConfiguration configuration = parseJson(request, AlertConfiguration.class);
 
@@ -398,7 +399,7 @@ public class AlertController extends AuthenticatedController {
       UUID customerUUID, UUID configurationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    alertConfigurationService.getOrBadRequest(configurationUUID);
+    alertConfigurationService.getOrBadRequest(customerUUID, configurationUUID);
 
     alertConfigurationService.delete(configurationUUID);
 
@@ -412,7 +413,8 @@ public class AlertController extends AuthenticatedController {
   public Result sendTestAlert(UUID customerUUID, UUID configurationUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    AlertConfiguration configuration = alertConfigurationService.getOrBadRequest(configurationUUID);
+    AlertConfiguration configuration =
+        alertConfigurationService.getOrBadRequest(customerUUID, configurationUUID);
     Alert alert = createTestAlert(customer, configuration, true);
     SendNotificationResult result = alertManager.sendNotification(alert);
     if (result.getStatus() != SendNotificationStatus.SUCCEEDED) {
@@ -682,6 +684,7 @@ public class AlertController extends AuthenticatedController {
   public Result deleteAlertTemplateSettings(
       UUID customerUUID, UUID settingsUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
+    alertTemplateSettingsService.getOrBadRequest(customerUUID, settingsUuid);
     alertTemplateSettingsService.delete(settingsUuid);
     auditService()
         .createAuditEntry(
@@ -738,6 +741,7 @@ public class AlertController extends AuthenticatedController {
   public Result deleteAlertTemplateVariables(
       UUID customerUUID, UUID variablesUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
+    alertTemplateVariableService.getOrBadRequest(customerUUID, variablesUuid);
     alertTemplateVariableService.delete(variablesUuid);
     auditService()
         .createAuditEntry(
@@ -764,7 +768,8 @@ public class AlertController extends AuthenticatedController {
         parseJsonAndValidate(request, NotificationPreviewFormData.class);
 
     AlertConfiguration alertConfiguration =
-        alertConfigurationService.getOrBadRequest(previewFormData.getAlertConfigUuid());
+        alertConfigurationService.getOrBadRequest(
+            customerUUID, previewFormData.getAlertConfigUuid());
 
     AlertChannelTemplatesPreview channelTemplates = previewFormData.getAlertChannelTemplates();
     channelTemplates.getChannelTemplates().setCustomerUUID(customerUUID);

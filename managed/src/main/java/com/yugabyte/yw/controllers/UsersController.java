@@ -72,6 +72,7 @@ public class UsersController extends AuthenticatedController {
   public Result index(UUID customerUUID, UUID userUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
+    checkUserOwnership(customerUUID, userUUID, user);
     return PlatformResults.withData(userService.getUserWithFeatures(customer, user));
   }
 
