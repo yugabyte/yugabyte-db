@@ -351,7 +351,7 @@ This value must match on all `yb-master` and `yb-tserver` configurations of a Yu
 
 {{< note title="Important" >}}
 
-When the value is set to *Default* (`-1`), then the server internally *updates* the flag with intended value during startup prior to version `2.18.0` and the flag remains *unchanged* starting from version `2.18.0`.
+When the value is set to *Default* (`-1`), then the server internally *updates* the flag with intended value during startup prior to version `2.18` and the flag remains *unchanged* starting from version `2.18`.
 
 {{< /note >}}
 
@@ -378,6 +378,12 @@ Default: `60`
 Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
 
 Default: `true`
+
+{{< note title="Important" >}}
+
+This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< /note >}}
 
 ##### --post_split_trigger_compaction_pool_max_threads
 
