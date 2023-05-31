@@ -20,25 +20,27 @@ For more information about the available configuration flags, see the following:
 
 ## Modify configuration flags
 
-You can modify configuration flags by opening the universe in the YugabyteDB Anywhere UI and clicking **Actions > Edit Flags** to open the **G-Flags** dialog shown in the following illustration:
+You can add and edit configuration flags by opening the universe in the YugabyteDB Anywhere UI and clicking **Actions > Edit Flags** to open the **G-Flags** dialog shown in the following illustration:
 
-![Edit Config Confirmation](/images/ee/edit-config-2.png)
+![Modify configuration flags](/images/ee/edit-config-2.png)
 
-Use the **Flags** dialog to add or edit flags, as per your requirements.
+Depending on the flag, the universe may need to be restarted to apply the changes. You can apply changes as follows:
 
-Depending on the flag, the universe may need to be restarted to apply the changes. You can opt to perform a rolling restart, a concurrent restart, or immediately apply any changes that do not require a restart and wait until the next time the universe is restarted to apply the remaining changes.
+- Immediately using a rolling restart.
+- Immediately using a concurrent restart.
+- Immediately apply any changes that do not require a restart and wait until the next time the universe is restarted to apply the remaining changes.
 
 ### Add flags
 
 Click **Add Flags > Add to Master** to open the **Add to Master** dialog, then select the flag you want to add to YB-Master and set its value, as per the following illustration:
 
-![Master Config](/images/ee/add-master-1.png)
+![Add flags to Master](/images/ee/add-master-1.png)
 
 Click **Add Flags > Add to T-Server** to open the **Add to T-Server** dialog, then select the flag you want to add to YB-TServer and set its value.
 
 Use **Add as JSON > Add to Master** and **Add as JSON > Add to T-Server** to import flags in bulk. The flags must be defined as key-value pairs in a JSON format via the in the **Add to T-Server** or **Add to Master** dialog, as per the following illustration:
 
-![JSON Config](/images/ee/add-gflags-json.png)
+![Add flags as JSON](/images/ee/add-gflags-json.png)
 
 ### Edit flags
 
@@ -48,7 +50,7 @@ To edit a flag:
 
 1. Click the **Edit Flag** icon for either **MASTER VALUE** or **T-SERVER VALUE** to open the **Edit Flag Value** dialog, as per the following illustration:
 
-    ![Master Config](/images/ee/master-flag-1.png)
+    ![Edit flag](/images/ee/master-flag-1.png)
 
 1. Change the value in the **Flag Value** field and then click **Confirm**.
 
