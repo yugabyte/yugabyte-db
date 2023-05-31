@@ -63,6 +63,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
+import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
@@ -194,6 +195,7 @@ public class Module extends AbstractModule {
       bind(GcpEARServiceUtil.class).asEagerSingleton();
       bind(YbcUpgrade.class).asEagerSingleton();
       bind(PerfAdvisorScheduler.class).asEagerSingleton();
+      bind(PermissionUtil.class).asEagerSingleton();
       requestStaticInjection(CertificateInfo.class);
       requestStaticInjection(HealthCheck.class);
       requestStaticInjection(AppConfigHelper.class);
