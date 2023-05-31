@@ -14,7 +14,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP INDEX` statement to remove one or more indexes from the database.
+Use the `DROP INDEX` statement to remove an index from the database.
 
 ## Syntax
 
