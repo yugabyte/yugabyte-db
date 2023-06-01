@@ -16,13 +16,15 @@
 #include "yb/common/row_mark.h"
 
 #include "yb/docdb/conflict_resolution.h"
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/doc_kv_util.h"
 #include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/dockv/intent.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/transaction_dump.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/intent.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/walltime.h"
@@ -448,6 +450,7 @@ ApplyIntentsContext::ApplyIntentsContext(
     HybridTime commit_ht,
     HybridTime log_ht,
     const KeyBounds* key_bounds,
+    SchemaPackingProvider* schema_packing_provider,
     rocksdb::DB* intents_db)
     : IntentsWriterContext(transaction_id),
       apply_state_(apply_state),
@@ -460,6 +463,7 @@ ApplyIntentsContext::ApplyIntentsContext(
       log_ht_(log_ht),
       write_id_(apply_state ? apply_state->write_id : 0),
       key_bounds_(key_bounds),
+      schema_packing_provider_(schema_packing_provider),
       intent_iter_(CreateRocksDBIterator(
           intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
           rocksdb::kDefaultQueryId)) {
@@ -578,19 +582,46 @@ Result<bool> ApplyIntentsContext::Entry(
         ApplyIntent, transaction_id(), intent.doc_path.size(), intent.doc_path,
         commit_ht_, write_id_, decoded_value.body);
 
-    if (frontiers_) {
-      Slice value_slice = decoded_value.body;
-      RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
-      if (value_slice.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
-        auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(
-            util::FastDecodeUnsignedVarInt(&value_slice)));
-        min_schema_version_ = std::min(min_schema_version_, schema_version);
-        max_schema_version_ = std::max(max_schema_version_, schema_version);
+    RETURN_NOT_OK(UpdateSchemaVersion(intent.doc_path, decoded_value.body));
+  }
+
+  return false;
+}
+
+Status ApplyIntentsContext::UpdateSchemaVersion(Slice key, Slice value) {
+  if (!frontiers_) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value));
+  if (!value.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
+    return Status::OK();
+  }
+  auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(
+      util::FastDecodeUnsignedVarInt(&value)));
+  dockv::DocKeyDecoder decoder(key);
+  auto cotable_id = Uuid::Nil();
+  if (VERIFY_RESULT(decoder.DecodeCotableId(&cotable_id))) {
+    schema_version_colocation_id_ = 0;
+    if (cotable_id != schema_version_table_) {
+      FlushSchemaVersion();
+      schema_version_table_ = cotable_id;
+    }
+  } else {
+    ColocationId colocation_id = 0;
+    if (VERIFY_RESULT(decoder.DecodeColocationId(&colocation_id))) {
+      if (colocation_id != schema_version_colocation_id_) {
+        FlushSchemaVersion();
+        cotable_id = VERIFY_RESULT(schema_packing_provider_->ColocationPacking(
+            colocation_id, kLatestSchemaVersion, HybridTime::kMax)).cotable_id;
+        schema_version_table_ = cotable_id;
+        schema_version_colocation_id_ = colocation_id;
       }
     }
   }
 
-  return false;
+  min_schema_version_ = std::min(min_schema_version_, schema_version);
+  max_schema_version_ = std::max(max_schema_version_, schema_version);
+  return Status::OK();
 }
 
 void ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
@@ -599,13 +630,19 @@ void ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
     std::array<Slice, 1> value_parts = {{Slice(&tombstone_value_type, 1)}};
     PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
   }
-  if (min_schema_version_ <= max_schema_version_) {
-    auto table_id = Uuid::Nil();
-    frontiers_->Smallest().UpdateSchemaVersion(
-        table_id, min_schema_version_, rocksdb::UpdateUserValueType::kSmallest);
-    frontiers_->Largest().UpdateSchemaVersion(
-        table_id, max_schema_version_, rocksdb::UpdateUserValueType::kLargest);
+  FlushSchemaVersion();
+}
+
+void ApplyIntentsContext::FlushSchemaVersion() {
+  if (min_schema_version_ > max_schema_version_) {
+    return;
   }
+  frontiers_->Smallest().UpdateSchemaVersion(
+      schema_version_table_, min_schema_version_, rocksdb::UpdateUserValueType::kSmallest);
+  frontiers_->Largest().UpdateSchemaVersion(
+      schema_version_table_, max_schema_version_, rocksdb::UpdateUserValueType::kLargest);
+  min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
+  max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
 }
 
 RemoveIntentsContext::RemoveIntentsContext(const TransactionId& transaction_id, uint8_t reason)
