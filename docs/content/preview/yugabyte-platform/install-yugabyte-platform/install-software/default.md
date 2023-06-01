@@ -122,9 +122,11 @@ Specify TLS versions via **Application config**, as shown in the following illus
 
 The recommended TLS version is 1.2.
 
-## Set HTTP/HTTPS proxy
+## Set up HTTP/HTTPS proxy
 
-You can setup HTTP and HTTPS proxy via **Application config** and selecting **Enable Proxy** as per the following illustration:
+You can setup HTTP and HTTPS proxy via **Application config**, and select **Enable Proxy** as per the following illustration:
+
+![Enable Proxy](/images/replicated/enable-proxy.png)
 
 The following information describes details about the **Enable Proxy** setting and some considerations.
 
@@ -132,7 +134,7 @@ The following information describes details about the **Enable Proxy** setting a
 
 - If you have only one proxy setup (HTTP or HTTPS), then set the same values for both. This configuration ends up setting OS environment variables or java system properties.
 
-- Below each field, you can notice which java system property or environment variable gets set by the field. System properties will have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
+- The helper text under each field suggests which java system property or environment variable gets set by the field. System properties will have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
 
 - Note that the fields listed with "No proxy" refers to a list of exception hosts, in which the earlier-specified web proxy should be bypassed. You may also want to add any other IP addresses that you deem safe to bypass the proxy.
 
