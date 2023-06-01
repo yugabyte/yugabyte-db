@@ -117,9 +117,9 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     s = server_->ts_manager()->LookupTS(req->common().ts_instance(), &ts_desc);
     if (s.IsNotFound()) {
       LOG(INFO) << "Got heartbeat from unknown tablet server { "
-                << req->common().ts_instance().ShortDebugString()
-                << " } as " << rpc.requestor_string()
-                << "; Asking this server to re-register.";
+                << req->common().ts_instance().ShortDebugString() << " } as "
+                << rpc.requestor_string()
+                << "; Asking this server to re-register. Status from ts lookup: " << s;
       resp->set_needs_reregister(true);
       resp->set_needs_full_tablet_report(true);
       rpc.RespondSuccess();
