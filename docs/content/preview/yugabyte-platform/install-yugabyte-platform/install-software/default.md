@@ -142,4 +142,4 @@ The following information describes details about the **Enable Proxy** setting a
 
 - Fields with Java system properties include a slightly different format like the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
 
-- There is no authoritative source for the format of environment variables; YBA follows the community standards for setting proxy. So you have to set both UPPERCASE and lowercase for each environment variable.
+- There is no authoritative source for the format of environment variables; YBA follows the community standards for setting proxy where regardless of the case you use to enter the fields, the environment variables will get set with both lowercase and uppercase formats.
