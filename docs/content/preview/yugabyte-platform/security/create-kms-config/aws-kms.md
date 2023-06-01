@@ -51,7 +51,17 @@ The master key resource policy should include the [following actions](https://do
 - kms:Decrypt
 - kms:GenerateDataKeyWithoutPlaintext
 - kms:DescribeKey
-- kms:ListAliases
+- kms:DisableKey
+- kms:ScheduleKeyDeletion
+- kms:CreateAlias
+- kms:DeleteAlias
+- kms:UpdateAlias
+
+{{< note title="Note" >}}
+
+To support master key rotation, after upgrading YBA from a version prior to 2.17.3, add the kms:Encrypt action to any existing keys that are used by any AWS KMS configurations, if not already present.
+
+{{< /note >}}
 
 The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
 
