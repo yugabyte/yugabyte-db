@@ -27,6 +27,7 @@ DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "If this is set to INT32_MAX, then heartbeat will report all dirty tablets.");
 TAG_FLAG(tablet_report_limit, advanced);
 
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 
 DECLARE_CAPABILITY(TabletReportLimit);
@@ -210,7 +211,8 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     // Retrieve the ysql catalog schema version.
     if (FLAGS_TEST_enable_db_catalog_version_mode) {
       DbOidToCatalogVersionMap versions;
-      s = server_->catalog_manager_impl()->GetYsqlAllDBCatalogVersions(&versions);
+      s = server_->catalog_manager_impl()->GetYsqlAllDBCatalogVersions(
+          FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */, &versions);
       if (s.ok()) {
         auto* const mutable_version_data = resp->mutable_db_catalog_version_data();
         for (const auto& it : versions) {

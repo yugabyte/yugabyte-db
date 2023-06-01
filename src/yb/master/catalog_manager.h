@@ -599,7 +599,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) override;
-  Status GetYsqlAllDBCatalogVersions(DbOidToCatalogVersionMap* versions) override;
+  Status GetYsqlAllDBCatalogVersions(bool use_cache, DbOidToCatalogVersionMap* versions) override
+      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
@@ -2818,6 +2819,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<bool> HandleNewRunningTabletsForTable(
       TableInfoPtr table_info, const std::set<TabletId>& new_running_tablets);
 
+  // Background task that refreshes the in-memory map for YSQL pg_yb_catalog_version table.
+  void RefreshPgCatalogVersionInfoPeriodically()
+      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+  // Helper function to schedule the next iteration of the pg catalog versions task.
+  void ScheduleRefreshPgCatalogVersionsTask(bool schedule_now = false);
+
+  void StartPgCatalogVersionsBgTaskIfStopped();
+  void ResetCachedCatalogVersions()
+      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+  Status GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
@@ -2918,6 +2930,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   };
   std::unordered_map<cdc::ReplicationGroupId, NSReplicationInfo> namespace_replication_map_
       GUARDED_BY(mutex_);
+
+  std::atomic<bool> pg_catalog_versions_bg_task_running_ = {false};
+  rpc::ScheduledTaskTracker refresh_ysql_pg_catalog_versions_task_;
+
+  // mutex on heartbeat_pg_catalog_versions_cache_
+  mutable MutexType heartbeat_pg_catalog_versions_cache_mutex_;
+  DbOidToCatalogVersionMap heartbeat_pg_catalog_versions_cache_
+    GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
