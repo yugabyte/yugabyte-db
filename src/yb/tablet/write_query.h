@@ -31,6 +31,8 @@
 namespace yb {
 namespace tablet {
 
+struct UpdateQLIndexesTask;
+
 class WriteQuery {
  public:
   WriteQuery(int64_t term,
@@ -119,6 +121,7 @@ class WriteQuery {
   std::unique_ptr<WriteOperation> PrepareSubmit();
 
  private:
+  friend struct UpdateQLIndexesTask;
   enum class ExecuteMode;
 
   // Actually starts the Mvcc transaction and assigns a hybrid_time to this transaction.
