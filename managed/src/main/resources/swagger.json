@@ -5361,7 +5361,7 @@
           "type" : "string"
         },
         "ybaRole" : {
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "type" : "string"
         }
       },
@@ -6137,14 +6137,35 @@
     },
     "NodeAgentApiFilter" : {
       "properties" : {
+        "cloudType" : {
+          "enum" : [ "unknown", "aws", "gcp", "azu", "docker", "onprem", "kubernetes", "local", "other" ],
+          "type" : "string"
+        },
         "nodeIps" : {
           "items" : {
             "type" : "string"
           },
-          "type" : "array"
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "providerUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "regionUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "universeUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "zoneUuid" : {
+          "format" : "uuid",
+          "type" : "string"
         }
       },
-      "required" : [ "nodeIps" ],
+      "required" : [ "cloudType", "nodeIps", "providerUuid", "regionUuid", "universeUuid", "zoneUuid" ],
       "type" : "object"
     },
     "NodeAgentPagedApiQuery" : {
@@ -6244,6 +6265,15 @@
           "readOnly" : true,
           "type" : "integer"
         },
+        "providerName" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "providerUuid" : {
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "reachable" : {
           "readOnly" : true,
           "type" : "boolean"
@@ -6251,6 +6281,15 @@
         "state" : {
           "description" : "Node agent state",
           "enum" : [ "REGISTERING", "UPGRADE", "UPGRADED", "READY" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "universeName" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "universeUuid" : {
+          "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         },
@@ -11784,7 +11823,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "example" : "Admin",
           "type" : "string"
         },
@@ -11824,7 +11863,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "example" : "Admin",
           "type" : "string"
         },
@@ -11875,7 +11914,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "type" : "string"
         },
         "timezone" : {
@@ -11935,7 +11974,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "type" : "string"
         },
         "timezone" : {
