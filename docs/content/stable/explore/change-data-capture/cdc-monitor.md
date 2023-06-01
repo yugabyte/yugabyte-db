@@ -4,7 +4,6 @@ headerTitle: Monitor
 linkTitle: Monitor
 description: Monitor Change Data Capture in YugabyteDB.
 headcontent: Monitor deployed CDC connectors
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable:
     parent: explore-change-data-capture

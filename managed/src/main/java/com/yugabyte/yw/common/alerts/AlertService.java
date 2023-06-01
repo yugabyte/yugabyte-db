@@ -118,6 +118,14 @@ public class AlertService {
     return alert;
   }
 
+  public Alert getOrBadRequest(UUID customerUUID, UUID uuid) {
+    Alert alert = getOrBadRequest(uuid);
+    if (!(alert.getCustomerUUID().equals(customerUUID))) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert UUID: " + uuid);
+    }
+    return alert;
+  }
+
   @Transactional
   public List<Alert> markResolved(AlertFilter filter) {
     AlertFilter notResolved = filter.toBuilder().states(State.getFiringStates()).build();

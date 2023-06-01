@@ -1247,6 +1247,10 @@ Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,
                                                               end_inclusive);
 }
 
+Status PgApiImpl::DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num) {
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondIsNotNull(attr_num);
+}
+
 Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, YBCPgExpr lhs, int n_attr_values,
                                       PgExpr **attr_values) {
   return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(lhs, n_attr_values, attr_values);
@@ -1932,11 +1936,11 @@ Status PgApiImpl::PrefetchRegisteredSysTables() {
 }
 
 void PgApiImpl::RegisterSysTableForPrefetching(
-  const PgObjectId& table_id, const PgObjectId& index_id) {
+  const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr) {
   if (!pg_sys_table_prefetcher_) {
     LOG(DFATAL) << "Sys table prefetching was not started yet";
   } else {
-    pg_sys_table_prefetcher_->Register(table_id, index_id);
+    pg_sys_table_prefetcher_->Register(table_id, index_id, row_oid_filtering_attr);
   }
 }
 

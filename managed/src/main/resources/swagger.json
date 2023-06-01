@@ -609,7 +609,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "NEW_YSQL_TABLES_ADDED" ],
           "type" : "string"
         },
         "thresholdUnit" : {
@@ -662,7 +662,7 @@
           "type" : "string"
         },
         "template" : {
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "NEW_YSQL_TABLES_ADDED" ],
           "type" : "string"
         },
         "uuids" : {
@@ -823,7 +823,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "NEW_YSQL_TABLES_ADDED" ],
           "type" : "string"
         },
         "thresholdConditionReadOnly" : {
@@ -885,7 +885,7 @@
       "properties" : {
         "condition" : {
           "description" : "Threshold condition (greater than, or less than)",
-          "enum" : [ "GREATER_THAN", "LESS_THAN" ],
+          "enum" : [ "GREATER_THAN", "LESS_THAN", "NOT_EQUAL" ],
           "type" : "string"
         },
         "threshold" : {
@@ -1306,7 +1306,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -3644,6 +3644,62 @@
       },
       "type" : "object"
     },
+    "CustomCACertParams" : {
+      "properties" : {
+        "contents" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "contents", "name" ],
+      "type" : "object"
+    },
+    "CustomCaCertificateInfo" : {
+      "description" : "Custom CA certificate",
+      "properties" : {
+        "active" : {
+          "type" : "boolean"
+        },
+        "contents" : {
+          "description" : "Path to CA Certificate",
+          "example" : "/opt/yugaware/certs/trust-store/<ID>/ca.root.cert",
+          "type" : "string"
+        },
+        "createdTime" : {
+          "description" : "Date when certificate was added.",
+          "example" : "2023-11-10T15:09:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "customerId" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "expiryDate" : {
+          "description" : "End date of certificate validity.",
+          "example" : "2024-07-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "id" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "startDate" : {
+          "description" : "Start date of certificate validity.",
+          "example" : "2023-10-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        }
+      },
+      "required" : [ "active", "customerId", "id", "name" ],
+      "type" : "object"
+    },
     "CustomCertInfo" : {
       "properties" : {
         "clientCertPath" : {
@@ -4910,6 +4966,20 @@
       "required" : [ "idKey" ],
       "type" : "object"
     },
+    "K8SNodeResourceSpec" : {
+      "properties" : {
+        "cpuCoreCount" : {
+          "format" : "double",
+          "type" : "number"
+        },
+        "memoryGib" : {
+          "format" : "double",
+          "type" : "number"
+        }
+      },
+      "required" : [ "cpuCoreCount", "memoryGib" ],
+      "type" : "object"
+    },
     "KeyInfo" : {
       "properties" : {
         "airGapInstall" : {
@@ -5387,6 +5457,32 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "LdapDnToYbaRoleData" : {
+      "description" : "A list of LDAP DN, YBA role pairs",
+      "properties" : {
+        "ldapDnToYbaRolePairs" : {
+          "description" : " list of pairs of distinguishedName and ybaRole",
+          "items" : {
+            "$ref" : "#/definitions/LdapDnYbaRoleDataPair"
+          },
+          "type" : "array"
+        }
+      },
+      "type" : "object"
+    },
+    "LdapDnYbaRoleDataPair" : {
+      "properties" : {
+        "distinguishedName" : {
+          "type" : "string"
+        },
+        "ybaRole" : {
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "distinguishedName", "ybaRole" ],
       "type" : "object"
     },
     "LogData" : {
@@ -9985,6 +10081,14 @@
     "TableInfoResp" : {
       "description" : "Table information response",
       "properties" : {
+        "colocated" : {
+          "description" : "Flag, indicating colocated table",
+          "type" : "boolean"
+        },
+        "colocationParentId" : {
+          "description" : "Colocation parent id",
+          "type" : "string"
+        },
         "keySpace" : {
           "description" : "Keyspace",
           "type" : "string"
@@ -10013,6 +10117,11 @@
           "format" : "double",
           "readOnly" : true,
           "type" : "number"
+        },
+        "tableID" : {
+          "description" : "Table ID",
+          "readOnly" : true,
+          "type" : "string"
         },
         "tableName" : {
           "description" : "Table name",
@@ -11741,6 +11850,9 @@
         "masterInstanceType" : {
           "type" : "string"
         },
+        "masterK8SNodeResourceSpec" : {
+          "$ref" : "#/definitions/K8SNodeResourceSpec"
+        },
         "numNodes" : {
           "format" : "int32",
           "type" : "integer"
@@ -11779,6 +11891,9 @@
             "type" : "string"
           },
           "type" : "object"
+        },
+        "tserverK8SNodeResourceSpec" : {
+          "$ref" : "#/definitions/K8SNodeResourceSpec"
         },
         "universeName" : {
           "type" : "string"
@@ -11831,7 +11946,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "example" : "Admin",
           "type" : "string"
         },
@@ -11871,7 +11986,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "example" : "Admin",
           "type" : "string"
         },
@@ -11922,7 +12037,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "type" : "string"
         },
         "timezone" : {
@@ -11982,7 +12097,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "type" : "string"
         },
         "timezone" : {
@@ -12354,20 +12469,12 @@
           "uniqueItems" : true
         },
         "targetActive" : {
-          "description" : "Whether the source is active in txn xCluster",
+          "description" : "Whether the target is active in txn xCluster",
           "type" : "boolean"
         },
         "targetUniverseUUID" : {
           "description" : "Target Universe UUID",
           "format" : "uuid",
-          "type" : "string"
-        },
-        "txnTableDetails" : {
-          "$ref" : "#/definitions/XClusterTableConfig",
-          "readOnly" : true
-        },
-        "txnTableReplicationGroupName" : {
-          "description" : "Replication group name that replicates the transaction status table",
           "type" : "string"
         },
         "type" : {
@@ -12541,20 +12648,12 @@
           "uniqueItems" : true
         },
         "targetActive" : {
-          "description" : "Whether the source is active in txn xCluster",
+          "description" : "Whether the target is active in txn xCluster",
           "type" : "boolean"
         },
         "targetUniverseUUID" : {
           "description" : "Target Universe UUID",
           "format" : "uuid",
-          "type" : "string"
-        },
-        "txnTableDetails" : {
-          "$ref" : "#/definitions/XClusterTableConfig",
-          "readOnly" : true
-        },
-        "txnTableReplicationGroupName" : {
-          "description" : "Replication group name that replicates the transaction status table",
           "type" : "string"
         },
         "type" : {
@@ -12581,6 +12680,11 @@
           },
           "type" : "array",
           "uniqueItems" : true
+        },
+        "targetUniverseUUID" : {
+          "description" : "If specified and tables do not exist on the target universe, bootstrapping is required.",
+          "format" : "uuid",
+          "type" : "string"
         }
       },
       "required" : [ "tables" ],
@@ -15238,8 +15342,9 @@
     },
     "/api/v1/customers/{cUUID}/create_backup_schedule" : {
       "post" : {
+        "deprecated" : true,
         "description" : "",
-        "operationId" : "createbackupSchedule",
+        "operationId" : "createBackupSchedule",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -15272,6 +15377,227 @@
         } ],
         "summary" : "Create Backup Schedule",
         "tags" : [ "Backups" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/create_backup_schedule_async" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "createBackupScheduleAsync",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Parameters of the backup to be restored",
+          "in" : "body",
+          "name" : "backup",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/BackupRequestParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create Backup Schedule Async",
+        "tags" : [ "Backups" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/customCAStore" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "addCA",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "CA certificate contents in 'X509' format",
+          "in" : "body",
+          "name" : "X509CACertificate",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomCACertParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Add a named custom CA certificate",
+        "tags" : [ "Custom CA Certificates" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/customCAStore/{certUUID}" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "updateCA",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "certUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "CA certificate contents in 'X509' format",
+          "in" : "body",
+          "name" : "X509CACertificate",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomCACertParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Update a named custom CA certificate",
+        "tags" : [ "Custom CA Certificates" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/customCAStoreCertificates" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listAllCustomCaCertificates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/CustomCaCertificateInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all custom CA certificates of a customer",
+        "tags" : [ "Custom CA Certificates" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/customCAStoreCertificates/{certUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "Delete custom CA certificate",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "certUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a named custom CA certificate",
+        "tags" : [ "Custom CA Certificates" ]
+      },
+      "get" : {
+        "description" : "",
+        "operationId" : "getAllCustomCaCertificates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "certUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomCaCertificateInfo"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Download a custom CA certificates of a customer",
+        "tags" : [ "Custom CA Certificates" ]
       }
     },
     "/api/v1/customers/{cUUID}/host_info" : {
@@ -15528,6 +15854,65 @@
         } ],
         "summary" : "Create a KMS configuration",
         "tags" : [ "Encryption at rest" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/ldap_mappings" : {
+      "get" : {
+        "description" : "List LDAP Mappings",
+        "operationId" : "listLdapDnToYbaRoles",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/LdapDnToYbaRoleData"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List LDAP Mappings",
+        "tags" : [ "LDAP Role management" ]
+      },
+      "put" : {
+        "description" : "Set LDAP Mappings",
+        "operationId" : "setLdapDnToYbaRoles",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "New LDAP Mappings to be set",
+          "in" : "body",
+          "name" : "ldapMappings",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/LdapDnToYbaRoleData"
+          }
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Set LDAP Mappings",
+        "tags" : [ "LDAP Role management" ]
       }
     },
     "/api/v1/customers/{cUUID}/licenses" : {
@@ -20635,6 +21020,12 @@
           "name" : "excludeColocatedTables",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "includeColocatedParentTables",
+          "required" : false,
+          "type" : "boolean"
         } ],
         "responses" : {
           "200" : {
@@ -23263,6 +23654,8 @@
   }, {
     "name" : "Cloud providers"
   }, {
+    "name" : "Custom CA Certificates"
+  }, {
     "name" : "Customer Configuration"
   }, {
     "name" : "Customer Tasks"
@@ -23276,6 +23669,8 @@
     "name" : "Instance types"
   }, {
     "name" : "KubernetesOverridesController"
+  }, {
+    "name" : "LDAP Role management"
   }, {
     "name" : "License management"
   }, {

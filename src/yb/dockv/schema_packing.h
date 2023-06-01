@@ -135,7 +135,7 @@ class SchemaPackingStorage {
   // Copy all schema packings except schema_version_to_skip to out.
   void ToPB(
       SchemaVersion schema_version_to_skip,
-      google::protobuf::RepeatedPtrField<SchemaPackingPB>* out);
+      google::protobuf::RepeatedPtrField<SchemaPackingPB>* out) const;
 
   size_t SchemaCount() const {
     return version_to_schema_packing_.size();
@@ -144,6 +144,8 @@ class SchemaPackingStorage {
   std::string VersionsToString() const;
 
   bool HasVersionBelow(SchemaVersion version) const;
+
+  std::string ToString() const;
 
   bool operator==(const SchemaPackingStorage&) const = default;
 

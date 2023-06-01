@@ -1086,12 +1086,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 BAD_REQUEST, "Dry run of AWS Key pair failed: Invalid region"))
         .thenReturn(true);
 
-    when(mockAWSCloudImpl.dryRunAuthorizeSecurityGroupIngressOrBadRequest(any(), anyString()))
-        .thenThrow(
-            new PlatformServiceException(
-                BAD_REQUEST, "Dry run of AWS SG Ingress failed: Invalid region"))
-        .thenReturn(true);
-
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     assertBadRequestValidationResult(
         result,
@@ -1102,7 +1096,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "\"data.REGION.us-west-2.DRY_RUN\":[\""
                 + "Dry run of AWS DescribeInstances failed: Invalid region, "
                 + "Dry run of AWS Security Group failed: Invalid region, "
-                + "Dry run of AWS SG Ingress failed: Invalid region, "
                 + "Dry run of AWS DescribeImage failed: Invalid region, "
                 + "Dry run of AWS DescribeInstanceTypes failed: Invalid region, "
                 + "Dry run of AWS Key pair failed: Invalid region, "

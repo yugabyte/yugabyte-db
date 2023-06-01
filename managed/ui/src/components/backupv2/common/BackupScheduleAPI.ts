@@ -52,7 +52,7 @@ export const editBackupSchedule = (
 
 export const createBackupSchedule = (values: Record<string, any>) => {
   const cUUID = localStorage.getItem('customerId');
-  const requestUrl = `${ROOT_URL}/customers/${cUUID}/create_backup_schedule`;
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/create_backup_schedule_async`;
 
   const payload = prepareBackupCreationPayload(values, cUUID);
 

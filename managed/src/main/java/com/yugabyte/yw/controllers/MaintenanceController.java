@@ -54,7 +54,7 @@ public class MaintenanceController extends AuthenticatedController {
   public Result get(UUID customerUUID, UUID windowUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    MaintenanceWindow window = maintenanceService.getOrBadRequest(windowUUID);
+    MaintenanceWindow window = maintenanceService.getOrBadRequest(customerUUID, windowUUID);
     return PlatformResults.withData(window);
   }
 
@@ -135,7 +135,7 @@ public class MaintenanceController extends AuthenticatedController {
           required = true))
   public Result update(UUID customerUUID, UUID windowUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    maintenanceService.getOrBadRequest(windowUUID);
+    maintenanceService.getOrBadRequest(customerUUID, windowUUID);
 
     MaintenanceWindow window = parseJson(request, MaintenanceWindow.class);
 
@@ -163,7 +163,7 @@ public class MaintenanceController extends AuthenticatedController {
   public Result delete(UUID customerUUID, UUID windowUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    maintenanceService.getOrBadRequest(windowUUID);
+    maintenanceService.getOrBadRequest(customerUUID, windowUUID);
 
     maintenanceService.delete(windowUUID);
 

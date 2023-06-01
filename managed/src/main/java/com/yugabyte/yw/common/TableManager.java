@@ -232,9 +232,6 @@ public class TableManager extends DevopsBase {
           commandArgs.add(taskParams.tableUUID.toString().replace("-", ""));
         }
         commandArgs.add("--no_auto_name");
-        if (taskParams.sse) {
-          commandArgs.add("--sse");
-        }
         if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
           if (backupTableParams.restoreTimeStamp != null) {
             String backupLocation =
@@ -428,6 +425,7 @@ public class TableManager extends DevopsBase {
       commandArgs.add("--nfs_storage_path");
       commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
     }
+    // TODO: add custom CA certs here
 
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");
@@ -454,6 +452,10 @@ public class TableManager extends DevopsBase {
     }
     if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
       commandArgs.add("--ssh2_enabled");
+    }
+    boolean enableSSE = confGetter.getConfForScope(universe, UniverseConfKeys.enableSSE);
+    if (enableSSE) {
+      commandArgs.add("--sse");
     }
     if (confGetter.getGlobalConf(GlobalConfKeys.disableXxHashChecksum)) {
       commandArgs.add("--disable_xxhash_checksum");

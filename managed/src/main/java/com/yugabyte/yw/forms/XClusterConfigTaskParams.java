@@ -7,10 +7,8 @@ import com.yugabyte.yw.models.XClusterConfig;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.yb.master.MasterDdlOuterClass;
@@ -21,7 +19,6 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfig xClusterConfig;
   @JsonIgnore private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList;
-  @JsonIgnore private MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo;
   private Set<String> sourceTableIdsWithNoTableOnTargetUniverse;
   private Map<String, List<String>> mainTableIndexTablesMap;
   private XClusterConfigCreateFormData.BootstrapParams bootstrapParams;
@@ -41,8 +38,8 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.xClusterConfig = xClusterConfig;
     this.bootstrapParams = bootstrapParams;
     this.mainTableIndexTablesMap = mainTableIndexTablesMap;
-    this.setTableInfoListAndTxnTableInfo(tableInfoList);
     this.sourceTableIdsWithNoTableOnTargetUniverse = sourceTableIdsWithNoTableOnTargetUniverse;
+    this.tableInfoList = tableInfoList;
   }
 
   public XClusterConfigTaskParams(
@@ -59,8 +56,8 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.mainTableIndexTablesMap = mainTableIndexTablesMap;
     this.tableIdsToAdd = tableIdsToAdd;
     this.tableIdsToRemove = tableIdsToRemove;
-    this.setTableInfoListAndTxnTableInfo(tableInfoList);
     this.sourceTableIdsWithNoTableOnTargetUniverse = Collections.emptySet();
+    this.tableInfoList = tableInfoList;
   }
 
   public XClusterConfigTaskParams(
@@ -74,7 +71,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.xClusterConfig = xClusterConfig;
     this.bootstrapParams = bootstrapParams;
     this.mainTableIndexTablesMap = mainTableIndexTablesMap;
-    this.setTableInfoListAndTxnTableInfo(tableInfoList);
+    this.tableInfoList = tableInfoList;
     this.tableIdsToAdd = XClusterConfigTaskBase.getTableIds(this.tableInfoList);
     this.isForced = isForced;
     this.sourceTableIdsWithNoTableOnTargetUniverse = sourceTableIdsWithNoTableOnTargetUniverse;
@@ -93,18 +90,6 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfigTaskParams(UUID targetUniverseUUID) {
     this.setUniverseUUID(targetUniverseUUID);
-  }
-
-  public void setTableInfoListAndTxnTableInfo(
-      @Nullable List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
-    if (Objects.nonNull(tableInfoList)) {
-      this.tableInfoList = tableInfoList;
-      txnTableInfo = XClusterConfigTaskBase.getTxnTableInfoIfExists(tableInfoList).orElse(null);
-      if (Objects.nonNull(txnTableInfo)) {
-        // Todo: Remove the dependency on the order in tableInfoList.
-        this.tableInfoList.remove(this.tableInfoList.size() - 1);
-      }
-    }
   }
 
   public XClusterConfigTaskParams(XClusterConfigSyncFormData syncFormData) {

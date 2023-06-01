@@ -22,7 +22,9 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 struct PgObjectId;
@@ -51,7 +53,8 @@ class PgSysTablePrefetcher {
   ~PgSysTablePrefetcher();
 
   // Register new sys table to be read on a first GetData method call.
-  void Register(const PgObjectId& table_id, const PgObjectId& index_id);
+  void Register(
+      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr);
 
   // Load registered tables
   Status Prefetch(PgSession* session);

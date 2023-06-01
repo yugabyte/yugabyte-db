@@ -1,8 +1,9 @@
 ---
 title: Configure the Microsoft Azure cloud provider
-headerTitle: Configure the Microsoft Azure cloud provider
-linkTitle: Configure cloud providers
-description: Configure the Microsoft Azure cloud provider
+headerTitle: Create provider configuration
+linkTitle: Create provider configuration
+description: Configure the Microsoft Azure provider configuration
+headContent: Configure an Azure provider configuration
 menu:
   stable_yugabyte-platform:
     identifier: set-up-cloud-provider-3-azure

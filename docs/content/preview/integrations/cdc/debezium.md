@@ -2,7 +2,7 @@
 title: Debezium and CDC in YugabyteDB
 linkTitle: Debezium
 description: Using Debezium for CDC in YugabyteDB.
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+earlyAccess: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /preview/integrations/cdc/
 menu:

@@ -8,7 +8,9 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -24,6 +26,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -122,6 +125,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     GetLoadMovePercentResponse gpr = new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
     try {
+      when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       // WaitForTServerHeartBeats mock.
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
@@ -129,7 +133,10 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(mockClient.setFlag(any(), any(), any(), anyBoolean())).thenReturn(true);
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
     } catch (Exception e) {
+      fail();
     }
 
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
@@ -154,7 +161,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForDataMove,
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
-          TaskType.UpdateNodeProcess,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -165,8 +171,69 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
-          Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
+          Json.toJson(ImmutableMap.of("state", "Removed")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()));
+
+  private static final List<TaskType> REMOVE_NODE_WITH_MASTER_REPLACE =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.UpdatePlacementInfo,
+          TaskType.WaitForDataMove,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.UpdateNodeProcess,
+          TaskType.SetNodeState,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.UpdateNodeProcess,
+          TaskType.WaitForServer,
+          TaskType.ChangeMasterConfig,
+          TaskType.ChangeMasterConfig,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForMasterLeader,
+          TaskType.UpdateNodeProcess,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.SetFlagInMemory,
+          TaskType.SetFlagInMemory,
+          TaskType.SetNodeState,
+          TaskType.SetNodeStatus,
+          TaskType.SetNodeState,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.UniverseUpdateSucceeded);
+
+  private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_REPLACE_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of("state", "Removing")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
+          Json.toJson(ImmutableMap.of("isAdd", false, "processType", "TSERVER")),
+          Json.toJson(ImmutableMap.of("state", "Starting")),
+          Json.toJson(ImmutableMap.of("type", "Software")),
+          Json.toJson(ImmutableMap.of("type", "GFlags")),
+          Json.toJson(ImmutableMap.of("type", "GFlags")),
+          Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
+          Json.toJson(ImmutableMap.of("isAdd", true, "processType", "MASTER")),
+          Json.toJson(ImmutableMap.of("serverType", "MASTER")),
+          Json.toJson(ImmutableMap.of("opType", "AddMaster")),
+          Json.toJson(ImmutableMap.of("opType", "RemoveMaster")),
+          Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
+          // Wait for master leader.
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("isAdd", false, "processType", "MASTER")),
+          // Tserver.
+          Json.toJson(ImmutableMap.of("type", "GFlags")),
+          // Master.
+          Json.toJson(ImmutableMap.of("type", "GFlags")),
+          Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
+          Json.toJson(ImmutableMap.of("serverType", "MASTER")),
+          Json.toJson(ImmutableMap.of("state", "Live")),
+          // Clear master state.
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removed")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
@@ -174,15 +241,19 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
-          TaskType.WaitForMasterLeader,
-          TaskType.ChangeMasterConfig,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForMasterLeader,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
+          TaskType.ChangeMasterConfig,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForMasterLeader,
           TaskType.UpdateNodeProcess,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.SetFlagInMemory,
+          TaskType.SetFlagInMemory,
+          TaskType.SetNodeStatus,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -192,13 +263,20 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
+          Json.toJson(ImmutableMap.of("isAdd", false, "processType", "TSERVER")),
+          Json.toJson(ImmutableMap.of("opType", "RemoveMaster")),
           Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("isAdd", false, "processType", "MASTER")),
+          // Tserver.
+          Json.toJson(ImmutableMap.of("type", "GFlags")),
+          // Master.
+          Json.toJson(ImmutableMap.of("type", "GFlags")),
+          Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
+          Json.toJson(ImmutableMap.of("serverType", "MASTER")),
+          // Clear master state.
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
-          Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", false)),
-          Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("state", "Removed")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
@@ -208,7 +286,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.UpdateNodeProcess,
-          TaskType.UpdateNodeProcess,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -217,7 +294,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("state", "Removed")),
           Json.toJson(ImmutableMap.of()),
@@ -230,21 +306,29 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   }
 
   private void assertRemoveNodeSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition, RemoveType type, boolean moveData) {
+      Map<Integer, List<TaskInfo>> subTasksByPosition,
+      RemoveType type,
+      boolean moveData,
+      boolean replaceMaster) {
     int position = 0;
     int taskPosition = 0;
     switch (type) {
       case WITH_MASTER:
-        for (TaskType taskType : REMOVE_NODE_WITH_MASTER) {
+        List<TaskType> taskSequence =
+            replaceMaster ? REMOVE_NODE_WITH_MASTER_REPLACE : REMOVE_NODE_WITH_MASTER;
+        List<JsonNode> taskParams =
+            replaceMaster
+                ? REMOVE_NODE_WITH_MASTER_REPLACE_RESULTS
+                : REMOVE_NODE_WITH_MASTER_RESULTS;
+        for (TaskType taskType : taskSequence) {
           if (taskType.equals(TaskType.WaitForDataMove) && !moveData) {
             position++;
             continue;
           }
 
           List<TaskInfo> tasks = subTasksByPosition.get(taskPosition);
-          assertEquals(1, tasks.size());
           assertEquals(taskType, tasks.get(0).getTaskType());
-          JsonNode expectedResults = REMOVE_NODE_WITH_MASTER_RESULTS.get(position);
+          JsonNode expectedResults = taskParams.get(position);
           List<JsonNode> taskDetails =
               tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
@@ -284,7 +368,9 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   @Test
   public void testRemoveNodeSuccess() {
     setUp(false, 4, 3, false);
-    NodeTaskParams taskParams = new NodeTaskParams();
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
@@ -294,13 +380,15 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertRemoveNodeSequence(subTasksByPosition, RemoveType.ONLY_TSERVER, true);
+    assertRemoveNodeSequence(subTasksByPosition, RemoveType.ONLY_TSERVER, true, false);
   }
 
   @Test
   public void testRemoveNodeWithMaster() {
     setUp(true, 4, 3, false);
-    NodeTaskParams taskParams = new NodeTaskParams();
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
@@ -310,13 +398,15 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, true);
+    assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, true, true);
   }
 
   @Test
   public void testRemoveUnknownNode() {
     setUp(false, 4, 3, false);
-    NodeTaskParams taskParams = new NodeTaskParams();
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
@@ -327,7 +417,9 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   @Test
   public void testRemoveNonExistentNode() {
     setUp(false, 4, 3, false);
-    NodeTaskParams taskParams = new NodeTaskParams();
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
     ShellResponse dummyShellResponse = new ShellResponse();
@@ -340,13 +432,15 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertRemoveNodeSequence(subTasksByPosition, RemoveType.NOT_EXISTS, true);
+    assertRemoveNodeSequence(subTasksByPosition, RemoveType.NOT_EXISTS, true, false);
   }
 
   @Test
   public void testRemoveNodeWithNoDataMove() {
     setUp(true, 3, 3, false);
-    NodeTaskParams taskParams = new NodeTaskParams();
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
@@ -356,13 +450,15 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, false);
+    assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, false, false);
   }
 
   @Test
   public void testRemoveNodeWithNoDataMoveRF5() {
     setUp(true, 5, 5, true);
-    NodeTaskParams taskParams = new NodeTaskParams();
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
@@ -372,13 +468,15 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, false);
+    assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, false, false);
   }
 
   @Test
   public void testRemoveNodeRF5() {
     setUp(true, 6, 5, true);
-    NodeTaskParams taskParams = new NodeTaskParams();
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
@@ -388,7 +486,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, true);
+    assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, true, true);
   }
 
   @Test

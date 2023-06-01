@@ -573,3 +573,39 @@ message TServerDBCatalogVersionInfo {
   optional uint32 db_oid = 1;
   optional int32 shm_index = 2;
 }
+
+message DatumMessagePB {
+  optional string column_name = 1;
+  optional int64 column_type = 2;
+  oneof datum {
+    int32 datum_int32 = 3;
+    int64 datum_int64 = 4;
+    float datum_float = 5;
+    double datum_double = 6;
+    bool datum_bool = 7;
+    string datum_string = 8;
+    bytes datum_bytes = 9;
+    bool datum_missing = 10;
+  }
+  oneof cdc_column_type {
+    QLTypePB cql_type = 11;
+    int64 pg_type = 12;
+  }
+  oneof cdc_datum {
+    PgDatumPB pg_value = 13;
+    QLValuePB cql_value = 14;
+  }
+}
+
+message PgDatumPB {
+  oneof datum {
+    int32 datum_int32 = 1;
+    int64 datum_int64 = 2;
+    float datum_float = 3;
+    double datum_double = 4;
+    bool datum_bool = 5;
+    string datum_string = 6;
+    bytes datum_bytes = 7;
+    bool datum_missing = 8;
+  }
+}

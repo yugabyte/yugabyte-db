@@ -77,7 +77,7 @@ class KeyEntryValue {
 
   // Return non-zero encoded value size if provided datatype has fixed encoded value size, otherwise
   // return 0.
-  static size_t GetEncodedKeyEntryValueSize(const DataType& data_type);
+  static size_t GetEncodedKeyEntryValueSize(DataType data_type);
 
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
 

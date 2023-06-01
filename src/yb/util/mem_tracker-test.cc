@@ -141,9 +141,7 @@ class GcTest : public GarbageCollector {
 
   explicit GcTest(MemTracker* tracker) : tracker_(tracker) {}
 
-  void CollectGarbage(size_t required) { tracker_->Release(NUM_RELEASE_BYTES); }
-
-  virtual ~GcTest() {}
+  void CollectGarbage(size_t required) override { tracker_->Release(NUM_RELEASE_BYTES); }
 
  private:
   MemTracker* tracker_;

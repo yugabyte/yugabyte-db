@@ -18,8 +18,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -55,17 +54,11 @@ public class PlatformReplicationManager {
   @VisibleForTesting
   public static final String NO_LOCAL_INSTANCE_MSG = "NO LOCAL INSTANCE! Won't sync";
 
-  public static final String STORAGE_PATH = "yb.storage.path";
-
   private final AtomicReference<Cancellable> schedule;
 
   private final PlatformScheduler platformScheduler;
 
   private final PlatformReplicationHelper replicationHelper;
-
-  private final ConfigHelper configHelper;
-
-  private final Config appConfig;
 
   private final FileDataService fileDataService;
 
@@ -73,13 +66,9 @@ public class PlatformReplicationManager {
   public PlatformReplicationManager(
       PlatformScheduler platformScheduler,
       PlatformReplicationHelper replicationHelper,
-      ConfigHelper configHelper,
-      Config appConfig,
       FileDataService fileDataService) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
-    this.configHelper = configHelper;
-    this.appConfig = appConfig;
     this.fileDataService = fileDataService;
     this.schedule = new AtomicReference<>(null);
   }
@@ -376,9 +365,9 @@ public class PlatformReplicationManager {
 
     // The port that the prometheus server is running on.
     private final int prometheusPort;
-    // The username that YW uses to connect to it's DB.
+    // The username that YW uses to connect to its DB.
     private final String dbUsername;
-    // The password that YW uses to authenticate connections to it's DB.
+    // The password that YW uses to authenticate connections to its DB.
     private final String dbPassword;
     // The addr that the DB is listening to connection requests on.
     private final String dbHost;
@@ -540,7 +529,7 @@ public class PlatformReplicationManager {
       log.error("Restore failed: " + response.message);
     } else {
       // Sync the files stored in DB to FS in case restore is successful.
-      fileDataService.syncFileData(appConfig.getString(STORAGE_PATH), true);
+      fileDataService.syncFileData(AppConfigHelper.getStoragePath(), true);
     }
 
     return response.code == 0;

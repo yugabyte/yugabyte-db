@@ -141,7 +141,7 @@ class DirectWriteToWriteBatchHandler : public rocksdb::DirectWriteHandler {
   rocksdb::WriteBatch *write_batch_;
 };
 
-} // namespace
+} //  namespace
 
 Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     const DocWriteBatch& dwb,
@@ -297,7 +297,7 @@ void DocDBRocksDBUtil::SetHistoryCutoffHybridTime(HybridTime history_cutoff) {
 }
 
 void DocDBRocksDBUtil::SetTableTTL(uint64_t ttl_msec) {
-  doc_read_context().schema.SetDefaultTimeToLive(ttl_msec);
+  doc_read_context().TEST_SetDefaultTimeToLive(ttl_msec);
   retention_policy_->SetTableTTLForTests(MonoDelta::FromMilliseconds(ttl_msec));
 }
 
@@ -527,18 +527,18 @@ void DocDBRocksDBUtil::SetInitMarkerBehavior(InitMarkerBehavior init_marker_beha
 
 Result<CompactionSchemaInfo> DocDBRocksDBUtil::CotablePacking(
     const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) {
-  if (schema_version == docdb::kLatestSchemaVersion) {
+  if (schema_version == kLatestSchemaVersion) {
     schema_version = 0;
   }
   auto& packing = VERIFY_RESULT_REF(
       doc_read_context().schema_packing_storage.GetPacking(schema_version));
-  return docdb::CompactionSchemaInfo {
+  return CompactionSchemaInfo {
     .table_type = TableType::YQL_TABLE_TYPE,
     .schema_version = schema_version,
     .schema_packing = rpc::SharedField(doc_read_context_, &packing),
     .cotable_id = table_id,
     .deleted_cols = {},
-    .enabled = docdb::PackedRowEnabled(TableType::YQL_TABLE_TYPE, false)
+    .enabled = PackedRowEnabled(TableType::YQL_TABLE_TYPE, false)
   };
 }
 

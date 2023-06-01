@@ -543,9 +543,8 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   for (const auto& column : tnode->primary_columns()) {
     b.AddColumn(column->coldef_name().c_str())
       ->Type(column->ql_type())
-      ->PrimaryKey()
-      ->Order(column->order())
-      ->SetSortingType(column->sorting_type());
+      ->PrimaryKey(column->sorting_type())
+      ->Order(column->order());
     RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
   }
 
@@ -1434,7 +1433,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
       columns->emplace_back("[message]", DataType::STRING);
       columns->insert(columns->end(), schema.columns().begin(), schema.columns().end());
 
-      qlexpr::QLRowBlock result_row_block(Schema(*columns, 0));
+      qlexpr::QLRowBlock result_row_block{Schema(*columns)};
       auto& row = result_row_block.Extend();
       row.mutable_column(0)->set_bool_value(false);
       row.mutable_column(1)->set_string_value(
@@ -1449,7 +1448,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
         std::make_shared<std::vector<ColumnSchema>>();
       columns->emplace_back("[applied]", DataType::BOOL);
 
-      qlexpr::QLRowBlock result_row_block(Schema(*columns, 0));
+      qlexpr::QLRowBlock result_row_block{Schema(*columns)};
       auto& row = result_row_block.Extend();
       row.mutable_column(0)->set_bool_value(false);
 
@@ -1586,7 +1585,7 @@ Status Executor::ExecPTNode(const PTExplainStmt *tnode) {
   ColumnSchema explainColumn("QUERY PLAN", STRING);
   auto explainColumns = std::make_shared<std::vector<ColumnSchema>>(
       std::initializer_list<ColumnSchema>{explainColumn});
-  auto explainSchema = std::make_shared<Schema>(*explainColumns, 0);
+  auto explainSchema = std::make_shared<Schema>(*explainColumns);
   qlexpr::QLRowBlock row_block(*explainSchema);
   ExplainPlanPB explain_plan = dmlStmt->AnalysisResultToPB();
   switch (explain_plan.plan_case()) {
@@ -2541,7 +2540,7 @@ Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
       ColumnSchemaToPB(column, column_schemas->Add());
     }
 
-    qlexpr::QLRowBlock result_row_block(Schema(columns, 0));
+    qlexpr::QLRowBlock result_row_block{Schema(columns)};
     auto& row = result_row_block.Extend();
     row.mutable_column(0)->set_bool_value(false);
     row.mutable_column(1)->set_string_value(resp.error_message());

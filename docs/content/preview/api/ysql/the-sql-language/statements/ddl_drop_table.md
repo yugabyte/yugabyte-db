@@ -20,13 +20,13 @@ Use the `DROP TABLE` statement to remove one or more tables (with all of their d
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -34,10 +34,10 @@ Use the `DROP TABLE` statement to remove one or more tables (with all of their d
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_table.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_table.diagram.md" %}}
   </div>
 </div>
@@ -56,9 +56,9 @@ Specify the name of the table to be dropped. Objects associated with the table, 
 
 #### RESTRICT / CASCADE
 
-`RESTRICT` is the default and it will not drop the procedure if any objects depend on it.
+`RESTRICT` is the default and it will not drop the table if any objects depend on it.
 
-`CASCADE` will drop any objects that transitively depend on the procedure.
+`CASCADE` will drop any objects that transitively depend on the table.
 
 ## Example
 

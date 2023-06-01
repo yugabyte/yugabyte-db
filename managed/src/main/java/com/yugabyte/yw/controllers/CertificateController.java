@@ -1,3 +1,5 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -5,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Strings;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
@@ -118,10 +121,7 @@ public class CertificateController extends AuthenticatedController {
           try {
             UUID certUUID =
                 EncryptionInTransitUtil.createHashicorpCAConfig(
-                    customerUUID,
-                    label,
-                    runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
-                    hcVaultParams);
+                    customerUUID, label, AppConfigHelper.getStoragePath(), hcVaultParams);
             auditService()
                 .createAuditEntryWithReqBody(
                     request,
@@ -156,7 +156,7 @@ public class CertificateController extends AuthenticatedController {
         CertificateHelper.uploadRootCA(
             label,
             customerUUID,
-            runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
+            AppConfigHelper.getStoragePath(),
             certContent,
             keyContent,
             certType,
@@ -177,6 +177,7 @@ public class CertificateController extends AuthenticatedController {
           dataType = "java.lang.String",
           required = true))
   public Result createSelfSignedCert(UUID customerUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     ObjectNode formData = (ObjectNode) request.body().asJson();
     JsonNode jsonData = formData.get("label");
     if (jsonData == null) {
@@ -275,6 +276,7 @@ public class CertificateController extends AuthenticatedController {
           message = "If there was a server or database issue when listing the regions",
           response = YBPError.class))
   public Result list(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
     return PlatformResults.withData(convert(certs));
   }
@@ -284,7 +286,8 @@ public class CertificateController extends AuthenticatedController {
       response = UUID.class,
       nickname = "getCertificate")
   public Result get(UUID customerUUID, String label) {
-    CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
+    Customer.getOrBadRequest(customerUUID);
+    CertificateInfo cert = CertificateInfo.getOrBadRequest(customerUUID, label);
     return PlatformResults.withData(cert.getUuid());
   }
 
@@ -311,7 +314,7 @@ public class CertificateController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(request, CertificateParams.class);
 
     CertConfigType certType = formData.get().certType;
-    CertificateInfo info = CertificateInfo.get(reqCertUUID);
+    CertificateInfo info = CertificateInfo.getOrBadRequest(reqCertUUID, customerUUID);
 
     if (certType != CertConfigType.HashicorpVault
         || info.getCertType() != CertConfigType.HashicorpVault) {
@@ -339,10 +342,7 @@ public class CertificateController extends AuthenticatedController {
       }
 
       EncryptionInTransitUtil.editEITHashicorpConfig(
-          info.getUuid(),
-          customerUUID,
-          runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
-          formParams);
+          info.getUuid(), customerUUID, AppConfigHelper.getStoragePath(), formParams);
     }
     auditService()
         .createAuditEntry(

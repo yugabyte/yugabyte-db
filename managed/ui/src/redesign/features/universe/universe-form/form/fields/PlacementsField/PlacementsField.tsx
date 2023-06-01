@@ -1,5 +1,6 @@
 import React, { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 import { useFormContext, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { Box, Typography, MenuItem, makeStyles, IconButton } from '@material-ui/core';
 import { YBButton, YBSelect, YBLabel, YBCheckbox, YBInput } from '../../../../../../components';
@@ -68,7 +69,7 @@ export const PlacementsField = ({
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
   const helperClasses = useStyles();
-
+  const featureFlags = useSelector((state: any) => state.featureFlags);
   //watchers
   const replicationFactor = useWatch({ name: REPLICATION_FACTOR_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
@@ -78,7 +79,7 @@ export const PlacementsField = ({
   //custom hooks
   const allZones = useGetAllZones(); //returns all AZ
   const unUsedZones = useGetUnusedZones(allZones); //return unused AZ
-  const { isLoading } = useNodePlacements(); // Places Nodes
+  const { isLoading } = useNodePlacements(featureFlags); // Places Nodes
 
   const { fields, update, append, remove } = useFieldArray({
     control,

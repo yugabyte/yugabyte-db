@@ -69,6 +69,9 @@ public class Audit extends Model {
     @EnumValue("Certificate")
     Certificate,
 
+    @EnumValue("CustomCACertificate")
+    CustomCACertificate,
+
     @EnumValue("Alert")
     Alert,
 

@@ -214,9 +214,6 @@ public class TableManagerYbTest extends FakeDBApplication {
         }
       }
       cmd.add("--no_auto_name");
-      if (backupTableParams.sse) {
-        cmd.add("--sse");
-      }
     }
     if (testProvider.getCode().equals("kubernetes")) {
       cmd.add("--k8s_config");
@@ -265,6 +262,8 @@ public class TableManagerYbTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.pgBasedBackup)))
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.backupLogVerbose)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.enableSSE)))
         .thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.disableXxHashChecksum))).thenReturn(false);

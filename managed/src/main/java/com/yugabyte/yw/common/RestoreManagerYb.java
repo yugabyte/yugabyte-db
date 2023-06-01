@@ -159,10 +159,6 @@ public class RestoreManagerYb extends DevopsBase {
     }
 
     commandArgs.add("--no_auto_name");
-    if (backupStorageInfo.sse) {
-      commandArgs.add("--sse");
-    }
-
     if (actionType.equals(ActionType.RESTORE)) {
       if (restoreBackupParams.restoreTimeStamp != null) {
         String backupLocation = customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText();
@@ -282,6 +278,10 @@ public class RestoreManagerYb extends DevopsBase {
         confGetter.getConfForScope(universe, UniverseConfKeys.backupLogVerbose);
     if (restoreBackupParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
+    }
+    boolean enableSSE = confGetter.getConfForScope(universe, UniverseConfKeys.enableSSE);
+    if (enableSSE) {
+      commandArgs.add("--sse");
     }
     if (restoreBackupParams.useTablespaces) {
       commandArgs.add("--use_tablespaces");

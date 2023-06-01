@@ -2,7 +2,6 @@
 from __future__ import unicode_literals
 
 import argparse
-import shlex
 import atexit
 import json
 import logging
@@ -11,6 +10,7 @@ import os
 import re
 import resource
 import shutil
+from distutils.spawn import find_executable
 import subprocess
 import sys
 import time
@@ -92,7 +92,6 @@ SAMPLE_DATA_LINKS = {
     "northwind": "https://docs.yugabyte.com/latest/sample-data/northwind/"
 }
 EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
-REQUIRED_TRANSPARENT_HUGEPAGES_LINUX = "always"
 REQUIRED_LOOPBACK_ADDRESSES = [
     '127\.0\.0\.2',
     '127\.0\.0\.3',
@@ -117,14 +116,6 @@ PREREQS_ERROR_MSGS = {
 QUICK_START_LINKS = {
     'mac' : 'https://docs.yugabyte.com/preview/quick-start/',
     'linux' : 'https://docs.yugabyte.com/preview/quick-start/linux/',
-}
-LINUX_PREREQS_CMDS = {
-    'transparent_hugepages' : 'cat /sys/kernel/mm/transparent_hugepage/enabled',
-    'ntp' : 'which ntpd',
-    'chrony' : 'which chronyd',
-    'openssl' : 'which openssl',
-}
-MAC_PREREQS_CMDS = {
 }
 CONFIG_LINK = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
 
@@ -1062,11 +1053,21 @@ class ControlScript(object):
           Output.log(err)
           Output.print_out(Output.make_red(err))
 
-    # Check for openssl
+    # Check that `openssl` binary is in our PATH
+    # This actually returns true when it is _not_ present!
     def check_openssl(self):
-        openssl_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('openssl')))
-        openssl_exit_code = openssl_check[2]
-        return openssl_exit_code != 0
+        return shutil.which('openssl') == None
+
+    # Transparent Hugepage check.  Not all distros have this enabled so we need to check for
+    # /sys/kernel/mm/transparent_hugepage before checking enabled
+    def linux_transparent_hugepage_check(self):
+        thp_dir = "/sys/kernel/mm/transparent_hugepage"
+        thp_mode = "disabled"
+        if os.path.exists(thp_dir):
+            with open(os.path.join(thp_dir, 'enabled'), 'r') as thp_enabled:
+                thp_enabled = thp_enabled.read()
+                thp_mode = re.search("\[(.*)\]", thp_enabled).group(1)
+        return thp_mode == 'always'
 
     # All Pre-requisites check for Linux
     def linux_prereqs_check(self):
@@ -1075,18 +1076,13 @@ class ControlScript(object):
         prereqs_failed_flag = False
         prereqs_warn_flag = False
 
-        transparent_hugepages_check = run_process(shlex
-                .split(LINUX_PREREQS_CMDS.get('transparent_hugepages')))
-        transparent_hugepages = re.search("\[(.*)\]", transparent_hugepages_check[0]).group(1)
-        if transparent_hugepages != REQUIRED_TRANSPARENT_HUGEPAGES_LINUX:
+        if not self.linux_transparent_hugepage_check():
             prereqs_warn.add('transparent_hugepages')
             prereqs_warn_flag = True
 
-        ntp_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('ntp')))
-        chrony_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('chrony')))
-        ntp_exit_code = ntp_check[2]
-        chrony_exit_code = chrony_check[2]
-        if ntp_exit_code != 0 and chrony_exit_code != 0:
+        ntp_check = find_executable('ntpd')
+        chrony_check = find_executable('chronyd')
+        if not ntp_check and not chrony_check:
             prereqs_warn.add('ntp/chrony')
             prereqs_warn_flag = True
 

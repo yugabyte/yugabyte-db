@@ -142,7 +142,7 @@ export const useGetUnusedZones = (allZones: Placement[]) => {
   return unUsedZones;
 };
 
-export const useNodePlacements = () => {
+export const useNodePlacements = (featureFlags: Record<string, any>) => {
   const [needPlacement, setNeedPlacement] = useState(false);
   const [regionsChanged, setRegionsChanged] = useState(false);
   const { setValue, getValues } = useFormContext<UniverseFormData>();
@@ -186,7 +186,7 @@ export const useNodePlacements = () => {
 
   let payload: any = {};
   const userIntent = {
-    ...getUserIntent({ formData: getValues() })
+    ...getUserIntent({ formData: getValues() }, clusterType, featureFlags)
   };
 
   if (universeConfigureTemplate) {

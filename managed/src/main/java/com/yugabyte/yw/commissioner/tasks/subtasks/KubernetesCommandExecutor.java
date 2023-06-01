@@ -17,8 +17,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -34,9 +32,12 @@ import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -52,7 +53,6 @@ import io.fabric8.kubernetes.api.model.Service;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -158,21 +158,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   }
 
   private final KubernetesManagerFactory kubernetesManagerFactory;
-
   private final ReleaseManager releaseManager;
-
   private final FileHelperService fileHelperService;
+  private final YbcBackupUtil ybcBackupUtil;
 
   @Inject
   protected KubernetesCommandExecutor(
       BaseTaskDependencies baseTaskDependencies,
       KubernetesManagerFactory kubernetesManagerFactory,
       ReleaseManager releaseManager,
-      FileHelperService fileHelperService) {
+      FileHelperService fileHelperService,
+      YbcBackupUtil ybcBackupUtil) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.releaseManager = releaseManager;
     this.fileHelperService = fileHelperService;
+    this.ybcBackupUtil = ybcBackupUtil;
   }
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
@@ -376,48 +377,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case COPY_PACKAGE:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         NodeDetails nodeDetails = u.getNode(taskParams().ybcServerName);
-        ReleaseManager.ReleaseMetadata releaseMetadata =
-            releaseManager.getYbcReleaseByVersion(
-                taskParams().getYbcSoftwareVersion(),
-                OsType.LINUX.toString().toLowerCase(),
-                Architecture.x86_64.name().toLowerCase());
-        String ybcPackage = releaseMetadata.filePath;
-        Map<String, String> ybcGflags =
-            GFlagsUtil.getYbcFlagsForK8s(
-                taskParams().getUniverseUUID(), taskParams().ybcServerName);
-        try {
-          Path confFilePath =
-              fileHelperService.createTempFile(
-                  taskParams().getUniverseUUID().toString() + "_" + taskParams().ybcServerName,
-                  ".conf");
-          Files.write(
-              confFilePath,
-              () ->
-                  ybcGflags.entrySet().stream()
-                      .<CharSequence>map(e -> "--" + e.getKey() + "=" + e.getValue())
-                      .iterator());
-          kubernetesManagerFactory
-              .getManager()
-              .copyFileToPod(
-                  config,
-                  nodeDetails.cloudInfo.kubernetesNamespace,
-                  nodeDetails.cloudInfo.kubernetesPodName,
-                  "yb-controller",
-                  confFilePath.toAbsolutePath().toString(),
-                  "/mnt/disk0/yw-data/controller/conf/server.conf");
-          kubernetesManagerFactory
-              .getManager()
-              .copyFileToPod(
-                  config,
-                  nodeDetails.cloudInfo.kubernetesNamespace,
-                  nodeDetails.cloudInfo.kubernetesPodName,
-                  "yb-controller",
-                  ybcPackage,
-                  "/mnt/disk0/yw-data/controller/tmp/");
-        } catch (Exception ex) {
-          log.error(ex.getMessage(), ex);
-          throw new RuntimeException("Could not upload the ybc contents", ex);
-        }
+        ybcBackupUtil.copyYbcPackagesOnK8s(
+            config, u, nodeDetails, taskParams().getYbcSoftwareVersion());
         break;
       case YBC_ACTION:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
@@ -427,14 +388,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 "/bin/bash",
                 "-c",
                 String.format("/home/yugabyte/tools/k8s_ybc_parent.py %s", taskParams().command));
-        kubernetesManagerFactory
-            .getManager()
-            .performYbcAction(
-                config,
-                nodeDetails.cloudInfo.kubernetesNamespace,
-                nodeDetails.cloudInfo.kubernetesPodName,
-                "yb-controller",
-                commandArgs);
+        ybcBackupUtil.performActionOnYbcK8sNode(config, nodeDetails, commandArgs);
         break;
     }
   }
@@ -599,10 +553,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.cloudInfo.az = podVals.get("az_name").asText();
               nodeDetail.cloudInfo.region = podVals.get("region_name").asText();
             }
-            nodeDetail.cloudInfo.instance_type =
-                taskParams().isReadOnlyCluster
-                    ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.instanceType
-                    : u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
+            if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+              nodeDetail.cloudInfo.instance_type =
+                  taskParams().isReadOnlyCluster
+                      ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.instanceType
+                      : u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
+            }
             nodeDetail.azUuid = azUUID;
             nodeDetail.placementUuid = placementUuid;
             nodeDetail.state = NodeDetails.NodeState.Live;
@@ -668,7 +624,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
-    if (instanceType == null) {
+    if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
       log.error(
           "Unable to fetch InstanceType for {}, {}",
           userIntent.providerType,
@@ -795,47 +751,89 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (!tserverDiskSpecs.isEmpty()) {
       storageOverrides.put("tserver", tserverDiskSpecs);
     }
-    String instanceTypeCode = instanceType.getInstanceTypeCode();
-    if (instanceTypeCode.equals("cloud")) {
-      masterDiskSpecs.put("size", String.format("%dGi", 3));
-    }
-    if (!masterDiskSpecs.isEmpty()) {
-      storageOverrides.put("master", masterDiskSpecs);
-    }
 
-    // Override resource request and limit based on instance type.
+    // Override resource request and limit.
     Map<String, Object> tserverResource = new HashMap<>();
     Map<String, Object> tserverLimit = new HashMap<>();
     Map<String, Object> masterResource = new HashMap<>();
     Map<String, Object> masterLimit = new HashMap<>();
 
-    tserverResource.put(
-        "cpu", KubernetesUtil.getCoreCountFromInstanceType(instanceType, false /* isMaster */));
-    tserverResource.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
-    tserverLimit.put("cpu", instanceType.getNumCores() * burstVal);
-    tserverLimit.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
+    if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      // InstanceType should be defined here in this case.
+      String instanceTypeCode = instanceType.getInstanceTypeCode();
+      if (instanceTypeCode.equals("cloud")) {
+        masterDiskSpecs.put("size", String.format("%dGi", 3));
+      }
+      if (!masterDiskSpecs.isEmpty()) {
+        storageOverrides.put("master", masterDiskSpecs);
+      }
 
-    // If the instance type is not xsmall or dev, we would bump the master resource.
-    if (!instanceTypeCode.equals("xsmall") && !instanceTypeCode.equals("dev")) {
-      masterResource.put("memory", "4Gi");
-      masterLimit.put("cpu", 2 * burstVal);
-      masterLimit.put("memory", "4Gi");
-    }
-    // For testing with multiple deployments locally.
-    if (instanceTypeCode.equals("dev")) {
-      masterResource.put("memory", "0.5Gi");
-      masterLimit.put("cpu", 0.5);
-      masterLimit.put("memory", "0.5Gi");
-    }
-    // For cloud deployments, we want bigger bursts in CPU if available for better performance.
-    // Memory should not be burstable as memory consumption above requests can lead to pods being
-    // killed if the nodes is running out of resources.
-    if (instanceTypeCode.equals("cloud")) {
-      tserverLimit.put("cpu", instanceType.getNumCores() * 2);
-      masterResource.put("cpu", 0.3);
-      masterResource.put("memory", "1Gi");
-      masterLimit.put("cpu", 0.6);
-      masterLimit.put("memory", "1Gi");
+      tserverResource.put("cpu", instanceType.getNumCores());
+      tserverResource.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
+      tserverLimit.put("cpu", instanceType.getNumCores() * burstVal);
+      tserverLimit.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
+
+      // If the instance type is not xsmall or dev, we would bump the master resource.
+      if (!instanceTypeCode.equals("xsmall") && !instanceTypeCode.equals("dev")) {
+        masterResource.put("cpu", 2);
+        masterResource.put("memory", "4Gi");
+        masterLimit.put("cpu", 2 * burstVal);
+        masterLimit.put("memory", "4Gi");
+      }
+      // For testing with multiple deployments locally.
+      if (instanceTypeCode.equals("dev")) {
+        masterResource.put("cpu", 0.5);
+        masterResource.put("memory", "0.5Gi");
+        masterLimit.put("cpu", 0.5);
+        masterLimit.put("memory", "0.5Gi");
+      }
+      // For cloud deployments, we want bigger bursts in CPU if available for better performance.
+      // Memory should not be burstable as memory consumption above requests can lead to pods being
+      // killed if the nodes is running out of resources.
+      if (instanceTypeCode.equals("cloud")) {
+        tserverLimit.put("cpu", instanceType.getNumCores() * 2);
+        masterResource.put("cpu", 0.3);
+        masterResource.put("memory", "1Gi");
+        masterLimit.put("cpu", 0.6);
+        masterLimit.put("memory", "1Gi");
+      }
+    } else {
+      // Use defaults in case we don't find anythihng,
+      if (userIntent.masterK8SNodeResourceSpec == null) {
+        log.warn(
+            "master k8s node resources (cpu/memory) passed as null for universe: "
+                + u.getUniverseUUID()
+                + " readcluster: "
+                + taskParams().isReadOnlyCluster
+                + " Using deafult values.");
+        userIntent.masterK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
+      }
+      if (userIntent.tserverK8SNodeResourceSpec == null) {
+        log.warn(
+            "tserver k8s node resources (cpu/memory) passed as null for universe: "
+                + u.getUniverseUUID()
+                + " readcluster: "
+                + taskParams().isReadOnlyCluster
+                + " Using deafult values.");
+        userIntent.tserverK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
+      }
+      masterResource.put(
+          "memory", String.format("%.2f%s", userIntent.masterK8SNodeResourceSpec.memoryGib, "Gi"));
+      masterResource.put(
+          "cpu", String.format("%.2f", userIntent.masterK8SNodeResourceSpec.cpuCoreCount));
+      tserverResource.put(
+          "memory", String.format("%.2f%s", userIntent.tserverK8SNodeResourceSpec.memoryGib, "Gi"));
+      tserverResource.put(
+          "cpu", String.format("%.2f", userIntent.tserverK8SNodeResourceSpec.cpuCoreCount));
+      // We are keeping requests and limits same.
+      masterLimit.put(
+          "memory", String.format("%.2f%s", userIntent.masterK8SNodeResourceSpec.memoryGib, "Gi"));
+      masterLimit.put(
+          "cpu", String.format("%.2f", userIntent.masterK8SNodeResourceSpec.cpuCoreCount));
+      tserverLimit.put(
+          "memory", String.format("%.2f%s", userIntent.tserverK8SNodeResourceSpec.memoryGib, "Gi"));
+      tserverLimit.put(
+          "cpu", String.format("%.2f", userIntent.tserverK8SNodeResourceSpec.cpuCoreCount));
     }
 
     masterResource.put(
@@ -879,15 +877,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UniverseDefinitionTaskParams.UserIntent primaryClusterIntent =
         u.getUniverseDetails().getPrimaryCluster().userIntent;
 
-    if (u.getUniverseDetails().rootCA != null) {
+    if (u.getUniverseDetails().rootCA != null || u.getUniverseDetails().getClientRootCA() != null) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
       tlsInfo.put("nodeToNode", primaryClusterIntent.enableNodeToNodeEncrypt);
       tlsInfo.put("clientToServer", primaryClusterIntent.enableClientToNodeEncrypt);
       tlsInfo.put("insecure", u.getUniverseDetails().allowInsecure);
+      String rootCert;
+      String rootKey;
+      if (u.getUniverseDetails().rootCA != null) {
+        rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().rootCA);
+        rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().rootCA);
+      } else {
+        rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().getClientRootCA());
+        rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().getClientRootCA());
+      }
 
-      String rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().rootCA);
-      String rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().rootCA);
       if (rootKey != null && !rootKey.isEmpty()) {
         Map<String, Object> rootCA = new HashMap<>();
         rootCA.put("cert", rootCert);
@@ -896,7 +901,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       } else {
         // In case root cert key is null which will be the case with Hashicorp Vault certificates
         // Generate wildcard node cert and client cert and set them in override file
-        CertificateInfo certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
+        CertificateInfo certInfo;
+        if (u.getUniverseDetails().rootCA != null) {
+          certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
+        } else {
+          certInfo = CertificateInfo.get(u.getUniverseDetails().getClientRootCA());
+        }
 
         Map<String, Object> rootCA = new HashMap<>();
         rootCA.put("cert", rootCert);

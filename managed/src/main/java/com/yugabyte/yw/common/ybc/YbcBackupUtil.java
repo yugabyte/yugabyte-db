@@ -20,11 +20,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.FileHelperService;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
@@ -37,12 +43,18 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.annotation.EnumValue;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
@@ -57,10 +69,9 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
+import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.BackupServiceTaskExtendedArgs;
 import org.yb.ybc.BackupServiceTaskProgressRequest;
@@ -69,6 +80,8 @@ import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.CloudType;
 import org.yb.ybc.NamespaceType;
+import org.yb.ybc.PingRequest;
+import org.yb.ybc.PingResponse;
 import org.yb.ybc.TableBackup;
 import org.yb.ybc.TableBackupSpec;
 import org.yb.ybc.UserChangeSpec;
@@ -83,14 +96,18 @@ public class YbcBackupUtil {
   public static final int MAX_TASK_RETRIES = 10;
   public static final String DEFAULT_REGION_STRING = "default_region";
   public static final String YBC_SUCCESS_MARKER_TASK_SUFFIX = "_success_marker";
+  private static final int MAX_NUM_RETRIES = 20;
+  private static final long INITIAL_SLEEP_TIME_IN_MS = 1000L;
+  private static final long INCREMENTAL_SLEEP_TIME_IN_MS = 2000L;
 
   @Inject UniverseInfoHandler universeInfoHandler;
   @Inject YbcClientService ybcService;
   @Inject BackupUtil backupUtil;
   @Inject CustomerConfigService configService;
   @Inject EncryptionAtRestManager encryptionAtRestManager;
-
-  public static final Logger LOG = LoggerFactory.getLogger(BackupUtil.class);
+  @Inject ReleaseManager releaseManager;
+  @Inject FileHelperService fileHelperService;
+  @Inject KubernetesManagerFactory kubernetesManagerFactory;
 
   public enum SnapshotObjectType {
     @EnumValue("NAMESPACE")
@@ -723,5 +740,132 @@ public class YbcBackupUtil {
           keyspaceToParamsMap.put(ImmutablePair.of(bL.backupType, bL.getKeyspace()), bL);
         });
     return keyspaceToParamsMap;
+  }
+
+  public void copyYbcPackagesOnK8s(
+      Map<String, String> config,
+      Universe universe,
+      NodeDetails nodeDetails,
+      String ybcSoftwareVersion) {
+    ReleaseManager.ReleaseMetadata releaseMetadata =
+        releaseManager.getYbcReleaseByVersion(
+            ybcSoftwareVersion,
+            OsType.LINUX.toString().toLowerCase(),
+            Architecture.x86_64.name().toLowerCase());
+    String ybcPackage = releaseMetadata.filePath;
+    Map<String, String> ybcGflags =
+        GFlagsUtil.getYbcFlagsForK8s(universe.getUniverseUUID(), nodeDetails.nodeName);
+    try {
+      Path confFilePath =
+          fileHelperService.createTempFile(
+              universe.getUniverseUUID().toString() + "_" + nodeDetails.nodeName, ".conf");
+      Files.write(
+          confFilePath,
+          () ->
+              ybcGflags.entrySet().stream()
+                  .<CharSequence>map(e -> "--" + e.getKey() + "=" + e.getValue())
+                  .iterator());
+      kubernetesManagerFactory
+          .getManager()
+          .copyFileToPod(
+              config,
+              nodeDetails.cloudInfo.kubernetesNamespace,
+              nodeDetails.cloudInfo.kubernetesPodName,
+              "yb-controller",
+              confFilePath.toAbsolutePath().toString(),
+              "/mnt/disk0/yw-data/controller/conf/server.conf");
+      kubernetesManagerFactory
+          .getManager()
+          .copyFileToPod(
+              config,
+              nodeDetails.cloudInfo.kubernetesNamespace,
+              nodeDetails.cloudInfo.kubernetesPodName,
+              "yb-controller",
+              ybcPackage,
+              "/mnt/disk0/yw-data/controller/tmp/");
+    } catch (Exception ex) {
+      log.error(ex.getMessage(), ex);
+      throw new RuntimeException("Could not upload the ybc contents", ex);
+    }
+  }
+
+  public void performActionOnYbcK8sNode(
+      Map<String, String> config, NodeDetails nodeDetails, List<String> commandArgs) {
+    kubernetesManagerFactory
+        .getManager()
+        .performYbcAction(
+            config,
+            nodeDetails.cloudInfo.kubernetesNamespace,
+            nodeDetails.cloudInfo.kubernetesPodName,
+            "yb-controller",
+            commandArgs);
+  }
+
+  public void waitForYbc(Universe universe, Set<NodeDetails> nodeDetailsSet) {
+    String certFile = universe.getCertificateNodetoNode();
+    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+    String errMsg = "";
+
+    log.info("Universe uuid: {}, ybcPort: {} to be used", universe.getUniverseUUID(), ybcPort);
+    YbcClient client = null;
+    boolean isYbcConfigured = true;
+    Random rand = new Random();
+    for (NodeDetails node : nodeDetailsSet) {
+      String nodeIp = node.cloudInfo.private_ip;
+      log.info("Node IP: {} to connect to YBC", nodeIp);
+
+      try {
+        client = ybcService.getNewClient(nodeIp, ybcPort, certFile);
+        if (client == null) {
+          throw new Exception("Could not create Ybc client.");
+        }
+        log.info("Node IP: {} Client created", nodeIp);
+        long seqNum = rand.nextInt();
+        PingRequest pingReq = PingRequest.newBuilder().setSequence(seqNum).build();
+        int numTries = 0;
+        do {
+          log.info("Node IP: {} Making a ping request", nodeIp);
+          PingResponse pingResp = client.ping(pingReq);
+          if (pingResp != null && pingResp.getSequence() == seqNum) {
+            log.info("Node IP: {} Ping successful", nodeIp);
+            break;
+          } else if (pingResp == null) {
+            numTries++;
+            long waitTimeInMillis =
+                INITIAL_SLEEP_TIME_IN_MS + INCREMENTAL_SLEEP_TIME_IN_MS * (numTries - 1);
+            log.info(
+                "Node IP: {} Ping not complete. Sleeping for {} millis", nodeIp, waitTimeInMillis);
+            Duration duration = Duration.ofMillis(waitTimeInMillis);
+            Thread.sleep(duration.toMillis());
+            if (numTries <= MAX_NUM_RETRIES) {
+              log.info("Node IP: {} Ping not complete. Continuing", nodeIp);
+              continue;
+            }
+          }
+          if (numTries > MAX_NUM_RETRIES) {
+            log.info("Node IP: {} Ping failed. Exceeded max retries", nodeIp);
+            errMsg = String.format("Exceeded max retries: %s", MAX_NUM_RETRIES);
+            isYbcConfigured = false;
+            break;
+          } else if (pingResp.getSequence() != seqNum) {
+            errMsg =
+                String.format(
+                    "Returned incorrect seqNum. Expected: %s, Actual: %s",
+                    seqNum, pingResp.getSequence());
+            isYbcConfigured = false;
+            break;
+          }
+        } while (true);
+      } catch (Exception e) {
+        log.error("{} hit error : {}", "WaitForYbcServer", e.getMessage());
+        throw new RuntimeException(e);
+      } finally {
+        ybcService.closeClient(client);
+        if (!isYbcConfigured) {
+          throw new RuntimeException(
+              String.format("Exception in pinging yb-controller server at %s: %s", nodeIp, errMsg));
+        }
+      }
+    }
   }
 }

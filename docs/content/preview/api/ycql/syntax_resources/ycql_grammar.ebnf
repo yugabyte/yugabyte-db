@@ -4,7 +4,7 @@ column_type ::= '<type>';
 
 create_index ::= 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'IF' 'NOT' 'EXISTS' ] index_name 'ON' \
                      table_name '(' partition_key_columns ',' [ clustering_key_columns ] ')' \
-                     [ index_properties ] [ covering_columns ] [ 'WHERE' index_predicate];
+                     [ covering_columns ] [ index_properties ] [ 'WHERE' index_predicate];
 
 partition_key_columns = ( index_column | '(' index_column { ',' index_column } ')' );
 

@@ -1,16 +1,15 @@
 import React, { FC, useContext } from 'react';
 import _ from 'lodash';
 import { useQuery } from 'react-query';
+import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'react-toastify';
 import { UniverseFormContext } from './UniverseFormContainer';
 import { UniverseForm } from './form/UniverseForm';
 import { YBLoading } from '../../../../components/common/indicators';
 import { api, QUERY_KEY } from './utils/api';
 import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelper';
 import {
-  createErrorMessage,
   createReadReplica,
   filterFormDataByClusterType,
   getAsyncCluster,
@@ -27,7 +26,6 @@ import {
   NodeState,
   UniverseFormData
 } from './utils/dto';
-import { TOAST_AUTO_DISMISS_INTERVAL } from './utils/constants';
 
 interface CreateReadReplicaProps {
   uuid: string;
@@ -35,8 +33,9 @@ interface CreateReadReplicaProps {
 
 export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
   const { t } = useTranslation();
+  const featureFlags = useSelector((state: any) => state.featureFlags);
   const [contextState, contextMethods]: any = useContext(UniverseFormContext);
-  const { initializeForm, setUniverseResourceTemplate } = contextMethods;
+  const { initializeForm } = contextMethods;
 
   const { isLoading, data: universe } = useQuery(
     [QUERY_KEY.fetchUniverse, uuid],
@@ -49,13 +48,6 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
           mode: ClusterModes.CREATE,
           universeConfigureTemplate: _.cloneDeep(resp.universeDetails)
         });
-        //set Universe Resource Template
-        try {
-          const resourceResponse = await api.universeResource(_.cloneDeep(resp.universeDetails));
-          setUniverseResourceTemplate(resourceResponse);
-        } catch (error) {
-          toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
-        }
       },
       onError: (error) => {
         console.error(error);
@@ -69,7 +61,7 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
   const onSubmit = async (formData: UniverseFormData) => {
     const PRIMARY_CLUSTER = getPrimaryCluster(contextState.universeConfigureTemplate);
     const ASYNC_CLUSTER = {
-      userIntent: getUserIntent({ formData }),
+      userIntent: getUserIntent({ formData }, ClusterType.ASYNC, featureFlags),
       clusterType: ClusterType.ASYNC,
       placementInfo: {
         cloudList: [
@@ -87,14 +79,12 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
       ...contextState.universeConfigureTemplate,
       clusterOperation: ClusterModes.CREATE,
       currentClusterType: ClusterType.ASYNC,
-      clusters: [
-        PRIMARY_CLUSTER,
-        {
-          ...getAsyncCluster(contextState.universeConfigureTemplate),
-          ...ASYNC_CLUSTER
-        }
-      ]
+      clusters: [{ ...PRIMARY_CLUSTER }]
     };
+    configurePayload?.clusters.push({
+      ...getAsyncCluster(contextState.universeConfigureTemplate),
+      ...ASYNC_CLUSTER
+    });
     const configureData = await api.universeConfigure(configurePayload);
 
     //patch the final payload with response from configure call

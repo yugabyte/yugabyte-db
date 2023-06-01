@@ -107,7 +107,7 @@ public class ConfigHelper {
     String version = getCurrentVersion(environment);
     loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", version));
 
-    // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
+    // TODO: Version added to Yugaware metadata, now slowly decommission SoftwareVersion property
     Map<String, Object> ywMetadata = new HashMap<>();
     // Assign a new Yugaware UUID if not already present in the DB i.e. first install
     Object ywUUID =

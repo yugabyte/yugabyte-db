@@ -57,6 +57,7 @@ import {
   ReplicationItems,
   XClusterTableCandidate
 } from '../..';
+import { isColocatedParentTable } from '../../../../utils/tableUtils';
 
 import styles from './TableSelect.module.scss';
 
@@ -140,23 +141,16 @@ const NOTE_EXPAND_CONTENT = (
   <div>
     <b>Which tables are considered eligible for xCluster replication?</b>
     <p>
-      We have 2 criteria for <b>eligible tables</b>:
-      <ol>
-        <li>
+      We have the following criteria for <b>eligible tables</b>:
+      <ul>
+        <li style={{ listStyle: 'disc' }}>
           <b>Table not already in use</b>
           <p>
             The table is not involved in another xCluster configuration between the same two
             universes in the same direction.
           </p>
         </li>
-        <li>
-          <b>Matching table exists on target universe</b>
-          <p>
-            A table with the same name in the same keyspace and schema exists on the target
-            universe.
-          </p>
-        </li>
-      </ol>
+      </ul>
       If a table fails to meet any of the above criteria, then it is considered an <b>ineligible</b>{' '}
       table for xCluster purposes.
     </p>
@@ -679,13 +673,22 @@ function getReplicationItemsFromTables(
   );
 }
 
+// Colocated parent tables have table.tablename in the following format:
+//   <uuid>.colocation.parent.tablename
+// We return colocation.parent.tablename for colocated parent tables and
+// table.tablename otherwise.
+const getTableNameIdentifier = (table: YBTable) =>
+  isColocatedParentTable(table)
+    ? table.tableName.slice(table.tableName.indexOf('.') + 1)
+    : table.tableName;
+
 // Comma is not a valid identifier:
 // https://www.postgresql.org/docs/9.2/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
 // https://cassandra.apache.org/doc/latest/cassandra/cql/definitions.html
 // Hence, by joining with commas, we avoid issues where the fields are unique individually
 // but result in a string that not unique.
 const getTableIdentifier = (table: YBTable): string =>
-  `${table.keySpace},${table.pgSchemaName},${table.tableName}`;
+  `${table.keySpace},${table.pgSchemaName},${getTableNameIdentifier(table)}`;
 
 /**
  * A table is eligible for replication if all of the following holds true:

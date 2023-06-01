@@ -477,7 +477,8 @@ public enum TaskType {
 
   InstallYbcSoftware(com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class),
 
-  InstallYbcSoftwareOnK8s(com.yugabyte.yw.commissioner.tasks.InstallYbcSoftwareOnK8s.class),
+  InstallYbcSoftwareOnK8s(
+      com.yugabyte.yw.commissioner.tasks.subtasks.InstallYbcSoftwareOnK8s.class),
 
   UpgradeUniverseYbc(com.yugabyte.yw.commissioner.tasks.UpgradeUniverseYbc.class),
 

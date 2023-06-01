@@ -107,8 +107,7 @@ DECLARE_uint64(pg_client_heartbeat_interval_ms);
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
 namespace {
 
 Result<int64_t> GetCatalogVersion(PGConn* conn) {
@@ -161,16 +160,18 @@ class PgMiniTest : public PgMiniTestBase {
   void ValidateAbortedTxnMetric();
 };
 
-class PgMiniPgClientServiceCleanupTest : public PgMiniTest {
+class PgMiniTestSingleNode : public PgMiniTest {
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+class PgMiniPgClientServiceCleanupTest : public PgMiniTestSingleNode {
  public:
   void SetUp() override {
     FLAGS_pg_client_session_expiration_ms = 5000;
     FLAGS_pg_client_heartbeat_interval_ms = 2000;
     PgMiniTestBase::SetUp();
-  }
-
-  size_t NumTabletServers() override {
-    return 1;
   }
 };
 
@@ -1888,5 +1889,25 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {
   ASSERT_LT(termination_duration, RegularBuildVsDebugVsSanitizers(3000, 5000, 5000));
 }
 
-} // namespace pgwrapper
-} // namespace yb
+TEST_F_EX(
+    PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshWithDroppedEntries), PgMiniTestSingleNode) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  constexpr size_t kNumViews = 30;
+  for (size_t i = 0; i < kNumViews; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE VIEW v_$0 AS SELECT * FROM t", i));
+  }
+  // Trigger catalog version increment
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v INT"));
+  // New connection will load all the entries (tables and views) into catalog cache
+  auto aux_conn = ASSERT_RESULT(Connect());
+  for (size_t i = 0; i < kNumViews; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("DROP VIEW v_$0", i));
+  }
+  // Wait for update of catalog version in shared memory to trigger catalog refresh on next query
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
+  // Check that connection can handle query (i.e. the catalog cache was updated without an issue)
+  ASSERT_OK(aux_conn.Fetch("SELECT 1"));
+}
+
+} // namespace yb::pgwrapper

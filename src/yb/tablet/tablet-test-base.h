@@ -102,9 +102,9 @@ struct CompositeKeyTestSetup {
 template<DataType Type>
 struct IntKeyTestSetup {
   static Schema CreateSchema() {
-    return Schema({ ColumnSchema("key", Type, false, true),
+    return Schema({ ColumnSchema("key", Type, ColumnKind::HASH),
                     ColumnSchema("key_idx", INT32),
-                    ColumnSchema("val", INT32) }, 1);
+                    ColumnSchema("val", INT32) });
   }
 
   void BuildRowKey(QLWriteRequestPB *req, int64_t i) {
@@ -212,9 +212,9 @@ std::string IntKeyTestSetup<INT64>::FormatDebugRow(int64_t key_idx, int32_t val,
 // Setup for testing nullable columns
 struct NullableValueTestSetup {
   static Schema CreateSchema() {
-    return Schema({ ColumnSchema("key", INT32, false, true),
+    return Schema({ ColumnSchema("key", INT32, ColumnKind::HASH),
                     ColumnSchema("key_idx", INT32),
-                    ColumnSchema("val", INT32, true) }, 1);
+                    ColumnSchema("val", INT32, ColumnKind::VALUE, Nullable::kTrue) });
   }
 
   void BuildRowKey(QLWriteRequestPB *req, int32_t i) {

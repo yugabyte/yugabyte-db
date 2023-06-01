@@ -119,8 +119,9 @@ class ReleaseUtil:
 
         self.build_root = build_root
         pom_file = os.path.join(YB_SRC_ROOT, 'java', 'pom.xml')
-        self.java_project_version = minidom.parse(pom_file).getElementsByTagName(
-            'version')[0].firstChild.nodeValue
+        version_tag = minidom.parse(pom_file).getElementsByTagName('version')[0]
+        assert version_tag.firstChild is not None
+        self.java_project_version = version_tag.firstChild.nodeValue  # type: ignore
         logging.info("Java project version from pom.xml: {}".format(self.java_project_version))
         self.release_manifest['bin'] = filter_bin_items(
             self.release_manifest['bin'], optional_components)

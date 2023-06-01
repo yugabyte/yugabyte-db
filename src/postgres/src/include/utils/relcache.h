@@ -127,6 +127,7 @@ extern void RelationForgetRelation(Oid rid);
 extern void RelationCacheInvalidateEntry(Oid relationId);
 
 extern void RelationCacheInvalidate(void);
+extern void YbRelationCacheInvalidate(void);
 
 extern void RelationCloseSmgrByOid(Oid relationId);
 

@@ -129,9 +129,19 @@ class YBC:
         if os.path.exists(CONTROLLER_PID_FILE):
             pid = self.read_pid_file(CONTROLLER_PID_FILE)
             try:
-                os.kill(pid, 0)
-                os.kill(pid, signal.SIGKILL)
-                os.waitpid(pid)
+                parent = psutil.Process(pid)
+                children = parent.children(recursive=True)
+                for p in children:
+                    try:
+                        os.kill(p.pid, signal.SIGKILL)
+                        os.waitpid(p.pid)
+                    except Exception:
+                        pass
+                try:
+                    os.kill(parent.pid, signal.SIGKILL)
+                    os.waitpid(parent.pid)
+                except Exception:
+                    pass
             except Exception:
                 pass
             os.remove(CONTROLLER_PID_FILE)

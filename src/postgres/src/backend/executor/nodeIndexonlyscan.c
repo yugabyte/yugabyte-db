@@ -99,7 +99,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		node->ioss_ScanDesc = scandesc;
 		scandesc->yb_scan_plan = (Scan *) plan;
 		scandesc->yb_rel_pushdown =
-			YbInstantiateRemoteParams(&plan->remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
 
 		/* Set it up for index-only scan */
 		node->ioss_ScanDesc->xs_want_itup = true;
@@ -394,7 +394,7 @@ ExecReScanIndexOnlyScan(IndexOnlyScanState *node)
 		IndexOnlyScan *plan = (IndexOnlyScan *) scandesc->yb_scan_plan;
 		EState *estate = node->ss.ps.state;
 		scandesc->yb_rel_pushdown =
-			YbInstantiateRemoteParams(&plan->remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
 		index_rescan(node->ioss_ScanDesc,
 					 node->ioss_ScanKeys, node->ioss_NumScanKeys,
 					 node->ioss_OrderByKeys, node->ioss_NumOrderByKeys);

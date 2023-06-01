@@ -157,8 +157,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
           // added tables to the xCluster config.
           CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
               getClusterConfig(client, targetUniverse.getUniverseUUID());
-          syncXClusterConfigWithReplicationGroup(
-              clusterConfig, xClusterConfig, tableIdsToAdd, true /* skipSyncTxnTable */);
+          syncXClusterConfigWithReplicationGroup(clusterConfig, xClusterConfig, tableIdsToAdd);
 
           if (HighAvailabilityConfig.get().isPresent()) {
             // Note: We increment version twice for adding tables: once for setting up the .ALTER

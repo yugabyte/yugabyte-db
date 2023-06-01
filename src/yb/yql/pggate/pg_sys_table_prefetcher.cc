@@ -18,9 +18,7 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
-#include <map>
 #include <optional>
-#include <ostream>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -339,6 +337,22 @@ Result<rpc::CallResponsePtr> Run(
   return VERIFY_RESULT(result.Get()).response;
 }
 
+struct RegisteredItem {
+  RegisteredItem(PgObjectId table_id_, PgObjectId index_id_, int row_oid_filtering_attr_)
+      : table_id(table_id_), index_id(index_id_), row_oid_filtering_attr(row_oid_filtering_attr_) {}
+
+  PgObjectId table_id;
+  PgObjectId index_id;
+  int row_oid_filtering_attr;
+};
+
+void ApplySystemItemsFilter(LWPgsqlReadRequestPB* req, int oid_column_id) {
+  auto* cond = req->add_where_clauses()->mutable_condition();
+  *cond->mutable_op() = QL_OP_LESS_THAN;
+  cond->add_operands()->set_column_id(oid_column_id);
+  cond->add_operands()->mutable_value()->set_uint32_value(kFirstNormalColocationId);
+}
+
 // Helper class to load data from all registered tables
 class Loader {
  public:
@@ -351,16 +365,19 @@ class Loader {
   }
 
   // Prepare operation for read from particular table
-  Status Apply(const PgObjectId& table_id, const PgObjectId& index_id) {
-    const auto table = VERIFY_RESULT(session_->LoadTable(table_id));
-    const auto index = index_id.IsValid() ? VERIFY_RESULT(session_->LoadTable(index_id))
-                                          : PgTableDescPtr();
+  Status Apply(const RegisteredItem& item) {
+    const auto table = VERIFY_RESULT(session_->LoadTable(item.table_id));
+    const auto index = item.index_id.IsValid()
+        ? VERIFY_RESULT(session_->LoadTable(item.index_id)) : PgTableDescPtr();
 
-    VLOG(2) << "Loader::Apply "
-            << "table_id=" << table_id << " (" << table->table_name().table_name() << ") "
-            << "index_id=" << index_id;
-    CHECK(table->schema().table_properties().is_ysql_catalog_table())
-        << table_id << " " << table->table_name().table_name() << " is not a catalog table";
+    VLOG(2) << "Loader::Apply"
+            << " table_id=" << item.table_id << " (" << table->table_name().table_name() << ")"
+            << " index_id=" << item.index_id
+            << " row_oid_filtering_attr=" << item.row_oid_filtering_attr;
+    RSTATUS_DCHECK(
+        table->schema().table_properties().is_ysql_catalog_table(),
+        InternalError,
+        Format("$0 $1 is not a catalog table", item.table_id, table->table_name().table_name()));
     // System tables are not region local.
     op_info_.emplace_back(
         ArenaMakeShared<PgsqlReadOp>(arena_, &*arena_, *table, false /* is_region_local */),
@@ -371,19 +388,26 @@ class Loader {
     PgTable target(table);
     auto ordered_columns = OrderColumns(target.columns());
     info.targets.reserve(ordered_columns.size());
-    for (const auto& c : ordered_columns) {
-      AddTargetColumn(&req, *c);
-      info.targets.push_back(c->id());
+    const PgColumn* oid_filtering_column = nullptr;
+    for (const auto& column : ordered_columns) {
+      AddTargetColumn(&req, *column);
+      info.targets.push_back(column->id());
+      if (column->attr_num() == item.row_oid_filtering_attr) {
+        oid_filtering_column = column;
+      }
+    }
+    if (oid_filtering_column) {
+      ApplySystemItemsFilter(&req, oid_filtering_column->id());
     }
     if (index) {
       const PgTable index_target(index);
-      for (const auto& c : index_target.columns()) {
-        if (c.attr_num() == to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId)) {
+      for (const auto& column : index_target.columns()) {
+        if (column.attr_num() == to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId)) {
           auto& index_req = *req.mutable_index_request();
           index_req.dup_table_id(index->id().GetYbTableId());
           SetupPaging(&index_req);
-          AddTargetColumn(&index_req, c);
-          info.index_targets.push_back(c.id());
+          AddTargetColumn(&index_req, column);
+          info.index_targets.push_back(column.id());
           break;
         }
       }
@@ -436,11 +460,12 @@ class PgSysTablePrefetcher::Impl {
     VLOG(1) << "Starting prefetcher with " << options_.ToString();
   }
 
-  void Register(const PgObjectId& table_id, const PgObjectId& index_id) {
-    VLOG(1) << "Register " << table_id << " " << index_id;
-    if (data_.find(table_id) == data_.end()) {
-      registered_for_loading_[table_id] = index_id;
-    }
+  void Register(
+      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr) {
+    VLOG(1) << "Register table_id=" << table_id
+            << " index_id=" << index_id
+            << " row_oid_filtering_attr=" << row_oid_filtering_attr;
+    registered_for_loading_.emplace_back(table_id, index_id, row_oid_filtering_attr);
   }
 
   PrefetchedDataHolder GetData(const LWPgsqlReadRequestPB& read_req, bool index_check_required) {
@@ -464,12 +489,18 @@ class PgSysTablePrefetcher::Impl {
   }
 
   Status Prefetch(PgSession* session) {
-    SCHECK(!registered_for_loading_.empty(),
-           IllegalState,
-           "No tables were registered for prefetching");
+    DCHECK(!registered_for_loading_.empty());
+    std::sort(registered_for_loading_.begin(),
+              registered_for_loading_.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.table_id < rhs.table_id; });
     Loader loader(session, arena_, registered_for_loading_.size(), options_);
-    for (const auto& t : registered_for_loading_) {
-      RETURN_NOT_OK(loader.Apply(t.first, t.second));
+    PgObjectId prev_table_id;
+    for (const auto& item : registered_for_loading_) {
+      // Load table once in spite of the fact it might be registered for preloading multiple times.
+      if (prev_table_id != item.table_id) {
+        RETURN_NOT_OK(loader.Apply(item));
+        prev_table_id = item.table_id;
+      }
     }
     registered_for_loading_.clear();
     return loader.Load(&data_);
@@ -481,9 +512,7 @@ class PgSysTablePrefetcher::Impl {
 
  private:
   std::shared_ptr<ThreadSafeArena> arena_;
-  // The order of entries in the registered_for_loading_ map is mandatory because it affects
-  // cache key building process.
-  std::map<PgObjectId, PgObjectId> registered_for_loading_;
+  boost::container::small_vector<RegisteredItem, 64> registered_for_loading_;
   DataContainer data_;
   const PrefetcherOptions options_;
 };
@@ -493,8 +522,9 @@ PgSysTablePrefetcher::PgSysTablePrefetcher(const PrefetcherOptions& options)
 
 PgSysTablePrefetcher::~PgSysTablePrefetcher() = default;
 
-void PgSysTablePrefetcher::Register(const PgObjectId& table_id, const PgObjectId& index_id) {
-  impl_->Register(table_id, index_id);
+void PgSysTablePrefetcher::Register(
+    const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr) {
+  impl_->Register(table_id, index_id, row_oid_filtering_attr);
 }
 
 Status PgSysTablePrefetcher::Prefetch(PgSession* session) {
