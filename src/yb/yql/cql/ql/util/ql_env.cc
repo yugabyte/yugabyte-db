@@ -124,32 +124,32 @@ YBSessionPtr QLEnv::NewSession() {
 }
 
 //------------------------------------------------------------------------------------------------
-shared_ptr<YBTable> QLEnv::GetTableDesc(const YBTableName& table_name, bool* cache_used) {
+client::YBTablePtr QLEnv::GetTableDesc(const YBTableName& table_name, bool* cache_used) {
   // Hide tables in system_redis keyspace.
   if (table_name.is_redis_namespace()) {
     return nullptr;
   }
-  shared_ptr<YBTable> yb_table;
-  Status s = metadata_cache_->GetTable(table_name, &yb_table, cache_used);
+  auto res = metadata_cache_->GetTableEx(table_name);
 
-  if (!s.ok()) {
-    VLOG(3) << "GetTableDesc: Server returns an error: " << s.ToString();
+  if (!res.ok()) {
+    VLOG(3) << "GetTableDesc: Server returns an error: " << res.status().ToString();
     return nullptr;
   }
 
-  return yb_table;
+  *cache_used = res->cache_used;
+  return res->table;
 }
 
-shared_ptr<YBTable> QLEnv::GetTableDesc(const TableId& table_id, bool* cache_used) {
-  shared_ptr<YBTable> yb_table;
-  Status s = metadata_cache_->GetTable(table_id, &yb_table, cache_used);
+client::YBTablePtr QLEnv::GetTableDesc(const TableId& table_id, bool* cache_used) {
+  auto res = metadata_cache_->GetTableEx(table_id);
 
-  if (!s.ok()) {
-    VLOG(3) << "GetTableDesc: Server returns an error: " << s.ToString();
+  if (!res.ok()) {
+    VLOG(3) << "GetTableDesc: Server returns an error: " << res.status().ToString();
     return nullptr;
   }
 
-  return yb_table;
+  *cache_used = res->cache_used;
+  return res->table;
 }
 
 Result<SchemaVersion> QLEnv::GetCachedTableSchemaVersion(const TableId& table_id) {

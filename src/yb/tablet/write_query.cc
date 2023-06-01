@@ -715,35 +715,45 @@ void WriteQuery::CompleteQLWriteBatch(const Status& status) {
   StartSynchronization(std::move(self_), Status::OK());
 }
 
-void WriteQuery::UpdateQLIndexes() {
+struct UpdateQLIndexesTask {
+  WriteQuery* query;
+
   client::YBClient* client = nullptr;
-  client::YBSessionPtr session;
   client::YBTransactionPtr txn;
-  IndexOps index_ops;
+  client::YBSessionPtr session;
   const ChildTransactionDataPB* child_transaction_data = nullptr;
-  for (auto& doc_op : doc_ops_) {
-    auto* write_op = down_cast<docdb::QLWriteOperation*>(doc_op.get());
-    if (write_op->index_requests()->empty()) {
-      continue;
+  std::shared_ptr<client::YBMetaDataCache> metadata_cache;
+
+  std::mutex mutex;
+  WriteQuery::IndexOps index_ops GUARDED_BY(mutex);
+  size_t counter GUARDED_BY(mutex) = 1;
+  Status failure;
+
+  explicit UpdateQLIndexesTask(WriteQuery* query_) : query(query_) {}
+
+  Status Init(Tablet* tablet, docdb::QLWriteOperation* write_op) {
+    client = &tablet->client();
+    session = std::make_shared<client::YBSession>(client);
+    session->SetDeadline(query->deadline());
+    if (write_op->request().has_child_transaction_data()) {
+      child_transaction_data = &write_op->request().child_transaction_data();
+      auto child_data = VERIFY_RESULT(client::ChildTransactionData::FromPB(
+          write_op->request().child_transaction_data()));
+      txn = std::make_shared<client::YBTransaction>(&tablet->transaction_manager(), child_data);
+      session->SetTransaction(txn);
+    } else {
+      child_transaction_data = nullptr;
     }
-    if (!client) {
-      client = &tablet().client();
-      session = std::make_shared<client::YBSession>(client);
-      session->SetDeadline(deadline());
-      if (write_op->request().has_child_transaction_data()) {
-        child_transaction_data = &write_op->request().child_transaction_data();
-        auto child_data = client::ChildTransactionData::FromPB(
-            write_op->request().child_transaction_data());
-        if (!child_data.ok()) {
-          StartSynchronization(std::move(self_), child_data.status());
-          return;
-        }
-        txn = std::make_shared<client::YBTransaction>(&tablet().transaction_manager(), *child_data);
-        session->SetTransaction(txn);
-      } else {
-        child_transaction_data = nullptr;
-      }
-    } else if (write_op->request().has_child_transaction_data()) {
+    metadata_cache = tablet->YBMetaDataCache();
+    if (!metadata_cache) {
+      return STATUS(Corruption, "Table metadata cache is not present for index update");
+    }
+
+    return Status::OK();
+  }
+
+  void SanityCheck(docdb::QLWriteOperation* write_op) {
+    if (write_op->request().has_child_transaction_data()) {
       DCHECK_ONLY_NOTNULL(child_transaction_data);
       DCHECK_EQ(child_transaction_data->ShortDebugString(),
                 write_op->request().child_transaction_data().ShortDebugString());
@@ -751,41 +761,91 @@ void WriteQuery::UpdateQLIndexes() {
       DCHECK(child_transaction_data == nullptr) <<
           "Value: " << child_transaction_data->ShortDebugString();
     }
+  }
 
+  void AddRequests(
+      const std::shared_ptr<UpdateQLIndexesTask>& self, docdb::QLWriteOperation* write_op) {
     // Apply the write ops to update the index
+    {
+      std::lock_guard lock(self->mutex);
+      counter += write_op->index_requests()->size();
+    }
     for (auto& pair : *write_op->index_requests()) {
-      client::YBTablePtr index_table;
-      bool cache_used_ignored = false;
-      auto metadata_cache = tablet().YBMetaDataCache();
-      if (!metadata_cache) {
-        StartSynchronization(
-            std::move(self_),
-            STATUS(Corruption, "Table metadata cache is not present for index update"));
+      auto callback = [self, &index_request = pair.second, write_op](const auto& index_table) {
+        self->TableResolved(&index_request, write_op, index_table);
+      };
+      metadata_cache->GetTableAsync(pair.first->table_id(), callback);
+    }
+  }
+
+  void TableResolved(
+      QLWriteRequestPB* index_request, docdb::QLWriteOperation* write_op,
+      const Result<client::GetTableResult>& index_table) {
+    if (!index_table.ok()) {
+      std::lock_guard lock(mutex);
+      if (failure.ok()) {
+        failure = index_table.status();
+      }
+      CompleteStep();
+      return;
+    }
+
+    std::shared_ptr<client::YBqlWriteOp> index_op(index_table->table->NewQLWrite());
+    index_op->mutable_request()->Swap(index_request);
+    index_op->mutable_request()->MergeFrom(*index_request);
+
+    std::lock_guard lock(mutex);
+    session->Apply(index_op);
+    index_ops.emplace_back(std::move(index_op), write_op);
+    CompleteStep();
+  }
+
+  void Filled() {
+    std::lock_guard lock(mutex);
+    CompleteStep();
+  }
+
+  void CompleteStep() REQUIRES(mutex) {
+    if (!--counter) {
+      if (!failure.ok()) {
+        WriteQuery::StartSynchronization(std::move(query->self_), failure);
         return;
       }
-      // TODO create async version of GetTable.
-      // It is ok to have sync call here, because we use cache and it should not take too long.
-      auto status = metadata_cache->GetTable(pair.first->table_id(), &index_table,
-                                             &cache_used_ignored);
+      session->FlushAsync(std::bind(
+          &WriteQuery::UpdateQLIndexesFlushed, query, session, txn, std::move(index_ops), _1));
+    }
+  }
+};
+
+void WriteQuery::UpdateQLIndexes() {
+  auto& tablet = this->tablet();
+
+  std::shared_ptr<UpdateQLIndexesTask> task;
+  for (auto& doc_op : doc_ops_) {
+    auto* write_op = down_cast<docdb::QLWriteOperation*>(doc_op.get());
+    if (write_op->index_requests()->empty()) {
+      continue;
+    }
+    if (!task) {
+      task = std::make_shared<UpdateQLIndexesTask>(this);
+      auto status = task->Init(&tablet, write_op);
       if (!status.ok()) {
         StartSynchronization(std::move(self_), status);
         return;
       }
-      std::shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
-      index_op->mutable_request()->Swap(&pair.second);
-      index_op->mutable_request()->MergeFrom(pair.second);
-      session->Apply(index_op);
-      index_ops.emplace_back(std::move(index_op), write_op);
+    } else {
+      task->SanityCheck(write_op);
     }
+
+    task->AddRequests(task, write_op);
   }
 
-  if (!session) {
+  if (!task) {
     CompleteQLWriteBatch(Status::OK());
     return;
   }
 
-  session->FlushAsync(std::bind(
-      &WriteQuery::UpdateQLIndexesFlushed, this, session, txn, std::move(index_ops), _1));
+  task->Filled();
 }
 
 void WriteQuery::UpdateQLIndexesFlushed(

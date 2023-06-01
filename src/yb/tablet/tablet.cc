@@ -2339,17 +2339,6 @@ void SleepToThrottleRate(
   }
 }
 
-Result<client::YBTablePtr> GetTable(
-    const TableId& table_id, const std::shared_ptr<client::YBMetaDataCache>& metadata_cache) {
-  // TODO create async version of GetTable.
-  // It is ok to have sync call here, because we use cache and it should not take too long.
-  client::YBTablePtr index_table;
-  bool cache_used_ignored = false;
-  DCHECK_ONLY_NOTNULL(metadata_cache.get());
-  RETURN_NOT_OK(metadata_cache->GetTable(table_id, &index_table, &cache_used_ignored));
-  return index_table;
-}
-
 }  // namespace
 
 Result<RequestScope> Tablet::CreateRequestScope() {
@@ -2532,8 +2521,7 @@ Status Tablet::FlushWriteIndexBatch(
   SCHECK(metadata_cache, IllegalState, "Table metadata cache is not present for index update");
 
   for (auto& pair : *index_requests) {
-    client::YBTablePtr index_table =
-        VERIFY_RESULT(GetTable(pair.first->table_id(), metadata_cache));
+    auto index_table = VERIFY_RESULT(metadata_cache->GetTable(pair.first->table_id()));
 
     shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
     index_op->set_write_time_for_backfill(write_time);
