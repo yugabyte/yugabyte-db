@@ -17,8 +17,6 @@ Data residency laws require data about a nation's citizens or residents to be co
 
 Let's look at a few natural design patterns with YugabyteDB that you can choose from to help you comply with data residency laws with ease.
 
-## Latency-optimized geo-partitioning
-
 ## Geo local tables
 
 By default, all tables are distributed across all fault zones defined for the cluster. There may be scenarios where you just want some tables to be located in specific regions/zones, have a different replication factor, or have different leader preferences.
@@ -60,7 +58,7 @@ This would enforce the tables to be distributed as shown in the illustration.
 Tablespaces also work with indexes and not just tables.
 {{</note>}}
 
-## Geo partitioned tables
+## Locality-optimized geo-partitioning
 
 Creating separate tables and pinning them to different geographies may not be an acceptable schema for all applications. You might want to have data of users from different countries (eg. US/Germany/India) in the same table, but just store the rows in their regions to comply with the country's data-protection laws (eg. GDPR), or to reduce latency for the users in those countries.
 

@@ -117,15 +117,16 @@ SELECT id, city FROM users WHERE name='John Wick';
 
 With the covering index, the lookups are restricted just to the index. A trip to the table is not required as the index has all the needed data.
 
-## Identity Indexes
 
-All reads go to the leader by default in YugabyteDB. So, even though the replicas are available in other regions, applications will have to incur cross-region latency if leaders are distributed across regions. 
+## Duplicate Indexes
 
-We saw in an earlier section how we could circumvent the issue by having all leaders in one region. But, what if your app needs to be deployed in multiple regions and provide low latency, strongly consistent reads for all your users? To handle such situations, it's advisable to generate several identical covering indexes and store them in tablespaces that span the same set of regions but only differ in which region is the "preferred leader" region. When the schema of the index is the same as the schema of the table, it is known as an **Identity Index**.
+All reads go to the leader by default in YugabyteDB. So, even though the replicas are available in other regions, applications will have to incur cross-region latency if leaders are distributed across regions.
+
+We saw in an earlier section how we could circumvent the issue by having all leaders in one region. But, what if your app needs to be deployed in multiple regions and provide low latency, strongly consistent reads for all your users? To handle such situations, it's advisable to generate several identical covering indexes and store them in tablespaces that span the same set of regions but only differ in which region is the "preferred leader" region. When the schema of the index is the same as the schema of the table, it is known as an **Duplicate Index**.
 
 Let’s consider the following scenario, where you have a users table present in three regions and your applications deployed in these three regions.
 
-![RF3 with apps in multiple regions](/images/develop/global-apps/duplicate-covering-before.png)
+![RF3 with apps in multiple regions](/images/develop/global-apps/duplicate-indexes-before.png)
 
 To make the index data available in multiple regions (say `us-west,` `us-central`, `us-west` for consistent reads, follow these steps.
 
@@ -176,7 +177,7 @@ Even though the leader preference is set to a region, you should place the repli
 
 This will create three clones of the covering index, with leaders in different regions and at the same time replicated in the other regions. You will get a setup similar to this:
 
-![Duplicate covering indexes](/images/develop/global-apps/duplicate-covering.png)
+![Duplicate indexes](/images/develop/global-apps/duplicate-indexes.png)
 
 The query planner will use the index whose leaders are local to the region when querying.
 {{<note title="Note">}}
@@ -185,4 +186,63 @@ The query planner optimizations related to picking the right index by taking int
 
 As you have added all of the columns needed for your queries as part of the covering index, the query executor will not have to go to the tablet leader (in a different region) to fetch the data. One important thing to note is, having multiple indexes across regions will increase write latency, as every write would have to add data into each of the indexes across regions. So, this technique is useful for lookup tables where data does not change much.
 
-When you set up your duplicate covering indexes as identity indexes, it will have the effect of having consistent leaders for the table in each region.
+When you set up your cluster using duplicate indexes, it will have the effect of having consistent leaders for the table in each region.
+
+## Latency-optimized geo-partitioning
+
+When you have your cluster spread across multiple regions, it is natural for certain users to be directed to a region closer to them. But their data may not be located in the region closest to them and they would incur the internal cost of cross-region. To mitigate this effect, you can split your user data into partitions and place partitions in regions closest to the user.
+
+Let's say you have your users across the US and have configured your cluster to be spread across `us-east`, `us-west`. You can partition your user data into `east` and `west` partitions and place them in different tablespaces with leader preference set to `us-east` and `us-west` respectively. To set this up, follow these steps.
+
+1. Create the Tablespaces
+
+      ```plpgsql
+      --  tablespace for west users
+      CREATE TABLESPACE west WITH (
+      replica_placement='{"num_replicas": 3, 
+        "placement_blocks":[
+          {"cloud":"aws","region":"us-west-1","zone":"us-west-1a","min_num_replicas":1, "leader_preference": "1"},
+          {"cloud":"aws","region":"us-west-1","zone":"us-west-1a","min_num_replicas":1},
+          {"cloud":"aws","region":"us-west-2","zone":"us-west-2a","min_num_replicas":1}
+        ]}'
+      );
+
+      --  tablespace for east users
+      CREATE TABLESPACE east WITH (
+      replica_placement='{"num_replicas": 3, 
+        "placement_blocks":[
+          {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":1, "leader_preference": "1"},
+          {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":1},
+          {"cloud":"aws","region":"us-east-2","zone":"us-east-2a","min_num_replicas":1}
+        ]}'
+      );
+      ```
+
+1. Create the parent table with a partition clause
+
+      ```plpgsql
+      CREATE TABLE users (
+        id INTEGER NOT NULL,
+        geo VARCHAR,
+      ) PARTITION BY LIST (geo);
+      ```
+
+1. Create child tables for each of the regions in the respective tablespaces
+
+      ```plpgsql
+      --  WEST partition table
+      CREATE TABLE west_users PARTITION OF users (
+        id, geo, PRIMARY KEY (id HASH, geo))
+      ) FOR VALUES IN ('west') TABLESPACE west;
+
+      --  EAST partition table
+      CREATE TABLE east_users PARTITION OF users (
+        id, geo, PRIMARY KEY (id HASH, geo))
+      ) FOR VALUES IN ('east') TABLESPACE east;
+      ```
+
+Now, the user data will be placed in different regions as shown in the illustration. 
+
+![latency optimized geo partitioning ](/images/develop/global-apps/latency-optimized-geo-partitioning.png)
+
+This will ensure that the reads and writes for a user is well contained within the closest region.

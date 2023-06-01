@@ -49,12 +49,12 @@ To enhance the performance of your global applications, see  [Performance Patter
 
 Running applications in multiple data centers with data split across them is not a trivial task. But YugabyteDB can be deployed in various configurations like single-region multi-zone configuration or multi-region multi-zone with ease. You can leverage some of our battle-tested design paradigms, which offer solutions to common problems faced in these scenarios. These proven paradigms offer solutions that can significantly accelerate your application development by saving time and resources that would otherwise be spent reinventing the wheel.
 
-Let's look at a few classes of design patterns that you can adopt with YugabyteDB.
+Let's look at a few classes of application design patterns that you can adopt with YugabyteDB.
 
 |                | Follow the Application | Geo-Local Data |
 | -------------- | ---------------------- | -------------- |
-| **Single Active**  | [Global database](./design-patterns-ha#stretch-cluster)       |      N/A
-| **Multi Active**   | [Duplicate indexes](./global-performance#identity-indexes)      | Active-active multi master |
+| **Single Active**  | [Global database](./design-patterns-ha#stretch-cluster)    |      N/A
+| **Multi Active**   | [Duplicate indexes](./global-performance#identity-indexes) | Active-active multi master |
 | **Partitioned Multi Active** | Latency-optimized geo-partitioning | Locality-optimized geo-partitioning |
 
 
