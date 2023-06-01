@@ -11,6 +11,7 @@
 
 package com.yugabyte.yw.common.kms.services;
 
+import java.io.IOException;
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -27,12 +28,10 @@ import com.yugabyte.yw.models.KmsConfig;
  */
 public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
   private GcpEARServiceUtil gcpEARServiceUtil;
-  private final RuntimeConfGetter confGetter;
   public static final int numBytes = 32;
 
   public GcpEARService(RuntimeConfGetter confGetter) {
     super(KeyProvider.GCP);
-    this.confGetter = confGetter;
   }
 
   public GcpEARServiceUtil getGcpEarServiceUtil() {
@@ -84,9 +83,9 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
 
   @Override
   protected byte[] createKeyWithService(
-      UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
+      UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) throws IOException {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
-    byte[] result = null;
+    byte[] result;
     ObjectNode authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);
     // Ensure the key ring exists from GCP KMS
     String keyRingRN = gcpEARServiceUtil.getKeyRingRN(authConfig);
@@ -107,7 +106,6 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
         result = gcpEARServiceUtil.getCryptoKey(authConfig).getName().getBytes();
         break;
       default:
-      case DATA_KEY:
         // Generate random byte array and encrypt it.
         // Store the encrypted byte array locally in the db.
         byte[] keyBytes = gcpEARServiceUtil.generateRandomBytes(authConfig, numBytes);
@@ -119,9 +117,9 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
 
   @Override
   protected byte[] rotateKeyWithService(
-      UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
+      UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) throws IOException {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
-    byte[] result = null;
+    byte[] result;
     ObjectNode authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);
     // Ensure the key ring exists from GCP KMS to universe UUID
     String keyRingRN = gcpEARServiceUtil.getKeyRingRN(authConfig);
@@ -147,7 +145,7 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
   @Override
   public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
-    byte[] keyVal = null;
+    byte[] keyVal;
     try {
       // Decrypt the locally stored encrypted keyRef to get the universe key.
       ObjectNode authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);
@@ -167,7 +165,7 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
   protected byte[] validateRetrieveKeyWithService(
       UUID configUUID, byte[] keyRef, ObjectNode authConfig) {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
-    byte[] keyVal = null;
+    byte[] keyVal;
     try {
       if (authConfig == null) {
         authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);

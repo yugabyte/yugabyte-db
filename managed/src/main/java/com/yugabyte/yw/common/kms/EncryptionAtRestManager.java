@@ -50,7 +50,7 @@ public class EncryptionAtRestManager {
   public enum RestoreKeyResult {
     RESTORE_SKIPPED,
     RESTORE_FAILED,
-    RESTORE_SUCCEEDED;
+    RESTORE_SUCCEEDED
   }
 
   public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>>
@@ -143,21 +143,13 @@ public class EncryptionAtRestManager {
     return universeKeyRef;
   }
 
-  public byte[] getUniverseKey(UUID universeUUID, UUID configUUID, byte[] keyRef) {
-    return getUniverseKey(universeUUID, configUUID, keyRef, null);
-  }
-
   public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>>
-      byte[] getUniverseKey(
-          UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
+      byte[] getUniverseKey(UUID universeUUID, UUID configUUID, byte[] keyRef) {
     byte[] keyVal = null;
     T keyService;
     try {
       keyService = getServiceInstance(KmsConfig.get(configUUID).keyProvider.name());
-      keyVal =
-          config == null
-              ? keyService.retrieveKey(universeUUID, configUUID, keyRef)
-              : keyService.retrieveKey(universeUUID, configUUID, keyRef, config);
+      keyVal = keyService.retrieveKey(universeUUID, configUUID, keyRef);
     } catch (Exception e) {
       String errMsg =
           String.format(
@@ -236,7 +228,7 @@ public class EncryptionAtRestManager {
    * @return ObjectNode consisting of universe key history.
    * @throws Exception
    */
-  public ObjectNode backupUniverseKeyHistory(UUID universeUUID) throws Exception {
+  public ObjectNode backupUniverseKeyHistory(UUID universeUUID) {
     ObjectNode backup = Json.newObject();
     ArrayNode universeKeys = backup.putArray("universe_keys");
     List<ObjectNode> universeKeyRefs = getUniverseKeyRefsForBackup(universeUUID);
