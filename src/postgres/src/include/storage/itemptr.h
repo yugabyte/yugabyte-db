@@ -84,7 +84,8 @@ typedef ItemPointerData *ItemPointer;
  *		True iff the disk item pointer is not NULL.
  */
 #define ItemPointerIsValid(pointer) \
-	((bool) (PointerIsValid(pointer) && ((pointer)->ip_posid != 0)))
+	((bool) (PointerIsValid(pointer) && \
+			 ((pointer)->ip_posid != 0 || (pointer)->yb_item.ybctid != 0)))
 
 /*
  * ItemPointerGetBlockNumberNoCheck

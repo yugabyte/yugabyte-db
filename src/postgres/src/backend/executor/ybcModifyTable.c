@@ -65,6 +65,9 @@
 
 #include <execinfo.h>
 
+/* Yugabyte includes */
+#include "utils/builtins.h"
+
 bool yb_disable_transactional_writes = false;
 bool yb_enable_upsert_mode = false;
 
@@ -414,6 +417,36 @@ Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
 	                                ybctid);
 }
 
+/* YB_REVIEW(neil) Revisit later. */
+/* YB_TODO: Is there a better way to do multi tuple insert? */
+void
+YBCTupleTableMultiInsert(ResultRelInfo *resultRelInfo, TupleTableSlot **slots,
+						 int num, EState *estate)
+{
+	for (int i = 0; i < num; i++)
+		YBCTupleTableInsert(resultRelInfo, slots[i], estate);
+}
+
+void
+YBCTupleTableInsert(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
+					EState *estate)
+{
+	bool	  shouldFree = true;
+	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
+
+	/* Update the tuple with table oid */
+	slot->tts_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
+	tuple->t_tableOid = slot->tts_tableOid;
+
+	/* Perform the insertion, and copy the resulting ItemPointer */
+	YBCHeapInsert(resultRelInfo, slot, tuple, estate);
+	ItemPointerCopy(&tuple->t_self, &slot->tts_tid);
+
+	if (shouldFree)
+		pfree(tuple);
+}
+
+/* YB_TODO: No need to return Oid. */
 Oid YBCHeapInsert(ResultRelInfo *resultRelInfo,
 				  TupleTableSlot *slot,
                   HeapTuple tuple,
@@ -643,6 +676,8 @@ bool YBCExecuteDelete(Relation rel,
 		bool shouldFree = true;
 		HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
 		ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, slot->tts_tupleDescriptor);
+		if (shouldFree)
+			pfree(tuple);
 	}
 
 	if (ybctid == 0)
@@ -832,6 +867,36 @@ void YBCExecuteDeleteIndex(Relation index,
 	YBCPgDeleteStatement(delete_stmt);
 }
 
+/* YB_REVIEW(neil) Revisit later. */
+bool
+YBCTupleTableExecuteUpdate(Relation rel, ResultRelInfo *resultRelInfo,
+						   TupleTableSlot *slot, HeapTuple oldtuple,
+						   EState *estate, ModifyTable *mt_plan,
+						   bool target_tuple_fetched, bool is_single_row_txn,
+						   Bitmapset *updatedCols, bool canSetTag)
+{
+	bool	  shouldFree = true;
+	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
+	bool	  result;
+
+	/* Update the tuple with table oid */
+	slot->tts_tableOid = RelationGetRelid(rel);
+	tuple->t_tableOid = slot->tts_tableOid;
+
+	/* Perform the update, and copy the resulting ItemPointer */
+	result = YBCExecuteUpdate(rel, resultRelInfo, slot, oldtuple, tuple, estate,
+							  mt_plan, target_tuple_fetched, is_single_row_txn,
+							  updatedCols, canSetTag);
+	ItemPointerCopy(&tuple->t_self, &slot->tts_tid);
+
+	if (shouldFree)
+		pfree(tuple);
+
+	return result;
+}
+
+/* YB_TODO: relation is present in resultRelInfo:
+ * resultRelInfo->ri_RelationDesc*/
 bool YBCExecuteUpdate(Relation rel,
 					  ResultRelInfo *resultRelInfo,
 					  TupleTableSlot *slot,
@@ -1183,6 +1248,30 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	return rows_affected_count > 0;
 }
 
+/* YB_REVIEW(neil) Revisit later. */
+Oid
+YBCTupleTableExecuteUpdateReplace(Relation rel, TupleTableSlot *slot,
+								  EState *estate)
+{
+	bool	  shouldFree = true;
+	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
+	Oid		  result;
+
+	/* Update the tuple with table oid */
+	slot->tts_tableOid = RelationGetRelid(rel);
+	tuple->t_tableOid = slot->tts_tableOid;
+
+	/* Perform the update, and copy the resulting ItemPointer */
+	result = YBCExecuteUpdateReplace(rel, slot, tuple, estate);
+	ItemPointerCopy(&tuple->t_self, &slot->tts_tid);
+
+	if (shouldFree)
+		pfree(tuple);
+
+	return result;
+}
+
+/* YB_TODO: No need to return Oid. */
 Oid YBCExecuteUpdateReplace(Relation rel,
 							TupleTableSlot *slot,
 							HeapTuple tuple,
