@@ -577,6 +577,14 @@ DEFINE_test_flag(bool, create_table_with_empty_pgschema_name, false,
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
                  "Delay creating child tablets and upserting them to sys catalog");
 
+DEFINE_NON_RUNTIME_bool(enable_heartbeat_pg_catalog_versions_cache, false,
+    "Whether to enable the use of heartbeat catalog versions cache for the "
+    "pg_yb_catalog_version table which can help to reduce the number of reads "
+    "from the table. This is more useful when there are many databases and/or "
+    "many tservers in the cluster.");
+
+DECLARE_int32(heartbeat_interval_ms);
+
 #define RETURN_FALSE_IF(cond) \
   do { \
     if ((cond)) { \
@@ -2083,6 +2091,8 @@ bool CatalogManager::StartShutdown() {
 
   cdc_parent_tablet_deletion_task_.StartShutdown();
 
+  refresh_ysql_pg_catalog_versions_task_.StartShutdown();
+
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
   }
@@ -2095,6 +2105,7 @@ void CatalogManager::CompleteShutdown() {
   refresh_yql_partitions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
   cdc_parent_tablet_deletion_task_.CompleteShutdown();
+  refresh_ysql_pg_catalog_versions_task_.CompleteShutdown();
   xcluster_safe_time_service_->Shutdown();
 
   if (background_tasks_) {
@@ -9943,13 +9954,33 @@ Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
   return Status::OK();
 }
 
-Status CatalogManager::GetYsqlAllDBCatalogVersions(DbOidToCatalogVersionMap* versions) {
+Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions) {
   auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
   if (table_info != nullptr) {
     RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId,
                                                              versions));
+  } else {
+    versions->clear();
   }
   return Status::OK();
+}
+
+Status CatalogManager::GetYsqlAllDBCatalogVersions(
+    bool use_cache, DbOidToCatalogVersionMap* versions) {
+  DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+  if (use_cache) {
+    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+    // We expect that the only caller uses this cache is the heartbeat service.
+    // It is ok for heartbeat_pg_catalog_versions_cache_ to be empty: the
+    // heartbeat service will simply not populate catalog versions in its
+    // heartbeat response message. A tserver will not change its private
+    // catalog version map when it finds no catalog versions in the heartbeat
+    // response message.
+    *versions = heartbeat_pg_catalog_versions_cache_;
+    return Status::OK();
+  }
+  // Cannot use cached data, read from pg_yb_catalog_version table.
+  return GetYsqlAllDBCatalogVersionsImpl(versions);
 }
 
 Status CatalogManager::InitializeTransactionTablesConfig(int64_t term) {
@@ -10232,6 +10263,11 @@ Status CatalogManager::EnableBgTasks() {
   // manage the background task that refreshes tablespace info. This task
   // will be started by the CatalogManagerBgTasks below.
   refresh_ysql_tablespace_info_task_.Bind(&master_->messenger()->scheduler());
+
+  // Initialize refresh_ysql_pg_catalog_versions_task_. This will be used to
+  // manage the background task that refreshes pg catalog versions. This task
+  // will be started by the CatalogManagerBgTasks below.
+  refresh_ysql_pg_catalog_versions_task_.Bind(&master_->messenger()->scheduler());
 
   background_tasks_.reset(new CatalogManagerBgTasks(this));
   RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
@@ -13400,6 +13436,71 @@ void CatalogManager::ScheduleAddTableToXClusterTaskForAllTables() {
       ScheduleAddTableToXClusterTaskIfNeeded(table_info, wl.mutable_data()->pb);
     }
   }
+}
+
+void CatalogManager::StartPgCatalogVersionsBgTaskIfStopped() {
+  // In per-database catalog version mode, if heartbeat PG catalog versions
+  // cache is enabled, start a background task to periodically read the
+  // pg_yb_catalog_version table and cache the result.
+  if (FLAGS_TEST_enable_db_catalog_version_mode &&
+      FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
+    const bool is_task_running = pg_catalog_versions_bg_task_running_.exchange(true);
+    if (is_task_running) {
+      // Task already running, nothing to do.
+      return;
+    }
+    ScheduleRefreshPgCatalogVersionsTask(true /* schedule_now */);
+  }
+}
+
+void CatalogManager::ScheduleRefreshPgCatalogVersionsTask(bool schedule_now) {
+  // Schedule the next refresh catalog versions task. Do it twice every
+  // tserver to master heartbeat so we have reasonably recent catalog versions
+  // used for heartbeat response.
+  auto wait_time = schedule_now ? 0 : (FLAGS_heartbeat_interval_ms / 2);
+  refresh_ysql_pg_catalog_versions_task_.Schedule([this](const Status& status) {
+    Status s = background_tasks_thread_pool_->SubmitFunc(
+        [this]() { RefreshPgCatalogVersionInfoPeriodically(); });
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to schedule: " << __func__;
+      pg_catalog_versions_bg_task_running_ = false;
+      ResetCachedCatalogVersions();
+    }
+  }, wait_time * 1ms);
+}
+
+void CatalogManager::ResetCachedCatalogVersions() {
+  LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+  heartbeat_pg_catalog_versions_cache_.clear();
+}
+
+void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
+  DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+  DCHECK(FLAGS_enable_heartbeat_pg_catalog_versions_cache);
+  DCHECK(pg_catalog_versions_bg_task_running_);
+  const bool is_inited_leader = [this] {
+    SCOPED_LEADER_SHARED_LOCK(l, this);
+    return l.IsInitializedAndIsLeader();
+  }();
+  if (!is_inited_leader) {
+    VLOG(2) << "No longer the leader, skipping catalog versions task";
+    pg_catalog_versions_bg_task_running_ = false;
+    ResetCachedCatalogVersions();
+    return;
+  }
+  // Refresh the catalog versions in memory.
+  VLOG(2) << "Running RefreshPgCatalogVersionInfoPeriodically task";
+  DbOidToCatalogVersionMap versions;
+  Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
+  if (!s.ok()) {
+    LOG(WARNING) << "Catalog versions refresh task failed: " << s.ToString();
+    ResetCachedCatalogVersions();
+  } else {
+    VLOG(2) << "Refreshed catalog versions in memory: " << yb::ToString(versions);
+    LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+    heartbeat_pg_catalog_versions_cache_.swap(versions);
+  }
+  ScheduleRefreshPgCatalogVersionsTask();
 }
 
 }  // namespace master

@@ -628,7 +628,11 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
   DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
   // This function can only be called during initdb time.
   DbOidToCatalogVersionMap versions;
-  RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(&versions));
+  // We do not use cache which is only used for filling heartbeat response. The
+  // heartbeat mechanism is already subject to a heartbeat delay. In other situation
+  // where we are not already subject to any delay, we want the latest reading from
+  // the table pg_yb_catalog_version.
+  RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(false /* use_cache */, &versions));
   if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(versions.size()));
   } else {
