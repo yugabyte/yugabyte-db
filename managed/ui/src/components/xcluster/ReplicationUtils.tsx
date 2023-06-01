@@ -471,6 +471,7 @@ export const augmentTablesWithXClusterDetails = (
 export const getTablesForBootstrapping = async (
   selectedTableUUIDs: string[],
   sourceUniverseUUID: string,
+  targetUniverseUUID: string | null,
   sourceUniverseTables: YBTable[],
   xClusterConfigType: XClusterConfigType
 ) => {
@@ -479,6 +480,7 @@ export const getTablesForBootstrapping = async (
 
   bootstrapTest = await isBootstrapRequired(
     sourceUniverseUUID,
+    targetUniverseUUID,
     selectedTableUUIDs.map(adaptTableUUID),
     xClusterConfigType
   );
