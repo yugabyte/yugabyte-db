@@ -188,6 +188,7 @@ class ApplyIntentsContext : public IntentsWriterContext {
       HybridTime commit_ht,
       HybridTime log_ht,
       const KeyBounds* key_bounds,
+      SchemaPackingProvider* schema_packing_provider,
       rocksdb::DB* intents_db);
 
   void Start(const boost::optional<Slice>& first_key) override;
@@ -204,6 +205,8 @@ class ApplyIntentsContext : public IntentsWriterContext {
 
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
+  Status UpdateSchemaVersion(Slice key, Slice value);
+  void FlushSchemaVersion();
 
   const ApplyTransactionState* apply_state_;
   const SubtxnSet& aborted_;
@@ -211,7 +214,10 @@ class ApplyIntentsContext : public IntentsWriterContext {
   HybridTime log_ht_;
   IntraTxnWriteId write_id_;
   const KeyBounds* key_bounds_;
+  SchemaPackingProvider* schema_packing_provider_;
   BoundedRocksDbIterator intent_iter_;
+  Uuid schema_version_table_ = Uuid::Nil();
+  ColocationId schema_version_colocation_id_ = 0;
   SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
   SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
   ConsensusFrontiers* frontiers_;
