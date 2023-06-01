@@ -194,9 +194,7 @@ class DocOperationTest : public DocDBTestBase {
     ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
-    ASSERT_OK(ql_write_op.Apply(
-        {&doc_write_batch, CoarseTimePoint::max() /* deadline */, ReadHybridTime(),
-         &restart_read_ht}));
+    ASSERT_OK(ql_write_op.Apply({&doc_write_batch, ReadOperationData(), &restart_read_ht}));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
   }
 
@@ -344,8 +342,8 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     auto doc_read_context = DocReadContext::TEST_Create(schema);
     auto pending_op = ScopedRWOperation::TEST_Create();
     EXPECT_OK(read_op.Execute(
-        ql_storage, CoarseTimePoint::max() /* deadline */, ReadHybridTime::SingleTime(read_time),
-        doc_read_context, pending_op, &resultset, &read_restart_ht));
+        ql_storage, ReadOperationData::FromSingleReadTime(read_time), doc_read_context, pending_op,
+        &resultset, &read_restart_ht));
     EXPECT_FALSE(read_restart_ht.is_valid());
 
     // Transfer the column values from result set to rowblock.
@@ -379,8 +377,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   auto doc_write_batch = MakeDocWriteBatch();
   ASSERT_OK(redis_write_operation.Apply(docdb::DocOperationApplyData{
       .doc_write_batch = &doc_write_batch,
-      .deadline = CoarseTimePoint::max(),
-      .read_time = ReadHybridTime(),
+      .read_operation_data = {},
       .restart_read_ht = nullptr}));
 
   ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
@@ -599,9 +596,9 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   dockv::ReaderProjection projection(schema);
   auto pending_op = ScopedRWOperation::TEST_Create();
 
-  DocRowwiseIterator iter(projection, doc_read_context, kNonTransactionalOperationContext,
-                          doc_db(), CoarseTimePoint::max() /* deadline */,
-                          ReadHybridTime::FromUint64(3000), pending_op);
+  DocRowwiseIterator iter(
+      projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      ReadOperationData::FromReadTime(ReadHybridTime::FromUint64(3000)), pending_op);
   iter.Init(YQL_TABLE_TYPE);
   ASSERT_FALSE(ASSERT_RESULT(iter.FetchNext(nullptr)));
 
@@ -633,7 +630,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 
   DocRowwiseIterator ql_iter(
       projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000), pending_op);
+      ReadOperationData::TEST_FromReadTimeMicros(3000), pending_op);
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
   qlexpr::QLTableRow value_map;
   ASSERT_TRUE(ASSERT_RESULT(ql_iter.FetchNext(&value_map)));
@@ -680,7 +677,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 
   DocRowwiseIterator ql_iter_system(
       projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000), pending_op);
+      ReadOperationData::TEST_FromReadTimeMicros(3000), pending_op);
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
   qlexpr::QLTableRow value_map_system;
   ASSERT_TRUE(ASSERT_RESULT(ql_iter_system.FetchNext(&value_map_system)));
@@ -936,7 +933,7 @@ class DocOperationScanTest : public DocOperationTest {
           auto pending_op = ScopedRWOperation::TEST_Create();
           DocRowwiseIterator ql_iter(
               projection, doc_read_context(), txn_op_context, doc_db(),
-              /* deadline = */ CoarseTimePoint::max(), read_ht, pending_op);
+              ReadOperationData::FromReadTime(read_ht), pending_op);
           ASSERT_OK(ql_iter.Init(ql_scan_spec));
           LOG(INFO) << "Expected rows: " << AsString(expected_rows);
           it = expected_rows.begin();

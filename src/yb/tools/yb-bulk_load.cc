@@ -337,12 +337,11 @@ Status BulkLoadTask::InsertRow(const string &row,
   RETURN_NOT_OK(op.Init(&resp));
   RETURN_NOT_OK(op.Apply(docdb::DocOperationApplyData{
       .doc_write_batch = doc_write_batch,
-      .deadline = CoarseTimePoint::max(),
-      .read_time = ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugaByteMicrosecondEpoch)),
+      .read_operation_data = docdb::ReadOperationData::FromSingleReadTime(
+          HybridTime::FromMicros(kYugaByteMicrosecondEpoch)),
       .restart_read_ht = nullptr}));
   return Status::OK();
 }
-
 
 Status BulkLoad::RetryableSubmit(vector<pair<TabletId, string>> rows) {
   auto runnable = std::make_shared<BulkLoadTask>(

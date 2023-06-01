@@ -202,6 +202,12 @@ YbBindColumnCondBetween(YbScanDesc ybScan,
 												 ybc_expr_end, end_inclusive));
 }
 
+static void
+YbBindColumnNotNull(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum)
+{
+	HandleYBStatus(YBCPgDmlBindColumnCondIsNotNull(ybScan->handle, attnum));
+}
+
 /*
  * Bind an array of scan keys for a column.
  */
@@ -306,28 +312,50 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 }
 
 /*
- * Add a target column.
+ * Add a system column as target to the given statement handle.
  */
-static void ybcAddTargetColumn(YbScanDesc ybScan, AttrNumber attnum)
+void
+YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle)
 {
-	/* Regular (non-system) attribute. */
-	Oid atttypid = InvalidOid;
-	Oid attcollation = InvalidOid;
-	int32 atttypmod = 0;
-	if (attnum > 0)
-	{
-		Form_pg_attribute attr = TupleDescAttr(ybScan->target_desc, attnum - 1);
-		/* Ignore dropped attributes */
-		if (attr->attisdropped)
-			return;
-		atttypid = attr->atttypid;
-		atttypmod = attr->atttypmod;
-		attcollation = attr->attcollation;
-	}
+	Assert(attnum < 0);
 
-	YBCPgTypeAttrs type_attrs = { atttypmod };
-	YBCPgExpr expr = YBCNewColumnRef(ybScan->handle, attnum, atttypid, attcollation, &type_attrs);
-	HandleYBStatus(YBCPgDmlAppendTarget(ybScan->handle, expr));
+	YBCPgExpr	expr;
+	YBCPgTypeAttrs type_attrs;
+
+	/* System columns don't use typmod. */
+	type_attrs.typmod = -1;
+
+	expr = YBCNewColumnRef(handle,
+						   attnum,
+						   InvalidOid /* attr_typid */,
+						   InvalidOid /* attr_collation */,
+						   &type_attrs);
+	HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
+}
+
+/*
+ * Add a regular column as target to the given statement handle.  Assume
+ * tupdesc's relation is the same as handle's target relation.
+ */
+void
+YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum, YBCPgStatement handle)
+{
+	Assert(attnum > 0);
+
+	Form_pg_attribute att;
+	YBCPgExpr	expr;
+	YBCPgTypeAttrs type_attrs;
+
+	att = TupleDescAttr(tupdesc, attnum - 1);
+	/* Should not be given dropped attributes. */
+	Assert(!att->attisdropped);
+	type_attrs.typmod = att->atttypmod;
+	expr = YBCNewColumnRef(handle,
+						   attnum,
+						   att->atttypid,
+						   att->attcollation,
+						   &type_attrs);
+	HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
 }
 
 static void ybcUpdateFKCache(YbScanDesc ybScan, Datum ybctid)
@@ -678,6 +706,15 @@ YbIsSearchNull(ScanKey key)
 }
 
 /*
+ * Is this a not-null search (c IS NOT NULL).
+ */
+static bool
+YbIsSearchNotNull(ScanKey key)
+{
+	return key->sk_flags == (SK_ISNULL | SK_SEARCHNOTNULL);
+}
+
+/*
  * Is this an array search (c = ANY(..) or c IN ..).
  */
 static bool
@@ -759,6 +796,13 @@ YbShouldPushdownScanPrimaryKey(Relation relation, YbScanPlan scan_plan,
 	if (YbIsSearchNull(key))
 	{
 		/* Always expect InvalidStrategy for NULL search. */
+		Assert(key->sk_strategy == InvalidStrategy);
+		return true;
+	}
+
+	if (yb_pushdown_is_not_null && YbIsSearchNotNull(key))
+	{
+		/* Always expect InvalidStrategy for IS NOT NULL search. */
 		Assert(key->sk_strategy == InvalidStrategy);
 		return true;
 	}
@@ -1325,7 +1369,8 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 								  &ybScan->handle));
 
 	ybScan->is_full_cond_bound = yb_bypass_cond_recheck &&
-								 yb_pushdown_strict_inequality;
+								 yb_pushdown_strict_inequality &&
+								 yb_pushdown_is_not_null;
 
 	/*
 	 * Set up the arrays to store the search intervals for each PG/YSQL
@@ -1354,6 +1399,9 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	bool end_valid[max_idx]; /* VLA - scratch space */
 	memset(end_valid, 0, sizeof(bool) * max_idx);
 
+	bool is_not_null[max_idx]; /* VLA - scratch space */
+	memset(is_not_null, 0, sizeof(bool) * max_idx);
+
 	Datum start[max_idx]; /* VLA - scratch space */
 	Datum end[max_idx]; /* VLA - scratch space */
 
@@ -1365,8 +1413,9 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 
 	/*
 	 * find an order of relevant keys such that for the same column, an EQUAL
-	 * condition is encountered before IN or BETWEEN. is_column_bound is then used
-	 * to establish priority order EQUAL > IN > BETWEEN.
+	 * condition is encountered before IN or BETWEEN. is_column_bound is then
+	 * used to establish priority order EQUAL > IN > BETWEEN. IS NOT NULL is
+	 * treated as a special case of BETWEEN.
 	 */
 	int noffsets = 0;
 	int offsets[ybScan->nkeys + 1]; /* VLA - scratch space: +1 to avoid zero elements */
@@ -1396,6 +1445,11 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		switch (key->sk_strategy)
 		{
 			case InvalidStrategy:
+				if (YbIsSearchNotNull(key))
+				{
+					offsets[noffsets++] = i;
+					break;
+				}
 				/* Should be ensured during planning. */
 				Assert(YbIsSearchNull(key));
 				/* fallthrough  -- treating IS NULL as (DocDB) = (null) */
@@ -1433,7 +1487,8 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		else
 			break;
 
-	/* Bind keys for EQUALS and IN */
+	/* Bind keys for EQUALS and IN, collecting info for ranges and IS NOT NULL
+	 */
 	for (int k = 0; k < noffsets; k++)
 	{
 		int i = offsets[k];
@@ -1457,7 +1512,13 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		switch (key->sk_strategy)
 		{
 			case InvalidStrategy:
-				/* c IS NULL -> c = NULL (checked above) */
+				if (YbIsSearchNotNull(key))
+				{
+					is_not_null[idx] = true;
+					break;
+				}
+				/* Otherwise this is an IS NULL search. c IS NULL -> c = NULL
+				 * (checked above) */
 				switch_fallthrough();
 			case BTEqualStrategyNumber:
 				/* Bind the scan keys */
@@ -1535,13 +1596,13 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		}
 	}
 
-	/* Bind keys for BETWEEN */
+	/* Bind keys for BETWEEN and IS NOT NULL */
 	int min_idx = bms_first_member(scan_plan->sk_cols);
 	min_idx = min_idx < 0 ? 0 : min_idx;
 	for (int idx = min_idx; idx < max_idx; idx++)
 	{
-		/* There's no range key for this index */
-		if (!start_valid[idx] && !end_valid[idx])
+		/* There's no range key or IS NOT NULL for this query */
+		if (!start_valid[idx] && !end_valid[idx] && !is_not_null[idx])
 		{
 			continue;
 		}
@@ -1553,10 +1614,20 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 			continue;
 		}
 
-		YbBindColumnCondBetween(
-			ybScan, scan_plan->bind_desc, YBBmsIndexToAttnum(relation, idx),
-			start_valid[idx], start_inclusive[idx], start[idx],
-			end_valid[idx], end_inclusive[idx], end[idx]);
+		if (start_valid[idx] || end_valid[idx])
+		{
+			YbBindColumnCondBetween(ybScan, scan_plan->bind_desc,
+									YBBmsIndexToAttnum(relation, idx),
+									start_valid[idx], start_inclusive[idx],
+									start[idx], end_valid[idx],
+									end_inclusive[idx], end[idx]);
+		}
+		else if (yb_pushdown_is_not_null)
+		{
+			/* is_not_null[idx] must be true */
+			YbBindColumnNotNull(ybScan, scan_plan->bind_desc,
+								YBBmsIndexToAttnum(relation, idx));
+		}
 	}
 	return true;
 }
@@ -1757,10 +1828,13 @@ YbResetColumnFilter(YbColumnFilter *filter)
 static bool
 YbAddTargetColumnIfRequired(YbColumnFilter *filter, AttrNumber attnum)
 {
-	if (filter->all_attrs_required ||
+	if ((filter->all_attrs_required &&
+		 !TupleDescAttr(filter->ybScan->target_desc,
+						attnum - 1)->attisdropped) ||
 		bms_is_member(attnum - filter->min_attr + 1, filter->required_attrs))
 	{
-		ybcAddTargetColumn(filter->ybScan, attnum);
+		YbDmlAppendTargetRegular(filter->ybScan->target_desc, attnum,
+								 filter->ybScan->handle);
 		return true;
 	}
 	return false;
@@ -1808,14 +1882,15 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 				scan_plan->target_relation, idx);
 			if (secondary_index)
 				attnum = secondary_index->rd_index->indkey.values[attnum - 1];
-			ybcAddTargetColumn(ybScan, attnum);
+			YbDmlAppendTargetRegular(ybScan->target_desc, attnum,
+									 ybScan->handle);
 			target_added = true;
 		}
 	}
 
 	if (scan_plan->target_relation->rd_rel->relhasoids)
 	{
-		ybcAddTargetColumn(ybScan, ObjectIdAttributeNumber);
+		YbDmlAppendTargetSystem(ObjectIdAttributeNumber, ybScan->handle);
 		target_added = true;
 	}
 
@@ -1832,7 +1907,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 		 * targets.
 		 */
 		if (!target_added)
-			ybcAddTargetColumn(ybScan, YBTupleIdAttributeNumber);
+			YbDmlAppendTargetSystem(YBTupleIdAttributeNumber, ybScan->handle);
 		return;
 	}
 
@@ -1843,7 +1918,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 	 *     SELECT data, ybctid FROM table WHERE ybctid IN
 	 *		( SELECT base_ybctid FROM IndexTable )
 	 */
-	ybcAddTargetColumn(ybScan, YBTupleIdAttributeNumber);
+	YbDmlAppendTargetSystem(YBTupleIdAttributeNumber, ybScan->handle);
 	if (index && !index->rd_index->indisprimary)
 	{
 		/*
@@ -1851,7 +1926,36 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 		 * index-scan to PgGate, who will select and immediately use
 		 * base_ctid to query data before responding.
 		 */
-		ybcAddTargetColumn(ybScan, YBIdxBaseTupleIdAttributeNumber);
+		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
+								ybScan->handle);
+	}
+}
+
+/*
+ * YbDmlAppendTargets
+ *
+ * Add targets to the statement.  The colref list is expected to be made up of
+ * YbExprColrefDesc nodes.  Unlike YbDmlAppendTargetRegular, it does not do any
+ * dropped-columns checking.
+ */
+void
+YbDmlAppendTargets(List *colrefs, YBCPgStatement handle)
+{
+	ListCell   *lc;
+	YBCPgExpr	expr;
+	YBCPgTypeAttrs type_attrs;
+	YbExprColrefDesc *colref;
+
+	foreach(lc, colrefs)
+	{
+		colref = lfirst_node(YbExprColrefDesc, lc);
+		type_attrs.typmod = colref->typmod;
+		expr = YBCNewColumnRef(handle,
+							   colref->attno,
+							   colref->typid,
+							   colref->collid,
+							   &type_attrs);
+		HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
 	}
 }
 
@@ -2701,24 +2805,13 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	 * Set up the scan targets. For index-based scan we need to return all "real" columns.
 	 */
 	if (RelationGetForm(relation)->relhasoids)
-	{
-		YBCPgTypeAttrs type_attrs = { 0 };
-		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, ObjectIdAttributeNumber,
-										   InvalidOid, InvalidOid, &type_attrs);
-		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
-	}
+		YbDmlAppendTargetSystem(ObjectIdAttributeNumber, ybc_stmt);
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
-		Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
-		YBCPgTypeAttrs type_attrs = { att->atttypmod };
-		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
-										   att->attcollation, &type_attrs);
-		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
+		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
+			YbDmlAppendTargetRegular(tupdesc, attnum, ybc_stmt);
 	}
-	YBCPgTypeAttrs type_attrs = { 0 };
-	YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, YBTupleIdAttributeNumber,
-									   InvalidOid, InvalidOid, &type_attrs);
-	HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
+	YbDmlAppendTargetSystem(YBTupleIdAttributeNumber, ybc_stmt);
 
 	/*
 	 * Execute the select statement.
@@ -2879,28 +2972,11 @@ ybBeginSample(Relation rel, int targrows)
 	 * Set up the scan targets. We need to return all "real" columns.
 	 */
 	if (RelationGetForm(ybSample->relation)->relhasoids)
-	{
-		YBCPgTypeAttrs type_attrs = { 0 };
-		YBCPgExpr	expr = YBCNewColumnRef(ybSample->handle,
-										   ObjectIdAttributeNumber,
-										   InvalidOid,
-										   InvalidOid,
-										   &type_attrs);
-		HandleYBStatus(YBCPgDmlAppendTarget(ybSample->handle, expr));
-	}
+		YbDmlAppendTargetSystem(ObjectIdAttributeNumber, ybSample->handle);
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
-		Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
-		/* Skip over dropped columns */
-		if (att->attisdropped)
-			continue;
-		YBCPgTypeAttrs type_attrs = { att->atttypmod };
-		YBCPgExpr   expr = YBCNewColumnRef(ybSample->handle,
-										   attnum,
-										   att->atttypid,
-										   att->attcollation,
-										   &type_attrs);
-		HandleYBStatus(YBCPgDmlAppendTarget(ybSample->handle, expr));
+		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
+			YbDmlAppendTargetRegular(tupdesc, attnum, ybSample->handle);
 	}
 
 	/*

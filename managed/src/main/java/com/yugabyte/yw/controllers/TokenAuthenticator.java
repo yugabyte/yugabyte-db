@@ -300,6 +300,7 @@ public class TokenAuthenticator extends Action.Simple {
     // Enable New backup and restore endPoints for backup admins.
     if (endPoint.contains("/backups")
         || endPoint.endsWith("create_backup_schedule")
+        || endPoint.endsWith("create_backup_schedule_async")
         || endPoint.contains("/schedules")
         || endPoint.endsWith("/restore")) {
       return true;

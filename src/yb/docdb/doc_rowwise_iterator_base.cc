@@ -86,14 +86,12 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
     std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     std::reference_wrapper<const ScopedRWOperation> pending_op)
     : doc_read_context_(doc_read_context),
       schema_(&doc_read_context_.schema()),
       txn_op_context_(txn_op_context),
-      deadline_(deadline),
-      read_time_(read_time),
+      read_operation_data_(read_operation_data),
       doc_db_(doc_db),
       pending_op_ref_(pending_op),
       projection_(projection) {
@@ -104,14 +102,12 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
     std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     ScopedRWOperation&& pending_op)
     : doc_read_context_(doc_read_context),
       schema_(&doc_read_context_.schema()),
       txn_op_context_(txn_op_context),
-      deadline_(deadline),
-      read_time_(read_time),
+      read_operation_data_(read_operation_data),
       doc_db_(doc_db),
       pending_op_holder_(std::move(pending_op)),
       pending_op_ref_(pending_op_holder_),
@@ -123,15 +119,13 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
     std::shared_ptr<DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     ScopedRWOperation&& pending_op)
     : doc_read_context_holder_(std::move(doc_read_context)),
       doc_read_context_(*doc_read_context_holder_),
       schema_(&doc_read_context_.schema()),
       txn_op_context_(txn_op_context),
-      deadline_(deadline),
-      read_time_(read_time),
+      read_operation_data_(read_operation_data),
       doc_db_(doc_db),
       pending_op_holder_(std::move(pending_op)),
       pending_op_ref_(pending_op_holder_),
@@ -156,17 +150,16 @@ void DocRowwiseIteratorBase::SetSchema(const Schema& schema) {
   schema_ = &schema;
 }
 
-void DocRowwiseIteratorBase::Init(TableType table_type, const Slice& sub_doc_key) {
+void DocRowwiseIteratorBase::Init(TableType table_type, Slice sub_doc_key) {
   CheckInitOnce();
   table_type_ = table_type;
   ignore_ttl_ = (table_type_ == TableType::PGSQL_TABLE_TYPE);
   InitIterator();
 
   if (!sub_doc_key.empty()) {
-    row_key_ = sub_doc_key;
+    row_key_.Reset(sub_doc_key);
   } else {
-    dockv::DocKeyEncoder(&iter_key_).Schema(*schema_);
-    row_key_ = iter_key_;
+    dockv::DocKeyEncoder(&row_key_).Schema(*schema_);
   }
   Seek(row_key_);
   has_bound_key_ = false;
@@ -278,7 +271,7 @@ Status DocRowwiseIteratorBase::GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_ke
 
   DocKey doc_key;
   RETURN_NOT_OK(doc_key.FullyDecodeFrom(row_key_));
-  *sub_doc_key = dockv::SubDocKey(doc_key, read_time_.read);
+  *sub_doc_key = dockv::SubDocKey(doc_key, read_operation_data_.read_time.read);
   DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
   return Status::OK();
 }
@@ -294,7 +287,7 @@ Result<Slice> DocRowwiseIteratorBase::GetTupleId() const {
   return tuple_id;
 }
 
-void DocRowwiseIteratorBase::SeekTuple(const Slice& tuple_id) {
+void DocRowwiseIteratorBase::SeekTuple(Slice tuple_id) {
   // If cotable id / colocation id is present in the table schema, then
   // we need to prepend it in the tuple key to seek.
   if (schema_->has_cotable_id() || schema_->has_colocation_id()) {
@@ -321,10 +314,10 @@ void DocRowwiseIteratorBase::SeekTuple(const Slice& tuple_id) {
     Seek(tuple_id);
   }
 
-  iter_key_.Clear();
+  row_key_.Clear();
 }
 
-Result<bool> DocRowwiseIteratorBase::FetchTuple(const Slice& tuple_id, qlexpr::QLTableRow* row) {
+Result<bool> DocRowwiseIteratorBase::FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row) {
   return VERIFY_RESULT(FetchNext(row)) && VERIFY_RESULT(GetTupleId()) == tuple_id;
 }
 
@@ -337,20 +330,19 @@ Slice DocRowwiseIteratorBase::shared_key_prefix() const {
   return doc_read_context_.shared_key_prefix();
 }
 
-Status DocRowwiseIteratorBase::InitIterKey(const Slice& key, bool full_row) {
-  iter_key_.Reset(key);
-  VLOG_WITH_FUNC(4) << " Current iter_key_ is " << iter_key_ << ", full_row: " << full_row;
+Status DocRowwiseIteratorBase::InitIterKey(Slice key, bool full_row) {
+  row_key_.Reset(key);
+  VLOG_WITH_FUNC(4) << " Current row key is " << row_key_ << ", full_row: " << full_row;
 
   constexpr auto kUninitializedHashPartSize = std::numeric_limits<size_t>::max();
 
   size_t hash_part_size = kUninitializedHashPartSize;
-  if (full_row) {
-    row_key_ = iter_key_.AsSlice();
-  } else {
-    const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(iter_key_);
+  if (!full_row) {
+    const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(row_key_.AsSlice());
     ASSIGN_AND_RETURN_NOT_OK(dockey_sizes);
-    row_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->doc_key_size);
+    row_key_.mutable_data()->Truncate(dockey_sizes->doc_key_size);
     hash_part_size = dockey_sizes->hash_part_size;
+    key = row_key_;
   }
 
   if (!schema_->has_statics()) {
@@ -363,20 +355,20 @@ Status DocRowwiseIteratorBase::InitIterKey(const Slice& key, bool full_row) {
     // And we have 2 kGroupEnds at the end.
     // So row_key_ always has one kGroupEnd mark at the end. So we are checking only for
     // previous mark, that would mean that we 2 kGroupEnd at the end.
-    if (row_key_.size() < 2 || row_key_.end()[-2] != dockv::KeyEntryTypeAsChar::kGroupEnd) {
+    if (key.size() < 2 || key.end()[-2] != dockv::KeyEntryTypeAsChar::kGroupEnd) {
       fetched_row_static_ = false;
     } else {
       // It is not guaranteed that previous mark belongs to key entry type, it could be
       // just the last part of the range column value. So have to decode key from the start to be
       // sure that we have empty range part.
       if (hash_part_size == kUninitializedHashPartSize) {
-        auto sizes = DocKey::EncodedHashPartAndDocKeySizes(row_key_);
+        auto sizes = DocKey::EncodedHashPartAndDocKeySizes(key);
         ASSIGN_AND_RETURN_NOT_OK(sizes);
         hash_part_size = sizes->hash_part_size;
       }
 
       // If range group is empty, then it contains just kGroupEnd.
-      fetched_row_static_ = hash_part_size + 1 == row_key_.size();
+      fetched_row_static_ = hash_part_size + 1 == key.size();
     }
   }
 
@@ -404,14 +396,15 @@ Status DocRowwiseIteratorBase::DoCopyKeyColumnsToRow(
   // In the release mode we just skip key prefix encoded len, in debug mode we decode this prefix,
   // and check that number of decoded bytes matches key prefix encoded len.
 #ifdef NDEBUG
-  dockv::DocKeyDecoder decoder(row_key_.WithoutPrefix(doc_read_context_.key_prefix_encoded_len()));
+  dockv::DocKeyDecoder decoder(
+      row_key_.AsSlice().WithoutPrefix(doc_read_context_.key_prefix_encoded_len()));
 #else
   dockv::DocKeyDecoder decoder(row_key_);
   RETURN_NOT_OK(decoder.DecodeCotableId());
   RETURN_NOT_OK(decoder.DecodeColocationId());
   RETURN_NOT_OK(decoder.DecodeHashCode());
   CHECK_EQ(doc_read_context_.key_prefix_encoded_len(),
-           decoder.left_input().data() - row_key_.data());
+           decoder.left_input().data() - row_key_.data().data());
 #endif
 
   // Populate the key column values from the doc key. The key column values in doc key were
@@ -455,12 +448,17 @@ Status DocRowwiseIteratorBase::DoCopyKeyColumnsToRow(
 
   return STATUS_FORMAT(
       Corruption, "Fully decoded doc key $0 but part of key columns were not decoded: $1",
-      row_key_.ToDebugHexString(),
+      row_key_,
       boost::make_iterator_range(projected_column, projected_key_end));
 }
 
 const dockv::SchemaPackingStorage& DocRowwiseIteratorBase::schema_packing_storage() {
   return doc_read_context_.schema_packing_storage;
+}
+
+Result<DocHybridTime> DocRowwiseIteratorBase::GetTableTombstoneTime(Slice root_doc_key) const {
+  return docdb::GetTableTombstoneTime(
+      root_doc_key, doc_db_, txn_op_context_, read_operation_data_);
 }
 
 }  // namespace yb::docdb

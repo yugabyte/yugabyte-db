@@ -435,6 +435,7 @@ class MetricType {
  public:
   enum Type { kGauge, kCounter, kHistogram, kLag };
   static const char* Name(Type t);
+  static const char* PrometheusType(Type t);
  private:
   static const char* const kGaugeType;
   static const char* const kCounterType;
@@ -754,7 +755,9 @@ class AtomicGauge : public Gauge {
     }
 
     return writer->WriteSingleEntry(attr, prototype_->name(), value(),
-                                    prototype()->aggregation_function());
+                                    prototype()->aggregation_function(),
+                                    MetricType::PrometheusType(prototype_->type()),
+                                    prototype_->description());
   }
 
  protected:
@@ -851,7 +854,9 @@ class FunctionGauge : public Gauge {
     }
 
     return writer->WriteSingleEntry(attr, prototype_->name(), value(),
-                                    prototype()->aggregation_function());
+                                    prototype()->aggregation_function(),
+                                    MetricType::PrometheusType(prototype_->type()),
+                                    prototype_->description());
   }
 
  private:
@@ -982,7 +987,9 @@ class AtomicMillisLag : public MillisLag {
     }
 
     return writer->WriteSingleEntry(attr, prototype_->name(), this->lag_ms(),
-                                    prototype()->aggregation_function());
+                                    prototype()->aggregation_function(),
+                                    MetricType::PrometheusType(prototype_->type()),
+                                    prototype_->description());
   }
 
  protected:

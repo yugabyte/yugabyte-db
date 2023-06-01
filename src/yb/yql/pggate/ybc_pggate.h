@@ -404,6 +404,7 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle,
                                    YBCPgExpr lhs,
                                    int n_attr_values,
                                    YBCPgExpr *attr_values);
+YBCStatus YBCPgDmlBindColumnCondIsNotNull(YBCPgStatement handle, int attr_num);
 
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
@@ -665,8 +666,10 @@ void YBCStopSysTablePrefetching();
 
 bool YBCIsSysTablePrefetchingStarted();
 
-void YBCRegisterSysTableForPrefetching(
-    YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid);
+void YBCRegisterSysTableForPrefetching(YBCPgOid database_oid,
+                                       YBCPgOid table_oid,
+                                       YBCPgOid index_oid,
+                                       int row_oid_filtering_attr);
 
 YBCStatus YBCPrefetchRegisteredSysTables();
 

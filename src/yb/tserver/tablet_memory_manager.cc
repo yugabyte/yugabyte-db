@@ -79,8 +79,7 @@ TAG_FLAG(db_block_cache_num_shard_bits, advanced);
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
                   "Always pretend memory has been exceeded to enforce background flush.");
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 using strings::Substitute;
 
@@ -90,11 +89,9 @@ class FunctorGC : public GarbageCollector {
  public:
   explicit FunctorGC(std::function<void(size_t)> impl) : impl_(std::move(impl)) {}
 
-  void CollectGarbage(size_t required) {
+  void CollectGarbage(size_t required) override {
     impl_(required);
   }
-
-  virtual ~FunctorGC() = default;
 
  private:
   std::function<void(size_t)> impl_;
@@ -104,7 +101,7 @@ class LRUCacheGC : public GarbageCollector {
  public:
   explicit LRUCacheGC(std::shared_ptr<rocksdb::Cache> cache) : cache_(std::move(cache)) {}
 
-  void CollectGarbage(size_t required) {
+  void CollectGarbage(size_t required) override {
     if (!FLAGS_enable_block_based_table_cache_gc) {
       return;
     }
@@ -114,8 +111,6 @@ class LRUCacheGC : public GarbageCollector {
               << ", new usage: " << HumanReadableNumBytes::ToString(cache_->GetUsage())
               << ", required: " << HumanReadableNumBytes::ToString(required);
   }
-
-  virtual ~LRUCacheGC() = default;
 
  private:
   std::shared_ptr<rocksdb::Cache> cache_;
@@ -342,5 +337,4 @@ std::string TabletMemoryManager::LogPrefix(const tablet::TabletPeerPtr& peer) co
       peer->permanent_uuid());
 }
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

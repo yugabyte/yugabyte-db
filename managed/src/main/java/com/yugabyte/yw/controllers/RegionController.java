@@ -97,6 +97,7 @@ public class RegionController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.RegionFormData",
           required = true))
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     Form<RegionFormData> formData =
         formFactory.getFormDataOrBadRequest(request, RegionFormData.class);
     RegionFormData form = formData.get();
@@ -128,6 +129,7 @@ public class RegionController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.RegionEditFormData",
           required = true))
   public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     RegionEditFormData form =
         formFactory.getFormDataOrBadRequest(request, RegionEditFormData.class).get();
     Region region = regionHandler.editRegion(customerUUID, providerUUID, regionUUID, form);
@@ -149,6 +151,7 @@ public class RegionController extends AuthenticatedController {
   @ApiOperation(value = "Delete a region", response = Object.class, nickname = "deleteRegion")
   public Result delete(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     Region region = regionHandler.deleteRegion(customerUUID, providerUUID, regionUUID);
 
     auditService()

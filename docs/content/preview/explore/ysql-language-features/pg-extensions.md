@@ -50,17 +50,14 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 
 | Extension | Status | Description | Examples |
 | :-------- | :----- | :---------- | :------- |
+| [HypoPG](https://github.com/HypoPG/hypopg) | Pre-bundled | Create hypothetical indexes to test whether an index can increase performance for problematic queries without consuming any actual resources. | [Example](#hypopg-example) |
 | [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments. | [Example](../../query-1-performance/pg-hint-plan/#root) |
 | [PGAudit](https://www.pgaudit.org/) | Pre-bundled | The PostgreSQL Audit Extension (pgAudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. | [Install and example](../../../secure/audit-logging/audit-logging-ysql/) |
 | [pg_stat_monitor](https://github.com/percona/pg_stat_monitor) | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module. | |
 | [Orafce](https://github.com/orafce/orafce) | Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB. | |
 | [PostGIS](https://postgis.net/) | Requires installation | A spatial database extender for PostgreSQL-compatible object-relational databases. | [Install and example](#postgis-example) |
-| [postgresql-hll](https://github.com/citusdata/postgresql-hll) | Requires installation | Introduces the data type `hll`, which is a HyperLogLog data structure. | [Install and example](#postgresql-hll-example) |
+| [postgresql-hll](https://github.com/citusdata/postgresql-hll) | Pre-bundled | Introduces the data type `hll`, which is a HyperLogLog data structure. | [Example](#postgresql-hll-example) |
 | [pgsql-postal](https://github.com/pramsey/pgsql-postal) | Requires installation | Parse and normalize street addresses around the world using libpostal. | [Install and example](#pgsql-postal-example) |
-| [YCQL_fdw](https://github.com/YugaByte/yugabyte-db/issues/830) | In-progress | Access YCQL tables via the YSQL API. | |
-| [pg_cron](https://github.com/citusdata/pg_cron) | In-progress | Cron-based job scheduler for PostgreSQL. Using the same syntax as regular cron, schedule PostgreSQL commands directly from the database. | |
-| [PostgreSQL Anonymizer](https://postgresql-anonymizer.readthedocs.io/en/latest/) | In-progress | Mask or replace personally identifiable information (PII) or commercially sensitive data from a PostgreSQL database. | |
-| [PG Partition Manager](https://github.com/pgpartman/pg_partman) | In-progress | Create and manage both time-based and serial-based table partition sets. | |
 
 ## Install extensions
 
@@ -197,6 +194,114 @@ SELECT levenshtein('Yugabyte', 'yugabyte'), metaphone('yugabyte', 8);
            2 | YKBT
 (1 row)
 ```
+
+### HypoPG example
+
+```sql
+CREATE EXTENSION hypopg;
+CREATE TABLE up_and_down (up int primary key, down int);
+INSERT INTO up_and_down SELECT a AS up, 10001-a AS down FROM generate_series(1,10000) a;
+```
+
+The `up_and_down` table has no indexes, but is defined with a primary key. As a result, when using the primary key, records are retrieved directly:
+
+```sql
+EXPLAIN SELECT * FROM up_and_down WHERE up = 999;
+```
+
+```output
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Index Scan using up_and_down_pkey on up_and_down  (cost=0.00..4.11 rows=1 width=8)
+   Index Cond: (up = 999)
+```
+
+However, because it doesn't have an index, fetching a value from the `down` column results in a sequential scan:
+
+```sql
+EXPLAIN SELECT * FROM up_and_down WHERE down = 999;
+```
+
+```output
+                           QUERY PLAN
+----------------------------------------------------------------
+ Seq Scan on up_and_down  (cost=0.00..102.50 rows=1000 width=8)
+   Filter: (down = 999)
+```
+
+To see what would happen if you were to create an index for the `down` column without actually creating the index, use HypoPG as follows:
+
+```sql
+SELECT * FROM hypopg_create_index('create index on up_and_down(down)');
+```
+
+```output
+ indexrelid |          indexname
+------------+-----------------------------
+      13283 | <13283>lsm_up_and_down_down
+```
+
+Explain now shows that the planner would use the index:
+
+```sql
+EXPLAIN SELECT * FROM up_and_down WHERE down = 999;
+```
+
+```output
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
+ Index Scan using <13283>lsm_up_and_down_down on up_and_down  (cost=0.00..4.01 rows=1000 width=8)
+   Index Cond: (down = 999)
+```
+
+As the index is not really created, if you use `EXPLAIN ANALYZE`, the hypothetical index is ignored:
+
+```sql
+EXPLAIN ANALYZE SELECT * FROM up_and_down WHERE down = 999;
+```
+
+```output
+                                                 QUERY PLAN
+------------------------------------------------------------------------------------------------------------
+ Seq Scan on up_and_down  (cost=0.00..102.50 rows=1000 width=8) (actual time=35.678..35.687 rows=1 loops=1)
+   Filter: (down = 999)
+   Rows Removed by Filter: 9999
+ Planning Time: 0.041 ms
+ Execution Time: 35.735 ms
+ Peak Memory Usage: 0 kB
+```
+
+You can query the hypothetical indexes you created using the `hypopg()` function:
+
+```sql
+SELECT * FROM hypopg();
+```
+
+```output
+          indexname          | indexrelid | indrelid | innatts | indisunique | indkey | indcollation | indclass | indoption | indexprs | indpred | amid
+-----------------------------+------------+----------+---------+-------------+--------+--------------+----------+-----------+----------+---------+------
+ <13283>lsm_up_and_down_down |      13283 |    16927 |       1 | f           | 2      | 0            | 9942     |           |          |         | 9900
+```
+
+If you create multiple hypothetical indexes, you can drop a single hypothetical index using its `indexrelid` as follows:
+
+```sql
+SELECT * FROM hypopg_drop_index(13283);
+```
+
+```output
+ hypopg_drop_index
+-------------------
+ t
+```
+
+To remove all hypothetical indexes, log out or quit your session.
+
+```sql
+\q
+```
+
+For more information, refer to the [HypoPG documentation](https://hypopg.readthedocs.io/en/rel1_stable/).
 
 ### passwordcheck example
 
@@ -474,33 +579,56 @@ SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
 
 ### postgresql-hll example
 
-First, install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance. Use the same PostgreSQL version as that incorporated into YugabyteDB.
+First, install the extension:
 
-After you've installed the extension in PostgreSQL, copy the files to your YugabyteDB instance as follows:
-
-```sh
-cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" &&
-cp -v "$(pg_config --sharedir)"/extension/*hll*.sql "$(yb_pg_config --sharedir)"/extension &&
-cp -v "$(pg_config --sharedir)"/extension/*hll*.control "$(yb_pg_config --sharedir)"/extension &&
-  ./bin/ysqlsh -c "CREATE EXTENSION \"hll\";"
+```sql
+CREATE EXTENSION "hll";
 ```
 
 To run the example from the [postgresql-hll](https://github.com/citusdata/postgresql-hll#usage) repository, connect using `ysqlsh` and run the following:
 
 ```sql
-yugabyte=# CREATE TABLE helloworld (id integer, set hll);
+CREATE TABLE helloworld (id integer, set hll);
+```
+
+```output
 CREATE TABLE
---- Insert an empty HLL
-yugabyte=# INSERT INTO helloworld(id, set) VALUES (1, hll_empty());
+```
+
+Insert an empty HLL as follows:
+
+```sql
+INSERT INTO helloworld(id, set) VALUES (1, hll_empty());
+```
+
+```output
 INSERT 0 1
---- Add a hashed integer to the HLL
-yugabyte=# UPDATE helloworld SET set = hll_add(set, hll_hash_integer(12345)) WHERE id = 1;
+```
+
+Add a hashed integer to the HLL as follows:
+
+```sql
+UPDATE helloworld SET set = hll_add(set, hll_hash_integer(12345)) WHERE id = 1;
+```
+
+```output
 UPDATE 1
---- Or add a hashed string to the HLL
-yugabyte=# UPDATE helloworld SET set = hll_add(set, hll_hash_text('hello world')) WHERE id = 1;
+```
+
+Add a hashed string to the HLL as follows:
+
+```sql
+UPDATE helloworld SET set = hll_add(set, hll_hash_text('hello world')) WHERE id = 1;
+```
+
+```output
 UPDATE 1
---- Get the cardinality of the HLL
-yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
+```
+
+Get the cardinality of the HLL as follows:
+
+```sql
+SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
 ```
 
 ```output

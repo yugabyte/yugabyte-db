@@ -54,7 +54,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           paramType = "body"))
   public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     universeYbDbAdminHandler.setDatabaseCredentials(
         customer,
@@ -84,7 +84,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           paramType = "body"))
   public Result dropUserInDB(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     DatabaseUserDropFormData data =
         formFactory.getFormDataOrBadRequest(request, DatabaseUserDropFormData.class).get();
@@ -115,7 +115,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   public Result createRestrictedUserInDB(
       UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     DatabaseUserFormData data =
         formFactory.getFormDataOrBadRequest(request, DatabaseUserFormData.class).get();
@@ -144,7 +144,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           paramType = "body"))
   public Result createUserInDB(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     DatabaseUserFormData data =
         formFactory.getFormDataOrBadRequest(request, DatabaseUserFormData.class).get();
@@ -175,7 +175,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           required = true))
   public Result runQuery(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     Form<RunQueryFormData> formData =
         formFactory.getFormDataOrBadRequest(request, RunQueryFormData.class);
 

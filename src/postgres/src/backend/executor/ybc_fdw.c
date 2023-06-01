@@ -258,7 +258,8 @@ ybcGetForeignPlan(PlannerInfo *root,
 					break;
 				case ObjectIdAttributeNumber:
 				case YBTupleIdAttributeNumber:
-				default: /* Regular column: attrNum > 0*/
+				default: /* Regular column: attnum > 0.
+							NOTE: dropped columns may be included. */
 				{
 					TargetEntry *target = makeNode(TargetEntry);
 					target->resno = attnum;
@@ -375,64 +376,40 @@ ybcSetupScanTargets(ForeignScanState *node)
 	if (node->yb_fdw_aggs == NIL)
 	{
 		/* Set non-aggregate column targets. */
-		bool has_targets = false;
+		bool target_added = false;
 		foreach(lc, target_attrs)
 		{
 			TargetEntry *target = (TargetEntry *) lfirst(lc);
+			AttrNumber	attnum = target->resno;
 
-			/* For regular (non-system) attribute check if they were deleted */
-			Oid   attr_typid  = InvalidOid;
-			Oid   attr_collation = InvalidOid;
-			int32 attr_typmod = 0;
-			if (target->resno > 0)
+			if (attnum < 0)
+				YbDmlAppendTargetSystem(attnum, ybc_state->handle);
+			else
 			{
-				Form_pg_attribute attr;
-				attr = TupleDescAttr(tupdesc, target->resno - 1);
-				/* Ignore dropped attributes */
-				if (attr->attisdropped)
-				{
+				Assert(attnum > 0);
+				if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
+					YbDmlAppendTargetRegular(tupdesc, attnum,
+											 ybc_state->handle);
+				else
 					continue;
-				}
-				attr_typid  = attr->atttypid;
-				attr_typmod = attr->atttypmod;
-				attr_collation = attr->attcollation;
 			}
 
-			YBCPgTypeAttrs type_attrs = {attr_typmod};
-			YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
-														target->resno,
-														attr_typid,
-														attr_collation,
-														&type_attrs);
-			HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr));
-			has_targets = true;
+			target_added = true;
 		}
 
 		/*
-		 * We can have no target columns at this point for e.g. a count(*). For now
-		 * we request the first non-dropped column in that case.
-		 * TODO look into handling this on YugaByte side.
+		 * We can have no target columns at this point for e.g. a count(*). We
+		 * need to set a placeholder for the targets to properly make pg_dml
+		 * fetcher recognize the correct number of rows though the targeted
+		 * rows are not being effectively retrieved. Otherwise, the pg_dml
+		 * fetcher will stop too early when seeing empty rows.
+		 * TODO(#16717): Such placeholder target can be removed once the pg_dml
+		 * fetcher can recognize empty rows in a response with no explict
+		 * targets.
 		 */
-		if (!has_targets)
-		{
-			for (int16_t i = 0; i < tupdesc->natts; i++)
-			{
-				/* Ignore dropped attributes */
-				if (TupleDescAttr(tupdesc, i)->attisdropped)
-				{
-					continue;
-				}
-
-				YBCPgTypeAttrs type_attrs = { TupleDescAttr(tupdesc, i)->atttypmod };
-				YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
-															i + 1,
-															TupleDescAttr(tupdesc, i)->atttypid,
-															TupleDescAttr(tupdesc, i)->attcollation,
-															&type_attrs);
-				HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr));
-				break;
-			}
-		}
+		if (!target_added)
+			YbDmlAppendTargetSystem(YBTupleIdAttributeNumber,
+									ybc_state->handle);
 	}
 	else
 	{

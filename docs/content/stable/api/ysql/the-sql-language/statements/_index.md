@@ -60,11 +60,13 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP FOREIGN DATA WRAPPER`](ddl_drop_foreign_data_wrapper) | Drop a foreign-data wrapper |
 | [`DROP FOREIGN TABLE`](ddl_drop_foreign_table) | Drop a foreign table |
 | [`DROP FUNCTION`](ddl_drop_function) | Delete a function |
+| [`DROP INDEX`](ddl_drop_index) | Delete an index from a database |
 | [`DROP MATERIALIZED VIEW`](ddl_drop_matview) | Drop a materialized view |
 | [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
 | [`DROP OPERATOR CLASS`](ddl_drop_operator_class) | Delete an operator class |
 | [`DROP PROCEDURE`](ddl_drop_procedure) | Delete a procedure |
 | [`DROP RULE`](ddl_drop_rule) | Delete a rule |
+| [`DROP SCHEMA`](ddl_drop_schema) | Delete a schema from the system |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP SERVER`](ddl_drop_server) | Drop a foreign server |
 | [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
@@ -79,7 +81,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | Statement | Description |
 | :-------- | :---------- |
 | [`DELETE`](dml_delete/) | Delete rows from a table |
-| [`INSERT`](dml_insert) | Insert rows into a table |
+| [`INSERT`](dml_insert/) | Insert rows into a table |
 | [`SELECT`](dml_select/) | Select rows from a table |
 | [`UPDATE`](dml_update/) | Update rows in a table |
 

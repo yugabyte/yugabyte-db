@@ -165,9 +165,6 @@ public class TableManagerYb extends DevopsBase {
           }
         }
         commandArgs.add("--no_auto_name");
-        if (taskParams.sse) {
-          commandArgs.add("--sse");
-        }
         customer = Customer.find.query().where().idEq(universe.getCustomerId()).findOne();
         customerConfig =
             CustomerConfig.get(customer.getUuid(), backupTableParams.storageConfigUUID);
@@ -330,6 +327,10 @@ public class TableManagerYb extends DevopsBase {
     }
     if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
       commandArgs.add("--ssh2_enabled");
+    }
+    boolean enableSSE = confGetter.getConfForScope(universe, UniverseConfKeys.enableSSE);
+    if (enableSSE) {
+      commandArgs.add("--sse");
     }
     if (confGetter.getGlobalConf(GlobalConfKeys.disableXxHashChecksum)) {
       commandArgs.add("--disable_xxhash_checksum");

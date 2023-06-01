@@ -1,8 +1,9 @@
 ---
 title: Configure the Kubernetes cloud provider
-headerTitle: Configure the Kubernetes cloud provider
-linkTitle: Configure cloud providers
-description: Configure the Kubernetes cloud provider
+headerTitle: Create provider configuration
+linkTitle: Create provider configuration
+description: Configure the Kubernetes provider configuration
+headContent: Configure a Kubernetes provider configuration
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
@@ -458,7 +459,7 @@ The following overrides are available:
     affinity: {}
   ```
 
-  `affinity` allows the Kubernetes scheduler to place a pod on a set of nodes or a pod relative to the placement of other pods. You can use `nodeAffinity` rules to control pod placements on a set of nodes. In contrast, `podAffinity` or `podAntiAffinity` rules provide the ability to control pod placements relative to other pods. For more information, see [Affinity API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#affinity-v1-core).
+  `affinity` allows the Kubernetes scheduler to place a pod on a set of nodes or a pod relative to the placement of other pods. You can use `nodeAffinity` rules to control pod placements on a set of nodes. In contrast, `podAffinity` or `podAntiAffinity` rules provide the ability to control pod placements relative to other pods. For more information, see [Affinity API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.27/#affinity-v1-core).
 
 - Overrides to add `annotations` to YB-Master and YB-TServer pods:
 

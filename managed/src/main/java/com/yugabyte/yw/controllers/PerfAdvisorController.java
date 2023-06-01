@@ -235,7 +235,7 @@ public class PerfAdvisorController extends AuthenticatedController {
       response = PerfAdvisorSettingsWithDefaults.class)
   public Result getSettings(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (!customer.getId().equals(universe.getCustomerId())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
@@ -278,7 +278,7 @@ public class PerfAdvisorController extends AuthenticatedController {
   @Transactional
   public Result updateSettings(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (!customer.getId().equals(universe.getCustomerId())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
@@ -307,7 +307,7 @@ public class PerfAdvisorController extends AuthenticatedController {
       response = PerfAdvisorManualRunStatus.class)
   public Result runPerfAdvisor(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (!customer.getId().equals(universe.getCustomerId())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
@@ -325,7 +325,7 @@ public class PerfAdvisorController extends AuthenticatedController {
   @ApiOperation(value = "Get last performance advisor run details", response = YBPSuccess.class)
   public Result getLatestRun(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (!customer.getId().equals(universe.getCustomerId())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);

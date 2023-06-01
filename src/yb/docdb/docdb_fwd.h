@@ -45,6 +45,7 @@ class PgsqlWriteOperation;
 class QLWriteOperation;
 class RedisWriteOperation;
 class ScanChoices;
+class SchemaPackingProvider;
 class SharedLockManager;
 class TransactionStatusCache;
 class WaitQueue;
@@ -57,6 +58,7 @@ struct DocReadContext;
 struct IntentKeyValueForCDC;
 struct KeyBounds;
 struct LockBatchEntry;
+struct ReadOperationData;
 
 using DocKeyHash = uint16_t;
 using LockBatchEntries = std::vector<LockBatchEntry>;

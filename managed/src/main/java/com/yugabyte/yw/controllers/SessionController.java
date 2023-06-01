@@ -717,12 +717,16 @@ public class SessionController extends AbstractPlatformController {
   @ApiOperation(value = "getAdminNotifications", response = AdminNotifications.class)
   @With(TokenAuthenticator.class)
   public Result getAdminNotifications(UUID customerUUID) {
+    // Validate Customer UUID
+    Customer.getOrBadRequest(customerUUID);
     AdminNotifications notifications = new AdminNotifications();
     notifications.getMessages().addAll(getAlertingNotifications(customerUUID));
     return PlatformResults.withData(notifications);
   }
 
   private List<AdminNotification> getAlertingNotifications(UUID customerUUID) {
+    // Validate Customer UUID
+    Customer.getOrBadRequest(customerUUID);
     CustomerConfig alertingConfig = CustomerConfig.getAlertConfig(customerUUID);
     if (alertingConfig == null) {
       return Collections.emptyList();

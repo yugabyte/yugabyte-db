@@ -35,6 +35,7 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -47,6 +48,7 @@
 #endif
 #endif
 
+#include <boost/container/small_vector.hpp>
 #include <boost/optional.hpp>
 
 #include "yb/gutil/ref_counted.h"
@@ -59,19 +61,16 @@
 
 namespace yb {
 
-class Status;
 class MemTracker;
 class MetricEntity;
-typedef std::shared_ptr<MemTracker> MemTrackerPtr;
+using MemTrackerPtr = std::shared_ptr<MemTracker>;
 
 // Garbage collector is used by MemTracker to free memory allocated by caches when reached
 // soft memory limit.
 class GarbageCollector {
  public:
+  virtual ~GarbageCollector() = default;
   virtual void CollectGarbage(size_t required) = 0;
-
- protected:
-  ~GarbageCollector() {}
 };
 
 YB_STRONGLY_TYPED_BOOL(MayExist);
@@ -79,9 +78,8 @@ YB_STRONGLY_TYPED_BOOL(AddToParent);
 YB_STRONGLY_TYPED_BOOL(CreateMetrics);
 YB_STRONGLY_TYPED_BOOL(OnlyChildren);
 
-typedef std::function<int64_t()> ConsumptionFunctor;
-typedef std::function<void()> UpdateMaxMemoryFunctor;
-typedef std::function<void()> PollChildrenConsumptionFunctors;
+using ConsumptionFunctor = std::function<int64_t()>;
+using PollChildrenConsumptionFunctors = std::function<void()>;
 
 struct SoftLimitExceededResult {
   static SoftLimitExceededResult NotExceeded() {
@@ -380,12 +378,10 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // Retrieve the parent tracker, or NULL If one is not set.
   std::shared_ptr<MemTracker> parent() const { return parent_; }
 
-  // Add a function 'f' to be called if the limit is reached.
-  // 'f' does not need to be thread-safe as long as it is added to only one MemTracker.
-  // Note that 'f' must be valid for the lifetime of this MemTracker.
-  void AddGarbageCollector(const std::shared_ptr<GarbageCollector>& gc) {
-    std::lock_guard<simple_spinlock> lock(gc_mutex_);
-    gcs_.push_back(gc);
+  // Add garbage collector to be called if the limit is reached.
+  void AddGarbageCollector(std::shared_ptr<GarbageCollector> gc) {
+    std::lock_guard lock(gc_mutex_);
+    gcs_.emplace_back(std::move(gc));
   }
 
   // Logs the usage of this tracker and all of its children (recursively).
@@ -421,6 +417,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   static void TEST_SetReleasedMemorySinceGC(int64_t bytes);
 
  private:
+  template<class GC>
+  using GarbageCollectorsContainer = boost::container::small_vector<GC, 8>;
+
   bool CheckLimitExceeded() const {
     return limit_ >= 0 && limit_ < consumption();
   }
@@ -488,8 +487,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   simple_spinlock gc_mutex_;
 
-  // Functions to call after the limit is reached to free memory.
-  std::vector<std::weak_ptr<GarbageCollector>> gcs_;
+  // Garbage collectors to call after the limit is reached to free memory.
+  GarbageCollectorsContainer<std::weak_ptr<GarbageCollector>> gcs_;
 
   ThreadSafeRandom rand_;
 

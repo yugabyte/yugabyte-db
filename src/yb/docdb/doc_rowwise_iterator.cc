@@ -59,12 +59,11 @@ DocRowwiseIterator::DocRowwiseIterator(
     std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
-          projection, doc_read_context, txn_op_context, doc_db, deadline, read_time, pending_op),
+          projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op),
       statistics_(statistics) {
 }
 
@@ -73,12 +72,11 @@ DocRowwiseIterator::DocRowwiseIterator(
     std::shared_ptr<DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     ScopedRWOperation&& pending_op,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
-          projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
+          projection, doc_read_context, txn_op_context, doc_db, read_operation_data,
           std::move(pending_op)),
       statistics_(statistics) {
 }
@@ -103,8 +101,7 @@ void DocRowwiseIterator::InitIterator(
       user_key_for_filter,
       query_id,
       txn_op_context_,
-      deadline_,
-      read_time_,
+      read_operation_data_,
       file_filter,
       nullptr /* iterate_upper_bound */,
       statistics_);
@@ -130,12 +127,12 @@ void DocRowwiseIterator::InitResult() {
   }
 }
 
-inline void DocRowwiseIterator::Seek(const Slice& key) {
+inline void DocRowwiseIterator::Seek(Slice key) {
   VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
   db_iter_->Seek(key);
 }
 
-inline void DocRowwiseIterator::PrevDocKey(const Slice& key) {
+inline void DocRowwiseIterator::PrevDocKey(Slice key) {
   // TODO consider adding an operator bool to DocKey to use instead of empty() here.
   if (!key.empty()) {
     db_iter_->PrevDocKey(key);
@@ -163,7 +160,7 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) co
 
 Result<bool> DocRowwiseIterator::PgFetchNext(dockv::PgTableRow* table_row) {
   if (table_row) {
-    table_row->Clear();
+    table_row->Reset();
   }
   return FetchNextImpl(table_row);
 }
@@ -204,6 +201,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
   }
 
+  bool first_iteration = true;
   for (;;) {
     if (db_iter_->IsOutOfRecords() || (scan_choices_ && scan_choices_->FinishedWithScanChoices())) {
       done_ = true;
@@ -229,14 +227,18 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     // outside the previous doc_key). Ensure the iterator is pushed forward/backward indeed. We
     // check it here instead of after GetSubDocument() below because we want to avoid the extra
     // expensive FetchKey() call just to fetch and validate the key.
-    if (!iter_key_.data().empty() &&
-        (is_forward_scan_ ? iter_key_.CompareTo(key_data.key) >= 0
-                          : iter_key_.CompareTo(key_data.key) <= 0)) {
+    auto row_key = row_key_.AsSlice();
+    if (!first_iteration &&
+        (is_forward_scan_ ? row_key.compare(key_data.key) >= 0
+                          : row_key.compare(key_data.key) <= 0)) {
       // TODO -- could turn this check off in TPCC?
-      has_next_status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
-                                           FormatSliceAsStr(key_data.key));
+      has_next_status_ = STATUS_FORMAT(
+          Corruption, "Infinite loop detected at $0, row key: $1",
+          key_data.key.ToDebugString(), row_key.ToDebugString());
+      LOG(DFATAL) << has_next_status_;
       return has_next_status_;
     }
+    first_iteration = false;
 
     // e.g in cotable, row may point outside table bounds.
     auto in_table = dockv::DocKeyBelongsTo(key_data.key, schema());
@@ -250,39 +252,38 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
 
     RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(db_iter_->value())));
+    row_key = row_key_.AsSlice();
 
-    if (has_bound_key_ && is_forward_scan_ == (row_key_.compare(bound_key_) >= 0)) {
+    if (has_bound_key_ && is_forward_scan_ == (row_key.compare(bound_key_) >= 0)) {
       done_ = true;
       return false;
     }
 
-    // Prepare the DocKey to get the SubDocument. Trim the DocKey to contain just the primary key.
-    Slice doc_key = row_key_;
-    VLOG(4) << " sub_doc_key part of iter_key_ is " << dockv::DocKey::DebugSliceToString(doc_key);
+    VLOG(4) << " sub_doc_key part of iter_key_ is " << dockv::DocKey::DebugSliceToString(row_key);
 
     bool is_static_column = IsFetchedRowStatic();
     if (scan_choices_ && !is_static_column) {
-      if (!scan_choices_->CurrentTargetMatchesKey(row_key_)) {
+      if (!scan_choices_->CurrentTargetMatchesKey(row_key)) {
         // We must have seeked past the target key we are looking for (no result) so we can safely
         // skip all scan targets between the current target and row key (excluding row_key_ itself).
         // Update the target key and iterator and call HasNext again to try the next target.
-        if (!VERIFY_RESULT(scan_choices_->SkipTargetsUpTo(row_key_))) {
+        if (!VERIFY_RESULT(scan_choices_->SkipTargetsUpTo(row_key))) {
           // SkipTargetsUpTo returns false when it fails to decode the key.
-          if (!VERIFY_RESULT(dockv::IsColocatedTableTombstoneKey(row_key_))) {
+          if (!VERIFY_RESULT(dockv::IsColocatedTableTombstoneKey(row_key))) {
             return STATUS_FORMAT(
-                Corruption, "Key $0 is not table tombstone key.", row_key_.ToDebugHexString());
+                Corruption, "Key $0 is not table tombstone key.", row_key.ToDebugHexString());
           }
           if (is_forward_scan_) {
-            db_iter_->SeekOutOfSubDoc(&iter_key_);
+            db_iter_->SeekOutOfSubDoc(&row_key_);
           } else {
-            db_iter_->PrevDocKey(row_key_);
+            db_iter_->PrevDocKey(row_key);
           }
           continue;
         }
 
         // We updated scan target above, if it goes past the row_key_ we will seek again, and
         // process the found key in the next loop.
-        if (!scan_choices_->CurrentTargetMatchesKey(row_key_)) {
+        if (!scan_choices_->CurrentTargetMatchesKey(row_key)) {
           RETURN_NOT_OK(scan_choices_->SeekToCurrentTarget(db_iter_.get()));
           continue;
         }
@@ -293,10 +294,10 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
-          db_iter_.get(), deadline_, &projection_, table_type_,
+          db_iter_.get(), read_operation_data_.deadline, &projection_, table_type_,
           schema_packing_storage());
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
-          VERIFY_RESULT(GetTableTombstoneTime(doc_key))));
+          VERIFY_RESULT(GetTableTombstoneTime(row_key))));
       if (!ignore_ttl_) {
         doc_reader_->SetTableTtl(schema());
       }
@@ -307,7 +308,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       row_->object_container().clear();
     }
 
-    auto doc_found_res = FetchRow(doc_key, table_row);
+    auto doc_found_res = FetchRow(table_row);
     if (!doc_found_res.ok()) {
       has_next_status_ = doc_found_res.status();
       return has_next_status_;
@@ -335,16 +336,14 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
   return true;
 }
 
-Result<DocReaderResult> DocRowwiseIterator::FetchRow(
-    const Slice& doc_key, dockv::PgTableRow* table_row) {
+Result<DocReaderResult> DocRowwiseIterator::FetchRow(dockv::PgTableRow* table_row) {
   CHECK_NE(doc_mode_, DocMode::kGeneric) << "Table type: " << table_type_;
-  return doc_reader_->GetFlat(doc_key, table_row);
+  return doc_reader_->GetFlat(row_key_, table_row);
 }
 
-Result<DocReaderResult> DocRowwiseIterator::FetchRow(
-    const Slice& doc_key, QLTableRowPair table_row) {
-  return doc_mode_ == DocMode::kFlat ? doc_reader_->GetFlat(doc_key, table_row.table_row)
-                                     : doc_reader_->Get(doc_key, &*row_);
+Result<DocReaderResult> DocRowwiseIterator::FetchRow(QLTableRowPair table_row) {
+  return doc_mode_ == DocMode::kFlat ? doc_reader_->GetFlat(row_key_, table_row.table_row)
+                                     : doc_reader_->Get(row_key_, &*row_);
 }
 
 Status DocRowwiseIterator::FillRow(dockv::PgTableRow* out) {
@@ -400,10 +399,11 @@ Status DocRowwiseIterator::FillRow(
   const auto& schema = this->schema();
   for (const auto& column : projection.value_columns()) {
     const auto* source = row_->GetChild(column.subkey);
+    auto& dest = table_row->AllocColumn(column.id);
     if (!source) {
+      dest.value.Clear();
       continue;
     }
-    auto& dest = table_row->AllocColumn(column.id);
     source->ToQLValuePB(VERIFY_RESULT_REF(schema.column_by_id(column.id)).type(), &dest.value);
     dest.ttl_seconds = source->GetTtl();
     if (source->IsWriteTimeSet()) {

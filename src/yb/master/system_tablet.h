@@ -45,15 +45,13 @@ class SystemTablet : public tablet::AbstractTablet {
     return nullptr;
   }
 
-  Status HandleRedisReadRequest(CoarseTimePoint deadline,
-                                const ReadHybridTime& read_time,
+  Status HandleRedisReadRequest(const docdb::ReadOperationData& read_operation_data,
                                 const RedisReadRequestPB& redis_read_request,
                                 RedisResponsePB* response) override {
     return STATUS(NotSupported, "RedisReadRequest is not supported for system tablets!");
   }
 
-  Status HandleQLReadRequest(CoarseTimePoint deadline,
-                             const ReadHybridTime& read_time,
+  Status HandleQLReadRequest(const docdb::ReadOperationData& read_operation_data,
                              const QLReadRequestPB& ql_read_request,
                              const TransactionMetadataPB& transaction_metadata,
                              tablet::QLReadRequestResult* result,
@@ -63,8 +61,7 @@ class SystemTablet : public tablet::AbstractTablet {
                                   const size_t row_count,
                                   QLResponsePB* response) const override;
 
-  Status HandlePgsqlReadRequest(CoarseTimePoint deadline,
-                                const ReadHybridTime& read_time,
+  Status HandlePgsqlReadRequest(const docdb::ReadOperationData& read_operation_data,
                                 bool is_explicit_request_read_time,
                                 const PgsqlReadRequestPB& pgsql_read_request,
                                 const TransactionMetadataPB& transaction_metadata,

@@ -20,12 +20,14 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/deadline_info.h"
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/read_operation_data.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_ttl_util.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
@@ -370,20 +372,19 @@ Status FindLastWriteTime(
 
 }  // namespace
 
-yb::Status GetRedisSubDocument(
+Status GetRedisSubDocument(
     const DocDB& doc_db,
     const GetRedisSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time) {
+    const ReadOperationData& read_operation_data) {
   auto iter = CreateIntentAwareIterator(
-      doc_db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, query_id,
-      txn_op_context, deadline, read_time);
+      doc_db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, query_id, txn_op_context,
+      read_operation_data);
   return GetRedisSubDocument(iter.get(), data, nullptr /* projection */, SeekFwdSuffices::kFalse);
 }
 
-yb::Status GetRedisSubDocument(
+Status GetRedisSubDocument(
     IntentAwareIterator *db_iter,
     const GetRedisSubDocumentData& data,
     const dockv::KeyEntryValues* projection,

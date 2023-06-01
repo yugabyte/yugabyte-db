@@ -2027,6 +2027,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_pushdown_is_not_null", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, IS NOT NULL is pushed down."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_pushdown_is_not_null,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "

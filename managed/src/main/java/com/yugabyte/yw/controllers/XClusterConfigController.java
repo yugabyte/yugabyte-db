@@ -59,6 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -124,10 +125,8 @@ public class XClusterConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfigCreateFormData createFormData = parseCreateFormData(customerUUID, request);
-    Universe sourceUniverse =
-        Universe.getValidUniverseOrBadRequest(createFormData.sourceUniverseUUID, customer);
-    Universe targetUniverse =
-        Universe.getValidUniverseOrBadRequest(createFormData.targetUniverseUUID, customer);
+    Universe sourceUniverse = Universe.getOrBadRequest(createFormData.sourceUniverseUUID, customer);
+    Universe targetUniverse = Universe.getOrBadRequest(createFormData.targetUniverseUUID, customer);
     checkConfigDoesNotAlreadyExist(
         createFormData.name, createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
     verifyTablesNotInReplication(
@@ -240,6 +239,14 @@ public class XClusterConfigController extends AuthenticatedController {
     Set<String> indexTableIdSet =
         mainTableIndexTablesMap.values().stream().flatMap(List::stream).collect(Collectors.toSet());
     createFormData.tables.addAll(indexTableIdSet);
+    if (Objects.nonNull(createFormData.bootstrapParams)) {
+      mainTableIndexTablesMap.forEach(
+          (mainTableId, indexTableIds) -> {
+            if (createFormData.bootstrapParams.tables.contains(mainTableId)) {
+              createFormData.bootstrapParams.tables.addAll(indexTableIds);
+            }
+          });
+    }
 
     Pair<List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>, Set<String>>
         requestedTableInfoList_sourceTableIdsWithNoTableOnTargetUniverse =
@@ -346,7 +353,8 @@ public class XClusterConfigController extends AuthenticatedController {
       String startTime = Long.toString(Instant.now().minus(Duration.ofMinutes(1)).getEpochSecond());
       metricParams.put("start", startTime);
       ObjectNode filterJson = Json.newObject();
-      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+      Universe sourceUniverse =
+          Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
       String nodePrefix = sourceUniverse.getUniverseDetails().nodePrefix;
       filterJson.put("node_prefix", nodePrefix);
       String streamIdFilter = String.join("|", streamIds);
@@ -442,9 +450,9 @@ public class XClusterConfigController extends AuthenticatedController {
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
     verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
     Universe sourceUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
     Map<String, List<String>> mainTableToAddIndexTablesMap = null;
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList = null;
@@ -482,6 +490,14 @@ public class XClusterConfigController extends AuthenticatedController {
                 .collect(Collectors.toSet());
         allTableIds.addAll(indexTableIdSet);
         tableIdsToAdd.addAll(indexTableIdSetToAdd);
+        if (Objects.nonNull(editFormData.bootstrapParams)) {
+          mainTableToAddIndexTablesMap.forEach(
+              (mainTableId, indexTableIds) -> {
+                if (editFormData.bootstrapParams.tables.contains(mainTableId)) {
+                  editFormData.bootstrapParams.tables.addAll(indexTableIds);
+                }
+              });
+        }
 
         verifyTablesNotInReplication(
             tableIdsToAdd,
@@ -637,9 +653,9 @@ public class XClusterConfigController extends AuthenticatedController {
         parseRestartFormData(customerUUID, xClusterConfig, request);
     verifyTaskAllowed(xClusterConfig, TaskType.RestartXClusterConfig);
     Universe sourceUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
     Set<String> tableIds = restartFormData.tables;
     // Add index tables.
@@ -648,6 +664,7 @@ public class XClusterConfigController extends AuthenticatedController {
     Set<String> indexTableIdSet =
         mainTableIndexTablesMap.values().stream().flatMap(List::stream).collect(Collectors.toSet());
     tableIds.addAll(indexTableIdSet);
+
     if (!restartFormData.dryRun) {
       xClusterConfig.addTablesIfNotExist(
           indexTableIdSet, null /* tableIdsNeedBootstrap */, true /* areIndexTables */);
@@ -734,12 +751,10 @@ public class XClusterConfigController extends AuthenticatedController {
     Universe sourceUniverse = null;
     Universe targetUniverse = null;
     if (xClusterConfig.getSourceUniverseUUID() != null) {
-      sourceUniverse =
-          Universe.getValidUniverseOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+      sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     }
     if (xClusterConfig.getTargetUniverseUUID() != null) {
-      targetUniverse =
-          Universe.getValidUniverseOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+      targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
     }
 
     // Submit task to delete xCluster config
@@ -790,7 +805,7 @@ public class XClusterConfigController extends AuthenticatedController {
     Universe targetUniverse;
     if (targetUniverseUUID != null) {
       log.info("Received sync XClusterConfig request for universe({})", targetUniverseUUID);
-      targetUniverse = Universe.getValidUniverseOrBadRequest(targetUniverseUUID, customer);
+      targetUniverse = Universe.getOrBadRequest(targetUniverseUUID, customer);
       params = new XClusterConfigTaskParams(targetUniverseUUID);
     } else {
       JsonNode requestBody = request.body().asJson();
@@ -800,7 +815,7 @@ public class XClusterConfigController extends AuthenticatedController {
           "Received sync XClusterConfig request for universe({}) replicationGroupName({})",
           formData.targetUniverseUUID,
           formData.replicationGroupName);
-      targetUniverse = Universe.getValidUniverseOrBadRequest(formData.targetUniverseUUID, customer);
+      targetUniverse = Universe.getOrBadRequest(formData.targetUniverseUUID, customer);
       params = new XClusterConfigTaskParams(formData);
     }
 
@@ -846,26 +861,97 @@ public class XClusterConfigController extends AuthenticatedController {
           required = true))
   public Result needBootstrapTable(
       UUID customerUuid, UUID sourceUniverseUuid, String configTypeString, Http.Request request) {
-    log.info(
-        "Received needBootstrapTable request for sourceUniverseUuid={}, configTypeString={}",
-        sourceUniverseUuid,
-        configTypeString);
-
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUuid);
     XClusterConfigNeedBootstrapFormData needBootstrapFormData =
         formFactory.getFormDataOrBadRequest(
             request.body().asJson(), XClusterConfigNeedBootstrapFormData.class);
-    Universe.getValidUniverseOrBadRequest(sourceUniverseUuid, customer);
+    Universe sourceUniverse = Universe.getOrBadRequest(sourceUniverseUuid, customer);
     needBootstrapFormData.tables =
         XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(needBootstrapFormData.tables);
+
+    log.info(
+        "Received needBootstrapTable request for sourceUniverseUuid={}, configTypeString={} "
+            + "with body={}",
+        sourceUniverseUuid,
+        configTypeString,
+        needBootstrapFormData);
+
+    Set<String> allTables = new HashSet<>(needBootstrapFormData.tables);
+
+    // Add index tables.
+    Map<String, List<String>> mainTableIndexTablesMap =
+        XClusterConfigTaskBase.getMainTableIndexTablesMap(
+            this.ybService, sourceUniverse, needBootstrapFormData.tables);
+    Set<String> indexTableIdSet =
+        mainTableIndexTablesMap.values().stream().flatMap(List::stream).collect(Collectors.toSet());
+    allTables.addAll(indexTableIdSet);
+    log.debug("The following index tables are added to the list of tables: {}", indexTableIdSet);
+
+    // If tables do not exist on the target universe, bootstrapping is required.
+    Optional<Set<String>> sourceTableIdsWithNoTableOnTargetUniverseOptional = Optional.empty();
+    if (Objects.nonNull(needBootstrapFormData.targetUniverseUUID)) {
+      Universe targetUniverse =
+          Universe.getOrBadRequest(needBootstrapFormData.targetUniverseUUID, customer);
+
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+          XClusterConfigTaskBase.getTableInfoList(
+              ybService, sourceUniverse, true /* excludeSystemTables */);
+
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+          sourceTableInfoList.stream()
+              .filter(tableInfo -> allTables.contains(tableInfo.getId().toStringUtf8()))
+              .collect(Collectors.toList());
+
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesInfoList =
+          XClusterConfigTaskBase.getTableInfoList(
+              ybService, targetUniverse, true /* excludeSystemTables */);
+      Map<String, String> sourceTableIdTargetTableIdMap =
+          XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
+              requestedTableInfoList, targetTablesInfoList);
+
+      sourceTableIdsWithNoTableOnTargetUniverseOptional =
+          Optional.of(
+              sourceTableIdTargetTableIdMap.entrySet().stream()
+                  .filter(entry -> Objects.isNull(entry.getValue()))
+                  .map(Entry::getKey)
+                  .collect(Collectors.toSet()));
+
+      log.debug(
+          "Tables with no matching on the target are {}",
+          sourceTableIdsWithNoTableOnTargetUniverseOptional.get());
+    }
 
     try {
       Map<String, Boolean> isBootstrapRequiredMap;
       isBootstrapRequiredMap =
           this.xClusterUniverseService.isBootstrapRequired(
-              needBootstrapFormData.tables, null /* xClusterConfig */, sourceUniverseUuid);
-      return PlatformResults.withData(isBootstrapRequiredMap);
+              allTables, null /* xClusterConfig */, sourceUniverseUuid);
+
+      // Merge with the results from sourceTableIdsWithNoTableOnTargetUniverse if required.
+      sourceTableIdsWithNoTableOnTargetUniverseOptional.ifPresent(
+          sourceTableIdsWithNoTableOnTargetUniverse ->
+              sourceTableIdsWithNoTableOnTargetUniverse.forEach(
+                  tableId -> isBootstrapRequiredMap.put(tableId, true)));
+
+      // If an index table needs bootstrapping, its main table needs bootstrapping too because
+      // backup/restore can be done only on the main tables and the index tables will be
+      // automatically included.
+      mainTableIndexTablesMap.forEach(
+          (mainTableId, indexTableIds) -> {
+            if (isBootstrapRequiredMap.containsKey(mainTableId)
+                && isBootstrapRequiredMap.entrySet().stream()
+                    .filter(entry -> indexTableIds.contains(entry.getKey()))
+                    .anyMatch(Entry::getValue)) {
+              isBootstrapRequiredMap.put(mainTableId, true);
+            }
+          });
+
+      // The response should include only the requested tables.
+      return PlatformResults.withData(
+          isBootstrapRequiredMap.entrySet().stream()
+              .filter(entry -> needBootstrapFormData.tables.contains(entry.getKey()))
+              .collect(Collectors.toMap(Entry::getKey, Entry::getValue)));
     } catch (Exception e) {
       log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
       throw new PlatformServiceException(
@@ -943,15 +1029,6 @@ public class XClusterConfigController extends AuthenticatedController {
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams = formData.bootstrapParams;
       bootstrapParams.tables =
           XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(bootstrapParams.tables);
-      // Ensure tables in BootstrapParams is a subset of tables in the main body.
-      if (!formData.tables.containsAll(bootstrapParams.tables)) {
-        throw new IllegalArgumentException(
-            String.format(
-                "The set of tables in bootstrapParams (%s) is not a subset of tables in the "
-                    + "main body (%s)",
-                bootstrapParams.tables, formData.tables));
-      }
-
       // Fail early if parameters are invalid for bootstrapping.
       if (bootstrapParams.tables.size() > 0) {
         validateBackupRequestParamsForBootstrapping(
@@ -989,15 +1066,6 @@ public class XClusterConfigController extends AuthenticatedController {
         XClusterConfigCreateFormData.BootstrapParams bootstrapParams = formData.bootstrapParams;
         bootstrapParams.tables =
             XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(bootstrapParams.tables);
-        // Ensure tables in BootstrapParams is a subset of tables in the main body.
-        if (!formData.tables.containsAll(bootstrapParams.tables)) {
-          throw new IllegalArgumentException(
-              String.format(
-                  "The set of tables in bootstrapParams (%s) is not a subset of tables in the "
-                      + "main body (%s)",
-                  bootstrapParams.tables, formData.tables));
-        }
-
         // Fail early if parameters are invalid for bootstrapping.
         if (bootstrapParams.tables.size() > 0) {
           validateBackupRequestParamsForBootstrapping(

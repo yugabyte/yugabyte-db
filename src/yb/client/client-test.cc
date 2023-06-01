@@ -669,8 +669,8 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   ASSERT_EQ(1, filtered_tablets.size());
 
   for (int i = 0; i < kNumIterations; i++) {
-    auto start_idx = RandomUniformInt(0, PartitionSchema::kMaxPartitionKey - 1);
-    auto end_idx = RandomUniformInt(start_idx + 1, PartitionSchema::kMaxPartitionKey);
+    auto start_idx = RandomUniformInt<uint16_t>(0, PartitionSchema::kMaxPartitionKey - 1);
+    auto end_idx = RandomUniformInt<uint16_t>(start_idx + 1, PartitionSchema::kMaxPartitionKey);
     ASSERT_NO_FATALS(VerifyKeyRangeFiltering(partition_starts, tablets,
                      PartitionSchema::EncodeMultiColumnHashValue(start_idx),
                      PartitionSchema::EncodeMultiColumnHashValue(end_idx)));

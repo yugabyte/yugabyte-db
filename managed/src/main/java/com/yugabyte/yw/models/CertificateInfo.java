@@ -422,6 +422,15 @@ public class CertificateInfo extends Model {
     return certificateInfo;
   }
 
+  public static CertificateInfo getOrBadRequest(UUID customerUUID, String label) {
+    CertificateInfo certificateInfo =
+        find.query().where().eq("label", label).eq("customer_uuid", customerUUID).findOne();
+    if (certificateInfo == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "No certificate with label: " + label);
+    }
+    return certificateInfo;
+  }
+
   public static List<CertificateInfo> getWhereLabelStartsWith(
       String label, CertConfigType certType) {
     List<CertificateInfo> certificateInfoList =

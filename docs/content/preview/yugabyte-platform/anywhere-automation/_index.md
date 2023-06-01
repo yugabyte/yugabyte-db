@@ -18,7 +18,7 @@ Use the following automation tools to manage your YugabyteDB Anywhere installati
 | Automation | Description |
 | :--------- | :---------- |
 | [REST API](https://api-docs.yugabyte.com/docs/yugabyte-platform/) | Deploy and manage database universes using a REST API. |
-| [Terraform provider](https://registry.terraform.io/providers/yugabyte/yba/latest) | Provider for automating YugabyteDB Anywhere resources that are accessible via the API. |
+| [Terraform provider](https://registry.terraform.io/providers/yugabyte/yba/latest/docs/) | Provider for automating YugabyteDB Anywhere resources that are accessible via the API. |
 
 ### Authentication
 

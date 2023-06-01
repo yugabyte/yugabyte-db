@@ -284,7 +284,7 @@ class AwsCloud(AbstractCloud):
         try:
             headers = {'X-aws-ec2-metadata-token-ttl-seconds': '60'}
             token_url = os.path.join(self.BASE_INSTANCE_METADATA_API, "latest", "api", "token")
-            response = requests.put(token_url, headers=headers)
+            response = requests.put(token_url, headers=headers, timeout=20)
             response.raise_for_status()
             token = response.text
         except Exception as e:

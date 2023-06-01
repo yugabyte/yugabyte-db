@@ -540,7 +540,7 @@ func createPemFormatKeyAndCert() error {
 
 	// Create this new concatenated PEM file to write key and cert in order.
 	serverPemPath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerPemPath)
-	pemFile, err := os.OpenFile(serverPemPath, os.O_CREATE|os.O_WRONLY, 0644)
+	pemFile, err := common.Create(serverPemPath)
 	if err != nil {
 		log.Error(fmt.Sprintf("Failed to open server.pem with error: %s", err))
 		return err

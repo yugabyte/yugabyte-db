@@ -141,7 +141,7 @@ class DirectWriteToWriteBatchHandler : public rocksdb::DirectWriteHandler {
   rocksdb::WriteBatch *write_batch_;
 };
 
-} // namespace
+} //  namespace
 
 Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     const DocWriteBatch& dwb,
@@ -314,7 +314,8 @@ Status DocDBRocksDBUtil::SetPrimitive(
     const HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.SetPrimitive(doc_path, control_fields, value, read_ht));
+  RETURN_NOT_OK(dwb.SetPrimitive(
+      doc_path, control_fields, value, ReadOperationData::FromReadTime(read_ht)));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -408,8 +409,8 @@ Status DocDBRocksDBUtil::InsertSubDocument(
     MonoDelta ttl,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.InsertSubDocument(doc_path, value, read_ht,
-                                      CoarseTimePoint::max(), rocksdb::kDefaultQueryId, ttl));
+  RETURN_NOT_OK(dwb.InsertSubDocument(
+      doc_path, value, ReadOperationData::FromReadTime(read_ht), rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -420,8 +421,8 @@ Status DocDBRocksDBUtil::ExtendSubDocument(
     MonoDelta ttl,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.ExtendSubDocument(doc_path, value, read_ht,
-                                      CoarseTimePoint::max(), rocksdb::kDefaultQueryId, ttl));
+  RETURN_NOT_OK(dwb.ExtendSubDocument(
+      doc_path, value, ReadOperationData::FromReadTime(read_ht), rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -431,7 +432,7 @@ Status DocDBRocksDBUtil::ExtendList(
     HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, read_ht, CoarseTimePoint::max()));
+  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, ReadOperationData::FromReadTime(read_ht)));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -447,8 +448,8 @@ Status DocDBRocksDBUtil::ReplaceInList(
     UserTimeMicros user_timestamp) {
   auto dwb = MakeDocWriteBatch();
   RETURN_NOT_OK(dwb.ReplaceCqlInList(
-      doc_path, target_cql_index, value, read_ht, CoarseTimePoint::max(), query_id, default_ttl,
-      ttl));
+      doc_path, target_cql_index, value, ReadOperationData::FromReadTime(read_ht), query_id,
+      default_ttl, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -457,7 +458,7 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
     HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.DeleteSubDoc(doc_path, read_ht));
+  RETURN_NOT_OK(dwb.DeleteSubDoc(doc_path, ReadOperationData::FromReadTime(read_ht)));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -527,18 +528,18 @@ void DocDBRocksDBUtil::SetInitMarkerBehavior(InitMarkerBehavior init_marker_beha
 
 Result<CompactionSchemaInfo> DocDBRocksDBUtil::CotablePacking(
     const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) {
-  if (schema_version == docdb::kLatestSchemaVersion) {
+  if (schema_version == kLatestSchemaVersion) {
     schema_version = 0;
   }
   auto& packing = VERIFY_RESULT_REF(
       doc_read_context().schema_packing_storage.GetPacking(schema_version));
-  return docdb::CompactionSchemaInfo {
+  return CompactionSchemaInfo {
     .table_type = TableType::YQL_TABLE_TYPE,
     .schema_version = schema_version,
     .schema_packing = rpc::SharedField(doc_read_context_, &packing),
     .cotable_id = table_id,
     .deleted_cols = {},
-    .enabled = docdb::PackedRowEnabled(TableType::YQL_TABLE_TYPE, false)
+    .enabled = PackedRowEnabled(TableType::YQL_TABLE_TYPE, false)
   };
 }
 

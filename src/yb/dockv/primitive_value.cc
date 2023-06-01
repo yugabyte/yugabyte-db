@@ -220,7 +220,14 @@ const PrimitiveValue PrimitiveValue::kObject = PrimitiveValue(ValueEntryType::kO
 const KeyEntryValue KeyEntryValue::kLivenessColumn = KeyEntryValue::SystemColumnId(
     SystemColumnIds::kLivenessColumn);
 
-std::string PrimitiveValue::ToString() const {
+std::string PrimitiveValue::ToString(bool render_options) const {
+  if (!render_options) {
+    return ValueToString();
+  }
+  return Format("$0; ttl: $1; write_time: $2", ValueToString(), ttl_seconds_, write_time_);
+}
+
+std::string PrimitiveValue::ValueToString() const {
   switch (type_) {
     case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
     case ValueEntryType::kNullLow:
@@ -1087,11 +1094,14 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
     case KeyEntryType::kIntentTypeSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentType: {
+      if (slice->empty()) {
+        return STATUS_FORMAT(Corruption, "Not enough bytes to decode a TypeSet");
+      }
+      uint16_t value = static_cast<uint16_t>(slice->consume_byte());
       if (out) {
-        out->uint16_val_ = static_cast<uint16_t>(*slice->data());
+        out->uint16_val_ = value;
       }
       type_ref = type;
-      slice->consume_byte();
       return Status::OK();
     }
 

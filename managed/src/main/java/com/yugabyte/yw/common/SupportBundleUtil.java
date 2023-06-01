@@ -56,6 +56,7 @@ import lombok.Data;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.ListUtils;
 import org.apache.commons.compress.archivers.ArchiveException;
 import org.apache.commons.compress.archivers.ArchiveStreamFactory;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -260,10 +261,7 @@ public class SupportBundleUtil {
               return fileDate;
             } catch (Exception e) {
               // Do nothing and skip
-              log.warn(
-                  "Error while trying to parse file name '{}' with regex list '{}'",
-                  fileName,
-                  fileRegexList);
+              // We don't want to log this because it pollutes the logs.
             }
           }
         }
@@ -635,7 +633,7 @@ public class SupportBundleUtil {
           }
         }
       } else {
-        log.info(String.format("Creating output file %s.", outputFile.getAbsolutePath()));
+        // Don't log the output file here because platform logs get polluted.
         File parent = outputFile.getParentFile();
         if (!parent.exists()) parent.mkdirs();
         final OutputStream outputFileStream = new FileOutputStream(outputFile);
@@ -682,6 +680,52 @@ public class SupportBundleUtil {
     return outputFile;
   }
 
+  public void batchWiseDownload(
+      UniverseInfoHandler universeInfoHandler,
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      NodeDetails node,
+      Path nodeTargetFile,
+      String nodeHomeDir,
+      List<String> sourceNodeFiles,
+      String componentName) {
+    // Run command for large number of files in batches.
+    List<List<String>> batchesNodeFiles = ListUtils.partition(sourceNodeFiles, 1000);
+    int batchIndex = 0;
+    for (List<String> batchNodeFiles : batchesNodeFiles) {
+      batchIndex++;
+      log.debug("Running batch {} for {}.", batchIndex, componentName);
+      Path targetFile =
+          universeInfoHandler.downloadNodeFile(
+              customer, universe, node, nodeHomeDir, batchNodeFiles, nodeTargetFile);
+      try {
+        if (Files.exists(targetFile)) {
+          File unZippedFile =
+              unGzip(
+                  new File(targetFile.toAbsolutePath().toString()),
+                  new File(bundlePath.toAbsolutePath().toString()));
+          Files.delete(targetFile);
+          unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
+          unZippedFile.delete();
+        } else {
+          log.debug(
+              String.format(
+                  "No files exist at the source path '%s' for universe '%s' for component '%s'.",
+                  nodeHomeDir, universe.getName(), componentName));
+        }
+      } catch (Exception e) {
+        log.error(
+            String.format(
+                "Something went wrong while trying to untar the files from "
+                    + "component '%s' in the DB node: ",
+                componentName),
+            e);
+      }
+      log.debug("Finished running batch {} for {}.", batchIndex, componentName);
+    }
+  }
+
   public void downloadNodeLevelComponent(
       UniverseInfoHandler universeInfoHandler,
       Customer customer,
@@ -689,7 +733,7 @@ public class SupportBundleUtil {
       Path bundlePath,
       NodeDetails node,
       String nodeHomeDir,
-      String sourceNodeFiles,
+      List<String> sourceNodeFiles,
       String componentName)
       throws Exception {
     if (node == null) {
@@ -710,31 +754,16 @@ public class SupportBundleUtil {
             "Gathering '%s' for node: '%s', source path: '%s', target path: '%s'.",
             componentName, nodeName, nodeHomeDir, nodeTargetFile.toString()));
 
-    Path targetFile =
-        universeInfoHandler.downloadNodeFile(
-            customer, universe, node, nodeHomeDir, sourceNodeFiles, nodeTargetFile);
-    try {
-      if (Files.exists(targetFile)) {
-        File unZippedFile =
-            unGzip(
-                new File(targetFile.toAbsolutePath().toString()),
-                new File(bundlePath.toAbsolutePath().toString()));
-        Files.delete(targetFile);
-        unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
-        unZippedFile.delete();
-      } else {
-        log.debug(
-            String.format(
-                "No files exist at the source path '%s' for universe '%s' for component '%s'.",
-                nodeHomeDir, universe.getName(), componentName));
-      }
-    } catch (Exception e) {
-      log.error(
-          String.format(
-              "Something went wrong while trying to untar the files from "
-                  + "component '%s' in the DB node: ",
-              componentName),
-          e);
-    }
+    // Download all logs batch wise
+    batchWiseDownload(
+        universeInfoHandler,
+        customer,
+        universe,
+        bundlePath,
+        node,
+        nodeTargetFile,
+        nodeHomeDir,
+        sourceNodeFiles,
+        componentName);
   }
 }
