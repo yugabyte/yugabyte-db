@@ -252,7 +252,11 @@ export const NodesTab: FC = () => {
         : !node.is_node_up || !node.is_master_up
         ? false
         : node.metrics.uptime_seconds < 60 && !isLoadBalancerIdleResponse?.is_idle ||
-          node.metrics.user_tablets_leaders + node.metrics.system_tablets_leaders == 0;
+          (!node.is_read_replica ? 
+            node.metrics.user_tablets_leaders + node.metrics.system_tablets_leaders == 0
+            :
+            node.metrics.user_tablets_total + node.metrics.system_tablets_total == 0
+          );
         return node;
       })
       .filter((node) => {
@@ -336,7 +340,7 @@ export const NodesTab: FC = () => {
     return [];
   }, [nodesResponse, fetchingIsLoadBalancerIdle, isLoadBalancerIdleResponse, filter, nodeFilter]);
 
-  const hasReadReplica = !!nodesData.find(node => node.node_data.is_read_replica);
+  const hasReadReplica = !!nodesResponse?.data.find(node => node.is_read_replica);
 
   if (fetchingNodes) {
     return (

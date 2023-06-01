@@ -117,6 +117,7 @@ export const Metrics: FC = () => {
 
   const [tab, setTab] = React.useState<ClusterType>(queryParams.clusterType as ClusterType);
   const [region, setRegion] = React.useState<string>(queryParams.region || '');
+  const [selectedRegion, selectedZone] = region ? region.split('#') : ['', ''];
 
   // const [ setIsMetricsOptionsModalOpen] = useState<boolean>(false);
   const [nodeName, setNodeName] = useState<string | undefined>(queryParams.nodeName);
@@ -286,7 +287,7 @@ export const Metrics: FC = () => {
               </MenuItem>
               {/* <Divider className={classes.dropdownDivider} /> */}
               {regionData.map(data => (
-                <MenuItem key={data.region + '#' + data.zone} value={data.region}>
+                <MenuItem key={data.region + '#' + data.zone} value={data.region + '#' + data.zone}>
                   {data.flag && <Box mr={1}>{data.flag}</Box>} {data.region} ({data.zone})
                 </MenuItem>
               ))}
@@ -384,7 +385,8 @@ export const Metrics: FC = () => {
                     chartDrawingType={config.chartDrawingType}
                     relativeInterval={relativeInterval as RelativeInterval}
                     refreshFromParent={refresh}
-                    regionName={region}
+                    regionName={selectedRegion}
+                    zone={selectedZone}
                     clusterType={tab}
                   />
                 </YBDragableAndDropableItem>

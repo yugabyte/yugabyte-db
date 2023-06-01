@@ -54,8 +54,6 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
   const clusterSpec = cluster?.spec;
 
   const isZone = clusterSpec?.cluster_info.fault_tolerance === ClusterFaultTolerance.Zone;
-  const totalCores = clusterSpec?.cluster_info?.node_info.num_cores ?? 0;
-  const totalDiskSize = clusterSpec?.cluster_info.node_info.disk_size_gb ?? 0;
 
   // Get text for ram usage
   const getRamUsageText = (ramUsageGb: number) => {
@@ -71,13 +69,17 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
 
   // Get nodes
   const { data: nodesResponse } = useGetClusterNodesQuery();
-  const totalRamUsageGb = (nodesResponse?.data.reduce((acc, curr) =>
+  const nodeList = React.useMemo(() => 
+    nodesResponse?.data.filter(node => (readReplica && node.is_read_replica) || (!readReplica && !node.is_read_replica))
+  ,[nodesResponse, readReplica]);
+  const totalRamUsageGb = (nodeList?.reduce((acc, curr) =>
     acc + curr.metrics.ram_provisioned_bytes, 0) ?? 0) / (1024 * 1024 * 1024);
+  const totalCores = (clusterSpec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0);
+  const totalDiskSize = (clusterSpec?.cluster_info.node_info.disk_size_gb ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0);
 
   const regionData = useMemo(() => {
     const set = new Set<string>();
-    nodesResponse?.data.filter(node => (readReplica && node.is_read_replica) || (!readReplica && !node.is_read_replica))
-      .forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
+    nodeList?.forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
     return Array.from(set).map(regionZone => {
       const [region, zone] = regionZone.split('#');
       return {
@@ -85,19 +87,19 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
           name: `${region} (${zone})`,
           code: getRegionCode({ region, zone }),
         },
-        nodeCount: nodesResponse?.data.filter(node => 
+        nodeCount: nodeList?.filter(node => 
           node.cloud_info.region === region && node.cloud_info.zone === zone).length,
-        vCpuPerNode: totalCores / (nodesResponse?.data.length ?? 1),
-        ramPerNode: getRamUsageText(totalRamUsageGb / (nodesResponse?.data.length ?? 1)),
-        diskPerNode: getDiskSizeText(totalDiskSize / (nodesResponse?.data.length ?? 1)),
+        vCpuPerNode: totalCores / (nodeList?.length ?? 1),
+        ramPerNode: getRamUsageText(totalRamUsageGb / (nodeList?.length ?? 1)),
+        diskPerNode: getDiskSizeText(totalDiskSize / (nodeList?.length ?? 1)),
       }
     })
-  }, [nodesResponse, totalCores, totalRamUsageGb, totalDiskSize, readReplica])
+  }, [nodeList, totalCores, totalRamUsageGb, totalDiskSize, readReplica])
 
   const summaryData = useMemo(() => [
     {
       title: t('clusterDetail.settings.regions.totalNodes'),
-      value: nodesResponse?.data.filter(node => (readReplica && node.is_read_replica) || (!readReplica && !node.is_read_replica))
+      value: nodeList?.filter(node => (readReplica && node.is_read_replica) || (!readReplica && !node.is_read_replica))
         .length.toString(),
     },
     {
@@ -112,7 +114,7 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
       title: t('clusterDetail.settings.regions.totalDiskSize'),
       value: getDiskSizeText(totalDiskSize),
     }
-  ], [nodesResponse, totalCores, totalRamUsageGb, totalDiskSize])
+  ], [nodeList, totalCores, totalRamUsageGb, totalDiskSize])
 
   const regionColumns = [
     {

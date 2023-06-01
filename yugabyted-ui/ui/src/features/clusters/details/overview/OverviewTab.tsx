@@ -96,12 +96,12 @@ export const OverviewTab: FC = () => {
   const [region, setRegion] = React.useState<string>('');
   React.useEffect(() => {
     setRegion(
-      (regionData.primary.length > 0 && regionData.primary[0].region + '#PRIMARY') || 
-      (regionData.readReplica.length > 0 && regionData.readReplica[0].region + '#READ_REPLICA') ||
+      (regionData.primary.length > 0 && regionData.primary[0].region + '#' + regionData.primary[0].zone + '#PRIMARY') || 
+      (regionData.readReplica.length > 0 && regionData.readReplica[0].region + '#' + regionData.readReplica[0].zone + '#READ_REPLICA') ||
       ''
     )
   }, [regionData]);
-  const [selectedRegion, clusterType] = region ? region.split('#') : [undefined, undefined];
+  const [selectedRegion, selectedZone, clusterType] = region ? region.split('#') : [undefined, undefined, undefined];
 
   const isMultiRegionEnabled = true;
 
@@ -118,7 +118,7 @@ export const OverviewTab: FC = () => {
           <ClusterStatusWidget cluster={cluster} health={health} />}
       </div>
       <div className={classes.metricsRow}>
-        <Box display="flex" gridGap={10} alignItems="center" width="100%">          
+        <Box display="flex" gridGap={10} alignItems="center" width="100%">
           <Box mr={1}>
             <Typography variant="h5">{t('clusterDetail.keyMetrics')}</Typography>
           </Box>
@@ -131,7 +131,7 @@ export const OverviewTab: FC = () => {
               <Typography variant="body2" className={classes.dropdownTitle}>{t('clusterDetail.primaryCluster')}</Typography>
             }
             {regionData.primary.map(data => (
-              <MenuItem key={data.region + '#PRIMARY'} value={data.region + '#PRIMARY'}>
+              <MenuItem key={data.region + '#' + data.zone + '#PRIMARY'} value={data.region + '#' + data.zone + '#PRIMARY'}>
                 {data.flag && <Box mr={1}>{data.flag}</Box>} {data.region} ({data.zone})
               </MenuItem>
             ))}
@@ -142,7 +142,7 @@ export const OverviewTab: FC = () => {
                 <Typography variant="body2" className={classes.dropdownTitle}>{t('clusterDetail.readReplicas')}</Typography>
             }
             {regionData.readReplica.map(data => (
-              <MenuItem key={data.region + '#READ_REPLICA'} value={data.region + '#READ_REPLICA'}>
+              <MenuItem key={data.region + '#' + data.zone + '#READ_REPLICA'} value={data.region + '#' + data.zone + '#READ_REPLICA'}>
                 {data.flag && <Box mr={1}>{data.flag}</Box>} {data.region} ({data.zone})
               </MenuItem>
             ))}
@@ -185,6 +185,7 @@ export const OverviewTab: FC = () => {
                   chartDrawingType={config.chartDrawingType}
                   relativeInterval={interval}
                   regionName={selectedRegion}
+                  zone={selectedZone}
                   clusterType={clusterType as (ClusterType | undefined)}
                 />
               </Grid>
