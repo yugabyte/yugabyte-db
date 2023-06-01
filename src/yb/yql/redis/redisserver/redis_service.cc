@@ -1041,14 +1041,9 @@ RedisServiceImplData::RedisServiceImplData(RedisServer* server, string&& yb_tier
       initialized_(false),
       server_(server) {}
 
-yb::Result<std::shared_ptr<client::YBTable>> RedisServiceImplData::GetYBTableForDB(
-    const string& db_name) {
-  std::shared_ptr<client::YBTable> table;
+Result<client::YBTablePtr> RedisServiceImplData::GetYBTableForDB(const std::string& db_name) {
   YBTableName table_name = GetYBTableNameForRedisDatabase(db_name);
-  bool was_cached = false;
-  auto res = tables_cache_->GetTable(table_name, &table, &was_cached);
-  if (!res.ok()) return res;
-  return table;
+  return tables_cache_->GetTable(table_name);
 }
 
 void RedisServiceImplData::AppendToMonitors(Connection* conn) {
