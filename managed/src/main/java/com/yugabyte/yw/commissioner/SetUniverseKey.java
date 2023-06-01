@@ -61,20 +61,10 @@ public class SetUniverseKey {
   }
 
   private void setKeyInMaster(Universe u, HostAndPort masterAddr, byte[] keyRef, byte[] keyVal) {
-
     YBClient client = null;
-
-    // If the resume task is in progress the universe keys must be set for encryption to work.
-    // Today on a paused universe, the only task which can run is Resume.
-    if (u.getUniverseDetails().universePaused && !(u.getUniverseDetails().updateInProgress)) {
-      log.info(
-          "Skipping setting universe keys as {} is paused and no task is running",
-          u.getUniverseUUID().toString());
-      return;
-    }
-
     String hostPorts = u.getMasterAddresses();
     String certificate = u.getCertificateNodetoNode();
+
     try {
       String dbKeyId = EncryptionAtRestUtil.getKmsHistory(u.getUniverseUUID(), keyRef).dbKeyId;
       client = ybService.getClient(hostPorts, certificate);
@@ -109,6 +99,14 @@ public class SetUniverseKey {
     try {
       if ((!u.universeIsLocked() || force)
           && EncryptionAtRestUtil.getNumUniverseKeys(u.getUniverseUUID()) > 0) {
+        // If the resume task is in progress the universe keys must be set for encryption to work.
+        // Today on a paused universe, the only task which can run is Resume.
+        if (u.getUniverseDetails().universePaused && !(u.getUniverseDetails().updateInProgress)) {
+          log.info(
+              "Skipping setting universe keys as {} is paused and no task is running",
+              u.getUniverseUUID().toString());
+          return;
+        }
         log.debug(
             String.format(
                 "Setting universe encryption key for universe %s", u.getUniverseUUID().toString()));
