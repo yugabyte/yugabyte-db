@@ -1931,7 +1931,9 @@ SELECT * FROM cypher('cypher_match', $$
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
  {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
-(2 rows)
+ {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
+ {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
+(4 rows)
 
 SELECT * FROM cypher('cypher_match', $$
 	MATCH ()-[r {years:3, relationship: "friends"}]-() RETURN r $$) as (r agtype);
@@ -1947,7 +1949,9 @@ SELECT * FROM cypher('cypher_match', $$
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
  {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
-(2 rows)
+ {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
+ {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
+(4 rows)
 
 --mismatch year #, should return nothing
 SELECT * FROM cypher('cypher_match', $$
@@ -1962,7 +1966,9 @@ SELECT * FROM cypher('cypher_match', $$
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"id": 4785074604081154, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710659, "properties": {"years": 4, "relationship": "enemies"}}::edge
  {"id": 4785074604081154, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710659, "properties": {"years": 4, "relationship": "enemies"}}::edge
-(2 rows)
+ {"id": 4785074604081154, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710659, "properties": {"years": 4, "relationship": "enemies"}}::edge
+ {"id": 4785074604081154, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710659, "properties": {"years": 4, "relationship": "enemies"}}::edge
+(4 rows)
 
 SELECT * FROM cypher('cypher_match', $$
 	MATCH ()-[r {relationship:"enemies"}]-() MATCH ()-[r {relationship:"friends"}]-() RETURN r $$) as (r agtype);
@@ -2101,6 +2107,18 @@ SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_whatever) RETURN 0 $
 ERROR:  _age_default_ is only for internal use
 LINE 1: SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_...
                                                        ^
+-- issue 876
+SELECT * FROM cypher('cypher_match', $$ MATCH ({name: "Dave"}) MATCH ({name: "Dave"}) MATCH ({name: "Dave"}) RETURN 0 $$) as (a agtype);
+ a 
+---
+ 0
+(1 row)
+
+SELECT * FROM cypher('cypher_match', $$MATCH ({n0:0}) MATCH ()-[]->() MATCH ({n1:0})-[]-() RETURN 0 AS n2$$) as (a agtype);
+ a 
+---
+(0 rows)
+
 --
 -- self referencing property constraints (issue #898)
 --

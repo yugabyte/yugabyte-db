@@ -960,6 +960,10 @@ SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_) RETURN _age_defaul
 SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_a) RETURN _age_default_a $$) as (a agtype);
 SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_whatever) RETURN 0 $$) as (a agtype);
 
+-- issue 876
+SELECT * FROM cypher('cypher_match', $$ MATCH ({name: "Dave"}) MATCH ({name: "Dave"}) MATCH ({name: "Dave"}) RETURN 0 $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$MATCH ({n0:0}) MATCH ()-[]->() MATCH ({n1:0})-[]-() RETURN 0 AS n2$$) as (a agtype);
+
 --
 -- self referencing property constraints (issue #898)
 --
