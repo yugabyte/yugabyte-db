@@ -903,6 +903,9 @@ drop_server = 'DROP' 'SERVER' [ 'IF' 'EXISTS' ] server_name [ 'CASCADE' | 'RESTR
 drop_table = 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name { ',' table_name}
                   [ 'CASCADE' | 'RESTRICT' ] ;
 
+(* 'DROP' 'INDEX' *)
+drop_index = 'DROP' 'INDEX' [ 'IF' 'EXISTS' ] index_name [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* 'DROP' 'TYPE' *)
 drop_type = 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
               [ 'CASCADE' | 'RESTRICT' ] ;
