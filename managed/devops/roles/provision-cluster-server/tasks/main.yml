@@ -303,6 +303,24 @@
       group: "{{ user_name }}"
       mode: 0644
 
+  - name: Create or Update .bashrc file
+    blockinfile:
+      dest: "{{ yb_home_dir }}/.bashrc"
+      block: |
+        ORANGE='\033[0;33m'
+        NC='\033[0m' # No Color
+
+        if [[ $- == *i* ]]
+            then export PS1="[\u@\h ~]\$ "
+            if [ "$EUID" -ne 0 ]
+                then echo -e "Use ${ORANGE}'sudo systemctl'${NC} to manage YB software"
+                else echo -e "Use ${ORANGE}'systemctl --user'${NC} to manage YB software"
+            fi
+        fi
+      create: yes
+      state: present
+      mode: 0644
+
   tags: systemd_upgrade
   when: systemd_option
 
