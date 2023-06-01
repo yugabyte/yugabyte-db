@@ -143,7 +143,7 @@ public class NodeInstance extends Model {
 
   public static List<NodeInstance> listByProvider(UUID providerUUID) {
     String nodeQuery =
-        "select DISTINCT n.*   from node_instance n, availability_zone az, region r, provider p "
+        "select DISTINCT n.* from node_instance n, availability_zone az, region r, provider p "
             + " where n.zone_uuid = az.uuid and az.region_uuid = r.uuid and r.provider_uuid = "
             + "'"
             + providerUUID

@@ -369,22 +369,18 @@ main() {
       fi
       if [ -z "$CERT_DIR" ]; then
         echo "Cert directory is required."
-        show_usage >&2
         exit 1
       fi
       if [ -z "$NODE_AGENT_ID" ]; then
         echo "Cert directory is required."
-        show_usage >&2
         exit 1
       fi
       if [ ! -f "$NODE_AGENT_PKG_TGZ_PATH" ]; then
         echo "$NODE_AGENT_PKG_TGZ_PATH is not found."
-        show_usage >&2
         exit 1
       fi
       if [ ! -d "$NODE_AGRNT_CERT_PATH" ]; then
         echo "$NODE_AGRNT_CERT_PATH is not found."
-        show_usage >&2
         exit 1
       fi
       NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
@@ -413,10 +409,12 @@ main() {
     fi
     if [ -z "$NODE_IP" ]; then
       echo "Node IP is required."
+      show_usage >&2
       exit 1
     fi
     if [ "$SUDO_ACCESS" = "false" ]; then
       echo "SUDO access is required."
+      show_usage >&2
       exit 1
     fi
     set_node_agent_base_url
@@ -527,6 +525,7 @@ if [ -z "$INSTALL_USER" ]; then
   fi
   INSTALL_USER="$CURRENT_USER"
 elif [ "$INSTALL_USER" != "$CURRENT_USER" ] && [ "$COMMAND" != "install_service" ]; then
+  show_usage >&2
   echo "Different user can be passed only for installing service."
   exit 1
 fi
