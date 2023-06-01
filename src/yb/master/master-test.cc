@@ -104,7 +104,20 @@ class MasterTest : public MasterTestBase {
   string GetWebserverDir() { return GetTestPath("webserver-docroot"); }
 
   void TestRegisterDistBroadcastDupPrivate(string use_private_ip, bool only_check_used_host_port);
+
+  Result<TSHeartbeatResponsePB> SendHeartbeat(
+      TSToMasterCommonPB common, TSRegistrationPB registration);
 };
+
+Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
+    TSToMasterCommonPB common, TSRegistrationPB registration) {
+  TSHeartbeatRequestPB req;
+  TSHeartbeatResponsePB resp;
+  req.mutable_common()->Swap(&common);
+  req.mutable_registration()->Swap(&registration);
+  RETURN_NOT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+  return resp;
+}
 
 TEST_F(MasterTest, TestPingServer) {
   // Ping the server.
@@ -119,6 +132,14 @@ TEST_F(MasterTest, TestPingServer) {
 static void MakeHostPortPB(const std::string& host, uint32_t port, HostPortPB* pb) {
   pb->set_host(host);
   pb->set_port(port);
+}
+
+CloudInfoPB MakeCloudInfoPB(std::string cloud, std::string region, std::string zone) {
+  CloudInfoPB result;
+  *result.mutable_placement_cloud() = std::move(cloud);
+  *result.mutable_placement_region() = std::move(region);
+  *result.mutable_placement_zone() = std::move(zone);
+  return result;
 }
 
 // Test that shutting down a MiniMaster without starting it does not
@@ -425,6 +446,57 @@ TEST_F(MasterTest, TestRegisterDistBroadcastDupPrivateUsePrivateIpRegionCheckUse
 TEST_F(MasterTest, TestRegisterDistBroadcastDupPrivateUsePrivateIpRegionCheckAll) {
   TestRegisterDistBroadcastDupPrivate(
       /*use_private_ip*/ "region", /*only_check_used_host_port*/ false);
+}
+
+TEST_F(MasterTest, TestReRegisterRemovedUUID) {
+  // When a tserver's disk is wiped and the process restarted, the tserver comes back with a
+  // different uuid. If a quorum is broken by a majority of tservers failing in this way, one
+  // strategy to repair the quorum is to reset the wiped tservers with their original uuids.
+  // However this requires the master to re-register a tserver with a uuid it has seen before and
+  // rejected due to seeing a later sequence number from the same node. This test verifies the
+  // master process can handle re-registering tservers with uuids it has previously removed.
+  const std::string first_uuid = "uuid1";
+  const std::string second_uuid = "uuid2";
+  vector<shared_ptr<TSDescriptor>> descs;
+  int seqno = 1;
+  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  EXPECT_EQ(descs.size(), 0);
+  TSToMasterCommonPB original_common;
+  TSRegistrationPB registration;
+  original_common.mutable_ts_instance()->set_permanent_uuid(first_uuid);
+  original_common.mutable_ts_instance()->set_instance_seqno(seqno++);
+  MakeHostPortPB("localhost", 1000, registration.mutable_common()->add_private_rpc_addresses());
+  MakeHostPortPB("localhost", 1000, registration.mutable_common()->add_broadcast_addresses());
+  MakeHostPortPB("localhost", 2000, registration.mutable_common()->add_http_addresses());
+  *registration.mutable_common()->mutable_cloud_info() = MakeCloudInfoPB("cloud", "region", "zone");
+  auto resp = ASSERT_RESULT(SendHeartbeat(original_common, registration));
+  EXPECT_FALSE(resp.needs_reregister());
+
+  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  ASSERT_EQ(descs.size(), 1);
+  auto original_desc = descs[0];
+
+  auto new_common = original_common;
+  new_common.mutable_ts_instance()->set_permanent_uuid(second_uuid);
+  new_common.mutable_ts_instance()->set_instance_seqno(seqno++);
+  resp = ASSERT_RESULT(SendHeartbeat(new_common, registration));
+  EXPECT_FALSE(resp.needs_reregister());
+  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  // This function filters out descriptors of removed tservers so we still expect just 1 descriptor.
+  ASSERT_EQ(descs.size(), 1);
+  auto new_desc = descs[0];
+  EXPECT_EQ(new_desc->permanent_uuid(), second_uuid);
+  EXPECT_TRUE(original_desc->IsRemoved());
+
+  auto updated_original_common = original_common;
+  updated_original_common.mutable_ts_instance()->set_instance_seqno(seqno++);
+  resp = ASSERT_RESULT(SendHeartbeat(updated_original_common, registration));
+  EXPECT_FALSE(resp.needs_reregister());
+
+  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  ASSERT_EQ(descs.size(), 1);
+  EXPECT_EQ(descs[0]->permanent_uuid(), first_uuid);
+  EXPECT_TRUE(new_desc->IsRemoved());
 }
 
 TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
