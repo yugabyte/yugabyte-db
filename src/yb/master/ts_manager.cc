@@ -66,12 +66,18 @@ Status TSManager::LookupTS(const NodeInstancePB& instance,
   const TSDescriptorPtr* found_ptr =
     FindOrNull(servers_by_id_, instance.permanent_uuid());
   if (!found_ptr || (*found_ptr)->IsRemoved()) {
-    return STATUS(NotFound, "unknown tablet server ID", instance.ShortDebugString());
+    return STATUS_FORMAT(
+        NotFound,
+        "unknown tablet server ID, server is in map: $0, server is removed: $1, instance data: $2",
+        found_ptr != nullptr, found_ptr ? (*found_ptr)->IsRemoved() : false,
+        instance.ShortDebugString());
   }
   const TSDescriptorPtr& found = *found_ptr;
 
   if (instance.instance_seqno() != found->latest_seqno()) {
-    return STATUS(NotFound, "mismatched instance sequence number", instance.ShortDebugString());
+    return STATUS_FORMAT(
+        NotFound, "mismatched instance sequence number $0, instance $1", found->latest_seqno(),
+        instance.ShortDebugString());
   }
 
   *ts_desc = found;
