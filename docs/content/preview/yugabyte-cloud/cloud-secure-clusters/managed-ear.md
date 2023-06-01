@@ -39,7 +39,7 @@ Enabling EAR can impact cluster performance. You should monitor your workload af
 
   {{% tab header="AWS" lang="aws" %}}
 
-- Single-region [symmetric encryption key](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#symmetric-cmks) created in AWS KMS. The key resource policy should include the [following actions](https://docs.aws.amazon.com/kms/latest/developerguide/key-policy-default.html#key-policy-users-crypto):
+- Single-region [symmetric encryption key](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#symmetric-cmks) created in AWS KMS. The key resource policy should include the following [actions](https://docs.aws.amazon.com/kms/latest/developerguide/key-policy-default.html#key-policy-users-crypto):
   - kms:Encrypt
   - kms:Decrypt
   - kms:GenerateDataKeyWithoutPlaintext
