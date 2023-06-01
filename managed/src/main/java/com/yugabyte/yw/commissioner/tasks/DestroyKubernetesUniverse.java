@@ -240,6 +240,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
     params.providerUUID = providerUUID;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.universeName = universeName;
+    params.azCode = az;
     params.helmReleaseName =
         KubernetesUtil.getHelmReleaseName(
             nodePrefix, universeName, az, isReadOnlyCluster, newNamingStyle);
