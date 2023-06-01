@@ -915,7 +915,7 @@ class ControlScript(object):
             masters_with_key[i] = master
 
         ret = True
-        if masters_with_key < len(master_ips):
+        if len(masters_with_key) < len(master_ips):
             ret = False
 
         for master in master_ips:
