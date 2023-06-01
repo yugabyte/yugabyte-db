@@ -931,7 +931,7 @@ public class TaskExecutor {
         }
         errorString =
             String.format(
-                "Failed to execute task %s, git error:\n\n %s.",
+                "Failed to execute task %s, hit error:\n\n %s.",
                 StringUtils.abbreviate(maskedTaskDetails, 500),
                 StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
       }
