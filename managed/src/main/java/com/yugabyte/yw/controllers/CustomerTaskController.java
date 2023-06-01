@@ -32,6 +32,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.FailedSubtasks;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.ExpressionList;
 import io.swagger.annotations.Api;
@@ -244,9 +245,12 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get a task's failed subtasks",
+      value =
+          "Deprecated: sinceDate=2023-06-06, sinceYBAVersion=2.19.1.0, "
+              + "Use /api/v1/customers/{cUUID}/tasks/{tUUID}/failed_subtasks instead",
       responseContainer = "Map",
       response = Object.class)
+  @Deprecated
   public Result failedSubtasks(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
@@ -255,6 +259,20 @@ public class CustomerTaskController extends AuthenticatedController {
     ObjectNode responseJson = Json.newObject();
     responseJson.put("failedSubTasks", Json.toJson(failedSubTasks));
     return ok(responseJson);
+  }
+
+  @ApiOperation(value = "Get a list of task's failed subtasks", response = FailedSubtasks.class)
+  public Result listFailedSubtasks(UUID customerUUID, UUID taskUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+
+    FailedSubtasks failedSubtasks = new FailedSubtasks();
+    List<SubTaskFormData> failedSubtaskFormDataList = fetchFailedSubTasks(taskUUID);
+    failedSubtasks.failedSubTasks =
+        failedSubtaskFormDataList.stream()
+            .map(s -> FailedSubtasks.toSubtaskData(s))
+            .collect(Collectors.toList());
+    return PlatformResults.withData(failedSubtasks);
   }
 
   @ApiOperation(
