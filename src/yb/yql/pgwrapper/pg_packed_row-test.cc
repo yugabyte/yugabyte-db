@@ -55,6 +55,7 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase> {
   void TestCompaction(int num_keys, const std::string& expr_suffix);
   void TestColocated(int num_keys, int num_expected_records);
   void TestSstDump(bool specify_metadata, std::string* output);
+  void TestAppliedSchemaVersion(bool colocated);
 };
 
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
@@ -729,19 +730,31 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CleanupIntentDocHt)) {
   }
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AppliedSchemaVersion)) {
-  // Set retention interval to 0, to repack all recently flushed entries.
+void PgPackedRowTest::TestAppliedSchemaVersion(bool colocated) {
   FLAGS_timestamp_history_retention_interval_sec = 0;
   FLAGS_rocksdb_level0_file_num_compaction_trigger = 2;
   FLAGS_rocksdb_universal_compaction_always_include_size_threshold = 1_KB;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
 
   auto conn = ASSERT_RESULT(Connect());
-
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key TEXT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  if (colocated) {
+    ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
+    conn = ASSERT_RESULT(ConnectToDB("test"));
+  }
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE t (key TEXT PRIMARY KEY, v1 INT, v2 INT)$0",
+      colocated ? "" : "SPLIT INTO 1 TABLETS"));
+  if (colocated) {
+    ASSERT_OK(conn.Execute("CREATE INDEX t_v1 ON t (v1)"));
+    ASSERT_OK(conn.Execute("CREATE INDEX t_v2 ON t (v2)"));
+    ASSERT_OK(conn.Execute("CREATE INDEX t_v12 ON t (v1, v2)"));
+    ASSERT_OK(conn.Execute("CREATE INDEX t_v21 ON t (v2, v1)"));
+  }
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO t (key) VALUES ('$0')", RandomHumanReadableString(512_KB)));
+      "INSERT INTO t (key, v1, v2) VALUES ('$0', $1, $2)",
+      RandomHumanReadableString(512_KB), RandomUniformInt<int32_t>(), RandomUniformInt<int32_t>()));
   ASSERT_OK(conn.CommitTransaction());
 
   std::this_thread::sleep_for(5s);
@@ -755,6 +768,14 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AppliedSchemaVersion)) {
   }
 
   ASSERT_OK(cluster_->CompactTablets());
+}
+
+TEST_F(PgPackedRowTest, AppliedSchemaVersion) {
+  TestAppliedSchemaVersion(false);
+}
+
+TEST_F(PgPackedRowTest, AppliedSchemaVersionWithColocation) {
+  TestAppliedSchemaVersion(true);
 }
 
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(UpdateToNull)) {
