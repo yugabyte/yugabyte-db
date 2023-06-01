@@ -295,7 +295,15 @@ public class Universe extends Model {
   }
 
   public static Set<Universe> getAllWithoutResources(Customer customer) {
-    List<Universe> rawList = find.query().where().eq("customer_id", customer.getId()).findList();
+    return getAllWithoutResources(customer, null);
+  }
+
+  public static Set<Universe> getAllWithoutResources(Customer customer, UUID uuid) {
+    ExpressionList<Universe> query = find.query().where().eq("customer_id", customer.getId());
+    if (uuid != null) {
+      query.idEq(uuid);
+    }
+    List<Universe> rawList = query.findList();
     return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
   }
 
