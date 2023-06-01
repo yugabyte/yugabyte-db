@@ -125,9 +125,12 @@ enum SysCacheIdentifier
 /* Used in IsYugaByteEnabled() mode only */
 extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
 extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
+
+#ifdef YB_TODO
 extern void YbInitPinnedCacheIfNeeded();
-extern void YbResetPinnedCache();
 extern bool YbIsObjectPinned(Oid classId, Oid objectId, bool shared_dependency);
+#endif
+extern void YbResetPinnedCache();
 extern void YbPinObjectIfNeeded(Oid classId, Oid objectId, bool shared_dependency);
 
 extern void InitCatalogCache(void);

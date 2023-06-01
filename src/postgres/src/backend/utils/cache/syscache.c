@@ -1355,12 +1355,10 @@ YbBuildPinnedObjectCache(const char *name,
 	table_close(dependDesc, RowExclusiveLock);
 	return cache;
 }
-#endif
 
 static void
 YbLoadPinnedObjectsCache()
 {
-#ifdef YB_TODO
 	/* YB_TODO(dmitry@yugabyte)
 	 * - This needs to be fixed.
 	 * - SHARED_DEPENDENCY_PIN and DEPENDENCY_PIN are removed from Pg13.
@@ -1379,7 +1377,6 @@ YbLoadPinnedObjectsCache()
 		                                    DEPENDENCY_PIN,
 		                                    YBFetchPinnedObjectKeyFromPgDepend)};
 	YBPinnedObjectsCache = cache;
-#endif
 }
 
 /* Build the cache in case it is not yet ready. */
@@ -1396,6 +1393,7 @@ YbInitPinnedCacheIfNeeded()
 		YbLoadPinnedObjectsCache();
 	}
 }
+#endif
 
 void
 YbResetPinnedCache()
@@ -1414,6 +1412,7 @@ YbResetPinnedCache()
 	}
 }
 
+#ifdef YB_TODO
 bool
 YbIsObjectPinned(Oid classId, Oid objectId, bool shared_dependency)
 {
@@ -1424,6 +1423,7 @@ YbIsObjectPinned(Oid classId, Oid objectId, bool shared_dependency)
 	YbPinnedObjectKey key = {.classid = classId, .objid = objectId};
 	return hash_search(cache, &key, HASH_FIND, NULL);
 }
+#endif
 
 /*
  * Pin a new object using YB pinned objects cache.

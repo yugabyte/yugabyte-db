@@ -781,9 +781,11 @@ changeDependenciesOn(Oid refClassId, Oid oldRefObjectId,
 static bool
 isObjectPinned(const ObjectAddress *object)
 {
+	#ifdef YB_TODO
 	if (IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())
 		return YbIsObjectPinned(object->classId, object->objectId,
 								false /* shared_dependency */);
+	#endif
 	return IsPinnedObject(object->classId, object->objectId);
 }
 

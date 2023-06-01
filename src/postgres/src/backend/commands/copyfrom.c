@@ -53,6 +53,9 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
+/* Yugabyte includes */
+#include "executor/ybcModifyTable.h"
+
 /* YB_TODO(ena & mihnea@yugabyte) Rework COPY command */
 
 /*
@@ -326,13 +329,17 @@ CopyMultiInsertBufferFlush(CopyMultiInsertInfo *miinfo,
 	 * table_multi_insert may leak memory, so switch to short-lived memory
 	 * context before calling it.
 	 */
+	/* YB_REVIEW(neil) Revisit later. */
 	oldcontext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-	table_multi_insert(resultRelInfo->ri_RelationDesc,
-					   slots,
-					   nused,
-					   mycid,
-					   ti_options,
-					   buffer->bistate);
+	if (IsYBRelation(resultRelInfo->ri_RelationDesc))
+		YBCTupleTableMultiInsert(resultRelInfo, slots, nused, estate);
+	else
+		table_multi_insert(resultRelInfo->ri_RelationDesc,
+						slots,
+						nused,
+						mycid,
+						ti_options,
+						buffer->bistate);
 	MemoryContextSwitchTo(oldcontext);
 
 	for (i = 0; i < nused; i++)

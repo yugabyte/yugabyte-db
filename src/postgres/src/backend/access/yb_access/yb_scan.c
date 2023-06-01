@@ -3014,8 +3014,8 @@ YbFetchTableSlot(Relation relation, ItemPointer tid,  TupleTableSlot *slot)
 	YBCPgStatement ybc_stmt;
 
 	TupleDesc tupdesc = RelationGetDescr(relation);
-	Datum *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
-	bool *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	slot->tts_values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
+	slot->tts_isnull  = (bool *) palloc(tupdesc->natts * sizeof(bool));
 	YBCPgSysColumns syscols;
 
 	/* Read data */
@@ -3024,7 +3024,7 @@ YbFetchTableSlot(Relation relation, ItemPointer tid,  TupleTableSlot *slot)
 								  NULL /* prepare_params */,
 								  YBCIsRegionLocal(relation),
 								  &ybc_stmt));
-	has_data = YbFetchRowData(ybc_stmt, relation, tid, values, nulls, &syscols);
+	has_data = YbFetchRowData(ybc_stmt, relation, tid, slot->tts_values, slot->tts_isnull, &syscols);
 
 	/* Write into the given slot */
 	if (has_data)
@@ -3035,12 +3035,13 @@ YbFetchTableSlot(Relation relation, ItemPointer tid,  TupleTableSlot *slot)
 		{
 			TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
 		}
-		/* YB_TODO: Why are we not setting values and nulls. */
 	}
 
-	/* Free up memory and return data */
+	#ifdef YB_TODO
+	/* YB_TODO(neil): pfree values and nulls at appropriate place. */
 	pfree(values);
 	pfree(nulls);
+	#endif
 	YBCPgDeleteStatement(ybc_stmt);
 	return has_data;
 }
