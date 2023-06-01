@@ -58,25 +58,20 @@ public class MetricsController extends Controller {
       response = String.class,
       nickname = "MetricsDetail")
   public Result index() {
-    final ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
-    try {
-      final OutputStreamWriter osw = new OutputStreamWriter(response);
+    try (ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
+        OutputStreamWriter osw = new OutputStreamWriter(response)) {
       // Write runtime metrics
       TextFormat.write004(osw, CollectorRegistry.defaultRegistry.metricFamilySamples());
       // Write persisted metrics
       TextFormat.write004(osw, Collections.enumeration(getPrecalculatedMetrics()));
       // Write Kamon metrics
       osw.write(getKamonMetrics());
-
       osw.flush();
-      osw.close();
       response.flush();
-      response.close();
+      return Results.status(OK, response.toString());
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-
-    return Results.status(OK, response.toString());
   }
 
   private String getKamonMetrics() {
