@@ -55,7 +55,7 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 | [pg_stat_monitor](https://github.com/percona/pg_stat_monitor) | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module. | |
 | [Orafce](https://github.com/orafce/orafce) | Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB. | |
 | [PostGIS](https://postgis.net/) | Requires installation | A spatial database extender for PostgreSQL-compatible object-relational databases. | [Install and example](#postgis-example) |
-| [postgresql-hll](https://github.com/citusdata/postgresql-hll) | Requires installation | Introduces the data type `hll`, which is a HyperLogLog data structure. | [Install and example](#postgresql-hll-example) |
+| [postgresql-hll](https://github.com/citusdata/postgresql-hll) | Pre-bundled | Introduces the data type `hll`, which is a HyperLogLog data structure. | [Example](#postgresql-hll-example) |
 | [pgsql-postal](https://github.com/pramsey/pgsql-postal) | Requires installation | Parse and normalize street addresses around the world using libpostal. | [Install and example](#pgsql-postal-example) |
 
 ## Install extensions
@@ -470,33 +470,56 @@ SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
 
 ### postgresql-hll example
 
-First, install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance. Use the same PostgreSQL version as that incorporated into YugabyteDB.
+First, install the extension:
 
-After you've installed the extension in PostgreSQL, copy the files to your YugabyteDB instance as follows:
-
-```sh
-cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" &&
-cp -v "$(pg_config --sharedir)"/extension/*hll*.sql "$(yb_pg_config --sharedir)"/extension &&
-cp -v "$(pg_config --sharedir)"/extension/*hll*.control "$(yb_pg_config --sharedir)"/extension &&
-  ./bin/ysqlsh -c "CREATE EXTENSION \"hll\";"
+```sql
+CREATE EXTENSION "hll";
 ```
 
 To run the example from the [postgresql-hll](https://github.com/citusdata/postgresql-hll#usage) repository, connect using `ysqlsh` and run the following:
 
 ```sql
-yugabyte=# CREATE TABLE helloworld (id integer, set hll);
+CREATE TABLE helloworld (id integer, set hll);
+```
+
+```output
 CREATE TABLE
---- Insert an empty HLL
-yugabyte=# INSERT INTO helloworld(id, set) VALUES (1, hll_empty());
+```
+
+Insert an empty HLL as follows:
+
+```sql
+INSERT INTO helloworld(id, set) VALUES (1, hll_empty());
+```
+
+```output
 INSERT 0 1
---- Add a hashed integer to the HLL
-yugabyte=# UPDATE helloworld SET set = hll_add(set, hll_hash_integer(12345)) WHERE id = 1;
+```
+
+Add a hashed integer to the HLL as follows:
+
+```sql
+UPDATE helloworld SET set = hll_add(set, hll_hash_integer(12345)) WHERE id = 1;
+```
+
+```output
 UPDATE 1
---- Or add a hashed string to the HLL
-yugabyte=# UPDATE helloworld SET set = hll_add(set, hll_hash_text('hello world')) WHERE id = 1;
+```
+
+Add a hashed string to the HLL as follows:
+
+```sql
+UPDATE helloworld SET set = hll_add(set, hll_hash_text('hello world')) WHERE id = 1;
+```
+
+```output
 UPDATE 1
---- Get the cardinality of the HLL
-yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
+```
+
+Get the cardinality of the HLL as follows:
+
+```sql
+SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
 ```
 
 ```output
