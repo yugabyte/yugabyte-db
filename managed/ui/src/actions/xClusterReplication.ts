@@ -75,6 +75,7 @@ export function restartXClusterConfig(
 
 export function isBootstrapRequired(
   sourceUniverseUUID: string,
+  targetUniverseUUID: string | null,
   tableUUIDs: string[],
   configType: XClusterConfigType = XClusterConfigType.BASIC
 ) {
@@ -82,7 +83,10 @@ export function isBootstrapRequired(
   return axios
     .post<{ [tableUUID: string]: boolean }>(
       `${ROOT_URL}/customers/${customerId}/universes/${sourceUniverseUUID}/need_bootstrap`,
-      { tables: tableUUIDs },
+      {
+        tables: tableUUIDs,
+        targetUniverseUUID,
+      },
       { params: { configType } }
     )
     .then((response) => response.data);

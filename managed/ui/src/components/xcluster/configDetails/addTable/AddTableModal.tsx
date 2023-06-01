@@ -376,9 +376,12 @@ const validateForm = async (
       }
       let bootstrapTableUUIDs: string[] | null = null;
       try {
+        // We pass null as the target universe in the following method because add table does not
+        // support the case where a matching table does not exist on the target universe.
         bootstrapTableUUIDs = await getTablesForBootstrapping(
           values.tableUUIDs,
           sourceUniverse.universeUUID,
+          null /* targetUniverseUUID */,
           sourceUniverseTables,
           xClusterConfigType
         );
