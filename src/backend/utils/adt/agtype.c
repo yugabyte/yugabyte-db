@@ -2179,9 +2179,11 @@ Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
                                    string_to_agtype_value("id"));
 
     if (fcinfo->argnull[0])
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("_agtype_build_vertex() graphid cannot be NULL")));
+    }
 
     id = AG_GETARG_GRAPHID(0);
     result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
@@ -2192,8 +2194,10 @@ Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
                                    string_to_agtype_value("label"));
 
     if (fcinfo->argnull[1])
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("_agtype_build_vertex() label cannot be NULL")));
+    }
 
     result.res =
         push_agtype_value(&result.parse_state, WAGT_VALUE,
@@ -2216,11 +2220,11 @@ Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
         agtype *properties = AG_GET_ARG_AGTYPE_P(2);
 
         if (!AGT_ROOT_IS_OBJECT(properties))
-            ereport(
-                ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg(
-                     "_agtype_build_vertex() properties argument must be an object")));
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("_agtype_build_vertex() properties argument must be an object")));
+        }
 
         add_agtype((Datum)properties, false, &result, AGTYPEOID, false);
     }
@@ -2234,11 +2238,7 @@ Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
 
 Datum make_vertex(Datum id, Datum label, Datum properties)
 {
-    return DirectFunctionCall3(_agtype_build_vertex,
-                     id,
-                     label,
-                     properties);
-
+    return DirectFunctionCall3(_agtype_build_vertex, id, label, properties);
 }
 
 PG_FUNCTION_INFO_V1(_agtype_build_edge);
@@ -2261,9 +2261,11 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
                                    string_to_agtype_value("id"));
 
     if (fcinfo->argnull[0])
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("_agtype_build_edge() graphid cannot be NULL")));
+    }
 
     id = AG_GETARG_GRAPHID(0);
     result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
@@ -2274,8 +2276,10 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
                                    string_to_agtype_value("label"));
 
     if (fcinfo->argnull[3])
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("_agtype_build_vertex() label cannot be NULL")));
+    }
 
     result.res =
         push_agtype_value(&result.parse_state, WAGT_VALUE,
@@ -2286,9 +2290,11 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
                                    string_to_agtype_value("end_id"));
 
     if (fcinfo->argnull[2])
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("_agtype_build_edge() endid cannot be NULL")));
+    }
 
     end_id = AG_GETARG_GRAPHID(2);
     result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
@@ -2299,9 +2305,11 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
                                    string_to_agtype_value("start_id"));
 
     if (fcinfo->argnull[1])
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("_agtype_build_edge() startid cannot be NULL")));
+    }
 
     start_id = AG_GETARG_GRAPHID(1);
     result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
@@ -2324,11 +2332,11 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
         agtype *properties = AG_GET_ARG_AGTYPE_P(4);
 
         if (!AGT_ROOT_IS_OBJECT(properties))
-            ereport(
-                ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg(
-                     "_agtype_build_edge() properties argument must be an object")));
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("_agtype_build_edge() properties argument must be an object")));
+        }
 
         add_agtype((Datum)properties, false, &result, AGTYPEOID, false);
     }
