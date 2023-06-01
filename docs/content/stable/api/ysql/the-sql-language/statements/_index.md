@@ -60,6 +60,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP FOREIGN DATA WRAPPER`](ddl_drop_foreign_data_wrapper) | Drop a foreign-data wrapper |
 | [`DROP FOREIGN TABLE`](ddl_drop_foreign_table) | Drop a foreign table |
 | [`DROP FUNCTION`](ddl_drop_function) | Delete a function |
+| [`DROP INDEX`](ddl_drop_index) | Delete an index from a database |
 | [`DROP MATERIALIZED VIEW`](ddl_drop_matview) | Drop a materialized view |
 | [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
 | [`DROP OPERATOR CLASS`](ddl_drop_operator_class) | Delete an operator class |
