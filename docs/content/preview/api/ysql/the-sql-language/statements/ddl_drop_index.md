@@ -106,7 +106,6 @@ Indexes:
     "t1_pkey" PRIMARY KEY, lsm (id HASH)
 ```
 
-
 ## See also
 
 - [`CREATE INDEX`](../ddl_create_index)
