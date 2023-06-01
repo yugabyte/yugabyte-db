@@ -12680,6 +12680,11 @@
           },
           "type" : "array",
           "uniqueItems" : true
+        },
+        "targetUniverseUUID" : {
+          "description" : "If specified and tables do not exist on the target universe, bootstrapping is required.",
+          "format" : "uuid",
+          "type" : "string"
         }
       },
       "required" : [ "tables" ],

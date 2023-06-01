@@ -503,6 +503,7 @@ const validateForm = async (
           bootstrapTableUUIDs = await getTablesForBootstrapping(
             values.tableUUIDs.map(adaptTableUUID),
             sourceUniverse.universeUUID,
+            values.targetUniverse.value.universeUUID,
             sourceUniverseTables,
             values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC
           );
