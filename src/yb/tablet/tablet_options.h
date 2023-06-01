@@ -89,6 +89,7 @@ struct TabletInitData {
   ThreadPool* full_compaction_pool;
   ThreadPool* admin_triggered_compaction_pool;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
+  client::YBMetaDataCache* metadata_cache;
 };
 
 } // namespace tablet

@@ -374,6 +374,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // should_wait determines whether this function is asynchronous or not.
   Status TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait);
 
+  // Create Metadata cache atomically and return the metadata cache object.
+  client::YBMetaDataCache* CreateYBMetaDataCache();
+
+  // Get the metadata cache object.
+  client::YBMetaDataCache* YBMetaDataCache() const;
+
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
   friend class ::yb::XClusterSafeTimeTest;
@@ -685,6 +691,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::shared_mutex service_registration_mutex_;
   std::unordered_map<StatefulServiceKind, ConsensusChangeCallback> service_consensus_change_cb_;
+
+  // Metadata cache used by write operations for index requests processing.
+  simple_spinlock metadata_cache_spinlock_;
+  std::shared_ptr<client::YBMetaDataCache> metadata_cache_holder_;
+  std::atomic<client::YBMetaDataCache*> metadata_cache_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };
