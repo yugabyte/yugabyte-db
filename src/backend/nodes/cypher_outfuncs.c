@@ -204,6 +204,7 @@ void out_cypher_node(StringInfo str, const ExtensibleNode *node)
 
     WRITE_STRING_FIELD(name);
     WRITE_STRING_FIELD(label);
+    WRITE_STRING_FIELD(parsed_label);
     WRITE_NODE_FIELD(props);
     WRITE_LOCATION_FIELD(location);
 }
@@ -215,6 +216,7 @@ void out_cypher_relationship(StringInfo str, const ExtensibleNode *node)
 
     WRITE_STRING_FIELD(name);
     WRITE_STRING_FIELD(label);
+    WRITE_STRING_FIELD(parsed_label);
     WRITE_NODE_FIELD(props);
     WRITE_NODE_FIELD(varlen);
     WRITE_ENUM_FIELD(dir, cypher_rel_dir);

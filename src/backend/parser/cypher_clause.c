@@ -307,7 +307,6 @@ static ParseNamespaceItem *create_namespace_item(RangeTblEntry *rte, bool p_rel_
                                              bool p_lateral_ok);
 static List *make_target_list_from_join(ParseState *pstate,
                                     RangeTblEntry *rte);
-static Expr *add_volatile_wrapper(Expr *node);
 static FuncExpr *make_clause_func_expr(char *function_name,
                                        Node *clause_information);
 /* for VLE support */
@@ -5165,6 +5164,9 @@ transform_create_cypher_node(cypher_parsestate *cpstate, List **target_list,
 }
 
 /*
+ * TODO A function called get_<something> should NOT modify the contents of what
+ *      it gets. This needs to be fixed.
+ *
  * Returns the resno for the TargetEntry with the resname equal to the name
  * passed. Returns -1 otherwise.
  */
@@ -5570,6 +5572,12 @@ static Expr *add_volatile_wrapper(Expr *node)
 {
     Oid oid;
 
+    /* if the passed Expr node is NULL it will cause a crash, so notify us */
+    if (node == NULL)
+    {
+        ereport(ERROR, (errmsg_internal("add_volatile_wrapper: NULL expr")));
+    }
+
     oid = get_ag_func_oid("agtype_volatile_wrapper", 1, ANYOID);
 
     return (Expr *)makeFuncExpr(oid, AGTYPEOID, list_make1(node), InvalidOid,
@@ -5581,10 +5589,10 @@ static Expr *add_volatile_wrapper(Expr *node)
  * Modified entry point for recursively analyzing a sub-statement in union.
  */
 Query *cypher_parse_sub_analyze_union(cypher_clause *clause,
-                                cypher_parsestate *cpstate,
-                                CommonTableExpr *parentCTE,
-                                bool locked_from_parent,
-                                bool resolve_unknowns)
+                                      cypher_parsestate *cpstate,
+                                      CommonTableExpr *parentCTE,
+                                      bool locked_from_parent,
+                                      bool resolve_unknowns)
 {
     cypher_parsestate *state = make_cypher_parsestate(cpstate);
     Query *query;
@@ -6079,6 +6087,21 @@ transform_merge_cypher_edge(cypher_parsestate *cpstate, List **target_list,
     rv = makeRangeVar(cpstate->graph_name, edge->label, -1);
     label_relation = parserOpenTable(&cpstate->pstate, rv, RowExclusiveLock);
 
+    /*
+     * TODO
+     * It is possible for a vertex label to be retrieved, instead of an edge,
+     * due to the above logic. So, we need to check if it is a vertex label.
+     * This whole section needs to be fixed because it could be a relation that
+     * isn't either and has the correct number of columns. However, for now,
+     * we just check the number of columns.
+     */
+    if (label_relation->rd_att->natts == 2) // TODO temporarily hardcoded
+    {
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("Expecting edge label, found existing vertex label"),
+                        parser_errposition(&cpstate->pstate, edge->location)));
+    }
+
     // Store the relid
     rel->relid = RelationGetRelid(label_relation);
 
@@ -6183,6 +6206,21 @@ transform_merge_cypher_node(cypher_parsestate *cpstate, List **target_list,
 
     rv = makeRangeVar(cpstate->graph_name, node->label, -1);
     label_relation = parserOpenTable(&cpstate->pstate, rv, RowExclusiveLock);
+
+    /*
+     * TODO
+     * It is possible for an edge label to be retrieved, instead of a vertex,
+     * due to the above logic. So, we need to check if it is an edge label.
+     * This whole section needs to be fixed because it could be a relation that
+     * isn't either and has the correct number of columns. However, for now,
+     * we just check the number of columns.
+     */
+    if (label_relation->rd_att->natts == 4) // TODO temporarily hardcoded
+    {
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("Expecting vertex label, found existing edge label"),
+                        parser_errposition(&cpstate->pstate, node->location)));
+    }
 
     // Store the relid
     rel->relid = RelationGetRelid(label_relation);
