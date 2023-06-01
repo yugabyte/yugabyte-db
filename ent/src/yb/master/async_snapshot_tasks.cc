@@ -187,6 +187,16 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
   return true;
 }
 
+std::optional<std::pair<server::MonitoredTaskState, Status>>
+AsyncTabletSnapshotOp::HandleReplicaLookupFailure(const Status& replica_lookup_status) {
+  // Deleting an already deleted tablet snapshot
+  if (replica_lookup_status.IsNotFound() &&
+      operation_ == tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET) {
+    return std::make_pair(server::MonitoredTaskState::kComplete, Status::OK());
+  }
+  return std::nullopt;
+}
+
 void AsyncTabletSnapshotOp::Finished(const Status& status) {
   if (!callback_) {
     return;
