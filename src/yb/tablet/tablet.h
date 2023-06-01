@@ -804,9 +804,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return transaction_manager_provider_();
   }
 
-  // Creates a new shared pointer of the object managed by metadata_cache_. This is done
-  // atomically to avoid race conditions.
-  std::shared_ptr<client::YBMetaDataCache> YBMetaDataCache();
+  // Returns the cached metadata cache.
+  client::YBMetaDataCache* YBMetaDataCache();
+
+  // Resets the metadata cache if present.
+  void ResetYBMetaDataCache();
 
   // Should only be used in code that could be executed from Raft operations apply or other
   // callsites that doesn't handle RocksDB shutdown start (without destroy, see
@@ -915,12 +917,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const PgsqlReadRequestPB& pgsql_read_request,
       const std::string& partition_key,
       size_t row_count) const;
-
-  // Sets metadata_cache_ to nullptr. This is done atomically to avoid race conditions.
-  void ResetYBMetaDataCache();
-
-  // Creates a new client::YBMetaDataCache object and atomically assigns it to metadata_cache_.
-  void CreateNewYBMetaDataCache();
 
   void TriggerFullCompactionSync(rocksdb::CompactionReason reason);
 
@@ -1066,10 +1062,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Expected to live while this object is alive.
   TransactionManagerProvider transaction_manager_provider_;
 
-  // This object should not be accessed directly to avoid race conditions.
-  // Use methods YBMetaDataCache, CreateNewYBMetaDataCache, and ResetYBMetaDataCache to read it
-  // and modify it.
-  std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
+  // Pointer to shared metadata cache owned by TSTabletManager.
+  client::YBMetaDataCache* metadata_cache_;
 
   std::atomic<int64_t> last_committed_write_index_{0};
 

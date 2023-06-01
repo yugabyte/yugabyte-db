@@ -231,7 +231,8 @@ class BootstrapTest : public LogTestBase {
       .transaction_manager_provider = nullptr,
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
-      .post_split_compaction_added = nullptr
+      .post_split_compaction_added = nullptr,
+      .metadata_cache = nullptr,
     };
     BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,

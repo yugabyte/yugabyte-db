@@ -85,14 +85,20 @@ class YBMetaDataCache {
 
   // Remove the table from cached_tables_ if it is in the cache.
   void RemoveCachedTable(const YBTableName& table_name);
-  void RemoveCachedTable(const TableId& table_id);
+  // Remove cached table if cached entry is older than the provided schema version.
+  void RemoveCachedTable(
+      const TableId& table_id,
+      SchemaVersion schema_version = std::numeric_limits<SchemaVersion>::max());
+
+  // Removes all cached tables. Used by Restore operation to cleanup the cache.
+  void Reset();
 
   // Opens the type with the given name. If the type has been opened before, returns the
   // previously opened type from cached_types_. If the type has not been opened before
   // in this client, this will do an RPC to ensure that the type exists and look up its info.
   // Second field in the resulting pair indicates the QLType was taken from the cache.
   Result<std::pair<std::shared_ptr<QLType>, bool>> GetUDType(
-      const std::string &keyspace_name, const std::string &type_name);
+      const std::string& keyspace_name, const std::string& type_name);
 
   // Remove the type from cached_types_ if it is in the cache.
   void RemoveCachedUDType(const std::string& keyspace_name, const std::string& type_name);
@@ -133,12 +139,13 @@ class YBMetaDataCache {
   void DoGetTableAsync(
       const Id& id, const GetTableAsyncCallback& callback, Cache* cache);
 
-  template <typename T, typename V, typename F>
+  template <typename T, typename V, typename F, typename CanRemoveFunc>
   void RemoveFromCache(
       std::unordered_map<T, YBMetaDataCacheEntryPtr, boost::hash<T>>* direct_cache,
       std::unordered_map<V, YBMetaDataCacheEntryPtr, boost::hash<V>>* indirect_cache,
       const T& direct_key,
-      const F& get_indirect_key);
+      const F& get_indirect_key,
+      const CanRemoveFunc& can_remove);
 
   client::YBClient* const client_;
 

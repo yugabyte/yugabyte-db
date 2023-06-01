@@ -45,6 +45,7 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_manager.h"
 
 #include "yb/common/wire_protocol.h"
@@ -1562,6 +1563,12 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   }
   retryable_requests_manager.retryable_requests().set_log_prefix(kLogPrefix);
 
+  // Create metadata cache if its not created yet.
+  auto metadata_cache = YBMetaDataCache();
+  if (!metadata_cache) {
+    metadata_cache = CreateYBMetaDataCache();
+  }
+
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // Read flag before CAS to avoid TSAN race conflict with GetAllFlags.
     if (GetAtomicFlag(&FLAGS_TEST_force_single_tablet_failure) &&
@@ -1600,8 +1607,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .is_sys_catalog = tablet::IsSysCatalogTablet::kFalse,
         .snapshot_coordinator = nullptr,
         .tablet_splitter = this,
-        .allowed_history_cutoff_provider = std::bind(
-            &TSTabletManager::AllowedHistoryCutoff, this, _1),
+        .allowed_history_cutoff_provider =
+            std::bind(&TSTabletManager::AllowedHistoryCutoff, this, _1),
         .transaction_manager_provider = [server = server_]() -> client::TransactionManager& {
           return server->TransactionManager();
         },
@@ -1609,8 +1616,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .wait_queue_pool = waiting_txn_pool_.get(),
         .full_compaction_pool = full_compaction_pool(),
         .admin_triggered_compaction_pool = admin_triggered_compaction_pool(),
-        .post_split_compaction_added = ts_post_split_compaction_added_
-      };
+        .post_split_compaction_added = ts_post_split_compaction_added_,
+        .metadata_cache = metadata_cache};
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = tablet_peer->status_listener(),
@@ -2830,6 +2837,27 @@ void TSTabletManager::FlushDirtySuperblocks() {
       }
     }
   }
+}
+
+client::YBMetaDataCache* TSTabletManager::CreateYBMetaDataCache() {
+  // Acquire lock for creating new instances, and make sure that some other thread has not already
+  // initialized the cache.
+  std::lock_guard<simple_spinlock> lock(metadata_cache_spinlock_);
+  if (!metadata_cache_) {
+    auto meta_data_cache_mem_tracker =
+        MemTracker::FindOrCreateTracker(0, "Metadata cache", server_->mem_tracker());
+    metadata_cache_holder_ = std::make_shared<client::YBMetaDataCache>(
+        server_->client_future().get(), false /* Update permissions cache */,
+        meta_data_cache_mem_tracker);
+    metadata_cache_.store(metadata_cache_holder_.get(), std::memory_order_release);
+  }
+  return metadata_cache_holder_.get();
+}
+
+// Reader doesn't acquire any lock, writer ensures that only one writer creates the object under
+// lock.
+client::YBMetaDataCache* TSTabletManager::YBMetaDataCache() const {
+  return metadata_cache_.load(std::memory_order_acquire);
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

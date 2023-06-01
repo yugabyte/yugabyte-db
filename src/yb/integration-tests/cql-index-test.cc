@@ -108,6 +108,45 @@ TEST_F(CqlIndexTest, MultipleIndex) {
   CHECK_EQ(perm2, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 }
 
+TEST_F(CqlIndexTest, RecreateIndex) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  auto validate = [&](const int value) {
+    auto result =
+        ASSERT_RESULT(session.ExecuteWithResult(Format("SELECT * FROM t WHERE value = $0", value)));
+    auto iter = result.CreateIterator();
+    ASSERT_TRUE(iter.Next());
+    auto row = iter.Row();
+    ASSERT_EQ(row.Value(0).As<cass_int32_t>(), value);
+    ASSERT_EQ(row.Value(1).As<cass_int32_t>(), value);
+    ASSERT_FALSE(iter.Next());
+  };
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE T (key INT PRIMARY KEY, value INT) WITH transactions = { 'enabled' : true }"));
+  ASSERT_OK(session.ExecuteQuery("CREATE INDEX idx1 ON T (value)"));
+  for (int j = 1; j <= 5; ++j) {
+    ASSERT_OK(session.ExecuteQuery(Format("INSERT INTO T (key, value) VALUES ($0, $0)", j)));
+  }
+
+  // Validate the index based query.
+  validate(2);
+
+  ASSERT_OK(session.ExecuteQuery("DROP INDEX idx1"));
+  ASSERT_OK(session.ExecuteQuery("CREATE INDEX idx1 ON T (value)"));
+
+  // wait for backfill.
+  std::this_thread::sleep_for(100ms);
+
+  for (int j = 6; j <= 10; ++j) {
+    ASSERT_OK(session.ExecuteQueryFormat("INSERT INTO T (key, value) VALUES ($0, $0)", j));
+  }
+
+  // Validate the index based query.
+  for (int value : {7, 2}) {
+    validate(value);
+  }
+}
+
 class CqlIndexSmallWorkersTest : public CqlIndexTest {
  public:
   void SetUp() override {
