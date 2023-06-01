@@ -10,6 +10,8 @@ menu:
     parent: docs
     weight: 2950
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The YugabyteDB documentation style is based on the [Microsoft style guide](https://docs.microsoft.com/en-us/style-guide/welcome/), with some input from [Apple's style guide](https://help.apple.com/applestyleguide/#/). We aim to automate as much as possible through Vale.
@@ -56,7 +58,7 @@ ysqlsh> CREATE TABLE $$__banking__$$;
 
 #### YSQL and YCQL code blocks
 
-Tag YSQL code blocks as `sql`, and YCQL code blocks as `cql`. The source highlighting differs slightly between the two.
+Tag YSQL code blocks as `plpgsql`, and YCQL code blocks as `cql`. The source highlighting differs slightly between the two.
 
 ### Admonitions
 
