@@ -598,7 +598,9 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
       // We don't support splitting the catalog tablet, this field is unneeded.
-      .post_split_compaction_added = nullptr
+      .post_split_compaction_added = nullptr,
+      // Metadata cache is not used on master.
+      .metadata_cache = nullptr,
   };
   tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,

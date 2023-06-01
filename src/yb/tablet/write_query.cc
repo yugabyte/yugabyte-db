@@ -851,7 +851,7 @@ struct UpdateQLIndexesTask {
   client::YBTransactionPtr txn;
   client::YBSessionPtr session;
   const ChildTransactionDataPB* child_transaction_data = nullptr;
-  std::shared_ptr<client::YBMetaDataCache> metadata_cache;
+  client::YBMetaDataCache* metadata_cache;
 
   std::mutex mutex;
   WriteQuery::IndexOps index_ops GUARDED_BY(mutex);
