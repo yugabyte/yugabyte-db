@@ -1236,6 +1236,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             : UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.azCode = az;
     params.helmReleaseName =
         KubernetesUtil.getHelmReleaseName(
             taskParams().nodePrefix,
@@ -1464,6 +1465,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             : UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.azCode = az;
     params.helmReleaseName =
         KubernetesUtil.getHelmReleaseName(
             taskParams().nodePrefix,
@@ -1538,6 +1540,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             : UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.azCode = az;
     params.helmReleaseName =
         KubernetesUtil.getHelmReleaseName(
             taskParams().nodePrefix,
