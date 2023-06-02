@@ -490,6 +490,11 @@ extern bool yb_enable_sequence_pushdown;
 extern bool yb_disable_wait_for_backends_catalog_version;
 
 /*
+ * Enables YB cost model for Sequential and Index scans
+ */
+extern bool yb_enable_base_scans_cost_model;
+
+/*
  * Total timeout for waiting for backends to have up-to-date catalog version.
  */
 extern int yb_wait_for_backends_catalog_version_timeout;

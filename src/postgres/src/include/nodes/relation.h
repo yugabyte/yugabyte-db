@@ -1233,6 +1233,8 @@ typedef struct IndexPath
 	ScanDirection indexscandir;
 	Cost		indextotalcost;
 	Selectivity indexselectivity;
+	double		estimated_num_nexts;
+	double		estimated_num_seeks;
 } IndexPath;
 
 /*
