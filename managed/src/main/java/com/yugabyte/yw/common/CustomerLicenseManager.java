@@ -7,7 +7,6 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.models.CustomerLicense;
-import com.yugabyte.yw.models.FileData;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,6 +15,7 @@ import java.nio.file.Paths;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,9 +62,15 @@ public class CustomerLicenseManager {
 
   public void delete(UUID customerUUID, UUID licenseUUID) {
     CustomerLicense license = CustomerLicense.getOrBadRequest(licenseUUID);
-    FileData.deleteFiles(license.getLicense(), true);
-    if (license.delete()) {
-      log.info("Successfully deleted the license: " + licenseUUID);
+    if (FileUtils.deleteQuietly(new File(license.getLicense()))) {
+      log.info("Successfully deleted file with path: " + license.getLicense());
+      if (license.delete()) {
+        log.info("Successfully deleted the license: " + licenseUUID);
+      } else {
+        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Unable to delete the license");
+      }
+    } else {
+      log.info("Failed to delete file with path: " + license.getLicense());
     }
   }
 }
