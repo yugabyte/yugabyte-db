@@ -74,7 +74,7 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
   ,[nodesResponse, readReplica]);
   const totalRamUsageGb = (nodeList?.reduce((acc, curr) =>
     acc + curr.metrics.ram_provisioned_bytes, 0) ?? 0) / (1024 * 1024 * 1024);
-  const totalCores = Math.ceil((clusterSpec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0));
+  const totalCores = roundDecimal((clusterSpec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0));
   const totalDiskSize = roundDecimal((clusterSpec?.cluster_info.node_info.disk_size_gb ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0));
 
   const regionData = useMemo(() => {

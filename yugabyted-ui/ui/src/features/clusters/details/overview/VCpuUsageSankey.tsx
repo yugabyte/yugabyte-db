@@ -5,7 +5,7 @@ import { ClusterData, useGetClusterNodesQuery } from '@app/api/src';
 import { AXIOS_INSTANCE } from '@app/api/src';
 import { Box, LinearProgress, Link, makeStyles } from '@material-ui/core';
 import { Link as RouterLink } from 'react-router-dom';
-import { getInterval, RelativeInterval } from '@app/helpers';
+import { getInterval, RelativeInterval, roundDecimal } from '@app/helpers';
 import { getUnixTime } from 'date-fns';
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 
@@ -61,7 +61,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
       :
       nodesResponse?.data,
   [nodesResponse, clusterType]);
-  const totalCores = Math.ceil((cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0))
+  const totalCores = roundDecimal((cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0))
 
   const [nodeCpuUsage, setNodeCpuUsage] = React.useState<number[]>([]);
   React.useEffect(() => {
