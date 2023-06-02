@@ -61,7 +61,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
       :
       nodesResponse?.data,
   [nodesResponse, clusterType]);
-  const totalCores = (cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0)
+  const totalCores = Math.ceil((cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0))
 
   const [nodeCpuUsage, setNodeCpuUsage] = React.useState<number[]>([]);
   React.useEffect(() => {
