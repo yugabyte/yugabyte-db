@@ -40,6 +40,8 @@ DEFINE_bool(ycql_require_drop_privs_for_truncate, false,
             "Require DROP TABLE permission in order to truncate table");
 DEFINE_bool(ycql_use_local_transaction_tables, false,
             "Whether or not to use local transaction tables when possible for YCQL transactions.");
+DEFINE_bool(ycql_allow_local_calls_in_curr_thread, true,
+            "Whether or not to allow local calls on the RPC thread.");
 
 namespace yb {
 namespace ql {
@@ -116,7 +118,9 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
 }
 
 YBSessionPtr QLEnv::NewSession() {
-  return std::make_shared<YBSession>(client_, clock_);
+  auto session = std::make_shared<YBSession>(client_, clock_);
+  session->set_allow_local_calls_in_curr_thread(FLAGS_ycql_allow_local_calls_in_curr_thread);
+  return session;
 }
 
 //------------------------------------------------------------------------------------------------
