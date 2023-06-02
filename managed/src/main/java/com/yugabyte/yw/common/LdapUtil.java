@@ -185,8 +185,11 @@ public class LdapUtil {
     Set<String> groups = new HashSet<String>();
 
     if (!ldapConfiguration.isLdapGroupUseQuery()) {
-      for (Value group : userEntry.get(ldapConfiguration.getLdapGroupMemberOfAttribute())) {
-        groups.add(group.getString());
+      Attribute memberOf = userEntry.get(ldapConfiguration.getLdapGroupMemberOfAttribute());
+      if (memberOf != null) {
+        for (Value group : memberOf) {
+          groups.add(group.getString());
+        }
       }
       return groups;
     }
