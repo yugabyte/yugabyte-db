@@ -32,7 +32,7 @@ const initialStateFeatureInTest = {
   enableMKR: true,
   enableS3BackupProxy: false,
   enableRRGflags: false,
-  enableLDAPRoleMapping: false
+  enableLDAPRoleMapping: true
 };
 
 const initialStateFeatureReleased = {
