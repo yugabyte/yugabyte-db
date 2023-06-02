@@ -118,6 +118,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       expectedCommandArgs.add("create");
       expectedCommandArgs.add("--exclude_prometheus");
       expectedCommandArgs.add("--exclude_releases");
+      expectedCommandArgs.add("--disable_version_check");
       if (isYbaInstaller) {
         expectedCommandArgs.add("--pg_dump_path");
         expectedCommandArgs.add(PG_DUMP_PATH);
