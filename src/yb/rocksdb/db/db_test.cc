@@ -630,6 +630,7 @@ TEST_F(DBTest, IteratorProperty) {
     ASSERT_NOK(iter->GetProperty("non_existing.value", &prop_value));
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.is-key-pinned", &prop_value));
     ASSERT_EQ("0", prop_value);
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     iter->Next();
     ASSERT_FALSE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.is-key-pinned", &prop_value));
@@ -1068,9 +1069,13 @@ TEST_F(DBTest, IterSeekBeforePrev) {
   ASSERT_OK(Put("2", "j"));
   auto iter = db_->NewIterator(ReadOptions());
   iter->Seek(Slice("c"));
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   iter->Prev();
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   iter->Seek(Slice("a"));
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   iter->Prev();
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   delete iter;
 }
 
@@ -1296,8 +1301,11 @@ TEST_F(DBTest, IterMulti) {
 
     // Switch from forward to reverse
     iter->SeekToFirst();
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     iter->Next();
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     iter->Next();
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     iter->Prev();
     ASSERT_EQ(IterStatus(iter), "b->vb");
 
@@ -6498,7 +6506,7 @@ TEST_P(DBTestWithParam, FilterCompactionTimeTest) {
 
   Iterator* itr = db_->NewIterator(ReadOptions());
   itr->SeekToFirst();
-  ASSERT_OK(itr->status());
+  ASSERT_FALSE(ASSERT_RESULT(itr->CheckedValid()));
   // Stopwatch has been removed from compaction iterator. Disable assert below.
   // ASSERT_NE(TestGetTickerCount(options, FILTER_OPERATION_TOTAL_TIME), 0);
   delete itr;
