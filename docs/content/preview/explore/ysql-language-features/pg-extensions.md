@@ -306,7 +306,9 @@ For more information, refer to the [HypoPG documentation](https://hypopg.readthe
 
 ### passwordcheck example
 
-To enable the [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
+The [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) PostgreSQL module provides a means checks users' passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it will be rejected and the command will terminate with an error.
+
+To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
 ```sh
 --ysql_pg_conf_csv="shared_preload_libraries=passwordcheck"
@@ -369,7 +371,7 @@ The passwordcheck extension only works for passwords that are provided in plain 
 
 ### auto_explain example
 
-The [auto_explain](https://www.postgresql.org/docs/11/auto-explain.html) module provides a means for logging execution plans of slow statements automatically, without having to run EXPLAIN by hand. This is especially helpful for tracking down un-optimized queries in large applications.
+The [auto_explain](https://www.postgresql.org/docs/11/auto-explain.html) PostgreSQL module provides a means for logging execution plans of slow statements automatically, without having to run EXPLAIN by hand. This is especially helpful for tracking down un-optimized queries in large applications.
 
 To enable the auto_explain extension, add `auto_explain` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
@@ -419,6 +421,8 @@ LOG:  duration: 316.556 ms  plan:
                 ->  Index Scan using pg_class_oid_index on pg_class  (cost=0.00..0.11 rows=1 width=4) (actual time=2.673..2.673 rows=1 loops=110)
                       Index Cond: (oid = pg_index.indrelid)
 ```
+
+For more information, refer to the [PostgreSQL auto_explain documentation](https://www.postgresql.org/docs/11/auto-explain.html).
 
 ### pgcrypto example
 
