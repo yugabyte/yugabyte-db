@@ -33,6 +33,7 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 
 | Module | Description | Examples |
 | :----- | :---------- | :------ |
+| [auto_explain](https://www.postgresql.org/docs/11/auto-explain.html) | Provides a means for logging execution plans of slow statements automatically. | [Example](#auto-explain-example) |
 | [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | [Example](#file-fdw-example) |
 | [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
 | [hstore](https://www.postgresql.org/docs/11/hstore.html) | Implements the hstore data type for storing sets of key-value pairs in a single PostgreSQL value. | |
@@ -56,7 +57,7 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 | [pg_stat_monitor](https://github.com/percona/pg_stat_monitor) | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module. | |
 | [Orafce](https://github.com/orafce/orafce) | Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB. | |
 | [PostGIS](https://postgis.net/) | Requires installation | A spatial database extender for PostgreSQL-compatible object-relational databases. | [Install and example](#postgis-example) |
-| [postgresql-hll](https://github.com/citusdata/postgresql-hll) | Pre-bundled | Introduces the data type `hll`, which is a HyperLogLog data structure. | [Example](#postgresql-hll-example) |
+| [postgresql-hll](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres/third-party-extensions/postgresql-hll) | Pre-bundled | Adds the data type `hll`, which is a HyperLogLog data structure. | [Example](#postgresql-hll-example) |
 | [pgsql-postal](https://github.com/pramsey/pgsql-postal) | Requires installation | Parse and normalize street addresses around the world using libpostal. | [Install and example](#pgsql-postal-example) |
 
 ## Install extensions
@@ -311,6 +312,8 @@ To enable the [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.h
 --ysql_pg_conf_csv="shared_preload_libraries=passwordcheck"
 ```
 
+Note that modifying `shared_preload_libraries` requires restarting the YB-TServer.
+
 You can customize the following passwordcheck parameters:
 
 | Parameter | Description | Default |
@@ -363,6 +366,59 @@ ERROR:  password must not contain user name
 ```
 
 The passwordcheck extension only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
+
+### auto_explain example
+
+The [auto_explain](https://www.postgresql.org/docs/11/auto-explain.html) module provides a means for logging execution plans of slow statements automatically, without having to run EXPLAIN by hand. This is especially helpful for tracking down un-optimized queries in large applications.
+
+To enable the auto_explain extension, add `auto_explain` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
+
+```sh
+--ysql_pg_conf_csv="shared_preload_libraries=auto_explain"
+```
+
+Note that modifying `shared_preload_libraries` requires restarting the YB-TServer.
+
+You can customize the following auto_explain parameters:
+
+| Parameter | Description | Default |
+| :--- | :--- | :--- |
+| `log_min_duration` | Minimum statement execution time, in milliseconds, that will cause the statement's plan to be logged. Setting this to zero logs all plans. Minus-one (the default) disables logging. For example, if you set it to 250ms then all statements that run 250ms or longer will be logged. Only superusers can change this setting. | -1 |
+| `log_analyze` | Print EXPLAIN ANALYZE output, rather than just EXPLAIN output when an execution plan is logged. Only superusers can change this setting. When this parameter is on, per-plan-node timing occurs for all statements executed, whether or not they run long enough to actually get logged. This can have an extremely negative impact on performance. Turning off `log_timing` ameliorates the performance cost, at the price of obtaining less information. | false |
+| `log_buffers` | Controls whether buffer usage statistics are printed when an execution plan is logged; equivalent to the BUFFERS option of EXPLAIN. Has no effect unless `log_analyze` is enabled. Only superusers can change this setting. | false |
+| `log_timing` | Controls whether per-node timing information is printed when an execution plan is logged; it's equivalent to the TIMING option of EXPLAIN. The overhead of repeatedly reading the system clock can slow down queries significantly on some systems, so it may be beneficial to set this parameter to off when only actual row counts, and not exact times, are needed. Has no effect unless `log_analyze` is enabled. Only superusers can change this setting. | true |
+| `log_triggers` | Causes trigger execution statistics to be included when an execution plan is logged. Has no effect unless `log_analyze` is enabled. Only superusers can change this setting. | false |
+| `log_verbose` | Controls whether verbose details are printed when an execution plan is logged; equivalent to the VERBOSE option of EXPLAIN. Only superusers can change this setting. | false |
+| `log_format` | Selects the EXPLAIN output format to be used. The allowed values are `text`, `xml`, `json`, and `yaml`. Only superusers can change this setting. | text |
+| `log_nested_statements` | causes nested statements (statements executed inside a function) to be considered for logging. When off, only top-level query plans are logged. Only superusers can change this setting. | false |
+| `sample_rate` | Explain only a set fraction of the statements in each session. The default 1 means explain all the queries. In case of nested statements, either all will be explained or none. Only superusers can change this setting. | 1 |
+
+Note that the default behavior is to do nothing, so you must set at least `auto_explain.log_min_duration` if you want any results.
+
+To change auto_explain parameters, use the SET statement. For example:
+
+```sql
+SET auto_explain.log_min_duration = 0;
+SET auto_explain.log_analyze = true;
+SELECT count(*)
+    FROM pg_class, pg_index
+    WHERE oid = indrelid AND indisunique;
+```
+
+This produces log output similar to the following in the PostgreSQL log file in the `tserver/logs` directory:
+
+```output
+LOG:  duration: 316.556 ms  plan:
+        Query Text: SELECT count(*)
+                   FROM pg_class, pg_index
+                   WHERE oid = indrelid AND indisunique;
+        Aggregate  (cost=216.39..216.40 rows=1 width=8) (actual time=316.489..316.489 rows=1 loops=1)
+          ->  Nested Loop  (cost=0.00..213.89 rows=1000 width=0) (actual time=10.828..316.200 rows=110 loops=1)
+                ->  Seq Scan on pg_index  (cost=0.00..100.00 rows=1000 width=4) (actual time=7.465..8.068 rows=110 loops=1)
+                      Remote Filter: indisunique
+                ->  Index Scan using pg_class_oid_index on pg_class  (cost=0.00..0.11 rows=1 width=4) (actual time=2.673..2.673 rows=1 loops=110)
+                      Index Cond: (oid = pg_index.indrelid)
+```
 
 ### pgcrypto example
 
@@ -579,13 +635,15 @@ SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
 
 ### postgresql-hll example
 
-First, install the extension:
+This extension adds a new data type hll, which is a HyperLogLog data structure. HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision. For example, in 1280 bytes hll can estimate the count of tens of billions of distinct values with only a few percent error.
+
+First, enable the extension:
 
 ```sql
 CREATE EXTENSION "hll";
 ```
 
-To run the example from the [postgresql-hll](https://github.com/citusdata/postgresql-hll#usage) repository, connect using `ysqlsh` and run the following:
+To run the helloworld example from the [postgresql-hll](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres/third-party-extensions/postgresql-hll#usage) repository, connect using `ysqlsh` and run the following:
 
 ```sql
 CREATE TABLE helloworld (id integer, set hll);
@@ -637,6 +695,8 @@ SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
                2
 (1 row)
 ```
+
+For a more advanced example, see the [Data Warehouse Use Case](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres/third-party-extensions/postgresql-hll#data-warehouse-use-case).
 
 ### PostGIS example
 
