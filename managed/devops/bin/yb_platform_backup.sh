@@ -373,14 +373,17 @@ create_backup() {
 
   version_path=$(find ${data_dir} -wholename **/yugaware/conf/version_metadata.json)
 
+  if [ "$disable_version_check" != true ]
+  then
+
   # At least keep some default as a worst case.
   if [ ! -f ${version_path} ] || [ -z ${version_path} ]; then
     version_path="/opt/yugabyte/yugaware/conf/version_metadata.json"
   fi
 
   command="cat ${version_path}"
-
   docker_aware_cmd "yugaware" "${command}" > "${output_path}/version_metadata_backup.json"
+  fi
 
   if [[ "$exclude_releases" = true ]]; then
     include_releases_flag=""
@@ -684,6 +687,7 @@ print_backup_usage() {
   echo "  --ybdb                         ybdb backup (default: false)"
   echo "  --ysql_dump_path               path to ysql_sump to dump ybdb"
   echo "  -?, --help                     show create help, then exit"
+  echo "  --disable_version_check        disable the backup version check (default: false)"
   echo
 }
 
@@ -859,6 +863,11 @@ case $command in
           ysql_dump_path=$2
           shift 2
           ;;
+        --disable_version_check)
+          disable_version_check=true
+          set -x
+          shift
+          ;;
         -?|--help)
           print_backup_usage
           exit 0
@@ -878,7 +887,8 @@ case $command in
     fi
     create_backup "$output_path" "$data_dir" "$exclude_prometheus" "$exclude_releases" \
     "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$prometheus_port" \
-    "$k8s_namespace" "$k8s_pod" "$pgdump_path" "$plain_sql" "$ybdb" "$ysql_dump_path"
+    "$k8s_namespace" "$k8s_pod" "$pgdump_path" "$plain_sql" "$ybdb" "$ysql_dump_path" \
+    "$disable_version_check"
     exit 0
     ;;
   restore)
