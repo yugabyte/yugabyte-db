@@ -201,4 +201,4 @@ add_dependencies(postgres configure_postgres)
 # ------------------------------------------------------------------------------------------------
 
 # Libraries that we link into the postgres binary.
-add_dependencies(postgres yb_pggate server_process)
+add_dependencies(postgres yb_pggate server_process hdr_histogram)
