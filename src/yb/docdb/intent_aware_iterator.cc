@@ -92,8 +92,12 @@ bool IsIntentForTheSameKey(Slice key, Slice intent_prefix) {
          dockv::IntentValueType(key[intent_prefix.size()]);
 }
 
-std::string DebugDumpKeyToStr(const Slice &key) {
-  return key.ToDebugString() + " (" + SubDocKey::DebugSliceToString(key) + ")";
+std::string DebugDumpKeyToStr(Slice key) {
+  auto result = SubDocKey::DebugSliceToStringAsResult(key);
+  if (!result.ok()) {
+    return key.ToDebugString();
+  }
+  return Format("$0 ($1)", *result);
 }
 
 std::string DebugDumpKeyToStr(const KeyBytes& key) {
@@ -600,8 +604,7 @@ void IntentAwareIterator::ProcessIntent() {
 
   if (resolved_intent_state_ == ResolvedIntentState::kNoIntent) {
     resolved_intent_key_prefix_.Reset(decoded.intent_prefix);
-    auto prefix = CurrentPrefix();
-    if (!decoded.intent_prefix.starts_with(prefix)) {
+    if (!decoded.intent_prefix.starts_with(prefix_)) {
       resolved_intent_state_ = ResolvedIntentState::kInvalidPrefix;
     } else if (!SatisfyBounds(decoded.intent_prefix)) {
       resolved_intent_state_ = ResolvedIntentState::kNoIntent;
@@ -666,7 +669,6 @@ void IntentAwareIterator::SeekToSuitableIntent() {
   resolved_intent_state_ = ResolvedIntentState::kNoIntent;
   resolved_intent_txn_dht_.Assign(EncodedDocHybridTime::kMin);
   intent_dht_from_same_txn_.Assign(EncodedDocHybridTime::kMin);
-  auto prefix = CurrentPrefix();
 
   // Find latest suitable intent for the first SubDocKey having suitable intents.
   while (intent_iter_.Valid()) {
@@ -700,7 +702,7 @@ void IntentAwareIterator::SeekToSuitableIntent() {
         !IsIntentForTheSameKey(intent_key, resolved_intent_key_prefix_)) {
       break;
     }
-    if (!intent_key.starts_with(prefix) || !SatisfyBounds(intent_key)) {
+    if (!intent_key.starts_with(prefix_) || !SatisfyBounds(intent_key)) {
       break;
     }
     ProcessIntent();
@@ -925,25 +927,21 @@ Status IntentAwareIterator::FindLatestRecord(
   return Status::OK();
 }
 
-void IntentAwareIterator::PushPrefix(Slice prefix) {
-  VLOG(4) << "PushPrefix: " << SubDocKey::DebugSliceToString(prefix);
-  prefix_stack_.push_back(prefix);
+Slice IntentAwareIterator::PushPrefix(Slice prefix) {
+  VLOG(4) << "PushPrefix: " << DebugDumpKeyToStr(prefix);
+  auto result = prefix_;
+  prefix_ = prefix;
   skip_future_records_needed_ = true;
   skip_future_intents_needed_ = true;
+  return result;
 }
 
-void IntentAwareIterator::PopPrefix() {
-  prefix_stack_.pop_back();
+void IntentAwareIterator::PopPrefix(Slice prefix) {
+  prefix_ = prefix;
   skip_future_records_needed_ = true;
   skip_future_intents_needed_ = true;
   reset_intent_upperbound_during_skip_ = true;
-  VLOG(4) << "PopPrefix: "
-          << (prefix_stack_.empty() ? std::string()
-              : SubDocKey::DebugSliceToString(prefix_stack_.back()));
-}
-
-Slice IntentAwareIterator::CurrentPrefix() const {
-  return prefix_stack_.empty() ? Slice() : prefix_stack_.back();
+  VLOG(4) << "PopPrefix: " << DebugDumpKeyToStr(prefix);
 }
 
 void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
@@ -951,12 +949,17 @@ void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
   if (!status_.ok()) {
     return;
   }
-  auto prefix = CurrentPrefix();
   while (iter_.Valid()) {
     Slice encoded_doc_ht = iter_.key();
-    if (!encoded_doc_ht.starts_with(prefix)) {
+    if (encoded_doc_ht.TryConsumeByte(KeyEntryTypeAsChar::kTransactionApplyState)) {
+      if (!NextRegular(direction)) {
+        return;
+      }
+      continue;
+    }
+    if (!encoded_doc_ht.starts_with(prefix_)) {
       VLOG(4) << "Unmatched prefix: " << SubDocKey::DebugSliceToString(iter_.key())
-              << ", prefix: " << SubDocKey::DebugSliceToString(prefix);
+              << ", prefix: " << SubDocKey::DebugSliceToString(prefix_);
       regular_value_ = Slice();
       return;
     }
@@ -965,12 +968,6 @@ void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
               << ", upperbound: " << SubDocKey::DebugSliceToString(upperbound_);
       regular_value_ = Slice();
       return;
-    }
-    if (encoded_doc_ht.TryConsumeByte(KeyEntryTypeAsChar::kTransactionApplyState)) {
-      if (!NextRegular(direction)) {
-        return;
-      }
-      continue;
     }
     auto doc_ht_size = DocHybridTime::GetEncodedSize(encoded_doc_ht);
     if (!doc_ht_size.ok()) {
@@ -1073,12 +1070,11 @@ void IntentAwareIterator::SkipFutureIntents() {
       return;
     }
   }
-  auto prefix = CurrentPrefix();
   if (resolved_intent_state_ != ResolvedIntentState::kNoIntent) {
-    auto compare_result = resolved_intent_key_prefix_.AsSlice().compare_prefix(prefix);
+    auto compare_result = resolved_intent_key_prefix_.AsSlice().compare_prefix(prefix_);
     VLOG(4) << "Checking resolved intent subdockey: "
             << DebugDumpKeyToStr(resolved_intent_key_prefix_)
-            << ", against new prefix: " << DebugDumpKeyToStr(prefix) << ": "
+            << ", against new prefix: " << DebugDumpKeyToStr(prefix_) << ": "
             << compare_result;
     if (compare_result == 0) {
       if (!SatisfyBounds(resolved_intent_key_prefix_.AsSlice())) {

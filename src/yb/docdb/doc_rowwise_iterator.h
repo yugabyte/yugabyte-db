@@ -27,6 +27,7 @@
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_rowwise_iterator_base.h"
 #include "yb/docdb/docdb_statistics.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
@@ -137,6 +138,7 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   Status FillRow(dockv::PgTableRow* table_row);
 
   std::unique_ptr<IntentAwareIterator> db_iter_;
+  std::optional<IntentAwareIteratorPrefixScope> prefix_scope_;
 
   DocMode doc_mode_ = DocMode::kGeneric;
 
