@@ -2,7 +2,7 @@
 title: Replication in DocDB
 headerTitle: Synchronous replication
 linkTitle: Synchronous
-description: Learn how YugabyteDB uses the Raft consensus in DocDB to replicate data across multiple independent fault domains like nodes, zones, regions and clouds.
+description: Learn how YugabyteDB uses the Raft consensus in DocDB to replicate data across multiple independent fault domains like nodes, zones, regions, and clouds.
 headContent: Synchronous replication using the Raft consensus protocol
 aliases:
   - /preview/architecture/concepts/docdb/replication/
@@ -18,7 +18,7 @@ Using the Raft distributed consensus protocol, DocDB automatically replicates da
 
 ## Concepts
 
-A number of concepts is central to replication.
+A number of concepts are central to replication.
 
 ### Fault domains
 
@@ -28,7 +28,7 @@ A fault domain comprises a group of nodes that are prone to correlated failures.
 * Regions or datacenters
 * Cloud providers
 
-Data is typically replicated across fault domains to be resilient to the outage of all nodes in that fault domain.
+Data is typically replicated across fault domains to be resilient to the outage of all nodes in one fault domain.
 
 ### Fault tolerance
 
@@ -44,7 +44,7 @@ Replication of data in DocDB is achieved at the level of tablets, using tablet p
 
 <img src="/images/architecture/replication/tablets_in_a_docsb_table.png" style="max-width:750px;"/>
 
-Each tablet comprises of a set of tablet peers, each of which stores one copy of the data belonging to the tablet. There are as many tablet peers for a tablet as the replication factor, and they form a Raft group. The tablet peers are hosted on different nodes to allow data redundancy on node failures. The replication of data between the tablet peers is strongly consistent.
+Each tablet comprises of a set of tablet peers, each of which stores one copy of the data belonging to the tablet. There are as many tablet peers for a tablet as the replication factor, and they form a Raft group. The tablet peers are hosted on different nodes to allow data redundancy to protect against node failures. The replication of data between the tablet peers is strongly consistent.
 
 The following diagram depicts three tablet peers that belong to a tablet called `tablet 1`. The tablet peers are hosted on different YB-TServers and form a Raft group for leader election, failure detection, and replication of the write-ahead logs.
 
@@ -68,7 +68,7 @@ In the case of a multi-zone deployement, the data in each of the tablets in a no
 
 <img src="/images/architecture/replication/raft-replication-across-zones.png" style="max-width:750px;"/>
 
-As a part of the Raft replication, each tablet peer first elects a tablet leader responsible for serving reads and writes. The distribution of tablet leaders across different zones is determined by a user-specified data placement policy which, in the preceding scenario, ensures that in the steady state, each of the zones has an equal number of tablet leaders. The following diagram shows how the tablet leaders are dispersed:
+As a part of the Raft replication, each tablet peer first elects a tablet leader responsible for serving reads and writes. The distribution of tablet leaders across different zones is determined by a user-specified data placement policy, which, in the preceding scenario, ensures that in the steady state, each of the zones has an equal number of tablet leaders. The following diagram shows how the tablet leaders are dispersed:
 
 <img src="/images/architecture/replication/optimal-tablet-leader-placement.png" style="max-width:750px;"/>
 
