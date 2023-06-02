@@ -1427,7 +1427,7 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMoveAcrossAffinitizedPriorities(
           if (!peers.empty()) {
             auto peer = peers.begin();
             *moving_tablet_id = peer->first;
-            *to_ts_path = peer->first;
+            *to_ts_path = peer->second;
             *from_ts = from_uuid;
             *to_ts = to_uuid;
 
