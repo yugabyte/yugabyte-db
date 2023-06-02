@@ -448,7 +448,7 @@ void CQLServiceImpl::GetPreparedStatementMetrics(
   int64_t num_statements = 0;
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
   for (auto stmt : prepared_stmts_map_) {
-    if (!stmt.second->GetCounters()) { // To ensure GetCounters does not return null
+    if (!stmt.second->GetCounters()) { // To ensure GetCounters does not return null.
       stmt.second->SetCounters(std::make_shared<Counters>());
       stmt.second->GetCounters()->query = stmt.second->text();
     }
