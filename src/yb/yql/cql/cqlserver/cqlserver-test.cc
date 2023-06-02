@@ -654,9 +654,9 @@ TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
   // Generates a random double. We use it to assign a value to the query execution time
   // as the query is not actually being executed.
   auto RandomDouble = [&]() {
-    const static double lower_bound = 0.0005;
-    const static double upper_bound = 20;
-    const static int64 max_rand = 1000000;
+    static const double lower_bound = 0.0005;
+    static const double upper_bound = 20;
+    static const int64 max_rand = 1000000;
     return (lower_bound + (upper_bound - lower_bound)*(random()%max_rand)/max_rand);
   };
 

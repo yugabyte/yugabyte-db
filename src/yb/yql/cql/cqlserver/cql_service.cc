@@ -448,7 +448,7 @@ void CQLServiceImpl::GetPreparedStatementMetrics(
   int64_t num_statements = 0;
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
   for (auto stmt : prepared_stmts_map_) {
-    metrics->push_back(std::make_shared<StatementMetrics>(stmt.first, stmt.second->GetCounters()));
+    metrics->push_back(std::make_shared<StatementMetrics>(stmt.first, *stmt.second->GetCounters()));
     if (++num_statements >= statement_limit) {
       break;
     }
@@ -477,7 +477,7 @@ void CQLServiceImpl::UpdateCountersUnlocked(
     double execute_time_in_sec, std::shared_ptr<Counters> counters) {
   LOG_IF(DFATAL, counters == nullptr) << "Null pointer counters received";
   double old_mean = (counters->calls ? counters->total_time/counters->calls : 0);
-  double execute_time_in_msec = execute_time_in_sec*1000;  // Converting execute time to milliseconds.
+  double execute_time_in_msec = execute_time_in_sec*1000;  // Converting execute time to msec.
   counters->calls += 1;
   counters->total_time += execute_time_in_msec;
   if (counters->calls == 1) {

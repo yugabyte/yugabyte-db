@@ -88,7 +88,7 @@ struct Counters{
   Counters() : calls(0), total_time(0.), min_time(0.),
                max_time(0.), sum_var_time(0.) {}
 
-  Counters(const std::shared_ptr<Counters>& other) : calls(other->calls),
+  explicit Counters(const std::shared_ptr<Counters>& other) : calls(other->calls),
     total_time(other->total_time), min_time(other->min_time), max_time(other->max_time),
     sum_var_time(other->sum_var_time), query(other->query) {}
 

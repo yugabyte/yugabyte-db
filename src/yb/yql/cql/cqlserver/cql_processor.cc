@@ -100,7 +100,7 @@ METRIC_DEFINE_counter(server, cql_parsers_created,
                       "Number of created CQL Parsers.");
 
 DEFINE_RUNTIME_bool(ycql_enable_stat_statements, true,
-    "If enabled, it will track queries and dump their metrics on http://localhost:12000/statements");
+    "If enabled, it will track queries and dump the metrics on http://localhost:12000/statements.");
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
