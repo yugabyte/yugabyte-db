@@ -110,6 +110,11 @@ void DocRowwiseIterator::InitIterator(
   if (is_forward_scan_ && has_bound_key_) {
     db_iter_->SetUpperbound(bound_key_);
   }
+
+  auto prefix = shared_key_prefix();
+  if (!prefix.empty()) {
+    prefix_scope_.emplace(prefix, db_iter_.get());
+  }
 }
 
 void DocRowwiseIterator::ConfigureForYsql() {
@@ -239,17 +244,6 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       return has_next_status_;
     }
     first_iteration = false;
-
-    // e.g in cotable, row may point outside table bounds.
-    auto in_table = dockv::DocKeyBelongsTo(key_data.key, schema());
-    DCHECK_EQ(in_table, key_data.key.starts_with(shared_key_prefix()))
-        << "Shared prefix: " << shared_key_prefix().ToDebugHexString()
-        << ", key: " << key_data.key.ToDebugHexString()
-        << ", schema: " << schema().ToString();
-    if (!in_table) {
-      done_ = true;
-      return false;
-    }
 
     RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(db_iter_->value())));
     row_key = row_key_.AsSlice();
