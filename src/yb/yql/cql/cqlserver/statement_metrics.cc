@@ -38,7 +38,7 @@ namespace cqlserver {
 
 StatementMetrics::StatementMetrics(const ql::CQLMessage::QueryId query_id,
                                    const Counters counters)
-    : counters_(counters), query_id_(query_id) {
+    : query_id_(query_id), counters_(counters) {
 }
 
 void StatementMetrics::WriteAsJson(JsonWriter* jw) const {

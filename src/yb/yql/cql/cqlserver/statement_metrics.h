@@ -51,8 +51,8 @@ class StatementMetrics {
   ql::CQLMessage::QueryId query_id() const { return query_id_; }
 
  private:
-  const Counters counters_;
   const ql::CQLMessage::QueryId query_id_;
+  const Counters counters_;
 
 };
 } // namespace cqlserver
