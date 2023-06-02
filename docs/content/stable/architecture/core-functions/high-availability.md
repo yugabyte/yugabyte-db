@@ -31,7 +31,7 @@ The tablet peer followers are not in the critical path. Their failure does not i
 
 ### Tablet peer leader failure
 
-The failure of any tablet peer leader automatically triggers a new Raft-level leader election within seconds, and another tablet peer on a different YB-TServer takes its place as the new leader. The unavailability window is approximately 2 seconds (assuming the default heartbeat interval of 500 ms) in the event of a failure of the tablet peer leader.
+The failure of any tablet peer leader automatically triggers a new Raft-level leader election within seconds, and another tablet peer on a different YB-TServer takes its place as the new leader. The unavailability window is approximately 3 seconds (assuming the default heartbeat interval of 500 ms) in the event of a failure of the tablet peer leader.
 
 ## YB-Master failure
 
