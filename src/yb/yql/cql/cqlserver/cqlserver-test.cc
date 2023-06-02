@@ -670,8 +670,8 @@ TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
     // First store the previous values of the counters for that query.
     counters = cql_service->GetCounters(query_id);
     if (counters) {
-      calls = counters->calls_;
-      total_time = counters->total_time_;
+      calls = counters->calls;
+      total_time = counters->total_time;
     } else {
       cql_service->AllocatePreparedStatement(query_id, query, &ql_env);
       calls = 0;
@@ -680,20 +680,13 @@ TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
     cql_service->UpdatePrepStmtCounters(query_id, execute_time_in_msec/1000);
     counters = cql_service->GetCounters(query_id); // Store the updated counters.
     ASSERT_ONLY_NOTNULL(counters.get());
-    ASSERT_EQ(calls+1, counters->calls_);
-    ASSERT_EQ(query, counters->query_);
-    ASSERT_EQ(total_time+execute_time_in_msec, counters->total_time_);
+    ASSERT_EQ(calls+1, counters->calls);
+    ASSERT_EQ(query, counters->query);
+    ASSERT_EQ(total_time+execute_time_in_msec, counters->total_time);
   };
 
-  // auto CreateTable = [&]() {
-  //   query = "CREATE TABLE IF NOT EXISTS CassandraKeyValue (k varchar, v blob, primary key (k));";
-  //   ExecuteQuery();
-  // };
-
-  // CreateTable();
-
   // Randomly choose between insert or select queries.
-  for(int i = 0; i < 100; i++) {
+  for(int i = 0; i < 10000; i++) {
     execute_time_in_msec = RandomDouble()*1000; // Converting execute_time to msec.
     if (random()%2) {
       if (execute_time_in_msec < select_min_time) {
@@ -703,8 +696,8 @@ TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
         select_max_time = execute_time_in_msec;
       }
       ExecuteQuery("SELECT k, v FROM CassandraKeyValue WHERE k = ?;");
-      ASSERT_EQ(select_min_time, counters->min_time_);
-      ASSERT_EQ(select_max_time, counters->max_time_);
+      ASSERT_EQ(select_min_time, counters->min_time);
+      ASSERT_EQ(select_max_time, counters->max_time);
     } else {
       if (execute_time_in_msec < insert_min_time) {
         insert_min_time = execute_time_in_msec;
@@ -713,8 +706,8 @@ TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
         insert_max_time = execute_time_in_msec;
       }
       ExecuteQuery("INSERT INTO CassandraKeyValue (k, v) VALUES (?, ?);");
-      ASSERT_EQ(insert_min_time, counters->min_time_);
-      ASSERT_EQ(insert_max_time, counters->max_time_);
+      ASSERT_EQ(insert_min_time, counters->min_time);
+      ASSERT_EQ(insert_max_time, counters->max_time);
     }
   }
 }

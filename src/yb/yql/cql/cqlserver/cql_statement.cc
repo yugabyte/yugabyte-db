@@ -53,5 +53,37 @@ ql::CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const s
   return ql::CQLMessage::QueryId(to_char_ptr(md5), sizeof(md5));
 }
 
+void Counters::WriteAsJson(JsonWriter *jw, std::string query_id) const {
+  jw->StartObject();
+  jw->String("query");
+  jw->String(this->query);
+
+  jw->String("query_id");
+  jw->String(query_id);
+
+  jw->String("calls");
+  jw->Int64(this->calls);
+
+  jw->String("total_time");
+  jw->Double(this->total_time);
+
+  jw->String("min_time");
+  jw->Double(this->min_time);
+
+  jw->String("max_time");
+  jw->Double(this->max_time);
+
+  jw->String("mean_time");
+  jw->Double(this->total_time/this->calls);
+
+  double stddev_time = 0.0;
+  if(this->calls > 1) {
+    stddev_time = sqrt(this->sum_var_time / this->calls);
+  }
+  jw->String("stddev_time");
+  jw->Double(stddev_time);
+  jw->EndObject();
+}
+
 }  // namespace cqlserver
 }  // namespace yb

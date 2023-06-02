@@ -100,7 +100,7 @@ METRIC_DEFINE_counter(server, cql_parsers_created,
                       "Number of created CQL Parsers.");
 
 DEFINE_RUNTIME_bool(ycql_enable_stat_statements, true,
-    "If enabled, it will track queries and dump their metrics on localhost:12000/statements");
+    "If enabled, it will track queries and dump their metrics on http://localhost:12000/statements");
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -406,6 +406,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   VLOG(1) << "PREPARE " << req.query();
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
       ql_env_.CurrentKeyspace(), req.query());
+  LOG(INFO) << "Generated Query Id = " << query_id;
   // To prevent multiple clients from preparing the same new statement in parallel and trying to
   // cache the same statement (a typical "login storm" scenario), each caller will try to allocate
   // the statement in the cached statement first. If it already exists, the existing one will be
@@ -447,7 +448,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) 
   if (!stmt_res.ok()) {
     return ProcessError(stmt_res.status(), req.query_id());
   }
-  
+
   LOG_IF(DFATAL, *stmt_res == nullptr) << "Null statement";
   const Status s = (*stmt_res)->ExecuteAsync(this, req.params(), statement_executed_cb_);
   return s.ok() ? nullptr : ProcessError(s, (*stmt_res)->query_id());

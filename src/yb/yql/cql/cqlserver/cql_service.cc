@@ -448,7 +448,7 @@ void CQLServiceImpl::GetPreparedStatementMetrics(
   int64_t num_statements = 0;
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
   for (auto stmt : prepared_stmts_map_) {
-    metrics->push_back(std::make_shared<StatementMetrics>(stmt.second->text(), stmt.first));
+    metrics->push_back(std::make_shared<StatementMetrics>(stmt.first, stmt.second->GetCounters()));
     if (++num_statements >= statement_limit) {
       break;
     }
@@ -467,8 +467,8 @@ void CQLServiceImpl::UpdatePrepStmtCounters(const ql::CQLMessage::QueryId& query
     itr->second->SetCounters(std::make_shared<Counters>());
     counters = itr->second->GetCounters();
   }
-  if(counters->query_.empty()) {
-    counters->query_ = itr->second->text();
+  if(counters->query.empty()) {
+    counters->query = itr->second->text();
   }
   UpdateCountersUnlocked(execute_time_in_sec, counters);
 }
@@ -476,54 +476,24 @@ void CQLServiceImpl::UpdatePrepStmtCounters(const ql::CQLMessage::QueryId& query
 void CQLServiceImpl::UpdateCountersUnlocked(
     double execute_time_in_sec, std::shared_ptr<Counters> counters) {
   LOG_IF(DFATAL, counters == nullptr) << "Null pointer counters received";
-  double old_mean = (counters->calls_ ? counters->total_time_/counters->calls_ : 0);
+  double old_mean = (counters->calls ? counters->total_time/counters->calls : 0);
   double execute_time_in_msec = execute_time_in_sec*1000;  // Converting execute time to milliseconds.
-  counters->calls_ += 1;
-  counters->total_time_ += execute_time_in_msec;
-  if (counters->calls_ == 1) {
-    counters->min_time_ = execute_time_in_msec;
-    counters->max_time_ = execute_time_in_msec;
+  counters->calls += 1;
+  counters->total_time += execute_time_in_msec;
+  if (counters->calls == 1) {
+    counters->min_time = execute_time_in_msec;
+    counters->max_time = execute_time_in_msec;
   } else {
-    counters->sum_var_time_ += (execute_time_in_msec - old_mean)*(execute_time_in_msec -
-                                counters->total_time_/counters->calls_);
+    counters->sum_var_time += (execute_time_in_msec - old_mean)*(execute_time_in_msec -
+                                counters->total_time/counters->calls);
 
-    if (counters->max_time_ < execute_time_in_msec) {
-      counters->max_time_ = execute_time_in_msec;
+    if (counters->max_time < execute_time_in_msec) {
+      counters->max_time = execute_time_in_msec;
     }
-    if (counters->min_time_ > execute_time_in_msec) {
-      counters->min_time_ = execute_time_in_msec;
+    if (counters->min_time > execute_time_in_msec) {
+      counters->min_time = execute_time_in_msec;
     }
   }
-}
-
-void CQLServiceImpl::DumpStatementsJsonUnlocked(JsonWriter* jw,
-  const Counters& counters) {
-  jw->StartObject();
-  jw->String("query");
-  jw->String(counters.query_);
-
-  jw->String("calls");
-  jw->Int64(counters.calls_);
-
-  jw->String("total_time");
-  jw->Double(counters.total_time_);
-
-  jw->String("min_time");
-  jw->Double(counters.min_time_);
-
-  jw->String("max_time");
-  jw->Double(counters.max_time_);
-
-  jw->String("mean_time");
-  jw->Double(counters.total_time_/counters.calls_);
-
-  double stddev_time = 0.0;
-  if(counters.calls_ > 1) {
-    stddev_time = sqrt(counters.sum_var_time_ / counters.calls_);
-  }
-  jw->String("stddev_time");
-  jw->Double(stddev_time);
-  jw->EndObject();
 }
 
 shared_ptr<Counters> CQLServiceImpl::GetCounters(const std::string& query_id) {

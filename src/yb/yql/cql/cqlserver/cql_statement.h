@@ -20,6 +20,7 @@
 
 #include <list>
 
+#include "yb/util/jsonwriter.h"
 #include "yb/yql/cql/ql/statement.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
 
@@ -84,19 +85,21 @@ class CQLStatement : public ql::Statement {
 };
 
 struct Counters{
-  Counters() : calls_(0), total_time_(0.), min_time_(0.),
-               max_time_(0.), sum_var_time_(0.) {}
+  Counters() : calls(0), total_time(0.), min_time(0.),
+               max_time(0.), sum_var_time(0.) {}
 
-  Counters(const std::shared_ptr<Counters>& other) : calls_(other->calls_),
-    total_time_(other->total_time_), min_time_(other->min_time_), max_time_(other->max_time_),
-    sum_var_time_(other->sum_var_time_), query_(other->query_) {}
+  Counters(const std::shared_ptr<Counters>& other) : calls(other->calls),
+    total_time(other->total_time), min_time(other->min_time), max_time(other->max_time),
+    sum_var_time(other->sum_var_time), query(other->query) {}
 
-  int64 calls_;         // Number of times executed.
-  double total_time_;   // Total execution time, in msec.
-  double min_time_;     // Minimum execution time in msec.
-  double max_time_;     // Maximum execution time in msec.
-  double sum_var_time_; // Sum of variances in execution time in msec.
-  std::string query_;   // Stores the query text.
+  void WriteAsJson(JsonWriter* jw, std::string query_id) const;
+
+  int64 calls;         // Number of times executed.
+  double total_time;   // Total execution time, in msec.
+  double min_time;     // Minimum execution time in msec.
+  double max_time;     // Maximum execution time in msec.
+  double sum_var_time; // Sum of variances in execution time in msec.
+  std::string query;   // Stores the query text.
 };
 
 }  // namespace cqlserver
