@@ -202,7 +202,8 @@ static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 			   List *indexqual, List *indexqualorig,
 			   List *indexorderby, List *indexorderbyorig,
 			   List *indexorderbyops, List *indextlist,
-			   ScanDirection indexscandir, YbPathInfo yb_path_info);
+			   ScanDirection indexscandir, double estimated_num_nexts,
+			   double estimated_num_seeks, YbPathInfo yb_path_info);
 static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 				   List *yb_pushdown_colrefs, List *yb_pushdown_quals,
 				   Index scanrelid, Oid indexid,
@@ -3841,6 +3842,8 @@ create_indexscan_plan(PlannerInfo *root,
 											indexorderbyops,
 											best_path->indexinfo->indextlist,
 											best_path->indexscandir,
+											best_path->estimated_num_nexts,
+											best_path->estimated_num_seeks,
 											best_path->path.yb_path_info);
 
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);
@@ -6419,6 +6422,8 @@ make_indexscan(List *qptlist,
 			   List *indexorderbyops,
 			   List *indextlist,
 			   ScanDirection indexscandir,
+			   double estimated_num_nexts,
+			   double estimated_num_seeks,
 			   YbPathInfo yb_path_info)
 {
 	IndexScan  *node = makeNode(IndexScan);
@@ -6437,6 +6442,8 @@ make_indexscan(List *qptlist,
 	node->indexorderbyops = indexorderbyops;
 	node->indextlist = indextlist;
 	node->indexorderdir = indexscandir;
+	node->estimated_num_nexts = estimated_num_nexts;
+	node->estimated_num_seeks = estimated_num_seeks;
 	node->yb_rel_pushdown.colrefs = yb_rel_pushdown_colrefs;
 	node->yb_rel_pushdown.quals = yb_rel_pushdown_quals;
 	node->yb_idx_pushdown.colrefs = yb_idx_pushdown_colrefs;

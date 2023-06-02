@@ -447,6 +447,8 @@ typedef struct IndexScan
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
 	PushdownExprs yb_idx_pushdown;
 	PushdownExprs yb_rel_pushdown;
+	double		estimated_num_nexts;
+	double		estimated_num_seeks;
 } IndexScan;
 
 /* ----------------
@@ -481,6 +483,8 @@ typedef struct IndexOnlyScan
 	 * In majority of cases it is NULL which means that indexqual will be used for tuple recheck.
 	 */
 	List	   *yb_indexqual_for_recheck;
+	double		estimated_num_nexts;
+	double		estimated_num_seeks;
 } IndexOnlyScan;
 
 /* ----------------

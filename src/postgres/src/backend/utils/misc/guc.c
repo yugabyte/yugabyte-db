@@ -2275,6 +2275,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_base_scans_cost_model", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables YB cost model for Sequential and Index scans. "
+			              "This feature is currently in preview."),
+			NULL
+		},
+		&yb_enable_base_scans_cost_model,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

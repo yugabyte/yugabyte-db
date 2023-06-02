@@ -19,6 +19,7 @@
 #include "miscadmin.h"
 #include "access/xact.h"
 #include "access/yb_scan.h"
+#include "catalog/pg_am.h"
 #include "foreign/fdwapi.h"
 #include "nodes/extensible.h"
 #include "nodes/nodeFuncs.h"
@@ -1126,14 +1127,21 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	if (rel->is_yb_relation)
 	{
-		ybcCostEstimate(rel, YBC_FULL_SCAN_SELECTIVITY,
-						false, /* is_backward_scan */
-						true, /* is_seq_scan */
-						false, /* is_uncovered_idx_scan */
-						&pathnode->startup_cost,
-						&pathnode->total_cost,
-						rel->reltablespace);
-		pathnode->rows = rel->rows;
+		if (yb_enable_base_scans_cost_model)
+		{
+			yb_cost_seqscan(pathnode, root, rel, pathnode->param_info);
+		}
+		else
+		{
+			ybcCostEstimate(rel, YBC_FULL_SCAN_SELECTIVITY,
+							false, /* is_backward_scan */
+							true, /* is_seq_scan */
+							false, /* is_uncovered_idx_scan */
+							&pathnode->startup_cost,
+							&pathnode->total_cost,
+							rel->reltablespace);
+			pathnode->rows = rel->rows;
+		}
 	}
 	else
 		cost_seqscan(pathnode, root, rel, pathnode->param_info);
@@ -1247,7 +1255,17 @@ create_index_path(PlannerInfo *root,
 	pathnode->indexorderbycols = indexorderbycols;
 	pathnode->indexscandir = indexscandir;
 
-	cost_index(pathnode, root, loop_count, partial_path);
+	if (IsYugaByteEnabled() && 
+		yb_enable_base_scans_cost_model && 
+		index->relam == LSM_AM_OID)
+	{
+		yb_cost_index(pathnode, root, loop_count, partial_path);
+	}
+	else
+	{
+		cost_index(pathnode, root, loop_count, partial_path);
+	}
+	
 
 	return pathnode;
 }
