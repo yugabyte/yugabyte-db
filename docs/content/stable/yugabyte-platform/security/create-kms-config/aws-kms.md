@@ -45,7 +45,7 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
 
 Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
 
-The master key resource policy should include the following [actions](https://docs.aws.amazon.com/kms/latest/developerguide/key-policy-default.html#key-policy-users-crypto):
+The master key resource policy should include the following key policy [permissions](https://docs.aws.amazon.com/kms/latest/developerguide/kms-api-permissions-reference.html):
 
 - kms:Encrypt
 - kms:Decrypt
