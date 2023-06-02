@@ -156,14 +156,13 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
  private:
   friend class IntentAwareIteratorPrefixScope;
 
-  // Adds new value to prefix stack. The top value of this stack is used to filter returned entries.
-  void PushPrefix(Slice prefix);
+  // Assign new value for prefix returning existing one. Expecting that new value is more strict
+  // than existing one.
+  Slice PushPrefix(Slice prefix);
 
-  // Removes top value from prefix stack. This iteration could became valid after popping prefix,
-  // if new top prefix is a prefix of currently pointed value.
-  void PopPrefix();
-
-  Slice CurrentPrefix() const;
+  // Assign new value for prefix. Expecting that new value was returned by previous call to
+  // PushPrefix.
+  void PopPrefix(Slice prefix);
 
   void DoSeekForward(dockv::KeyBytes* key);
 
@@ -309,7 +308,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   dockv::KeyBytes resolved_intent_sub_doc_key_encoded_;
   dockv::KeyBytes resolved_intent_value_;
 
-  std::vector<Slice> prefix_stack_;
+  Slice prefix_;
   TransactionStatusCache transaction_status_cache_;
 
   bool skip_future_records_needed_ = false;
@@ -325,16 +324,19 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
 class NODISCARD_CLASS IntentAwareIteratorPrefixScope {
  public:
   IntentAwareIteratorPrefixScope(Slice prefix, IntentAwareIterator* iterator)
-      : iterator_(iterator) {
-    iterator->PushPrefix(prefix);
+      : iterator_(iterator), prev_prefix_(iterator->PushPrefix(prefix)) {
   }
 
+  IntentAwareIteratorPrefixScope(const IntentAwareIteratorPrefixScope&) = delete;
+  void operator=(const IntentAwareIteratorPrefixScope&) = delete;
+
   ~IntentAwareIteratorPrefixScope() {
-    iterator_->PopPrefix();
+    iterator_->PopPrefix(prev_prefix_);
   }
 
  private:
   IntentAwareIterator* iterator_;
+  Slice prev_prefix_;
 };
 
 } // namespace docdb
