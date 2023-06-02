@@ -151,7 +151,7 @@ TEST_F(DBBlockCacheTest, TestWithoutCompressedBlockCache) {
   for (size_t i = 0; i < kNumBlocks - 1; i++) {
     iter = db_->NewIterator(read_options);
     iter->Seek(ToString(i));
-    ASSERT_OK(iter->status());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     CheckCacheCounters(options, 1, 0, 1, 0);
     iterators[i].reset(iter);
   }
@@ -170,7 +170,7 @@ TEST_F(DBBlockCacheTest, TestWithoutCompressedBlockCache) {
   for (size_t i = 0; i < kNumBlocks - 1; i++) {
     iter = db_->NewIterator(read_options);
     iter->Seek(ToString(i));
-    ASSERT_OK(iter->status());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     CheckCacheCounters(options, 0, 1, 0, 0);
     iterators[i].reset(iter);
   }
@@ -201,7 +201,7 @@ TEST_F(DBBlockCacheTest, TestWithCompressedBlockCache) {
   for (size_t i = 0; i < kNumBlocks - 1; i++) {
     iter = db_->NewIterator(read_options);
     iter->Seek(ToString(i));
-    ASSERT_OK(iter->status());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     CheckCacheCounters(options, 1, 0, 1, 0);
     CheckCompressedCacheCounters(options, 1, 0, 1, 0);
     iterators[i].reset(iter);

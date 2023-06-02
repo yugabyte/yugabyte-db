@@ -199,7 +199,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorTrimSeekToNext) {
       snprintf(buf4, sizeof(buf4), "00a0%016d", i * 5 / 2);
       Slice target(buf4, 20);
       iterh->Seek(target);
-      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
+      ASSERT_TRUE(ASSERT_RESULT(iterh->CheckedValid()));
       for (int j = (i + 1) * 5 / 2; j < i * 5; j += 5) {
         iterh->Next();
         ASSERT_TRUE(ASSERT_RESULT(iterh->CheckedValid()));
@@ -242,6 +242,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorTrimSeekToNext) {
   snprintf(buf5, sizeof(buf5), "00a0%016d", (num_records / 2) * 5 - 2);
   Slice target1(buf5, 20);
   iteri->Seek(target1);
+  ASSERT_FALSE(iteri->Valid());
   ASSERT_TRUE(iteri->status().IsIncomplete());
   iteri = 0;
 
@@ -676,6 +677,7 @@ TEST_F(DBTestTailingIterator, ForwardIteratorVersionProperty) {
   {
     std::unique_ptr<Iterator> iter(db_->NewIterator(read_options));
     iter->Seek("foo");
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     std::string prop_value;
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.super-version-number",
                                 &prop_value));
@@ -689,6 +691,7 @@ TEST_F(DBTestTailingIterator, ForwardIteratorVersionProperty) {
     v2 = static_cast<uint64_t>(std::atoi(prop_value.c_str()));
 
     iter->Seek("f");
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
 
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.super-version-number",
                                 &prop_value));
@@ -701,6 +704,7 @@ TEST_F(DBTestTailingIterator, ForwardIteratorVersionProperty) {
   {
     std::unique_ptr<Iterator> iter(db_->NewIterator(read_options));
     iter->Seek("foo");
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     std::string prop_value;
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.super-version-number",
                                 &prop_value));
