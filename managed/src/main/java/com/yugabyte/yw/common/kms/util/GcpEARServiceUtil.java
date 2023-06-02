@@ -30,8 +30,6 @@ import com.google.cloud.kms.v1.CryptoKeyVersion;
 import com.google.cloud.kms.v1.CryptoKeyVersionName;
 import com.google.cloud.kms.v1.CryptoKeyVersionTemplate;
 import com.google.cloud.kms.v1.DecryptResponse;
-import com.google.cloud.kms.v1.EncryptResponse;
-import com.google.cloud.kms.v1.GenerateRandomBytesResponse;
 import com.google.cloud.kms.v1.KeyManagementServiceClient;
 import com.google.cloud.kms.v1.KeyManagementServiceSettings;
 import com.google.cloud.kms.v1.KeyRing;
@@ -94,8 +92,7 @@ public class GcpEARServiceUtil {
             ServiceAccountCredentials.fromStream(new ByteArrayInputStream(credentials.getBytes()));
         credentialsProvider = FixedCredentialsProvider.create(serviceAccountCredentials);
       } catch (IOException e) {
-        log.info("Error while reading GCP credentials.");
-        e.printStackTrace();
+        log.error("Error while reading GCP credentials:", e);
       }
     }
     return credentialsProvider;
@@ -109,7 +106,7 @@ public class GcpEARServiceUtil {
    *     etc.
    * @return a KMS client object
    */
-  public KeyManagementServiceClient getKMSClient(ObjectNode authConfig) {
+  KeyManagementServiceClient getKMSClient(ObjectNode authConfig) throws IOException {
     KeyManagementServiceSettings.Builder keyManagementServiceSettingsBuilder =
         KeyManagementServiceSettings.newBuilder();
 
@@ -122,17 +119,8 @@ public class GcpEARServiceUtil {
       keyManagementServiceSettingsBuilder.setEndpoint(
           authConfig.path(GCP_KMS_ENDPOINT_FIELDNAME).asText());
     }
-    KeyManagementServiceSettings keyManagementServiceSettings;
-    KeyManagementServiceClient gcpKmsClient = null;
-    try {
-      keyManagementServiceSettings = keyManagementServiceSettingsBuilder.build();
-      gcpKmsClient = KeyManagementServiceClient.create(keyManagementServiceSettings);
-      log.info("getKMSClient: Finished create client");
-    } catch (IOException e) {
-      log.info("Error while creating GCP KMS Client");
-      e.printStackTrace();
-    }
-    return gcpKmsClient;
+
+    return KeyManagementServiceClient.create(keyManagementServiceSettingsBuilder.build());
   }
 
   /**
@@ -142,15 +130,13 @@ public class GcpEARServiceUtil {
    * @return the project ID
    */
   public String getConfigProjectId(ObjectNode authConfig) {
-    String projectId = "";
     if (authConfig.has(GCP_CONFIG_FIELDNAME)
         && authConfig.get(GCP_CONFIG_FIELDNAME).has("project_id")) {
-      projectId = authConfig.get(GCP_CONFIG_FIELDNAME).get("project_id").asText();
+      return authConfig.get(GCP_CONFIG_FIELDNAME).get("project_id").asText();
     } else {
-      log.info("Could not get GCP config project ID. 'GCP_CONFIG.project_id' not found.");
+      log.error("Could not get GCP config project ID. 'GCP_CONFIG.project_id' not found.");
       return null;
     }
-    return projectId;
   }
 
   /**
@@ -160,14 +146,13 @@ public class GcpEARServiceUtil {
    * @return the GCP KMS endpoint
    */
   public String getConfigEndpoint(ObjectNode authConfig) {
-    String endpoint = "";
     if (authConfig.has(GCP_KMS_ENDPOINT_FIELDNAME)) {
-      endpoint = authConfig.path(GCP_KMS_ENDPOINT_FIELDNAME).asText();
+      return authConfig.path(GCP_KMS_ENDPOINT_FIELDNAME).asText();
     } else {
-      log.info("Could not get GCP config endpoint from auth config. 'GCP_KMS_ENDPOINT' not found.");
+      log.error(
+          "Could not get GCP config endpoint from auth config. 'GCP_KMS_ENDPOINT' not found.");
       return null;
     }
-    return endpoint;
   }
 
   /**
@@ -177,14 +162,12 @@ public class GcpEARServiceUtil {
    * @return the GCP KMS key ring id
    */
   public String getConfigKeyRingId(ObjectNode authConfig) {
-    String keyRingId = "";
     if (authConfig.has(KEY_RING_ID_FIELDNAME)) {
-      keyRingId = authConfig.path(KEY_RING_ID_FIELDNAME).asText();
+      return authConfig.path(KEY_RING_ID_FIELDNAME).asText();
     } else {
-      log.info("Could not get GCP config key ring from auth config. 'KEY_RING_ID' not found.");
+      log.error("Could not get GCP config key ring from auth config. 'KEY_RING_ID' not found.");
       return null;
     }
-    return keyRingId;
   }
 
   /**
@@ -194,15 +177,13 @@ public class GcpEARServiceUtil {
    * @return the GCP KMS crypto key id
    */
   public String getConfigCryptoKeyId(ObjectNode authConfig) {
-    String cryptoKeyId = "";
     if (authConfig.has(CRYPTO_KEY_ID_FIELDNAME)) {
-      cryptoKeyId = authConfig.path(CRYPTO_KEY_ID_FIELDNAME).asText();
+      return authConfig.path(CRYPTO_KEY_ID_FIELDNAME).asText();
     } else {
-      log.info(
+      log.error(
           "Could not get GCP config crypto key ID from auth config. 'CRYPTO_KEY_ID' not found.");
       return null;
     }
-    return cryptoKeyId;
   }
 
   /**
@@ -213,27 +194,23 @@ public class GcpEARServiceUtil {
    * @return the location ID. Ex: "global", "asia", "us-east1"
    */
   public String getConfigLocationId(ObjectNode authConfig) {
-    String locationId = "";
     if (authConfig.has(LOCATION_ID_FIELDNAME)) {
-      locationId = authConfig.path(LOCATION_ID_FIELDNAME).asText();
+      return authConfig.path(LOCATION_ID_FIELDNAME).asText();
     } else {
-      log.info("Could not get GCP config location ID from auth config. 'LOCATION_ID' not found.");
+      log.error("Could not get GCP config location ID from auth config. 'LOCATION_ID' not found.");
       return null;
     }
-    return locationId;
   }
 
   public ProtectionLevel getConfigProtectionLevel(ObjectNode authConfig) {
-    String protectionLevel = "";
     if (authConfig.has(PROTECTION_LEVEL_FIELDNAME)) {
-      protectionLevel = authConfig.path(PROTECTION_LEVEL_FIELDNAME).asText();
+      return ProtectionLevel.valueOf(authConfig.path(PROTECTION_LEVEL_FIELDNAME).asText());
     } else {
-      log.info(
+      log.error(
           "Could not get GCP config protection level from auth config. "
               + "'PROTECTION_LEVEL_FIELDNAME' not found.");
       return null;
     }
-    return ProtectionLevel.valueOf(protectionLevel);
   }
 
   /**
@@ -245,15 +222,14 @@ public class GcpEARServiceUtil {
   public KeyRing getKeyRing(ObjectNode authConfig) {
     KeyRing keyRing = null;
     String keyRingRN = getKeyRingRN(authConfig);
-    KeyManagementServiceClient client = getKMSClient(authConfig);
-    try {
+
+    try (KeyManagementServiceClient client = getKMSClient(authConfig)) {
       keyRing = client.getKeyRing(keyRingRN);
     } catch (NotFoundException e) {
       log.error(
-          String.format("Key Ring '%s' does not exist on the GCP KMS provider \n. ", keyRingRN)
-              + e.toString());
-    } finally {
-      client.close();
+          String.format("Key Ring '%s' does not exist on the GCP KMS provider\n", keyRingRN), e);
+    } catch (IOException e) {
+      log.error(e.getMessage(), e);
     }
     return keyRing;
   }
@@ -280,16 +256,15 @@ public class GcpEARServiceUtil {
    */
   public CryptoKey getCryptoKey(ObjectNode authConfig) {
     CryptoKey cryptoKey = null;
-    String CryptoKeyRN = getCryptoKeyRN(authConfig);
-    KeyManagementServiceClient client = getKMSClient(authConfig);
-    try {
-      cryptoKey = client.getCryptoKey(CryptoKeyRN);
+    String cryptoKeyRN = getCryptoKeyRN(authConfig);
+
+    try (KeyManagementServiceClient client = getKMSClient(authConfig)) {
+      cryptoKey = client.getCryptoKey(cryptoKeyRN);
     } catch (NotFoundException e) {
       log.error(
-          String.format("Crypto Key '%s' does not exist on the GCP KMS provider \n. ", CryptoKeyRN)
-              + e.toString());
-    } finally {
-      client.close();
+          String.format("Crypto Key '%s' does not exist on the GCP KMS provider\n", cryptoKeyRN));
+    } catch (IOException e) {
+      log.error(e.getMessage(), e);
     }
     return cryptoKey;
   }
@@ -308,33 +283,13 @@ public class GcpEARServiceUtil {
   }
 
   /**
-   * Gets the crypto key version resource name from the config, the crypto key resource name, and
-   * the key version ID number.
-   *
-   * @param authConfig the gcp auth config object
-   * @param cryptoKeyRN the crypto key resource name
-   * @param keyVersionId the crypto key version ID
-   * @return the crypto key version resource name. Ex:
-   *     "projects/project_name/locations/global/keyRings/yb-keyring
-   *     /cryptoKeys/yb-key/cryptoKeyVersions/2"
-   */
-  public String getKeyVersionRN(ObjectNode authConfig, String cryptoKeyRN, String keyVersionId) {
-    String projectId = getConfigProjectId(authConfig);
-    String locationId = getConfigLocationId(authConfig);
-    String keyRingId = getKeyRingIdFromRN(cryptoKeyRN);
-    String cryptoKeyId = getCryptoKeyIdFromRN(cryptoKeyRN);
-    return CryptoKeyVersionName.of(projectId, locationId, keyRingId, cryptoKeyId, keyVersionId)
-        .toString();
-  }
-
-  /**
    * Gets the primary crypto key version ID from the config object. Version ID just a number. It is
    * different from the entire resource name.
    *
    * @param authConfig the gcp auth config object
    * @return the crypto key version ID. Ex: "2"
    */
-  public String getPrimaryKeyVersionId(ObjectNode authConfig) {
+  public String getPrimaryKeyVersionId(ObjectNode authConfig) throws IOException {
     String cryptoKeyRN = getCryptoKeyRN(authConfig);
     String keyVersionRN = getPrimaryKeyVersion(authConfig, cryptoKeyRN).getName();
     return getKeyVersionIdFromRN(keyVersionRN);
@@ -394,14 +349,15 @@ public class GcpEARServiceUtil {
   public LocationName getLocationName(ObjectNode authConfig) {
     String locationId = getConfigLocationId(authConfig);
     String projectId = getConfigProjectId(authConfig);
-    LocationName locationName = LocationName.of(projectId, locationId);
-    return locationName;
+    return LocationName.of(projectId, locationId);
   }
 
-  public CryptoKeyVersion getPrimaryKeyVersion(ObjectNode authConfig, String cryptoKeyRN) {
-    KeyManagementServiceClient client = getKMSClient(authConfig);
-    CryptoKey cryptoKey = client.getCryptoKey(cryptoKeyRN);
-    return cryptoKey.getPrimary();
+  public CryptoKeyVersion getPrimaryKeyVersion(ObjectNode authConfig, String cryptoKeyRN)
+      throws IOException {
+    try (KeyManagementServiceClient client = getKMSClient(authConfig)) {
+      CryptoKey cryptoKey = client.getCryptoKey(cryptoKeyRN);
+      return cryptoKey.getPrimary();
+    }
   }
 
   /**
@@ -435,8 +391,7 @@ public class GcpEARServiceUtil {
     // Sets the correct protection level for existing crypto key
     CryptoKeyVersion cryptoKeyVersion = cryptoKey.getPrimary();
     ProtectionLevel configProtectionLevel = getConfigProtectionLevel(authConfig);
-    if (cryptoKeyVersion != null
-        && !cryptoKeyVersion.getProtectionLevel().equals(configProtectionLevel)) {
+    if (!cryptoKeyVersion.getProtectionLevel().equals(configProtectionLevel)) {
       log.info(
           "Found existing key with different protection level. "
               + "Changed protection level from {} to {}.",
@@ -469,7 +424,7 @@ public class GcpEARServiceUtil {
       return false;
     }
     CryptoKeyVersion cryptoKeyVersion = cryptoKey.getPrimary();
-    if (cryptoKeyVersion.getState() != CryptoKeyVersionState.ENABLED) {
+    if (cryptoKeyVersion.getState() != CryptoKeyVersion.CryptoKeyVersionState.ENABLED) {
       log.info("Primary crypto key version is not enabled. Please enable it.");
       return false;
     }
@@ -480,19 +435,17 @@ public class GcpEARServiceUtil {
    * Creates a new key ring with the given ID. Must not already exist.
    *
    * @param authConfig the gcp auth config object
-   * @param keyRingId the key ring ID to be created
    * @return the newly created key ring object
    */
-  public KeyRing createKeyRing(ObjectNode authConfig) {
-    KeyManagementServiceClient client = getKMSClient(authConfig);
-    // Build the key ring to create.
-    KeyRing keyRing = KeyRing.newBuilder().build();
-    // Create the key ring.
-    LocationName locationName = getLocationName(authConfig);
-    String keyRingId = getConfigKeyRingId(authConfig);
-    KeyRing createdKeyRing = client.createKeyRing(locationName, keyRingId, keyRing);
-    client.close();
-    return createdKeyRing;
+  public KeyRing createKeyRing(ObjectNode authConfig) throws IOException {
+    try (KeyManagementServiceClient client = getKMSClient(authConfig)) {
+      // Build the key ring to create.
+      KeyRing keyRing = KeyRing.newBuilder().build();
+      // Create the key ring.
+      LocationName locationName = getLocationName(authConfig);
+      String keyRingId = getConfigKeyRingId(authConfig);
+      return client.createKeyRing(locationName, keyRingId, keyRing);
+    }
   }
 
   /**
@@ -503,13 +456,14 @@ public class GcpEARServiceUtil {
    * @param numBytes the number of bytes to be generated
    * @return the randomly generated byte array
    */
-  public byte[] generateRandomBytes(ObjectNode authConfig, int numBytes) {
+  public byte[] generateRandomBytes(ObjectNode authConfig, int numBytes) throws IOException {
     LocationName locationName = getLocationName(authConfig);
-    KeyManagementServiceClient client = getKMSClient(authConfig);
-    GenerateRandomBytesResponse response =
-        client.generateRandomBytes(locationName.toString(), numBytes, ProtectionLevel.HSM);
-    client.close();
-    return response.getData().toByteArray();
+    try (KeyManagementServiceClient client = getKMSClient(authConfig)) {
+      return client
+          .generateRandomBytes(locationName.toString(), numBytes, ProtectionLevel.HSM)
+          .getData()
+          .toByteArray();
+    }
   }
 
   /**
@@ -521,43 +475,43 @@ public class GcpEARServiceUtil {
    * @param cryptoKeyId the crypto key to be created
    * @return the crypto key object
    */
-  public CryptoKey createCryptoKey(ObjectNode authConfig, String keyRingRN, String cryptoKeyId) {
-    KeyManagementServiceClient client = getKMSClient(authConfig);
-    KeyRingName keyRingName = null;
+  public CryptoKey createCryptoKey(ObjectNode authConfig, String keyRingRN, String cryptoKeyId)
+      throws IOException {
+    try (KeyManagementServiceClient client = getKMSClient(authConfig)) {
+      KeyRingName keyRingName;
 
-    // Check the key ring resource name syntax.
-    if (KeyRingName.isParsableFrom(keyRingRN)) {
-      keyRingName = KeyRingName.parse(keyRingRN);
-    } else {
-      log.info("Could not parse Key Ring Name from key ring resource name: " + keyRingRN);
-      return null;
+      // Check the key ring resource name syntax.
+      if (KeyRingName.isParsableFrom(keyRingRN)) {
+        keyRingName = KeyRingName.parse(keyRingRN);
+      } else {
+        log.error("Could not parse Key Ring Name from key ring resource name: " + keyRingRN);
+        return null;
+      }
+
+      // Build the symmetric key with custom parameters.
+      CryptoKey.Builder keyBuilder = CryptoKey.newBuilder();
+      keyBuilder.setPurpose(CryptoKeyPurpose.ENCRYPT_DECRYPT);
+
+      // Set the protection level to either HSM or default SOFTWARE
+      CryptoKeyVersionTemplate.Builder cryptoKeyVersionTemplateBuilder =
+          CryptoKeyVersionTemplate.newBuilder();
+      if (authConfig.has(PROTECTION_LEVEL_FIELDNAME)
+          && authConfig.path(PROTECTION_LEVEL_FIELDNAME).asText().equals("HSM")) {
+        cryptoKeyVersionTemplateBuilder.setProtectionLevel(ProtectionLevel.HSM);
+      }
+      // Use default google symmetric encryption algorithm
+      cryptoKeyVersionTemplateBuilder.setAlgorithm(
+          CryptoKeyVersion.CryptoKeyVersionAlgorithm.GOOGLE_SYMMETRIC_ENCRYPTION);
+      keyBuilder.setVersionTemplate(cryptoKeyVersionTemplateBuilder);
+
+      // Remove automatic rotation
+      keyBuilder.clearRotationPeriod();
+      keyBuilder.clearNextRotationTime();
+      CryptoKey key = keyBuilder.build();
+
+      // Create the key
+      return client.createCryptoKey(keyRingName, cryptoKeyId, key);
     }
-
-    // Build the symmetric key with custom parameters.
-    CryptoKey.Builder keyBuilder = CryptoKey.newBuilder();
-    keyBuilder.setPurpose(CryptoKeyPurpose.ENCRYPT_DECRYPT);
-
-    // Set the protection level to either HSM or default SOFTWARE
-    CryptoKeyVersionTemplate.Builder cryptoKeyVersionTemplateBuilder =
-        CryptoKeyVersionTemplate.newBuilder();
-    if (authConfig.has(PROTECTION_LEVEL_FIELDNAME)
-        && authConfig.path(PROTECTION_LEVEL_FIELDNAME).asText().equals("HSM")) {
-      cryptoKeyVersionTemplateBuilder.setProtectionLevel(ProtectionLevel.HSM);
-    }
-    // Use default google symmetric encryption algorithm
-    cryptoKeyVersionTemplateBuilder.setAlgorithm(
-        CryptoKeyVersionAlgorithm.GOOGLE_SYMMETRIC_ENCRYPTION);
-    keyBuilder.setVersionTemplate(cryptoKeyVersionTemplateBuilder);
-
-    // Remove automatic rotation
-    keyBuilder.clearRotationPeriod();
-    keyBuilder.clearNextRotationTime();
-    CryptoKey key = keyBuilder.build();
-
-    // Create the key
-    CryptoKey createdKey = client.createCryptoKey(keyRingName, cryptoKeyId, key);
-    client.close();
-    return createdKey;
   }
 
   /**
@@ -567,10 +521,8 @@ public class GcpEARServiceUtil {
    * @throws Exception when keyring doesn't exist and no 'cloudkms.keyRings.create' permission
    */
   public void checkOrCreateKeyRing(ObjectNode authConfig) throws Exception {
-    if (checkKeyRingExists(authConfig)) {
-      return;
-    } else {
-      List<String> createKeyRingPermissions = Arrays.asList("cloudkms.keyRings.create");
+    if (!checkKeyRingExists(authConfig)) {
+      List<String> createKeyRingPermissions = Collections.singletonList("cloudkms.keyRings.create");
       if (!testGcpPermissions(authConfig, createKeyRingPermissions)) {
         throw new Exception(
             "Key ring does not already exist and "
@@ -590,10 +542,9 @@ public class GcpEARServiceUtil {
   public void checkOrCreateCryptoKey(ObjectNode authConfig) throws Exception {
     String cryptoKeyId = getConfigCryptoKeyId(authConfig);
     String keyRingRN = getKeyRingRN(authConfig);
-    if (checkCryptoKeyExists(authConfig)) {
-      return;
-    } else {
-      List<String> createCryptoKeyPermissions = Arrays.asList("cloudkms.cryptoKeys.create");
+    if (!checkCryptoKeyExists(authConfig)) {
+      List<String> createCryptoKeyPermissions =
+          Collections.singletonList("cloudkms.cryptoKeys.create");
       if (!testGcpPermissions(authConfig, createCryptoKeyPermissions)) {
         throw new Exception(
             "Crypto key does not already exist and "
@@ -613,31 +564,31 @@ public class GcpEARServiceUtil {
    *     generated universe key.
    * @return the encrypted byte array
    */
-  public byte[] encryptBytes(ObjectNode authConfig, byte[] textToEncrypt) {
-    KeyManagementServiceClient client = getKMSClient(authConfig);
-    String cryptoKeyRN = getCryptoKeyRN(authConfig);
-    EncryptResponse encryptResponse =
-        client.encrypt(cryptoKeyRN, ByteString.copyFrom(textToEncrypt));
-    client.close();
-    return encryptResponse.getCiphertext().toByteArray();
+  public byte[] encryptBytes(ObjectNode authConfig, byte[] textToEncrypt) throws IOException {
+    try (KeyManagementServiceClient client = getKMSClient(authConfig)) {
+      String cryptoKeyRN = getCryptoKeyRN(authConfig);
+      return client
+          .encrypt(cryptoKeyRN, ByteString.copyFrom(textToEncrypt))
+          .getCiphertext()
+          .toByteArray();
+    }
   }
 
   /**
    * Decrypts a byte array with the crypto key. Crypto key is formed from the key ring id and crypto
    * key id stored in the config object.
    *
-   * @param configUUID the config UUID
    * @param textToDecrypt the encrypted sequence of bytes, to be decrypted
-   * @param config the config object
+   * @param authConfig the config object
    * @return the decrypted byte array
    */
-  public byte[] decryptBytes(ObjectNode authConfig, byte[] textToDecrypt) {
-    KeyManagementServiceClient client = getKMSClient(authConfig);
-    String cryptoKeyRN = getCryptoKeyRN(authConfig);
-    DecryptResponse decryptResponse =
-        client.decrypt(cryptoKeyRN, ByteString.copyFrom(textToDecrypt));
-    client.close();
-    return decryptResponse.getPlaintext().toByteArray();
+  public byte[] decryptBytes(ObjectNode authConfig, byte[] textToDecrypt) throws IOException {
+    try (KeyManagementServiceClient client = getKMSClient(authConfig)) {
+      String cryptoKeyRN = getCryptoKeyRN(authConfig);
+      DecryptResponse decryptResponse =
+          client.decrypt(cryptoKeyRN, ByteString.copyFrom(textToDecrypt));
+      return decryptResponse.getPlaintext().toByteArray();
+    }
   }
 
   /**
@@ -651,11 +602,11 @@ public class GcpEARServiceUtil {
   public boolean testGcpPermissions(ObjectNode authConfig, List<String> permissionsList) {
     String projectId = getConfigProjectId(authConfig);
 
-    CloudResourceManager service = null;
+    CloudResourceManager service;
     try {
       service = createCloudResourceManagerService(authConfig);
     } catch (IOException | GeneralSecurityException e) {
-      log.info("Unable to initialize service: \n" + e.toString());
+      log.error("Unable to initialize service: \n", e);
       return false;
     }
 
@@ -672,7 +623,7 @@ public class GcpEARServiceUtil {
         return true;
       }
     } catch (IOException e) {
-      log.error("Unable to test permissions: \n" + e.toString());
+      log.error("Unable to test permissions: \n", e);
       return false;
     }
     log.warn(
@@ -690,14 +641,12 @@ public class GcpEARServiceUtil {
         GoogleCredentials.fromStream(new ByteArrayInputStream(credentials.getBytes()))
             .createScoped(Collections.singleton(IamScopes.CLOUD_PLATFORM));
 
-    CloudResourceManager service =
-        new CloudResourceManager.Builder(
-                GoogleNetHttpTransport.newTrustedTransport(),
-                GsonFactory.getDefaultInstance(),
-                new HttpCredentialsAdapter(credential))
-            .setApplicationName("service-accounts")
-            .build();
-    return service;
+    return new CloudResourceManager.Builder(
+            GoogleNetHttpTransport.newTrustedTransport(),
+            GsonFactory.getDefaultInstance(),
+            new HttpCredentialsAdapter(credential))
+        .setApplicationName("service-accounts")
+        .build();
   }
 
   /**
@@ -734,18 +683,19 @@ public class GcpEARServiceUtil {
       throw new Exception("Invalid config, location id, keyring id, or crypto key id");
     }
     // Try to create a KMS client with specified fields / options
-    KeyManagementServiceClient client = getKMSClient(formData);
-    if (client == null) {
-      log.warn("validateKMSProviderConfigFormData: Got KMS Client = null");
-      throw new Exception("Invalid GCP KMS parameters");
+    try (KeyManagementServiceClient client = getKMSClient(formData)) {
+      if (client == null) {
+        log.warn("validateKMSProviderConfigFormData: Got KMS Client = null");
+        throw new RuntimeException("Invalid GCP KMS parameters");
+      }
     }
-    client.close();
+
     // Check if custom key ring id and crypto key id is given
     if (checkFieldsExist(formData)) {
       String keyRingId = formData.path(KEY_RING_ID_FIELDNAME).asText();
       log.info("validateKMSProviderConfigFormData: Checked all required fields exist.");
       // If given a custom key ring, validate its permissions
-      if (testGcpPermissions(formData, minRequiredPermissionsList) == false) {
+      if (!testGcpPermissions(formData, minRequiredPermissionsList)) {
         log.info(
             "validateKMSProviderConfigFormData: Not enough permissions for key ring = "
                 + keyRingId);

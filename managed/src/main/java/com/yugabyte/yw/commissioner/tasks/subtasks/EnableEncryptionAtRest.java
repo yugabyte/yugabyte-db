@@ -15,11 +15,13 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -49,35 +51,31 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    UUID universeUUID = taskParams().universeUUID;
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
+
     try {
       log.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
-      final byte[] universeKeyRef =
-          keyManager.generateUniverseKey(
-              taskParams().encryptionAtRestConfig.kmsConfigUUID,
-              taskParams().universeUUID,
-              taskParams().encryptionAtRestConfig);
+      EncryptionAtRestConfig config = taskParams().encryptionAtRestConfig;
+      UUID kmsConfigUUID = config.kmsConfigUUID;
+      byte[] universeKeyRef = keyManager.generateUniverseKey(kmsConfigUUID, universeUUID, config);
 
       if (universeKeyRef == null || universeKeyRef.length == 0) {
         throw new RuntimeException("Error occurred creating universe key");
       }
 
-      final byte[] universeKeyVal =
-          keyManager.getUniverseKey(
-              taskParams().universeUUID,
-              taskParams().encryptionAtRestConfig.kmsConfigUUID,
-              universeKeyRef,
-              taskParams().encryptionAtRestConfig);
+      byte[] universeKeyVal =
+          keyManager.getUniverseKey(universeUUID, kmsConfigUUID, universeKeyRef, config);
 
       if (universeKeyVal == null || universeKeyVal.length == 0) {
         throw new RuntimeException("Error occurred retrieving universe key from ref");
       }
 
-      final String encodedKeyRef = Base64.getEncoder().encodeToString(universeKeyRef);
+      String encodedKeyRef = Base64.getEncoder().encodeToString(universeKeyRef);
 
       List<HostAndPort> masterAddrs =
           Arrays.stream(hostPorts.split(","))
@@ -100,13 +98,10 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
         throw new RuntimeException("Error occurred enabling encryption at rest");
       }
 
+      EncryptionAtRestUtil.activateKeyRef(universeUUID, kmsConfigUUID, universeKeyRef);
+
       universe.incrementVersion();
       log.info("Incremented universe version to {} ", universe.version);
-
-      EncryptionAtRestUtil.activateKeyRef(
-          taskParams().universeUUID,
-          taskParams().encryptionAtRestConfig.kmsConfigUUID,
-          universeKeyRef);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage(), e);
       throw new RuntimeException(e);

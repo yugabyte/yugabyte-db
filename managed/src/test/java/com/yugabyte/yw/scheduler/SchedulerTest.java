@@ -3,6 +3,9 @@
 package com.yugabyte.yw.scheduler;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -218,7 +221,7 @@ public class SchedulerTest extends FakeDBApplication {
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(1)).submit(any(), any());
     s.refresh();
-    assertEquals(false, s.getBacklogStatus());
+    assertFalse(s.getBacklogStatus());
   }
 
   @Test
@@ -226,12 +229,12 @@ public class SchedulerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Map<String, String> updateConfigParams = new HashMap<String, String>();
+    Map<String, String> updateConfigParams = new HashMap<>();
     updateConfigParams.put(Universe.TAKE_BACKUPS, "true");
     universe.updateConfig(updateConfigParams);
     universe.save();
     BackupRequestParams backupRequestParams = new BackupRequestParams();
-    backupRequestParams.setUniverseUUID(universe.getUniverseUUID());
+    backupRequestParams.universeUUID = universe.getUniverseUUID();
     backupRequestParams.storageConfigUUID = s3StorageConfig.getConfigUUID();
     backupRequestParams.incrementalBackupFrequency = 1800 * 1000L;
     backupRequestParams.incrementalBackupFrequencyTimeUnit = TimeUnit.MINUTES;
@@ -247,7 +250,7 @@ public class SchedulerTest extends FakeDBApplication {
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(1)).submit(any(), any());
     s.refresh();
-    assertEquals(false, s.getIncrementBacklogStatus());
+    assertFalse(s.getIncrementBacklogStatus());
   }
 
   @Test
@@ -260,7 +263,7 @@ public class SchedulerTest extends FakeDBApplication {
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(0)).submit(any(), any());
     s.refresh();
-    assertEquals(true, s.getBacklogStatus());
+    assertTrue(s.getBacklogStatus());
   }
 
   @Test
@@ -268,14 +271,14 @@ public class SchedulerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Map<String, String> updateConfigParams = new HashMap<String, String>();
+    Map<String, String> updateConfigParams = new HashMap<>();
     updateConfigParams.put(Universe.TAKE_BACKUPS, "true");
     universe.updateConfig(updateConfigParams);
     universe.save();
     BackupRequestParams backupRequestParams = new BackupRequestParams();
-    backupRequestParams.setUniverseUUID(universe.getUniverseUUID());
+    backupRequestParams.universeUUID = universe.getUniverseUUID();
     backupRequestParams.storageConfigUUID = s3StorageConfig.getConfigUUID();
-    backupRequestParams.incrementalBackupFrequency = 1 * 1000L;
+    backupRequestParams.incrementalBackupFrequency = 1000L;
     backupRequestParams.incrementalBackupFrequencyTimeUnit = TimeUnit.MINUTES;
     Schedule s =
         Schedule.create(
@@ -295,15 +298,15 @@ public class SchedulerTest extends FakeDBApplication {
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(0)).submit(any(), any());
     s.refresh();
-    assertEquals(true, s.getBacklogStatus());
-    assertEquals(false, s.getIncrementBacklogStatus());
+    assertTrue(s.getBacklogStatus());
+    assertFalse(s.getIncrementBacklogStatus());
 
     setUniverseBackupInProgress(false, universe);
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(1)).submit(any(), any());
     s.refresh();
-    assertEquals(false, s.getBacklogStatus());
-    assertEquals(false, s.getIncrementBacklogStatus());
+    assertFalse(s.getBacklogStatus());
+    assertFalse(s.getIncrementBacklogStatus());
   }
 
   @Test
@@ -330,7 +333,7 @@ public class SchedulerTest extends FakeDBApplication {
         .thenReturn(true);
     scheduler.scheduleRunner();
     assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
-    assertEquals(null, CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID));
+    assertNull(CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID));
     verify(mockCommissioner, times(0)).submit(any(), any());
 
     when(mockTaskManager.isDeleteBackupTaskAlreadyPresent(defaultCustomer.uuid, backup.backupUUID))
@@ -345,26 +348,20 @@ public class SchedulerTest extends FakeDBApplication {
 
   public static void setUniverseBackupInProgress(boolean value, Universe universe) {
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            universeDetails.backupInProgress = value;
-            universe.setUniverseDetails(universeDetails);
-          }
+        universe1 -> {
+          UniverseDefinitionTaskParams universeDetails = universe1.getUniverseDetails();
+          universeDetails.backupInProgress = value;
+          universe1.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(universe.universeUUID, updater);
   }
 
   public static void setUniversePaused(boolean value, Universe universe) {
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            universeDetails.universePaused = value;
-            universe.setUniverseDetails(universeDetails);
-          }
+        universe1 -> {
+          UniverseDefinitionTaskParams universeDetails = universe1.getUniverseDetails();
+          universeDetails.universePaused = value;
+          universe1.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(universe.universeUUID, updater);
   }

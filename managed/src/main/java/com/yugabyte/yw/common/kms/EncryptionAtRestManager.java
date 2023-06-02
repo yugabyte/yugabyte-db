@@ -46,7 +46,7 @@ public class EncryptionAtRestManager {
   public enum RestoreKeyResult {
     RESTORE_SKIPPED,
     RESTORE_FAILED,
-    RESTORE_SUCCEEDED;
+    RESTORE_SUCCEEDED
   }
 
   public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>>
@@ -230,7 +230,7 @@ public class EncryptionAtRestManager {
    * @return ObjectNode consisting of universe key history.
    * @throws Exception
    */
-  public ObjectNode backupUniverseKeyHistory(UUID universeUUID) throws Exception {
+  public ObjectNode backupUniverseKeyHistory(UUID universeUUID) {
     ObjectNode backup = Json.newObject();
     ArrayNode universeKeys = backup.putArray("universe_keys");
     List<ObjectNode> universeKeyRefs = getUniverseKeyRefsForBackup(universeUUID);
