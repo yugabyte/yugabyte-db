@@ -49,16 +49,26 @@
 // Catch missing status check after Valid() returned false.
 #define ROCKSDB_CATCH_MISSING_STATUS_CHECK
 
+// Catch missing Valid() check by caller after setting valid_ by iterator.
+#undef ROCKSDB_CATCH_MISSING_VALID_CHECK
+
 #endif // NDEBUG
 
 
 #ifdef ROCKSDB_CATCH_MISSING_STATUS_CHECK
 
-// Helps to find missing iterator status checks when enabled.
+// Helps to find missing iterator Status() checks when enabled.
 #undef DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
 
 #endif // ROCKSDB_CATCH_MISSING_STATUS_CHECK
 
+
+#ifdef ROCKSDB_CATCH_MISSING_VALID_CHECK
+
+// Helps to find missing Valid() checks when enabled.
+#undef DEBUG_ROCKSDB_CAPTURE_ITER_SET_VALID_STACK
+
+#endif // ROCKSDB_CATCH_MISSING_VALID_CHECK
 
 namespace rocksdb {
 
@@ -74,6 +84,12 @@ static void DumpInternalIter(Iterator* iter) {
   }
 }
 #endif
+
+#if defined(ROCKSDB_CATCH_MISSING_STATUS_CHECK) || \
+    defined(ROCKSDB_CATCH_MISSING_VALID_CHECK)
+#define ROCKSDB_TRACK_SET_VALID
+#endif
+
 
 // Memtables and sstables that make the DB representation contain
 // (userkey,seq,type) => uservalue entries.  DBIter
@@ -120,6 +136,7 @@ class DBIter: public Iterator {
 
   virtual ~DBIter() {
     EnsureStatusIsChecked();
+    EnsureValidIsChecked();
     if (statistics_) {
       statistics_->recordTick(NO_ITERATORS, -1);
       if (num_fast_next_calls_) {
@@ -154,21 +171,44 @@ class DBIter: public Iterator {
 #endif // ROCKSDB_CATCH_MISSING_STATUS_CHECK
   }
 
-#ifdef ROCKSDB_CATCH_MISSING_STATUS_CHECK
+  inline void EnsureValidIsChecked() const {
+#ifdef ROCKSDB_CATCH_MISSING_VALID_CHECK
+    if (valid_set_and_not_checked_) {
+      YB_LOG_EVERY_N_SECS(DFATAL, 300)
+          << "Iterator " << this << " Valid() hasn't been checked after it was set, current "
+          << "status: " << status().ToString() << ", valid: " << valid_
+#ifdef DEBUG_ROCKSDB_CAPTURE_ITER_SET_VALID_STACK
+          << ". Not checked valid_ set by:\n" << set_valid_stack_trace_.Symbolize()
+          << "--------"
+#endif // DEBUG_ROCKSDB_CAPTURE_ITER_SET_VALID_STACK
+          << "";
+    }
+#endif // ROCKSDB_CATCH_MISSING_VALID_CHECK
+  }
+
+#if defined(ROCKSDB_TRACK_SET_VALID)
   inline void SetValid(const bool valid) {
     EnsureStatusIsChecked();
+    EnsureValidIsChecked();
     valid_ = valid;
     valid_set_and_not_checked_ = true;
 
+#ifdef DEBUG_ROCKSDB_CAPTURE_ITER_SET_VALID_STACK
+    set_valid_stack_trace_.Collect(/* skip_frames = */ 1);
 #ifdef DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
+    if (!valid_) {
+      set_valid_false_stack_trace_ = set_valid_stack_trace_;
+    }
+#endif // DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
+#elif DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
     if (!valid_) {
       set_valid_false_stack_trace_.Collect(/* skip_frames = */ 1);
     }
 #endif // DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
   }
-#else // ROCKSDB_CATCH_MISSING_STATUS_CHECK
+#else // ROCKSDB_TRACK_SET_VALID
   inline void SetValid(const bool valid) { valid_ = valid; }
-#endif // ROCKSDB_CATCH_MISSING_STATUS_CHECK
+#endif // ROCKSDB_TRACK_SET_VALID
 
   virtual void SetIter(InternalIterator* iter) {
     assert(iter_ == nullptr);
@@ -271,6 +311,8 @@ class DBIter: public Iterator {
   void RevalidateAfterUpperBoundChange() override {
     if (iter_->Valid() && direction_ == kForward) {
       SetValid(true);
+      // To prevent ROCKSDB_CATCH_MISSING_VALID_CHECK failure when FindNextUserEntry calls SetValid.
+      DCHECK(Valid());
       FindNextUserEntry(/* skipping= */ false);
     }
   }
@@ -318,12 +360,19 @@ class DBIter: public Iterator {
 
 #ifdef ROCKSDB_CATCH_MISSING_STATUS_CHECK
   mutable bool status_check_required_ = false;
-  mutable bool valid_set_and_not_checked_ = false;
 #ifdef DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
   mutable yb::StackTrace set_valid_false_stack_trace_;
   mutable yb::StackTrace valid_returned_false_stack_trace_;
 #endif // DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
 #endif // ROCKSDB_CATCH_MISSING_STATUS_CHECK
+
+#ifdef ROCKSDB_TRACK_SET_VALID
+  mutable bool valid_set_and_not_checked_ = false;
+#endif // ROCKSDB_TRACK_SET_VALID
+
+#ifdef DEBUG_ROCKSDB_CAPTURE_ITER_SET_VALID_STACK
+  mutable yb::StackTrace set_valid_stack_trace_;
+#endif // DEBUG_ROCKSDB_CAPTURE_ITER_SET_VALID_STACK
 
   bool current_entry_is_merged_;
   Statistics* statistics_;
@@ -394,7 +443,7 @@ void DBIter::Next() {
       RecordTick(statistics_, ITER_BYTES_READ, key().size() + value().size());
     }
   }
-  if (valid_ && prefix_extractor_ && prefix_same_as_start_ &&
+  if (Valid() && prefix_extractor_ && prefix_same_as_start_ &&
       prefix_extractor_->Transform(saved_key_.GetKey())
               .compare(prefix_start_.GetKey()) != 0) {
     SetValid(false);
@@ -639,7 +688,7 @@ void DBIter::PrevInternal() {
     saved_key_.SetKey(ExtractUserKey(iter_->key()),
                       !iter_->IsKeyPinned() /* copy */);
     if (FindValueForCurrentKey()) {
-      SetValid(true);
+      DCHECK(Valid());
       if (!iter_->Valid()) {
         return;
       }
@@ -648,9 +697,12 @@ void DBIter::PrevInternal() {
         FindPrevUserKey();
       }
       return;
-    } else if (!status().ok()) {
-      // Fail early.
-      return;
+    } else {
+      DCHECK(!Valid());
+      if (!status().ok()) {
+        // Fail early.
+        return;
+      }
     }
     if (!iter_->Valid()) {
       break;
@@ -996,6 +1048,7 @@ void DBIter::SeekToLast() {
 //           saved_value_             => the merged value
 bool DBIter::ScanForward(
     Slice upperbound, KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
+  DCHECK(Valid());
   LOG_IF(DFATAL, !iter_->Valid()) << "Iterator should be valid.";
   LOG_IF(DFATAL, direction_ != kForward) << "Only forward direction scan is supported.";
 
@@ -1012,6 +1065,9 @@ bool DBIter::ScanForward(
     FindNextUserEntry(/* skipping = */ false);
   } else {
     SetValid(false);
+    // Making not necessary for the caller to check Valid after ScanForward call (see
+    // ROCKSDB_CATCH_MISSING_VALID_CHECK).
+    DCHECK(!Valid());
   }
 
   VLOG_WITH_FUNC(4) << "ScanForward reached_upperbound: " << result.reached_upperbound
