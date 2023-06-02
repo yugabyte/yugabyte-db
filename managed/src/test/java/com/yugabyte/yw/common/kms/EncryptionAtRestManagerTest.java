@@ -45,12 +45,9 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
   KmsConfig kmsConfig1;
   KmsConfig kmsConfig2;
   KmsConfig kmsConfig3;
-  KmsConfig kmsConfig4;
 
   byte[] universeKey1 = getRandomBytes();
   byte[] universeKey2 = getRandomBytes();
-  byte[] universeKey3 = getRandomBytes();
-  byte[] universeKey4 = getRandomBytes();
 
   byte[] universeKeyRef1 = getRandomBytes();
   byte[] universeKeyRef2 = getRandomBytes();
@@ -59,7 +56,6 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
 
   Customer testCustomer;
   Universe testUniverse;
-  KeyProvider keyProvider = KeyProvider.AWS;
   EncryptionAtRestConfig keyConfig;
 
   public byte[] getRandomBytes() {
@@ -98,7 +94,6 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
         .when(mockEARService)
         .rotateKey(testUniverse.universeUUID, kmsConfig1.configUUID, keyConfig);
     when(mockEARService.retrieveKey(any(), any(), any(byte[].class))).thenCallRealMethod();
-    when(mockEARService.retrieveKey(any(), any(), any(), any())).thenCallRealMethod();
     doReturn(mockEARService).when(testManager2).getServiceInstance(anyString());
   }
 
@@ -300,7 +295,7 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
     assertEquals(4, allKmsHistoryList.size());
 
     // Verify the newly re-encrypted universe key 2.
-    System.out.println(allKmsHistoryList.toString());
+    System.out.println(allKmsHistoryList);
     assertEquals(1, allKmsHistoryList.get(0).uuid.reEncryptionCount);
     assertEquals(
         Base64.getEncoder().encodeToString(universeKeyRef4), allKmsHistoryList.get(0).uuid.keyRef);

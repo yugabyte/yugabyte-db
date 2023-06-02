@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
@@ -51,46 +52,51 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    UUID universeUUID = taskParams().universeUUID;
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
+
     try {
       log.info("Running {}: hostPorts={}.", getName(), hostPorts);
-      KmsHistory activeKmsHistory = EncryptionAtRestUtil.getActiveKey(taskParams().universeUUID);
+
       UUID kmsConfigUUID = taskParams().encryptionAtRestConfig.kmsConfigUUID;
       if (kmsConfigUUID == null) {
         throw new RuntimeException(
             "KMS config passed cannot be null when enabling encryption at rest.");
       }
-      if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().universeUUID) == 0
-          || kmsConfigUUID.equals(activeKmsHistory.configUuid)) {
+
+      KmsHistory activeKmsHistory = EncryptionAtRestUtil.getActiveKey(universeUUID);
+      int numKeys = EncryptionAtRestUtil.getNumUniverseKeys(universeUUID);
+
+      if (numKeys > 0 && activeKmsHistory == null) {
+        throw new RuntimeException(
+            String.format(
+                "Universe %s has %d keys but none of them are active", universeUUID, numKeys));
+      }
+
+      if (numKeys == 0 || kmsConfigUUID.equals(activeKmsHistory.configUuid)) {
         // This is for both the following cases:
         // 1. Universe key creation when no universe key exists on the universe.
         // 2. Universe key rotation if the given KMS config equals the active one.
         client = ybService.getClient(hostPorts, certificate);
-        final byte[] universeKeyRef =
+        byte[] universeKeyRef =
             keyManager.generateUniverseKey(
-                taskParams().encryptionAtRestConfig.kmsConfigUUID,
-                taskParams().universeUUID,
-                taskParams().encryptionAtRestConfig);
+                kmsConfigUUID, universeUUID, taskParams().encryptionAtRestConfig);
 
         if (universeKeyRef == null || universeKeyRef.length == 0) {
           throw new RuntimeException("Error occurred creating universe key");
         }
 
-        final byte[] universeKeyVal =
-            keyManager.getUniverseKey(
-                taskParams().universeUUID,
-                taskParams().encryptionAtRestConfig.kmsConfigUUID,
-                universeKeyRef,
-                taskParams().encryptionAtRestConfig);
+        byte[] universeKeyVal =
+            keyManager.getUniverseKey(universeUUID, kmsConfigUUID, universeKeyRef);
 
         if (universeKeyVal == null || universeKeyVal.length == 0) {
           throw new RuntimeException("Error occurred retrieving universe key from ref");
         }
 
-        final String encodedKeyRef = Base64.getEncoder().encodeToString(universeKeyRef);
+        String encodedKeyRef = Base64.getEncoder().encodeToString(universeKeyRef);
 
         List<HostAndPort> masterAddrs =
             Arrays.stream(hostPorts.split(","))
@@ -98,6 +104,11 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
                 .collect(Collectors.toList());
         for (HostAndPort hp : masterAddrs) {
           client.addUniverseKeys(ImmutableMap.of(encodedKeyRef, universeKeyVal), hp);
+          log.info(
+              "Sent universe key to universe '{}' and DB node '{}' with key ID: '{}'.",
+              universeUUID,
+              hp,
+              encodedKeyRef);
         }
         for (HostAndPort hp : masterAddrs) {
           if (!client.waitForMasterHasUniverseKeyInMemory(
@@ -114,22 +125,17 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
           throw new RuntimeException("Error occurred enabling encryption at rest");
         }
 
-        EncryptionAtRestUtil.activateKeyRef(
-            taskParams().universeUUID,
-            taskParams().encryptionAtRestConfig.kmsConfigUUID,
-            universeKeyRef);
+        EncryptionAtRestUtil.activateKeyRef(universeUUID, kmsConfigUUID, universeKeyRef);
 
         universe.incrementVersion();
         log.info("Incremented universe version to {} ", universe.version);
-      } else if (activeKmsHistory != null && !kmsConfigUUID.equals(activeKmsHistory.configUuid)) {
+      } else if (!kmsConfigUUID.equals(activeKmsHistory.configUuid)) {
         // Master key rotation case, when the given KMS config differs from the active one.
         log.info(
             String.format(
                 "Rotating master key for universe '%s' from '%s' to '%s'.",
-                taskParams().universeUUID.toString(),
-                activeKmsHistory.configUuid.toString(),
-                kmsConfigUUID.toString()));
-        keyManager.reEncryptActiveUniverseKeys(taskParams().universeUUID, kmsConfigUUID);
+                universeUUID, activeKmsHistory.configUuid, kmsConfigUUID));
+        keyManager.reEncryptActiveUniverseKeys(universeUUID, kmsConfigUUID);
 
         universe.incrementVersion();
         log.info("Incremented universe version to {} ", universe.version);
