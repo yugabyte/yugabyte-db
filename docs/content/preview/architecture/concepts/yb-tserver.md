@@ -47,7 +47,13 @@ In addition to throttling controls for compactions, YugabyteDB does a variety of
 
 YugabyteDB allows compactions to be externally triggered on a table using the [`compact_table`](../../../admin/yb-admin/#compact-table) command in the [yb-admin utility](../../../admin/yb-admin/). This is useful when new data is no longer coming into the system for a table and you might want to reclaim disk space due to overwrites or deletes that have already happened, or due to TTL expiry.
 
-### Scheduled full compactions (beta)
+### Statistics-based full compactions to improve read performance
+
+YugabyteDB tracks the number of key/value pairs that are read at the DocDB level over a sliding period of time (dectated by the [`auto_compact_stat_window_seconds](../../reference/configuration/yb-tserver.md#auto_compact_stat_window_seconds) gflag). If it is detected that an overwhelming amount of the DocDB reads in a tablet is spent skipping over tombstoned and obsolete keys, then a full compaction will be triggered to remove the unnecessary keys.
+
+Once all of the following conditions are met, an full compaction will automatically be triggered on the tablet. Those conditions include: the ratio of obsolete (e.g. deleted or removed due to TTL) versus active keys read reaches a threshold [`auto_compact_percent_obsolete`](../../reference/configuration/yb-tserver.md#auto_compact_percent_obsolete), and enough keys have been read within the window(`[auto_compact_min_obsolete_keys_found`](../../reference/configuration/yb-tserver.md#auto_compact_min_obsolete_keys_found)). This feature is compatible with tables with TTL, but will not schedule compactions on tables with TTL if the [TTL file expiration](../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature is active.
+
+### Scheduled full compactions
 
  YugabyteDB allows full compactions over all data in a tablet to be scheduled automatically using the [`scheduled_full_compaction_frequency_hours`](../../reference/configuration/yb-tserver.md#scheduled_full_compaction_frequency_hours) and [`scheduled_full_compaction_jitter_factor_percentage`](../../reference/configuration/yb-tserver.md#scheduled_full_compaction_jitter_factor_percentage) gflags. This can be useful for performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. Can be used with tables with TTL as well, but is not compatible with the [TTL file expiration](../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
 

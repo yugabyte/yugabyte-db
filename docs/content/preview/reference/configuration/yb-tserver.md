@@ -395,6 +395,40 @@ The maximum number of full compaction tasks that can be queued simultaneously. T
 
 Default: `200`
 
+##### --auto_compact_check_interval_sec
+
+The interval at which the full compaction task will check for tablets eligible for compaction (both for the statistics-based full compaction and scheduled full compaction features). `0` indicates that the statistics-based full compactions feature is disabled.
+
+Default: `60`
+
+##### --auto_compact_stat_window_seconds
+
+Window of time in seconds over which DocDB read statistics are analyzed for the purpose of triggering full compactions to improve read performance. Both `auto_compact_percent_obsolete` and `auto_compact_min_obsolete_keys_found` are evaluated over this period of time.
+
+`auto_compact_stat_window_seconds` must be evaluated as a multiple of `auto_compact_check_interval_sec`, and will be rounded up to meet this constraint. For example, if `auto_compact_stat_window_seconds` is set to `100` and `auto_compact_check_interval_sec` is set to `60`, it will be rounded up to `120` at runtime.
+
+Default: `300`
+
+##### --auto_compact_percent_obsolete
+
+The percentage of obsolete keys (over total keys) read over the `auto_compact_stat_window_seconds` window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
+
+For example, if the flag is set to `99` and 100000 keys are read over that window of time, and 99900 of those are obsolete and past their history retention, a full compaction will be triggered (subject to other conditions).
+
+Default: `99`
+
+##### --auto_compact_min_obsolete_keys_found
+
+Minimum number of keys that must be read over the last `auto_compact_stat_window_seconds` to trigger a statistics-based full compaction.
+
+Default: `10000`
+
+##### --auto_compact_min_wait_between_seconds
+
+Minimum wait time between statistics-based and scheduled full compactions. To be used if statistics-based compactions are triggering too frequently.
+
+Default: `0`
+
 ##### --scheduled_full_compaction_frequency_hours
 
 The frequency with which full compactions should be scheduled on tablets. `0` indicates that the feature is disabled. Recommended value: `720` hours or greater (i.e. 30 days).
