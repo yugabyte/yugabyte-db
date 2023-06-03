@@ -238,8 +238,8 @@ class _SshRemoteShell(object):
             raise YBOpsRecoverableError(
                 "Remote shell command '{}' failed with "
                 "return code '{}' and error '{}'".format(cmd,
-                                                         result.stderr,
-                                                         result.exited)
+                                                         result.exited,
+                                                         result.stderr)
             )
         return result
 
@@ -316,8 +316,8 @@ class _RpcRemoteShell(object):
             raise YBOpsRecoverableError(
                 "Remote shell command '{}' failed with "
                 "return code '{}' and error '{}'".format(cmd,
-                                                         result.stderr,
-                                                         result.exited)
+                                                         result.exited,
+                                                         result.stderr)
             )
         return result
 
@@ -361,7 +361,7 @@ class _RpcRemoteShell(object):
         if result.stderr != '' or result.rc != 0:
             raise YBOpsRecoverableError(
                 "Remote method invocation failed with "
-                "return code '{}' and error '{}'".format(result.stderr,
+                "return code '{}' and error '{}'".format(result.rc,
                                                          result.stderr)
             )
         return result.obj
