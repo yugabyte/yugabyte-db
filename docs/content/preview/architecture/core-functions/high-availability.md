@@ -23,7 +23,7 @@ Failures of each of the YQL layer, tablet peer followers, and tablet peer leader
 
 ### YQL failure
 
-From the application’s perspective, YQL is stateless. Hence the client that issued the request simply sends the request to YQL on a different node. In the case of smart clients, they search for the ideal YB-TServer location based on the tablet owning the keys, and then send the request directly to that node.
+From the application's perspective, YQL is stateless. Hence the client that issued the request simply sends the request to YQL on a different node. In the case of smart clients, they search for the ideal YB-TServer location based on the tablet owning the keys, and then send the request directly to that node.
 
 ### Tablet peer follower failure
 
