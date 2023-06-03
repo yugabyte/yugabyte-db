@@ -77,7 +77,7 @@ const PanelBody = ({
         : invalidTabType.push(MetricTypes.CONTAINER);
     }
 
-    if (currentSelectedNodeType !== NodeType.ALL && origin === MetricOrigin.CUSTOMER) {
+    if (currentSelectedNodeType !== NodeType.ALL) {
       currentSelectedNodeType === NodeType.MASTER
         ? invalidTabType.push(MetricTypes.TSERVER, MetricTypes.YSQL_OPS, MetricTypes.YCQL_OPS)
         : invalidTabType.push(MetricTypes.MASTER, MetricTypes.MASTER_ADVANCED);
