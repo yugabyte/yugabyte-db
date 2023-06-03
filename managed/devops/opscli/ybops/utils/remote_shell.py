@@ -63,7 +63,8 @@ def copy_to_tmp(connect_options, filepath, retries=3, retry_delay=CONNECT_RETRY_
     """This method copies the given file to /tmp on remote host and return the output.
     """
 
-    dest_path = os.path.join("/tmp", os.path.basename(filepath))
+    remote_tmp_dir = kwargs.get("remote_tmp_dir", "/tmp")
+    dest_path = os.path.join(remote_tmp_dir, os.path.basename(filepath))
     chmod = kwargs.get('chmod', 0)
     if chmod == 0:
         chmod = os.stat(filepath).st_mode
@@ -236,8 +237,8 @@ class _SshRemoteShell(object):
             raise YBOpsRecoverableError(
                 "Remote shell command '{}' failed with "
                 "return code '{}' and error '{}'".format(cmd,
-                                                         result.stderr,
-                                                         result.exited)
+                                                         result.exited,
+                                                         result.stderr)
             )
         return result
 
@@ -314,8 +315,8 @@ class _RpcRemoteShell(object):
             raise YBOpsRecoverableError(
                 "Remote shell command '{}' failed with "
                 "return code '{}' and error '{}'".format(cmd,
-                                                         result.stderr,
-                                                         result.exited)
+                                                         result.exited,
+                                                         result.stderr)
             )
         return result
 
@@ -359,7 +360,7 @@ class _RpcRemoteShell(object):
         if result.stderr != '' or result.rc != 0:
             raise YBOpsRecoverableError(
                 "Remote method invocation failed with "
-                "return code '{}' and error '{}'".format(result.stderr,
+                "return code '{}' and error '{}'".format(result.rc,
                                                          result.stderr)
             )
         return result.obj

@@ -152,6 +152,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     sb.append(" --id ").append(nodeAgent.getUuid());
     sb.append(" --customer_id ").append(nodeAgent.getCustomerUuid());
     sb.append(" --cert_dir ").append(installerFiles.getCertDir());
+    sb.append(" --node_name ").append(node.getNodeName());
     sb.append(" --node_ip ").append(node.cloudInfo.private_ip);
     sb.append(" --node_port ").append(String.valueOf(taskParams().nodeAgentPort));
     sb.append(" && chmod 755 /root ").append(taskParams().nodeAgentHome);

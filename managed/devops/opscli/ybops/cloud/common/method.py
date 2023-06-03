@@ -87,6 +87,10 @@ class AbstractMethod(object):
         self.parser.add_argument("--connection_type", default=None, required=False)
         self.parser.add_argument("--architecture", required=False, help="Architecture for machine "
                                  + "image. Defaults to x86_64.", default="x86_64")
+        self.parser.add_argument("--remote_tmp_dir", default="/tmp",
+                                 help="Temp directory on the remote host.")
+        self.parser.add_argument("--tmp_dir", default="/tmp",
+                                 help="Temp directory on the local host.")
 
     def preprocess_args(self, args):
         """Hook for pre-processing args before actually executing the callback. Useful for shared
