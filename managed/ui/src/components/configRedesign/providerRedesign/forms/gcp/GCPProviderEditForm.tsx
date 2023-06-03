@@ -33,7 +33,7 @@ import {
 import { FieldGroup } from '../components/FieldGroup';
 import {
   addItem,
-  constructAccessKeysPayload,
+  constructAccessKeysEditPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -672,7 +672,7 @@ const constructProviderPayload = async (
         }
       : assertUnreachableCase(formValues.providerCredentialType);
 
-  const allAccessKeysPayload = constructAccessKeysPayload(
+  const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
     formValues.sshKeypairManagement,
     { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
