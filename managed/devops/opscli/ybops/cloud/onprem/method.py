@@ -556,7 +556,8 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
                      st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
             # Copy over the installer to the remote host.
             # File permissions are preserved.
-            copy_to_tmp(self.extra_vars, self.local_installer_path)
+            copy_to_tmp(self.extra_vars, self.local_installer_path,
+                        remote_tmp_dir=args.remote_tmp_dir)
         finally:
             conn.close()
 
