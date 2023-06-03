@@ -53,7 +53,7 @@ import {
 } from '../../utils';
 import {
   addItem,
-  constructAccessKeysPayload,
+  constructAccessKeysEditPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -105,6 +105,7 @@ export interface AWSProviderEditFormFieldValues {
   providerName: string;
   regions: CloudVendorRegionField[];
   secretAccessKey: string;
+  skipKeyValidateAndUpload: boolean;
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number | null;
@@ -538,6 +539,14 @@ export const AWSProviderEditForm = ({
                   {keyPairManagement === KeyPairManagement.SELF_MANAGED && (
                     <>
                       <FormField>
+                        <FieldLabel>Skip KeyPair Validate</FieldLabel>
+                        <YBToggleField
+                          name="skipKeyValidateAndUpload"
+                          control={formMethods.control}
+                          disabled={isFormDisabled}
+                        />
+                      </FormField>
+                      <FormField>
                         <FieldLabel>SSH Keypair Name</FieldLabel>
                         <YBInputField
                           control={formMethods.control}
@@ -689,6 +698,7 @@ const constructDefaultFormValues = (
     ybImage: region.details.cloudInfo.aws.ybImage ?? '',
     zones: region.zones
   })),
+  skipKeyValidateAndUpload: false,
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
   sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
@@ -712,10 +722,14 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
-  const allAccessKeysPayload = constructAccessKeysPayload(
+  const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
     formValues.sshKeypairManagement,
-    { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
+    {
+      sshKeypairName: formValues.sshKeypairName,
+      sshPrivateKeyContent: sshPrivateKeyContent,
+      skipKeyValidateAndUpload: formValues.skipKeyValidateAndUpload
+    },
     providerConfig.allAccessKeys
   );
 
