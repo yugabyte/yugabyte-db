@@ -33,6 +33,7 @@ import {
 import { FieldGroup } from '../components/FieldGroup';
 import {
   addItem,
+  constructAccessKeysCreatePayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -225,21 +226,15 @@ export const GCPProviderCreateForm = ({
           }
         : assertUnreachableCase(formValues.providerCredentialType);
 
+    const allAccessKeysPayload = constructAccessKeysCreatePayload(
+      formValues.sshKeypairManagement,
+      formValues.sshKeypairName,
+      sshPrivateKeyContent
+    );
     const providerPayload: YBProviderMutation = {
       code: ProviderCode.GCP,
       name: formValues.providerName,
-      ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-        allAccessKeys: [
-          {
-            keyInfo: {
-              ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-              ...(formValues.sshPrivateKeyContent && {
-                sshPrivateKeyContent: sshPrivateKeyContent
-              })
-            }
-          }
-        ]
-      }),
+      ...allAccessKeysPayload,
       details: {
         airGapInstall: !formValues.dbNodePublicInternetAccess,
         cloudInfo: {
