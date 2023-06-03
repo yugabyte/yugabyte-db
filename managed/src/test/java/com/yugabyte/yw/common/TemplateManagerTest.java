@@ -90,6 +90,8 @@ public class TemplateManagerTest extends FakeDBApplication {
     cmd.add(YB_THIRDPARTY_VALUE);
     cmd.add("--custom_ssh_port");
     cmd.add(testProvider.getDetails().sshPort.toString());
+    cmd.add("--provider_id");
+    cmd.add(testProvider.getUuid().toString());
     return cmd;
   }
 
