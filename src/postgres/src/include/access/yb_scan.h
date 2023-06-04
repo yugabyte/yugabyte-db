@@ -172,9 +172,21 @@ extern TableScanDesc ybc_heap_beginscan(Relation relation,
 extern HeapTuple ybc_heap_getnext(TableScanDesc scanDesc);
 extern void ybc_heap_endscan(TableScanDesc scanDesc);
 extern TableScanDesc ybc_remote_beginscan(Relation relation,
-										  Snapshot snapshot,
-										  Scan *pg_scan_plan,
-										  PushdownExprs *remote);
+										 Snapshot snapshot,
+										 Scan *pg_scan_plan,
+										 PushdownExprs *pushdown);
+
+/* Add targets to the given statement. */
+extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
+extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
+									 YBCPgStatement handle);
+extern void YbDmlAppendTargets(List *colrefs, YBCPgStatement handle);
+/* Add quals to the given statement. */
+extern void YbDmlAppendQuals(List *quals, bool is_primary,
+							 YBCPgStatement handle);
+/* Add column references to the given statement. */
+extern void YbDmlAppendColumnRefs(List *colrefs, bool is_primary,
+								  YBCPgStatement handle);
 
 /*
  * The ybc_idx API is used to process the following SELECT.
@@ -187,8 +199,8 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   int nkeys,
 							   ScanKey key,
 							   Scan *pg_scan_plan,
-							   PushdownExprs *rel_remote,
-							   PushdownExprs *idx_remote);
+							   PushdownExprs *rel_pushdown,
+							   PushdownExprs *idx_pushdown);
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);

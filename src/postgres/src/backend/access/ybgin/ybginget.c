@@ -29,6 +29,7 @@
 #include "access/relscan.h"
 #include "access/sdir.h"
 #include "access/sysattr.h"
+#include "access/yb_scan.h"
 #include "access/ybgin.h"
 #include "access/ybgin_private.h"
 #include "catalog/pg_collation.h"
@@ -448,59 +449,6 @@ ybginSetupBinds(IndexScanDesc scan)
 }
 
 /*
- * Add a system column as target to the given statement handle.
- *
- * See related ybcAddTargetColumn.
- */
-static void
-addTargetSystemColumn(int attnum, YBCPgStatement handle)
-{
-	Assert(attnum < 0);
-
-	YBCPgExpr	expr;
-	YBCPgTypeAttrs type_attrs;
-
-	/* System columns don't use typmod. */
-	type_attrs.typmod = -1;
-
-	expr = YBCNewColumnRef(handle,
-						   attnum,
-						   InvalidOid /* attr_typid */,
-						   InvalidOid /* attr_collation */,
-						   &type_attrs);
-	HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
-}
-
-/*
- * Add a regular column as target to the given statement handle if it is not
- * dropped.  Assume tupdesc's relation is the same as handle's target relation.
- *
- * See related ybcAddTargetColumn.
- */
-static void
-addTargetRegularColumn(TupleDesc tupdesc, int attnum, YBCPgStatement handle)
-{
-	/* This can possibly be >= 0. */
-	Assert(attnum >= 1);
-
-	Form_pg_attribute att;
-	YBCPgExpr	expr;
-	YBCPgTypeAttrs type_attrs;
-
-	att = TupleDescAttr(tupdesc, attnum - 1);
-	/* Ignore dropped attributes. */
-	if (att->attisdropped)
-		return;
-	type_attrs.typmod = att->atttypmod;
-	expr = YBCNewColumnRef(handle,
-						   attnum,
-						   att->atttypid,
-						   att->attcollation,
-						   &type_attrs);
-	HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
-}
-
-/*
  * Add targets for the select.
  */
 static void
@@ -520,13 +468,13 @@ ybginSetupTargets(IndexScanDesc scan)
 	 * IndexScan needs to get base ctids from the index table to pass as binds
 	 * to the base table.  This is handled in the pggate layer.
 	 */
-	addTargetSystemColumn(YBIdxBaseTupleIdAttributeNumber, ybso->handle);
+	YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber, ybso->handle);
 	/*
 	 * For scans that touch the base table, we seem to always query for the
 	 * ybctid, even if the table may have explicit primary keys.  A lower layer
 	 * probably filters this out when not applicable.
 	 */
-	addTargetSystemColumn(YBTupleIdAttributeNumber, ybso->handle);
+	YbDmlAppendTargetSystem(YBTupleIdAttributeNumber, ybso->handle);
 	/*
 	 * For now, target all non-system columns of the base table.  This can be
 	 * very inefficient.  The lsm index access method avoids this using
@@ -535,7 +483,10 @@ ybginSetupTargets(IndexScanDesc scan)
 	 * TODO(jason): don't target unnecessary columns.
 	 */
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
-		addTargetRegularColumn(tupdesc, attnum, ybso->handle);
+	{
+		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
+			YbDmlAppendTargetRegular(tupdesc, attnum, ybso->handle);
+	}
 }
 
 /*

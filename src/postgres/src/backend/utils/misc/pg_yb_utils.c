@@ -3116,6 +3116,12 @@ void YbCheckUnsupportedSystemColumns(int attnum, const char *colname, RangeTblEn
 }
 
 void YbRegisterSysTableForPrefetching(int sys_table_id) {
+	// sys_only_filter_attr stores attr which will be used to filter table rows
+	// related to system cache entries.
+	// In case particular table must always load all the rows or
+	// system cache filtering is disabled the sys_only_filter_attr
+	// must be set to InvalidAttrNumber.
+	int sys_only_filter_attr = ObjectIdAttributeNumber;
 	int db_id = MyDatabaseId;
 	int sys_table_index_id = InvalidOid;
 
@@ -3125,14 +3131,17 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case AuthMemRelationId:                           // pg_auth_members
 			db_id = Template1DbOid;
 			sys_table_index_id = AuthMemMemRoleIndexId;
+			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case AuthIdRelationId:                            // pg_authid
 			db_id = Template1DbOid;
 			sys_table_index_id = AuthIdRolnameIndexId;
+			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case DatabaseRelationId:                          // pg_database
 			db_id = Template1DbOid;
 			sys_table_index_id = DatabaseNameIndexId;
+			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 
 		case DbRoleSettingRelationId:    switch_fallthrough(); // pg_db_role_setting
@@ -3141,6 +3150,7 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case YbProfileRelationId:        switch_fallthrough(); // pg_yb_profile
 		case YbRoleProfileRelationId:                          // pg_yb_role_profile
 			db_id = Template1DbOid;
+			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 
 		// MyDb tables
@@ -3155,6 +3165,7 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			break;
 		case AttributeRelationId:                         // pg_attribute
 			sys_table_index_id = AttributeRelidNameIndexId;
+			sys_only_filter_attr = Anum_pg_attribute_attrelid;
 			break;
 		case CastRelationId:                              // pg_cast
 			sys_table_index_id = CastSourceTargetIndexId;
@@ -3164,9 +3175,11 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			break;
 		case IndexRelationId:                             // pg_index
 			sys_table_index_id = IndexIndrelidIndexId;
+			sys_only_filter_attr = Anum_pg_index_indexrelid;
 			break;
 		case InheritsRelationId:                          // pg_inherits
 			sys_table_index_id = InheritsParentIndexId;
+			sys_only_filter_attr = Anum_pg_inherits_inhrelid;
 			break;
 		case NamespaceRelationId:                         // pg_namespace
 			sys_table_index_id = NamespaceNameIndexId;
@@ -3199,6 +3212,7 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			sys_table_index_id = AccessMethodOperatorIndexId;
 			break;
 		case PartitionedRelationId:                       // pg_partitioned_table
+			sys_only_filter_attr = Anum_pg_partitioned_table_partrelid;
 			break;
 
 		default:
@@ -3209,7 +3223,12 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 
 		}
 	}
-	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id);
+
+	if (!*YBCGetGFlags()->ysql_minimal_catalog_caches_preload)
+		sys_only_filter_attr = InvalidAttrNumber;
+
+	YBCRegisterSysTableForPrefetching(
+		db_id, sys_table_id, sys_table_index_id, sys_only_filter_attr);
 }
 
 void YbTryRegisterCatalogVersionTableForPrefetching()

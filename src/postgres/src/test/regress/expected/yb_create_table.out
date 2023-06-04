@@ -515,6 +515,19 @@ CREATE TABLE tbl19(
   primary key(a asc, b desc nulls last)
 ) SPLIT AT VALUES((100), (200, 5), (200, 5));
 ERROR:  Cannot have duplicate split rows
+CREATE TABLE tbl20 (
+	a			int4,
+	primary key (a hash)
+);
+CREATE INDEX ind20 on tbl20(a) SPLIT AT VALUES ((100));
+ERROR:  SPLIT AT option is not yet supported for hash partitioned indexes
+CREATE TABLE tbl21 (
+	a			int4,
+	b			int4,
+	primary key (a hash)
+);
+CREATE INDEX ind21 on tbl21(b) SPLIT AT VALUES ((100));
+ERROR:  SPLIT AT option is not yet supported for hash partitioned indexes
 -- Test ordering on splitted tables
 CREATE TABLE ordered_asc(
     k INT,

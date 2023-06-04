@@ -213,7 +213,6 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateStmt:
 		case T_CreateSubscriptionStmt:
 		case T_CreateTableAsStmt:
-		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreateTransformStmt:
 		case T_CreateTrigStmt:
@@ -238,11 +237,6 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_SecLabelStmt:
 		case T_TruncateStmt:
 		case T_ViewStmt:
-#ifdef YB_TODO
-			/* YB_TODO(jasonk) Need to reimplement these statements for Pg15 */
-		case T_YbCreateProfileStmt:
-		case T_YbDropProfileStmt:
-#endif
 			{
 				/* DDL is not read-only, and neither is TRUNCATE. */
 				return COMMAND_IS_NOT_READ_ONLY;
@@ -418,6 +412,15 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 					 (int) stmt->kind);
 				return 0;		/* silence stupider compilers */
 			}
+
+		case T_CreateTableGroupStmt:
+		case T_YbCreateProfileStmt:
+		case T_YbDropProfileStmt:
+			{
+				/* YB_REVIEW(mihnea & sushant) Changed code - DDL is not read-only. */
+				return COMMAND_IS_NOT_READ_ONLY;
+			}
+
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(parsetree));
@@ -1203,6 +1206,7 @@ ProcessUtilitySlow(ParseState *pstate,
 				{
 					List	   *stmts;
 					RangeVar   *table_rv = NULL;
+					List	   **yb_constraints = &((CreateStmt *) parsetree)->constraints;
 
 					/* Run parse analysis ... */
 					stmts = transformCreateStmt((CreateStmt *) parsetree,
@@ -1295,7 +1299,7 @@ ProcessUtilitySlow(ParseState *pstate,
 
 							Assert(table_rv != NULL);
 
-							morestmts = expandTableLikeClause(table_rv, like);
+							morestmts = expandTableLikeClause(table_rv, like, yb_constraints);
 							stmts = list_concat(morestmts, stmts);
 						}
 						else
@@ -3355,19 +3359,11 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		case T_YbCreateProfileStmt:
-			elog(WARNING, "unrecognized commandType: T_YbCreateProfileStmt");
-			tag = CMDTAG_UNKNOWN;
-			/* YB_TODO(neil) Needs entry for tags of profile ops.
-			 * tag = CMDTAG_CREATE_ PROFILE;
-			 */
+			tag = CMDTAG_CREATE_YBPROFILE;
 			break;
 
 		case T_YbDropProfileStmt:
-			elog(WARNING, "unrecognized commandType: T_YbCreateProfileStmt");
-			tag = CMDTAG_UNKNOWN;
-			/* YB_TODO(neil) Needs entry for tags of profile ops.
-			 * tag = CMDTAG_DROP_PROFILE;
-			 */
+			tag = CMDTAG_DROP_YBPROFILE;
 			break;
 
 		default:

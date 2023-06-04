@@ -3125,13 +3125,11 @@ ExecReindex(ParseState *pstate, ReindexStmt *stmt, bool isTopLevel)
 					 parser_errposition(pstate, opt->location)));
 	}
 
-	if (IsYugaByteEnabled())
-	{
-		if (!verbose)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("Only REINDEX with VERBOSE option is supported")));
-	}
+	/* Yugabyte only support verbose option */
+	if (IsYugaByteEnabled() && !verbose)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("Only REINDEX with VERBOSE option is supported")));
 
 	if (concurrently)
 		PreventInTransactionBlock(isTopLevel,

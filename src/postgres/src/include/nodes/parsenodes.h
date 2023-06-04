@@ -706,6 +706,8 @@ typedef struct TableLikeClause
 	RangeVar   *relation;
 	bits32		options;		/* OR of TableLikeOption flags */
 	Oid			relationOid;	/* If table has been looked up, its OID */
+
+	Oid			yb_tablespaceOid;	/* Yugabyte also needs info on where it is */
 } TableLikeClause;
 
 typedef enum TableLikeOption

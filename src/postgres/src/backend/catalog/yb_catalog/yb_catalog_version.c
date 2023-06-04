@@ -15,6 +15,7 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
+#include "access/yb_scan.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid_d.h"
@@ -427,6 +428,14 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 	/* Add scan targets */
 	for (AttrNumber attnum = 1; attnum <= natts; attnum++)
 	{
+		/*
+		 * Before copying the following code, see if YbDmlAppendTargetRegular
+		 * or similar could be used instead.  Reason this doesn't use
+		 * YbDmlAppendTargetRegular is that it doesn't have access to
+		 * TupleDesc.  YbDmlAppendTargetRegular could be changed to take
+		 * Form_pg_attribute instead, but that would make it inconvenient for
+		 * other callers.
+		 */
 		Form_pg_attribute att = &Desc_pg_yb_catalog_version[attnum - 1];
 		YBCPgTypeAttrs type_attrs = { att->atttypmod };
 		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
@@ -439,10 +448,7 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 	 * the ability to prefetch data from the pb_yb_catalog_version table via
 	 * PgSysTablePrefetcher.
 	 */
-	YBCPgExpr expr = YBCNewColumnRef(
-		ybc_stmt, YBTupleIdAttributeNumber, InvalidOid /* attr_typid */,
-		InvalidOid /* attr_collation */, NULL /* type_attrs */);
-	HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
+	YbDmlAppendTargetSystem(YBTupleIdAttributeNumber, ybc_stmt);
 
 	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */));
 

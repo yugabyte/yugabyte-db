@@ -40,3 +40,4 @@ AS 'yb_is_database_colocated';
 --
 REVOKE EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) FROM public;
 GRANT EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_fix_catalog_version_table(boolean) FROM public;

@@ -129,9 +129,9 @@ IndexNext(IndexScanState *node)
 		node->iss_ScanDesc = scandesc;
 		scandesc->yb_scan_plan = (Scan *) plan;
 		scandesc->yb_rel_pushdown =
-			YbInstantiateRemoteParams(&plan->rel_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
 		scandesc->yb_idx_pushdown =
-			YbInstantiateRemoteParams(&plan->index_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -272,9 +272,9 @@ IndexNextWithReorder(IndexScanState *node)
 		node->iss_ScanDesc = scandesc;
 		scandesc->yb_scan_plan = (Scan *) plan;
 		scandesc->yb_rel_pushdown =
-			YbInstantiateRemoteParams(&plan->rel_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
 		scandesc->yb_idx_pushdown =
-			YbInstantiateRemoteParams(&plan->index_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -654,9 +654,9 @@ ExecReScanIndexScan(IndexScanState *node)
 		IndexScan *plan = (IndexScan *) scandesc->yb_scan_plan;
 		EState *estate = node->ss.ps.state;
 		scandesc->yb_rel_pushdown =
-			YbInstantiateRemoteParams(&plan->rel_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
 		scandesc->yb_idx_pushdown =
-			YbInstantiateRemoteParams(&plan->index_remote, estate);
+			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 		index_rescan(node->iss_ScanDesc,
 					 node->iss_ScanKeys, node->iss_NumScanKeys,
 					 node->iss_OrderByKeys, node->iss_NumOrderByKeys);

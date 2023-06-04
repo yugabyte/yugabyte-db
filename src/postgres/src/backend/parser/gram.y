@@ -5274,19 +5274,10 @@ NumericOnly_list:	NumericOnly						{ $$ = list_make1($1); }
 CreatePLangStmt:
 			CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE name
 			{
-				/* YB_TODO(fizaa@yugabyte)
-				 * - Pg13 uses a new node structure for this syntax rule.
-				 * - Need to verify and update Yugabyte code accordingly
-				 */
 				/* Old code structure.
-				   CreatePLangStmt *n = makeNode(CreatePLangStmt);
-				   n->replace = $2;
-				   n->plname = $6;
-				   n->plhandler = NIL;
-				   n->plinline = NIL;
-				   n->plvalidator = NIL;
-				   n->pltrusted = false;
-				*/
+				 *	n->replace = $2; (if_not_exists)
+				 *  n->plname = $6; (extname)
+				 */
 
 				/*
 				 * We now interpret parameterless CREATE LANGUAGE as
@@ -9900,14 +9891,6 @@ ReindexStmt:
 						Assert(n->kind == REINDEX_OBJECT_TABLE);
 						parser_ybc_not_support(@5, "REINDEX TABLE");
 					}
-#ifdef YB_TODO
-					/* YB_TODO(jasonk@yugabyte)
-					 * This check is moved to function ExecReindex(). Cannot be done here.
-					 * Only support VERBOSE option.
-					 */
-					if (!(n->options & REINDEXOPT_VERBOSE))
-						parser_ybc_not_support(@3, "REINDEX");
-#endif
 					$$ = (Node *) n;
 				}
 			| REINDEX '(' utility_option_list ')' reindex_target_multitable opt_concurrently name

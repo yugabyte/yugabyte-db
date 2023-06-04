@@ -2340,6 +2340,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_pushdown_is_not_null", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, IS NOT NULL is pushed down."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_pushdown_is_not_null,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -6298,7 +6309,13 @@ static struct config_generic *
 find_option(const char *name, bool create_placeholders, bool skip_errors,
 			int elevel)
 {
+#ifdef ADDRESS_SANITIZER
+	struct config_generic config_placeholder;
+	config_placeholder.name = name;
+	const char **key = &config_placeholder.name;
+#else
 	const char **key = &name;
+#endif
 	struct config_generic **res;
 	int			i;
 
@@ -10281,7 +10298,13 @@ static void
 define_custom_variable(struct config_generic *variable)
 {
 	const char *name = variable->name;
+#ifdef ADDRESS_SANITIZER
+	struct config_generic config_placeholder;
+	config_placeholder.name = name;
+	const char **nameAddr = &config_placeholder.name;
+#else
 	const char **nameAddr = &name;
+#endif
 	struct config_string *pHolder;
 	struct config_generic **res;
 
