@@ -15,6 +15,7 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
@@ -350,14 +351,17 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     }
 
     void Apply(rocksdb::WriteBatch* batch) {
-      ThreadSafeArena arena;
-      LWKeyValuePairPB kv_pair(&arena);
-      kv_pair.dup_key(key_.AsSlice());
-      kv_pair.dup_value(value_.AsSlice());
-      ExternalTxnApplyState external_txn_apply_state;
-      AddExternalPairToWriteBatch(
-          kv_pair, hybrid_time_, &external_txn_apply_state,
-          /* regular_write_batch= */ nullptr, batch, nullptr);
+      DocHybridTimeBuffer doc_ht_buffer;
+      DocHybridTimeWordBuffer inverted_doc_ht_buffer;
+      auto key_value = value_.AsSlice();
+
+      std::array<Slice, 2> key_parts = {{
+          key_.AsSlice(),
+          doc_ht_buffer.EncodeWithValueType(hybrid_time_, /*write_id=*/0),
+      }};
+      key_parts[1] = InvertEncodedDocHT(key_parts[1], &inverted_doc_ht_buffer);
+      constexpr size_t kNumValueParts = 1;
+      batch->Put(key_parts, {&key_value, kNumValueParts});
     }
 
     boost::optional<std::pair<Slice, Slice>> Next() override {
