@@ -485,9 +485,8 @@ SocketBackend(StringInfo inBuf)
 						YbSetIsBatchedExecution(true);
 						break;
 					case DETECT_BY_PEEKING:
-						if (!YbIsBatchedExecution() && 
-							yb_pq_peekbyte_no_msg_reading_status_check() != 
-							'S')
+						if (!YbIsBatchedExecution() &&
+							yb_pq_peekbyte_no_msg_reading_status_check() != 'S')
 							YbSetIsBatchedExecution(true);
 						break;
 				}
@@ -4090,6 +4089,7 @@ static void YBRefreshCache()
 
 	/* Clear and reload system catalog caches, including all callbacks. */
 	ResetCatalogCaches();
+	YbRelationCacheInvalidate();
 	CallSystemCacheCallbacks();
 
 	YBPreloadRelCache();

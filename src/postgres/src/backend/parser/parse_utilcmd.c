@@ -87,7 +87,6 @@ typedef struct
 	List	   *ckconstraints;	/* CHECK constraints */
 	List	   *fkconstraints;	/* FOREIGN KEY constraints */
 	List	   *ixconstraints;	/* index-creating constraints */
-	List	   *yb_likepkconstraint; /* PRIMARY KEY constraints from LIKE clause */
 	List	   *likeclauses;	/* LIKE clauses that need post-processing */
 	List	   *extstats;		/* cloned extended statistics */
 	List	   *blist;			/* "before list" of things to do before
@@ -107,7 +106,7 @@ typedef struct
 
 	Oid			relOid;			/* OID of a relation, either from rel (for ALTER),
 								 * or from table_oid option (for CREATE) */
-	Oid			tablespaceOid;	/* resolved OID of a tablespace to use,
+	Oid			yb_tablespaceOid;	/* resolved OID of a tablespace to use,
 								 * might be InvalidOid. */
 	bool		isSystem;		/* true if the relation is system relation */
 } CreateStmtContext;
@@ -190,8 +189,6 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	ParseCallbackState pcbstate;
 	bool		specifies_type_oid = false;
 
-	bool		yb_like_found = false;
-
 	/* Set up pstate */
 	pstate = make_parsestate(NULL);
 	pstate->p_sourcetext = queryString;
@@ -263,7 +260,6 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	cxt.ckconstraints = NIL;
 	cxt.fkconstraints = NIL;
 	cxt.ixconstraints = NIL;
-	cxt.yb_likepkconstraint = NIL;
 	cxt.likeclauses = NIL;
 	cxt.extstats = NIL;
 	cxt.blist = NIL;
@@ -299,12 +295,12 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 */
 	if (stmt->tablespacename)
 	{
-		cxt.tablespaceOid = get_tablespace_oid(stmt->tablespacename, false);
+		cxt.yb_tablespaceOid = get_tablespace_oid(stmt->tablespacename, false);
 	}
 	else
 	{
 		/* TODO(alex@yugabyte): Paritioned or not */
-		cxt.tablespaceOid = GetDefaultTablespace(stmt->relation->relpersistence, false);
+		cxt.yb_tablespaceOid = GetDefaultTablespace(stmt->relation->relpersistence, false);
 		/* note InvalidOid is OK in this case */
 	}
 
@@ -340,7 +336,6 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 				break;
 
 			case T_TableLikeClause:
-				yb_like_found = true;
 				transformTableLikeClause(&cxt, (TableLikeClause *) element);
 				break;
 
@@ -518,16 +513,6 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	if (IsYugaByteEnabled())
 	{
 		stmt->constraints = list_concat(stmt->constraints, cxt.ixconstraints);
-	}
-
-	/*
-	 * If YB is enabled, add the primary key constraint from the like clause to
-	 * the statement so it will be passed down to DocDB.
-	 */
-	if (IsYugaByteEnabled() && yb_like_found)
-	{
-		stmt->constraints =
-			list_concat(stmt->constraints, cxt.yb_likepkconstraint);
 	}
 
 	result = lappend(cxt.blist, stmt);
@@ -1373,62 +1358,6 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 		}
 	}
 
-#ifdef YB_TODO
-	/*
-	 * Likewise, copy indexes if requested
-	 */
-	if ((table_like_clause->options & CREATE_TABLE_LIKE_INDEXES) &&
-		relation->rd_rel->relhasindex)
-	{
-		foreach(l, parent_indexes)
-		{
-			if (IsYugaByteEnabled() && index_stmt->primary)
-			{
-				index_stmt->tableSpace = NULL;
-				if (cxt->tablespaceOid != InvalidOid)
-					index_stmt->tableSpace =
-						get_tablespace_name(cxt->tablespaceOid);
-			}
-			
-			/* ... Removed Pg Code ... */
-
-			/* YB_TODO(neil) This code block is removed from Postgres.
-			 * Need to reinsert it back else where
-			 */
-			/*
-			 * If index is a primary key index save the primary key
-			 * constraint.
-			 */
-			if (IsYugaByteEnabled() &&
-					((Form_pg_index)
-					 GETSTRUCT(parent_index->rd_indextuple))->indisprimary)
-			{
-				Constraint *primary_key = makeNode(Constraint);
-				primary_key->contype = CONSTR_PRIMARY;
-				primary_key->conname = index_stmt->idxname;
-				primary_key->options = index_stmt->options;
-				primary_key->indexspace = NULL;
-				if (cxt->tablespaceOid != InvalidOid)
-					primary_key->indexspace =
-						get_tablespace_name(cxt->tablespaceOid);
-
-				ListCell *idxcell;
-				foreach(idxcell, index_stmt->indexParams)
-				{
-					IndexElem* ielem = lfirst(idxcell);
-					primary_key->keys =
-						lappend(primary_key->keys, makeString(ielem->name));
-					primary_key->yb_index_params =
-						lappend(primary_key->yb_index_params, ielem);
-				}
-				cxt->yb_likepkconstraint =
-					lappend(cxt->yb_likepkconstraint, primary_key);
-			}
-			index_close(parent_index, AccessShareLock);
-		}
-	}
-#endif
-
 	/*
 	 * We cannot yet deal with defaults, CHECK constraints, or indexes, since
 	 * we don't yet know what column numbers the copied columns will have in
@@ -1443,6 +1372,9 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 		 CREATE_TABLE_LIKE_CONSTRAINTS |
 		 CREATE_TABLE_LIKE_INDEXES))
 	{
+		/* Yugabyte needs the tablespace OID also */
+		table_like_clause->yb_tablespaceOid = cxt->yb_tablespaceOid;
+
 		table_like_clause->relationOid = RelationGetRelid(relation);
 		cxt->likeclauses = lappend(cxt->likeclauses, table_like_clause);
 	}
@@ -1502,7 +1434,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
  * commands that should be run to generate indexes etc.
  */
 List *
-expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause)
+expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause, List **yb_constraints)
 {
 	List	   *result = NIL;
 	List	   *atsubcmds = NIL;
@@ -1742,6 +1674,48 @@ expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause)
 				 * need to know now what name the index will have.
 				 */
 				index_stmt->idxcomment = comment;
+			}
+
+			if (IsYugaByteEnabled())
+			{
+				/*
+				 * For Yugabyte clusters, the primary key index is a dummy
+				 * object. Its tablespace or location must always match that of
+				 * the table being indexed.
+				 */
+				if (index_stmt->primary)
+				{
+					index_stmt->tableSpace = NULL;
+					if (table_like_clause->yb_tablespaceOid != InvalidOid)
+						index_stmt->tableSpace =
+							get_tablespace_name(table_like_clause->yb_tablespaceOid);
+				}
+
+				/*
+				 * If index is a primary key index save the primary key constraint.
+				 */
+				if (((Form_pg_index)GETSTRUCT(parent_index->rd_indextuple))->indisprimary)
+				{
+					Constraint *primary_key = makeNode(Constraint);
+					primary_key->contype = CONSTR_PRIMARY;
+					primary_key->conname = index_stmt->idxname;
+					primary_key->options = index_stmt->options;
+					primary_key->indexspace = NULL;
+					if (table_like_clause->yb_tablespaceOid != InvalidOid)
+						primary_key->indexspace =
+							get_tablespace_name(table_like_clause->yb_tablespaceOid);
+
+					ListCell *idxcell;
+					foreach(idxcell, index_stmt->indexParams)
+					{
+						IndexElem* ielem = lfirst(idxcell);
+						primary_key->keys =
+							lappend(primary_key->keys, makeString(ielem->name));
+						primary_key->yb_index_params =
+							lappend(primary_key->yb_index_params, ielem);
+					}
+					*yb_constraints = lappend(*yb_constraints, primary_key);
+				}
 			}
 
 			result = lappend(result, index_stmt);
@@ -2453,7 +2427,7 @@ transformIndexConstraints(CreateStmtContext *cxt)
 			 */
 			Oid oid = GetTableOidFromRelOptions(
 				index->options,
-				cxt->tablespaceOid,
+				cxt->yb_tablespaceOid,
 				cxt->relation->relpersistence);
 
 			if (!OidIsValid(oid))
@@ -2820,21 +2794,25 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 		foreach(lc, constraint->yb_index_params)
 		{
 			IndexElem  *index_elem = (IndexElem *)lfirst(lc);
-			char	   *key = index_elem->name;
-			/* YB_TODO(neil@yugabyte): char	   *key = strVal(lfirst(lc)); */
+			char	   *key = strVal(lfirst(lc));
 			bool		found = false;
 			bool		forced_not_null = false;
 			ColumnDef  *column = NULL;
 			ListCell   *columns;
 			IndexElem  *iparam;
 
-			if (index_elem->expr != NULL)
+			if (IsYugaByteEnabled())
+			{
+				/* Yugabyte's key is based on name only */
+				key = index_elem->name;
+				if (index_elem->expr != NULL)
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							 errmsg("cannot create a primary key or unique constraint on expressions"),
 							 parser_errposition(cxt->pstate, constraint->location)));
 
-			Assert(key != NULL);
+				Assert(key != NULL);
+			}
 
 			/* Make sure referenced column exists. */
 			foreach(columns, cxt->columns)
@@ -3789,7 +3767,6 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 	cxt.ckconstraints = NIL;
 	cxt.fkconstraints = NIL;
 	cxt.ixconstraints = NIL;
-	cxt.yb_likepkconstraint = NIL;
 	cxt.likeclauses = NIL;
 	cxt.extstats = NIL;
 	cxt.blist = NIL;
@@ -3816,7 +3793,7 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 				 errdetail("System catalog modifications are currently disallowed.")));
 
 	cxt.relOid = RelationGetRelid(rel);
-	cxt.tablespaceOid = rel->rd_rel->reltablespace;
+	cxt.yb_tablespaceOid = rel->rd_rel->reltablespace;
 
 	/*
 	 * Transform ALTER subcommands that need it (most don't).  These largely

@@ -133,6 +133,8 @@ extern void RelationCacheInvalidateEntry(Oid relationId);
 
 extern void RelationCacheInvalidate(bool debug_discard);
 
+extern void YbRelationCacheInvalidate(void);
+
 extern void RelationCloseSmgrByOid(Oid relationId);
 
 #ifdef USE_ASSERT_CHECKING

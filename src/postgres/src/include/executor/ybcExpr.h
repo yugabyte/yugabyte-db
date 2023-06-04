@@ -50,8 +50,8 @@ extern YBCPgExpr YBCNewTupleExpr(YBCPgStatement ybc_stmt, const YBCPgTypeAttrs *
 								 int num_elems, YBCPgExpr *elems);
 
 extern Expr *YbExprInstantiateParams(Expr* expr, EState *estate);
-extern PushdownExprs *YbInstantiateRemoteParams(PushdownExprs *remote,
-												EState *estate);
+extern PushdownExprs *YbInstantiatePushdownParams(PushdownExprs *pushdown,
+												  EState *estate);
 
 extern bool YbCanPushdownExpr(Expr *pg_expr, List **params);
 

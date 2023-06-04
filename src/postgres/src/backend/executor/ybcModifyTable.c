@@ -641,7 +641,6 @@ bool YBCExecuteDelete(Relation rel,
 	Oid				relid = RelationGetRelid(rel);
 	YBCPgStatement	delete_stmt = NULL;
 	Datum			ybctid;
-	ListCell	   *lc;
 
 	/* is_single_row_txn always implies target tuple wasn't fetched. */
 	Assert(!is_single_row_txn || !target_tuple_fetched);
@@ -727,17 +726,7 @@ bool YBCExecuteDelete(Relation rel,
 	 * Instruct DocDB to return data from the columns required to evaluate
 	 * returning clause expressions.
 	 */
-	foreach (lc, returning_columns)
-	{
-		YbExprParamDesc *colref = lfirst_node(YbExprParamDesc, lc);
-		YBCPgTypeAttrs type_attrs = { colref->typmod };
-		YBCPgExpr yb_expr = YBCNewColumnRef(delete_stmt,
-											colref->attno,
-											colref->typid,
-											colref->collid,
-											&type_attrs);
-		HandleYBStatus(YBCPgDmlAppendTarget(delete_stmt, yb_expr));
-	}
+	YbDmlAppendTargets(returning_columns, delete_stmt);
 
 	/*
 	 * For system tables, mark tuple for invalidation from system caches
@@ -917,7 +906,6 @@ bool YBCExecuteUpdate(Relation rel,
 	Oid				relid = RelationGetRelid(rel);
 	YBCPgStatement	update_stmt = NULL;
 	Datum			ybctid;
-	ListCell	   *lc;
 
 	/* is_single_row_txn always implies target tuple wasn't fetched. */
 	Assert(!is_single_row_txn || !target_tuple_fetched);
@@ -1010,30 +998,11 @@ bool YBCExecuteUpdate(Relation rel,
 	 * Instruct DocDB to return data from the columns required to evaluate
 	 * returning clause expressions.
 	 */
-	foreach (lc, mt_plan->ybReturningColumns)
-	{
-		YbExprParamDesc *colref = lfirst_node(YbExprParamDesc, lc);
-		YBCPgTypeAttrs type_attrs = { colref->typmod};
-		YBCPgExpr yb_expr = YBCNewColumnRef(update_stmt,
-											colref->attno,
-											colref->typid,
-											colref->collid,
-											&type_attrs);
-		HandleYBStatus(YBCPgDmlAppendTarget(update_stmt, yb_expr));
-	}
+	YbDmlAppendTargets(mt_plan->ybReturningColumns, update_stmt);
 
 	/* Column references to prepare data to evaluate pushed down expressions */
-	foreach (lc, mt_plan->ybColumnRefs)
-	{
-		YbExprParamDesc *colref = lfirst_node(YbExprParamDesc, lc);
-		YBCPgTypeAttrs type_attrs = { colref->typmod };
-		YBCPgExpr yb_expr = YBCNewColumnRef(update_stmt,
-											colref->attno,
-											colref->typid,
-											colref->collid,
-											&type_attrs);
-		HandleYBStatus(YbPgDmlAppendColumnRef(update_stmt, yb_expr, true));
-	}
+	YbDmlAppendColumnRefs(mt_plan->ybColumnRefs, true /* is_primary */,
+						  update_stmt);
 
 	/* Execute the statement. */
 

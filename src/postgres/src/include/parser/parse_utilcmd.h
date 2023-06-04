@@ -34,7 +34,8 @@ extern List *transformCreateSchemaStmt(CreateSchemaStmt *stmt);
 extern PartitionBoundSpec *transformPartitionBound(ParseState *pstate, Relation parent,
 												   PartitionBoundSpec *spec);
 extern List *expandTableLikeClause(RangeVar *heapRel,
-								   TableLikeClause *table_like_clause);
+								   TableLikeClause *table_like_clause,
+								   List **yb_constraints);
 extern IndexStmt *generateClonedIndexStmt(RangeVar *heapRel,
 										  Relation source_idx,
 										  const struct AttrMap *attmap,

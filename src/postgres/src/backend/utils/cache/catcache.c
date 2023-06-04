@@ -49,6 +49,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "nodes/pg_list.h"
+#include "utils/catcache.h"
 #include "pg_yb_utils.h"
 
 /* #define CACHEDEBUG */	/* turns DEBUG elogs on */
@@ -406,6 +407,7 @@ CatCachePrintStats(int code, Datum arg)
 	long		cc_invals = 0;
 	long		cc_lsearches = 0;
 	long		cc_lhits = 0;
+	long 		yb_cc_size = 0;
 
 	slist_foreach(iter, &CacheHdr->ch_caches)
 	{
@@ -413,7 +415,7 @@ CatCachePrintStats(int code, Datum arg)
 
 		if (cache->cc_ntup == 0 && cache->cc_searches == 0)
 			continue;			/* don't print unused caches */
-		elog(DEBUG2, "catcache %s/%u: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld lsrch, %ld lhits",
+		elog(DEBUG2, "catcache %s/%u: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld lsrch, %ld lhits, %ld bytes",
 			 cache->cc_relname,
 			 cache->cc_indexoid,
 			 cache->cc_ntup,
@@ -426,7 +428,8 @@ CatCachePrintStats(int code, Datum arg)
 			 cache->cc_searches - cache->cc_hits - cache->cc_neg_hits,
 			 cache->cc_invals,
 			 cache->cc_lsearches,
-			 cache->cc_lhits);
+			 cache->cc_lhits,
+			 cache->yb_cc_size_bytes);
 		cc_searches += cache->cc_searches;
 		cc_hits += cache->cc_hits;
 		cc_neg_hits += cache->cc_neg_hits;
@@ -434,8 +437,9 @@ CatCachePrintStats(int code, Datum arg)
 		cc_invals += cache->cc_invals;
 		cc_lsearches += cache->cc_lsearches;
 		cc_lhits += cache->cc_lhits;
+		yb_cc_size += cache->yb_cc_size_bytes;
 	}
-	elog(DEBUG2, "catcache totals: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld lsrch, %ld lhits",
+	elog(DEBUG2, "catcache totals: %d tup, %ld srch, %ld+%ld=%ld hits, %ld+%ld=%ld loads, %ld invals, %ld lsrch, %ld lhits, %ld bytes",
 		 CacheHdr->ch_ntup,
 		 cc_searches,
 		 cc_hits,
@@ -446,7 +450,8 @@ CatCachePrintStats(int code, Datum arg)
 		 cc_searches - cc_hits - cc_neg_hits,
 		 cc_invals,
 		 cc_lsearches,
-		 cc_lhits);
+		 cc_lhits,
+		 yb_cc_size);
 }
 #endif							/* CATCACHE_STATS */
 
@@ -487,6 +492,18 @@ CatCacheRemoveCTup(CatCache *cache, CatCTup *ct)
 	if (ct->negative)
 		CatCacheFreeKeys(cache->cc_tupdesc, cache->cc_nkeys,
 						 cache->cc_keyno, ct->keys);
+
+#ifdef CATCACHE_STATS
+	/*
+	 * In negative cache entry, only header is allocated. Keys are ignored for
+	 * now.
+	 */
+	if (ct->negative)
+		cache->yb_cc_size_bytes -= sizeof(CatCTup);
+	else
+		cache->yb_cc_size_bytes -=
+			sizeof(CatCTup) + MAXIMUM_ALIGNOF + ct->tuple.t_len;
+#endif
 
 	pfree(ct);
 
@@ -2308,6 +2325,9 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 
 		ct = (CatCTup *) palloc(sizeof(CatCTup) +
 								MAXIMUM_ALIGNOF + dtp->t_len);
+#ifdef CATCACHE_STATS
+		cache->yb_cc_size_bytes += sizeof(CatCTup) + MAXIMUM_ALIGNOF + dtp->t_len;
+#endif
 		ct->tuple.t_len = dtp->t_len;
 		ct->tuple.t_self = dtp->t_self;
 		HEAPTUPLE_COPY_YBITEM(dtp, &ct->tuple);
@@ -2342,6 +2362,9 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 		Assert(negative);
 		oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 		ct = (CatCTup *) palloc(sizeof(CatCTup));
+#ifdef CATCACHE_STATS
+		cache->yb_cc_size_bytes += sizeof(CatCTup);
+#endif
 
 		/*
 		 * Store keys - they'll point into separately allocated memory if not

@@ -3278,7 +3278,7 @@ _equalRowBounds(const RowBounds *a, const RowBounds *b)
 }
 
 static bool
-_equalYbExprParamDesc(const YbExprParamDesc *a, const YbExprParamDesc *b)
+_equalYbExprColrefDesc(const YbExprColrefDesc *a, const YbExprColrefDesc *b)
 {
 	COMPARE_SCALAR_FIELD(attno);
 	COMPARE_SCALAR_FIELD(typid);
@@ -4083,8 +4083,8 @@ equal(const void *a, const void *b)
 			retval = _equalRowBounds(a, b);
 			break;
 
-		case T_YbExprParamDesc:
-			retval = _equalYbExprParamDesc(a, b);
+		case T_YbExprColrefDesc:
+			retval = _equalYbExprColrefDesc(a, b);
 			break;
 
 		default:

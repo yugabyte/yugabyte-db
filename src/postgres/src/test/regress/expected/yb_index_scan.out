@@ -171,6 +171,26 @@ SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);
  1 | 0 | 1-0
 (4 rows)
 
+-- Test yb_pushdown_is_not_null
+CREATE TABLE inn_hash(k int PRIMARY KEY, v int);
+CREATE INDEX ON inn_hash(v ASC);
+INSERT INTO inn_hash VALUES (1,NULL),(2,102),(3,NULL),(4,104),(5,105),(6,NULL);
+SELECT * FROM inn_hash WHERE v IS NOT NULL;
+ k |  v
+---+-----
+ 2 | 102
+ 4 | 104
+ 5 | 105
+(3 rows)
+
+/*+Set(yb_pushdown_is_not_null false)*/ SELECT * FROM inn_hash WHERE v IS NOT NULL;
+ k |  v
+---+-----
+ 2 | 102
+ 4 | 104
+ 5 | 105
+(3 rows)
+
 -- Test unique secondary index ordering
 CREATE TABLE usc_asc(k int, v int);
 CREATE UNIQUE INDEX ON usc_asc(v ASC NULLS FIRST);
