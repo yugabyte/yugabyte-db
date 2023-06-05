@@ -33,7 +33,7 @@ void YBCInterruptPgGate();
 // Environment and Session.
 
 // Initialize a session to process statements that come from the same client connection.
-YBCStatus YBCPgInitSession(const char *database_name);
+YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats);
 
 // Initialize YBCPgMemCtx.
 // - Postgres uses memory context to hold all of its allocated space. Once all associated operations
@@ -444,8 +444,6 @@ YBCStatus YBCPgStartOperationsBuffering();
 YBCStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
-void YBCPgGetAndResetOperationFlushRpcStats(uint64_t* count,
-                                            uint64_t* wait_time);
 
 YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
@@ -516,10 +514,6 @@ YBCStatus YBCPgNewSelect(YBCPgOid database_oid,
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
-
-// RPC stats for EXPLAIN ANALYZE
-void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t* read_wait,
-                                uint64_t* tbl_reads, uint64_t* tbl_read_wait);
 
 // Transaction control -----------------------------------------------------------------------------
 YBCStatus YBCPgBeginTransaction();

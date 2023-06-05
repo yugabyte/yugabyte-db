@@ -129,7 +129,7 @@ class PgApiImpl {
 
   // Initialize a session to process statements that come from the same client connection.
   // If database_name is empty, a session is created without connecting to any database.
-  Status InitSession(const std::string& database_name);
+  Status InitSession(const std::string& database_name, YBCPgExecStatsState* session_stats);
 
   PgMemctx *CreateMemctx();
   Status DestroyMemctx(PgMemctx *memctx);
@@ -472,7 +472,6 @@ class PgApiImpl {
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
   Status FlushBufferedOperations();
-  void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -626,10 +625,6 @@ class PgApiImpl {
   bool IsSysTablePrefetchingStarted() const;
   void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
   Status PrefetchRegisteredSysTables();
-
-  // RPC stats for EXPLAIN ANALYZE
-  void GetAndResetReadRpcStats(PgStatement *handle, uint64_t* reads, uint64_t* read_wait,
-                               uint64_t* tbl_reads, uint64_t* tbl_read_wait);
 
   //------------------------------------------------------------------------------------------------
   // System Validation.

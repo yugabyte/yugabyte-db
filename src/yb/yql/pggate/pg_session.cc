@@ -323,17 +323,23 @@ size_t TableYbctidHasher::operator()(const TableYbctid& value) const {
 PgSession::PgSession(
     PgClient* pg_client,
     const std::string& database_name,
-    scoped_refptr<PgTxnManager> pg_txn_manager,
-    scoped_refptr<server::HybridClock> clock,
-    const YBCPgCallbacks& pg_callbacks)
+    scoped_refptr<PgTxnManager>
+        pg_txn_manager,
+    scoped_refptr<server::HybridClock>
+        clock,
+    const YBCPgCallbacks& pg_callbacks,
+    YBCPgExecStatsState* stats_state)
     : pg_client_(*pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
-      buffer_(std::bind(
-          &PgSession::FlushOperations, this, std::placeholders::_1, std::placeholders::_2),
-          buffering_settings_),
+      metrics_(stats_state),
+      buffer_(
+          std::bind(
+              &PgSession::FlushOperations, this, std::placeholders::_1, std::placeholders::_2),
+          buffering_settings_,
+          &metrics_),
       pg_callbacks_(pg_callbacks) {
-      Update(&buffering_settings_);
+  Update(&buffering_settings_);
 }
 
 PgSession::~PgSession() = default;
@@ -557,11 +563,6 @@ Status PgSession::FlushBufferedOperations() {
 
 void PgSession::DropBufferedOperations() {
   buffer_.Clear();
-}
-
-void PgSession::GetAndResetOperationFlushRpcStats(uint64_t* count,
-                                                  uint64_t* wait_time) {
-  buffer_.GetAndResetRpcStats(count, wait_time);
 }
 
 PgIsolationLevel PgSession::GetIsolationLevel() {

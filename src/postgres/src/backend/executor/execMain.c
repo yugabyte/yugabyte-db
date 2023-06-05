@@ -512,6 +512,7 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	queryDesc->estate = NULL;
 	queryDesc->planstate = NULL;
 	queryDesc->totaltime = NULL;
+	queryDesc->yb_query_stats = NULL;
 }
 
 /* ----------------------------------------------------------------
@@ -1037,6 +1038,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 		i++;
 	}
+
+	queryDesc->yb_query_stats = InstrAlloc(1, queryDesc->instrument_options);
 
 	/*
 	 * Initialize the private state information for all the nodes in the query
