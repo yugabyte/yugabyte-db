@@ -170,6 +170,9 @@ message BeginRemoteBootstrapSessionResponsePB {
   // A snapshot of the committed Consensus state at the time that the
   // remote bootstrap session was started.
   required consensus.ConsensusStatePB initial_committed_cstate = 5;
+
+  // If the tablet has a retryable requests file flushed to disk.
+  optional bool retryable_requests_file_flushed = 7 [default = false];
 }
 
 message CheckRemoteBootstrapSessionActiveRequestPB {
@@ -193,6 +196,7 @@ message DataIdPB {
     LOG_SEGMENT = 2;
     ROCKSDB_FILE = 3;
     SNAPSHOT_FILE = 4;
+    RETRYABLE_REQUESTS = 5;
   }
 
   // Indicator whether it's a block or log segment id.

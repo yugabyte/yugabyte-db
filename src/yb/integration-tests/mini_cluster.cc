@@ -1000,13 +1000,17 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
   return result;
 }
 
-tserver::MiniTabletServer* GetLeaderForTablet(MiniCluster* cluster, const std::string& tablet_id) {
+tserver::MiniTabletServer* GetLeaderForTablet(
+    MiniCluster* cluster, const std::string& tablet_id, size_t* leader_idx) {
   for (size_t i = 0; i < cluster->num_tablet_servers(); i++) {
     if (!cluster->mini_tablet_server(i)->is_started()) {
       continue;
     }
 
     if (cluster->mini_tablet_server(i)->server()->LeaderAndReady(tablet_id)) {
+      if (leader_idx) {
+        *leader_idx = i;
+      }
       return cluster->mini_tablet_server(i);
     }
   }

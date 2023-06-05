@@ -42,6 +42,7 @@ typedef std::shared_ptr<TableInfo> TableInfoPtr;
 
 class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
+typedef std::weak_ptr<TabletPeer> TabletPeerWeakPtr;
 
 class ChangeMetadataOperation;
 class Operation;

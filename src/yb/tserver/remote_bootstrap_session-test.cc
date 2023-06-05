@@ -84,6 +84,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
                      log_thread_pool_.get(),
                      std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                      &log,
+                     {}, // pre_log_rollover_callback,
                      new_segment_allocation_callback));
 
   scoped_refptr<MetricEntity> table_metric_entity =
@@ -137,9 +138,10 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       tablet_metric_entity,
       raft_pool_.get(),
       tablet_prepare_pool_.get(),
-      nullptr /* retryable_requests */,
+      nullptr /* retryable_requests_manager */,
       nullptr /* consensus_meta */,
-      multi_raft_manager_.get()));
+      multi_raft_manager_.get(),
+      nullptr /* flush_retryable_requests_pool */));
   consensus::ConsensusBootstrapInfo boot_info;
   ASSERT_OK(tablet_peer_->Start(boot_info));
 
