@@ -230,11 +230,27 @@ static void process_path(cypher_merge_custom_scan_state *css)
         ExprContext *econtext = css->css.ss.ps.ps_ExprContext;
         TupleTableSlot *scantuple = econtext->ecxt_scantuple;
         Datum result;
+        int tuple_position = path->path_attr_num - 1;
+        bool debug_flag = false;
 
-        result = make_path(css->path_values);
+        /*
+         * We need to make sure that the tuple_position is within the
+         * boundaries of the tuple's number of attributes. Otherwise, it
+         * will corrupt memory. The cases where it doesn't fit within are
+         * usually due to a variable that is specified but there isn't a RETURN
+         * clause. In these cases we just don't bother to store the
+         * value.
+         */
+         if (!debug_flag &&
+             (tuple_position < scantuple->tts_tupleDescriptor->natts ||
+              scantuple->tts_tupleDescriptor->natts != 1))
+        {
+            result = make_path(css->path_values);
 
-        scantuple->tts_values[path->path_attr_num - 1] = result;
-        scantuple->tts_isnull[path->path_attr_num - 1] = false;
+            /* store the result */
+            scantuple->tts_values[tuple_position] = result;
+            scantuple->tts_isnull[tuple_position] = false;
+        }
     }
 }
 
@@ -739,25 +755,25 @@ static Datum merge_vertex(cypher_merge_custom_scan_state *css,
              */
             if (CYPHER_TARGET_NODE_IS_VARIABLE(node->flags))
             {
-                bool debug = false;
+                bool debug_flag = false;
                 int tuple_position = node->tuple_position - 1;
 
                 /*
-                 * Generate an error message if the tuple position is
-                 * out-of-bounds and allow for debugging.
+                 * We need to make sure that the tuple_position is within the
+                 * boundaries of the tuple's number of attributes. Otherwise, it
+                 * will corrupt memory. The cases where it doesn't fall within
+                 * are usually due to a variable that is specified but there
+                 * isn't a RETURN clause. In these cases we just don't bother to
+                 * store the value.
                  */
-                if (!debug && (tuple_position >=
-                               scanTupleSlot->tts_tupleDescriptor->natts))
+                if (!debug_flag &&
+                    (tuple_position < scanTupleSlot->tts_tupleDescriptor->natts ||
+                     scanTupleSlot->tts_tupleDescriptor->natts != 1))
                 {
-                    ereport(ERROR,
-                            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                             errmsg("merge_vertex: invalid tuple position")));
-
+                    /* store the result */
+                    scanTupleSlot->tts_values[tuple_position] = result;
+                    scanTupleSlot->tts_isnull[tuple_position] = false;
                 }
-
-                /* store the result */
-                scanTupleSlot->tts_values[tuple_position] = result;
-                scanTupleSlot->tts_isnull[tuple_position] = false;
             }
         }
     }
@@ -955,25 +971,25 @@ static void merge_edge(cypher_merge_custom_scan_state *css,
         if (CYPHER_TARGET_NODE_IS_VARIABLE(node->flags))
         {
             TupleTableSlot *scantuple = econtext->ecxt_scantuple;
-            bool debug = false;
+            bool debug_flag = false;
             int tuple_position = node->tuple_position - 1;
 
             /*
-             * Generate an error message if the tuple position is
-             * out-of-bounds and allow for debugging.
+             * We need to make sure that the tuple_position is within the
+             * boundaries of the tuple's number of attributes. Otherwise, it
+             * will corrupt memory. The cases where it doesn't fall within are
+             * usually due to a variable that is specified but there isn't a
+             * RETURN clause. In these cases we just don't bother to store the
+             * value.
              */
-            if (!debug && (tuple_position >=
-                           scantuple->tts_tupleDescriptor->natts))
+             if (!debug_flag &&
+                 (tuple_position < scantuple->tts_tupleDescriptor->natts ||
+                  scantuple->tts_tupleDescriptor->natts != 1))
             {
-                ereport(ERROR,
-                        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                         errmsg("merge_edge: invalid tuple position")));
-
+                /* store the result */
+                scantuple->tts_values[tuple_position] = result;
+                scantuple->tts_isnull[tuple_position] = false;
             }
-
-            /* store the result */
-            scantuple->tts_values[tuple_position] = result;
-            scantuple->tts_isnull[tuple_position] = false;
         }
     }
 }

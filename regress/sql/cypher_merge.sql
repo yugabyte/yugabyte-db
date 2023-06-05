@@ -479,6 +479,22 @@ SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype
 SELECT * FROM cypher('cypher_merge', $$ MERGE (n:node {name: 'Jason'}) SET n.name = 'Lisa', n.age = 23, n.gender = 'Female' RETURN n $$) AS (n agtype);
 SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype);
 
+--
+-- Complex MERGE w/wo RETURN values
+--
+-- These should each create a path, if it doesn't already exist.
+-- TODO Until the issue with variable reuse of 'x' in MERGE is corrected,
+--      these commands will each create a new path.
+SELECT * FROM cypher('cypher_merge', $$ MERGE ()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE ()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) RETURN x $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) $$) AS (p agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) RETURN p $$) AS (p agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) RETURN p $$) AS (p agtype);
+-- TODO This should only return 1 row, as the path should already exist.
+--      However, we need to fix the variable reuse in MERGE. Until then,
+--      this will always return 5 rows due to 'x' above not being the same node.
+SELECT * FROM cypher('cypher_merge', $$ MATCH p=()-[:B]->(:C)-[:E]->(:C)<-[:F]-(:I) RETURN p $$) AS (p agtype);
+
 --clean up
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
 

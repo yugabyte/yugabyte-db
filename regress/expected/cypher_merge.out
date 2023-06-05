@@ -901,6 +901,53 @@ SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype
  {"id": 2533274790395907, "label": "node", "properties": {"age": 23, "name": "Lisa", "gender": "Female"}}::vertex
 (2 rows)
 
+--
+-- Complex MERGE w/wo RETURN values
+--
+-- These should each create a path, if it doesn't already exist.
+-- TODO Until the issue with variable reuse of 'x' in MERGE is corrected,
+--      these commands will each create a new path.
+SELECT * FROM cypher('cypher_merge', $$ MERGE ()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) $$) AS (x agtype);
+ x 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_merge', $$ MERGE ()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) RETURN x $$) AS (x agtype);
+                                x                                 
+------------------------------------------------------------------
+ {"id": 3096224743817220, "label": "C", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) $$) AS (p agtype);
+ p 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) RETURN p $$) AS (p agtype);
+                                                                                                                                                                                                                                                                                                                             p                                                                                                                                                                                                                                                                                                                             
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 281474976710708, "label": "", "properties": {}}::vertex, {"id": 2814749767106564, "label": "B", "end_id": 3096224743817223, "start_id": 281474976710708, "properties": {}}::edge, {"id": 3096224743817223, "label": "C", "properties": {}}::vertex, {"id": 3377699720527876, "label": "E", "end_id": 3096224743817224, "start_id": 3096224743817223, "properties": {}}::edge, {"id": 3096224743817224, "label": "C", "properties": {}}::vertex, {"id": 3659174697238532, "label": "F", "end_id": 3096224743817224, "start_id": 3940649673949188, "properties": {}}::edge, {"id": 3940649673949188, "label": "I", "properties": {}}::vertex]::path
+(1 row)
+
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) RETURN p $$) AS (p agtype);
+                                                                                                                                                                                                                                                                                                                             p                                                                                                                                                                                                                                                                                                                             
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 281474976710709, "label": "", "properties": {}}::vertex, {"id": 2814749767106565, "label": "B", "end_id": 3096224743817225, "start_id": 281474976710709, "properties": {}}::edge, {"id": 3096224743817225, "label": "C", "properties": {}}::vertex, {"id": 3377699720527877, "label": "E", "end_id": 3096224743817226, "start_id": 3096224743817225, "properties": {}}::edge, {"id": 3096224743817226, "label": "C", "properties": {}}::vertex, {"id": 3659174697238533, "label": "F", "end_id": 3096224743817226, "start_id": 3940649673949189, "properties": {}}::edge, {"id": 3940649673949189, "label": "I", "properties": {}}::vertex]::path
+(1 row)
+
+-- TODO This should only return 1 row, as the path should already exist.
+--      However, we need to fix the variable reuse in MERGE. Until then,
+--      this will always return 5 rows due to 'x' above not being the same node.
+SELECT * FROM cypher('cypher_merge', $$ MATCH p=()-[:B]->(:C)-[:E]->(:C)<-[:F]-(:I) RETURN p $$) AS (p agtype);
+                                                                                                                                                                                                                                                                                                                             p                                                                                                                                                                                                                                                                                                                             
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 281474976710705, "label": "", "properties": {}}::vertex, {"id": 2814749767106561, "label": "B", "end_id": 3096224743817217, "start_id": 281474976710705, "properties": {}}::edge, {"id": 3096224743817217, "label": "C", "properties": {}}::vertex, {"id": 3377699720527873, "label": "E", "end_id": 3096224743817218, "start_id": 3096224743817217, "properties": {}}::edge, {"id": 3096224743817218, "label": "C", "properties": {}}::vertex, {"id": 3659174697238529, "label": "F", "end_id": 3096224743817218, "start_id": 3940649673949185, "properties": {}}::edge, {"id": 3940649673949185, "label": "I", "properties": {}}::vertex]::path
+ [{"id": 281474976710706, "label": "", "properties": {}}::vertex, {"id": 2814749767106562, "label": "B", "end_id": 3096224743817219, "start_id": 281474976710706, "properties": {}}::edge, {"id": 3096224743817219, "label": "C", "properties": {}}::vertex, {"id": 3377699720527874, "label": "E", "end_id": 3096224743817220, "start_id": 3096224743817219, "properties": {}}::edge, {"id": 3096224743817220, "label": "C", "properties": {}}::vertex, {"id": 3659174697238530, "label": "F", "end_id": 3096224743817220, "start_id": 3940649673949186, "properties": {}}::edge, {"id": 3940649673949186, "label": "I", "properties": {}}::vertex]::path
+ [{"id": 281474976710707, "label": "", "properties": {}}::vertex, {"id": 2814749767106563, "label": "B", "end_id": 3096224743817221, "start_id": 281474976710707, "properties": {}}::edge, {"id": 3096224743817221, "label": "C", "properties": {}}::vertex, {"id": 3377699720527875, "label": "E", "end_id": 3096224743817222, "start_id": 3096224743817221, "properties": {}}::edge, {"id": 3096224743817222, "label": "C", "properties": {}}::vertex, {"id": 3659174697238531, "label": "F", "end_id": 3096224743817222, "start_id": 3940649673949187, "properties": {}}::edge, {"id": 3940649673949187, "label": "I", "properties": {}}::vertex]::path
+ [{"id": 281474976710708, "label": "", "properties": {}}::vertex, {"id": 2814749767106564, "label": "B", "end_id": 3096224743817223, "start_id": 281474976710708, "properties": {}}::edge, {"id": 3096224743817223, "label": "C", "properties": {}}::vertex, {"id": 3377699720527876, "label": "E", "end_id": 3096224743817224, "start_id": 3096224743817223, "properties": {}}::edge, {"id": 3096224743817224, "label": "C", "properties": {}}::vertex, {"id": 3659174697238532, "label": "F", "end_id": 3096224743817224, "start_id": 3940649673949188, "properties": {}}::edge, {"id": 3940649673949188, "label": "I", "properties": {}}::vertex]::path
+ [{"id": 281474976710709, "label": "", "properties": {}}::vertex, {"id": 2814749767106565, "label": "B", "end_id": 3096224743817225, "start_id": 281474976710709, "properties": {}}::edge, {"id": 3096224743817225, "label": "C", "properties": {}}::vertex, {"id": 3377699720527877, "label": "E", "end_id": 3096224743817226, "start_id": 3096224743817225, "properties": {}}::edge, {"id": 3096224743817226, "label": "C", "properties": {}}::vertex, {"id": 3659174697238533, "label": "F", "end_id": 3096224743817226, "start_id": 3940649673949189, "properties": {}}::edge, {"id": 3940649673949189, "label": "I", "properties": {}}::vertex]::path
+(5 rows)
+
 --clean up
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
  a 
@@ -911,7 +958,7 @@ SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtyp
  * Clean up graph
  */
 SELECT drop_graph('cypher_merge', true);
-NOTICE:  drop cascades to 9 other objects
+NOTICE:  drop cascades to 14 other objects
 DETAIL:  drop cascades to table cypher_merge._ag_label_vertex
 drop cascades to table cypher_merge._ag_label_edge
 drop cascades to table cypher_merge.e
@@ -921,6 +968,11 @@ drop cascades to table cypher_merge."Person"
 drop cascades to table cypher_merge."City"
 drop cascades to table cypher_merge."BORN_IN"
 drop cascades to table cypher_merge.node
+drop cascades to table cypher_merge."B"
+drop cascades to table cypher_merge."C"
+drop cascades to table cypher_merge."E"
+drop cascades to table cypher_merge."F"
+drop cascades to table cypher_merge."I"
 NOTICE:  graph "cypher_merge" has been dropped
  drop_graph 
 ------------
