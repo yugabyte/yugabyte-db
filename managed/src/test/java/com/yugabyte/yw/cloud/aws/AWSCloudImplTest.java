@@ -97,8 +97,8 @@ public class AWSCloudImplTest extends FakeDBApplication {
   @Test
   public void testKeysExists() {
     assertTrue(awsCloudImpl.checkKeysExists(defaultProvider));
-    defaultProvider.getDetails().cloudInfo.aws.awsAccessKeyID = null;
-    defaultProvider.getDetails().cloudInfo.aws.awsAccessKeySecret = null;
+    defaultProvider.getDetails().getCloudInfo().aws.awsAccessKeyID = null;
+    defaultProvider.getDetails().getCloudInfo().aws.awsAccessKeySecret = null;
     assertFalse(awsCloudImpl.checkKeysExists(defaultProvider));
   }
 
@@ -194,7 +194,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
   @Test
   public void testHostedZone() {
     String hostedZoneId = "hosted_zone_id";
-    defaultProvider.getDetails().cloudInfo.aws.awsHostedZoneId = hostedZoneId;
+    defaultProvider.getDetails().getCloudInfo().aws.awsHostedZoneId = hostedZoneId;
     GetHostedZoneResult result = new GetHostedZoneResult();
     when(mockRoute53Client.getHostedZone(any()))
         .thenThrow(new AmazonServiceException("Not found"))

@@ -327,18 +327,6 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
             Arrays.asList(2, 1, 3, 6, 4, 5);
   }
 
-  protected TaskType assertTaskType(List<TaskInfo> tasks, TaskType expectedTaskType) {
-    TaskType taskType = tasks.get(0).getTaskType();
-    assertEquals(expectedTaskType, taskType);
-    return taskType;
-  }
-
-  protected TaskType assertTaskType(List<TaskInfo> tasks, TaskType expectedTaskType, int position) {
-    TaskType taskType = tasks.get(0).getTaskType();
-    assertEquals("at position " + position, expectedTaskType, taskType);
-    return taskType;
-  }
-
   protected void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
     List<String> nodeNames =
         subTasks.stream()

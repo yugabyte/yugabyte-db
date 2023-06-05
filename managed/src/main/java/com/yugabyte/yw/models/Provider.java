@@ -426,6 +426,7 @@ public class Provider extends Model {
     provider.setCode(code.toString());
     provider.setName(name);
     provider.setDetails(providerDetails);
+    provider.setUsabilityState(UsabilityState.UPDATING);
     provider.save();
     return provider;
   }

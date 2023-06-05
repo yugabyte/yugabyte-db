@@ -9,6 +9,7 @@ import akka.stream.Materializer;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
@@ -34,6 +35,7 @@ public abstract class PlatformGuiceApplicationBaseTest extends WithApplication {
   protected QueryAlerts mockQueryAlerts;
   protected AlertsGarbageCollector mockAlertsGarbageCollector;
   protected AlertConfigurationWriter mockAlertConfigurationWriter;
+  protected AWSCloudImpl mockAWSCloudImpl;
 
   protected Request fakeRequest = Helpers.fakeRequest().build();
 
@@ -42,11 +44,13 @@ public abstract class PlatformGuiceApplicationBaseTest extends WithApplication {
     mockQueryAlerts = mock(QueryAlerts.class);
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     mockAlertsGarbageCollector = mock(AlertsGarbageCollector.class);
+    mockAWSCloudImpl = mock(AWSCloudImpl.class);
 
     return builder
         .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
         .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
+        .overrides(bind(AWSCloudImpl.class).toInstance(mockAWSCloudImpl))
         .overrides(bind(AlertsGarbageCollector.class).toInstance(mockAlertsGarbageCollector));
   }
 
