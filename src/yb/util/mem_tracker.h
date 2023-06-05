@@ -168,6 +168,14 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
     return value;
   }
 
+  static int64_t GetPageHeapFreeBytes() {
+    return GetTCMallocProperty("tcmalloc.pageheap_free_bytes");
+  }
+
+  static int64_t GetTCMallocPhysicalBytesUsed() {
+    return GetTCMallocProperty("generic.total_physical_bytes");
+  }
+
   static int64_t GetTCMallocCurrentAllocatedBytes() {
     return GetTCMallocProperty("generic.current_allocated_bytes");
   }
@@ -176,12 +184,10 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
     return GetTCMallocProperty("generic.heap_size");
   }
 
-  static int64_t GetTCMallocActualHeapSizeBytes() {
-    return GetTCMallocCurrentHeapSizeBytes() -
-           GetTCMallocProperty("tcmalloc.pageheap_unmapped_bytes");
-  }
-  #endif
+  static int64_t GetTCMallocActualHeapSizeBytes();
+  #endif // YB_TCMALLOC_ENABLED
 
+  // These are declared even for non-tcmalloc builds and are no-ops in those cases.
   static void SetTCMallocCacheMemory();
 
   // Removes this tracker from its parent's children. This tracker retains its
@@ -394,6 +400,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
     poll_children_consumption_functors_ = std::move(poll_children_consumption_functors);
   }
 
+  // This is needed in some tests to create deterministic GC behavior.
+  static void TEST_SetReleasedMemorySinceGC(int64_t bytes);
+
  private:
   bool CheckLimitExceeded() const {
     return limit_ >= 0 && limit_ < consumption();
@@ -408,7 +417,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // TcMalloc holds onto released memory and very slowly (if ever) releases it back to
   // the OS. This is problematic since it is memory we are not constantly tracking which
   // can cause us to go way over mem limits.
-  void GcTcmalloc();
+  void GcTcmallocIfNeeded();
 
   // Logs the stack of the current consume/release. Used for debugging only.
   void LogUpdate(bool is_consume, int64_t bytes) const;
