@@ -97,7 +97,6 @@ public class GCPCloudImpl implements CloudAPI {
       Provider provider,
       String regionCode,
       String lbName,
-      List<String> nodeNames,
       List<NodeID> nodeIDs,
       String protocol,
       List<Integer> ports) {}
