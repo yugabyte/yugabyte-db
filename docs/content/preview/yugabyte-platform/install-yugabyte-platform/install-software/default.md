@@ -128,7 +128,7 @@ You can set up HTTP and HTTPS proxies via **Application config**, and select **E
 
 ![Enable Proxy](/images/replicated/enable-proxy.png)
 
-The following information describes details about the **Enable Proxy** setting and some considerations.
+When completing the **Enable Proxy** settings, keep in mind the following:
 
 - If your proxy is using default ports for protocol, then use the defaults for HTTP and HTTPS, 80 and 443 respectively, instead of 8080 and 8443 as shown in the above illustration.
 
