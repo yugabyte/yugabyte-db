@@ -149,6 +149,9 @@ public class Restore extends Model {
   @Column
   private long restoreSizeInBytes = 0L;
 
+  @Column(nullable = false)
+  private boolean alterLoadBalancer = true;
+
   @CreatedTimestamp private Date createTime;
 
   @UpdatedTimestamp private Date updateTime;
@@ -190,6 +193,7 @@ public class Restore extends Model {
     restore.setStorageConfigUUID(taskDetails.storageConfigUUID);
     restore.setState(State.InProgress);
     restore.setUpdateTime(restore.getCreateTime());
+    restore.setAlterLoadBalancer(taskDetails.alterLoadBalancer);
     restore.save();
     return restore;
   }

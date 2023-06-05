@@ -5,7 +5,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -129,10 +129,8 @@ public class RestartXClusterConfig extends EditXClusterConfig {
           tablesInUpdatingStatus, XClusterTableConfig.Status.Failed);
       // Set backup and restore status to failed and alter load balanced.
       boolean isLoadBalancerAltered = false;
-      for (Backup backup : backupList) {
-        if (backup.getBackupInfo().alterLoadBalancer) {
-          isLoadBalancerAltered = true;
-        }
+      for (Restore restore : restoreList) {
+        isLoadBalancerAltered = isLoadBalancerAltered || restore.isAlterLoadBalancer();
       }
       handleFailedBackupAndRestore(
           backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
