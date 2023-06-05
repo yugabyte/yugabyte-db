@@ -101,6 +101,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "*",
                 SearchScope.SUBTREE,
+                "base-dn",
                 "",
                 false,
                 false));
@@ -138,6 +139,7 @@ public class LdapUtilTest extends FakeDBApplication {
                     false,
                     "*",
                     SearchScope.SUBTREE,
+                    "base-dn",
                     "",
                     false,
                     false)));
@@ -176,6 +178,7 @@ public class LdapUtilTest extends FakeDBApplication {
                     false,
                     "*",
                     SearchScope.SUBTREE,
+                    "base-dn",
                     "",
                     false,
                     false)));
@@ -210,6 +213,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "*",
                 SearchScope.SUBTREE,
+                "base-dn",
                 "",
                 false,
                 false));
@@ -251,6 +255,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "*",
                 SearchScope.SUBTREE,
+                "base-dn",
                 "",
                 false,
                 false));
@@ -292,6 +297,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "*",
                 SearchScope.SUBTREE,
+                "base-dn",
                 "",
                 false,
                 false));
@@ -327,6 +333,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "*",
                 SearchScope.SUBTREE,
+                "base-dn",
                 "",
                 false,
                 false));
@@ -360,6 +367,7 @@ public class LdapUtilTest extends FakeDBApplication {
                     false,
                     "*",
                     SearchScope.SUBTREE,
+                    "base-dn",
                     "",
                     false,
                     false)));
@@ -429,6 +437,7 @@ public class LdapUtilTest extends FakeDBApplication {
                     + baseDn
                     + "))",
                 SearchScope.SUBTREE,
+                "base-dn",
                 "",
                 true,
                 true));
@@ -473,6 +482,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "",
                 null,
+                "base-dn",
                 memberOfAttribute,
                 false,
                 true));
@@ -507,6 +517,7 @@ public class LdapUtilTest extends FakeDBApplication {
                     false,
                     "",
                     null,
+                    "base-dn",
                     memberOfAttribute,
                     false,
                     true));
