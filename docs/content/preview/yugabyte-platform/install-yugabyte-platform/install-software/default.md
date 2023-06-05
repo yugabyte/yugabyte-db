@@ -140,6 +140,6 @@ When completing the **Enable Proxy** settings, keep in mind the following:
 
 - For the fields "HTTP no proxy setting" and "HTTP no proxy setting for Java", you need to add the docker gateway address (which is 172.17.0.1 by default).
 
-- Fields with Java system properties include a slightly different format like the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
+- The Java fields can accept values as Java system properties, including the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
 
 - There is no authoritative source for the format of environment variables; YBA follows the community standards for setting proxy where regardless of the case you use to enter the fields, the environment variables will get set with both lowercase and uppercase formats.
