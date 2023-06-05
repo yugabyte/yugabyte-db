@@ -108,7 +108,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     if (provider.getRegions() != null && !provider.getRegions().isEmpty()) {
       for (Region region : provider.getRegions()) {
         try {
-          String hostedZoneId = provider.getDetails().cloudInfo.aws.awsHostedZoneId;
+          String hostedZoneId = provider.getDetails().getCloudInfo().aws.awsHostedZoneId;
           if (!StringUtils.isEmpty(hostedZoneId)) {
             awsCloudImpl.getHostedZoneOrBadRequest(provider, region, hostedZoneId);
           }

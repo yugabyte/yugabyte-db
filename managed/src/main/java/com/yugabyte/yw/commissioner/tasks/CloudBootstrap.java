@@ -17,10 +17,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeySetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
-import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudRegionSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -36,11 +33,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -199,7 +194,7 @@ public class CloudBootstrap extends CloudTaskBase {
           perRegionMetadata.secondarySubnetId = region.getZones().get(0).getSecondarySubnet();
           perRegionMetadata.subnetId = region.getZones().get(0).getSubnet();
 
-          if (region.getProvider().getCloudCode().equals(Common.CloudType.onprem)) {
+          if (region.getProviderCloudCode() == Common.CloudType.onprem) {
             // OnPrem provider specific fields.
             perRegionMetadata.latitude = region.getLatitude();
             perRegionMetadata.longitude = region.getLongitude();
@@ -249,12 +244,6 @@ public class CloudBootstrap extends CloudTaskBase {
     // Dictates whether or not to show the set up NTP option in the provider UI.
     public boolean showSetUpChrony = true;
 
-    // This dictates whether the task skips the initialization and bootstrapping of the cloud.
-    public boolean skipBootstrapRegion = false;
-
-    // Whether or not task is a pure region add.
-    public Set<String> addedRegionCodes = null;
-
     public List<ImageBundle> imageBundles;
 
     // used for onprem nodes for the cases when manual provision is set.
@@ -277,28 +266,24 @@ public class CloudBootstrap extends CloudTaskBase {
     p.save();
     Common.CloudType cloudType = Common.CloudType.valueOf(p.getCode());
     try {
-      if (cloudType.isRequiresBootstrap()
-          && cloudType != CloudType.onprem
-          && !taskParams().skipBootstrapRegion) {
+      if (cloudType.isRequiresBootstrap() && cloudType != CloudType.onprem) {
         createCloudSetupTask()
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
       }
-      Map<String, Params.PerRegionMetadata> regionsToInit =
-          new HashMap<>(taskParams().perRegionMetadata);
-      if (!CollectionUtils.isEmpty(taskParams().addedRegionCodes)) {
-        regionsToInit.keySet().retainAll(taskParams().addedRegionCodes);
-      }
-
-      regionsToInit.forEach(
-          (regionCode, metadata) -> {
-            createRegionSetupTask(regionCode, metadata)
-                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
-          });
-      regionsToInit.forEach(
-          (regionCode, metadata) -> {
-            createAccessKeySetupTask(regionCode)
-                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
-          });
+      taskParams()
+          .perRegionMetadata
+          .forEach(
+              (regionCode, metadata) -> {
+                createRegionSetupTask(regionCode, metadata, taskParams().destVpcId)
+                    .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
+              });
+      taskParams()
+          .perRegionMetadata
+          .forEach(
+              (regionCode, metadata) -> {
+                createAccessKeySetupTask(taskParams(), regionCode)
+                    .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
+              });
 
       // Need not to init CloudInitializer task for onprem provider.
       if (!p.getCloudCode().equals(CloudType.onprem)) {
@@ -337,54 +322,6 @@ public class CloudBootstrap extends CloudTaskBase {
     params.providerUUID = taskParams().providerUUID;
     params.imageBundles = taskParams().imageBundles;
     CloudImageBundleSetup task = createTask(CloudImageBundleSetup.class);
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  public SubTaskGroup createRegionSetupTask(String regionCode, Params.PerRegionMetadata metadata) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Region task");
-    CloudRegionSetup.Params params = new CloudRegionSetup.Params();
-    params.providerUUID = taskParams().providerUUID;
-    params.regionCode = regionCode;
-    params.metadata = metadata;
-    params.destVpcId = taskParams().destVpcId;
-
-    CloudRegionSetup task = createTask(CloudRegionSetup.class);
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  public SubTaskGroup createAccessKeySetupTask(String regionCode) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Access Key");
-    CloudAccessKeySetup.Params params = new CloudAccessKeySetup.Params();
-    params.providerUUID = taskParams().providerUUID;
-    params.regionCode = regionCode;
-    params.keyPairName = taskParams().keyPairName;
-    params.sshPrivateKeyContent = taskParams().sshPrivateKeyContent;
-    params.sshUser = taskParams().sshUser;
-    params.sshPort = taskParams().sshPort;
-    params.airGapInstall = taskParams().airGapInstall;
-    params.setUpChrony = taskParams().setUpChrony;
-    params.ntpServers = taskParams().ntpServers;
-    params.showSetUpChrony = taskParams().showSetUpChrony;
-    params.skipProvisioning = taskParams().skipProvisioning;
-    params.skipKeyValidateAndUpload = taskParams().skipKeyValidateAndUpload;
-    CloudAccessKeySetup task = createTask(CloudAccessKeySetup.class);
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  public SubTaskGroup createInitializerTask() {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Cloud initializer task");
-    CloudInitializer.Params params = new CloudInitializer.Params();
-    params.providerUUID = taskParams().providerUUID;
-    CloudInitializer task = createTask(CloudInitializer.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
