@@ -399,6 +399,18 @@ create_backup() {
     create_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
                          "${verbose}" "${yba_installer}" "${pgdump_path}" "${plain_sql}"
   fi
+
+  TAR_OPTIONS="-r"
+  if [[ "${verbose}" = true ]]; then
+     TAR_OPTIONS+="v"
+  fi
+  TAR_OPTIONS+="f ${tar_name}"
+  FIND_OPTIONS=( . \\\( -path  \'**/data/certs/**\' )
+  FIND_OPTIONS+=( $(printf " -o -path '%s'"  "**/data/keys/**" "**/data/provision/**" \
+              "**/data/licenses/**"  "**/data/yb-platform/keys/**" "**/data/yb-platform/certs/**" \
+              "**/swamper_rules/**" "**/swamper_targets/**" "**/prometheus/rules/**"  \
+              "**/prometheus/targets/**" "**/${PLATFORM_DUMP_FNAME}" "${include_releases_flag}") )
+
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
     trap 'run_sudo_cmd "rm -rf ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"' RETURN
@@ -410,26 +422,14 @@ create_backup() {
     run_sudo_cmd "cp -aR ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir} \
     ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir}"
+  FIND_OPTIONS+=( -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" )
   fi
+  # Close out paths in FIND_OPTIONS with a close-paren, and  add -exec
+  FIND_OPTIONS+=( \\\) -exec tar $TAR_OPTIONS \{} + )
   echo "Creating platform backup package..."
   cd ${data_dir}
-  if [[ "${verbose}" = true ]]; then
-    find . \( -path "**/data/certs/**" -o -path "**/data/keys/**" -o -path "**/data/provision/**" \
-              -o -path "**/data/licenses/**" \
-              -o -path "**/data/yb-platform/keys/**" -o -path "**/data/yb-platform/certs/**" \
-              -o -path "**/swamper_rules/**" -o -path "**/swamper_targets/**" \
-              -o -path "**/prometheus/rules/**" -o -path "**/prometheus/targets/**" \
-              -o -path "**/${PLATFORM_DUMP_FNAME}" -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" \
-              -o -path "${include_releases_flag}" \) -exec tar -rvf "${tar_name}" {} +
-  else
-    find . \( -path "**/data/certs/**" -o -path "**/data/keys/**" -o -path "**/data/provision/**" \
-              -o -path "**/data/licenses/**" \
-              -o -path "**/data/yb-platform/keys/**" -o -path "**/data/yb-platform/certs/**" \
-              -o -path "**/swamper_rules/**" -o -path "**/swamper_targets/**" \
-              -o -path "**/prometheus/rules/**" -o -path "**/prometheus/targets/**" \
-              -o -path "**/${PLATFORM_DUMP_FNAME}" -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" \
-              -o -path "${include_releases_flag}" \) -exec tar -rf "${tar_name}" {} +
-  fi
+
+  eval find ${FIND_OPTIONS[@]}
 
   gzip -9 < ${tar_name} > ${tgz_name}
   cleanup "${tar_name}"
