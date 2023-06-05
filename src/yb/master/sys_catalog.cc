@@ -604,7 +604,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .append_pool = append_pool(),
       .allocation_pool = allocation_pool_.get(),
       .log_sync_pool = log_sync_pool(),
-      .retryable_requests = nullptr,
+      .retryable_requests_manager = nullptr,
   };
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
 
@@ -622,13 +622,13 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetTabletMetricsEntity(),
           raft_pool(),
           tablet_prepare_pool(),
-          nullptr /* retryable_requests */,
+          nullptr /* retryable_requests_manager */,
           nullptr /* consensus_meta */,
-          multi_raft_manager_.get()),
+          multi_raft_manager_.get(),
+          nullptr /* flush_retryable_requests_pool */),
       "Failed to Init() TabletPeer");
 
-  RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),
-                        "Failed to Start() TabletPeer");
+  RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info), "Failed to Start() TabletPeer");
 
   tablet_peer()->RegisterMaintenanceOps(master_->maintenance_manager());
 

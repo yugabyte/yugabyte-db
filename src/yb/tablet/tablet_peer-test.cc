@@ -147,7 +147,8 @@ class TabletPeerTest : public YBTabletTest {
             tablet()->tablet_id()),
         &metric_registry_,
         nullptr, // tablet_splitter
-        std::shared_future<client::YBClient*>()));
+        std::shared_future<client::YBClient*>()
+    ));
 
     // Make TabletPeer use the same LogAnchorRegistry as the Tablet created by the harness.
     // TODO: Refactor TabletHarness to allow taking a LogAnchorRegistry, while also providing
@@ -181,7 +182,7 @@ class TabletPeerTest : public YBTabletTest {
                         metadata->schema_version(), table_metric_entity_.get(),
                         tablet_metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
                         log_thread_pool_.get(), metadata->cdc_min_replicated_index(), &log,
-                        new_segment_allocation_callback));
+                        /* pre_log_rollover_callback = */ {}, new_segment_allocation_callback));
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
@@ -193,9 +194,10 @@ class TabletPeerTest : public YBTabletTest {
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests */,
+                                           nullptr /* retryable_requests_manager */,
                                            nullptr /* consensus_meta */,
-                                           multi_raft_manager_.get()));
+                                           multi_raft_manager_.get(),
+                                           nullptr /* flush_retryable_requests_pool */));
   }
 
   Status StartPeer(const ConsensusBootstrapInfo& info) {

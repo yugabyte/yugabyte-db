@@ -220,6 +220,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   resp->set_session_idle_timeout_millis(FLAGS_remote_bootstrap_idle_timeout_ms);
   resp->mutable_superblock()->CopyFrom(session->tablet_superblock());
   resp->mutable_initial_committed_cstate()->CopyFrom(session->initial_committed_cstate());
+  resp->set_retryable_requests_file_flushed(session->has_retryable_requests_file());
 
   auto const& log_segments = session->log_segments();
   resp->mutable_deprecated_wal_segment_seqnos()->Reserve(narrow_cast<int>(log_segments.size()));
@@ -402,7 +403,8 @@ Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
         const DataIdPB& data_id,
         RemoteBootstrapErrorPB::Code* app_error,
         const scoped_refptr<RemoteBootstrapSession>& session) const {
-  int num_set = data_id.has_wal_segment_seqno() + data_id.has_file_name();
+  int num_set = (data_id.type() == DataIdPB::RETRYABLE_REQUESTS)
+      + data_id.has_wal_segment_seqno() + data_id.has_file_name();
   if (PREDICT_FALSE(num_set != 1)) {
     *app_error = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
     return STATUS(InvalidArgument,

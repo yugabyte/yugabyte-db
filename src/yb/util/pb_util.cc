@@ -106,8 +106,6 @@ using yb::operator"" _MB;
 DEFINE_test_flag(bool, fail_write_pb_container, false,
                  "Simulate a failure during WritePBContainer.");
 
-static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
-
 // Protobuf container constants.
 static const int kPBContainerVersion = 1;
 static const char kPBContainerMagic[] = "yugacntr";
@@ -240,7 +238,7 @@ Status ParseFromArray(MessageLite* msg, const uint8_t* data, size_t length) {
 Status WritePBToPath(Env* env, const std::string& path,
                      const MessageLite& msg,
                      SyncMode sync) {
-  const string tmp_template = path + kTmpTemplateSuffix;
+  const string tmp_template = MakeTempPath(path);
   string tmp_path;
 
   std::unique_ptr<WritableFile> file;
@@ -710,7 +708,7 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
     return STATUS(AlreadyPresent, Substitute("File $0 already exists", path));
   }
 
-  const string tmp_template = path + kTmpTemplateSuffix;
+  const string tmp_template = MakeTempPath(path);
   string tmp_path;
 
   std::unique_ptr<WritableFile> file;

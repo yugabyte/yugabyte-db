@@ -118,7 +118,7 @@ class ReplicaState {
   ReplicaState(
       ConsensusOptions options, std::string peer_uuid, std::unique_ptr<ConsensusMetadata> cmeta,
       ConsensusContext* consensus_context, SafeOpIdWaiter* safe_op_id_waiter,
-      RetryableRequests* retryable_requests,
+      RetryableRequestsManager* retryable_requests_manager,
       std::function<void(const OpIds&)> applied_ops_tracker);
 
   ~ReplicaState();
@@ -423,6 +423,7 @@ class ReplicaState {
   RestartSafeCoarseMonoClock& Clock();
 
   RetryableRequestsCounts TEST_CountRetryableRequests();
+  bool TEST_HasRetryableRequestsOnDisk() const;
 
   void SetLeaderNoOpCommittedUnlocked(bool value);
 
@@ -430,10 +431,14 @@ class ReplicaState {
       const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
       OpIds* applied_op_ids);
 
-  const RetryableRequests& retryable_requests() const {
+  RetryableRequests& retryable_requests() {
     DCHECK(IsLocked());
-    return retryable_requests_;
+    return retryable_requests_manager_.retryable_requests();
   }
+
+  Status FlushRetryableRequests();
+
+  Status CopyRetryableRequestsTo(const std::string& dest_path);
 
  private:
   typedef std::deque<ConsensusRoundPtr> PendingOperations;
@@ -533,7 +538,7 @@ class ReplicaState {
   std::atomic<MicrosTime> majority_replicated_ht_lease_expiration_{
       PhysicalComponentLease::NoneValue()};
 
-  RetryableRequests retryable_requests_;
+  RetryableRequestsManager retryable_requests_manager_;
 
   // This leader is ready to serve only if NoOp was successfully committed
   // after the new leader successful election.

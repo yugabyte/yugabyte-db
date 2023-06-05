@@ -155,6 +155,10 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // rbs_anchor_session_created_ is set.
   Status RefreshRemoteLogAnchorSessionAsync();
 
+  bool has_retryable_requests_file() const {
+    return retryable_requests_filepath_.has_value();
+  }
+
  private:
   friend class RefCountedThreadSafe<RemoteBootstrapSession>;
 
@@ -193,6 +197,9 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Get a piece of a RocksDB checkpoint file.
   Status GetRocksDBFilePiece(const std::string& file_name, GetDataPieceInfo* info);
 
+  // Get a piece of a retryable requests file.
+  Status GetRetryableRequestsFilePiece(GetDataPieceInfo* info);
+
   Env* env() const;
 
   RemoteBootstrapSource* Source(DataIdPB::IdType id_type) const;
@@ -225,6 +232,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   // Directory where the checkpoint files are stored for this session (only for rocksdb).
   std::string checkpoint_dir_;
+
+  std::optional<std::string> retryable_requests_filepath_;
 
   // Time when this session was initialized.
   MonoTime start_time_;
