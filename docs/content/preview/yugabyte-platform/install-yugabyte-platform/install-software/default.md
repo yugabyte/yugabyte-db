@@ -124,7 +124,7 @@ The recommended TLS version is 1.2.
 
 ## Set up HTTP/HTTPS proxy
 
-You can setup HTTP and HTTPS proxy via **Application config**, and select **Enable Proxy** as per the following illustration:
+You can set up HTTP and HTTPS proxies via **Application config**, and select **Enable Proxy** as per the following illustration:
 
 ![Enable Proxy](/images/replicated/enable-proxy.png)
 
