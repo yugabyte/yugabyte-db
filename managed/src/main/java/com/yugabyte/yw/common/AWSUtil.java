@@ -237,14 +237,20 @@ public class AWSUtil implements CloudUtil {
 
   public String getBucketRegion(String bucketName, CustomerConfigStorageS3Data s3Data)
       throws SdkClientException {
-    AmazonS3 client = createS3Client(s3Data);
-    return getBucketRegion(bucketName, client);
+    try {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      AmazonS3 client = createS3Client(s3Data);
+      return getBucketRegion(bucketName, client);
+    } finally {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+    }
   }
 
   // For reusing already created client, as in listBuckets function
+  // Cert-check is not disabled here, since the scope above this, where the S3 client is created,
+  // should disable it.
   private String getBucketRegion(String bucketName, AmazonS3 s3Client) throws SdkClientException {
     try {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
       GetBucketLocationRequest locationRequest = new GetBucketLocationRequest(bucketName);
       String bucketRegion = s3Client.getBucketLocation(locationRequest);
       if (bucketRegion.equals("US")) {
@@ -254,8 +260,6 @@ public class AWSUtil implements CloudUtil {
     } catch (SdkClientException e) {
       log.error(String.format("Fetching bucket region for %s failed", bucketName), e.getMessage());
       throw e;
-    } finally {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
     }
   }
 
