@@ -950,12 +950,6 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         });
   }
 
-  private TaskType assertTaskType(List<TaskInfo> tasks, TaskType expectedTaskType) {
-    TaskType taskType = tasks.get(0).getTaskType();
-    assertEquals(expectedTaskType, taskType);
-    return taskType;
-  }
-
   public void testResizeNodeUpgrade(int rf, int numInvocations) {
     String intendedInstanceType = "c5.2xlarge";
     int intendedVolumeSize = 300;

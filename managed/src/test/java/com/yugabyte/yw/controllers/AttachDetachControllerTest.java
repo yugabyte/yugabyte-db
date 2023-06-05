@@ -139,11 +139,11 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     defaultAZ2 = AvailabilityZone.createOrThrow(defaultRegion, "az-3", "B Zone", "subnet-2");
     defaultAZ3 = AvailabilityZone.createOrThrow(defaultRegion, "az-2", "C Zone", "subnet-3");
     providerDetails = defaultProvider.getDetails();
-    providerDetails.cloudInfo = new ProviderDetails.CloudInfo();
+    providerDetails.setCloudInfo(new ProviderDetails.CloudInfo());
     AWSCloudInfo awsCloudInfo = new AWSCloudInfo();
     awsCloudInfo.awsAccessKeyID = "awsAccessKeySecretDummyValue";
     awsCloudInfo.awsAccessKeySecret = "awsAccessKeySecretDummyValue";
-    providerDetails.cloudInfo.setAws(awsCloudInfo);
+    providerDetails.getCloudInfo().setAws(awsCloudInfo);
     defaultProvider.getRegions().add(defaultRegion);
     defaultProvider.save();
     defaultRegion.getZones().add(defaultAZ2);
@@ -355,10 +355,10 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     assertEquals(expectedProviderUUID.toString(), providerJson.get("uuid").textValue());
     JsonNode cloudInfoJson = providerJson.get("details").get("cloudInfo");
     assertEquals(
-        defaultProvider.getDetails().cloudInfo.aws.awsAccessKeyID,
+        defaultProvider.getDetails().getCloudInfo().aws.awsAccessKeyID,
         cloudInfoJson.get("aws").get("awsAccessKeyID").textValue());
     assertEquals(
-        defaultProvider.getDetails().cloudInfo.aws.awsAccessKeySecret,
+        defaultProvider.getDetails().getCloudInfo().aws.awsAccessKeySecret,
         cloudInfoJson.get("aws").get("awsAccessKeySecret").textValue());
     JsonNode accessKeyJson = providerJson.get("allAccessKeys").get(0);
     assertEquals(expectedKeyCode, accessKeyJson.get("idKey").get("keyCode").textValue());
@@ -445,11 +445,11 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     assertEquals(expectedVault, importedAccessKey.getKeyInfo().vaultFile);
     // Provider sensitive information.
     assertEquals(
-        defaultProvider.getDetails().cloudInfo.aws.awsAccessKeyID,
-        importedProvider.getDetails().cloudInfo.aws.awsAccessKeyID);
+        defaultProvider.getDetails().getCloudInfo().aws.awsAccessKeyID,
+        importedProvider.getDetails().getCloudInfo().aws.awsAccessKeyID);
     assertEquals(
-        defaultProvider.getDetails().cloudInfo.aws.awsAccessKeySecret,
-        importedProvider.getDetails().cloudInfo.aws.awsAccessKeySecret);
+        defaultProvider.getDetails().getCloudInfo().aws.awsAccessKeySecret,
+        importedProvider.getDetails().getCloudInfo().aws.awsAccessKeySecret);
 
     // Assert universe information is retained.
     Universe importedUniverse = Universe.getOrBadRequest(mainUniverseUUID);

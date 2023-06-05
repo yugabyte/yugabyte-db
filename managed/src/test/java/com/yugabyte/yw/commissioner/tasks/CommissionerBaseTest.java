@@ -3,12 +3,14 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -52,6 +54,8 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.List;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
@@ -116,6 +120,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Provider kubernetesProvider;
   protected SettableRuntimeConfigFactory factory;
   protected RuntimeConfGetter confGetter;
+  protected CloudAPI.Factory mockCloudAPIFactory;
 
   protected Commissioner commissioner;
 
@@ -190,6 +195,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockGFlagsValidation = mock(GFlagsValidation.class);
     mockReleaseManager = mock(ReleaseManager.class);
     mockBackupUtil = mock(BackupUtil.class);
+    mockCloudAPIFactory = mock(CloudAPI.Factory.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -228,6 +234,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
                 .overrides(bind(BackupUtil.class).toInstance(mockBackupUtil))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
+        .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .build();
   }
 
@@ -248,7 +255,19 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
   }
 
-  protected TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
+  protected TaskType assertTaskType(List<TaskInfo> tasks, TaskType expectedTaskType) {
+    TaskType taskType = tasks.get(0).getTaskType();
+    assertEquals(expectedTaskType, taskType);
+    return taskType;
+  }
+
+  protected TaskType assertTaskType(List<TaskInfo> tasks, TaskType expectedTaskType, int position) {
+    TaskType taskType = tasks.get(0).getTaskType();
+    assertEquals("at position " + position, expectedTaskType, taskType);
+    return taskType;
+  }
+
+  public static TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
     while (numRetries < MAX_RETRY_COUNT) {
       // Here is a hack to decrease amount of accidental problems for tests using this

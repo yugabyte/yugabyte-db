@@ -169,7 +169,7 @@ public class CloudRegionSetup extends CloudTaskBase {
             && StringUtils.isBlank(taskParams().metadata.customSecurityGroupId)) {
           AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
           awsCloudInfo.setVpcType(CloudInfoInterface.VPCType.NEW);
-          provider.getDetails().cloudInfo.setAws(awsCloudInfo);
+          provider.getDetails().getCloudInfo().setAws(awsCloudInfo);
           provider.save();
         }
 

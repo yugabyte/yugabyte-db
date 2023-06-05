@@ -49,6 +49,7 @@ import play.libs.Json;
 @Singleton
 public class Commissioner {
 
+  public static final String TASK_ID = "commissioner_task_id";
   public static final String SUBTASK_ABORT_POSITION_PROPERTY = "subtask-abort-position";
   public static final String SUBTASK_PAUSE_POSITION_PROPERTY = "subtask-pause-position";
 
@@ -324,22 +325,8 @@ public class Commissioner {
   // Returns the TaskExecutionListener instance.
   private TaskExecutionListener getTaskExecutionListener() {
     final Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
-    TaskExecutionListener listener =
-        new TaskExecutionListener() {
-          @Override
-          public void beforeTask(TaskInfo taskInfo) {
-            LOG.info("About to execute task {}", taskInfo);
-            if (beforeTaskConsumer != null) {
-              beforeTaskConsumer.accept(taskInfo);
-            }
-          }
-
-          @Override
-          public void afterTask(TaskInfo taskInfo, Throwable t) {
-            LOG.info("Task {} is completed", taskInfo);
-            providerEditRestrictionManager.onTaskFinished(taskInfo.getTaskUUID());
-          }
-        };
+    DefaultTaskExecutionListener listener =
+        new DefaultTaskExecutionListener(providerEditRestrictionManager, beforeTaskConsumer);
     return listener;
   }
 

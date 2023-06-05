@@ -503,7 +503,9 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup.class),
 
   UpdateClusterUserIntent(
-      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent.class);
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent.class),
+
+  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class);
 
   private final Class<? extends ITask> taskClass;
 
