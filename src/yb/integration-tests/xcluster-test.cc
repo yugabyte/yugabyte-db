@@ -100,6 +100,7 @@ DECLARE_int32(cdc_wal_retention_time_secs);
 DECLARE_string(certs_dir);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_ysql);
@@ -1788,6 +1789,42 @@ TEST_P(XClusterTest, BiDirectionalWrites) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   ASSERT_OK(DeleteUniverseReplication());
+}
+
+TEST_P(XClusterTest, BiDirectionalWritesWithLargeBatches) {
+  // Simulate large batches by dropping FLAGS_consensus_max_batch_size_bytes to limit the size of
+  // the batches we read in GetChanges / ReadReplicatedMessagesForCDC.
+  // We want to test that we don't get stuck if an entire batch messages read are all filtered out
+  // (currently we only filter out external writes) and the checkpoint isn't updated.
+  FLAGS_consensus_max_batch_size_bytes = 1_KB;
+  constexpr auto kNumRowsToWrite = 500;
+  auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 1));
+  auto& producer_table = tables[0];
+  auto& consumer_table = tables[1];
+
+  // Setup bi-directional replication.
+  ASSERT_OK(SetupUniverseReplication({producer_table}));
+  ASSERT_OK(SetupReverseUniverseReplication({consumer_table}));
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+  ASSERT_OK(CorrectlyPollingAllTablets(producer_cluster(), 2));
+
+  // Write some rows on one cluster.
+  WriteWorkload(0, kNumRowsToWrite, producer_client(), producer_table->name());
+
+  // Ensure that records are the same on both clusters.
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  // Ensure that both universes have all records.
+  ASSERT_OK(VerifyNumRecords(producer_table->name(), producer_client(), kNumRowsToWrite));
+
+  // Now write some rows on the other cluster.
+  WriteWorkload(kNumRowsToWrite, 2 * kNumRowsToWrite, consumer_client(), consumer_table->name());
+
+  // Ensure that same records exist on both universes.
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  // Ensure that both universes have all records.
+  ASSERT_OK(VerifyNumRecords(producer_table->name(), producer_client(), 2 * kNumRowsToWrite));
 }
 
 TEST_P(XClusterTest, AlterUniverseReplicationMasters) {
