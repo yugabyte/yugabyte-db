@@ -399,6 +399,8 @@ Status GetChangesForXCluster(
   }
 
   ReplicateMsgs& messages = read_ops.messages;
+  // Get the last checkpoint of records read, even if it is external.
+  OpId last_checkpoint = messages.empty() ? from_op_id : OpId::FromPB(messages.back()->id());
   // Filter out WAL records that are external.
   EraseIf([](const auto& msg) { return msg->write().has_external_hybrid_time(); }, &messages);
 
@@ -409,9 +411,9 @@ Status GetChangesForXCluster(
   OpId checkpoint = from_op_id;
   OpId previous_checkpoint = from_op_id;  // value of checkpoint from previous loop iteration.
 
+  bool exit_early = false;
   for (const auto& msg_ptr : messages) {
     const auto& msg = *msg_ptr;
-    bool exit_early = false;
     checkpoint = OpId::FromPB(msg.id());
     switch (msg.op_type()) {
       case consensus::OperationType::UPDATE_TRANSACTION_OP:
@@ -446,6 +448,12 @@ Status GetChangesForXCluster(
 
     ht_of_last_returned_message = HybridTime(msg.hybrid_time());
     previous_checkpoint = checkpoint;
+  }
+
+  if (!exit_early) {
+    // Processed the entire batch of messages we read, so set checkpoint to last opid of those
+    // records. This also ensures we don't try to reread external records again on future calls.
+    checkpoint = last_checkpoint;
   }
 
   if (consumption) {
