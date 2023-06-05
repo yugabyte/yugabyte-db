@@ -124,22 +124,25 @@ The recommended TLS version is 1.2.
 
 ## Set up HTTP/HTTPS proxy
 
-You can setup HTTP and HTTPS proxy via **Application config**, and select **Enable Proxy** as per the following illustration:
+You can set up HTTP and HTTPS proxies via **Application config**, and select **Enable Proxy** as per the following illustration:
 
 ![Enable Proxy](/images/replicated/enable-proxy.png)
 
-The following information describes details about the **Enable Proxy** setting and some considerations.
+When completing the **Enable Proxy** settings, keep in mind the following:
 
-- If your proxy is using default ports for protocol, then use the defaults for HTTP and HTTPS, 80 and 443 respectively, instead of 8080 and 8443 as shown in the above illustration.
+- If your proxy is using the default ports for each protocol, then set the ports for the HTTP and HTTPS proxies to the default, 80 and 443 respectively, instead of 8080 and 8443 as shown in the preceding illustration.
 
-- If you have only one proxy setup (HTTP or HTTPS), then set the same values for both. This configuration ends up setting OS environment variables or java system properties.
+- If you have only one proxy set up (HTTP or HTTPS), then set the same values for both. This configuration sets operating system environment variables and Java system properties.
 
-- The helper text under each field suggests which java system property or environment variable gets set by the field. System properties will have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
+- The help text for each field shows which Java system property or environment variable gets set by the field. System properties have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
 
-- Note that the fields listed with "No proxy" refers to a list of exception hosts, in which the earlier-specified web proxy should be bypassed. You may also want to add any other IP addresses that you deem safe to bypass the proxy.
+- The **no proxy** fields are lists of exception hosts, provided as a comma-delimited list of addresses or hostnames. Include the following addresses:
+  - The Docker gateway address (172.17.0.1 by default).
+  - The address of any previously-specified web proxy.
+  - Any other IP addresses that you deem safe to bypass the proxy.
 
 - For the fields "HTTP no proxy setting" and "HTTP no proxy setting for Java", you need to add the docker gateway address (which is 172.17.0.1 by default).
 
-- Fields with Java system properties include a slightly different format like the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
+- The Java fields can accept values as Java system properties, including the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
 
 - There is no authoritative source for the format of environment variables; YBA follows the community standards for setting proxy where regardless of the case you use to enter the fields, the environment variables will get set with both lowercase and uppercase formats.
