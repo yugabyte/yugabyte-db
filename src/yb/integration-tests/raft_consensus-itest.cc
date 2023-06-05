@@ -2007,7 +2007,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   }
 }
 
-TEST_F(RaftConsensusITest, TestExpiredOperationWithSchemaChange) {
+TEST_F(RaftConsensusITest, YB_DISABLE_TEST_IN_FASTDEBUG(TestExpiredOperationWithSchemaChange)) {
   FLAGS_num_tablet_servers = 3;
 
   vector<string> ts_flags = {
