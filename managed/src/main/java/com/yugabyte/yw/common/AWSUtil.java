@@ -516,23 +516,28 @@ public class AWSUtil implements CloudUtil {
   }
 
   public static Double getAwsSpotPrice(String zone, String instanceType) {
-    AmazonEC2 ec2Client = AmazonEC2ClientBuilder.defaultClient();
-    DescribeSpotPriceHistoryRequest request =
-        new DescribeSpotPriceHistoryRequest()
-            .withAvailabilityZone(zone)
-            .withInstanceTypes(instanceType)
-            .withProductDescriptions("Linux/UNIX")
-            .withStartTime(new Date())
-            .withEndTime(new Date());
+    try {
+      AmazonEC2 ec2Client = AmazonEC2ClientBuilder.defaultClient();
+      DescribeSpotPriceHistoryRequest request =
+          new DescribeSpotPriceHistoryRequest()
+              .withAvailabilityZone(zone)
+              .withInstanceTypes(instanceType)
+              .withProductDescriptions("Linux/UNIX")
+              .withStartTime(new Date())
+              .withEndTime(new Date());
 
-    DescribeSpotPriceHistoryResult result = ec2Client.describeSpotPriceHistory(request);
-    List<SpotPrice> prices = result.getSpotPriceHistory();
-    Double spotPrice = Double.parseDouble(prices.get(0).getSpotPrice());
-    log.info(
-        "Current aws spot price for instance type {} in zone {} = {}",
-        instanceType,
-        zone,
-        spotPrice);
-    return spotPrice;
+      DescribeSpotPriceHistoryResult result = ec2Client.describeSpotPriceHistory(request);
+      List<SpotPrice> prices = result.getSpotPriceHistory();
+      Double spotPrice = Double.parseDouble(prices.get(0).getSpotPrice());
+      log.info(
+          "Current aws spot price for instance type {} in zone {} = {}",
+          instanceType,
+          zone,
+          spotPrice);
+      return spotPrice;
+    } catch (Exception e) {
+      log.warn("Fetch AWS spot price failed with error; {}", e.getMessage());
+    }
+    return Double.NaN;
   }
 }
