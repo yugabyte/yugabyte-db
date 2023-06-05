@@ -495,6 +495,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Hidden because this key has dedicated UI",
           ConfDataType.LdapSearchScopeEnum,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<String> ldapGroupSearchBaseDn =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_group_search_base_dn",
+          ScopeType.GLOBAL,
+          "LDAP group search base DN in case of filter query",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
   public static ConfKeyInfo<String> ldapGroupMemberOfAttribute =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_group_member_of_attribute",
