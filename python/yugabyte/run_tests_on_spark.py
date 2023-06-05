@@ -598,7 +598,7 @@ set -euo pipefail
       mv '{remote_yb_src_job_dir}' '{remote_yb_src_removal}/'
       exit 0
     fi
-    flock -w 60 200
+    flock -w 180 200 || exit 5
     # Clean up any pending removals before we unpack the archive.
     rm -rf {remote_yb_src_removal}/*
     # Check existing workspace.
