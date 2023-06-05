@@ -54,9 +54,9 @@ public class TabletServerController extends AuthenticatedController {
       responseContainer = "Map")
   public Result listTabletServers(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     final String masterLeaderIPAddr = universe.getMasterLeaderHostText();
     if (masterLeaderIPAddr.isEmpty()) {

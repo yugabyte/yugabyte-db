@@ -84,7 +84,7 @@ public class AttachDetachController extends AuthenticatedController {
     log.debug("Universe spec will include releases: {}", !detachUniverseFormData.skipReleases);
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
@@ -259,7 +259,7 @@ public class AttachDetachController extends AuthenticatedController {
       throws IOException {
     checkAttachDetachEnabled();
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     List<Schedule> schedules =
         Schedule.getAllSchedulesByOwnerUUIDAndType(

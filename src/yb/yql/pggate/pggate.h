@@ -630,7 +630,8 @@ class PgApiImpl {
   void StartSysTablePrefetching(const PrefetcherOptions& options);
   void StopSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
-  void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
+  void RegisterSysTableForPrefetching(
+      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr);
   Status PrefetchRegisteredSysTables();
 
   // RPC stats for EXPLAIN ANALYZE

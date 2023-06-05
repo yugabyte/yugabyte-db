@@ -62,7 +62,9 @@ Status ApplyWriteRequest(
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(
       kLogPrefix, TableType::YQL_TABLE_TYPE, schema, write_request.schema_version());
   docdb::DocOperationApplyData apply_data{
-      .doc_write_batch = write_batch, .deadline = {}, .read_time = {}, .restart_read_ht = nullptr};
+      .doc_write_batch = write_batch,
+      .read_operation_data = {},
+      .restart_read_ht = nullptr};
   qlexpr::IndexMap index_map;
   docdb::QLWriteOperation operation(
       write_request, write_request.schema_version(), doc_read_context, index_map, nullptr,
@@ -745,7 +747,7 @@ Status RestoreSysCatalogState::IterateSysCatalog(
   dockv::ReaderProjection projection(doc_read_context.schema());
   docdb::DocRowwiseIterator iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
-      CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), pending_op, nullptr);
+      docdb::ReadOperationData::FromSingleReadTime(read_time), pending_op, nullptr);
   return EnumerateSysCatalog(
       &iter, doc_read_context.schema(), GetEntryType<PB>::value, [map, sequences_data_map](
           const Slice& id, const Slice& data) -> Status {
@@ -909,7 +911,7 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
   dockv::ReaderProjection projection(doc_read_context.schema());
   auto iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
-      CoarseTimePoint::max(), ReadHybridTime::Max(), write_batch->pending_op(), nullptr);
+      docdb::ReadOperationData(), write_batch->pending_op(), nullptr);
 
   RETURN_NOT_OK(EnumerateSysCatalog(
       &iter, doc_read_context.schema(), SysRowEntryType::SYS_CONFIG,

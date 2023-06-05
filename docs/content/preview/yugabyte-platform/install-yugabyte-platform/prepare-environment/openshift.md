@@ -1,8 +1,9 @@
 ---
 title: Prepare the OpenShift environment
-headerTitle: Cloud prerequisites - OpenShift
+headerTitle: Cloud prerequisites
 linkTitle: Cloud prerequisites
 description: Prepare the OpenShift environment for YugabyteDB Anywhere
+headContent: Prepare OpenShift for YugabyteDB Anywhere
 menu:
   preview_yugabyte-platform:
     identifier: prepare-environment-4-OpenShift

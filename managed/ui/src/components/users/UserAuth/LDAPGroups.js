@@ -1,6 +1,8 @@
 import React from 'react';
+import * as Yup from 'yup';
 import { Box, MenuItem, IconButton, makeStyles } from '@material-ui/core';
 import { useFieldArray, useForm } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
 import { YBModal, YBButton, YBInputField, YBSelectField } from '../../../redesign/components';
 import { YBA_ROLES } from './LDAPAuth';
 import TrashIcon from '../icons/trash_icon';
@@ -21,6 +23,37 @@ const useStyles = makeStyles((theme) => ({
     padding: 0
   }
 }));
+
+//validation
+Yup.addMethod(Yup.array, 'unique', function (field, message) {
+  return this.test('unique', message, function (array) {
+    const uniqueData = Array.from(new Set(array.map((row) => row[field]?.toLowerCase())));
+    const isUnique = array.length === uniqueData.length;
+    if (isUnique) {
+      return true;
+    }
+    const index = array.findIndex((row, i) => row[field]?.toLowerCase() !== uniqueData[i]);
+    if (array[index][field] === '') {
+      return true;
+    }
+    return this.createError({
+      path: `${this.path}.${index}.${field}`,
+      message
+    });
+  });
+});
+
+const schema = Yup.object().shape({
+  mapping: Yup.array()
+    .unique('distinguishedName', 'Group DN must be unique.')
+    .of(
+      Yup.object().shape({
+        ybaRole: Yup.string().required('Role is required.'),
+        distinguishedName: Yup.string().required('Group DN is required')
+      })
+    )
+});
+//validation
 
 const DEFAULT_MAPPING_VALUE = [
   {
@@ -50,7 +83,8 @@ export const LDAPMappingModal = ({ open, onClose, onSubmit, values }) => {
     mode: 'onChange',
     defaultValues: {
       mapping: values && values.length ? values : DEFAULT_MAPPING_VALUE
-    }
+    },
+    resolver: yupResolver(schema)
   });
   const { fields, append, remove } = useFieldArray({
     control,
@@ -120,14 +154,7 @@ export const LDAPMappingModal = ({ open, onClose, onSubmit, values }) => {
               return (
                 <Box display="flex" alignItems="center" mb={1} key={field.id}>
                   <Box display="flex" width={160}>
-                    <YBSelectField
-                      fullWidth
-                      name={`mapping.${index}.ybaRole`}
-                      control={control}
-                      rules={{
-                        required: 'Role is required.'
-                      }}
-                    >
+                    <YBSelectField fullWidth name={`mapping.${index}.ybaRole`} control={control}>
                       {YBA_ROLES.map((role) => (
                         <MenuItem key={role.value} value={role.value}>
                           {role.label}
@@ -140,9 +167,6 @@ export const LDAPMappingModal = ({ open, onClose, onSubmit, values }) => {
                       fullWidth
                       name={`mapping.${index}.distinguishedName`}
                       control={control}
-                      rules={{
-                        required: 'Group DN is required.'
-                      }}
                     />
                   </Box>
                   <Box display="flex" width={24} mx={1}>

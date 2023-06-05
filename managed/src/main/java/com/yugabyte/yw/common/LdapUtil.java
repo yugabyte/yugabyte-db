@@ -4,8 +4,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.SessionController;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.models.Customer;
@@ -49,6 +49,8 @@ public class LdapUtil {
   public static final String windowsAdUserDoesNotExistErrorCode = "data 2030";
   public static final String USERNAME_KEYWORD = "{username}";
 
+  @Inject private RuntimeConfGetter confGetter;
+
   @Getter
   @Setter
   @AllArgsConstructor
@@ -61,48 +63,43 @@ public class LdapUtil {
     boolean ldapUseSsl;
     boolean ldapUseTls;
     boolean useLdapSearchAndBind;
-    String serviceAccountUserName;
+    String serviceAccountDistinguishedName;
     String serviceAccountPassword;
     String ldapSearchAttribute;
     boolean enableDetailedLogs;
     String ldapGroupSearchFilter;
     SearchScope ldapGroupSearchScope;
+    String ldapGroupSearchBaseDn;
     String ldapGroupMemberOfAttribute;
     boolean ldapGroupUseQuery;
     boolean ldapGroupUseRoleMapping;
   }
 
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
-
   public Users loginWithLdap(CustomerLoginFormData data) throws LdapException {
-    Config globalRuntimeConf = runtimeConfigFactory.globalRuntimeConf();
-    String ldapUrl = globalRuntimeConf.getString("yb.security.ldap.ldap_url");
-    String getLdapPort = globalRuntimeConf.getString("yb.security.ldap.ldap_port");
+    String ldapUrl = confGetter.getGlobalConf(GlobalConfKeys.ldapUrl);
+    String getLdapPort = confGetter.getGlobalConf(GlobalConfKeys.ldapPort);
     Integer ldapPort = Integer.parseInt(getLdapPort);
-    String ldapBaseDN = globalRuntimeConf.getString("yb.security.ldap.ldap_basedn");
-    String ldapCustomerUUID = globalRuntimeConf.getString("yb.security.ldap.ldap_customeruuid");
-    String ldapDnPrefix = globalRuntimeConf.getString("yb.security.ldap.ldap_dn_prefix");
-    boolean ldapUseSsl = globalRuntimeConf.getBoolean("yb.security.ldap.enable_ldaps");
-    boolean ldapUseTls = globalRuntimeConf.getBoolean("yb.security.ldap.enable_ldap_start_tls");
-    boolean useLdapSearchAndBind =
-        globalRuntimeConf.getBoolean("yb.security.ldap.use_search_and_bind");
-    String serviceAccountUserName =
-        globalRuntimeConf.getString("yb.security.ldap.ldap_service_account_username");
+    String ldapBaseDN = confGetter.getGlobalConf(GlobalConfKeys.ldapBaseDn);
+    String ldapCustomerUUID = confGetter.getGlobalConf(GlobalConfKeys.ldapCustomerUUID);
+    String ldapDnPrefix = confGetter.getGlobalConf(GlobalConfKeys.ldapDnPrefix);
+    boolean ldapUseSsl = confGetter.getGlobalConf(GlobalConfKeys.enableLdap);
+    boolean ldapUseTls = confGetter.getGlobalConf(GlobalConfKeys.enableLdapStartTls);
+    boolean useLdapSearchAndBind = confGetter.getGlobalConf(GlobalConfKeys.ldapUseSearchAndBind);
+    String serviceAccountDistiguishedName =
+        confGetter.getGlobalConf(GlobalConfKeys.ldapServiceAccountDistinguishedName);
     String serviceAccountPassword =
-        globalRuntimeConf.getString("yb.security.ldap.ldap_service_account_password");
-    String ldapSearchAttribute =
-        globalRuntimeConf.getString("yb.security.ldap.ldap_search_attribute");
-    boolean enabledDetailedLogs = globalRuntimeConf.getBoolean("yb.security.enable_detailed_logs");
-    String ldapGroupSearchFilter =
-        globalRuntimeConf.getString("yb.security.ldap.ldap_group_search_filter");
+        confGetter.getGlobalConf(GlobalConfKeys.ldapServiceAccountPassword);
+    String ldapSearchAttribute = confGetter.getGlobalConf(GlobalConfKeys.ldapSearchAttribute);
+    boolean enabledDetailedLogs = confGetter.getGlobalConf(GlobalConfKeys.enableDetailedLogs);
+    String ldapGroupSearchFilter = confGetter.getGlobalConf(GlobalConfKeys.ldapGroupSearchFilter);
     SearchScope ldapGroupSearchScope =
-        globalRuntimeConf.getEnum(SearchScope.class, "yb.security.ldap.ldap_group_search_scope");
+        confGetter.getGlobalConf(GlobalConfKeys.ldapGroupSearchScope);
     String ldapGroupMemberOfAttribute =
-        globalRuntimeConf.getString("yb.security.ldap.ldap_group_member_of_attribute");
-    boolean ldapGroupUseQuery =
-        globalRuntimeConf.getBoolean("yb.security.ldap.ldap_group_use_query");
+        confGetter.getGlobalConf(GlobalConfKeys.ldapGroupMemberOfAttribute);
+    boolean ldapGroupUseQuery = confGetter.getGlobalConf(GlobalConfKeys.ldapGroupUseQuery);
     boolean ldapGroupUseRoleMapping =
-        globalRuntimeConf.getBoolean("yb.security.ldap.ldap_group_use_role_mapping");
+        confGetter.getGlobalConf(GlobalConfKeys.ldapGroupUseRoleMapping);
+    String ldapGroupSearchBaseDn = confGetter.getGlobalConf(GlobalConfKeys.ldapGroupSearchBaseDn);
 
     LdapConfiguration ldapConfiguration =
         new LdapConfiguration(
@@ -114,12 +111,13 @@ public class LdapUtil {
             ldapUseSsl,
             ldapUseTls,
             useLdapSearchAndBind,
-            serviceAccountUserName,
+            serviceAccountDistiguishedName,
             serviceAccountPassword,
             ldapSearchAttribute,
             enabledDetailedLogs,
             ldapGroupSearchFilter,
             ldapGroupSearchScope,
+            ldapGroupSearchBaseDn,
             ldapGroupMemberOfAttribute,
             ldapGroupUseQuery,
             ldapGroupUseRoleMapping);
@@ -185,8 +183,11 @@ public class LdapUtil {
     Set<String> groups = new HashSet<String>();
 
     if (!ldapConfiguration.isLdapGroupUseQuery()) {
-      for (Value group : userEntry.get(ldapConfiguration.getLdapGroupMemberOfAttribute())) {
-        groups.add(group.getString());
+      Attribute memberOf = userEntry.get(ldapConfiguration.getLdapGroupMemberOfAttribute());
+      if (memberOf != null) {
+        for (Value group : memberOf) {
+          groups.add(group.getString());
+        }
       }
       return groups;
     }
@@ -197,7 +198,7 @@ public class LdapUtil {
           ldapConfiguration.getLdapGroupSearchFilter().replace(USERNAME_KEYWORD, ybaUsername);
       EntryCursor cursor =
           connection.search(
-              ldapConfiguration.getLdapBaseDN(),
+              ldapConfiguration.getLdapGroupSearchBaseDn(),
               searchFilter,
               ldapConfiguration.getLdapGroupSearchScope(),
               "*");
@@ -254,14 +255,11 @@ public class LdapUtil {
       throws Exception {
     Entry userEntry = null;
     String distinguishedName = "", role = "";
-    String serviceAccountDistinguishedName =
-        ldapConfiguration.getLdapDnPrefix()
-            + ldapConfiguration.getServiceAccountUserName()
-            + ","
-            + ldapConfiguration.getLdapBaseDN();
+
     try {
       connection.bind(
-          serviceAccountDistinguishedName, ldapConfiguration.getServiceAccountPassword());
+          ldapConfiguration.getServiceAccountDistinguishedName(),
+          ldapConfiguration.getServiceAccountPassword());
     } catch (LdapAuthenticationException e) {
       String errorMessage = "Service Account bind failed. " + e.getMessage();
       log.error(errorMessage);
@@ -338,7 +336,7 @@ public class LdapUtil {
       String role = "";
       Entry userEntry = null;
       if (ldapConfiguration.isUseLdapSearchAndBind()) {
-        if (ldapConfiguration.getServiceAccountUserName().isEmpty()
+        if (ldapConfiguration.getServiceAccountDistinguishedName().isEmpty()
             || ldapConfiguration.getServiceAccountPassword().isEmpty()
             || ldapConfiguration.getLdapSearchAttribute().isEmpty()) {
           throw new PlatformServiceException(
@@ -375,19 +373,14 @@ public class LdapUtil {
       // User has been authenticated.
       users.setCustomerUUID(getCustomerUUID(ldapConfiguration.getLdapCustomerUUID(), email));
 
-      String serviceAccountDistinguishedName =
-          ldapConfiguration.getLdapDnPrefix()
-              + ldapConfiguration.getServiceAccountUserName()
-              + ","
-              + ldapConfiguration.getLdapBaseDN();
-
       if (role.isEmpty() && !ldapConfiguration.isUseLdapSearchAndBind()) {
-        if (!ldapConfiguration.getServiceAccountUserName().isEmpty()
+        if (!ldapConfiguration.getServiceAccountDistinguishedName().isEmpty()
             && !ldapConfiguration.getServiceAccountPassword().isEmpty()) {
           connection.unBind();
           try {
             connection.bind(
-                serviceAccountDistinguishedName, ldapConfiguration.getServiceAccountPassword());
+                ldapConfiguration.getServiceAccountDistinguishedName(),
+                ldapConfiguration.getServiceAccountPassword());
           } catch (LdapAuthenticationException e) {
             String errorMessage =
                 "Service Account bind failed. "
@@ -414,7 +407,7 @@ public class LdapUtil {
       }
 
       if (ldapConfiguration.isLdapGroupUseRoleMapping()) {
-        if (ldapConfiguration.getServiceAccountUserName().isEmpty()
+        if (ldapConfiguration.getServiceAccountDistinguishedName().isEmpty()
             || ldapConfiguration.getServiceAccountPassword().isEmpty()) {
           throw new PlatformServiceException(
               BAD_REQUEST, "Service account must be configured to use group to role mapping.");
@@ -422,7 +415,8 @@ public class LdapUtil {
         connection.unBind();
         try {
           connection.bind(
-              serviceAccountDistinguishedName, ldapConfiguration.getServiceAccountPassword());
+              ldapConfiguration.getServiceAccountDistinguishedName(),
+              ldapConfiguration.getServiceAccountPassword());
         } catch (LdapAuthenticationException e) {
           String errorMessage = "Service Account bind failed. " + e.getMessage();
           log.error(errorMessage);

@@ -262,10 +262,8 @@ Status PopulateBeforeImage(
       tablet_peer->tablet_metadata()->GetTableInfo(colocation_id))->doc_read_context;
   dockv::ReaderProjection projection(schema);
   docdb::DocRowwiseIterator iter(
-      projection,
-      *doc_read_context,
-      TransactionOperationContext(), docdb, CoarseTimePoint::max() /* deadline */, read_time,
-      pending_op);
+      projection, *doc_read_context, TransactionOperationContext(), docdb,
+      docdb::ReadOperationData::FromReadTime(read_time), pending_op);
   iter.SetSchema(schema);
 
   const dockv::DocKey& doc_key = decoded_primary_key.doc_key();

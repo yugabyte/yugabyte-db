@@ -36,11 +36,15 @@ class ByteBuffer {
     Assign(str.c_str(), str.size());
   }
 
-  explicit ByteBuffer(const Slice& slice) {
+  explicit ByteBuffer(Slice slice) {
     Assign(slice.cdata(), slice.cend());
   }
 
-  void operator=(const Slice& slice) {
+  ByteBuffer(Slice slice1, Slice slice2) {
+    Assign(slice1, slice2);
+  }
+
+  void operator=(Slice slice) {
     Assign(slice.cdata(), slice.cend());
   }
 
@@ -87,6 +91,15 @@ class ByteBuffer {
     }
   }
 
+  void Assign(Slice slice1, Slice slice2) {
+    auto sum_sizes = slice1.size() + slice2.size();
+    auto* out = EnsureCapacity(sum_sizes, 0);
+    memcpy(out, slice1.data(), slice1.size());
+    out += slice1.size();
+    memcpy(out, slice2.data(), slice2.size());
+    size_ = sum_sizes;
+  }
+
   bool empty() const {
     return size_ == 0;
   }
@@ -123,7 +136,7 @@ class ByteBuffer {
     size_ = new_size;
   }
 
-  void Assign(const Slice& slice) {
+  void Assign(Slice slice) {
     Assign(slice.cdata(), slice.cend());
   }
 
@@ -135,7 +148,7 @@ class ByteBuffer {
     DoAppend(0, a, size);
   }
 
-  void Append(const Slice& slice) {
+  void Append(Slice slice) {
     Append(slice.cdata(), slice.cend());
   }
 
@@ -199,6 +212,10 @@ class ByteBuffer {
 
   uint8_t* mutable_data() {
     return pointer_cast<uint8_t*>(ptr());
+  }
+
+  const uint8_t* end() const {
+    return pointer_cast<const uint8_t*>(ptr()) + size_;
   }
 
   // STL container compatibility

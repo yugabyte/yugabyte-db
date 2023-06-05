@@ -993,8 +993,12 @@ def create_instance(args):
     ebs = {
         "DeleteOnTermination": args.auto_delete_boot_disk,
         "VolumeSize": root_volume_size,
-        "VolumeType": "gp2"
+        "VolumeType": args.volume_type
     }
+    if args.volume_type == "io1" or args.volume_type == "gp3":
+        ebs["Iops"] = args.disk_iops
+    if args.volume_type == "gp3":
+        ebs["Throughput"] = args.disk_throughput
 
     if args.cmk_res_name is not None:
         ebs["Encrypted"] = True

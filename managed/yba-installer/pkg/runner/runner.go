@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 var (

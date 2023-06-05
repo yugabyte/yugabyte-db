@@ -1,8 +1,9 @@
 ---
 title: Configure the on-premises cloud provider
-headerTitle: Configure the on-premises cloud provider
-linkTitle: Configure cloud providers
-description: Configure the on-premises cloud provider.
+headerTitle: Create provider configuration
+linkTitle: Create provider configuration
+description: Configure the on-premises provider configuration.
+headContent: Configure an on-premises provider configuration
 menu:
   stable_yugabyte-platform:
     identifier: set-up-cloud-provider-6-on-premises

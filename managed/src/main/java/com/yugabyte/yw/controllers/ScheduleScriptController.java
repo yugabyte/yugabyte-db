@@ -63,7 +63,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     // Using RuntimeConfig to save the script params because this isn't intended to be that commonly
     // used. If we start using it more commonly, we should migrate to a separate db table for these
     // settings.
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
 
     // Check if a script is already scheduled for this universe.
@@ -107,11 +108,11 @@ public class ScheduleScriptController extends AuthenticatedController {
     // Validate Access
     canAccess();
     // Validate Customer
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Extract scheduleUUID from RuntimeConfig DB inserted at the time of scheduling
     // script.
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
     Schedule schedule;
     try {
@@ -159,7 +160,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     taskParams.userUUID = user.getUser().getUuid();
 
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
 
     // Extract the already present External Script Scheduler for universe.

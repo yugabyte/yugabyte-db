@@ -12,10 +12,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 // CreateBackupScript calls the yb_platform_backup.sh script with the correct args.

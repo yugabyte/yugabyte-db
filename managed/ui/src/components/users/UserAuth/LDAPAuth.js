@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import * as Yup from 'yup';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { trimStart, trimEnd, isString, isEqual } from 'lodash';
+import { trimStart, trimEnd, isString, isEqual, isUndefined } from 'lodash';
 import { toast } from 'react-toastify';
 import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
@@ -25,7 +25,7 @@ const VALIDATION_SCHEMA = Yup.object().shape({
     })
     .required('LDAP URL is Required'),
   ldap_security: Yup.string().required('Please select connection security'),
-  ldap_service_account_password: Yup.string().when('ldap_service_account_username', {
+  ldap_service_account_password: Yup.string().when('ldap_service_account_distinguished_name', {
     is: (username) => username && username.length > 0,
     then: Yup.string().required('Password is Required'),
     otherwise: Yup.string()
@@ -53,7 +53,7 @@ const VALIDATION_SCHEMA = Yup.object().shape({
       otherwise: Yup.string()
     }
   ),
-  ldap_service_account_username: Yup.string().when(
+  ldap_service_account_distinguished_name: Yup.string().when(
     ['use_search_and_bind', 'ldap_group_use_role_mapping'],
     {
       is: (use_search_and_bind, ldap_group_use_role_mapping) =>
@@ -116,11 +116,11 @@ export const YBA_ROLES = [
     value: 'Admin'
   },
   {
-    label: 'Back up Admin',
+    label: 'BackupAdmin',
     value: 'BackupAdmin'
   },
   {
-    label: 'Read Only',
+    label: 'ReadOnly',
     value: 'ReadOnly',
     showInDefault: true
   }
@@ -190,7 +190,7 @@ export const LDAPAuth = (props) => {
     }
 
     if (showServiceAccToggle && !values.use_service_account) {
-      transformedData.ldap_service_account_username = '';
+      transformedData.ldap_service_account_distinguished_name = '';
       transformedData.ldap_service_account_password = '';
     }
 
@@ -222,7 +222,7 @@ export const LDAPAuth = (props) => {
       ldap_group_search_scope: formData?.ldap_group_search_scope
         ? LDAP_SCOPES.find((scope) => scope.value === formData.ldap_group_search_scope)
         : null,
-      use_service_account: !!formData.ldap_service_account_username
+      use_service_account: !!formData.ldap_service_account_distinguished_name
     };
 
     //transform security data
@@ -663,7 +663,7 @@ export const LDAPAuth = (props) => {
                                 </Row>
                                 <Row>
                                   {
-                                    '{{DN Prefix}} + {{LDAP Users Username/Service Account Username}} + {{LDAP Base DN}}'
+                                    '{ {{DN Prefix}} + {{LDAP Users Username}} + {{LDAP Base DN}} } / {{Service Account DN}}'
                                   }
                                 </Row>
                               </Col>
@@ -696,6 +696,8 @@ export const LDAPAuth = (props) => {
                                   value: values.ldap_group_use_role_mapping,
                                   onChange: (e) => {
                                     setFieldValue('ldap_group_use_role_mapping', e.target.checked);
+                                    if (isUndefined(values.ldap_group_use_query))
+                                      setFieldValue('ldap_group_use_query', 'false');
                                   }
                                 }}
                               />{' '}
@@ -761,7 +763,7 @@ export const LDAPAuth = (props) => {
                                             component={YBFormInput}
                                             disabled={isDisabled}
                                             className="ua-form-field"
-                                            placeholder="memberOf"
+                                            placeholder="(&(objectClass=group)(member=CN={username},OU=Users,DC=yugabyte,DC=com)"
                                           />
                                         </Row>
                                         <Row className="helper-text helper-text-1">{`Use {username} to refer to the the YBA username`}</Row>
@@ -912,7 +914,7 @@ export const LDAPAuth = (props) => {
                         )}
                         {showServAccFields && (
                           <>
-                            <Row key="ldap_service_account_username">
+                            <Row key="ldap_service_account_distinguished_name">
                               <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c">
                                 <Row className="ua-field-row">
                                   <Col className="ua-label-c">
@@ -921,7 +923,7 @@ export const LDAPAuth = (props) => {
                                       <YBInfoTip
                                         customClass="ldap-info-popover"
                                         title="Bind DN"
-                                        content="Bind DN will be combined with Base DN and DN Prefix to login to the service account"
+                                        content="Bind DN will be used to login to the service account"
                                       >
                                         <i className="fa fa-info-circle" />
                                       </YBInfoTip>
@@ -929,7 +931,7 @@ export const LDAPAuth = (props) => {
                                   </Col>
                                   <Col lg={12} className="ua-field">
                                     <Field
-                                      name="ldap_service_account_username"
+                                      name="ldap_service_account_distinguished_name"
                                       component={YBFormInput}
                                       disabled={isDisabled}
                                       className="ua-form-field"
@@ -985,7 +987,7 @@ export const LDAPAuth = (props) => {
                                   </Row>
                                   <Row>
                                     {
-                                      '{{DN Prefix}} + {{LDAP Users Username/Service Account Username}} + {{LDAP Base DN}}'
+                                      '{ {{DN Prefix}} + {{LDAP Users Username}} + {{LDAP Base DN}} } / {{Service Account DN}}'
                                     }
                                   </Row>
                                 </Col>

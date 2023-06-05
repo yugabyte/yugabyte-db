@@ -99,8 +99,11 @@ DEFINE_NON_RUNTIME_bool(ysql_disable_per_tuple_memory_context_in_update_relattrs
             "If true, disable the use of per-tuple memory context in YB catalog "
             "and relcache preloading.");
 
-namespace yb {
-namespace pggate {
+DEFINE_NON_RUNTIME_bool(
+    ysql_minimal_catalog_caches_preload, false,
+    "Fill postgres' caches with system items only");
+
+namespace yb::pggate {
 
 //--------------------------------------------------------------------------------------------------
 // C++ Implementation.
@@ -218,7 +221,7 @@ Status GetSplitPoints(YBCPgTableDesc table_desc,
         column_bounds.consume_byte();
         split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MAX;
       } else {
-        table_row.Clear();
+        table_row.Reset();
         RETURN_NOT_OK(table_row.DecodeKey(col_idx, &column_bounds));
         split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_STANDARD_VALUE;
 
@@ -1404,7 +1407,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_disable_global_impact_ddl_statements =
           &FLAGS_ysql_disable_global_impact_ddl_statements,
       .ysql_disable_per_tuple_memory_context_in_update_relattrs =
-          &FLAGS_ysql_disable_per_tuple_memory_context_in_update_relattrs
+          &FLAGS_ysql_disable_per_tuple_memory_context_in_update_relattrs,
+      .ysql_minimal_catalog_caches_preload      = &FLAGS_ysql_minimal_catalog_caches_preload,
   };
   return &accessor;
 }
@@ -1551,10 +1555,11 @@ bool YBCIsSysTablePrefetchingStarted() {
 }
 
 void YBCRegisterSysTableForPrefetching(
-  YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid) {
+  YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid, int row_oid_filtering_attr) {
   pgapi->RegisterSysTableForPrefetching(
       PgObjectId(database_oid, table_oid),
-      index_oid == kPgInvalidOid ? PgObjectId() : PgObjectId(database_oid, index_oid));
+      index_oid == kPgInvalidOid ? PgObjectId() : PgObjectId(database_oid, index_oid),
+      row_oid_filtering_attr);
 }
 
 YBCStatus YBCPrefetchRegisteredSysTables() {
@@ -1572,5 +1577,4 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
 
 } // extern "C"
 
-} // namespace pggate
-} // namespace yb
+} // namespace yb::pggate

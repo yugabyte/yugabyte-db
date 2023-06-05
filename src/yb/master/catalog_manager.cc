@@ -381,9 +381,7 @@ DEFINE_test_flag(bool, hang_on_namespace_transition, false,
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
     "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
 
-DEFINE_RUNTIME_bool(master_drop_table_after_task_response, true,
-    "Mark a table as DELETED as soon as we get all the responses from all the TS.");
-TAG_FLAG(master_drop_table_after_task_response, advanced);
+DEPRECATE_FLAG(bool, master_drop_table_after_task_response, "11_2022");
 
 DEFINE_test_flag(bool, tablegroup_master_only, false,
                  "This is only for MasterTest to be able to test tablegroups without the"
@@ -12796,9 +12794,6 @@ void CatalogManager::ProcessTabletReplicaFullCompactionStatus(
 }
 
 void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
-  if (!FLAGS_master_drop_table_after_task_response) {
-    return;
-  }
   // Since this is called after every successful async DeleteTablet, it's possible if all tasks
   // complete, for us to mark the table as DELETED/HIDDEN asap. This is desirable as clients will
   // wait for this before returning success to the user.

@@ -257,7 +257,7 @@ public class KubernetesOperatorController {
   private Result deleteUniverse(UUID customerUUID, UUID universeUUID) {
     LOG.info("Deleting universe using operator");
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     // remove pending tasks from map as we are deleting the universe
     Optional.ofNullable(pendingTasks.get(universe.getName()))

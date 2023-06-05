@@ -1,8 +1,9 @@
 ---
 title: Prepare the Kubernetes environment
-headerTitle: Cloud prerequisites - Kubernetes
+headerTitle: Cloud prerequisites
 linkTitle: Cloud prerequisites
 description: Prepare the Kubernetes environment for YugabyteDB Anywhere.
+headContent: Prepare Kubernetes for YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform

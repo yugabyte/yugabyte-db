@@ -83,7 +83,7 @@ public class UniverseInfoController extends AuthenticatedController {
   // TODO API document error case.
   public Result universeStatus(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     // Get alive status
     JsonNode result = universeInfoHandler.status(universe);
@@ -99,7 +99,7 @@ public class UniverseInfoController extends AuthenticatedController {
       response = UniverseResourceDetails.class)
   public Result getUniverseResources(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     return PlatformResults.withData(
         universeInfoHandler.getUniverseResources(customer, universe.getUniverseDetails()));
   }
@@ -110,7 +110,7 @@ public class UniverseInfoController extends AuthenticatedController {
       response = UniverseResourceDetails.class)
   public Result universeCost(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     Context context =
         new Context(
@@ -142,7 +142,7 @@ public class UniverseInfoController extends AuthenticatedController {
       response = Object.class)
   public Result getMasterLeaderIP(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     HostAndPort leaderMasterHostAndPort = universeInfoHandler.getMasterLeaderIP(universe);
     ObjectNode result = Json.newObject().put("privateIP", leaderMasterHostAndPort.getHost());
@@ -155,7 +155,7 @@ public class UniverseInfoController extends AuthenticatedController {
       response = Object.class)
   public Result getLiveQueries(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can't get live queries for a paused universe");
@@ -175,7 +175,7 @@ public class UniverseInfoController extends AuthenticatedController {
   public Result getSlowQueries(UUID customerUUID, UUID universeUUID) {
     log.info("Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can't get slow queries for a paused universe");
@@ -191,7 +191,7 @@ public class UniverseInfoController extends AuthenticatedController {
   public Result resetSlowQueries(UUID customerUUID, UUID universeUUID, Http.Request request) {
     log.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can't reset slow queries for a paused universe");
@@ -220,7 +220,7 @@ public class UniverseInfoController extends AuthenticatedController {
       response = Details.class)
   public Result healthCheck(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe.getOrBadRequest(universeUUID, customer);
 
     List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID);
     return PlatformResults.withData(convertDetails(detailsList));
@@ -232,7 +232,7 @@ public class UniverseInfoController extends AuthenticatedController {
       response = TriggerHealthCheckResult.class)
   public Result triggerHealthCheck(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableTriggerAPI)) {
       throw new PlatformServiceException(
@@ -266,7 +266,7 @@ public class UniverseInfoController extends AuthenticatedController {
   public CompletionStage<Result> downloadNodeLogs(
       UUID customerUUID, UUID universeUUID, String nodeName) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     log.debug("Retrieving logs for " + nodeName);
     NodeDetails node =
         universe

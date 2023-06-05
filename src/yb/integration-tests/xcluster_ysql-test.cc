@@ -128,6 +128,15 @@ DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(ysql_legacy_colocated_database_creation);
 DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_uint64(ysql_session_max_batch_size);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_int64(db_filter_block_size_bytes);
+DECLARE_int64(db_index_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(TEST_validate_all_tablet_candidates);
+DECLARE_int64(tablet_force_split_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 
 namespace yb {
 
@@ -684,8 +693,12 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
   }
 
   void MultiTransactionConsistencyTest(
-      uint32_t transaction_size, uint32_t num_transactions, const YBTableName& producer_table,
-      const YBTableName& consumer_table, bool commit_all_transactions) {
+      uint32_t transaction_size,
+      uint32_t num_transactions,
+      const YBTableName& producer_table,
+      const YBTableName& consumer_table,
+      bool commit_all_transactions,
+      bool flush_tables_after_commit = false) {
     // Have one writer thread and one reader thread. For each read, assert
     // - atomicity: that the total number of records read mod the transaction size is 0 to ensure
     // that we have no half transactional cuts.
@@ -703,6 +716,11 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
             commit_all_transactions || commit_transaction));
         commit_transaction = !commit_transaction;
         LOG(INFO) << "Wrote records: " << i + transaction_size;
+        if (flush_tables_after_commit) {
+          EXPECT_OK(producer_cluster_.client_->FlushTables(
+              {producer_table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+              /* is_compaction = */ false));
+        }
       }
     });
 
@@ -718,6 +736,14 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
             auto val = ASSERT_RESULT(GetInt32(consumer_results.get(), i, 0));
             ASSERT_EQ(val, i);
           }
+        }
+
+        // Consumer side flush is in read-thread because flushes may fail if nothing
+        // was replicated, so we have additional check to make sure we have records in the consumer.
+        if (flush_tables_after_commit && num_read_records) {
+          EXPECT_OK(consumer_cluster_.client_->FlushTables(
+              {consumer_table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+              /* is_compaction = */ false));
         }
       }
       ASSERT_EQ(num_read_records, total_committed_records);
@@ -761,12 +787,80 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     });
   }
 
+  void LongRunningTransactionTest(
+      const YBTableName& producer_table,
+      const YBTableName& consumer_table,
+      TestThreadHolder* test_thread_holder,
+      MonoDelta duration) {
+    auto end_time = CoarseMonoClock::Now() + duration;
+
+    test_thread_holder->AddThread([this, &producer_table, end_time]() {
+      uint32_t key = 0;
+      auto producer_conn =
+          ASSERT_RESULT(producer_cluster_.ConnectToDB(producer_table.namespace_name()));
+      ASSERT_OK(producer_conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+      while (CoarseMonoClock::Now() < end_time) {
+        ASSERT_OK(producer_conn.ExecuteFormat(
+            "insert into $0 values($1)", GetCompleteTableName(producer_table), key));
+        key += 1;
+      }
+      ASSERT_OK(producer_conn.CommitTransaction());
+    });
+
+    test_thread_holder->AddThread([this, &consumer_table, end_time]() {
+      auto consumer_conn =
+          ASSERT_RESULT(consumer_cluster_.ConnectToDB(consumer_table.namespace_name()));
+      while (CoarseMonoClock::Now() < end_time) {
+        auto result = ASSERT_RESULT(consumer_conn.FetchFormat(
+            "select count(*) from $0", GetCompleteTableName(consumer_table)));
+        auto count = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
+        ASSERT_EQ(count, 0);
+      }
+    });
+  }
+
+  void VerifyRecordsAndDeleteReplication(
+      TestThreadHolder* test_thread_holder,
+      std::pair<client::YBTablePtr, client::YBTablePtr> tables_pair) {
+    ASSERT_OK(
+        consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+    test_thread_holder->JoinAll();
+    ASSERT_OK(VerifyWrittenRecords(tables_pair.first->name(), tables_pair.second->name()));
+    ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
+  }
+
+  void VerifyTabletSplitHalfwayThroughWorkload(
+      TestThreadHolder* test_thread_holder,
+      yb::MiniCluster* split_cluster,
+      std::shared_ptr<YBTable> split_table,
+      std::pair<client::YBTablePtr, client::YBTablePtr> tables_pair,
+      MonoDelta duration) {
+    // Sleep for half duration to ensure that the workloads are running.
+    SleepFor(duration / 2);
+    ASSERT_OK(SplitSingleTablet(split_cluster, split_table));
+    VerifyRecordsAndDeleteReplication(test_thread_holder, tables_pair);
+  }
+
   virtual Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateClusterAndTable(
+      unsigned int num_consumer_tablets = 4,
+      unsigned int num_producer_tablets = 4,
       int num_masters = 3) {
-    auto tables = VERIFY_RESULT(SetUpWithParams({4}, {4}, 3, num_masters));
+    auto tables = VERIFY_RESULT(
+        SetUpWithParams({num_consumer_tablets}, {num_producer_tablets}, 3, num_masters));
     auto producer_table = tables[0];
     auto consumer_table = tables[1];
     return std::make_pair(producer_table, consumer_table);
+  }
+
+  Status SplitSingleTablet(MiniCluster* cluster, const client::YBTablePtr& table) {
+    auto tablets = ListTableActiveTabletLeadersPeers(cluster, table->id());
+    if (tablets.size() != 1) {
+      return STATUS_FORMAT(InternalError, "Expected single tablet, found $0.", tablets.size());
+    }
+    auto tablet_id = tablets.front()->tablet_id();
+    auto catalog_manager = &CHECK_NOTNULL(
+      VERIFY_RESULT(cluster->GetLeaderMiniMaster()))->catalog_manager();
+    return catalog_manager->SplitTablet(tablet_id, master::ManualSplit::kTrue);
   }
 
   Status SetupReplicationAndWaitForValidSafeTime(
@@ -786,7 +880,8 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
 
   Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateTableAndSetupReplication(
       int num_masters = 3) {
-    const auto tables = VERIFY_RESULT(CreateClusterAndTable(num_masters));
+    auto tables = VERIFY_RESULT(CreateClusterAndTable(
+        /* num_consumer_tablets */ 4, /* num_producer_tablets */ 4, /* num_masters */ num_masters));
     RETURN_NOT_OK(SetupReplicationAndWaitForValidSafeTime(tables));
     return tables;
   }
@@ -803,6 +898,71 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
         MonoDelta::FromSeconds(30), "Intents cleaned up");
   }
 };
+
+class XClusterYSqlTestConsistentTransactionsWithAutomaticTabletSplitTest
+    : public XClusterYSqlTestConsistentTransactionsTest {
+ public:
+  void SetUp() override {
+    FLAGS_cleanup_split_tablets_interval_sec = 1;
+    FLAGS_enable_automatic_tablet_splitting = true;
+    FLAGS_db_block_size_bytes = 2_KB;
+    // We set other block sizes to be small for following test reasons:
+    // 1) To have more granular change of SST file size depending on number of rows written.
+    // This helps to do splits earlier and have faster tests.
+    // 2) To don't have long flushes when simulating slow compaction/flush. This way we can
+    // test compaction abort faster.
+    FLAGS_db_filter_block_size_bytes = 2_KB;
+    FLAGS_db_index_block_size_bytes = 2_KB;
+    // Split size threshold less than memstore size is not effective, because splits are triggered
+    // based on flushed SST files size.
+    FLAGS_db_write_buffer_size = 100_KB;
+    FLAGS_tablet_force_split_threshold_bytes = 1_KB;
+    FLAGS_tablet_split_low_phase_size_threshold_bytes = FLAGS_tablet_force_split_threshold_bytes;
+    XClusterYSqlTestConsistentTransactionsTest::SetUp();
+  }
+
+ protected:
+  static constexpr auto kTabletSplitTimeout = 20s;
+
+  Status WaitForTabletSplits(
+      MiniCluster* cluster, const TableId& table_id, const size_t base_num_tablets) {
+    SCHECK_NOTNULL(cluster);
+    std::unordered_set<std::string> tablets;
+    auto status = WaitFor(
+        [&]() -> Result<bool> {
+          tablets = ListActiveTabletIdsForTable(cluster, table_id);
+          if (tablets.size() > base_num_tablets) {
+            LOG(INFO) << "Number of tablets after split: " << tablets.size();
+            return true;
+          }
+          return false;
+        },
+        kTabletSplitTimeout, Format("Waiting for more tablets than: $0", base_num_tablets));
+    return status;
+  }
+};
+
+TEST_F(
+    XClusterYSqlTestConsistentTransactionsWithAutomaticTabletSplitTest,
+    ConsistentTransactionsWithAutomaticTabletSplitting) {
+  auto [producer_table, consumer_table] = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  // Getting the initial number of tablets on both sides.
+  auto producer_tablets_size =
+      ListActiveTabletIdsForTable(producer_cluster(), producer_table->id()).size();
+  auto consumer_tablets_size =
+      ListActiveTabletIdsForTable(consumer_cluster(), consumer_table->id()).size();
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      100, 50, producer_table->name(), consumer_table->name(), true /* commit_all_transactions */,
+      true /* flush_tables_after_commit */));
+
+  ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
+
+  // Validating that the number of tablets increased on both sides.
+  ASSERT_OK(WaitForTabletSplits(producer_cluster(), producer_table->id(), producer_tablets_size));
+  ASSERT_OK(WaitForTabletSplits(consumer_cluster(), consumer_table->id(), consumer_tablets_size));
+}
 
 constexpr uint32_t kTransactionSize = 50;
 constexpr uint32_t kNumTransactions = 100;
@@ -1176,6 +1336,88 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, MasterLeaderRestart) {
   test_thread_holder.JoinAll();
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
+}
+
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, ProducerTabletSplitDuringLongTxn) {
+  auto tables_pair = ASSERT_RESULT(
+      CreateClusterAndTable(/* num_consumer_tablets */ 1, /* num_producer_tablets */ 1));
+  ASSERT_OK(SetupReplicationAndWaitForValidSafeTime(tables_pair));
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(LongRunningTransactionTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+  VerifyTabletSplitHalfwayThroughWorkload(
+      &test_thread_holder, producer_cluster(), producer_table, tables_pair, duration);
+}
+
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, ConsumerTabletSplitDuringLongTxn) {
+  auto tables_pair = ASSERT_RESULT(
+      CreateClusterAndTable(/* num_consumer_tablets */ 1, /* num_producer_tablets */ 1));
+  ASSERT_OK(SetupReplicationAndWaitForValidSafeTime(tables_pair));
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(LongRunningTransactionTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+
+  VerifyTabletSplitHalfwayThroughWorkload(
+      &test_thread_holder, consumer_cluster(), consumer_table, tables_pair, duration);
+}
+
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, ProducerTabletSplitDuringTransactionalWorkload) {
+  auto tables_pair = ASSERT_RESULT(
+      CreateClusterAndTable(/* num_consumer_tablets */ 1, /* num_producer_tablets */ 1));
+  ASSERT_OK(SetupReplicationAndWaitForValidSafeTime(tables_pair));
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+  VerifyTabletSplitHalfwayThroughWorkload(
+      &test_thread_holder, producer_cluster(), producer_table, tables_pair, duration);
+}
+
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, ConsumerTabletSplitDuringTransactionalWorkload) {
+  auto tables_pair = ASSERT_RESULT(CreateClusterAndTable(1, 1));
+  ASSERT_OK(SetupReplicationAndWaitForValidSafeTime(tables_pair));
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+  VerifyTabletSplitHalfwayThroughWorkload(
+      &test_thread_holder, consumer_cluster(), consumer_table, tables_pair, duration);
+}
+
+TEST_F(
+    XClusterYSqlTestConsistentTransactionsTest,
+    ProducerConsumerTabletSplitDuringTransactionalWorkload) {
+  auto tables_pair = ASSERT_RESULT(CreateClusterAndTable(1, 1));
+  ASSERT_OK(SetupReplicationAndWaitForValidSafeTime(tables_pair));
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+
+  // Sleep for half duration to ensure that the workloads AsyncTransactionConsistencyTest are
+  // running.
+  SleepFor(duration / 2);
+  ASSERT_OK(SplitSingleTablet(producer_cluster(), producer_table));
+  ASSERT_OK(SplitSingleTablet(consumer_cluster(), consumer_table));
+
+  VerifyRecordsAndDeleteReplication(&test_thread_holder, tables_pair);
 }
 
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensusMaxBatchSize) {

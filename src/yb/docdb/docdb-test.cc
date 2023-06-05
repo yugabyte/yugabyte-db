@@ -444,7 +444,7 @@ void GetSubDocQl(
       const dockv::ReaderProjection* projection = nullptr) {
   auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
     subdoc_key, doc_db, rocksdb::kDefaultQueryId, txn_op_context,
-    CoarseTimePoint::max() /* deadline */, read_time, projection));
+    ReadOperationData::FromReadTime(read_time), projection));
   if (doc_from_rocksdb_opt) {
     *found_result = true;
     *result = *doc_from_rocksdb_opt;
@@ -459,9 +459,8 @@ void GetSubDocRedis(
       const TransactionOperationContext& txn_op_context, const ReadHybridTime& read_time) {
   GetRedisSubDocumentData data = { subdoc_key, result, found_result };
   ASSERT_OK(GetRedisSubDocument(
-      doc_db, data, rocksdb::kDefaultQueryId,
-      txn_op_context, CoarseTimePoint::max() /* deadline */,
-      read_time));
+      doc_db, data, rocksdb::kDefaultQueryId, txn_op_context,
+      ReadOperationData::FromReadTime(read_time)));
 }
 
 // The list of types we want to test.
@@ -685,8 +684,7 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   EXPECT_TRUE(subdoc_found_in_rocksdb);
   EXPECT_STR_EQ_VERBOSE_TRIMMED(R"#(
 {
-  "p1": "value",
-  "p2": DEL
+  "p1": "value"
 }
   )#", doc_from_rocksdb.ToString());
 }
@@ -3461,9 +3459,8 @@ Status InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
   AddMapValue("sk1", "v1", &subdoc);
 
   return dwb->InsertSubDocument(
-      DocPath(encoded_doc_key, KeyEntryValue("s1"), KeyEntryValue("s2")),
-      ValueRef(subdoc), ReadHybridTime::Max(), CoarseTimePoint::max(),
-      rocksdb::kDefaultQueryId, ttl);
+      DocPath(encoded_doc_key, KeyEntryValue("s1"), KeyEntryValue("s2")), ValueRef(subdoc),
+      ReadOperationData(), rocksdb::kDefaultQueryId, ttl);
 }
 
 TEST_P(DocDBTestWrapper, TestUpdateDocWriteBatchTTL) {
@@ -3591,9 +3588,8 @@ void QueryBounds(const DocKey& doc_key, int lower, int upper, int base, const Do
   data.low_subkey = &lower_bound;
   data.high_subkey = &upper_bound;
   EXPECT_OK(GetRedisSubDocument(
-      doc_db, data, rocksdb::kDefaultQueryId,
-      kNonTransactionalOperationContext, CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::SingleTime(ht)));
+      doc_db, data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
+      ReadOperationData::FromSingleReadTime(ht)));
 }
 
 void VerifyBounds(SubDocument* doc_from_rocksdb, int lower, int upper, int base) {

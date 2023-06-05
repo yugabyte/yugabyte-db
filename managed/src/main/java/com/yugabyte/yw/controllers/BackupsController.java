@@ -220,8 +220,8 @@ public class BackupsController extends AuthenticatedController {
           message = "If there was a server or database issue when listing the backups",
           response = YBPError.class))
   public Result fetchBackupsByTaskUUID(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
-    Customer.getOrBadRequest(customerUUID);
-    Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID, customer);
 
     List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(taskUUID);
     return PlatformResults.withData(backups);
@@ -244,7 +244,7 @@ public class BackupsController extends AuthenticatedController {
     BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
 
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
     taskParams.customerUUID = customerUUID;
 
     if (universe
@@ -424,7 +424,8 @@ public class BackupsController extends AuthenticatedController {
     }
     backupUtil.validateStorageConfig(customerConfig);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
     taskParams.customerUUID = customerUUID;
 
     if (taskParams.keyspaceTableList != null) {
@@ -489,7 +490,7 @@ public class BackupsController extends AuthenticatedController {
     taskParams.customerUUID = customerUUID;
     taskParams.prefixUUID = UUID.randomUUID();
     UUID universeUUID = taskParams.getUniverseUUID();
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (CollectionUtils.isEmpty(taskParams.backupStorageInfoList)) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
     }
@@ -553,7 +554,7 @@ public class BackupsController extends AuthenticatedController {
           required = true))
   public Result restore(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     Form<BackupTableParams> formData =
         formFactory.getFormDataOrBadRequest(request, BackupTableParams.class);
@@ -956,9 +957,9 @@ public class BackupsController extends AuthenticatedController {
           required = true))
   public Result setThrottleParams(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID.
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (universe.universeIsLocked()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot set throttle params, universe task in progress.");
@@ -997,9 +998,9 @@ public class BackupsController extends AuthenticatedController {
       response = YbcThrottleParametersResponse.class)
   public Result getThrottleParams(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (!universe.isYbcEnabled()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot get throttle params, universe does not have YB-Controller setup.");

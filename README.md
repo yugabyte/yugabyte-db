@@ -70,7 +70,8 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-xcluster-async-replication.md) | PROGRESS  |  v2.19  | [Track](https://github.com/yugabyte/yugabyte-db/issues/10976) | Apply transactions atomically on target cluster. |
 | YSQL-table statistics and cost based optimizer(CBO) | PROGRESS  |  v2.21 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) | Improve YSQL query performance |
 | [YSQL-Feature support - ALTER TABLE](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.21 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) | Support for various `ALTER TABLE` variants |
-| Support for GiST indexes | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1337) |Suppor for GiST (Generalized Search Tree) based index|
+| Support for GiST indexes | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1337) |Support for GiST (Generalized Search Tree) based index|
+| Connection Management | PROGRESS  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/17599) |Server side connection management|
 
 ## Recently released features
 

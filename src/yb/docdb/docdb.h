@@ -130,8 +130,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 // Outputs: keys_locked, write_batch
 Status AssembleDocWriteBatch(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     const DocDB& doc_db,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     LWKeyValueWriteBatchPB* write_batch,
@@ -165,28 +164,6 @@ class ExternalTxnIntentsState {
   std::mutex mutex_;
   std::unordered_map<TransactionId, IntraTxnWriteId, TransactionIdHash> map_;
 };
-// Adds external pair to write batch.
-// Returns true if add was skipped because pair is a regular (non external) record.
-bool AddExternalPairToWriteBatch(
-    const LWKeyValuePairPB& kv_pair,
-    HybridTime hybrid_time,
-    ExternalTxnApplyState* apply_external_transactions,
-    rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txn_intents_state);
-
-// Prepares external part of non transaction write batch.
-// Batch could contain intents for external transactions, in this case those intents
-// will be added to intents_write_batch.
-//
-// Returns true if batch contains regular entries.
-bool PrepareExternalWriteBatch(
-    const LWKeyValueWriteBatchPB& put_batch,
-    HybridTime hybrid_time,
-    rocksdb::DB* intents_db,
-    rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txn_intents_state);
 
 Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,

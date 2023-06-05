@@ -11,6 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -64,6 +66,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -216,6 +219,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // YBC server name
     public String ybcServerName = null;
     public String command = null;
+    public String azCode = null;
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
@@ -394,19 +398,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   }
 
   private Map<String, String> getClusterIpForLoadBalancer() {
-    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     PlacementInfo pi = taskParams().placementInfo;
 
     Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
-    Map<UUID, String> azToDomain = KubernetesUtil.getDomainPerAZ(pi);
-    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(Provider.get(taskParams().providerUUID));
 
     Map<String, String> serviceToIP = new HashMap<String, String>();
 
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
-      UUID azUUID = entry.getKey();
-      String azName = AvailabilityZone.get(azUUID).getCode();
-      String regionName = AvailabilityZone.get(azUUID).getRegion().getCode();
       Map<String, String> config = entry.getValue();
 
       // TODO(bhavin192): we seem to be iterating over all the AZs
@@ -512,6 +510,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           NodeDetails defaultNode = defaultNodes.iterator().next();
           Set<NodeDetails> nodeDetailsSet = new HashSet<>();
           Iterator<Map.Entry<String, JsonNode>> iter = pods.fields();
+          Map<String, String> azConfig;
+          Map<String, String> regionConfig;
           while (iter.hasNext()) {
             NodeDetails nodeDetail = defaultNode.clone();
             Map.Entry<String, JsonNode> pod = iter.next();
@@ -523,9 +523,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             UUID azUUID = UUID.fromString(podVals.get("az_uuid").asText());
             String domain = azToDomain.get(azUUID);
             AvailabilityZone az = AvailabilityZone.getOrBadRequest(azUUID);
-            Map<String, String> config = CloudInfoInterface.fetchEnvVars(az);
+            Region region = az.getRegion();
+            azConfig = CloudInfoInterface.fetchEnvVars(az);
+            regionConfig = CloudInfoInterface.fetchEnvVars(region);
             String podAddressTemplate =
-                config.getOrDefault("KUBE_POD_ADDRESS_TEMPLATE", Util.K8S_POD_FQDN_TEMPLATE);
+                getK8sPropertyFromConfigOrDefault(
+                    null,
+                    regionConfig,
+                    azConfig,
+                    "KUBE_POD_ADDRESS_TEMPLATE",
+                    Util.K8S_POD_FQDN_TEMPLATE);
             if (nodeName.contains("master")) {
               nodeDetail.isTserver = false;
               nodeDetail.isMaster = true;
@@ -603,6 +610,30 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     return -1;
   }
 
+  private String getK8sPropertyFromConfigOrDefault(
+      Map<String, String> config,
+      Map<String, String> regionConfig,
+      Map<String, String> azConfig,
+      String property,
+      String defaultValue) {
+    String value = azConfig != null ? azConfig.get(property) : null;
+    if (value != null) {
+      return value;
+    }
+
+    value = regionConfig != null ? regionConfig.get(property) : null;
+    if (value != null) {
+      return value;
+    }
+
+    value = config != null ? config.get(property) : null;
+    if (value != null) {
+      return value;
+    }
+
+    return defaultValue;
+  }
+
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml();
@@ -677,8 +708,31 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           PlacementInfo.PlacementRegion region = cloud.regionList.get(0);
           placementRegion = region.code;
           if (region.azList.size() != 0) {
-            PlacementInfo.PlacementAZ zone = region.azList.get(0);
-            placementZone = AvailabilityZone.get(zone.uuid).getCode();
+            PlacementInfo.PlacementAZ zone = null;
+            if (isMultiAz && taskParams().azCode != null) {
+              AvailabilityZone azByCode = AvailabilityZone.getByCode(provider, taskParams().azCode);
+              if (azByCode == null) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format("Specified zone code %s does not exist.", taskParams().azCode));
+              }
+              Optional<PlacementInfo.PlacementAZ> pZone =
+                  region.azList.stream()
+                      .filter(azs -> azs.uuid.equals(azByCode.getUuid()))
+                      .findFirst();
+              if (!pZone.isPresent()) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "Specified zone code %s does not exist in the placement config",
+                        taskParams().azCode));
+              }
+              zone = pZone.get();
+              placementZone = taskParams().azCode;
+            } else {
+              zone = region.azList.get(0);
+              placementZone = AvailabilityZone.get(zone.uuid).getCode();
+            }
             numNodes = zone.numNodesInAZ;
             replicationFactorZone = zone.replicationFactor;
             replicationFactor = userIntent.replicationFactor;
@@ -714,9 +768,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     // Storage class needs to be updated if it is overriden in the zone config.
-    if (azConfig.containsKey("STORAGE_CLASS")) {
-      tserverDiskSpecs.put("storageClass", azConfig.get("STORAGE_CLASS"));
-      masterDiskSpecs.put("storageClass", azConfig.get("STORAGE_CLASS"));
+    String storageClass =
+        getK8sPropertyFromConfigOrDefault(config, regionConfig, azConfig, "STORAGE_CLASS", null);
+    if (StringUtils.isNoneEmpty(storageClass)) {
+      tserverDiskSpecs.put("storageClass", storageClass);
+      masterDiskSpecs.put("storageClass", storageClass);
     }
 
     if (isMultiAz) {
@@ -912,22 +968,28 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         rootCA.put("cert", rootCert);
         rootCA.put("key", "");
         tlsInfo.put("rootCA", rootCA);
+        String certManagerIssuer =
+            getK8sPropertyFromConfigOrDefault(
+                null, regionConfig, azConfig, "CERT-MANAGER-ISSUER", null);
+        String certManagerClusterIssuer =
+            getK8sPropertyFromConfigOrDefault(
+                null, regionConfig, azConfig, "CERT-MANAGER-CLUSTERISSUER", null);
 
         if (certInfo.getCertType() == CertConfigType.K8SCertManager
-            && (azConfig.containsKey("CERT-MANAGER-ISSUER")
-                || azConfig.containsKey("CERT-MANAGER-CLUSTERISSUER"))) {
+            && (StringUtils.isNotEmpty(certManagerClusterIssuer)
+                || StringUtils.isNotEmpty(certManagerIssuer))) {
           // User configuring a K8SCertManager type of certificate on a Universe and setting
           // the corresponding azConfig enables the cert-manager integration for this
           // Universe. The name of Issuer/ClusterIssuer will come from the azConfig.
           Map<String, Object> certManager = new HashMap<>();
           certManager.put("enabled", true);
           certManager.put("bootstrapSelfsigned", false);
-          boolean useClusterIssuer = azConfig.containsKey("CERT-MANAGER-CLUSTERISSUER");
+          boolean useClusterIssuer = StringUtils.isNotEmpty(certManagerClusterIssuer);
           certManager.put("useClusterIssuer", useClusterIssuer);
           if (useClusterIssuer) {
-            certManager.put("clusterIssuer", azConfig.get("CERT-MANAGER-CLUSTERISSUER"));
+            certManager.put("clusterIssuer", certManagerClusterIssuer);
           } else {
-            certManager.put("issuer", azConfig.get("CERT-MANAGER-ISSUER"));
+            certManager.put("issuer", certManagerIssuer);
           }
           tlsInfo.put("certManager", certManager);
         } else {
@@ -937,7 +999,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           // Generate node cert from cert provider and set nodeCert param
           // As we are using same node cert for all nodes, set wildcard commonName
           boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
-          String kubeDomain = azConfig.getOrDefault("KUBE_DOMAIN", "cluster.local");
+          String kubeDomain =
+              getK8sPropertyFromConfigOrDefault(
+                  null, regionConfig, azConfig, "KUBE_DOMAIN", "cluster.local");
           List<String> dnsNames = getDnsNamesForSAN(newNamingStyle, kubeDomain);
           Map<String, Integer> subjectAltNames = new HashMap<>(dnsNames.size());
           for (String dnsName : dnsNames) {
@@ -1057,8 +1121,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("gflags", gflagOverrides);
     }
 
-    if (azConfig.containsKey("KUBE_DOMAIN")) {
-      overrides.put("domainName", azConfig.get("KUBE_DOMAIN"));
+    String kubeDomain =
+        getK8sPropertyFromConfigOrDefault(null, regionConfig, azConfig, "KUBE_DOMAIN", null);
+    if (StringUtils.isNotBlank(kubeDomain)) {
+      overrides.put("domainName", kubeDomain);
     }
 
     overrides.put("disableYsql", !primaryClusterIntent.enableYSQL);
@@ -1079,18 +1145,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // TODO (Arnav): Update this to use overrides created at the provider, region or
     // zone level.
     Map<String, Object> annotations;
-    String overridesYAML = null;
-    if (!azConfig.containsKey("OVERRIDES")) {
-      if (!regionConfig.containsKey("OVERRIDES")) {
-        if (config.containsKey("OVERRIDES")) {
-          overridesYAML = config.get("OVERRIDES");
-        }
-      } else {
-        overridesYAML = regionConfig.get("OVERRIDES");
-      }
-    } else {
-      overridesYAML = azConfig.get("OVERRIDES");
-    }
+    String overridesYAML =
+        getK8sPropertyFromConfigOrDefault(config, regionConfig, azConfig, "OVERRIDES", null);
 
     Map<String, Object> ybcInfo = new HashMap<>();
     ybcInfo.put("enabled", taskParams().isEnableYbc());

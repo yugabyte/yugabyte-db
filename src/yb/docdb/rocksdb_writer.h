@@ -188,6 +188,7 @@ class ApplyIntentsContext : public IntentsWriterContext {
       HybridTime commit_ht,
       HybridTime log_ht,
       const KeyBounds* key_bounds,
+      SchemaPackingProvider* schema_packing_provider,
       rocksdb::DB* intents_db);
 
   void Start(const boost::optional<Slice>& first_key) override;
@@ -204,6 +205,8 @@ class ApplyIntentsContext : public IntentsWriterContext {
 
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
+  Status UpdateSchemaVersion(Slice key, Slice value);
+  void FlushSchemaVersion();
 
   const ApplyTransactionState* apply_state_;
   const SubtxnSet& aborted_;
@@ -211,7 +214,10 @@ class ApplyIntentsContext : public IntentsWriterContext {
   HybridTime log_ht_;
   IntraTxnWriteId write_id_;
   const KeyBounds* key_bounds_;
+  SchemaPackingProvider* schema_packing_provider_;
   BoundedRocksDbIterator intent_iter_;
+  Uuid schema_version_table_ = Uuid::Nil();
+  ColocationId schema_version_colocation_id_ = 0;
   SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
   SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
   ConsensusFrontiers* frontiers_;
@@ -228,6 +234,54 @@ class RemoveIntentsContext : public IntentsWriterContext {
   void Complete(rocksdb::DirectWriteHandler* handler) override;
  private:
   uint8_t reason_;
+};
+
+// Usually put_batch contains only records that should be applied to regular DB.
+// So apply_external_transactions will be empty and regular_entry will be true.
+//
+// But in general case on consumer side of CDC put_batch could contain various kinds of records,
+// that should be applied into regular and intents db.
+// They are:
+// apply_external_transactions
+//   The list of external transactions that should be applied.
+//   For each such transaction we should lookup for existing external intents (stored in intents DB)
+//   and convert them to Put command in regular_write_batch plus SingleDelete command in
+//   intents_write_batch.
+// write_pairs
+//   Could contain regular entries, that should be stored into regular DB as is.
+//   Also pair could contain external intents, that should be stored into intents DB.
+//   But if apply_external_transactions contains transaction for those external intents, then
+//   those intents will be applied directly to regular DB, avoiding unnecessary write to intents DB.
+//   This case is very common for short running transactions.
+class ExternalIntentsBatchWriter : public rocksdb::DirectWriter {
+ public:
+  ExternalIntentsBatchWriter(
+      std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime hybrid_time,
+      rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
+      ExternalTxnIntentsState* external_txns_intents_state);
+  bool Empty() const;
+
+  Status Apply(rocksdb::DirectWriteHandler* handler) override;
+
+ private:
+  // Reads all stored external intents for provided transactions and prepares batches that will
+  // apply them into regular db and remove from intents db.
+  Status PrepareApplyExternalIntents(
+      ExternalTxnApplyState* apply_external_transactions, rocksdb::DirectWriteHandler* handler);
+
+  // Adds external pair to write batch.
+  // Returns true if add was skipped because pair is a regular (non external) record.
+  Result<bool> AddExternalPairToWriteBatch(
+      const yb::docdb::LWKeyValuePairPB& kv_pair,
+      ExternalTxnApplyState* apply_external_transactions,
+      rocksdb::DirectWriteHandler* regular_write_handler);
+
+ private:
+  const LWKeyValueWriteBatchPB& put_batch_;
+  HybridTime hybrid_time_;
+  rocksdb::DB* intents_db_;
+  rocksdb::WriteBatch* intents_write_batch_;
+  ExternalTxnIntentsState* external_txns_intents_state_;
 };
 
 } // namespace docdb

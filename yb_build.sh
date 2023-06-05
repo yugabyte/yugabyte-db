@@ -909,6 +909,8 @@ export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=0
 cxx_test_filter_regex=""
 reset_cxx_test_filter=false
 
+use_google_tcmalloc=""
+
 # -------------------------------------------------------------------------------------------------
 # Switches deciding what components or targets to build
 # -------------------------------------------------------------------------------------------------
@@ -1498,15 +1500,6 @@ handle_predefined_build_root
 cmake_opts=()
 set_cmake_build_type_and_compiler_type
 
-if [[ -z "${use_google_tcmalloc:-}" ]]; then
-  # Enable Google TCMalloc in fastdebug for getting long term stability results.
-  if [[ $build_type == "fastdebug" &&  ${is_linux} == "true" ]]; then
-    use_google_tcmalloc=true
-  else
-    use_google_tcmalloc=false
-  fi
-fi
-
 if [[ -n ${cxx_test_filter_regex} ]]; then
   if [[ ${reset_cxx_test_filter} == "true" ]]; then
     fatal "--cxx-test-filter-regex is incompatible with --reset-cxx-filter-regex"
@@ -1520,10 +1513,20 @@ fi
 log "YugabyteDB build is running on host '$HOSTNAME'"
 log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
 
+normalize_build_type
 if [[ ${verbose} == "true" ]]; then
   log "build_type=$build_type, cmake_build_type=$cmake_build_type"
 fi
 export BUILD_TYPE=$build_type
+
+if [[ -z "${use_google_tcmalloc:-}" ]]; then
+  if is_linux && [[ ! ${build_type} =~ ^(asan|tsan)$ ]]; then
+    use_google_tcmalloc=true
+  else
+    use_google_tcmalloc=false
+  fi
+fi
+
 
 if [[ ${force_run_cmake} == "true" && ${force_no_run_cmake} == "true" ]]; then
   fatal "--force-run-cmake and --force-no-run-cmake are incompatible"
@@ -1797,7 +1800,7 @@ elif [[ -n ${YB_TCMALLOC_ENABLED:-} ]]; then
 fi
 
 if [[ ${use_google_tcmalloc} == "true" ]]; then
-  if [[ ${is_linux} != "true" ]]; then
+  if ! is_linux; then
     fatal "Google TCMalloc is only supported on linux. is_linux is: '${is_linux}'."
   fi
   cmake_opts+=( -DYB_GOOGLE_TCMALLOC=1 )
