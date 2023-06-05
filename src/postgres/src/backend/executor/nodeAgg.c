@@ -1785,6 +1785,18 @@ ExecAgg(PlanState *pstate)
 		if (IsYugaByteEnabled())
 		{
 			pstate->state->yb_exec_params.limit_use_default = true;
+
+			// Currently, postgres employs an "optimization" where it requests the
+			// complete heap tuple from the executor whenever possible so as to
+			// avoid unnecessary copies
+			// See the comment in create_scan_plan (create_plan.c) for more info
+			//
+			// However, this "optimization" is not always in effect and here we guard
+			// against any undesirable prefix based filtering in the presence of
+			// aggregate targets. More importantly, the current behavior to
+			// retrieve the complete tuple is not necessarily optimal for
+			// remote storage such as DocDB and this may change in the future
+			pstate->state->yb_exec_params.is_select_distinct = false;
 		}
 
 		/* Dispatch based on strategy */

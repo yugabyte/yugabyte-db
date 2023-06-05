@@ -304,9 +304,40 @@ void PgDmlRead::SetDistinctScan(const PgExecParameters *exec_params) {
     size_t prefix_length = 0;
     for (const auto& col_ref : read_req_->col_refs()) {
       if (col_ref.has_column_id()) {
-        auto col_idx = CHECK_RESULT(bind_->FindColumn(col_ref.attno()));
-        if (col_idx >= bind_->schema().num_key_columns()) {
+        auto attr_num = col_ref.attno();
+        // Ignore the virtual column when computing the prefix!
+        if (attr_num == to_underlying(PgSystemAttrNum::kYBTupleId)) {
           continue;
+        }
+
+        auto col_idx = CHECK_RESULT(bind_->FindColumn(attr_num));
+
+        // Avoid setting the prefix when there are column references to non-key columns
+        //
+        // Example:
+        // ========
+        // Consider a table T
+        // ------------
+        // r1 | r2 | s
+        // ------------
+        // 1  | 1  | 1
+        // 1  | 2  | 2
+        //
+        // SELECT DISTINCT r1 FROM T WHERE r1 = 1 AND s = 2;
+        //
+        // The query must not skip over the second row simply because
+        // the primary index found an entry with r1 = 1
+        //
+        // It is not immediately obvious why doing this is sufficient but
+        // all the fields required for filtering on both the DocDB side and
+        // the postgres side are registered as column references/target list.
+        //
+        // Alternatively, we cannot simply check for additional where_clauses since
+        // not all of the filters are pushed down! Take join predicates for example.
+        // However, all the columns required by such predicates are part of the column
+        // references
+        if (col_idx >= bind_->schema().num_key_columns()) {
+          return;
         }
 
         prefix_length = std::max(prefix_length, col_idx + 1);
