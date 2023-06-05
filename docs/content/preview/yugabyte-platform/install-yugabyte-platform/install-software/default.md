@@ -145,7 +145,7 @@ When completing the **Enable Proxy** settings, keep in mind the following:
 
 - The Java fields can accept values as Java system properties, including the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
 
-- There is no authoritative source for the format of environment variables; for setting proxy where two environment variables get exported with lowercase and uppercase formats for the fields. For example, if you enter "http://my.Proxy.host:8080" for **HTTP Proxy setting**, then two environment variables gets exported as follows:
+- There is no authoritative source for the format of environment variables; YBA follows the community standards for setting proxy where two environment variables get exported with lowercase and uppercase formats for the fields. For example, if you enter "http://my.Proxy.host:8080" for **HTTP Proxy setting**, then two environment variables gets exported as follows:
 
     ```sh
     HTTP_PROXY = http://my.Proxy.host:8080
