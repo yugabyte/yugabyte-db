@@ -187,10 +187,11 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
   if (mem_tracker_->id() == kServerMemTrackerName) {
     common_mem_trackers = std::make_unique<CommonMemTrackers>();
 
-    RegisterTCMallocTracker("Thread Cache", "tcmalloc.thread_cache_free_bytes");
-    RegisterTCMallocTracker("Central Cache", "tcmalloc.central_cache_free_bytes");
-    RegisterTCMallocTracker("Transfer Cache", "tcmalloc.transfer_cache_free_bytes");
-    RegisterTCMallocTracker("PageHeap Free", "tcmalloc.pageheap_free_bytes");
+    RegisterTCMallocTracker("Sum of Thread Cache Freelists", "tcmalloc.thread_cache_free_bytes");
+    RegisterTCMallocTracker("Central Cache Freelist", "tcmalloc.central_cache_free_bytes");
+    RegisterTCMallocTracker("Transfer Cache Freelist", "tcmalloc.transfer_cache_free_bytes");
+    RegisterTCMallocTracker("PageHeap Freelist (Mapped)", "tcmalloc.pageheap_free_bytes");
+    RegisterTCMallocTracker("PageHeap Freelist (Unmapped)", "tcmalloc.pageheap_unmapped_bytes");
 
     auto root = MemTracker::GetRootTracker();
     root->SetPollChildrenConsumptionFunctors([]() {
