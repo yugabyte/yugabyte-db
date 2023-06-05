@@ -136,7 +136,10 @@ When completing the **Enable Proxy** settings, keep in mind the following:
 
 - The help text for each field shows which Java system property or environment variable gets set by the field. System properties have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
 
-- Note that the fields listed with "No proxy" refers to a list of exception hosts, in which the earlier-specified web proxy should be bypassed. You may also want to add any other IP addresses that you deem safe to bypass the proxy.
+- The **no proxy** fields are lists of exception hosts, provided as a comma-delimited list of addresses or hostnames. Include the following addresses:
+  - The Docker gateway address (172.17.0.1 by default).
+  - The address of any previously-specified web proxy.
+  - Any other IP addresses that you deem safe to bypass the proxy.
 
 - For the fields "HTTP no proxy setting" and "HTTP no proxy setting for Java", you need to add the docker gateway address (which is 172.17.0.1 by default).
 
