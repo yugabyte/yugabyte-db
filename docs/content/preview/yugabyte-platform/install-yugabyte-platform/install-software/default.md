@@ -134,7 +134,7 @@ When completing the **Enable Proxy** settings, keep in mind the following:
 
 - If you have only one proxy setup (HTTP or HTTPS), then set the same values for both. This configuration ends up setting OS environment variables or java system properties.
 
-- The helper text under each field suggests which java system property or environment variable gets set by the field. System properties will have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
+- The help text for each field shows which Java system property or environment variable gets set by the field. System properties have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
 
 - Note that the fields listed with "No proxy" refers to a list of exception hosts, in which the earlier-specified web proxy should be bypassed. You may also want to add any other IP addresses that you deem safe to bypass the proxy.
 
