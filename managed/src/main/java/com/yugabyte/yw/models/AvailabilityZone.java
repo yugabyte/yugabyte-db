@@ -135,10 +135,12 @@ public class AvailabilityZone extends Model {
   }
 
   @JsonIgnore
-  public boolean shouldBeUpdated(AvailabilityZone zone) {
+  public boolean isUpdateNeeded(AvailabilityZone zone) {
     return !Objects.equals(this.getSubnet(), zone.getSubnet())
         || !Objects.equals(this.getSecondarySubnet(), zone.getSecondarySubnet())
-        || !Objects.equals(this.getDetails(), zone.getDetails());
+        || !Objects.equals(this.getDetails(), zone.getDetails())
+        || !Objects.equals(
+            CloudInfoInterface.fetchEnvVars(this), CloudInfoInterface.fetchEnvVars(zone));
   }
 
   /** Query Helper for Availability Zone with primary key */

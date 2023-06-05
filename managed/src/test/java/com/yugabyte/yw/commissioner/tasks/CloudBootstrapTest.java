@@ -24,7 +24,6 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager.KeyType;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -124,7 +123,6 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         customSecurityGroup,
         customImageId,
         hasSecondarySubnet,
-        false,
         false);
   }
 
@@ -138,33 +136,6 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       boolean customSecurityGroup,
       boolean customImageId,
       boolean hasSecondarySubnet,
-      boolean isAddRegion)
-      throws InterruptedException {
-    validateCloudBootstrapSuccess(
-        taskParams,
-        zoneInfo,
-        expectedRegions,
-        expectedProviderCode,
-        customAccessKey,
-        customAzMapping,
-        customSecurityGroup,
-        customImageId,
-        hasSecondarySubnet,
-        isAddRegion,
-        false);
-  }
-
-  private void validateCloudBootstrapSuccess(
-      CloudBootstrap.Params taskParams,
-      JsonNode zoneInfo,
-      List<String> expectedRegions,
-      String expectedProviderCode,
-      boolean customAccessKey,
-      boolean customAzMapping,
-      boolean customSecurityGroup,
-      boolean customImageId,
-      boolean hasSecondarySubnet,
-      boolean isAddRegion,
       boolean armArchitecture)
       throws InterruptedException {
     Provider provider = Provider.get(taskParams.providerUUID);
@@ -187,18 +158,17 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     TaskInfo taskInfo = waitForTask(taskUUID);
     assertEquals(Success, taskInfo.getTaskState());
     if (expectedProviderCode.equals("aws")) {
-      verify(mockAWSInitializer, times(isAddRegion ? 2 : 1))
+      verify(mockAWSInitializer, times(1))
           .initialize(defaultCustomer.getUuid(), provider.getUuid());
     } else if (expectedProviderCode.equals("gcp")) {
-      verify(mockGCPInitializer, times(isAddRegion ? 2 : 1))
+      verify(mockGCPInitializer, times(1))
           .initialize(defaultCustomer.getUuid(), provider.getUuid());
     } else {
       fail("Only support AWS and GCP for now.");
     }
     // TODO(bogdan): do we want a different handling here?
     String customPayload = Json.stringify(Json.toJson(taskParams));
-    verify(mockNetworkManager, times(isAddRegion ? 0 : 1))
-        .bootstrap(null, provider.getUuid(), customPayload);
+    verify(mockNetworkManager, times(1)).bootstrap(null, provider.getUuid(), customPayload);
     assertEquals(taskParams.perRegionMetadata.size(), expectedRegions.size());
     // Check per-region settings.
     for (Map.Entry<String, CloudBootstrap.Params.PerRegionMetadata> entry :
@@ -522,49 +492,6 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testCloudBootstrapAddRegion() throws InterruptedException {
-    JsonNode zoneInfo =
-        Json.parse("{\"us-west1\": {\"zones\": [\"zone-1\"], \"subnetworks\": [\"subnet-0\"]}}");
-    CloudBootstrap.Params taskParams = getBaseTaskParams();
-    CloudBootstrap.Params.PerRegionMetadata westRegion =
-        new CloudBootstrap.Params.PerRegionMetadata();
-    westRegion.subnetId = "us-west1-subnet1";
-    westRegion.secondarySubnetId = "us-west1-subnet2";
-    taskParams.providerUUID = gcpProvider.getUuid();
-    taskParams.perRegionMetadata.put("us-west1", westRegion);
-    validateCloudBootstrapSuccess(
-        taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, true, false, false, true);
-
-    // Since the above was a success, there must now be an AccessKey created for the provider.
-    // Create it so that it exists for the next call.
-    String accessKeyCode = AccessKey.getDefaultKeyCode(gcpProvider);
-    AccessKey.create(gcpProvider.getUuid(), accessKeyCode, new KeyInfo());
-
-    // Add new region
-    zoneInfo =
-        Json.parse("{\"us-east1\": {\"zones\": [\"zone-1\"], \"subnetworks\": [\"subnet-1\"]}}");
-    taskParams = getBaseTaskParams();
-    CloudBootstrap.Params.PerRegionMetadata eastRegion =
-        new CloudBootstrap.Params.PerRegionMetadata();
-    eastRegion.subnetId = "us-east1-subnet1";
-    eastRegion.secondarySubnetId = "us-east1-subnet2";
-    taskParams.providerUUID = gcpProvider.getUuid();
-    taskParams.skipBootstrapRegion = true;
-    taskParams.perRegionMetadata.put("us-east1", eastRegion);
-    validateCloudBootstrapSuccess(
-        taskParams,
-        zoneInfo,
-        ImmutableList.of("us-east1"),
-        "gcp",
-        false,
-        true,
-        false,
-        false,
-        true,
-        true);
-  }
-
-  @Test
   public void testCloudBootstrapWithInvalidRegion() throws InterruptedException {
     CloudBootstrap.Params taskParams = getBaseTaskParams();
     taskParams.perRegionMetadata.put("fake-region", new CloudBootstrap.Params.PerRegionMetadata());
@@ -632,7 +559,6 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         zoneInfo,
         ImmutableList.of("us-west-1"),
         "aws",
-        false,
         false,
         false,
         false,
