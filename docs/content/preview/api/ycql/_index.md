@@ -73,13 +73,6 @@ Statement | Description |
 [`GRANT ROLE`](ddl_grant_role) | Grant a role to another role |
 [`REVOKE ROLE`](ddl_revoke_role) | Revoke a role from another role |
 
-The following table lists all security statements that are not yet implemented.
-
-Statement |
----------------|
-`LIST ROLES` |
-`LIST PERMISSIONS` |
-
 ## DML statements
 
 Data manipulation language (DML) statements are used to read from and write to the existing database objects. YugabyteDB implicitly commits any updates by DML statements (similar to how Apache Cassandra behaves).
@@ -144,8 +137,6 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 
 [User-defined data types](ddl_create_type) are also supported.
 
-The following table lists all YCQL primitive types that are not yet implemented.
-
-Primitive Type |
----------------|
-`TUPLE` |
+{{<warning title="Unsupported">}}
+For the features that are not supported and with behavior different from Cassandra, see [Cassandra Compatibility](./cassandra-compatibility)
+{{</warning>}}
