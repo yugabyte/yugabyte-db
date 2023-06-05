@@ -32,15 +32,19 @@ Deleting a cluster deletes all of its data, including backups.
 
 Paused clusters are not billed for instance vCPU capacity. Disk and backup storage are charged at the standard rate (refer to [Cluster costs](../cloud-admin/cloud-billing-costs/#paused-cluster-costs)). You can't change the configuration, or read and write data to a paused cluster. Alerts and backups are also stopped. Existing backups remain until they expire. You can't pause a Sandbox cluster. Yugabyte notifies you when a cluster is paused for 30 days.
 
+Note that if another [locking operation](#locking-operations) is in progress, you can't pause or delete a cluster until the other operation completes.
+
 ### Locking operations
 
 The following operations lock the cluster and only one can happen at the same time:
 
-- backup and restore
+- [backup and restore](backup-clusters/)
 - pause and resume
-- scaling the cluster, including adding and removing nodes
-- create, delete, and edit of read replicas
-- any scheduled maintenance, including database upgrades, certificate rotations, and cluster maintenance (a backup is run automatically before a database upgrade)
+- [scaling the cluster](configure-clusters/), including adding and removing nodes
+- create, delete, and edit of [read replicas](managed-read-replica/)
+- any scheduled [maintenance](cloud-maintenance/), including database upgrades, certificate rotations, and cluster maintenance (a backup is run automatically before a database upgrade)
+
+Make sure that you schedule maintenance and backups so that they do not conflict.
 
 <div class="row">
 
