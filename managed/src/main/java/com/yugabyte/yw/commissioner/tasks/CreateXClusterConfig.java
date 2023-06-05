@@ -108,10 +108,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
           tablesInPendingStatus, XClusterTableConfig.Status.Failed);
       // Set backup and restore status to failed and alter load balanced.
       boolean isLoadBalancerAltered = false;
-      for (Backup backup : backupList) {
-        if (backup.getBackupInfo().alterLoadBalancer) {
-          isLoadBalancerAltered = true;
-        }
+      for (Restore restore : restoreList) {
+        isLoadBalancerAltered = isLoadBalancerAltered || restore.isAlterLoadBalancer();
       }
       handleFailedBackupAndRestore(
           backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
