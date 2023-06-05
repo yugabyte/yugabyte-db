@@ -42,6 +42,7 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/retryable_requests.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -109,6 +110,8 @@ DEFINE_test_flag(bool, download_partial_wal_segments, false, "");
 DEFINE_test_flag(bool, pause_rbs_before_download_wal, false, "Pause RBS before downloading WAL.");
 
 DECLARE_int32(bytes_remote_bootstrap_durable_write_mb);
+
+DECLARE_bool(enable_flush_retryable_requests);
 
 namespace yb {
 namespace tserver {
@@ -229,6 +232,9 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     LOG_WITH_PREFIX(WARNING) << status;
     return status;
   }
+
+  download_retryable_requests_ = GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
+      resp.has_retryable_requests_file_flushed() && resp.retryable_requests_file_flushed();
 
   remote_tablet_data_state_ = resp.superblock().tablet_data_state();
   if (!CanServeTabletData(remote_tablet_data_state_)) {
@@ -428,6 +434,9 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   TEST_PAUSE_IF_FLAG_WITH_PREFIX(
       TEST_pause_rbs_before_download_wal, LogPrefix() + tablet_id_ + ": ");
   RETURN_NOT_OK(DownloadWALs());
+  if (download_retryable_requests_) {
+    RETURN_NOT_OK(DownloadRetryableRequestsFile());
+  }
   for (const auto& component : components_) {
     RETURN_NOT_OK(component->Download());
   }
@@ -733,6 +742,36 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   LOG_WITH_PREFIX(INFO) << "Downloaded WAL segment with seq. number " << wal_segment_seqno
                         << " of size " << writer->Size() << " in " << elapsed.ToSeconds()
                         << " seconds";
+  ok = true;
+
+  return Status::OK();
+}
+
+Status RemoteBootstrapClient::DownloadRetryableRequestsFile() {
+  VLOG_WITH_PREFIX(1) << "Downloading retryable requests file";
+  DataIdPB data_id;
+  data_id.set_type(DataIdPB::RETRYABLE_REQUESTS);
+  auto dest_path = consensus::RetryableRequestsManager::FilePath(meta_->wal_dir());
+  const auto temp_dest_path = dest_path + ".tmp";
+  bool ok = false;
+  auto se = ScopeExit([this, &temp_dest_path, &ok] {
+    if (!ok) {
+      WARN_NOT_OK(env().DeleteFile(temp_dest_path),
+                  "Failed to delete temporary retryable requests file");
+    }
+  });
+
+  std::unique_ptr<WritableFile> writer;
+  RETURN_NOT_OK_PREPEND(env().NewWritableFile(temp_dest_path, &writer),
+                        "Unable to open file for writing");
+
+  auto start = MonoTime::Now();
+  RETURN_NOT_OK_PREPEND(downloader_.DownloadFile(data_id, writer.get()),
+                        "Unable to download retryable requests file");
+  RETURN_NOT_OK(env().RenameFile(temp_dest_path, dest_path));
+  auto elapsed = MonoTime::Now().GetDeltaSince(start);
+  LOG_WITH_PREFIX(INFO) << "Downloaded retryable requests file of size " << writer->Size()
+                        << " in " << elapsed.ToSeconds() << " seconds";
   ok = true;
 
   return Status::OK();

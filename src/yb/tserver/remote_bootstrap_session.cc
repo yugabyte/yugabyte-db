@@ -61,6 +61,7 @@
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+DECLARE_bool(enable_flush_retryable_requests);
 
 DEFINE_test_flag(double, fault_crash_leader_after_changing_role, 0.0,
                  "The leader will crash after successfully sending a ChangeConfig (CHANGE_ROLE "
@@ -79,6 +80,8 @@ using consensus::MinimumOpId;
 using strings::Substitute;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
+
+const std::string kRetryableRequestsFileName = "retryable_requests";
 
 RemoteBootstrapSession::RemoteBootstrapSession(
     const std::shared_ptr<TabletPeer>& tablet_peer, std::string session_id,
@@ -221,6 +224,21 @@ Status RemoteBootstrapSession::Init() {
     *kv_store->mutable_rocksdb_files() = VERIFY_RESULT(ListFiles(checkpoint_dir_));
   } else if (!status.IsNotSupported()) {
     RETURN_NOT_OK(status);
+  }
+
+  // Copy the retryable requests if it exists.
+  if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
+    Status s = tablet_peer_->FlushRetryableRequests();
+    if (s.ok() || s.IsAlreadyPresent()) {
+      retryable_requests_filepath_ = JoinPathSegments(checkpoint_dir_, kRetryableRequestsFileName);
+      s = tablet_peer_->CopyRetryableRequestsTo(*retryable_requests_filepath_);
+      if (!s.ok()) {
+        LOG(WARNING) << "Copy retryable requests failed: " << s;
+        retryable_requests_filepath_.reset();
+      }
+    } else {
+      LOG(WARNING) << "Remote bootstrap session: flush retryable requests failed: " << s;
+    }
   }
 
   for (const auto& source : sources_) {
@@ -380,6 +398,8 @@ Status RemoteBootstrapSession::ValidateDataId(const yb::tserver::DataIdPB& data_
             data_id.ShortDebugString());
       }
       return Status::OK();
+    case DataIdPB::RETRYABLE_REQUESTS:
+      return Status::OK();
     case DataIdPB::SNAPSHOT_FILE: FALLTHROUGH_INTENDED;
     case DataIdPB::UNKNOWN:
       return STATUS(InvalidArgument, "Type not supported", data_id.ShortDebugString());
@@ -411,6 +431,12 @@ Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPiec
       const string file_name = data_id.file_name();
       RETURN_NOT_OK_PREPEND(GetRocksDBFilePiece(data_id.file_name(), info),
                             "Unable to get piece of RocksDB file");
+      break;
+    }
+    case DataIdPB::RETRYABLE_REQUESTS: {
+      // Fetching the retryable requests file (may be abscent).
+      RETURN_NOT_OK_PREPEND(GetRetryableRequestsFilePiece(info),
+                            "Unable to get piece of retryable requests file");
       break;
     }
     default:
@@ -445,6 +471,13 @@ Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno, GetDat
 Status RemoteBootstrapSession::GetRocksDBFilePiece(
     const std::string& file_name, GetDataPieceInfo* info) {
   return GetFilePiece(checkpoint_dir_, file_name, env(), info);
+}
+
+Status RemoteBootstrapSession::GetRetryableRequestsFilePiece(GetDataPieceInfo* info) {
+  if (!retryable_requests_filepath_.has_value()) {
+    return Status::OK();
+  }
+  return GetFilePiece(checkpoint_dir_, kRetryableRequestsFileName, env(), info);
 }
 
 Status RemoteBootstrapSession::GetFilePiece(

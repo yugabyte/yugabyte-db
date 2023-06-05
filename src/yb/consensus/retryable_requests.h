@@ -13,9 +13,13 @@
 
 #pragma once
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/retryable_request.h"
 #include "yb/consensus/consensus_fwd.h"
 
+#include "yb/fs/fs_manager.h"
+
+#include "yb/util/pb_util.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status_fwd.h"
 
@@ -41,6 +45,12 @@ class RetryableRequests {
 
   RetryableRequests(RetryableRequests&& rhs);
   void operator=(RetryableRequests&& rhs);
+
+  OpId GetMaxReplicatedOpId() const;
+  void SetLastFlushedOpId(const OpId& op_id);
+  void ToPB(RetryableRequestsPB* pb) const;
+  void FromPB(const RetryableRequestsPB& pb);
+  bool HasUnflushedData() const;
 
   // Tries to register a new running retryable request.
   // Returns error or false if request with such id is already present.
@@ -73,6 +83,74 @@ class RetryableRequests {
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
+};
+
+// This class is not thread safe, the upper layer should have correct control.
+class RetryableRequestsManager {
+ public:
+  RetryableRequestsManager() {}
+
+  RetryableRequestsManager(
+      const TabletId& tablet_id, FsManager* const fs_manager, const std::string& wal_dir) :
+      tablet_id_(tablet_id), fs_manager_(fs_manager), dir_(wal_dir) {}
+
+  Status Init();
+
+  FsManager* fs_manager() const { return fs_manager_; }
+  const RetryableRequests& retryable_requests() const { return retryable_requests_; }
+  RetryableRequests& retryable_requests() { return retryable_requests_; }
+
+  static std::string FilePath(const std::string& path) {
+    return JoinPathSegments(path, FileName());
+  }
+
+  bool HasUnflushedData() const { return retryable_requests_.HasUnflushedData(); }
+
+  bool has_file_on_disk() const {
+    return has_file_on_disk_;
+  }
+
+  // Flush the pb as the latest version.
+  Status SaveToDisk(std::unique_ptr<RetryableRequests> retryable_requests);
+
+  // Load the latest version from disk if any.
+  Status LoadFromDisk();
+
+  // Copy the latest version to dest_path.
+  Status CopyTo(const std::string& dest_path);
+
+  // Take the snapshot of the retryable requests, return the copy if success.
+  std::unique_ptr<RetryableRequests> TakeSnapshotOfRetryableRequests();
+
+ private:
+  std::string CurrentFilePath() {
+    return FilePath(dir_);
+  }
+
+  std::string NewFilePath() {
+    return JoinPathSegments(dir_, NewFileName());
+  }
+
+  static std::string FileName() {
+    return kRetryableRequestsFileName;
+  }
+
+  static std::string NewFileName() {
+    return FileName() + kSuffixNew;
+  }
+
+  // Do the actual initialization.
+  // Find the valid retryable requests file from disk and delete other versions.
+  Status DoInit();
+
+  bool has_file_on_disk_ = false;
+  TabletId tablet_id_;
+  FsManager* fs_manager_ = nullptr;
+  std::string dir_;
+  RetryableRequests retryable_requests_;
+
+  static constexpr char kSuffixNew[] = ".NEW";
+  static constexpr char kRetryableRequestsFileName[] = "retryable_requests";
 };
 
 } // namespace consensus

@@ -66,6 +66,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
 
@@ -74,6 +76,7 @@
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
@@ -480,7 +483,10 @@ Status GetTableLocations(MiniCluster* cluster,
                          master::GetTableLocationsResponsePB* table_locations);
 
 // Get number of tablets of given table hosted by tserver.
-size_t GetNumTabletsOfTableOnTS(tserver::TabletServer* tserver, const TableId& table_id);
+size_t GetNumTabletsOfTableOnTS(
+    tserver::TabletServer* const tserver,
+    const TableId& table_id,
+    TabletPeerFilter filter = nullptr);
 
 // Wait for the specified number of voters to be reported to the config on the
 // master for the specified tablet.

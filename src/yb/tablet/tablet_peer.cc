@@ -86,11 +86,13 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -210,9 +212,10 @@ Status TabletPeer::InitTabletPeer(
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* raft_pool,
     ThreadPool* tablet_prepare_pool,
-    consensus::RetryableRequests* retryable_requests,
+    consensus::RetryableRequestsManager* retryable_requests_manager,
     std::unique_ptr<ConsensusMetadata> consensus_meta,
-    consensus::MultiRaftManager* multi_raft_manager) {
+    consensus::MultiRaftManager* multi_raft_manager,
+    ThreadPool* flush_retryable_requests_pool) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
@@ -282,10 +285,6 @@ Status TabletPeer::InitTabletPeer(
                                             meta_->fs_manager()->uuid(), &consensus_meta));
     }
 
-    if (retryable_requests) {
-      retryable_requests->SetMetricEntity(tablet->GetTabletMetricsEntity());
-    }
-
     consensus_ = RaftConsensus::Create(
         options,
         std::move(consensus_meta),
@@ -302,9 +301,14 @@ Status TabletPeer::InitTabletPeer(
         mark_dirty_clbk_,
         tablet_->table_type(),
         raft_pool,
-        retryable_requests,
+        retryable_requests_manager,
         multi_raft_manager);
     has_consensus_.store(true, std::memory_order_release);
+
+    auto flush_retryable_requests_pool_token = flush_retryable_requests_pool
+        ? flush_retryable_requests_pool->NewToken(ThreadPool::ExecutionMode::SERIAL) : nullptr;
+    retryable_requests_flusher_ = std::make_shared<RetryableRequestsFlusher>(
+        tablet_id_, consensus_, std::move(flush_retryable_requests_pool_token));
 
     tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));
     operation_tracker_.SetPostTracker(
@@ -515,6 +519,10 @@ void TabletPeer::CompleteShutdown(
 
   if (log_) {
     WARN_NOT_OK(log_->Close(), LogPrefix() + "Error closing the Log");
+  }
+
+  if (retryable_requests_flusher_) {
+    retryable_requests_flusher_.reset();
   }
 
   VLOG_WITH_PREFIX(1) << "Shut down!";
@@ -1376,6 +1384,11 @@ shared_ptr<consensus::RaftConsensus> TabletPeer::shared_raft_consensus() const {
   return consensus_;
 }
 
+std::shared_ptr<RetryableRequestsFlusher> TabletPeer::shared_retryable_requests_flusher() const {
+  std::lock_guard<simple_spinlock> lock(lock_);
+  return retryable_requests_flusher_;
+}
+
 Result<OperationDriverPtr> TabletPeer::NewLeaderOperationDriver(
     std::unique_ptr<Operation>* operation, int64_t term) {
   if (term == OpId::kUnknownTerm) {
@@ -1671,6 +1684,50 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
   return STATUS(
       IllegalState,
       Substitute("Unable to find peer $0 in config for tablet $1", requestor_uuid, tablet_id()));
+}
+
+Result<consensus::RetryableRequests> TabletPeer::GetRetryableRequests() {
+  auto raft_consensus = shared_raft_consensus();
+  // raft_consensus is nullptr during bootstrap.
+  SCHECK_FORMAT(raft_consensus,
+                IllegalState,
+                "Tablet $0 raft_consensus not initialized",
+                tablet_id_);
+  return raft_consensus->GetRetryableRequests();
+}
+
+Status TabletPeer::FlushRetryableRequests() {
+  auto retryable_requests_flusher = shared_retryable_requests_flusher();
+  SCHECK_FORMAT(retryable_requests_flusher,
+                IllegalState,
+                "Tablet $0 retryable_requests_flusher not initialized",
+                tablet_id_);
+  return retryable_requests_flusher->FlushRetryableRequests();
+}
+
+Status TabletPeer::CopyRetryableRequestsTo(const std::string& dest_path) {
+  auto retryable_requests_flusher = shared_retryable_requests_flusher();
+  SCHECK_FORMAT(retryable_requests_flusher,
+                IllegalState,
+                "Tablet $0 retryable_requests_flusher not initialized",
+                tablet_id_);
+  return retryable_requests_flusher->CopyRetryableRequestsTo(dest_path);
+}
+
+Status TabletPeer::SubmitFlushRetryableRequestsTask() {
+  auto retryable_requests_flusher = shared_retryable_requests_flusher();
+  SCHECK_FORMAT(retryable_requests_flusher,
+                IllegalState,
+                "Tablet $0 retryable_requests_flusher not initialized",
+                tablet_id_);
+  return retryable_requests_flusher->SubmitFlushRetryableRequestsTask();
+}
+
+bool TabletPeer::TEST_HasRetryableRequestsOnDisk() {
+  auto retryable_requests_flusher = shared_retryable_requests_flusher();
+  return retryable_requests_flusher
+      ? retryable_requests_flusher->TEST_HasRetryableRequestsOnDisk()
+      : false;
 }
 
 }  // namespace tablet
