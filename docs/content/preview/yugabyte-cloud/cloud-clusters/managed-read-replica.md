@@ -37,6 +37,7 @@ Read replicas require the following:
 ## Limitations
 
 - Partition-by-region clusters do not support read replicas.
+- If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
 
 ## Add or edit read replicas
 
