@@ -4146,30 +4146,37 @@
       "type" : "object"
     },
     "DatabaseSecurityFormData" : {
+      "description" : "Database security properties",
       "properties" : {
         "dbName" : {
+          "description" : "YSQL DB Name",
           "type" : "string"
         },
         "ycqlAdminPassword" : {
+          "description" : "New YCQL admin password",
           "type" : "string"
         },
         "ycqlAdminUsername" : {
+          "description" : "YCQL admin username",
           "type" : "string"
         },
         "ycqlCurrAdminPassword" : {
+          "description" : "Current YCQL admin password",
           "type" : "string"
         },
         "ysqlAdminPassword" : {
+          "description" : "New YSQL admin password",
           "type" : "string"
         },
         "ysqlAdminUsername" : {
+          "description" : "YSQL admin username",
           "type" : "string"
         },
         "ysqlCurrAdminPassword" : {
+          "description" : "Current YSQL admin password",
           "type" : "string"
         }
       },
-      "required" : [ "dbName", "ycqlAdminPassword", "ycqlAdminUsername", "ycqlCurrAdminPassword", "ysqlAdminPassword", "ysqlAdminUsername", "ysqlCurrAdminPassword" ],
       "type" : "object"
     },
     "DatabaseUserFormData" : {

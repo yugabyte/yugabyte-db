@@ -18,6 +18,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.net.URI;
@@ -71,8 +73,27 @@ public class UniverseYbDbAdminHandler {
 
   public void setDatabaseCredentials(
       Customer customer, Universe universe, DatabaseSecurityFormData dbCreds) {
-    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer type.");
+
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    // Only yugbayte customer cloud can modify password for users other than default.
+    if (!StringUtils.isEmpty(dbCreds.ysqlAdminUsername)) {
+      if (!userIntent.enableYSQLAuth) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot change password for ysql as its auth is already disabled.");
+      } else if (!dbCreds.ysqlAdminUsername.equals(Util.DEFAULT_YSQL_USERNAME)
+          && !runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+        throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer type.");
+      }
+    }
+    if (!StringUtils.isEmpty(dbCreds.ycqlAdminUsername)) {
+      if (!userIntent.enableYCQLAuth) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot change password for ycql as its auth is already disabled.");
+      } else if (!dbCreds.ycqlAdminUsername.equals(Util.DEFAULT_YCQL_USERNAME)
+          && !runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+        throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer type.");
+      }
     }
 
     dbCreds.validation();
