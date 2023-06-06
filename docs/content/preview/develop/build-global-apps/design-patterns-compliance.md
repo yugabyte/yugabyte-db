@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: global-apps-design-patterns-compliance
     parent: build-global-apps
-    weight: 201
+    weight: 2010
 type: docs
 ---
 

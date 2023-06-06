@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: global-apps-performance
     parent: build-global-apps
-    weight: 203
+    weight: 2030
 type: docs
 ---
 

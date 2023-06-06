@@ -9,7 +9,7 @@ menu:
   preview:
     identifier1: global-apps-design-patterns
     parent1: build-global-apps
-    weight: 202
+    weight: 2020
 rightNav:
   hideH3: true
   hideH4: true
