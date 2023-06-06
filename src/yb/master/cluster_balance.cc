@@ -33,6 +33,7 @@
 #include "yb/master/master_error.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -101,6 +102,10 @@ DEPRECATE_FLAG(bool, load_balancer_skip_leader_as_remove_victim, "10_2022");
 DEFINE_RUNTIME_bool(allow_leader_balancing_dead_node, true,
     "When a tserver is marked as dead, do we continue leader balancing for tables that "
     "have a replica on this tserver");
+
+DEFINE_test_flag(int32, load_balancer_wait_ms, 0,
+                 "For testing purposes, number of milliseconds to wait at the start of a load "
+                 "balancer iteration.");
 
 DEFINE_test_flag(int32, load_balancer_wait_after_count_pending_tasks_ms, 0,
                  "For testing purposes, number of milliseconds to wait after counting and "
@@ -316,6 +321,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1) << "Load balancing is not enabled.";
     return;
   }
+  AtomicFlagSleepMs(&FLAGS_TEST_load_balancer_wait_ms);
   VLOG(1) << "Running load balancer";
   VLOG(2) << "Load balancer options: " << options->ToString();
 
