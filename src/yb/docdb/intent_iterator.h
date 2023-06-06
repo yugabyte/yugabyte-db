@@ -202,7 +202,11 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     rocksdb::Iterator* intent_iter,
     TransactionStatusCache* transaction_status_cache);
 
-Slice StrongWriteSuffix(const dockv::KeyBytes& key);
+Slice StrongWriteSuffix(Slice key);
+
+inline Slice StrongWriteSuffix(const dockv::KeyBytes& key) {
+  return StrongWriteSuffix(key.AsSlice());
+}
 
 void AppendStrongWrite(dockv::KeyBytes* out);
 
