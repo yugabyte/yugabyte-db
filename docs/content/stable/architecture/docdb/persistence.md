@@ -21,7 +21,7 @@ This storage layer is a persistent key-to-object (or to-document) store. The fol
 
 ### DocDB key
 
-The keys in a DocDB document model are compound keys consisting of zero or more hash-organized components followed by zero or more ordered (range) components. These components are stored in their data type-specific sort order, with both ascending and descending sort order supported for each ordered component of the key.  If any hash columns are present then they are proceeded by a 16-bit hash of the hash column values.
+The keys in a DocDB document model are compound keys consisting of zero or more hash-organized components followed by zero or more ordered (range) components. These components are stored in their data type-specific sort order, with both ascending and descending sort order supported for each ordered component of the key.  If any hash columns are present then they are preceded by a 16-bit hash of the hash column values.
 
 If [colocation](../../docdb-sharding/colocated-tables/) is being used then the key will be prefixed with the colocation ID of the table it is referring to (not shown in the diagram); this separates data from different tables colocated in the same tablet.
 
@@ -50,7 +50,7 @@ DocumentKey1 = {
 }
 ```
 
-Keys stored in RocksDB consist of a number of components, where the first component is a document key, followed by several scalar components, and finally followed by a MVCC timestamp (sorted in reverse order). Each component in the DocumentKey, SubKey, and Value, are PrimitiveValues, which are type value pairs that can be encoded to and decoded from strings. When encoding primitive values in keys, a binary-comparable encoding is used for the value, so that sort order of the encoding is the same as the sort order of the value.
+Keys stored in RocksDB consist of a number of components, where the first component is a document key, followed by several scalar components, and finally followed by a MVCC timestamp (sorted in reverse order). Each component in the DocumentKey, SubKey, and Value, are PrimitiveValues, which are type value pairs that can be encoded to and decoded from byte arrays. When encoding primitive values in keys, a binary-comparable encoding is used for the value, so that sort order of the encoding is the same as the sort order of the value.
 
 #### Updates and deletes
 
