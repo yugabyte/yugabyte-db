@@ -22,8 +22,6 @@ To change the backup schedule, [create your own schedule](#schedule-backups). To
 
 You can also perform backups [on demand](#on-demand-backups) and manually [restore backups](#restore-a-backup).
 
-Backups are not supported for Sandbox clusters.
-
 ![Cluster Backups page](/images/yb-cloud/cloud-clusters-backups.png)
 
 To delete a backup, click the **Delete** icon.
@@ -32,17 +30,11 @@ To review previous backups, click **Backup**. To review previous restores, click
 
 ## Limitations
 
-If some cluster operations are already running during a scheduled backup window, the backup may be prevented from running.
-
-The following operations lock the cluster and only one can happen at the same time:
-
-- backup and restore
-- pause and resume
-- scaling the cluster, including adding and removing nodes
-- create, delete, and edit of read replicas
-- any scheduled maintenance, including database upgrades, certificate rotations, and cluster maintenance (a backup is run automatically before a database upgrade)
+If [some cluster operations](../#locking-operations) are already running during a scheduled backup window, the backup may be prevented from running.
 
 Backups that don't run are postponed until the next scheduled backup. You can also perform a manual backup after the blocking operation completes.
+
+Backups are not supported for Sandbox clusters.
 
 ## Recommendations
 

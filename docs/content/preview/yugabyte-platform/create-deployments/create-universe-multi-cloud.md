@@ -100,7 +100,7 @@ Click **Finish** to create your cloud provider. Once fully configured, the provi
 
 ### Provision instances
 
-Once you have defined your cloud provider configuration, click **Manage Instances** to provision as many nodes as your application requires. Follow the instructions provided in [Configure the on-premises cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#add-yugabytedb-nodes).
+After you have defined your cloud provider configuration, click **Manage Instances** to provision as many nodes as your application requires. Follow the instructions provided in [Configure the on-premises cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#add-yugabytedb-nodes).
 
 The provider's instance list should be similar to the following:
 

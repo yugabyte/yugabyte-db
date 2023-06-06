@@ -1,5 +1,5 @@
 ---
-title: Performance Advisor
+title: YBA Performance Advisor
 linkTitle: Performance Advisor
 description: Scan your universe to discover performance optimizations.
 headcontent: Scan your universe to discover performance optimizations
