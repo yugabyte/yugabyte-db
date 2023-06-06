@@ -53,6 +53,15 @@ const VALIDATION_SCHEMA = Yup.object().shape({
       otherwise: Yup.string()
     }
   ),
+  ldap_group_search_base_dn: Yup.string().when(
+    ['ldap_group_use_query', 'ldap_group_use_role_mapping'],
+    {
+      is: (ldap_group_use_query, ldap_group_use_role_mapping) =>
+        ldap_group_use_role_mapping === true && ldap_group_use_query === 'true',
+      then: Yup.string().required('Group Search Base DN is Required'),
+      otherwise: Yup.string()
+    }
+  ),
   ldap_service_account_distinguished_name: Yup.string().when(
     ['use_search_and_bind', 'ldap_group_use_role_mapping'],
     {
@@ -242,7 +251,9 @@ export const LDAPAuth = (props) => {
 
   const saveLDAPConfigs = async (values) => {
     if (values.ldap_group_use_role_mapping && !mappingData.length) {
-      setLDAPMapping(true);
+      toast.warn('Map YugabyteDB Anywhere builtin roles to your existing LDAP groups.', {
+        autoClose: 3000
+      });
       return false;
     }
 
@@ -769,6 +780,32 @@ export const LDAPAuth = (props) => {
                                         <Row className="helper-text helper-text-1">{`Use {username} to refer to the the YBA username`}</Row>
                                         <Row className="helper-text helper-text-2">
                                           {`Example: (&(objectClass=group)(member=CN={username},OU=Users,DC=yugabyte,DC=com)`}
+                                        </Row>
+                                      </Col>
+                                    </Row>
+                                    <br />
+                                    <Row key="ldap_group_search_base_dn" className="filter_query">
+                                      <Col className="ua-field-row-c ">
+                                        <Row className="ua-field-row filter_query">
+                                          <Field
+                                            name="ldap_group_search_base_dn"
+                                            label={
+                                              <>
+                                                Group Search Base DN&nbsp;
+                                                <YBInfoTip
+                                                  customClass="ldap-info-popover"
+                                                  title="Group Search Base DN"
+                                                  content="Base DN used to search for user group membership."
+                                                >
+                                                  <i className="fa fa-info-circle" />
+                                                </YBInfoTip>
+                                              </>
+                                            }
+                                            component={YBFormInput}
+                                            disabled={isDisabled}
+                                            className="ua-form-field"
+                                            placeholder="Example:- OU=Groups,DC=yugabyte,DC=com"
+                                          />
                                         </Row>
                                       </Col>
                                     </Row>
