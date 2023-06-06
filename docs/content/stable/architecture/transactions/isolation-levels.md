@@ -89,27 +89,27 @@ then we could lock at any of the following:
 - the row having h1=2, h2=3, r1=4, r2=5
 - column v of the row having h1=2, h2=3, r1=4, r2=5
 
-With YCQL, granularities exist below the column level; for example only one key of a column map can be locked.
+With YCQL, granularities exist below the column level; for example, only one key of a column map can be locked.
 
 ## Efficiently detecting conflicts between locks of different granularities
 
 The straightforward way to handle locks of different granularities would be to have a map from location to lock types.  However, this is too inefficient for detecting conflicts: attempting, for example, to add a lock at the tablet level would require checking for locks at every row and column in that tablet.
 
-To make conflict detection efficient, YugabyteDB stores extra information at each location about the locks at lower granularities below it.  In particular, it takes a normal lock at the original granularity and weaker versions of that lock at all the granularities that enclose the original granularity.  We call the normal locks _strong_ locks and the weaker variants _weak_ locks.
+To make conflict detection efficient, YugabyteDB stores extra information at each location about the locks at granularities below it.  In particular, it takes a normal lock at the original granularity and weaker versions of that lock at all the granularities that enclose the original granularity.  We call the normal locks _strong_ locks and the weaker variants _weak_ locks.
 
 As an example, pretend we have only tablet- and row-level granularities. To take a serializable write lock at the row level, we would take a strong write lock at the row level and a weak write lock at the tablet level.  To take a serializable read lock at the tablet level, we would just take a strong read lock at the tablet level.
 
-By using the following conflict rules, we can decide if two original locks would conflict based only on whether or not their strong/weak locks at any location would conflict:
+Using the following conflict rules, we can decide if two original locks would conflict based only on whether or not their strong/weak locks at any location would conflict:
 
-- two strong locks conflict iff they would've conflicted as normal locks
+- two strong locks conflict if and only if they would've conflicted as normal locks
 - two weak locks never conflict
-- a strong lock conflicts with a weak lock iff they would've conflicted as normal locks
+- a strong lock conflicts with a weak lock if and only if they would've conflicted as normal locks
 
 That is, for each location that would have two locks, would they conflict under the above rules?  There is no need to enumerate the sublocations of any location.
 
-In our example, we would detect a conflict at the tablet level between the strong read lock and the weak write lock.  If we had instead tried to take the serializable read lock at the row level then there would've been no conflict at the tablet level (both locks there are weak) but there might have been at the row level if the two locks were taken on the same row.
+In the example, we would detect a conflict at the tablet level between the strong read lock and the weak write lock.  If we had instead tried to take the serializable read lock at the row level, then there would've been no conflict at the tablet level (both locks there are weak) but there might have been at the row level if the two locks were taken on the same row.
 
-When we include the strong/weak distinction, the full conflict matrix becomes:
+Including the strong/weak distinction, the full conflict matrix becomes:
 
 <table>
   <tbody>
