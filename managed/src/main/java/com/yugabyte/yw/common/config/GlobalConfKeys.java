@@ -759,4 +759,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Listening port for node agent servers",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> KubernetesOperatorEnabled =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.operator.enabled",
+          ScopeType.GLOBAL,
+          "Enable Kubernentes Operator",
+          "Enable Kubernentes Operator, requires restart to take effect",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<String> KubernetesOperatorNamespace =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.operator.namespace",
+          ScopeType.GLOBAL,
+          "Change the namespace kubernetes operator listens on",
+          "Change the namespace kubernetes operator listens on. By default, all namespaces "
+              + "are watched. Requires restart to take effect",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }
