@@ -62,7 +62,6 @@ class IntentAwareIteratorIf {
   // append up to kMaxBytesPerEncodedHybridTime + 1 bytes of data to the buffer. The appended data
   // is removed when the method returns.
   virtual void SeekForward(Slice key) = 0;
-  virtual void SeekForward(dockv::KeyBytes* key) = 0;
 
   // Seek out of subdoc key (it is responsibility of caller to make sure it doesn't have hybrid
   // time). For efficiency, the method takes a non-const KeyBytes pointer avoids memory allocation

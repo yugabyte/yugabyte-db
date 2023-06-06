@@ -137,8 +137,6 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   void FinalizeKeyFoundStats();
 
-  Status AssignHasNextStatus(const Status& status);
-
   Slice shared_key_prefix() const;
 
   bool is_initialized_ = false;
@@ -181,9 +179,6 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   dockv::KeyBytes row_key_;
 
   const dockv::ReaderProjection& projection_;
-
-  // Used for keeping track of errors in HasNext.
-  Status has_next_status_;
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
   boost::optional<dockv::KeyBytes> tuple_key_;

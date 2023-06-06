@@ -52,11 +52,6 @@ using std::string;
 DEFINE_RUNTIME_bool(
     use_offset_based_key_decoding, false, "Use Offset based key decoding for reader.");
 
-#define ASSIGN_AND_RETURN_NOT_OK(s) do { \
-    auto&& _s = (s); \
-    if (PREDICT_FALSE(!_s.ok())) return AssignHasNextStatus(MoveStatus(std::move(_s))); \
-  } while (false)
-
 namespace yb::docdb {
 
 using dockv::DocKey;
@@ -321,11 +316,6 @@ Result<bool> DocRowwiseIteratorBase::FetchTuple(Slice tuple_id, qlexpr::QLTableR
   return VERIFY_RESULT(FetchNext(row)) && VERIFY_RESULT(GetTupleId()) == tuple_id;
 }
 
-Status DocRowwiseIteratorBase::AssignHasNextStatus(const Status& status) {
-  has_next_status_ = status;
-  return status;
-}
-
 Slice DocRowwiseIteratorBase::shared_key_prefix() const {
   return doc_read_context_.shared_key_prefix();
 }
@@ -339,7 +329,7 @@ Status DocRowwiseIteratorBase::InitIterKey(Slice key, bool full_row) {
   size_t hash_part_size = kUninitializedHashPartSize;
   if (!full_row) {
     const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(row_key_.AsSlice());
-    ASSIGN_AND_RETURN_NOT_OK(dockey_sizes);
+    RETURN_NOT_OK(dockey_sizes);
     row_key_.mutable_data()->Truncate(dockey_sizes->doc_key_size);
     hash_part_size = dockey_sizes->hash_part_size;
     key = row_key_;
@@ -363,7 +353,7 @@ Status DocRowwiseIteratorBase::InitIterKey(Slice key, bool full_row) {
       // sure that we have empty range part.
       if (hash_part_size == kUninitializedHashPartSize) {
         auto sizes = DocKey::EncodedHashPartAndDocKeySizes(key);
-        ASSIGN_AND_RETURN_NOT_OK(sizes);
+        RETURN_NOT_OK(sizes);
         hash_part_size = sizes->hash_part_size;
       }
 

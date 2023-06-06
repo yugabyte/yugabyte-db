@@ -147,10 +147,11 @@ inline void DocRowwiseIterator::PrevDocKey(Slice key) {
 }
 
 Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) const {
-  if (scan_choices_) {
-    if (!IsFetchedRowStatic()
-        && !scan_choices_->CurrentTargetMatchesKey(row_key_)) {
-      return scan_choices_->SeekToCurrentTarget(db_iter_.get());
+  if (scan_choices_ && !IsFetchedRowStatic()) {
+    if (VERIFY_RESULT(scan_choices_->DoneWithCurrentTarget()) &&
+        !scan_choices_->CurrentTargetMatchesKey(row_key_)) {
+      scan_choices_->SeekToCurrentTarget(db_iter_.get());
+      return Status::OK();
     }
   }
   if (!is_forward_scan_) {
@@ -180,14 +181,8 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
 
 template <class TableRow>
 Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
-  VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", done_: "
-          << done_ << ", db_iter finished: " << db_iter_->IsOutOfRecords();
+  VLOG_WITH_FUNC(4) << "done_: " << done_ << ", db_iter finished: " << db_iter_->IsOutOfRecords();
 
-  // Repeated HasNext calls (without Skip/NextRow in between) should be idempotent:
-  // 1. If a previous call failed we returned the same status.
-  // 2. If a row is already available (row_ready_), return true directly.
-  // 3. If we finished all target rows for the scan (done_), return false directly.
-  RETURN_NOT_OK(has_next_status_);
   if (done_) {
     return false;
   }
@@ -215,9 +210,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
     const auto key_data_result = db_iter_->FetchKey();
     if (!key_data_result.ok()) {
-      VLOG(4) << __func__ << ", key data: " << key_data_result.status();
-      has_next_status_ = key_data_result.status();
-      return has_next_status_;
+      VLOG_WITH_FUNC(4) << __func__ << ", key data: " << key_data_result.status();
+      return key_data_result.status();
     }
     const auto& key_data = *key_data_result;
 
@@ -237,11 +231,11 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
         (is_forward_scan_ ? row_key.compare(key_data.key) >= 0
                           : row_key.compare(key_data.key) <= 0)) {
       // TODO -- could turn this check off in TPCC?
-      has_next_status_ = STATUS_FORMAT(
+      auto status = STATUS_FORMAT(
           Corruption, "Infinite loop detected at $0, row key: $1",
           key_data.key.ToDebugString(), row_key.ToDebugString());
-      LOG(DFATAL) << has_next_status_;
-      return has_next_status_;
+      LOG(DFATAL) << status;
+      return status;
     }
     first_iteration = false;
 
@@ -278,7 +272,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
         // We updated scan target above, if it goes past the row_key_ we will seek again, and
         // process the found key in the next loop.
         if (!scan_choices_->CurrentTargetMatchesKey(row_key)) {
-          RETURN_NOT_OK(scan_choices_->SeekToCurrentTarget(db_iter_.get()));
+          scan_choices_->SeekToCurrentTarget(db_iter_.get());
           continue;
         }
       }
@@ -302,28 +296,17 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       row_->object_container().clear();
     }
 
-    auto doc_found_res = FetchRow(table_row);
-    if (!doc_found_res.ok()) {
-      has_next_status_ = doc_found_res.status();
-      return has_next_status_;
-    }
-    const auto doc_found = *doc_found_res;
+    auto doc_found = VERIFY_RESULT(FetchRow(table_row));
     // Use the write_time of the entire row.
     // May lose some precision by not examining write time of every column.
     IncrementKeyFoundStats(doc_found == DocReaderResult::kNotFound, key_data.write_time);
 
-    if (scan_choices_ && !is_static_column) {
-      has_next_status_ = scan_choices_->DoneWithCurrentTarget();
-      RETURN_NOT_OK(has_next_status_);
-    }
-    has_next_status_ = AdvanceIteratorToNextDesiredRow(
-        doc_found == DocReaderResult::kFoundAndFinished);
-    RETURN_NOT_OK(has_next_status_);
+    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow(
+        /* row_finished= */ doc_found == DocReaderResult::kFoundAndFinished));
     VLOG(4) << __func__ << ", iter: " << !db_iter_->IsOutOfRecords();
 
     if (doc_found != DocReaderResult::kNotFound) {
-      has_next_status_ = FillRow(table_row);
-      RETURN_NOT_OK(has_next_status_);
+      RETURN_NOT_OK(FillRow(table_row));
       break;
     }
   }
