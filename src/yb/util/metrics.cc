@@ -658,6 +658,10 @@ Status Histogram::WriteForPrometheus(
   return Status::OK();
 }
 
+void Histogram::Reset() const {
+  histogram_->ResetPercentiles();
+}
+
 Status Histogram::GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot_pb,
                                                  const MetricJsonOptions& opts) const {
   HdrHistogram snapshot(*histogram_);
@@ -667,7 +671,7 @@ Status Histogram::GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot_p
   // the histogram's percentiles between each invocation. User also has the
   // option to set the url parameter reset_histograms=false
   if (opts.reset_histograms) {
-    histogram_->ResetPercentiles();
+    Reset();
   }
 
   snapshot_pb->set_name(prototype_->name());

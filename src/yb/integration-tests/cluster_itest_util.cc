@@ -366,19 +366,19 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
       tablet_id, minimum_index, timeout, must_be_committed, received_ids, committed_ids);
 }
 
-Status WaitForServerToBeQuite(const MonoDelta& timeout,
+Status WaitForServerToBeQuiet(const MonoDelta& timeout,
                               const TabletServerMap& tablet_servers,
                               const TabletId& tablet_id,
                               OpId* last_logged_opid,
                               MustBeCommitted must_be_committed) {
-  return WaitForServerToBeQuite(timeout,
+  return WaitForServerToBeQuiet(timeout,
                                 TServerDetailsVector(tablet_servers),
                                 tablet_id,
                                 last_logged_opid,
                                 must_be_committed);
 }
 
-Status WaitForServerToBeQuite(const MonoDelta& timeout,
+Status WaitForServerToBeQuiet(const MonoDelta& timeout,
                               const vector<TServerDetails*>& tablet_servers,
                               const TabletId& tablet_id,
                               OpId* last_logged_opid,

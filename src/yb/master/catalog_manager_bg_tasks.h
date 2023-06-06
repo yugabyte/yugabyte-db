@@ -35,6 +35,7 @@
 #include <unordered_set>
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/util/metrics.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/mutex.h"
 #include "yb/util/condition_variable.h"
@@ -73,6 +74,7 @@ class CatalogManagerBgTasks final {
   scoped_refptr<yb::Thread> thread_;
   CatalogManager *catalog_manager_;
   bool was_leader_ = false;
+  scoped_refptr<Histogram> load_balancer_duration_;
 };
 
 }  // namespace master
