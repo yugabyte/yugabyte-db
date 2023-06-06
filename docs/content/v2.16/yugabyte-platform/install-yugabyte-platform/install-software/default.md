@@ -112,13 +112,13 @@ The recommended TLS version is 1.2.
 
 ## Set up HTTP/HTTPS proxy
 
-YBA sometimes initiates HTTP or HTTPS connections to other servers. For example, HTTP or HTTPS connections (depending on your setup) maybe utilized in one or more of the following (not limited to) situations:
+YBA sometimes initiates HTTP or HTTPS connections to other servers. For example, HTTP or HTTPS connections (depending on your setup) can be used to do the following, or more:
 
 - Contact a public cloud provider to create VMs.
 - Deposit backups on a public cloud provider's object storage service.
 - Contact an external load balancer.
 
-You can set up YBA to utilize an HTTP/HTTPS proxy server via **Application config**, and select **Enable Proxy** as per the following illustration:
+You can set up YBA to use an HTTP/HTTPS proxy server via **Application config**, and select **Enable Proxy** as per the following illustration:
 
 ![Enable Proxy](/images/replicated/enable-proxy.png)
 
@@ -126,9 +126,9 @@ When completing the **Enable Proxy** settings, keep in mind the following:
 
 - If your proxy is using the default ports for each protocol, then set the ports for the HTTP and HTTPS proxies to the default, 80 and 443 respectively, instead of 8080 and 8443 as shown in the preceding illustration.
 
-- If you have only one proxy server set up (for both HTTP and/or HTTPS), then specify that proxy server for both the HTTP settings (the first three settings) and the HTTPS settings (settings four to six).
+- If you have only one proxy set up (HTTP or HTTPS), then set the same values for both.
 
-- The help text for each field shows which Java system property or environment variable gets set by the field. System properties have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
+- This configuration sets operating system environment variables and Java system properties. The help text for each field shows which Java system property or environment variable gets set by the field. System properties have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
 
 - The **no proxy** fields (HTTP no proxy setting, HTTP no proxy setting for Java) are lists of exception hosts, provided as a comma-delimited list of addresses or hostnames. Include the following addresses:
   - The Docker gateway address (172.17.0.1 by default).

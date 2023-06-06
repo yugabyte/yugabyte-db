@@ -196,6 +196,10 @@ When completing the **Enable Proxy** settings, keep in mind the following:
   - The address of any previously-specified web proxy.
   - Any other IP addresses that you deem safe to bypass the proxy.
 
+- These settings comprehensively govern all network connections that YBA initiates. For example, if you specify a proxy server for HTTP, all unencrypted connections initiated by YBA will be affected. If you want YBA to bypass the proxy server when connecting to database universe nodes, then you must explicitly specify the database universe node IP addresses as exception hosts (also known as "no proxy").
+
+- Because some YBA network connections are driven by YBA's Java process, while others are driven outside of Java (for example, via Python or a Linux shell execution), each (Java and non-Java) has its own separate configurable parameters.
+
 - The Java fields can accept values as Java system properties, including the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
 
 - YBA follows community standards for setting proxy environment variables, where two environment variables are exported with lowercase and uppercase names. For example, if you enter "http://my.Proxy.host:8080" for **HTTP Proxy setting**, then two environment variables are exported as follows:
