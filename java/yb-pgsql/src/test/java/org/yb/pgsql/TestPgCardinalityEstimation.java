@@ -151,7 +151,7 @@ public class TestPgCardinalityEstimation extends BasePgSQLTest {
           "ORDER BY t1.c_float, t2.c_text, t3.c_varchar DESC LIMIT %2$d OFFSET 50",
           TABLE_NAME, QUERY_LIMIT),
           makeTopLevelBuilder()
-              .storageReadRequests(Checkers.equal(0))
+              .storageReadRequests(Checkers.greater(1))
               .storageWriteRequests(Checkers.equal(0))
               .plan(makePlanBuilder()
                   .nodeType(NODE_LIMIT)
@@ -171,6 +171,8 @@ public class TestPgCardinalityEstimation extends BasePgSQLTest {
                                       .relationName(TABLE_NAME)
                                       .alias("t2")
                                       .planRows(Checkers.equal(TABLE_ROWS))
+                                      .storageTableReadRequests(Checkers.greater(1))
+                                      .storageTableReadExecutionTime(Checkers.greater(0.0))
                                       .build(),
                                   makePlanBuilder()
                                       .nodeType(NODE_HASH)
@@ -187,6 +189,10 @@ public class TestPgCardinalityEstimation extends BasePgSQLTest {
                                                       .relationName(TABLE_NAME)
                                                       .alias("t1")
                                                       .planRows(Checkers.greater(1))
+                                                      .storageTableReadRequests(
+                                                        Checkers.greater(1))
+                                                      .storageTableReadExecutionTime(
+                                                        Checkers.greater(0.0))
                                                       .build())
                                                   .build(),
                                               makePlanBuilder()
@@ -197,6 +203,10 @@ public class TestPgCardinalityEstimation extends BasePgSQLTest {
                                                       .relationName(TABLE_NAME)
                                                       .alias("t3")
                                                       .planRows(Checkers.equal(TABLE_ROWS))
+                                                      .storageTableReadRequests(
+                                                        Checkers.greater(1))
+                                                      .storageTableReadExecutionTime(
+                                                        Checkers.greater(0.0))
                                                       .build())
                                                   .build())
                                           .build())

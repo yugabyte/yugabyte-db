@@ -466,27 +466,7 @@ ExecProcNodeFirst(PlanState *node)
 static void
 YbUpdateInstrument(PlanState *node)
 {
-	switch (nodeTag(node))
-	{
-	case T_IndexScanState:
-		YbExecUpdateInstrumentIndexScan((IndexScanState *) node,
-										node->instrument);
-		break;
-	case T_IndexOnlyScanState:
-		YbExecUpdateInstrumentIndexOnlyScan((IndexOnlyScanState *) node,
-											node->instrument);
-		break;
-	case T_SeqScanState:
-		YbExecUpdateInstrumentSeqScan((SeqScanState *) node,
-									  node->instrument);
-		break;
-	case T_ForeignScanState:
-		YbExecUpdateInstrumentForeignScan((ForeignScanState *) node,
-										  node->instrument);
-		break;
-	default:
-		break;
-	}
+	YbUpdateSessionStats(&node->instrument->yb_instr);
 }
 
 /*
