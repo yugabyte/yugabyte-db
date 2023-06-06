@@ -122,7 +122,6 @@ class OnPremListRegionsAndZones extends Component {
                 <Field
                   name={`${fieldItem}.code`}
                   component={YBInputField}
-                  insetError={true}
                   isReadOnly={isReadOnly}
                 />
               </Col>
@@ -130,7 +129,6 @@ class OnPremListRegionsAndZones extends Component {
                 <Field
                   name={`${fieldItem}.location`}
                   component={YBSelect}
-                  insetError={true}
                   options={onPremRegionLocations}
                   readOnlySelect={isReadOnly}
                 />
@@ -139,7 +137,6 @@ class OnPremListRegionsAndZones extends Component {
                 <Field
                   name={`${fieldItem}.zones`}
                   component={YBInputField}
-                  insetError={true}
                   isReadOnly={isReadOnly}
                 />
               </Col>
