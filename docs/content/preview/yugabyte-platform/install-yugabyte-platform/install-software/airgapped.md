@@ -173,7 +173,7 @@ The recommended TLS version is 1.2.
 
 ## Set up HTTP/HTTPS proxy
 
-YBA sometimes initiates HTTP or HTTPS connections to other servers. For example, HTTP or HTTPS connections (depending on your setup) maybe utilized in one or more of the following (not limited to) situations:
+YBA sometimes initiates HTTP or HTTPS connections to other servers. For example, HTTP or HTTPS connections (depending on your setup) can be used to do the following, or more:
 
 - Contact a public cloud provider to create VMs.
 - Deposit backups on a public cloud provider's object storage service.
