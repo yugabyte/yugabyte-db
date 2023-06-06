@@ -50,6 +50,9 @@ public class Users extends Model {
 
   /** These are the available user roles */
   public enum Role {
+    @EnumValue("ConnectOnly")
+    ConnectOnly,
+
     @EnumValue("ReadOnly")
     ReadOnly,
 

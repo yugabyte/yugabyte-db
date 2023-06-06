@@ -317,16 +317,16 @@ public class UsersController extends AuthenticatedController {
     }
 
     Users loggedInUser = getLoggedInUser(request);
-    if ((loggedInUser.getRole() == Role.ReadOnly || loggedInUser.getRole() == Role.BackupAdmin)
+    if (loggedInUser.getRole().compareTo(Role.BackupAdmin) <= 0
         && formData.getRole() != user.getRole()) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "ReadOnly/BackupAdmin users can't change their assigned roles");
+          BAD_REQUEST, "ConnectOnly/ReadOnly/BackupAdmin users can't change their assigned roles");
     }
 
-    if ((loggedInUser.getRole() == Role.ReadOnly || loggedInUser.getRole() == Role.BackupAdmin)
+    if (loggedInUser.getRole().compareTo(Role.BackupAdmin) <= 0
         && !formData.getTimezone().equals(user.getTimezone())) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "ReadOnly/BackupAdmin users can't change their timezone");
+          BAD_REQUEST, "ConnectOnly/ReadOnly/BackupAdmin users can't change their timezone");
     }
 
     if (StringUtils.isNotEmpty(formData.getTimezone())

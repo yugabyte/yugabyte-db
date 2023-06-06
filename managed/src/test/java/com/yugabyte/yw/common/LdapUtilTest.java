@@ -109,7 +109,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "base-dn",
                 "",
                 false,
-                false));
+                false,
+                Role.ReadOnly));
 
     assertNotNull(user);
     assertEquals("test-user", user.getEmail());
@@ -149,7 +150,8 @@ public class LdapUtilTest extends FakeDBApplication {
                     "base-dn",
                     "",
                     false,
-                    false)));
+                    false,
+                    Role.ReadOnly)));
   }
 
   @Test
@@ -188,7 +190,8 @@ public class LdapUtilTest extends FakeDBApplication {
                     "base-dn",
                     "",
                     false,
-                    false)));
+                    false,
+                    Role.ReadOnly)));
     assertNull(Users.getByEmail(user.getEmail()));
   }
 
@@ -223,7 +226,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "base-dn",
                 "",
                 false,
-                false));
+                false,
+                Role.ReadOnly));
 
     assertNotNull(user);
     assertEquals(Users.Role.BackupAdmin, user.getRole());
@@ -266,7 +270,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "base-dn",
                 "",
                 false,
-                false));
+                false,
+                Role.ReadOnly));
 
     assertNotNull(updatedUser);
     assertEquals(Users.Role.BackupAdmin, updatedUser.getRole());
@@ -309,7 +314,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "base-dn",
                 "",
                 false,
-                false));
+                false,
+                Role.ReadOnly));
 
     assertEquals(user, oldUser);
   }
@@ -387,14 +393,15 @@ public class LdapUtilTest extends FakeDBApplication {
                 "base-dn",
                 memberOfAttribute,
                 false,
-                groupMappingOn));
+                groupMappingOn,
+                Role.ConnectOnly));
 
     if (groupMappingOn) {
       assertEquals(true, loggedInUser.isLdapSpecifiedRole());
       if (newLdapRoleValid) {
         assertEquals(newLdapRole, loggedInUser.getRole());
       } else {
-        assertEquals(Role.ReadOnly, loggedInUser.getRole());
+        assertEquals(Role.ConnectOnly, loggedInUser.getRole());
       }
     } else {
       if (!newLdapRoleValid) {
@@ -402,7 +409,7 @@ public class LdapUtilTest extends FakeDBApplication {
         if (oldUserPresent) {
           assertEquals(oldUserRole, loggedInUser.getRole());
         } else {
-          assertEquals(Role.ReadOnly, loggedInUser.getRole());
+          assertEquals(Role.ConnectOnly, loggedInUser.getRole());
         }
       } else {
         assertEquals(true, loggedInUser.isLdapSpecifiedRole());
@@ -442,7 +449,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "base-dn",
                 "",
                 false,
-                false));
+                false,
+                Role.ReadOnly));
 
     assertNotNull(user);
     assertEquals("test-user", user.getEmail());
@@ -478,7 +486,8 @@ public class LdapUtilTest extends FakeDBApplication {
                     "base-dn",
                     "",
                     false,
-                    false)));
+                    false,
+                    Role.ReadOnly)));
   }
 
   @Test
@@ -548,7 +557,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "base-dn",
                 "",
                 true,
-                true));
+                true,
+                Role.ReadOnly));
 
     assertNotNull(user);
     assertEquals(username, user.getEmail());
@@ -594,7 +604,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "base-dn",
                 memberOfAttribute,
                 false,
-                true));
+                true,
+                Role.ReadOnly));
 
     assertNotNull(user);
     assertEquals(username, user.getEmail());
@@ -630,7 +641,8 @@ public class LdapUtilTest extends FakeDBApplication {
                     "base-dn",
                     memberOfAttribute,
                     false,
-                    true));
+                    true,
+                    Role.ReadOnly));
           } catch (LdapException e) {
             throw new RuntimeException(e);
           }
