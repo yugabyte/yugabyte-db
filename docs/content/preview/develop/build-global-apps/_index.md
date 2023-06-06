@@ -33,7 +33,7 @@ To comply with data residency laws in each country, companies operating in that 
 
 <!--
 {{<tip>}}
-To understand various paradigms that can help you with complying to data residency laws, see [Compliance Patterns](./global-performance)
+To understand various paradigms that can help you with complying to data residency laws, see [Compliance Patterns](./global-database)
 {{</tip>}}
 -->
 ### Moving closer to users
