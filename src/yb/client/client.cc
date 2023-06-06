@@ -2422,7 +2422,7 @@ Result<int> YBClient::NumTabletsForUserTable(
     return FLAGS_ysql_num_tablets;
   }
 
-  if (FLAGS_ycql_num_tablets > 0) {
+  if (table_type != TableType::PGSQL_TABLE_TYPE && FLAGS_ycql_num_tablets > 0) {
     VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ycql_num_tablets
                         << ": --ycql_num_tablets is specified.";
     return FLAGS_ycql_num_tablets;
