@@ -214,11 +214,9 @@ LOG:  duration: 316.556 ms  plan:
                       Index Cond: (oid = pg_index.indrelid)
 ```
 
-For more information, refer to the [PostgreSQL auto_explain documentation](https://www.postgresql.org/docs/11/auto-explain.html).
-
 ### file_fdw example
 
-The [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) module provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system, or to execute programs on the server and read their output.
+The [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) module provides the foreign-data wrapper `file_fdw`, which can be used to access data files in the server's file system, or to execute programs on the server and read their output.
 
 To enable the extension:
 
@@ -259,8 +257,17 @@ SELECT levenshtein('Yugabyte', 'yugabyte'), metaphone('yugabyte', 8);
 
 ### HypoPG example
 
+The [HypoPG](https://github.com/HypoPG/hypopg) PostgreSQL extension adds support for hypothetical indexes. Use hypothetical indexes to test whether adding an index improves the performance of problematic queries, without expending resources to create them.
+
+To enable the extension:
+
 ```sql
 CREATE EXTENSION hypopg;
+```
+
+Create a table as follows:
+
+```sql
 CREATE TABLE up_and_down (up int primary key, down int);
 INSERT INTO up_and_down SELECT a AS up, 10001-a AS down FROM generate_series(1,10000) a;
 ```
@@ -367,7 +374,7 @@ For more information, refer to the [HypoPG documentation](https://hypopg.readthe
 
 ### passwordcheck
 
-The [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) PostgreSQL module provides a means checks users' passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it will be rejected and the command will terminate with an error.
+The [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) PostgreSQL module provides a means to check user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it will be rejected and the command will terminate with an error.
 
 To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
@@ -469,7 +476,7 @@ For more information on using pg_stat_statements in YugabyteDB, refer to [Get qu
 
 The [postgres_fdw](https://www.postgresql.org/docs/11/postgres-fdw.html) module provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers.
 
-First, install the extension:
+First, enable the extension:
 
 ```sql
 CREATE EXTENSION postgres_fdw;
@@ -659,7 +666,7 @@ SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
 
 ### postgresql-hll example
 
-This extension adds a new data type hll, which is a HyperLogLog data structure. HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision. For example, in 1280 bytes hll can estimate the count of tens of billions of distinct values with only a few percent error.
+The [postgresql-hll](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres/third-party-extensions/postgresql-hll) extension adds a new data type hll, which is a HyperLogLog data structure. HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision. For example, in 1280 bytes hll can estimate the count of tens of billions of distinct values with only a few percent error.
 
 First, enable the extension:
 
@@ -861,6 +868,8 @@ This may take a couple of minutes.
     ```
 
 ### pgsql-postal example
+
+The [pgsql-postal](https://github.com/pramsey/pgsql-postal) extension parses and normalizes street addresses around the world using libpostal.
 
 #### Installation
 
