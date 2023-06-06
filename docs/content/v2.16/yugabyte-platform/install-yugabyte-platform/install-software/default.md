@@ -135,7 +135,7 @@ When completing the **Enable Proxy** settings, keep in mind the following:
   - The address of any previously-specified web proxy.
   - Any other IP addresses that you deem safe to bypass the proxy.
 
-- These settings comprehensively govern all network connections that YBA initiates. For example, suppose that you specify a proxy server for HTTP, all unencrypted connections initiated by YBA will be affected. If you want YBA to connect to the database universe nodes bypassing the proxy server, then you must explicitly specify the database universe nodes' IP addresses as exception hosts (also known as "no proxy").
+- These settings comprehensively govern all network connections that YBA initiates. For example, if you specify a proxy server for HTTP, all unencrypted connections initiated by YBA will be affected. If you want YBA to bypass the proxy server when connecting to database universe nodes, then you must explicitly specify the database universe node IP addresses as exception hosts (also known as "no proxy").
 
 - Some of YBA's network connections are driven by YBA's Java process, while others are driven outside of Java (For example, via Python or a Linux shell execution). As such, there are separate parameters configurable described further.
 
