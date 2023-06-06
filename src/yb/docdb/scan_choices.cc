@@ -731,7 +731,8 @@ std::vector<OptionRange> HybridScanChoices::TEST_GetCurrentOptions() {
 }
 
 // Method called when the scan target is done being used
-Status HybridScanChoices::DoneWithCurrentTarget() {
+Result<bool> HybridScanChoices::DoneWithCurrentTarget() {
+  bool result = false;
   if (schema_num_keys_ == scan_options_.size() ||
       prefix_length_ > 0) {
 
@@ -739,11 +740,12 @@ Status HybridScanChoices::DoneWithCurrentTarget() {
         (prefix_length_ ? prefix_length_ : current_scan_target_ranges_.size()) - 1;
     RETURN_NOT_OK(IncrementScanTargetAtOptionList(incr_idx));
     current_scan_target_.AppendKeyEntryType(KeyEntryType::kGroupEnd);
+    result = true;
   }
 
-  // if we we incremented the last index then
+  // if we incremented the last index then
   // if this is a forward scan it doesn't matter what we do
-  // if this is a backwards scan then dont clear current_scan_target and we
+  // if this is a backwards scan then don't clear current_scan_target and we
   // stay live
   VLOG_WITH_FUNC(2) << "Current_scan_target_ is "
                     << DocKey::DebugSliceToString(current_scan_target_);
@@ -768,39 +770,34 @@ Status HybridScanChoices::DoneWithCurrentTarget() {
                     << " and prev_scan_target_ is "
                     << DocKey::DebugSliceToString(prev_scan_target_);
 
-  return Status::OK();
+  return result;
 }
 
 // Seeks the given iterator to the current target as specified by
 // current_scan_target_ and prev_scan_target_ (relevant in backwards
 // scans)
-Status HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
-  VLOG(2) << __func__ << ", pos: " << db_iter->DebugPosToString();
+void HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
+  VLOG_WITH_FUNC(2) << "pos: " << db_iter->DebugPosToString();
 
-  if (!FinishedWithScanChoices()) {
-    // if current_scan_target_ is valid we use it to determine
-    // what to seek to
-    if (!current_scan_target_.empty()) {
-      VLOG(3) << __PRETTY_FUNCTION__ << " current_scan_target_ is non-empty. "
-              << DocKey::DebugSliceToString(current_scan_target_);
-      if (is_forward_scan_) {
-        VLOG(3) << __PRETTY_FUNCTION__ << " Seeking to "
-                << DocKey::DebugSliceToString(current_scan_target_);
-        db_iter->Seek(current_scan_target_);
-      } else {
-        // seek to the highest key <= current_scan_target_
-        // seeking to the highest key < current_scan_target_ + kHighest
-        // is equivalent to seeking to the highest key <=
-        // current_scan_target_
-        auto tmp = current_scan_target_;
-        KeyEntryValue(KeyEntryType::kHighest).AppendToKey(&tmp);
-        VLOG(3) << __PRETTY_FUNCTION__ << " Going to PrevDocKey " << tmp;
-        db_iter->PrevDocKey(tmp);
-      }
-    }
+  if (FinishedWithScanChoices() || current_scan_target_.empty()) {
+    return;
   }
 
-  return Status::OK();
+  VLOG_WITH_FUNC(3)
+      << "current_scan_target_ is non-empty. " << DocKey::DebugSliceToString(current_scan_target_);
+  if (is_forward_scan_) {
+    VLOG_WITH_FUNC(3) << "Seeking to " << DocKey::DebugSliceToString(current_scan_target_);
+    db_iter->Seek(current_scan_target_);
+  } else {
+    // seek to the highest key <= current_scan_target_
+    // seeking to the highest key < current_scan_target_ + kHighest
+    // is equivalent to seeking to the highest key <=
+    // current_scan_target_
+    auto tmp = current_scan_target_;
+    KeyEntryValue(KeyEntryType::kHighest).AppendToKey(&tmp);
+    VLOG_WITH_FUNC(3) << "Going to PrevDocKey " << tmp;
+    db_iter->PrevDocKey(tmp);
+  }
 }
 
 ScanChoicesPtr ScanChoices::Create(
