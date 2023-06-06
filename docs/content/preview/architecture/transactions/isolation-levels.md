@@ -77,12 +77,12 @@ Although described here as a separate lock type for simplicity, the snapshot iso
 
 Locks can be taken at many levels of granularity.  For example, a serializable read lock could be taken at the level of an entire tablet, a single row, or a single column of a single row.  Such a lock will block attempts to take write locks at that or lower granularities. Thus, for example, a read lock taken at the row level will block attempts to write to that entire row or any sub column of it.
 
-In addition to the above-mentioned levels of granularity, locks in DocDB can be taken at prefixes of the primary key, treating the hash columns as a single unit.  For example, if we have created a YSQL table via:
+In addition to the above-mentioned levels of granularity, locks in DocDB can be taken at prefixes of the primary key, treating the hash columns as a single unit.  For example, if you created a YSQL table via:
 ```sql
 CREATE TABLE test (h1 INT, h2 INT, r1 INT, r2 INT, v INT w INT PRIMARY KEY ((h1,h2) HASH, r1 ASC, r2 ASC);
 ```
 
-then we could lock at any of the following:
+then any of the following could be locked:
 - the entire tablet
 - all rows having h1=2, h2=3
 - all rows having h1=2, h2=3, r1=4
@@ -95,11 +95,11 @@ With YCQL, granularities exist below the column level; for example, only one key
 
 The straightforward way to handle locks of different granularities would be to have a map from location to lock types.  However, this is too inefficient for detecting conflicts: attempting, for example, to add a lock at the tablet level would require checking for locks at every row and column in that tablet.
 
-To make conflict detection efficient, YugabyteDB stores extra information at each location about the locks at granularities below it.  In particular, it takes a normal lock at the original granularity and weaker versions of that lock at all the granularities that enclose the original granularity.  We call the normal locks _strong_ locks and the weaker variants _weak_ locks.
+To make conflict detection efficient, YugabyteDB stores extra information at each location about the locks at granularities below it. In particular, it takes a normal lock at the original granularity and weaker versions of that lock at all the granularities that enclose the original granularity.  The normal locks are called _strong_ locks and the weaker variants _weak_ locks.
 
-As an example, pretend we have only tablet- and row-level granularities. To take a serializable write lock at the row level, we would take a strong write lock at the row level and a weak write lock at the tablet level.  To take a serializable read lock at the tablet level, we would just take a strong read lock at the tablet level.
+As an example, pretend YugabyteDB has only tablet- and row-level granularities. To take a serializable write lock at the row level, it would take a strong write lock at the row level and a weak write lock at the tablet level.  To take a serializable read lock at the tablet level, YugabyteDB would just take a strong read lock at the tablet level.
 
-Using the following conflict rules, we can decide if two original locks would conflict based only on whether or not their strong/weak locks at any location would conflict:
+Using the following conflict rules, YugabyteDB can decide if two original locks would conflict based only on whether or not their strong/weak locks at any location would conflict:
 
 - two strong locks conflict if and only if they would've conflicted as normal locks
 - two weak locks never conflict
@@ -107,7 +107,7 @@ Using the following conflict rules, we can decide if two original locks would co
 
 That is, for each location that would have two locks, would they conflict under the above rules?  There is no need to enumerate the sublocations of any location.
 
-In the example, we would detect a conflict at the tablet level between the strong read lock and the weak write lock.  If we had instead tried to take the serializable read lock at the row level, then there would've been no conflict at the tablet level (both locks there are weak) but there might have been at the row level if the two locks were taken on the same row.
+In the example, a conflict would be detected at the tablet level between the strong read lock and the weak write lock. What if the example had instead involved attempting to take the serializable read lock at the row level?  Then there would've been no conflict at the tablet level (both locks there are weak) but there might have been at the row level if the two locks were taken on the same row.
 
 Including the strong/weak distinction, the full conflict matrix becomes:
 
