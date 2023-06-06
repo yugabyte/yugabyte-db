@@ -220,8 +220,8 @@ public class BackupsController extends AuthenticatedController {
           message = "If there was a server or database issue when listing the backups",
           response = YBPError.class))
   public Result fetchBackupsByTaskUUID(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
-    Customer.getOrBadRequest(customerUUID);
-    Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID, customer);
 
     List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(taskUUID);
     return PlatformResults.withData(backups);
@@ -244,7 +244,7 @@ public class BackupsController extends AuthenticatedController {
     BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
 
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
     taskParams.customerUUID = customerUUID;
 
     if (universe
@@ -318,9 +318,9 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Create Backup Schedule",
-      response = Schedule.class,
-      nickname = "createbackupSchedule")
+      value = "Create Backup Schedule Async",
+      response = YBPTask.class,
+      nickname = "createBackupScheduleAsync")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "backup",
@@ -328,10 +328,64 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.BackupRequestParams",
           required = true))
-  public Result createBackupSchedule(UUID customerUUID, Http.Request request) {
+  public Result createBackupScheduleAsync(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
+    validateScheduleTaskParams(taskParams, customerUUID);
+
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+
+    UUID taskUUID = commissioner.submit(TaskType.CreateBackupSchedule, taskParams);
+    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
+    CustomerTask.create(
+        customer,
+        taskParams.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Schedule,
+        CustomerTask.TaskType.Create,
+        universe.getName());
+    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
+    auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
+    return new YBPTask(taskUUID).asResult();
+  }
+
+  @ApiOperation(
+      value = "Create Backup Schedule",
+      response = Schedule.class,
+      nickname = "createBackupSchedule")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "backup",
+          value = "Parameters of the backup to be restored",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.BackupRequestParams",
+          required = true))
+  @Deprecated
+  public Result createBackupSchedule(UUID customerUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
+
+    BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
+    validateScheduleTaskParams(taskParams, customerUUID);
+
+    Schedule schedule =
+        Schedule.create(
+            customerUUID,
+            taskParams.getUniverseUUID(),
+            taskParams,
+            TaskType.CreateBackup,
+            taskParams.schedulingFrequency,
+            taskParams.cronExpression,
+            taskParams.frequencyTimeUnit,
+            taskParams.scheduleName);
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    LOG.info(
+        "Created backup schedule for customer {}, schedule uuid = {}.", customerUUID, scheduleUUID);
+    auditService().createAuditEntryWithReqBody(request);
+    return PlatformResults.withData(schedule);
+  }
+
+  private void validateScheduleTaskParams(BackupRequestParams taskParams, UUID customerUUID) {
     if (taskParams.storageConfigUUID == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
@@ -370,7 +424,8 @@ public class BackupsController extends AuthenticatedController {
     }
     backupUtil.validateStorageConfig(customerConfig);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
     taskParams.customerUUID = customerUUID;
 
     if (taskParams.keyspaceTableList != null) {
@@ -405,19 +460,6 @@ public class BackupsController extends AuthenticatedController {
       backupUtil.validateIncrementalScheduleFrequency(
           taskParams.incrementalBackupFrequency, schedulingFrequency, universe);
     }
-
-    UUID taskUUID = commissioner.submit(TaskType.CreateBackupSchedule, taskParams);
-    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
-    CustomerTask.create(
-        customer,
-        taskParams.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Schedule,
-        CustomerTask.TaskType.Create,
-        universe.getName());
-    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
-    auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
-    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(
@@ -448,7 +490,7 @@ public class BackupsController extends AuthenticatedController {
     taskParams.customerUUID = customerUUID;
     taskParams.prefixUUID = UUID.randomUUID();
     UUID universeUUID = taskParams.getUniverseUUID();
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (CollectionUtils.isEmpty(taskParams.backupStorageInfoList)) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
     }
@@ -512,7 +554,7 @@ public class BackupsController extends AuthenticatedController {
           required = true))
   public Result restore(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     Form<BackupTableParams> formData =
         formFactory.getFormDataOrBadRequest(request, BackupTableParams.class);
@@ -915,9 +957,9 @@ public class BackupsController extends AuthenticatedController {
           required = true))
   public Result setThrottleParams(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID.
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (universe.universeIsLocked()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot set throttle params, universe task in progress.");
@@ -956,9 +998,9 @@ public class BackupsController extends AuthenticatedController {
       response = YbcThrottleParametersResponse.class)
   public Result getThrottleParams(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (!universe.isYbcEnabled()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot get throttle params, universe does not have YB-Controller setup.");

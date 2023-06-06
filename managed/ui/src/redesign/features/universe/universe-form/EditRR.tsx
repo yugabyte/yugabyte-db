@@ -1,6 +1,7 @@
 import React, { FC, useContext, useState } from 'react';
 import _ from 'lodash';
 import { useQuery } from 'react-query';
+import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
 import { UniverseFormContext } from './UniverseFormContainer';
@@ -25,6 +26,7 @@ interface EditReadReplicaProps {
 }
 
 export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid }) => {
+  const featureFlags = useSelector((state: any) => state.featureFlags);
   const [contextState, contextMethods]: any = useContext(UniverseFormContext);
   const { initializeForm, setUniverseResourceTemplate } = contextMethods;
   const [showDeleteRRModal, setShowDeleteRRModal] = useState(false);
@@ -65,7 +67,7 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid }) => {
       clusters: [
         {
           ...getAsyncCluster(contextState.universeConfigureTemplate),
-          userIntent: getUserIntent({ formData }),
+          userIntent: getUserIntent({ formData }, ClusterType.ASYNC, featureFlags),
           placementInfo: {
             cloudList: [
               {

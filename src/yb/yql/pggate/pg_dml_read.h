@@ -82,6 +82,9 @@ class PgDmlRead : public PgDml {
   // Bind a column with an IN condition.
   Status BindColumnCondIn(PgExpr *lhs, int n_attr_values, PgExpr **attr_values);
 
+  // Bind a column with an IS NOT NULL condition.
+  Status BindColumnCondIsNotNull(int attr_num);
+
   Status BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   // Add a lower bound to the scan. If a lower bound has already been added

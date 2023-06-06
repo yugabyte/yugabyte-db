@@ -32,6 +32,7 @@
 #include "storage/bufmgr.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 #include "utils/json.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
@@ -136,7 +137,7 @@ static void ExplainXMLTag(const char *tagname, int flags, ExplainState *es);
 static void ExplainJSONLineEnding(ExplainState *es);
 static void ExplainYAMLLineStarting(ExplainState *es);
 static void escape_yaml(StringInfo buf, const char *str);
-static void appendPgMemInfo(ExplainState *es, const Size peakMem);
+static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
 
 
 /*
@@ -637,8 +638,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 								 total_rpc_wait / 1000000.0, 3, es);
 		}
 
-		if (IsYugaByteEnabled())
-			appendPgMemInfo(es, peakMem);
+		if (IsYugaByteEnabled() && yb_enable_memory_tracking)
+			YbAppendPgMemInfo(es, peakMem);
 	}
 
 	ExplainCloseGroup("Query", NULL, true, es);
@@ -1590,9 +1591,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			 */
 			show_scan_qual(((IndexScan *) plan)->indexorderbyorig,
 						   "Order By", planstate, ancestors, es);
-			show_scan_qual(((IndexScan *) plan)->index_remote.quals,
+			show_scan_qual(((IndexScan *) plan)->yb_idx_pushdown.quals,
 						   "Remote Index Filter", planstate, ancestors, es);
-			show_scan_qual(((IndexScan *) plan)->rel_remote.quals,
+			show_scan_qual(((IndexScan *) plan)->yb_rel_pushdown.quals,
 						   "Remote Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
@@ -1612,7 +1613,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			/*
 			 * Remote filter is applied first, so it is output first.
 			 */
-			show_scan_qual(((IndexOnlyScan *) plan)->remote.quals,
+			show_scan_qual(((IndexOnlyScan *) plan)->yb_pushdown.quals,
 						   "Remote Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
@@ -1663,8 +1664,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			/*
 			 * Remote filter is applied first, so it is output first.
 			 */
-			show_scan_qual(((YbSeqScan *) plan)->remote.quals, "Remote Filter",
-						   planstate, ancestors, es);
+			show_scan_qual(((YbSeqScan *) plan)->yb_pushdown.quals,
+						   "Remote Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -4017,7 +4018,7 @@ escape_yaml(StringInfo buf, const char *str)
  * currently only the max memory info.
  */
 static void
-appendPgMemInfo(ExplainState *es, const Size peakMem)
+YbAppendPgMemInfo(ExplainState *es, const Size peakMem)
 {
 	Size peakMemKb = CEILING_K(peakMem);
 	ExplainPropertyInteger("Peak Memory Usage", "kB", peakMemKb, es);

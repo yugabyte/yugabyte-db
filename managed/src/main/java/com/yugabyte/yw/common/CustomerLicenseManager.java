@@ -4,8 +4,6 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.models.CustomerLicense;
 import com.yugabyte.yw.models.FileData;
 import java.io.File;
@@ -25,11 +23,9 @@ public class CustomerLicenseManager {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerLicenseManager.class);
 
-  @Inject Config appConfig;
-
   private String getOrCreateLicenseFilePath(UUID customerUUID) {
     String customerLicensePath = "/licenses/" + customerUUID.toString();
-    File keyBasePathName = new File(appConfig.getString("yb.storage.path"), customerLicensePath);
+    File keyBasePathName = new File(AppConfigHelper.getStoragePath(), customerLicensePath);
     // Protect against multi-threaded access and validate that we only error out if mkdirs fails
     // correctly, by NOT creating the final dir path.
     synchronized (this) {
@@ -61,7 +57,7 @@ public class CustomerLicenseManager {
   }
 
   public void delete(UUID customerUUID, UUID licenseUUID) {
-    CustomerLicense license = CustomerLicense.getOrBadRequest(licenseUUID);
+    CustomerLicense license = CustomerLicense.getOrBadRequest(customerUUID, licenseUUID);
     FileData.deleteFiles(license.getLicense(), true);
     if (license.delete()) {
       log.info("Successfully deleted the license: " + licenseUUID);

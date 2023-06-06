@@ -111,7 +111,9 @@ public class TestBase extends CDCBaseClass {
       assertFalse(statement.execute("COMMIT;"));
 
       ExpectedRecordYSQL<?>[] expectedRecords = new ExpectedRecordYSQL[]{
-        new ExpectedRecordYSQL<>(1, 2, Op.INSERT)
+        new ExpectedRecordYSQL<>(-1, "", Op.BEGIN),
+        new ExpectedRecordYSQL<>(1, 2, Op.INSERT),
+        new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
       };
 
       executeScriptAssertRecords(expectedRecords, "cdc_insert_row_outside_txn.sql");
@@ -157,7 +159,9 @@ public class TestBase extends CDCBaseClass {
       testSubscriber.getResponseFromCDC(outputList);
 
       ExpectedRecordYSQL<?>[] expectedRecords = new ExpectedRecordYSQL[]{
+        new ExpectedRecordYSQL<>(-1, -1, Op.BEGIN),
         new ExpectedRecordYSQL<>(1, 2, Op.INSERT),
+        new ExpectedRecordYSQL<>(-1, -1, Op.COMMIT),
         new ExpectedRecordYSQL<>(-1, -1, Op.BEGIN),
         new ExpectedRecordYSQL<>(1, 3, Op.UPDATE),
         new ExpectedRecordYSQL<>(-1, -1, Op.COMMIT)

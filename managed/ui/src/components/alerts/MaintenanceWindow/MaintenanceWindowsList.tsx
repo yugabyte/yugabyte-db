@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import {
   convertUTCStringToMoment,
   deleteMaintenanceWindow,
-  formatDateToUTC,
   getMaintenanceWindowList,
   MaintenanceWindowSchema,
   MaintenanceWindowState,
@@ -93,7 +92,7 @@ const GetMaintenanceWindowActions = ({
 
   const markAsCompleted = useMutation(
     (window: MaintenanceWindowSchema) =>
-      updateMaintenanceWindow({ ...window, endTime: formatDateToUTC(new Date()) }),
+      updateMaintenanceWindow({ ...window, endTime: convertToISODateString(new Date()) }),
     {
       onSuccess: () => queryClient.invalidateQueries('maintenenceWindows')
     }

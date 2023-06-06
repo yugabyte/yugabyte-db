@@ -18,6 +18,7 @@
 #include <type_traits>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_statistics.h"
@@ -44,8 +45,7 @@ class YQLStorageIf {
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const ReadOperationData& read_operation_data,
       const qlexpr::QLScanSpec& spec,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
@@ -74,8 +74,7 @@ class YQLStorageIf {
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const ReadOperationData& read_operation_data,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
       const DocDBStatistics* statistics = nullptr) const = 0;
@@ -92,8 +91,7 @@ class YQLStorageIf {
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const ReadOperationData& read_operation_data,
       const dockv::DocKey& start_doc_key,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
@@ -105,8 +103,7 @@ class YQLStorageIf {
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const ReadOperationData& read_operation_data,
       const QLValuePB& min_ybctid,
       const QLValuePB& max_ybctid,
       std::reference_wrapper<const ScopedRWOperation> pending_op,

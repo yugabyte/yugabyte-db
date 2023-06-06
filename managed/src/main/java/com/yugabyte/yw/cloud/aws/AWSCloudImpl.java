@@ -412,7 +412,6 @@ public class AWSCloudImpl implements CloudAPI {
    * @param provider the cloud provider bean for the AWS provider.
    * @param regionCode the region code.
    * @param lbName the load balancer name.
-   * @param nodeNames the DB node names.
    * @param nodeIDs the DB node IDs (name, uuid).
    * @param protocol the listening protocol.
    * @param ports the listening ports enabled (YSQL, YCQL, YEDIS).
@@ -422,7 +421,6 @@ public class AWSCloudImpl implements CloudAPI {
       Provider provider,
       String regionCode,
       String lbName,
-      List<String> nodeNames,
       List<NodeID> nodeIDs,
       String protocol,
       List<Integer> ports) {
@@ -431,7 +429,7 @@ public class AWSCloudImpl implements CloudAPI {
       AmazonElasticLoadBalancing lbClient = getELBClient(provider, regionCode);
       AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
       // Get EC2 node instances
-      List<String> instanceIDs = getInstanceIDs(ec2Client, nodeNames, nodeIDs);
+      List<String> instanceIDs = getInstanceIDs(ec2Client, nodeIDs);
       // Check for listeners on each enabled port
       for (int port : ports) {
         Listener listener = getListenerByPort(lbClient, lbName, port);
@@ -623,15 +621,15 @@ public class AWSCloudImpl implements CloudAPI {
    * uuid.
    *
    * @param ec2Client the AWS EC2 client for API calls.
-   * @param nodeNames the list of node names.
    * @param nodeIDs the node IDs (name, uuid).
    * @return a list. The node instance IDs.
    */
-  private List<String> getInstanceIDs(
-      AmazonEC2 ec2Client, List<String> nodeNames, List<NodeID> nodeIDs) throws Exception {
-    if (CollectionUtils.isEmpty(nodeNames) || CollectionUtils.isEmpty(nodeIDs)) {
+  private List<String> getInstanceIDs(AmazonEC2 ec2Client, List<NodeID> nodeIDs) throws Exception {
+    if (CollectionUtils.isEmpty(nodeIDs)) {
       return new ArrayList<>();
     }
+    List<String> nodeNames =
+        nodeIDs.stream().map(nodeId -> nodeId.getName()).collect(Collectors.toList());
     // Get instances by node name
     Filter filterName = new Filter("tag:Name").withValues(nodeNames);
     List<String> states = ImmutableList.of("pending", "running", "stopping", "stopped");

@@ -41,7 +41,6 @@ export const useFormMainStyles = makeStyles((theme) => ({
 
   selectedTab: {
     fontSize: theme.spacing(2),
-    marginLeft: theme.spacing(3),
     borderBottom: `3px solid ${theme.palette.orange[500]}`,
     color: theme.palette.common.black,
     fontFamily: 'Rubik,Helvetica Neue,sans-serif',
@@ -50,7 +49,6 @@ export const useFormMainStyles = makeStyles((theme) => ({
 
   disabledTab: {
     fontSize: theme.spacing(2),
-    marginLeft: theme.spacing(3),
     color: theme.palette.common.black,
     height: '100%',
     opacity: 0.35,

@@ -30,6 +30,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.directory.api.ldap.model.message.SearchScope;
 import play.libs.Json;
 
 @Getter
@@ -56,7 +57,7 @@ public class ConfDataType<T> {
           String.class,
           Config::getString,
           (s) -> {
-            return parseStringAndApply(s, Config::getString);
+            return parseString(s);
           });
   static ConfDataType<Long> LongType =
       new ConfDataType<>(
@@ -149,6 +150,19 @@ public class ConfDataType<T> {
               throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
             }
           });
+  static ConfDataType<SearchScope> LdapSearchScopeEnum =
+      new ConfDataType<>(
+          "LdapSearchScope",
+          SearchScope.class,
+          new EnumGetter<>(SearchScope.class),
+          (s) -> {
+            try {
+              return SearchScope.valueOf(s);
+            } catch (Exception e) {
+              String failMsg = String.format("%s is not a valid LDAP Search Scope\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
 
   private final String name;
 
@@ -229,5 +243,10 @@ public class ConfDataType<T> {
       String failMsg = String.format("%s is not a valid value for desired key\n", s);
       throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
     }
+  }
+
+  private static String parseString(String s) {
+    if (s.isEmpty()) return s;
+    return parseStringAndApply(s, Config::getString);
   }
 }

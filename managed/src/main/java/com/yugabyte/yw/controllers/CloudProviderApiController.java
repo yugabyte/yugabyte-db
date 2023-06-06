@@ -99,6 +99,7 @@ public class CloudProviderApiController extends AuthenticatedController {
       notes = "Refresh provider pricing info",
       response = YBPSuccess.class)
   public Result refreshPricing(UUID customerUUID, UUID providerUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);
     auditService()
@@ -236,6 +237,7 @@ public class CloudProviderApiController extends AuthenticatedController {
   public Result accessKeysRotation(UUID customerUUID, UUID providerUUID, Http.Request request) {
     RotateAccessKeyFormData params = parseJsonAndValidate(request, RotateAccessKeyFormData.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     String newKeyCode = params.newKeyCode;
     boolean rotateAllUniverses = params.rotateAllUniverses;
     if (!rotateAllUniverses && params.universeUUIDs.size() == 0) {
@@ -275,6 +277,7 @@ public class CloudProviderApiController extends AuthenticatedController {
   public Result scheduledAccessKeysRotation(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     ScheduledAccessKeyRotateFormData params =
         parseJsonAndValidate(request, ScheduledAccessKeyRotateFormData.class);
     int schedulingFrequencyDays = params.schedulingFrequencyDays;

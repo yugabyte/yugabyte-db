@@ -120,7 +120,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests,
+    RetryableRequestsManager* retryable_requests_manager,
     MultiRaftManager* multi_raft_manager);
 
   // Creates RaftConsensus.
@@ -140,7 +140,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequests* retryable_requests);
+    RetryableRequestsManager* retryable_requests_manager);
 
   virtual ~RaftConsensus();
 
@@ -295,6 +295,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       ConsensusRound* round, const StdStatusCallback& client_cb, const Status& status);
 
   Result<RetryableRequests> GetRetryableRequests() const;
+  Status FlushRetryableRequests();
+  Status CopyRetryableRequestsTo(const std::string& dest_path);
+
+  bool TEST_HasRetryableRequestsOnDisk() const;
 
  protected:
   // As a leader, append a new ConsensusRound to the queue.

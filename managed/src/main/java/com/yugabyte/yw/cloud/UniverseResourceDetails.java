@@ -134,7 +134,7 @@ public class UniverseResourceDetails {
     double hourlyPrice = 0.0;
     double hourlyEBSPrice = 0.0;
     UserIntent userIntent = params.getPrimaryCluster().userIntent;
-    Map<Pair<String, String>, Double> spotPrice = new HashMap<>();
+    Map<Pair<String, String>, Double> spotPrices = new HashMap<>();
     for (NodeDetails nodeDetails : params.nodeDetailsSet) {
       if (nodeDetails.placementUuid != null) {
         userIntent = params.getClusterByUuid(nodeDetails.placementUuid).userIntent;
@@ -216,11 +216,12 @@ public class UniverseResourceDetails {
             hourlyPrice += userIntent.spotPrice;
           } else {
             Pair<String, String> spotPair;
+            Double spotPrice;
             switch (userIntent.providerType) {
               case aws:
                 spotPair = new Pair<String, String>(nodeDetails.getZone(), instanceType);
-                hourlyPrice +=
-                    spotPrice.computeIfAbsent(
+                spotPrice =
+                    spotPrices.computeIfAbsent(
                         spotPair,
                         pair -> {
                           return AWSUtil.getAwsSpotPrice(pair.getFirst(), pair.getSecond());
@@ -228,8 +229,8 @@ public class UniverseResourceDetails {
                 break;
               case gcp:
                 spotPair = new Pair<String, String>(nodeDetails.getRegion(), instanceType);
-                hourlyPrice +=
-                    spotPrice.computeIfAbsent(
+                spotPrice =
+                    spotPrices.computeIfAbsent(
                         spotPair,
                         pair -> {
                           return GCPUtil.getGcpSpotPrice(pair.getFirst(), pair.getSecond());
@@ -237,16 +238,20 @@ public class UniverseResourceDetails {
                 break;
               case azu:
                 spotPair = new Pair<String, String>(nodeDetails.getRegion(), instanceType);
-                hourlyPrice +=
-                    spotPrice.computeIfAbsent(
+                spotPrice =
+                    spotPrices.computeIfAbsent(
                         spotPair,
                         pair -> {
                           return AZUtil.getAzuSpotPrice(pair.getFirst(), pair.getSecond());
                         });
                 break;
               default:
-                hourlyPrice += instancePrice.getPriceDetails().pricePerHour;
+                spotPrice = Double.NaN;
             }
+            hourlyPrice +=
+                (!spotPrice.equals(Double.NaN)
+                    ? spotPrice
+                    : instancePrice.getPriceDetails().pricePerHour);
           }
         }
       }

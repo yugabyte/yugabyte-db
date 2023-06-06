@@ -258,7 +258,8 @@ ybcGetForeignPlan(PlannerInfo *root,
 					break;
 				case ObjectIdAttributeNumber:
 				case YBTupleIdAttributeNumber:
-				default: /* Regular column: attrNum > 0*/
+				default: /* Regular column: attnum > 0.
+							NOTE: dropped columns may be included. */
 				{
 					TargetEntry *target = makeNode(TargetEntry);
 					target->resno = attnum;
@@ -375,64 +376,40 @@ ybcSetupScanTargets(ForeignScanState *node)
 	if (node->yb_fdw_aggs == NIL)
 	{
 		/* Set non-aggregate column targets. */
-		bool has_targets = false;
+		bool target_added = false;
 		foreach(lc, target_attrs)
 		{
 			TargetEntry *target = (TargetEntry *) lfirst(lc);
+			AttrNumber	attnum = target->resno;
 
-			/* For regular (non-system) attribute check if they were deleted */
-			Oid   attr_typid  = InvalidOid;
-			Oid   attr_collation = InvalidOid;
-			int32 attr_typmod = 0;
-			if (target->resno > 0)
+			if (attnum < 0)
+				YbDmlAppendTargetSystem(attnum, ybc_state->handle);
+			else
 			{
-				Form_pg_attribute attr;
-				attr = TupleDescAttr(tupdesc, target->resno - 1);
-				/* Ignore dropped attributes */
-				if (attr->attisdropped)
-				{
+				Assert(attnum > 0);
+				if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
+					YbDmlAppendTargetRegular(tupdesc, attnum,
+											 ybc_state->handle);
+				else
 					continue;
-				}
-				attr_typid  = attr->atttypid;
-				attr_typmod = attr->atttypmod;
-				attr_collation = attr->attcollation;
 			}
 
-			YBCPgTypeAttrs type_attrs = {attr_typmod};
-			YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
-														target->resno,
-														attr_typid,
-														attr_collation,
-														&type_attrs);
-			HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr));
-			has_targets = true;
+			target_added = true;
 		}
 
 		/*
-		 * We can have no target columns at this point for e.g. a count(*). For now
-		 * we request the first non-dropped column in that case.
-		 * TODO look into handling this on YugaByte side.
+		 * We can have no target columns at this point for e.g. a count(*). We
+		 * need to set a placeholder for the targets to properly make pg_dml
+		 * fetcher recognize the correct number of rows though the targeted
+		 * rows are not being effectively retrieved. Otherwise, the pg_dml
+		 * fetcher will stop too early when seeing empty rows.
+		 * TODO(#16717): Such placeholder target can be removed once the pg_dml
+		 * fetcher can recognize empty rows in a response with no explict
+		 * targets.
 		 */
-		if (!has_targets)
-		{
-			for (int16_t i = 0; i < tupdesc->natts; i++)
-			{
-				/* Ignore dropped attributes */
-				if (TupleDescAttr(tupdesc, i)->attisdropped)
-				{
-					continue;
-				}
-
-				YBCPgTypeAttrs type_attrs = { TupleDescAttr(tupdesc, i)->atttypmod };
-				YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
-															i + 1,
-															TupleDescAttr(tupdesc, i)->atttypid,
-															TupleDescAttr(tupdesc, i)->attcollation,
-															&type_attrs);
-				HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr));
-				break;
-			}
-		}
+		if (!target_added)
+			YbDmlAppendTargetSystem(YBTupleIdAttributeNumber,
+									ybc_state->handle);
 	}
 	else
 	{
@@ -539,72 +516,6 @@ ybcSetupScanTargets(ForeignScanState *node)
 }
 
 /*
- * ybSetupScanQuals
- *		Add the pushable qual expressions to the DocDB statement.
- */
-static void
-ybSetupScanQuals(ForeignScanState *node)
-{
-	EState	   *estate = node->ss.ps.state;
-	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
-	YbFdwExecState *yb_state = (YbFdwExecState *) node->fdw_state;
-	List	   *quals = foreignScan->fdw_recheck_quals;
-	ListCell   *lc;
-
-	MemoryContext oldcontext =
-		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
-
-	foreach(lc, quals)
-	{
-		Expr *expr = (Expr *) lfirst(lc);
-		/*
-		 * Some expressions may be parametrized, obviously remote end can not
-		 * acccess the estate to get parameter values, so param references
-		 * are replaced with constant expressions.
-		 */
-		expr = YbExprInstantiateParams(expr, estate);
-		/* Create new PgExpr wrapper for the expression */
-		YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle, expr);
-		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr, true));
-	}
-
-	MemoryContextSwitchTo(oldcontext);
-}
-
-/*
- * ybSetupScanColumnRefs
- *		Add the column references to the DocDB statement.
- */
-static void
-ybSetupScanColumnRefs(ForeignScanState *node)
-{
-	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
-	YbFdwExecState *yb_state = (YbFdwExecState *) node->fdw_state;
-	List	   *params = foreignScan->fdw_private;
-	ListCell   *lc;
-
-	MemoryContext oldcontext =
-		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
-
-	foreach(lc, params)
-	{
-		YbExprColrefDesc *param = (YbExprColrefDesc *) lfirst(lc);
-		YBCPgTypeAttrs type_attrs = { param->typmod };
-		/* Create new PgExpr wrapper for the column reference */
-		YBCPgExpr yb_expr = YBCNewColumnRef(yb_state->handle,
-											param->attno,
-											param->typid,
-											param->collid,
-											&type_attrs);
-		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendColumnRef(yb_state->handle, yb_expr, true));
-	}
-
-	MemoryContextSwitchTo(oldcontext);
-}
-
-/*
  * ybcIterateForeignScan
  *		Read next record from the data file and store it into the
  *		ScanTupleSlot as a virtual tuple
@@ -613,6 +524,74 @@ static TupleTableSlot *
 ybcIterateForeignScan(ForeignScanState *node)
 {
 	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
+	EState	   *estate = node->ss.ps.state;
+	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
+
+	/*
+	 * Unlike YbSeqScan, IndexScan, and IndexOnlyScan, YB ForeignScan does not
+	 * call YbInstantiatePushdownParams before doing scan:
+	 *
+	 * - YbSeqNext
+	 *   - YbInstantiatePushdownParams
+	 *   - ybc_remote_beginscan
+	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
+	 * - IndexScan/IndexNextWithReorder/ExecReScanIndexScan
+	 *   - YbInstantiatePushdownParams
+	 *   - index_rescan
+	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
+	 * - IndexOnlyScan/ExecReScanIndexOnlyScan
+	 *   - YbInstantiatePushdownParams
+	 *   - index_rescan
+	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
+	 * - ForeignNext
+	 *   - ybcIterateForeignScan (impl of IterateForeignScan)
+	 *     - YbInstantiatePushdownParams
+	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
+	 *
+	 * Reasoning:
+	 *
+	 * - FDW API does not provide an easy way to pass in a PushdownExprs
+	 *   structure.  It allows passing in custom data using fdw_private, but it
+	 *   expects a List type.  It technically can accept any type, but said
+	 *   type should support node functions like copyObject() and
+	 *   nodeToString(): PushdownExprs is not a node, so it doesn't support
+	 *   them.  An alternative solution (though still not meeting the previous
+	 *   criteria) is to rework PushdownExprs to be a list of structs rather
+	 *   than a struct of lists, but this removes the ability to pass in the
+	 *   entire quals list to YbExprInstantiateParams.  It can still be
+	 *   iterated through and called on each qual, but that is more
+	 *   inconvenient.
+	 * - quals are already stored in fdw_recheck_quals, so putting them in
+	 *   fdw_private in the form of PushdownExprs would be duplicate info.  Not
+	 *   only that, but it would need to be updated after setup.
+	 *
+	 *   - exec_simple_query
+	 *     - pg_plan_queries
+	 *       - standard_planner
+	 *         - create_plan
+	 *           - ybcGetForeignPlan
+	 *             - make_foreignscan
+	 *               - (setup fdw_private, fdw_recheck_quals)
+	 *         - set_plan_references
+	 *           - set_foreignscan_references
+	 *             - (modify fdw_recheck_quals)
+	 *     - PortalRun
+	 *       - ForeignNext
+	 *         - ybcIterateForeignScan (this function)
+	 *
+	 *   If it were desired to solely rely on fdw_private holding
+	 *   PushdownExprs, whatever modifications that happened to
+	 *   fdw_recheck_quals would have to be updated onto fdw_private's copy of
+	 *   quals before calling YbInstantiatePushdownParams.
+	 * - Plan is to remove YB FDW code in favor of YbSeqScan, so it is not
+	 *   worth the effort of making a good long-term solution here.
+	 */
+	PushdownExprs orig_pushdown = {
+		.quals = foreignScan->fdw_recheck_quals,
+		.colrefs = foreignScan->fdw_private,
+	};
+	PushdownExprs *pushdown = YbInstantiatePushdownParams(&orig_pushdown,
+														  estate);
 
 	/* Execute the select statement one time.
 	 * TODO(neil) Check whether YugaByte PgGate should combine Exec() and Fetch() into one function.
@@ -622,8 +601,13 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 */
 	if (!ybc_state->is_exec_done) {
 		ybcSetupScanTargets(node);
-		ybSetupScanQuals(node);
-		ybSetupScanColumnRefs(node);
+		if (pushdown != NULL)
+		{
+			YbDmlAppendQuals(pushdown->quals, true /* is_primary */,
+							 ybc_state->handle);
+			YbDmlAppendColumnRefs(pushdown->colrefs, true /* is_primary */,
+								  ybc_state->handle);
+		}
 		HandleYBStatus(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params));
 		ybc_state->is_exec_done = true;
 	}

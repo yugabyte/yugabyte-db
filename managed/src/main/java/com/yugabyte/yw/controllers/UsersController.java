@@ -27,7 +27,7 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
-import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -72,6 +72,7 @@ public class UsersController extends AuthenticatedController {
   public Result index(UUID customerUUID, UUID userUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
+    checkUserOwnership(customerUUID, userUUID, user);
     return PlatformResults.withData(userService.getUserWithFeatures(customer, user));
   }
 

@@ -239,8 +239,8 @@ class BootstrapTest : public LogTestBase {
       .append_pool = log_thread_pool_.get(),
       .allocation_pool = log_thread_pool_.get(),
       .log_sync_pool = log_thread_pool_.get(),
-      .retryable_requests = nullptr,
-      .test_hooks = test_hooks_
+      .retryable_requests_manager = nullptr,
+      .test_hooks = test_hooks_,
     };
     RETURN_NOT_OK(BootstrapTablet(data, tablet, &log_, boot_info));
     return Status::OK();
@@ -977,11 +977,10 @@ TEST_F(BootstrapTest, ColocatedSchemaBoostrap) {
   ColocationId colocation_id = 123456789;
   Schema schema{
       {
-          ColumnSchema("key", INT32, false, true),
+          ColumnSchema("key", INT32, ColumnKind::HASH),
           ColumnSchema("int_val", INT32),
-          ColumnSchema("string_val", STRING, true)
+          ColumnSchema("string_val", STRING, ColumnKind::VALUE, Nullable::kTrue)
       },
-      1,
       TableProperties(),
       Uuid::Nil(),
       colocation_id,

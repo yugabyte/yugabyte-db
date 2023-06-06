@@ -1592,6 +1592,13 @@ add_brew_bin_to_path() {
   fi
 }
 
+remove_linuxbrew_bin_from_path() {
+  if using_linuxbrew; then
+    ensure_linuxbrew_dir_is_set
+    remove_path_entry "$YB_LINUXBREW_DIR/bin"
+  fi
+}
+
 detect_num_cpus() {
   if [[ ! ${YB_NUM_CPUS:-} =~ ^[0-9]+$ ]]; then
     if is_linux; then
@@ -2263,6 +2270,7 @@ run_shellcheck() {
     build-support/jenkins/yb-jenkins-build.sh
     build-support/jenkins/yb-jenkins-test.sh
     build-support/run-test.sh
+    yugabyted-ui/build.sh
     yb_build.sh
   )
   pushd "$YB_SRC_ROOT"
@@ -2295,8 +2303,9 @@ activate_virtualenv() {
     virtualenv_dir+="-${YB_TARGET_ARCH}"
   fi
 
-  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]] && \
-     ! "$yb_readonly_virtualenv"; then
+  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" &&
+        -d $virtualenv_dir &&
+        ${yb_readonly_virtualenv} == "false" ]]; then
     log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
     rm -rf "$virtualenv_dir"
     # We don't want to be re-creating the virtual environment over and over again.
@@ -2367,9 +2376,10 @@ activate_virtualenv() {
   fi
 
   local pip_executable=pip3
-  if ! "$yb_readonly_virtualenv"; then
+  if [[ ${yb_readonly_virtualenv} == "false" ]]; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
+    pip3 install --upgrade pip
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache

@@ -130,6 +130,8 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.disableXxHashChecksum))).thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.backupLogVerbose)))
         .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.enableSSE)))
+        .thenReturn(false);
   }
 
   @Test
@@ -281,9 +283,6 @@ public class RestoreManagerYbTest extends FakeDBApplication {
       cmd.add(backupStorageInfo.keyspace);
     }
     cmd.add("--no_auto_name");
-    if (backupStorageInfo.sse) {
-      cmd.add("--sse");
-    }
     if (testProvider.getCode().equals("kubernetes")) {
       cmd.add("--k8s_config");
       cmd.add(Json.stringify(Json.toJson(podAddrToConfig)));

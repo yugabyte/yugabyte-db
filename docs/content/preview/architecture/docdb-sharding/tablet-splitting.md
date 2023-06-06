@@ -215,9 +215,15 @@ For details on the architecture design, see [Automatic resharding of data with t
 
 #### Enable automatic tablet splitting
 
-To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) flag and specify the associated flags to configure when tablets should split.
+To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) flag and specify the associated flags to configure when tablets should split, and use `yb-tserver` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-tserver/#enable-automatic-tablet-splitting). The flag usage must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
 
-When automatic tablet splitting is enabled, newly-created tables have one shard per YB-TServer by default.
+When automatic tablet splitting is enabled, newly-created tables with [hash sharding](../../../architecture/docdb-sharding/sharding/#hash-sharding) have one shard **per _yb-tserver_** by default; from version `2.14.10` such tables have one shard (for servers with up to 2 CPU cores) or two shards (for servers with up to 4 CPU cores) **per _cluster_** by default.
+
+{{< note title="Note" >}}
+
+Newly-created tables with [range sharding](../../../architecture/docdb-sharding/sharding/#range-sharding) always have one shard *per cluster* unless table partitioning is specified explicitly during table creation.
+
+{{< /note >}}
 
 Automatic tablet splitting happens in three phases, determined by the shard count per node. As the shard count increases, the threshold size for splitting a tablet also increases, as follows:
 

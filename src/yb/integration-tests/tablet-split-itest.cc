@@ -31,6 +31,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_util.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/dockv/doc_key.h"
@@ -161,6 +162,8 @@ DECLARE_bool(TEST_skip_election_when_fail_detected);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
+DECLARE_bool(enable_copy_retryable_requests_from_parent);
+DECLARE_bool(enable_flush_retryable_requests);
 
 namespace yb {
 
@@ -1990,6 +1993,8 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
   }
 
   Status TestSplitBeforeParentDeletion(bool hide_only);
+
+  void TestRetryableWrite();
 };
 
 // Start tablet split, create Index to start backfill while split operation in progress
@@ -2397,17 +2402,26 @@ TEST_F(TabletSplitSingleServerITest, SplitBeforeParentHidden) {
   ASSERT_OK(TestSplitBeforeParentDeletion(true /* hide_only */));
 }
 
-TEST_F(TabletSplitSingleServerITest, TestRetryableWrite) {
-  // Test scenario of GH issue: https://github.com/yugabyte/yugabyte-db/issues/14005
-  // 1. Parent tablet leader received and replicated the WRITE_OP 1
-  //    but the client didn't get response.
-  // 2. The client retried WRITE_OP 1 and gets TABLET_SPLIT.
-  // 3. The client prepared WRITE_OP 2 to the child tablet and cause duplication.
-
+// Test scenario of GH issue: https://github.com/yugabyte/yugabyte-db/issues/14005
+// 1. Parent tablet leader received and replicated the WRITE_OP 1
+//    but the client didn't get response.
+// 2. The client retried WRITE_OP 1 and gets TABLET_SPLIT.
+// 3. The client prepared WRITE_OP 2 to the child tablet and cause duplication.
+void TabletSplitSingleServerITest::TestRetryableWrite() {
   auto kNumRows = 2;
   CreateSingleTablet();
 
   const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+
+  auto peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
+  ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
+
+  if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
+    // Wait retryable requests flushed to disk.
+    ASSERT_OK(WaitFor([&] {
+      return peer->TEST_HasRetryableRequestsOnDisk();
+    }, 10s, "retryable requests flushed to disk"));
+  }
 
 #ifndef NDEBUG
   SyncPoint::GetInstance()->LoadDependency({
@@ -2427,7 +2441,6 @@ TEST_F(TabletSplitSingleServerITest, TestRetryableWrite) {
   });
 
   // Wait for 1.4 is replicated.
-  auto peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   ASSERT_OK(WaitFor([&] {
     return peer->raft_consensus()->GetLastCommittedOpId().index == kNumRows + 2;
   }, 10s, "the third row is replicated"));
@@ -2453,6 +2466,24 @@ TEST_F(TabletSplitSingleServerITest, TestRetryableWrite) {
      SyncPoint::GetInstance()->DisableProcessing();
      SyncPoint::GetInstance()->ClearTrace();
 #endif // NDEBUG
+}
+
+TEST_F(TabletSplitSingleServerITest, TestRetryableWrite) {
+  FLAGS_enable_copy_retryable_requests_from_parent = false;
+  FLAGS_enable_flush_retryable_requests = false;
+  TestRetryableWrite();
+}
+
+TEST_F(TabletSplitSingleServerITest, TestRetryableWriteWithCopyingFromParent) {
+  FLAGS_enable_copy_retryable_requests_from_parent = true;
+  FLAGS_enable_flush_retryable_requests = false;
+  TestRetryableWrite();
+}
+
+TEST_F(TabletSplitSingleServerITest, TestRetryableWriteWithPersistedStructure) {
+  FLAGS_enable_copy_retryable_requests_from_parent = false;
+  FLAGS_enable_flush_retryable_requests = true;
+  TestRetryableWrite();
 }
 
 TEST_F(TabletSplitExternalMiniClusterITest, Simple) {

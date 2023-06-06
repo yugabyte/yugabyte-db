@@ -567,6 +567,27 @@ Status PgDmlRead::BindColumnCondIn(PgExpr *lhs, int n_attr_values, PgExpr **attr
   return Status::OK();
 }
 
+Status PgDmlRead::BindColumnCondIsNotNull(int attr_num) {
+  if (secondary_index_query_) {
+    // Bind by secondary key.
+    return secondary_index_query_->BindColumnCondIsNotNull(attr_num);
+  }
+
+  DCHECK(attr_num != static_cast<int>(PgSystemAttrNum::kYBTupleId))
+      << "Operator IS NOT NULL cannot be applied to ROWID in DocDB";
+
+  // Find column.
+  PgColumn& col = VERIFY_RESULT(bind_.ColumnForAttr(attr_num));
+
+  CHECK(!col.is_partition()) << "This method cannot be used for binding partition column!";
+
+  // Alloc the protobuf.
+  auto* condition_expr_pb = AllocColumnBindConditionExprPB(&col);
+  condition_expr_pb->mutable_condition()->set_op(QL_OP_IS_NOT_NULL);
+  condition_expr_pb->mutable_condition()->add_operands()->set_column_id(col.id());
+  return Status::OK();
+}
+
 Result<dockv::DocKey> PgDmlRead::EncodeRowKeyForBound(
     YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound) {
   dockv::KeyEntryValues hashed_components;

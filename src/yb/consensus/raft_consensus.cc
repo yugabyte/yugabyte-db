@@ -334,7 +334,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests,
+    RetryableRequestsManager* retryable_requests_manager,
     MultiRaftManager* multi_raft_manager) {
 
   auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
@@ -389,7 +389,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       parent_mem_tracker,
       mark_dirty_clbk,
       table_type,
-      retryable_requests);
+      retryable_requests_manager);
 }
 
 RaftConsensus::RaftConsensus(
@@ -405,7 +405,7 @@ RaftConsensus::RaftConsensus(
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequests* retryable_requests)
+    RetryableRequestsManager* retryable_requests_manager)
     : raft_pool_token_(std::move(raft_pool_token)),
       log_(log),
       clock_(clock),
@@ -444,7 +444,7 @@ RaftConsensus::RaftConsensus(
       std::move(cmeta),
       DCHECK_NOTNULL(consensus_context),
       this,
-      retryable_requests,
+      retryable_requests_manager,
       std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
 
   peer_manager_->SetConsensus(this);
@@ -3550,6 +3550,22 @@ Result<RetryableRequests> RaftConsensus::GetRetryableRequests() const {
     return STATUS_FORMAT(IllegalState, "Replica is in $0 state", state_->state());
   }
   return state_->retryable_requests();
+}
+
+Status RaftConsensus::FlushRetryableRequests() {
+  return state_->FlushRetryableRequests();
+}
+
+Status RaftConsensus::CopyRetryableRequestsTo(const std::string &dest_path) {
+  auto lock = state_->LockForRead();
+  if(state_->state() != ReplicaState::kRunning) {
+    return STATUS_FORMAT(IllegalState, "Replica is in $0 state", state_->state());
+  }
+  return state_->CopyRetryableRequestsTo(dest_path);
+}
+
+bool RaftConsensus::TEST_HasRetryableRequestsOnDisk() const {
+  return state_->TEST_HasRetryableRequestsOnDisk();
 }
 
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {

@@ -78,6 +78,9 @@ public class ErrorFilesComponentTest extends FakeDBApplication {
     doCallRealMethod()
         .when(mockSupportBundleUtil)
         .downloadNodeLevelComponent(any(), any(), any(), any(), any(), any(), any(), any());
+    doCallRealMethod()
+        .when(mockSupportBundleUtil)
+        .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any());
 
     // Mock all the invocations with fake data
     when(mockUniverseInfoHandler.downloadNodeFile(any(), any(), any(), any(), any(), any()))

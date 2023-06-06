@@ -17,26 +17,29 @@
 #include <string>
 #include <variant>
 
-#include "yb/docdb/doc_rowwise_iterator_base.h"
-#include "yb/docdb/doc_reader.h"
-#include "yb/rocksdb/db.h"
-
 #include "yb/common/hybrid_time.h"
-#include "yb/qlexpr/ql_scanspec.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_read_context.h"
+#include "yb/docdb/doc_reader.h"
+#include "yb/docdb/doc_rowwise_iterator_base.h"
 #include "yb/docdb/docdb_statistics.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
 
-#include "yb/util/status_fwd.h"
+#include "yb/qlexpr/ql_scanspec.h"
+
+#include "yb/rocksdb/db.h"
+
 #include "yb/util/operation_counter.h"
-#include "yb/docdb/doc_read_context.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace docdb {
@@ -55,8 +58,7 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      std::reference_wrapper<const DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
-                     CoarseTimePoint deadline,
-                     const ReadHybridTime& read_time,
+                     const ReadOperationData& read_operation_data,
                      std::reference_wrapper<const ScopedRWOperation> pending_op,
                      const DocDBStatistics* statistics = nullptr);
 
@@ -64,8 +66,7 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      std::shared_ptr<DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
-                     CoarseTimePoint deadline,
-                     const ReadHybridTime& read_time,
+                     const ReadOperationData& read_operation_data,
                      ScopedRWOperation&& pending_op,
                      const DocDBStatistics* statistics = nullptr);
 
@@ -107,8 +108,8 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   template <class TableRow>
   Result<bool> FetchNextImpl(TableRow table_row);
 
-  void Seek(const Slice& key) override;
-  void PrevDocKey(const Slice& key) override;
+  void Seek(Slice key) override;
+  void PrevDocKey(Slice key) override;
 
   void ConfigureForYsql();
   void InitResult();
@@ -130,13 +131,14 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
     const dockv::ReaderProjection* static_projection;
   };
 
-  Result<DocReaderResult> FetchRow(const Slice& doc_key, dockv::PgTableRow* table_row);
-  Result<DocReaderResult> FetchRow(const Slice& doc_key, QLTableRowPair table_row);
+  Result<DocReaderResult> FetchRow(dockv::PgTableRow* table_row);
+  Result<DocReaderResult> FetchRow(QLTableRowPair table_row);
 
   Status FillRow(QLTableRowPair table_row);
   Status FillRow(dockv::PgTableRow* table_row);
 
   std::unique_ptr<IntentAwareIterator> db_iter_;
+  std::optional<IntentAwareIteratorPrefixScope> prefix_scope_;
 
   DocMode doc_mode_ = DocMode::kGeneric;
 

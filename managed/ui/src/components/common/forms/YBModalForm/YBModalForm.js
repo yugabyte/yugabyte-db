@@ -12,6 +12,7 @@ import BackIcon from './images/back.svg';
 export default class YBModalForm extends Component {
   render() {
     const {
+      isButtonDisabled,
       visible,
       onHide,
       size,
@@ -35,8 +36,8 @@ export default class YBModalForm extends Component {
       initialValues,
       validateOnBlur,
       validateOnChange,
-      submitTestId="submitForm",
-      cancelTestId="closeForm"
+      submitTestId = 'submitForm',
+      cancelTestId = 'closeForm'
     } = this.props;
 
     let footerButtonClass = '';
@@ -106,11 +107,17 @@ export default class YBModalForm extends Component {
                       loading={props.isSubmitting}
                       btnText={submitLabel}
                       btnType="submit"
-                      disabled={props.isSubmitting}
+                      disabled={props.isSubmitting || isButtonDisabled}
                       data-testid={submitTestId}
                     />
                     {showCancelButton && (
-                      <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} data-testid={cancelTestId}/>
+                      <YBButton
+                        btnClass="btn"
+                        btnText={cancelLabel}
+                        onClick={onHide}
+                        data-testid={cancelTestId}
+                        disabled={isButtonDisabled}
+                      />
                     )}
                     {footerAccessory && (
                       <div className={`pull-${pullRightFooter ? 'right' : 'left'} modal-accessory`}>

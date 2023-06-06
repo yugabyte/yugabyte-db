@@ -1,5 +1,5 @@
 ---
-title: Performance Advisor
+title: YBM Performance Advisor
 linkTitle: Performance Advisor
 description: Scan your cluster to discover performance optimizations.
 headcontent: Scan your cluster to discover performance optimizations

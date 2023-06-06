@@ -477,7 +477,8 @@ public enum TaskType {
 
   InstallYbcSoftware(com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class),
 
-  InstallYbcSoftwareOnK8s(com.yugabyte.yw.commissioner.tasks.InstallYbcSoftwareOnK8s.class),
+  InstallYbcSoftwareOnK8s(
+      com.yugabyte.yw.commissioner.tasks.subtasks.InstallYbcSoftwareOnK8s.class),
 
   UpgradeUniverseYbc(com.yugabyte.yw.commissioner.tasks.UpgradeUniverseYbc.class),
 
@@ -506,7 +507,9 @@ public enum TaskType {
 
   CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class),
 
-  YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class);
+  YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class),
+
+  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class);
 
   private final Class<? extends ITask> taskClass;
 

@@ -44,6 +44,7 @@ struct LogOptions;
 using LogAnchorRegistryPtr = scoped_refptr<LogAnchorRegistry>;
 using ReadableLogSegmentPtr = scoped_refptr<ReadableLogSegment>;
 using SegmentSequence = NumberedDeque<int64_t, ReadableLogSegmentPtr>;
+using PreLogRolloverCallback = std::function<void()>;
 
 }  // namespace log
 }  // namespace yb

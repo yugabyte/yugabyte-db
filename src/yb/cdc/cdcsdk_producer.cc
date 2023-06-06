@@ -18,6 +18,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/schema_pbutil.h"
 
 #include "yb/consensus/consensus.h"
@@ -64,6 +65,11 @@ DEFINE_RUNTIME_bool(
 DEFINE_test_flag(
     bool, cdc_snapshot_failure, false,
     "For testing only, When it is set to true, the CDC snapshot operation will fail.");
+
+DEFINE_RUNTIME_bool(
+    cdc_populate_end_markers_transactions, true,
+    "If 'true', we will also send 'BEGIN' and 'COMMIT' records for both single shard and multi "
+    "shard transactions");
 
 DECLARE_bool(ysql_enable_packed_row);
 
@@ -121,19 +127,23 @@ Status AddColumnToMap(
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   cdc_datum_message->set_column_name(col_schema.name());
   QLValuePB ql_value;
+  if (old_ql_value_passed) {
+    ql_value = *old_ql_value_passed;
+  } else {
+    col.ToQLValuePB(col_schema.type(), &ql_value);
+  }
   if (tablet->table_type() == PGSQL_TABLE_TYPE) {
-    if (old_ql_value_passed) {
-      ql_value = *old_ql_value_passed;
-    } else {
-      col.ToQLValuePB(col_schema.type(), &ql_value);
-    }
     if (!IsNull(ql_value) && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
       RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
           ql_value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
           cdc_datum_message));
     } else {
       cdc_datum_message->set_column_type(col_schema.pg_type_oid());
+      cdc_datum_message->set_pg_type(col_schema.pg_type_oid());
     }
+  } else {
+    cdc_datum_message->mutable_cql_value()->CopyFrom(ql_value);
+    col_schema.type()->ToQLTypePB(cdc_datum_message->mutable_cql_type());
   }
   return Status::OK();
 }
@@ -257,10 +267,8 @@ Status PopulateBeforeImage(
       tablet_peer->tablet_metadata()->GetTableInfo(colocation_id))->doc_read_context;
   dockv::ReaderProjection projection(schema);
   docdb::DocRowwiseIterator iter(
-      projection,
-      *doc_read_context,
-      TransactionOperationContext(), docdb, CoarseTimePoint::max() /* deadline */, read_time,
-      pending_op);
+      projection, *doc_read_context, TransactionOperationContext(), docdb,
+      docdb::ReadOperationData::FromReadTime(read_time), pending_op);
   iter.SetSchema(schema);
 
   const dockv::DocKey& doc_key = decoded_primary_key.doc_key();
@@ -331,6 +339,7 @@ Result<size_t> PopulatePackedRows(
       RETURN_NOT_OK(pv.DecodeFromValue(slice));
     }
     const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
+
     RETURN_NOT_OK(AddColumnToMap(
         tablet_peer, col, pv, enum_oid_label_map, composite_atts_map, row_message->add_new_tuple(),
         nullptr));
@@ -820,6 +829,64 @@ Status PopulateCDCSDKIntentRecord(
   return Status::OK();
 }
 
+void FillBeginRecordForSingleShardTransaction(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, GetChangesResponsePB* resp,
+    const uint64_t& commit_timestamp) {
+  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    auto tablet_result = tablet_peer->shared_tablet_safe();
+    if (!tablet_result.ok()) {
+      LOG(WARNING) << tablet_result.status();
+      continue;
+    }
+    auto tablet = *tablet_result;
+    auto table_name = tablet->metadata()->table_name(table_id);
+    // Ignore the DDL information of the parent table.
+    if (tablet->metadata()->colocated() &&
+        (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
+         boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
+      continue;
+    }
+    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
+    RowMessage* row_message = proto_record->mutable_row_message();
+    row_message->set_op(RowMessage_Op_BEGIN);
+    row_message->set_table(table_name);
+    row_message->set_commit_time(commit_timestamp);
+    // No need to add record_time to the Begin record since it does not have any intent associated
+    // with it.
+  }
+}
+
+void FillCommitRecordForSingleShardTransaction(
+    const OpId& op_id, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    GetChangesResponsePB* resp, const uint64_t& commit_timestamp) {
+  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    auto tablet_result = tablet_peer->shared_tablet_safe();
+    if (!tablet_result.ok()) {
+      LOG(WARNING) << tablet_result.status();
+      continue;
+    }
+    auto tablet = *tablet_result;
+    auto table_name = tablet->metadata()->table_name(table_id);
+    // Ignore the DDL information of the parent table.
+    if (tablet->metadata()->colocated() &&
+        (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
+         boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
+      continue;
+    }
+    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
+    RowMessage* row_message = proto_record->mutable_row_message();
+
+    row_message->set_op(RowMessage_Op_COMMIT);
+    row_message->set_table(table_name);
+    row_message->set_commit_time(commit_timestamp);
+    // No need to add record_time to the Commit record since it does not have any intent associated
+    // with it.
+
+    CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
+    SetCDCSDKOpId(op_id.term, op_id.index, 0, "", cdc_sdk_op_id_pb);
+  }
+}
+
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
 Status PopulateCDCSDKWriteRecord(
     const ReplicateMsgPtr& msg,
@@ -830,6 +897,10 @@ Status PopulateCDCSDKWriteRecord(
     SchemaDetailsMap* cached_schema_details,
     GetChangesResponsePB* resp,
     client::YBClient* client) {
+  if (FLAGS_cdc_populate_end_markers_transactions) {
+    FillBeginRecordForSingleShardTransaction(tablet_peer, resp, msg->hybrid_time());
+  }
+
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   const auto& batch = msg->write().write_batch();
   CDCSDKProtoRecordPB* proto_record = nullptr;
@@ -1048,6 +1119,11 @@ Status PopulateCDCSDKWriteRecord(
     }
   }
 
+  if (FLAGS_cdc_populate_end_markers_transactions) {
+    FillCommitRecordForSingleShardTransaction(
+        OpId(msg->id().term(), msg->id().index()), tablet_peer, resp, msg->hybrid_time());
+  }
+
   return Status::OK();
 }
 
@@ -1196,7 +1272,8 @@ Status ProcessIntents(
     SchemaDetailsMap* cached_schema_details,
     const uint64_t& commit_time) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-  if (stream_state->key.empty() && stream_state->write_id == 0) {
+  if (stream_state->key.empty() && stream_state->write_id == 0 &&
+      FLAGS_cdc_populate_end_markers_transactions) {
     FillBeginRecord(transaction_id, tablet_peer, resp, commit_time);
   }
 
@@ -1243,7 +1320,9 @@ Status ProcessIntents(
   SetTermIndex(op_id.term, op_id.index, checkpoint);
 
   if (stream_state->key.empty() && stream_state->write_id == 0) {
-    FillCommitRecord(op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time);
+    if (FLAGS_cdc_populate_end_markers_transactions) {
+      FillCommitRecord(op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time);
+    }
   } else {
     SetKeyWriteId(reverse_index_key, write_id, checkpoint);
   }
@@ -1258,7 +1337,8 @@ Status PopulateCDCSDKSnapshotRecord(
     const TableName& table_name,
     ReadHybridTime time,
     const EnumOidLabelMap& enum_oid_label_map,
-    const CompositeAttsMap& composite_atts_map) {
+    const CompositeAttsMap& composite_atts_map,
+    bool is_ysql_table) {
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
 
@@ -1280,13 +1360,27 @@ Status PopulateCDCSDKSnapshotRecord(
     cdc_datum_message = row_message->add_new_tuple();
     cdc_datum_message->set_column_name(col_schema.name());
 
-    if (value && value->value_case() != QLValuePB::VALUE_NOT_SET &&
-        col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
-      RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
-          *value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
-          cdc_datum_message));
+    if (value && value->value_case() != QLValuePB::VALUE_NOT_SET) {
+      if (is_ysql_table) {
+        if (col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
+          RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
+              *value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
+              cdc_datum_message));
+        } else {
+          cdc_datum_message->set_column_type(col_schema.pg_type_oid());
+          cdc_datum_message->set_pg_type(col_schema.pg_type_oid());
+        }
+      } else {
+        cdc_datum_message->mutable_cql_value()->CopyFrom(*value);
+        col_schema.type()->ToQLTypePB(cdc_datum_message->mutable_cql_type());
+      }
     } else {
-      cdc_datum_message->set_column_type(col_schema.pg_type_oid());
+      if (is_ysql_table) {
+        cdc_datum_message->set_column_type(col_schema.pg_type_oid());
+        cdc_datum_message->set_pg_type(col_schema.pg_type_oid());
+      } else {
+        col_schema.type()->ToQLTypePB(cdc_datum_message->mutable_cql_type());
+      }
     }
 
     row_message->add_old_tuple();
@@ -1380,11 +1474,9 @@ Status GetChangesForCDCSDK(
     std::string nextKey;
     // It is first call in snapshot then take snapshot.
     if ((from_op_id.key().empty()) && (from_op_id.snapshot_time() == 0)) {
-      if (txn_participant == nullptr || txn_participant->context() == nullptr)
-        return STATUS_SUBSTITUTE(
-            Corruption, "Cannot read data as the transaction participant context is null");
       tablet::RemoveIntentsData data;
-      RETURN_NOT_OK(txn_participant->context()->GetLastReplicatedData(&data));
+      RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+
       // Set the checkpoint and communicate to the follower.
       VLOG(1) << "The first snapshot term " << data.op_id.term << "index  " << data.op_id.index
               << "time " << data.log_ht.ToUint64();
@@ -1392,15 +1484,17 @@ Status GetChangesForCDCSDK(
       std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
       shared_consensus->UpdateCDCConsumerOpId(data.op_id);
 
-      if (txn_participant == nullptr || txn_participant->context() == nullptr) {
-        return STATUS_SUBSTITUTE(
-            Corruption, "Cannot read data as the transaction participant context is null");
-      }
       LOG(INFO) << "CDC snapshot initialization is started, by setting checkpoint as: "
                 << data.op_id << ", for tablet_id: " << tablet_id << " stream_id: " << stream_id;
-      txn_participant->SetIntentRetainOpIdAndTime(
-          data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
-      RETURN_NOT_OK(txn_participant->context()->GetLastReplicatedData(&data));
+      if (txn_participant) {
+        txn_participant->SetIntentRetainOpIdAndTime(
+            data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
+      } else {
+        RETURN_NOT_OK(tablet_peer->SetCDCSDKRetainOpIdAndTime(
+            data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)),
+            data.log_ht));
+      }
+      RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
       time = ReadHybridTime::SingleTime(data.log_ht);
       // Use the last replicated hybrid time as a safe time for snapshot operation. so that
       // compaction can be restricted during snapshot operation.
@@ -1451,7 +1545,7 @@ Status GetChangesForCDCSDK(
       while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {
         RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
             resp, &row, *schema_details.schema, table_name, time, enum_oid_label_map,
-            composite_atts_map));
+            composite_atts_map, tablet_ptr->table_type() == PGSQL_TABLE_TYPE));
         fetched++;
       }
       dockv::SubDocKey sub_doc_key;

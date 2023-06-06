@@ -4,7 +4,6 @@ headerTitle: Amazon MSK
 linkTitle: Amazon MSK
 description: Amazon MSK for Change Data Capture in YugabyteDB.
 headcontent: Stream data from YugabyteDB CDC to Amazon MSK using Debezium
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     parent: cdc-tutorials

@@ -124,7 +124,7 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
     if (provider.getDetails() == null) {
       return;
     }
-    GCPCloudInfo gcpCloudInfo = provider.getDetails().cloudInfo.gcp;
+    GCPCloudInfo gcpCloudInfo = provider.getDetails().getCloudInfo().gcp;
     if (gcpCloudInfo == null) {
       return;
     }

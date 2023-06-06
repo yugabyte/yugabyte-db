@@ -113,7 +113,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
           saveNodeStatus(
               taskParams().nodeName, NodeStatus.builder().masterState(MasterState.ToStart).build());
         }
-        createStartMasterOnNodeTasks(universe, currentNode, null);
+        createStartMasterOnNodeTasks(universe, currentNode, null, false);
       }
       final Set<NodeDetails> nodeCollection = ImmutableSet.of(currentNode);
       if (startTserver) {

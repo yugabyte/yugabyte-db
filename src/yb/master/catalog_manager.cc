@@ -381,9 +381,7 @@ DEFINE_test_flag(bool, hang_on_namespace_transition, false,
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
     "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
 
-DEFINE_RUNTIME_bool(master_drop_table_after_task_response, true,
-    "Mark a table as DELETED as soon as we get all the responses from all the TS.");
-TAG_FLAG(master_drop_table_after_task_response, advanced);
+DEPRECATE_FLAG(bool, master_drop_table_after_task_response, "11_2022");
 
 DEFINE_test_flag(bool, tablegroup_master_only, false,
                  "This is only for MasterTest to be able to test tablegroups without the"
@@ -4492,7 +4490,7 @@ Status CatalogManager::CreateTransactionStatusTableInternal(
   }
   req.mutable_schema()->mutable_table_properties()->set_num_tablets(num_tablets);
 
-  ColumnSchema hash(kRedisKeyColumnName, BINARY, /* is_nullable */ false, /* is_hash_key */ true);
+  ColumnSchema hash(kRedisKeyColumnName, BINARY, ColumnKind::HASH);
   ColumnSchemaToPB(hash, req.mutable_schema()->mutable_columns()->Add());
 
   Status s = CreateTable(&req, &resp, rpc);
@@ -4753,18 +4751,17 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
   // "metric" is the name of the metric and "value" is its val. "ts" is time at
   // which the snapshot was recorded. "details" is a json column for future extensibility.
 
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("node")->Type(STRING)->HashPrimaryKey()->NotNull();
-  schemaBuilder.AddColumn("entity_type")->Type(STRING)->PrimaryKey()->NotNull();
-  schemaBuilder.AddColumn("entity_id")->Type(STRING)->PrimaryKey()->NotNull();
-  schemaBuilder.AddColumn("metric")->Type(STRING)->PrimaryKey()->NotNull();
-  schemaBuilder.AddColumn("ts")->Type(TIMESTAMP)->PrimaryKey()->NotNull()->
-    SetSortingType(SortingType::kDescending);
-  schemaBuilder.AddColumn("value")->Type(INT64);
-  schemaBuilder.AddColumn("details")->Type(JSONB);
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("node")->Type(STRING)->HashPrimaryKey();
+  schema_builder.AddColumn("entity_type")->Type(STRING)->PrimaryKey();
+  schema_builder.AddColumn("entity_id")->Type(STRING)->PrimaryKey();
+  schema_builder.AddColumn("metric")->Type(STRING)->PrimaryKey();
+  schema_builder.AddColumn("ts")->Type(TIMESTAMP)->PrimaryKey(SortingType::kDescending);
+  schema_builder.AddColumn("value")->Type(INT64);
+  schema_builder.AddColumn("details")->Type(JSONB);
 
   YBSchema ybschema;
-  CHECK_OK(schemaBuilder.Build(&ybschema));
+  RETURN_NOT_OK(schema_builder.Build(&ybschema));
 
   auto schema = yb::client::internal::GetSchema(ybschema);
   SchemaToPB(schema, req.mutable_schema());
@@ -6436,7 +6433,7 @@ Status ApplyAlterSteps(server::Clock* clock,
         }
         ColumnSchema new_col = ColumnSchemaFromPB(new_col_pb);
 
-        RETURN_NOT_OK(builder.AddColumn(new_col, false));
+        RETURN_NOT_OK(builder.AddColumn(new_col));
         ddl_log_entries->emplace_back(time, table_id, current_pb, Format("Add column $0", new_col));
         break;
       }
@@ -8340,10 +8337,10 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
   ctreq.set_tablegroup_id(req->id());
   ctreq.set_tablespace_id(req->tablespace_id());
 
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey();
   YBSchema ybschema;
-  CHECK_OK(schemaBuilder.Build(&ybschema));
+  CHECK_OK(schema_builder.Build(&ybschema));
   auto schema = yb::client::internal::GetSchema(ybschema);
   SchemaToPB(schema, ctreq.mutable_schema());
   if (!FLAGS_TEST_tablegroup_master_only) {
@@ -8601,10 +8598,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     req.set_table_type(GetTableTypeForDatabase(ns->database_type()));
     req.set_is_colocated_via_database(true);
 
-    YBSchemaBuilder schemaBuilder;
-    schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
+    YBSchemaBuilder schema_builder;
+    schema_builder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey();
     YBSchema ybschema;
-    CHECK_OK(schemaBuilder.Build(&ybschema));
+    CHECK_OK(schema_builder.Build(&ybschema));
     auto schema = yb::client::internal::GetSchema(ybschema);
     SchemaToPB(schema, req.mutable_schema());
     req.mutable_schema()->mutable_table_properties()->set_is_transactional(true);
@@ -11715,7 +11712,7 @@ Status CatalogManager::GetTabletLocations(
   }
   Status s = GetTabletLocations(tablet_info, locs_pb, include_inactive);
 
-  auto num_replicas = GetReplicationFactorForTablet(tablet_info);
+  auto num_replicas = GetNumTabletReplicas(tablet_info);
   if (num_replicas.ok() && *num_replicas > 0 &&
       implicit_cast<size_t>(locs_pb->replicas().size()) != *num_replicas) {
     YB_LOG_EVERY_N_SECS(WARNING, 1)
@@ -11767,7 +11764,8 @@ Status CatalogManager::GetTableLocations(
 
   int expected_live_replicas = 0;
   int expected_read_replicas = 0;
-  GetExpectedNumberOfReplicas(&expected_live_replicas, &expected_read_replicas);
+  GetExpectedNumberOfReplicasForTable(table, &expected_live_replicas, &expected_read_replicas);
+
   resp->mutable_tablet_locations()->Reserve(narrow_cast<int32_t>(tablets.size()));
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
@@ -12194,8 +12192,7 @@ Result<size_t> CatalogManager::GetTableReplicationFactor(const TableInfoPtr& tab
   return FLAGS_replication_factor;
 }
 
-Result<size_t> CatalogManager::GetReplicationFactorForTablet(
-    const scoped_refptr<TabletInfo>& tablet) {
+Result<size_t> CatalogManager::GetNumTabletReplicas(const scoped_refptr<TabletInfo>& tablet) {
   // For system tables, the set of replicas is always the set of masters.
   if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
     consensus::ConsensusStatePB master_consensus;
@@ -12203,15 +12200,33 @@ Result<size_t> CatalogManager::GetReplicationFactorForTablet(
     return master_consensus.config().peers().size();
   }
   int num_live_replicas = 0, num_read_replicas = 0;
-  GetExpectedNumberOfReplicas(&num_live_replicas, &num_read_replicas);
+  RETURN_NOT_OK(
+      GetExpectedNumberOfReplicasForTablet(tablet->id(), &num_live_replicas, &num_read_replicas));
   return num_live_replicas + num_read_replicas;
 }
 
-void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas) {
+Status CatalogManager::GetExpectedNumberOfReplicasForTablet(
+    const TabletId& tablet_id, int* num_live_replicas, int* num_read_replicas) {
+  scoped_refptr<TabletInfo> tablet_info;
+  {
+    SharedLock lock(mutex_);
+    if (!FindCopy(*tablet_map_, tablet_id, &tablet_info)) {
+      return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
+    }
+  }
+  GetExpectedNumberOfReplicasForTable(tablet_info->table(), num_live_replicas, num_read_replicas);
+  return Status::OK();
+}
+
+void CatalogManager::GetExpectedNumberOfReplicasForTable(
+    const scoped_refptr<TableInfo>& table, int* num_live_replicas, int* num_read_replicas) {
   auto l = ClusterConfig()->LockForRead();
-  const ReplicationInfoPB& replication_info = l->pb.replication_info();
-  *num_live_replicas = narrow_cast<int>(GetNumReplicasFromPlacementInfo(
-      replication_info.live_replicas()));
+  auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
+      table,
+      GetTablespaceManager(),
+      ClusterConfig()->LockForRead()->pb.replication_info());
+  *num_live_replicas =
+      narrow_cast<int>(GetNumReplicasFromPlacementInfo(replication_info.live_replicas()));
   for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
     *num_read_replicas += read_replica_placement_info.num_replicas();
   }
@@ -12779,9 +12794,6 @@ void CatalogManager::ProcessTabletReplicaFullCompactionStatus(
 }
 
 void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
-  if (!FLAGS_master_drop_table_after_task_response) {
-    return;
-  }
   // Since this is called after every successful async DeleteTablet, it's possible if all tasks
   // complete, for us to mark the table as DELETED/HIDDEN asap. This is desirable as clients will
   // wait for this before returning success to the user.

@@ -62,7 +62,6 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_entity_info.h"
@@ -1249,8 +1248,21 @@ Status GetTableLocations(MiniCluster* cluster,
   return Status::OK();
 }
 
-size_t GetNumTabletsOfTableOnTS(tserver::TabletServer* tserver, const TableId& table_id) {
-  return tserver->tablet_manager()->GetTabletPeersWithTableId(table_id).size();
+size_t GetNumTabletsOfTableOnTS(
+    tserver::TabletServer* const tserver,
+    const TableId& table_id,
+    TabletPeerFilter filter) {
+  auto peers = tserver->tablet_manager()->GetTabletPeersWithTableId(table_id);
+  if (!filter) {
+    return peers.size();
+  }
+  size_t num = 0;
+  for (const auto& peer : peers) {
+    if (filter(peer)) {
+      ++num;
+    }
+  }
+  return num;
 }
 
 Status WaitForNumVotersInConfigOnMaster(

@@ -161,6 +161,9 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile,
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_strict_inequality, kLocalVolatile, false, true,
     "Push down strict inequality filters");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_is_not_null, kLocalVolatile, false, true,
+    "Push down IS NOT NULL condition filters");
+
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_hash_batch_in, kLocalVolatile, false, true,
     "Enable batching of hash in queries.");
 
@@ -935,7 +938,7 @@ void PgSupervisor::RunThread() {
       if (ret_code == 0) {
         LOG(INFO) << "PostgreSQL server exited normally";
       } else {
-        LOG(WARNING) << "PostgreSQL server exited with code " << ret_code;
+        util::LogWaitCode(ret_code);
       }
       pg_wrapper_.reset();
     } else {

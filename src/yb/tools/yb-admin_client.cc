@@ -3705,11 +3705,11 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   cdc::CreateCDCStreamResponsePB resp;
 
   req.set_namespace_name(ns.name);
-
+  req.set_db_type(ns.db_type);
   if (record_type == yb::ToString("ALL")) {
-        req.set_record_type(cdc::CDCRecordType::ALL);
+    req.set_record_type(cdc::CDCRecordType::ALL);
   } else {
-        req.set_record_type(cdc::CDCRecordType::CHANGE);
+    req.set_record_type(cdc::CDCRecordType::CHANGE);
   }
 
   req.set_record_format(cdc::CDCRecordFormat::PROTO);

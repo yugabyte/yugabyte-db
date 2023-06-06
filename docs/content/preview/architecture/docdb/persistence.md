@@ -129,7 +129,6 @@ Testing the packed row feature with different configurations showed significant 
 
 The packed row feature works for the YSQL API using the YSQL-specific GFlags with most cross features like backup and restore, schema changes, and so on, subject to certain known limitations which are currently under development:
 
-* [#15740](https://github.com/yugabyte/yugabyte-db/issues/15740) Integration with CDC and schema changes (Beta) - There are some known limitations with schema changes/DDLs and CDC and Packed Row feature.
 * [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143) Colocated and xCluster - There are some limitations around propagation of schema changes for colocated tables in xCluster in the packed row format that are being worked on.
 * [#14369](https://github.com/yugabyte/yugabyte-db/issues/14369) Packed row support for YCQL is limited and is still being hardened.
 

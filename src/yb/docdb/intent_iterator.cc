@@ -501,7 +501,7 @@ const Slice kEmptyKeyStrongWriteTailSlice =
 
 } // namespace
 
-Slice StrongWriteSuffix(const KeyBytes& key) {
+Slice StrongWriteSuffix(Slice key) {
   return key.empty() ? kEmptyKeyStrongWriteTailSlice : kStrongWriteTailSlice;
 }
 

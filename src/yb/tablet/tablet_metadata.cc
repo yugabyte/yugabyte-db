@@ -212,7 +212,7 @@ void TableInfo::CompleteInit() {
     return;
   }
   unique_index_key_projection = std::make_shared<dockv::ReaderProjection>(
-      doc_read_context->schema, index_info->index_key_column_ids());
+      doc_read_context->schema(), index_info->index_key_column_ids());
 }
 
 Result<TableInfoPtr> TableInfo::LoadFromPB(
@@ -279,7 +279,7 @@ Status TableInfo::MergeSchemaPackings(
   const dockv::SchemaPacking& latest_packing = VERIFY_RESULT(
       doc_read_context->schema_packing_storage.GetPacking(schema_version));
   LOG_IF_WITH_PREFIX(DFATAL,
-                     !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema))
+                     !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema()))
       << "After merging schema packings during restore, latest schema does not"
       << " have the same packing as the corresponding latest packing for table "
       << table_id;
@@ -309,11 +309,11 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
 }
 
 const Schema& TableInfo::schema() const {
-  return doc_read_context->schema;
+  return doc_read_context->schema();
 }
 
 SchemaPtr TableInfo::SharedSchema() const {
-  return SchemaPtr(doc_read_context, &doc_read_context->schema);
+  return SchemaPtr(doc_read_context, const_cast<Schema*>(&doc_read_context->schema()));
 }
 
 Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
@@ -340,7 +340,7 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     .cotable_id = self->cotable_id,
     .deleted_cols = std::move(deleted_before_history_cutoff),
     .enabled =
-        docdb::PackedRowEnabled(self->table_type, self->doc_read_context->schema.is_colocated())
+        docdb::PackedRowEnabled(self->table_type, self->doc_read_context->schema().is_colocated())
   };
 }
 
@@ -378,7 +378,7 @@ Status KvStoreInfo::LoadTablesFromPB(
     if (!table_info->primary() && schema.table_properties().is_ysql_catalog_table()) {
       // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
       // to set cotable ID.
-      table_info->doc_read_context->schema.set_cotable_id(table_info->cotable_id);
+      table_info->doc_read_context->SetCotableId(table_info->cotable_id);
     }
     if (schema.has_colocation_id()) {
       colocation_to_table.emplace(schema.colocation_id(), table_info);
@@ -1150,7 +1150,7 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
       // TODO(alex): cotable_id should be copied from original schema, do we need this section?
       //             Might be related to #5017, #6107
       auto cotable_id = CHECK_RESULT(Uuid::FromHexString(target_table_id));
-      new_table_info->doc_read_context->schema.set_cotable_id(cotable_id);
+      new_table_info->doc_read_context->SetCotableId(cotable_id);
     }
     // Ensure colocation ID remains unchanged.
     const auto& old_schema = it->second->schema();
@@ -1251,7 +1251,7 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
     if (schema.table_properties().is_ysql_catalog_table()) {
       // TODO(alex): cotable_id seems to be properly copied from schema, do we need this section?
       //             Might be related to #5017, #6107
-      new_table_info->doc_read_context->schema.set_cotable_id(new_table_info->cotable_id);
+      new_table_info->doc_read_context->SetCotableId(new_table_info->cotable_id);
     }
   }
   std::lock_guard<MutexType> lock(data_mutex_);

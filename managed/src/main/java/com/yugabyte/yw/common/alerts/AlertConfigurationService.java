@@ -188,6 +188,14 @@ public class AlertConfigurationService {
     return configuration;
   }
 
+  public AlertConfiguration getOrBadRequest(UUID customerUuid, UUID uuid) {
+    AlertConfiguration configuration = getOrBadRequest(uuid);
+    if (!(configuration.getCustomerUUID().equals(customerUuid))) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert Configuration UUID: " + uuid);
+    }
+    return configuration;
+  }
+
   public List<AlertConfiguration> list(AlertConfigurationFilter filter) {
     return createQueryByFilter(filter).findList();
   }

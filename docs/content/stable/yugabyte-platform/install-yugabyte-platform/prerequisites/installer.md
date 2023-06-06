@@ -3,7 +3,8 @@ title: Prerequisites - YBA Installer
 headerTitle: Prerequisites for YBA
 linkTitle: YBA prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere using YBA Installer
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+headContent: What you need to install YugabyteDB Anywhere
+earlyAccess: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable_yugabyte-platform:
     identifier: prerequisites-installer
@@ -12,7 +13,7 @@ menu:
 type: docs
 ---
 
-There are three methods of installing YugabyteDB Anywhere (YBA):
+You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
@@ -78,3 +79,5 @@ Ensure that the following ports are available:
 - 9090 (Prometheus)
 
 These are configurable. If custom ports are used, those must be available instead.
+
+For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).

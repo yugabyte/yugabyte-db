@@ -105,8 +105,8 @@ public class NodeInstanceController extends AuthenticatedController {
       response = NodeDetailsResp.class,
       nickname = "getNodeDetails")
   public Result getNodeDetails(UUID customerUUID, UUID universeUUID, String nodeName) {
-    Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     NodeDetails detail = universe.getNode(nodeName);
     String helmValues = "";
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
@@ -374,7 +374,7 @@ public class NodeInstanceController extends AuthenticatedController {
   public Result nodeAction(
       UUID customerUUID, UUID universeUUID, String nodeName, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     universe.getNodeOrBadRequest(nodeName);
     NodeActionFormData nodeActionFormData = parseJsonAndValidate(request, NodeActionFormData.class);
 

@@ -85,7 +85,7 @@ public class Universe extends Model {
   // Key to indicate if a universe cert is hot reloadable
   public static final String KEY_CERT_HOT_RELOADABLE = "cert_hot_reloadable";
 
-  public static Universe getValidUniverseOrBadRequest(UUID universeUUID, Customer customer) {
+  public static Universe getOrBadRequest(UUID universeUUID, Customer customer) {
     Universe universe = getOrBadRequest(universeUUID);
     MDC.put("universe-id", universeUUID.toString());
     MDC.put("cluster-id", universeUUID.toString());
@@ -1081,5 +1081,13 @@ public class Universe extends Model {
     return isNodeUIHttpsEnabled
         && enableNodeToNodeEncrypt
         && (Util.compareYbVersions(ybSoftwareVersion, "2.17.1.0-b13", true) > 0);
+  }
+
+  public Optional<TaskInfo> maybeGetLastTaskInfo() {
+    if (getUniverseDetails().updatingTaskUUID != null
+        && getUniverseDetails().updatingTask != null) {
+      return TaskInfo.maybeGet(getUniverseDetails().updatingTaskUUID);
+    }
+    return Optional.empty();
   }
 }

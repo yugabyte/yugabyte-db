@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFormDataToTaskParams;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -173,7 +174,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   @Deprecated
   public Result update(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseDefinitionTaskParams taskParams =
         bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class);
     UUID taskUUID = universeCRUDHandler.update(customer, universe, taskParams);
@@ -196,7 +197,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   @Deprecated
   public Result clusterCreate(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     UUID taskUUID =
         universeCRUDHandler.createCluster(
@@ -228,7 +229,10 @@ public class UniverseUiOnlyController extends AuthenticatedController {
       Boolean isForceDelete,
       Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    if (universe.getCluster(clusterUUID) == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot find Cluster: " + clusterUUID);
+    }
 
     UUID taskUUID =
         universeCRUDHandler.clusterDelete(customer, universe, clusterUUID, isForceDelete);
@@ -266,7 +270,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   public Result upgrade(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info("Upgrade {} for {}.", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UpgradeParams taskParams = bindFormDataToTaskParams(request, UpgradeParams.class);
 
     UUID taskUUID = universeCRUDHandler.upgrade(customer, universe, taskParams);
@@ -293,7 +297,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
           required = true))
   public Result updateDiskSize(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     UUID taskUUID =
         universeCRUDHandler.updateDiskSize(
@@ -324,7 +328,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   public Result tlsConfigUpdate(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info("TLS config update: {} for {}.", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     TlsConfigUpdateParams taskParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
             request, TlsConfigUpdateParams.class, universe);
