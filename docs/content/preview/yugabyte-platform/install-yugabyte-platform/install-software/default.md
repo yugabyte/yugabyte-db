@@ -126,9 +126,9 @@ The recommended TLS version is 1.2.
 
 YBA sometimes initiates HTTP or HTTPS connections to other servers. For example, HTTP or HTTPS connections (depending on your setup) maybe utilized in one or more of the following (not limited to) situations:
 
-1. Contact a public cloud provider to create VMs.
-1. Deposit backups on a public cloud provider's object storage service.
-1. Contact an external load balancer.
+- Contact a public cloud provider to create VMs.
+- Deposit backups on a public cloud provider's object storage service.
+- Contact an external load balancer.
 
 You can set up HTTP and HTTPS proxies via **Application config**, and select **Enable Proxy** as per the following illustration:
 
