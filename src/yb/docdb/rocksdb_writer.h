@@ -179,7 +179,27 @@ class IntentsWriter : public rocksdb::DirectWriter {
   BoundedRocksDbIterator reverse_index_iter_;
 };
 
-class ApplyIntentsContext : public IntentsWriterContext {
+class FrontierSchemaVersionUpdater {
+ public:
+  explicit FrontierSchemaVersionUpdater(SchemaPackingProvider* schema_packing_provider)
+      : schema_packing_provider_(schema_packing_provider) {}
+
+  void SetFrontiers(ConsensusFrontiers* frontiers) { frontiers_ = frontiers; }
+
+ protected:
+  Status UpdateSchemaVersion(Slice key, Slice value);
+  void FlushSchemaVersion();
+
+ private:
+  SchemaPackingProvider* schema_packing_provider_;
+  Uuid schema_version_table_ = Uuid::Nil();
+  ColocationId schema_version_colocation_id_ = 0;
+  SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
+  SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
+  ConsensusFrontiers* frontiers_ = nullptr;
+};
+
+class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVersionUpdater {
  public:
   ApplyIntentsContext(
       const TransactionId& transaction_id,
@@ -199,14 +219,8 @@ class ApplyIntentsContext : public IntentsWriterContext {
 
   void Complete(rocksdb::DirectWriteHandler* handler) override;
 
-  void SetFrontiers(ConsensusFrontiers* frontiers) {
-    frontiers_ = frontiers;
-  }
-
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
-  Status UpdateSchemaVersion(Slice key, Slice value);
-  void FlushSchemaVersion();
 
   const ApplyTransactionState* apply_state_;
   const SubtxnSet& aborted_;
@@ -214,13 +228,7 @@ class ApplyIntentsContext : public IntentsWriterContext {
   HybridTime log_ht_;
   IntraTxnWriteId write_id_;
   const KeyBounds* key_bounds_;
-  SchemaPackingProvider* schema_packing_provider_;
   BoundedRocksDbIterator intent_iter_;
-  Uuid schema_version_table_ = Uuid::Nil();
-  ColocationId schema_version_colocation_id_ = 0;
-  SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
-  SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
-  ConsensusFrontiers* frontiers_;
 };
 
 class RemoveIntentsContext : public IntentsWriterContext {
@@ -253,12 +261,14 @@ class RemoveIntentsContext : public IntentsWriterContext {
 //   But if apply_external_transactions contains transaction for those external intents, then
 //   those intents will be applied directly to regular DB, avoiding unnecessary write to intents DB.
 //   This case is very common for short running transactions.
-class ExternalIntentsBatchWriter : public rocksdb::DirectWriter {
+class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
+                                   public FrontierSchemaVersionUpdater {
  public:
   ExternalIntentsBatchWriter(
       std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime hybrid_time,
       rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
-      ExternalTxnIntentsState* external_txns_intents_state);
+      ExternalTxnIntentsState* external_txns_intents_state,
+      SchemaPackingProvider* schema_packing_provider);
   bool Empty() const;
 
   Status Apply(rocksdb::DirectWriteHandler* handler) override;
@@ -275,6 +285,15 @@ class ExternalIntentsBatchWriter : public rocksdb::DirectWriter {
       const yb::docdb::LWKeyValuePairPB& kv_pair,
       ExternalTxnApplyState* apply_external_transactions,
       rocksdb::DirectWriteHandler* regular_write_handler);
+
+  // Parse the merged external intent value, and write them to regular writer handler. Also updates
+  // min/max schema version.
+  Status PrepareApplyExternalIntentsBatch(
+      HybridTime commit_ht,
+      const SubtxnSet& aborted_subtransactions,
+      const Slice& original_input_value,
+      rocksdb::DirectWriteHandler* regular_write_handler,
+      IntraTxnWriteId* write_id);
 
  private:
   const LWKeyValueWriteBatchPB& put_batch_;

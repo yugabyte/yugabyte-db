@@ -1407,7 +1407,7 @@ SplitExternalBatchIntoTransactionBatches(
 Status Tablet::ApplyKeyValueRowOperations(
     int64_t batch_idx,
     const docdb::LWKeyValueWriteBatchPB& put_batch,
-    const rocksdb::UserFrontiers* frontiers,
+    docdb::ConsensusFrontiers* frontiers,
     const HybridTime hybrid_time,
     AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
@@ -1448,7 +1448,8 @@ Status Tablet::ApplyKeyValueRowOperations(
     rocksdb::WriteBatch intents_write_batch;
     docdb::ExternalIntentsBatchWriter batcher(
         put_batch, hybrid_time, intents_db_.get(), &intents_write_batch,
-        external_txn_intents_state_.get());
+        external_txn_intents_state_.get(), &GetSchemaPackingProvider());
+    batcher.SetFrontiers(frontiers);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
