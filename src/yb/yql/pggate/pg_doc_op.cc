@@ -118,6 +118,31 @@ auto BuildRowOrders(const LWPgsqlResponsePB& response,
   return orders;
 }
 
+// Helper function to determine the type of relation that the given Pgsql operation is being
+// performed on. This function classifies the operation into one of three buckets: system catalog,
+// secondary index or user table requests.
+TableType ResolveRelationType(const PgsqlOp& op, const PgTable& table) {
+  if (table->schema().table_properties().is_ysql_catalog_table()) {
+    // We don't distinguish between table reads and index reads for a catalog table.
+    return TableType::SYSTEM;
+  }
+
+  // Check if we're making an index request.
+  // Any request that lands on a secondary index table is treated as an index request, while
+  // primary key lookups on the main table are treated as user table requests. No such distinction
+  // is made for system catalog tables.
+  // We make use of the following info to make this decision:
+  // read_request().has_index_request() : is true for colocated secondary index requests.
+  // table->isIndex() : is true for all secondary index writes and non-colocated secondary index
+  //                    reads.
+  if ((op.is_read() && down_cast<const PgsqlReadOp &>(op).read_request().has_index_request()) ||
+      table->IsIndex()) {
+    return TableType::INDEX;
+  }
+
+  return TableType::USER;
+}
+
 } // namespace
 
 PgDocResult::PgDocResult(rpc::SidecarHolder data, std::vector<int64_t>&& row_orders)
@@ -200,10 +225,11 @@ bool PgDocResponse::Valid() const {
       : static_cast<bool>(std::get<ProviderPtr>(holder_));
 }
 
-Result<PgDocResponse::Data> PgDocResponse::Get(MonoDelta* wait_time) {
+Result<PgDocResponse::Data> PgDocResponse::Get() {
   if (std::holds_alternative<PerformFuture>(holder_)) {
-    return std::get<PerformFuture>(holder_).Get(wait_time);
+    return std::get<PerformFuture>(holder_).Get();
   }
+
   // Detach provider pointer after first usage to make PgDocResponse::Valid return false.
   ProviderPtr provider;
   std::get<ProviderPtr>(holder_).swap(provider);
@@ -243,14 +269,28 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
   // If the execution has error, return without reading any rows.
   RETURN_NOT_OK(exec_status_);
   std::list<PgDocResult> result;
+
   if (!end_of_data_) {
     // Send request now in case prefetching was suppressed.
     if (suppress_next_result_prefetching_ && !response_.Valid()) {
       RETURN_NOT_OK(SendRequest());
     }
 
-    DCHECK(response_.Valid());
-    result = VERIFY_RESULT(ProcessResponse(response_.Get(&read_rpc_wait_time_)));
+    uint64_t wait_time = 0;
+    auto result_data = VERIFY_RESULT(pg_session_->metrics().CallWithDuration(
+        [&response = response_] { return response.Get(); }, &wait_time));
+
+    // Update session stats instrumentation only for read requests. Reads are executed
+    // synchronously with respect to Postgres query execution, and thus it is possible to
+    // correlate wait/execution times directly with the request. We update instrumentation for
+    // reads exactly once, upon receiving a success response from the underlying storage layer.
+    if (!IsWrite()) {
+      pg_session_->metrics().ReadRequest(
+          ResolveRelationType(*pgsql_ops_.front(), table_), wait_time);
+    }
+
+    result = VERIFY_RESULT(ProcessResponse(result_data));
+
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
     DCHECK(!result.empty() || end_of_data_);
@@ -280,7 +320,6 @@ Status PgDocOp::SendRequest(ForceNonBufferable force_non_bufferable) {
   DCHECK(exec_status_.ok());
   DCHECK(!response_.Valid());
   exec_status_ = SendRequestImpl(force_non_bufferable);
-  ++read_rpc_count_;
   return exec_status_;
 }
 
@@ -301,11 +340,19 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
       HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable));
+
+  // Update session stats instrumentation for write requests only. Writes are buffered and flushed
+  // asynchronously, and thus it is not possible to correlate wait/execution times directly with
+  // the request. We update instrumentation for writes sexactly once, after successfully sending an
+  // RPC request to the underlying storage layer.
+  if (IsWrite()) {
+    pg_session_->metrics().WriteRequest(ResolveRelationType(*pgsql_ops_.front(), table_));
+  }
   return Status::OK();
 }
 
 Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(
-    const Result<PgDocResponse::Data>& response) {
+  const Result<PgDocResponse::Data>& response) {
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
   // Check operation status.
   DCHECK(exec_status_.ok());
@@ -678,7 +725,7 @@ void PgDocReadOp::BindExprsToBatch(
   new_elem->set_int32_value(table_->partition_schema().DecodeMultiColumnHashValue(*partition_key));
   for (auto elem : hashed_values) {
     auto new_elem = tup_elements->add_elems();
-    if(elem->has_value()) {
+    if (elem->has_value()) {
         DCHECK(elem->has_value());
         *new_elem = elem->value();
     }
@@ -687,7 +734,7 @@ void PgDocReadOp::BindExprsToBatch(
   for (auto range_idx : permutation_range_column_indexes_) {
     auto* elem = range_values[range_idx - table_->num_hash_key_columns()];
     DCHECK(elem != nullptr);
-    if(elem->has_value()) {
+    if (elem->has_value()) {
       auto* new_elem = tup_elements->add_elems();
       *new_elem = elem->value();
     }

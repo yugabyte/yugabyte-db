@@ -529,10 +529,10 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::InitSession(const string& database_name) {
+Status PgApiImpl::InitSession(const string& database_name, YBCPgExecStatsState* session_stats) {
   CHECK(!pg_session_);
   auto session = make_scoped_refptr<PgSession>(
-      &pg_client_, database_name, pg_txn_manager_, clock_, pg_callbacks_);
+      &pg_client_, database_name, pg_txn_manager_, clock_, pg_callbacks_, session_stats);
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }
@@ -1733,18 +1733,6 @@ Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
 
 uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
-}
-
-void PgApiImpl::GetAndResetReadRpcStats(PgStatement *handle,
-                                        uint64_t* reads, uint64_t* read_wait,
-                                        uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
-  down_cast<PgDmlRead*>(handle)->GetAndResetReadRpcStats(reads, read_wait,
-                                                         tbl_reads, tbl_read_wait);
-}
-
-void PgApiImpl::GetAndResetOperationFlushRpcStats(uint64_t* count,
-                                                  uint64_t* wait_time) {
-  pg_session_->GetAndResetOperationFlushRpcStats(count, wait_time);
 }
 
 // Tuple Expression -----------------------------------------------------------------------------

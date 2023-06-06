@@ -18,12 +18,7 @@
 
 #include "yb/common/pgsql_error.h"
 
-#include "yb/util/flags.h"
 #include "yb/yql/pggate/pg_session.h"
-
-DEFINE_test_flag(bool, use_monotime_for_rpc_wait_time, false,
-                 "Flag to enable use of MonoTime::Now() instead of CoarseMonoClock::Now() "
-                 "in order to avoid 0 timings in the tests.");
 
 using namespace std::literals;
 
@@ -77,20 +72,6 @@ Result<PerformFuture::Data> PerformFuture::Get() {
   return Data{
       .response = std::move(result.response),
       .used_in_txn_limit = result.used_in_txn_limit};
-}
-
-Result<PerformFuture::Data> PerformFuture::Get(MonoDelta* wait_time) {
-  if (PREDICT_FALSE(FLAGS_TEST_use_monotime_for_rpc_wait_time)) {
-    auto start_time = MonoTime::Now();
-    auto response = Get();
-    *wait_time += MonoTime::Now() - start_time;
-    return response;
-  }
-
-  auto start_time = CoarseMonoClock::Now();
-  auto response = Get();
-  *wait_time += CoarseMonoClock::Now() - start_time;
-  return response;
 }
 
 } // namespace pggate

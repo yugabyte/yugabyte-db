@@ -500,23 +500,5 @@ Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
   return bind_->GetColumnInfo(attr_num);
 }
 
-void PgDml::GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait) {
-  if (doc_op_) {
-    doc_op_->GetAndResetReadRpcStats(reads, read_wait);
-  }
-}
-
-void PgDml::GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait,
-                                    uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
-  if (secondary_index_query_) {
-    secondary_index_query_->GetAndResetReadRpcStats(reads, read_wait);
-    if (doc_op_) {
-      doc_op_->GetAndResetReadRpcStats(tbl_reads, tbl_read_wait);
-    }
-  } else if (doc_op_) {
-    doc_op_->GetAndResetReadRpcStats(reads, read_wait);
-  }
-}
-
 }  // namespace pggate
 }  // namespace yb
