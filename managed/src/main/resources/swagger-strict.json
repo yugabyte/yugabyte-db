@@ -5489,7 +5489,7 @@
           "type" : "string"
         },
         "ybaRole" : {
-          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
+          "enum" : [ "ConnectOnly", "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "type" : "string"
         }
       },
@@ -11960,7 +11960,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
+          "enum" : [ "ConnectOnly", "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "example" : "Admin",
           "type" : "string"
         },
@@ -12000,7 +12000,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
+          "enum" : [ "ConnectOnly", "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "example" : "Admin",
           "type" : "string"
         },
@@ -12051,7 +12051,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
+          "enum" : [ "ConnectOnly", "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "type" : "string"
         },
         "timezone" : {
@@ -12111,7 +12111,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
+          "enum" : [ "ConnectOnly", "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "type" : "string"
         },
         "timezone" : {

@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
 import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
+import com.yugabyte.yw.models.Users.Role;
 import java.time.Duration;
 import java.time.Period;
 import java.util.List;
@@ -158,8 +159,27 @@ public class ConfDataType<T> {
           (s) -> {
             try {
               return SearchScope.valueOf(s);
-            } catch (Exception e) {
+            } catch (IllegalArgumentException e) {
               String failMsg = String.format("%s is not a valid LDAP Search Scope\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
+  static ConfDataType<Role> LdapDefaultRoleEnum =
+      new ConfDataType<>(
+          "LdapDefaultRole",
+          Role.class,
+          new EnumGetter<>(Role.class),
+          (s) -> {
+            try {
+              Role defaultRole = Role.valueOf(s);
+              if (defaultRole != Role.ConnectOnly && defaultRole != Role.ReadOnly) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format("%s role cannot be set as default LDAP role!", defaultRole));
+              }
+              return defaultRole;
+            } catch (IllegalArgumentException e) {
+              String failMsg = String.format("%s is not a valid Default LDAP role!\n", s);
               throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
             }
           });
