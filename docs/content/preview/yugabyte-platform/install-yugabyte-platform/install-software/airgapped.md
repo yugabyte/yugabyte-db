@@ -189,7 +189,7 @@ When completing the **Enable Proxy** settings, keep in mind the following:
 
 - If you have only one proxy set up (HTTP or HTTPS), then set the same values for both. This configuration sets operating system environment variables and Java system properties.
 
-- The help text for each field shows which Java system property or environment variable gets set by the field. System properties have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
+- This configuration sets operating system environment variables and Java system properties. The help text for each field shows which Java system property or environment variable gets set by the field. System properties have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
 
 - The **no proxy** fields (HTTP no proxy setting, HTTP no proxy setting for Java) are lists of exception hosts, provided as a comma-delimited list of addresses or hostnames. Include the following addresses:
   - The Docker gateway address (172.17.0.1 by default).
