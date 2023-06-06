@@ -27,9 +27,6 @@
 #include "yb/dockv/intent.h"
 #include "yb/dockv/value_type.h"
 
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/doc_kv_util.h"
-
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/bitmap.h"
@@ -460,6 +457,7 @@ ApplyIntentsContext::ApplyIntentsContext(
     SchemaPackingProvider* schema_packing_provider,
     rocksdb::DB* intents_db)
     : IntentsWriterContext(transaction_id),
+      FrontierSchemaVersionUpdater(schema_packing_provider),
       apply_state_(apply_state),
       // In case we have passed in a non-null apply_state, its aborted set will have been loaded
       // from persisted apply state, and the passed in aborted set will correspond to the aborted
@@ -470,7 +468,6 @@ ApplyIntentsContext::ApplyIntentsContext(
       log_ht_(log_ht),
       write_id_(apply_state ? apply_state->write_id : 0),
       key_bounds_(key_bounds),
-      schema_packing_provider_(schema_packing_provider),
       intent_iter_(CreateRocksDBIterator(
           intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
           rocksdb::kDefaultQueryId)) {
@@ -595,7 +592,16 @@ Result<bool> ApplyIntentsContext::Entry(
   return false;
 }
 
-Status ApplyIntentsContext::UpdateSchemaVersion(Slice key, Slice value) {
+void ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
+  if (apply_state_) {
+    char tombstone_value_type = ValueEntryTypeAsChar::kTombstone;
+    std::array<Slice, 1> value_parts = {{Slice(&tombstone_value_type, 1)}};
+    PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
+  }
+  FlushSchemaVersion();
+}
+
+Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value) {
   if (!frontiers_) {
     return Status::OK();
   }
@@ -603,8 +609,8 @@ Status ApplyIntentsContext::UpdateSchemaVersion(Slice key, Slice value) {
   if (!value.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
     return Status::OK();
   }
-  auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(
-      util::FastDecodeUnsignedVarInt(&value)));
+  auto schema_version =
+      narrow_cast<SchemaVersion>(VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value)));
   dockv::DocKeyDecoder decoder(key);
   auto cotable_id = Uuid::Nil();
   if (VERIFY_RESULT(decoder.DecodeCotableId(&cotable_id))) {
@@ -620,6 +626,7 @@ Status ApplyIntentsContext::UpdateSchemaVersion(Slice key, Slice value) {
         FlushSchemaVersion();
         cotable_id = VERIFY_RESULT(schema_packing_provider_->ColocationPacking(
             colocation_id, kLatestSchemaVersion, HybridTime::kMax)).cotable_id;
+        DCHECK(!cotable_id.IsNil()) << cotable_id.ToString();
         schema_version_table_ = cotable_id;
         schema_version_colocation_id_ = colocation_id;
       }
@@ -631,16 +638,7 @@ Status ApplyIntentsContext::UpdateSchemaVersion(Slice key, Slice value) {
   return Status::OK();
 }
 
-void ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
-  if (apply_state_) {
-    char tombstone_value_type = ValueEntryTypeAsChar::kTombstone;
-    std::array<Slice, 1> value_parts = {{Slice(&tombstone_value_type, 1)}};
-    PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
-  }
-  FlushSchemaVersion();
-}
-
-void ApplyIntentsContext::FlushSchemaVersion() {
+void FrontierSchemaVersionUpdater::FlushSchemaVersion() {
   if (min_schema_version_ > max_schema_version_) {
     return;
   }
@@ -681,8 +679,10 @@ void RemoveIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
 ExternalIntentsBatchWriter::ExternalIntentsBatchWriter(
     std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime hybrid_time,
     rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txns_intents_state)
-    : put_batch_(put_batch),
+    ExternalTxnIntentsState* external_txns_intents_state,
+    SchemaPackingProvider* schema_packing_provider)
+    : FrontierSchemaVersionUpdater(schema_packing_provider),
+      put_batch_(put_batch),
       hybrid_time_(hybrid_time),
       intents_db_(intents_db),
       intents_write_batch_(intents_write_batch),
@@ -719,7 +719,9 @@ Result<ExternalTxnApplyState> ProcessApplyExternalTransactions(
   return result;
 }
 
-Status PrepareApplyExternalIntentsBatch(
+}  // namespace
+
+Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
     HybridTime commit_ht,
     const SubtxnSet& aborted_subtransactions,
     const Slice& original_input_value,
@@ -773,12 +775,13 @@ Status PrepareApplyExternalIntentsBatch(
     }};
     regular_write_handler->Put(key_parts, value_parts);
     ++*write_id;
+
+    // Update min/max schema version.
+    RETURN_NOT_OK(UpdateSchemaVersion(output_key, output_value));
   }
 
   return Status::OK();
 }
-
-}  // namespace
 
 // Reads all stored external intents for provided transactions and prepares batches that will apply
 // them into regular db and remove from intents db.
@@ -890,6 +893,8 @@ Status ExternalIntentsBatchWriter::Apply(rocksdb::DirectWriteHandler* handler) {
     if (VERIFY_RESULT(
             AddExternalPairToWriteBatch(write_pair, &apply_external_transactions, handler))) {
       HandleExternalRecord(write_pair, hybrid_time_, &doc_ht_buffer, handler, &write_id);
+
+      RETURN_NOT_OK(UpdateSchemaVersion(write_pair.key(), write_pair.value()));
     }
   }
 

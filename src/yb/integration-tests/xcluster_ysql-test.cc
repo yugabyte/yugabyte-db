@@ -327,12 +327,17 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     return Status::OK();
   }
 
-  void WriteWorkload(uint32_t start, uint32_t end, Cluster* cluster, const YBTableName& table,
-                     bool delete_op = false) {
+  void WriteWorkload(
+      uint32_t start, uint32_t end, Cluster* cluster, const YBTableName& table,
+      bool delete_op = false, bool use_transaction = false) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
     std::string table_name_str = GetCompleteTableName(table);
 
-    LOG(INFO) << "Writing " << end-start << (delete_op ? " deletes" : " inserts");
+    LOG(INFO) << "Writing " << end - start << (delete_op ? " deletes" : " inserts")
+              << " using transaction " << use_transaction;
+    if (use_transaction) {
+      EXPECT_OK(conn.ExecuteFormat("BEGIN"));
+    }
     for (uint32_t i = start; i < end; i++) {
       if (delete_op) {
         EXPECT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = $2",
@@ -342,6 +347,9 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
         EXPECT_OK(conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2)", // ON CONFLICT DO NOTHING",
                                      table_name_str, kKeyColumnName, i));
       }
+    }
+    if (use_transaction) {
+      EXPECT_OK(conn.ExecuteFormat("COMMIT"));
     }
   }
 
@@ -449,7 +457,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     }
   }
 
-  void TestColocatedDatabaseReplication() {
+  void TestColocatedDatabaseReplication(bool compact = false, bool use_transaction = false) {
     SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
     constexpr auto kRecordBatch = 5;
     auto count = 0;
@@ -507,7 +515,9 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     // 1. Write some data to all tables.
     for (const auto& producer_table : producer_tables) {
       LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-      WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+      WriteWorkload(
+          count, count + kRecordBatch, &producer_cluster_, producer_table->name(),
+          /* delete_op = */ false, use_transaction);
     }
     count += kRecordBatch;
 
@@ -595,7 +605,9 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     // 6. Add additional data to all tables
     for (const auto& producer_table : producer_tables) {
       LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-      WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+      WriteWorkload(
+          count, count + kRecordBatch, &producer_cluster_, producer_table->name(),
+          /* delete_op = */ false, use_transaction);
     }
     count += kRecordBatch;
 
@@ -616,7 +628,9 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     }
 
     // 2. Write data so we have some entries on the new colocated table.
-    WriteWorkload(0, kRecordBatch, &producer_cluster_, new_colocated_producer_table->name());
+    WriteWorkload(
+        0, kRecordBatch, &producer_cluster_, new_colocated_producer_table->name(),
+        /* delete_op = */ false, use_transaction);
 
     {
       // Matching schema to consumer should succeed.
@@ -660,6 +674,18 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     // 8. Verify all tables are properly replicated.
     ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(count, false); },
                       MonoDelta::FromSeconds(20 * kTimeMultiplier), "IsDataReplicatedCorrectly"));
+
+    if (compact) {
+      BumpUpSchemaVersionsWithAlters(consumer_tables);
+
+      ASSERT_OK(consumer_cluster()->FlushTablets());
+      ASSERT_OK(consumer_cluster()->CompactTablets());
+
+      ASSERT_OK(WaitFor(
+          [&]() -> Result<bool> { return data_replicated_correctly(count, false); },
+          MonoDelta::FromSeconds(20 * kTimeMultiplier),
+          "IsDataReplicatedCorrectlyAfterCompaction"));
+    }
   }
 };
 
@@ -1831,6 +1857,13 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
   ASSERT_OK(WaitFor(
       [&]() { return data_replicated_correctly(kNumRecords + 20); }, MonoDelta::FromSeconds(20),
       "IsDataReplicatedCorrectly"));
+
+  // 13. Compact the table and validate data.
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+
+  ASSERT_OK(WaitFor(
+      [&]() { return data_replicated_correctly(kNumRecords + 20); }, MonoDelta::FromSeconds(20),
+      "IsDataReplicatedCorrectly"));
 }
 
 TEST_F(XClusterYsqlTest, SimpleReplication) {
@@ -2338,11 +2371,23 @@ TEST_F(XClusterYsqlTest, ColocatedDatabaseReplicationWithPacked) {
   TestColocatedDatabaseReplication();
 }
 
+TEST_F(XClusterYsqlTest, ColocatedDatabaseReplicationWithPackedAndCompact) {
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  TestColocatedDatabaseReplication(/* compact = */ true);
+}
+
+TEST_F(XClusterYsqlTest, PackedColocatedDatabaseReplicationWithTransactions) {
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  TestColocatedDatabaseReplication(/* compact= */ true, /* use_transaction = */ true);
+}
+
 TEST_F(XClusterYsqlTest, LegacyColocatedDatabaseReplicationWithPacked) {
   FLAGS_ysql_enable_packed_row = true;
   FLAGS_ysql_enable_packed_row_for_colocated_table = true;
   FLAGS_ysql_legacy_colocated_database_creation = true;
-  TestColocatedDatabaseReplication();
+  TestColocatedDatabaseReplication(/*compact=*/true);
 }
 
 TEST_F(XClusterYsqlTest, TestColocatedTablesReplicationWithLargeTableCount) {
@@ -3043,7 +3088,6 @@ void XClusterYsqlTest::TestReplicationWithPackedColumns(bool colocated, bool boo
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1, 1, colocated));
 
-
   auto producer_table = tables[0];
   auto consumer_table = tables[1];
   auto tbl = consumer_table->name();
@@ -3145,6 +3189,18 @@ void XClusterYsqlTest::TestReplicationWithPackedColumns(bool colocated, bool boo
     ASSERT_NO_FATALS(WriteWorkload(251, 300, &producer_cluster_, producer_table->name()));
     ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   }
+
+  // Alter table on consumer side to generate new schema version.
+  {
+    string new_col = "new_col_2";
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", tbl.table_name(), new_col));
+  }
+
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+
+  ASSERT_NO_FATALS(WriteWorkload(301, 350, &producer_cluster_, producer_table->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
