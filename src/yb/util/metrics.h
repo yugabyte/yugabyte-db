@@ -1052,6 +1052,8 @@ class Histogram : public Metric {
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
       const MetricPrometheusOptions& opts) const override;
 
+  void Reset() const;
+
   // Returns a snapshot of this histogram including the bucketed values and counts.
   // Resets the bucketed counts, but not the total count/sum.
   Status GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot,

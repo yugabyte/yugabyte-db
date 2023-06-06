@@ -131,8 +131,6 @@ YB_STRONGLY_TYPED_BOOL(MustBeCommitted);
 client::YBSchema SimpleIntKeyYBSchema();
 
 // Create a populated TabletServerMap by interrogating the master.
-// Note: The bare-pointer TServerDetails values must be deleted by the caller!
-// Consider using ValueDeleter (in gutil/stl_util.h) for that.
 Result<TabletServerMap> CreateTabletServerMap(
     const master::MasterClusterProxy& proxy, rpc::ProxyCache* cache);
 Result<TabletServerMap> CreateTabletServerMap(ExternalMiniCluster* cluster);
@@ -178,7 +176,7 @@ std::vector<TServerDetails*> TServerDetailsVector(const TabletReplicaMap& tablet
 std::vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);
 std::vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers);
 
-// Creates copy of tablet server map, which does n  ot own TServerDetails.
+// Creates copy of tablet server map, which does not own TServerDetails.
 TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& tablet_servers,
                                                     const std::set<std::string>& exclude = {});
 
@@ -233,13 +231,13 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
 //
 // If must_be_committed is false, the converge is happening only for recieved operations, and if
 // the parameter is true, both received and commited operations are taken into account.
-Status WaitForServerToBeQuite(const MonoDelta& timeout,
+Status WaitForServerToBeQuiet(const MonoDelta& timeout,
                               const TabletServerMap& tablet_servers,
                               const TabletId& tablet_id,
                               OpId* last_logged_opid = nullptr,
                               MustBeCommitted must_be_committed = MustBeCommitted::kFalse);
 
-Status WaitForServerToBeQuite(const MonoDelta& timeout,
+Status WaitForServerToBeQuiet(const MonoDelta& timeout,
                               const std::vector<TServerDetails*>& tablet_servers,
                               const TabletId& tablet_id,
                               OpId* last_logged_opid = nullptr,
