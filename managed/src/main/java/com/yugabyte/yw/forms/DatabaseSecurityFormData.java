@@ -6,18 +6,32 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import org.apache.commons.lang3.StringUtils;
 
+@ApiModel(value = "DatabaseSecurityFormData", description = "Database security properties")
 public class DatabaseSecurityFormData {
 
+  @ApiModelProperty(value = "YCQL admin username")
   public String ycqlAdminUsername;
+
+  @ApiModelProperty(value = "Current YCQL admin password")
   public String ycqlCurrAdminPassword;
+
+  @ApiModelProperty(value = "New YCQL admin password")
   public String ycqlAdminPassword;
 
+  @ApiModelProperty(value = "YSQL admin username")
   public String ysqlAdminUsername;
+
+  @ApiModelProperty(value = "Current YSQL admin password")
   public String ysqlCurrAdminPassword;
+
+  @ApiModelProperty(value = "New YSQL admin password")
   public String ysqlAdminPassword;
 
+  @ApiModelProperty(value = "YSQL DB Name")
   public String dbName;
 
   // TODO(Shashank): Move this to use Validatable
