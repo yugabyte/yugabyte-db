@@ -335,13 +335,3 @@ ExecSeqScanInitializeWorker(SeqScanState *node,
 	node->ss.ss_currentScanDesc =
 		heap_beginscan_parallel(node->ss.ss_currentRelation, pscan);
 }
-
-void
-YbExecUpdateInstrumentSeqScan(SeqScanState *node, Instrumentation *instr)
-{
-	YbScanDesc ybscan = node->ss.ss_currentScanDesc->ybscan;
-	Assert(PointerIsValid(ybscan));
-	if (ybscan->handle)
-		YbUpdateReadRpcStats(ybscan->handle,
-							 &instr->yb_read_rpcs, &instr->yb_tbl_read_rpcs);
-}
