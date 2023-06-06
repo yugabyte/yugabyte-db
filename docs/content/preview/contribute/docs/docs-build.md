@@ -39,7 +39,7 @@ To run the docs site locally and edit the docs, you'll need:
 
 * **Python**: You need `python` to be available somewhere in your shell path.
 
-    Recent versions of macOS have only a `python3` executable, as does the Homebrew install. You can use [pyenv](https://github.com/pyenv/pyenv) to manage multiple versions of python on your system.
+    Recent versions of macOS have only a `python3` executable, as does the Homebrew install. You can use [pyenv](https://github.com/pyenv/pyenv) to manage multiple versions of python on your system. Make sure you point to a python version less than 3.10.
 
 * **A GitHub account**.
 
