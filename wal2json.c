@@ -1847,7 +1847,7 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_DELETE:
 			if (data->include_pk && OidIsValid(relation->rd_replidindex) &&
 					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
-				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, true);
+				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, pkbs, true);
 
 			ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
 			identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, ribs);
