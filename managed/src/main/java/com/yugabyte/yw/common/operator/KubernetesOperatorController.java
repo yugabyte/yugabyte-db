@@ -60,7 +60,6 @@ public class KubernetesOperatorController {
   public static final int WORKQUEUE_CAPACITY = 1024;
   // String is key of form namespace/name.
   // OperatorAction is CREATE, EDIT, or DELETE corresponding to CR action.
-  private final String namespace;
   private final BlockingQueue<Pair<String, OperatorAction>> workqueue;
   private final SharedIndexInformer<YBUniverse> ybUniverseInformer;
   private final Lister<YBUniverse> ybUniverseLister;
@@ -86,19 +85,17 @@ public class KubernetesOperatorController {
       MixedOperation<YBUniverse, KubernetesResourceList<YBUniverse>, Resource<YBUniverse>>
           ybUniverseClient,
       SharedIndexInformer<YBUniverse> ybUniverseInformer,
-      String namespace,
       UniverseCRUDHandler universeCRUDHandler,
       UpgradeUniverseHandler upgradeUniverseHandler,
       CloudProviderHandler cloudProviderHandler) {
     this.kubernetesClient = kubernetesClient;
     this.ybUniverseClient = ybUniverseClient;
-    this.ybUniverseLister = new Lister<>(ybUniverseInformer.getIndexer(), namespace);
+    this.ybUniverseLister = new Lister<>(ybUniverseInformer.getIndexer());
     this.ybUniverseInformer = ybUniverseInformer;
     this.workqueue = new ArrayBlockingQueue<>(WORKQUEUE_CAPACITY);
     this.universeCRUDHandler = universeCRUDHandler;
     this.upgradeUniverseHandler = upgradeUniverseHandler;
     this.cloudProviderHandler = cloudProviderHandler;
-    this.namespace = namespace;
     addEventHandlersToSharedIndexInformers();
   }
 
@@ -120,7 +117,7 @@ public class KubernetesOperatorController {
         String key = pair.getFirst();
         OperatorAction action = pair.getSecond();
         Objects.requireNonNull(key, "The workqueue item key can't be null.");
-        LOG.info("Got {}", key);
+        LOG.info("Got {} {}", key, action);
         if ((!key.contains("/"))) {
           LOG.warn("invalid resource key: {}", key);
         }
@@ -128,27 +125,23 @@ public class KubernetesOperatorController {
         // Get the YBUniverse resource's name
         // from key which is in format namespace/name.
         String name = getUniverseName(key);
-        YBUniverse ybUniverse = ybUniverseLister.get(name);
+        YBUniverse ybUniverse = ybUniverseLister.get(key);
+        LOG.info("Processing YbUniverse Object: {} {}", name, ybUniverse);
         if (ybUniverse == null) {
           if (action == OperatorAction.DELETED) {
             LOG.info("Tried to delete ybUniverse but it's no longer in Lister");
             continue;
           }
-          LOG.error("YBUniverse {} in workqueue no longer exists", name);
-          continue;
         }
-        String universeName = ybUniverse.getMetadata().getName();
+        String universeName = name;
         KubernetesOperatorStatusUpdater.addToMap(universeName, ybUniverse);
         KubernetesOperatorStatusUpdater.client = ybUniverseClient;
         KubernetesOperatorStatusUpdater.kubernetesClient = kubernetesClient;
         reconcile(ybUniverse, action);
 
-      } catch (InterruptedException interruptedException) {
-        Thread.currentThread().interrupt();
-        LOG.error("controller interrupted..");
       } catch (Exception e) {
+        LOG.error("Got Exception {}", e);
         Thread.currentThread().interrupt();
-        LOG.error("Error in reconcile() of Kubernetes Operator.");
       }
     }
   }
@@ -159,8 +152,10 @@ public class KubernetesOperatorController {
    * @param ybUniverse specified ybUniverse
    */
   protected void reconcile(YBUniverse ybUniverse, OperatorAction action) {
-    LOG.info("Reached reconcile");
-    LOG.info(ybUniverse.getMetadata().getName());
+    String universeName = ybUniverse.getMetadata().getName();
+    String namespace = ybUniverse.getMetadata().getNamespace();
+    LOG.info(
+        "Reconcile for YbUniverse metadata: Name = {}, Namespace = {}", universeName, namespace);
 
     try {
       List<Customer> custList = Customer.getAll();
@@ -170,10 +165,11 @@ public class KubernetesOperatorController {
       Customer cust = custList.get(0);
       // checking to see if the universe was deleted.
       if (ybUniverse.getMetadata().getDeletionTimestamp() != null) {
-        String universeName = ybUniverse.getMetadata().getName();
+
         LOG.info(universeName);
         UniverseResp universeResp =
             universeCRUDHandler.findByName(cust, universeName).stream().findFirst().orElse(null);
+
         if (universeResp == null
             && isRunningInKubernetes()
             && canDeleteProvider(cust, universeName)) {
@@ -240,7 +236,6 @@ public class KubernetesOperatorController {
         }
       } else if (action == OperatorAction.UPDATED) {
         LOG.info("Update action - non-delete");
-        String universeName = ybUniverse.getMetadata().getName();
         Optional<Universe> u = Universe.maybeGetUniverseByName(cust.getId(), universeName);
         u.ifPresent(
             universe -> {

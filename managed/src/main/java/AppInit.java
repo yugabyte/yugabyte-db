@@ -241,7 +241,7 @@ public class AppInit {
         ybcUpgrade.start();
 
         if (config.getBoolean("yb.kubernetesOperator.enabled")) {
-          kubernetesOperator.init();
+          kubernetesOperator.init(config.getString("yb.kubernetesOperatorNamespace"));
         }
 
         // Add checksums for all certificates that don't have a checksum.
