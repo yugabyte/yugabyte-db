@@ -28,6 +28,8 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
@@ -93,6 +95,7 @@ public class AppInit {
       SnapshotCleanup snapshotCleanup,
       FileDataService fileDataService,
       KubernetesOperator kubernetesOperator,
+      RuntimeConfGetter confGetter,
       @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
     try {
@@ -235,9 +238,10 @@ public class AppInit {
 
         ybcUpgrade.start();
 
-        if (config.getBoolean("yb.kubernetesOperator.enabled")) {
+        if (confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
           if (!HighAvailabilityConfig.isFollower()) {
-            kubernetesOperator.init(config.getString("yb.kubernetesOperatorNamespace"));
+            kubernetesOperator.init(
+                confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace));
           } else {
             log.info("Detected follower instance, not initializing kubernetes operator");
           }
