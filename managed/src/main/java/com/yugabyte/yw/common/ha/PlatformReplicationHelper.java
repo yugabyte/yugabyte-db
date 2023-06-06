@@ -32,6 +32,7 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -316,9 +317,12 @@ public class PlatformReplicationHelper {
 
       // Write the filled in template to disk.
       // TBD: Need to fetch the Prometheus port from the remote PlatformInstance and use that here.
-      // For now we assume that the remote instance also uses the same port as the local one.
+      // For now, we assume that the remote instance also uses the same port as the local one.
       String federatedAddr = metricUrlProvider.getMetricsExternalUrl();
-      this.writeFederatedPrometheusConfig(federatedAddr, configFile);
+
+      URI federatedURL = new URI(federatedAddr);
+      String federatedPoint = federatedURL.getHost() + ":" + federatedURL.getPort();
+      this.writeFederatedPrometheusConfig(federatedPoint, configFile);
 
       // Reload the config.
       this.reloadPrometheusConfig();
