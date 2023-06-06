@@ -122,6 +122,12 @@ The recommended TLS version is 1.2.
 
 ## Set up HTTP/HTTPS proxy
 
+YBA sometimes initiates HTTP or HTTPS connections to other servers. For example, HTTP or HTTPS connections (depending on your setup) maybe utilized in one or more of the following (not limited to) situations:
+
+1. Contact a public cloud provider to create VMs.
+1. Deposit backups on a public cloud provider's object storage service.
+1. Contact an external load balancer.
+
 You can set up HTTP and HTTPS proxies via **Application config**, and select **Enable Proxy** as per the following illustration:
 
 ![Enable Proxy](/images/replicated/enable-proxy.png)
@@ -134,12 +140,10 @@ When completing the **Enable Proxy** settings, keep in mind the following:
 
 - The help text for each field shows which Java system property or environment variable gets set by the field. System properties have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
 
-- The **no proxy** fields are lists of exception hosts, provided as a comma-delimited list of addresses or hostnames. Include the following addresses:
+- The **no proxy** fields (HTTP no proxy setting, HTTP no proxy setting for Java)  are lists of exception hosts, provided as a comma-delimited list of addresses or hostnames. Include the following addresses:
   - The Docker gateway address (172.17.0.1 by default).
   - The address of any previously-specified web proxy.
   - Any other IP addresses that you deem safe to bypass the proxy.
-
-- For the fields "HTTP no proxy setting" and "HTTP no proxy setting for Java", you need to add the docker gateway address (which is 172.17.0.1 by default).
 
 - The Java fields can accept values as Java system properties, including the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
 
