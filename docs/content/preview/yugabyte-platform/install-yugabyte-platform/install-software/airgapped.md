@@ -179,7 +179,7 @@ YBA sometimes initiates HTTP or HTTPS connections to other servers. For example,
 - Deposit backups on a public cloud provider's object storage service.
 - Contact an external load balancer.
 
-You can set up HTTP and HTTPS proxies via **Application config**, and select **Enable Proxy** as per the following illustration:
+You can set up YBA to utilize an HTTP/HTTPS proxy server via **Application config**, and select **Enable Proxy** as per the following illustration:
 
 ![Enable Proxy](/images/replicated/enable-proxy.png)
 

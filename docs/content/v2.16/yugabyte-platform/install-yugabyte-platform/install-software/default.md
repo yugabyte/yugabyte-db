@@ -118,7 +118,7 @@ YBA sometimes initiates HTTP or HTTPS connections to other servers. For example,
 - Deposit backups on a public cloud provider's object storage service.
 - Contact an external load balancer.
 
-You can set up HTTP and HTTPS proxies via **Application config**, and select **Enable Proxy** as per the following illustration:
+You can set up YBA to utilize an HTTP/HTTPS proxy server via **Application config**, and select **Enable Proxy** as per the following illustration:
 
 ![Enable Proxy](/images/replicated/enable-proxy.png)
 
@@ -126,7 +126,7 @@ When completing the **Enable Proxy** settings, keep in mind the following:
 
 - If your proxy is using the default ports for each protocol, then set the ports for the HTTP and HTTPS proxies to the default, 80 and 443 respectively, instead of 8080 and 8443 as shown in the preceding illustration.
 
-- If you have only one proxy set up (HTTP or HTTPS), then set the same values for both. This configuration sets operating system environment variables and Java system properties.
+- If you have only one proxy server set up (for both HTTP and/or HTTPS), then specify that proxy server for both the HTTP settings (the first three settings) and the HTTPS settings (settings four to six).
 
 - The help text for each field shows which Java system property or environment variable gets set by the field. System properties have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
 
@@ -134,6 +134,10 @@ When completing the **Enable Proxy** settings, keep in mind the following:
   - The Docker gateway address (172.17.0.1 by default).
   - The address of any previously-specified web proxy.
   - Any other IP addresses that you deem safe to bypass the proxy.
+
+- These settings comprehensively govern all network connections that YBA initiates. For example, suppose that you specify a proxy server for HTTP, all unencrypted connections initiated by YBA will be affected. If you want YBA to connect to the database universe nodes bypassing the proxy server, then you must explicitly specify the database universe nodes' IP addresses as exception hosts (also known as "no proxy").
+
+- Some of YBA's network connections are driven by YBA's Java process, while others are driven outside of Java (For example, via Python or a Linux shell execution). As such, there are separate parameters configurable described further.
 
 - The Java fields can accept values as Java system properties, including the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
 
