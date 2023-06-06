@@ -1204,7 +1204,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 				SysScanDesc			scan;
 				HeapTuple			def_tuple;
 				Datum				def_value;
-				bool				isnull;
+				bool				attisnull;
 				char				*result;
 
 				ScanKeyInit(&scankeys[0],
@@ -1222,9 +1222,9 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 				def_tuple = systable_getnext(scan);
 				if (HeapTupleIsValid(def_tuple))
 				{
-					def_value = fastgetattr(def_tuple, Anum_pg_attrdef_adbin, defrel->rd_att, &isnull);
+					def_value = fastgetattr(def_tuple, Anum_pg_attrdef_adbin, defrel->rd_att, &attisnull);
 
-					if (!isnull)
+					if (!attisnull)
 					{
 						result = TextDatumGetCString(DirectFunctionCall2(pg_get_expr,
 																	def_value,
