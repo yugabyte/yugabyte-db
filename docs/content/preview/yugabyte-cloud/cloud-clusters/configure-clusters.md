@@ -43,6 +43,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 - You can't change the fault tolerance of a cluster after it is created.
 - You can't scale single node clusters (fault tolerance none), you can only increase disk size.
 - You can't scale Sandbox clusters.
+- If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
 
 ## Scale and configure clusters
 
