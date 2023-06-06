@@ -84,6 +84,7 @@ Where
 - `table_name` may be qualified with a keyspace name. 
 - `index_name` cannot be qualified with a keyspace name because an index must be created in the table's keyspace.
 - `property_literal` is a literal of either [boolean](../type_bool), [text](../type_text), or [map](../type_collection) data type.
+- `index_column` can be any data type except `MAP`, `SET`, `LIST`, `JSONB`, `USER_DEFINED_TYPE`.
 
 ## Semantics
 
