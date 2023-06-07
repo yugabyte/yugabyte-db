@@ -189,13 +189,24 @@ If the SSH user configured in the on-premises provider does not have sudo privil
 
 For each node, perform the following:
 
-- [Set up time synchronization](#set-up-time-synchronization)
-- [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
-- [Preprovision the node](#preprovision-nodes-manually)
-- [Install Prometheus node exporter](#install-prometheus-node-exporter)
-- [Install backup utilities](#install-backup-utilities)
-- [Set crontab permissions](#set-crontab-permissions)
-- [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
+- [Configure the on-premises provider](#configure-the-on-premises-provider)
+  - [Complete the provider information](#complete-the-provider-information)
+  - [Configure hardware for YugabyteDB nodes](#configure-hardware-for-yugabytedb-nodes)
+  - [Define regions and zones](#define-regions-and-zones)
+- [Add YugabyteDB nodes](#add-yugabytedb-nodes)
+  - [Provision nodes manually](#provision-nodes-manually)
+    - [Running the preprovisioning script](#running-the-preprovisioning-script)
+    - [Setting up database nodes manually](#setting-up-database-nodes-manually)
+      - [Set up time synchronization](#set-up-time-synchronization)
+      - [Open incoming TCP/IP ports](#open-incoming-tcpip-ports)
+      - [Preprovision nodes manually](#preprovision-nodes-manually)
+      - [Install Prometheus node exporter](#install-prometheus-node-exporter)
+      - [Install backup utilities](#install-backup-utilities)
+      - [Set crontab permissions](#set-crontab-permissions)
+      - [Install systemd-related database service unit files](#install-systemd-related-database-service-unit-files)
+- [Remove YugabyteDB components from the server](#remove-yugabytedb-components-from-the-server)
+  - [Delete database server nodes](#delete-database-server-nodes)
+  - [Delete YugabyteDB Anywhere from the server](#delete-yugabytedb-anywhere-from-the-server)
 
 ##### Set up time synchronization
 
@@ -550,193 +561,267 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    /bin/systemctl daemon-reload
    ```
 
-2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):
+1. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):
 
-   `yb-master.service`
+    `yb-master.service`
 
-   ```sh
-   [Unit]
-   Description=Yugabyte master service
-   Requires=network-online.target
-   After=network.target network-online.target multi-user.target
-   StartLimitInterval=100
-   StartLimitBurst=10
+    ```sh
+    [Unit]
+    Description=Yugabyte master service
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    StartLimitInterval=100
+    StartLimitBurst=10
 
-   [Path]
-   PathExists=/home/yugabyte/master/bin/yb-master
-   PathExists=/home/yugabyte/master/conf/server.conf
+    [Path]
+    PathExists=/home/yugabyte/master/bin/yb-master
+    PathExists=/home/yugabyte/master/conf/server.conf
 
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   # Start
-   ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
-   Restart=on-failure
-   RestartSec=5
-   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
-   KillMode=process
-   TimeoutStopFailureMode=terminate
-   KillSignal=SIGTERM
-   TimeoutStopSec=10
-   FinalKillSignal=SIGKILL
-   # Logs
-   StandardOutput=syslog
-   StandardError=syslog
-   # ulimit
-   LimitCORE=infinity
-   LimitNOFILE=1048576
-   LimitNPROC=12000
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    # Start
+    ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
+    Restart=on-failure
+    RestartSec=5
+    # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+    KillMode=process
+    TimeoutStopFailureMode=terminate
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    FinalKillSignal=SIGKILL
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+    # ulimit
+    LimitCORE=infinity
+    LimitNOFILE=1048576
+    LimitNPROC=12000
 
-   [Install]
-   WantedBy=default.target
-   ```
+    [Install]
+    WantedBy=default.target
+    ```
 
-   `yb-tserver.service`
+    `yb-tserver.service`
 
-   ```sh
-   [Unit]
-   Description=Yugabyte tserver service
-   Requires=network-online.target
-   After=network.target network-online.target multi-user.target
-   StartLimitInterval=100
-   StartLimitBurst=10
+    ```sh
+    [Unit]
+    Description=Yugabyte tserver service
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    StartLimitInterval=100
+    StartLimitBurst=10
 
-   [Path]
-   PathExists=/home/yugabyte/tserver/bin/yb-tserver
-   PathExists=/home/yugabyte/tserver/conf/server.conf
+    [Path]
+    PathExists=/home/yugabyte/tserver/bin/yb-tserver
+    PathExists=/home/yugabyte/tserver/conf/server.conf
 
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   # Start
-   ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
-   Restart=on-failure
-   RestartSec=5
-   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
-   KillMode=process
-   TimeoutStopFailureMode=terminate
-   KillSignal=SIGTERM
-   TimeoutStopSec=10
-   FinalKillSignal=SIGKILL
-   # Logs
-   StandardOutput=syslog
-   StandardError=syslog
-   # ulimit
-   LimitCORE=infinity
-   LimitNOFILE=1048576
-   LimitNPROC=12000
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    # Start
+    ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
+    Restart=on-failure
+    RestartSec=5
+    # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+    KillMode=process
+    TimeoutStopFailureMode=terminate
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    FinalKillSignal=SIGKILL
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+    # ulimit
+    LimitCORE=infinity
+    LimitNOFILE=1048576
+    LimitNPROC=12000
 
-   [Install]
-   WantedBy=default.target
-   ```
+    [Install]
+    WantedBy=default.target
+    ```
 
-   `yb-zip_purge_yb_logs.service`
+    `yb-zip_purge_yb_logs.service`
 
-   ```sh
-   [Unit]
-   Description=Yugabyte logs
-   Wants=yb-zip_purge_yb_logs.timer
+    ```sh
+    [Unit]
+    Description=Yugabyte logs
+    Wants=yb-zip_purge_yb_logs.timer
 
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    Type=oneshot
+    WorkingDirectory=/home/yugabyte/bin
+    ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
+    [Install]
+    WantedBy=multi-user.target
+    ```
 
-   `yb-zip_purge_yb_logs.timer`
+    `yb-zip_purge_yb_logs.timer`
 
-   ```sh
-   [Unit]
-   Description=Yugabyte logs
-   Requires=yb-zip_purge_yb_logs.service
+    ```sh
+    [Unit]
+    Description=Yugabyte logs
+    Requires=yb-zip_purge_yb_logs.service
 
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-zip_purge_yb_logs.service
-   # Run hourly at minute 0 (beginning) of every hour
-   OnCalendar=00/1:00
+    [Timer]
+    User=yugabyte
+    Group=yugabyte
+    Unit=yb-zip_purge_yb_logs.service
+    # Run hourly at minute 0 (beginning) of every hour
+    OnCalendar=00/1:00
 
-   [Install]
-   WantedBy=timers.target
-   ```
+    [Install]
+    WantedBy=timers.target
+    ```
 
-   `yb-clean_cores.service`
+    `yb-clean_cores.service`
 
-   ```sh
-   [Unit]
-   Description=Yugabyte clean cores
-   Wants=yb-clean_cores.timer
+    ```sh
+    [Unit]
+    Description=Yugabyte clean cores
+    Wants=yb-clean_cores.timer
 
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    Type=oneshot
+    WorkingDirectory=/home/yugabyte/bin
+    ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
+    [Install]
+    WantedBy=multi-user.target
+    ```
 
-   `yb-clean_cores.timer`
+    `yb-clean_cores.timer`
 
-   ```sh
-   [Unit]
-   Description=Yugabyte clean cores
-   Requires=yb-clean_cores.service
+    ```sh
+    [Unit]
+    Description=Yugabyte clean cores
+    Requires=yb-clean_cores.service
 
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-clean_cores.service
-   # Run every 10 minutes offset by 5 (5, 15, 25...)
-   OnCalendar=*:0/10:30
+    [Timer]
+    User=yugabyte
+    Group=yugabyte
+    Unit=yb-clean_cores.service
+    # Run every 10 minutes offset by 5 (5, 15, 25...)
+    OnCalendar=*:0/10:30
 
-   [Install]
-   WantedBy=timers.target
-   ```
+    [Install]
+    WantedBy=timers.target
+    ```
 
-   `yb-collect_metrics.service`
+    `yb-collect_metrics.service`
 
-   ```sh
-   [Unit]
-   Description=Yugabyte collect metrics
-   Wants=yb-collect_metrics.timer
+    ```sh
+    [Unit]
+    Description=Yugabyte collect metrics
+    Wants=yb-collect_metrics.timer
 
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    Type=oneshot
+    WorkingDirectory=/home/yugabyte/bin
+    ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
+    [Install]
+    WantedBy=multi-user.target
+    ```
 
-   `yb-collect_metrics.timer`
+    `yb-collect_metrics.timer`
 
-   ```sh
-   [Unit]
-   Description=Yugabyte collect metrics
-   Requires=yb-collect_metrics.service
+    ```sh
+    [Unit]
+    Description=Yugabyte collect metrics
+    Requires=yb-collect_metrics.service
 
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-collect_metrics.service
-   # Run every 1 minute
-   OnCalendar=*:0/1:0
+    [Timer]
+    User=yugabyte
+    Group=yugabyte
+    Unit=yb-collect_metrics.service
+    # Run every 1 minute
+    OnCalendar=*:0/1:0
 
-   [Install]
-   WantedBy=timers.target
-   ```
+    [Install]
+    WantedBy=timers.target
+    ```
+
+1. For CentOS 7, ensure that you also add the following service files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):
+
+    `yb-bind_check.service`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte IP Bind Check
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    Before=yb-controller.service yb-tserver.service yb-master.service yb-collect_metrics.timer
+    StartLimitInterval=100
+    StartLimitBurst=10
+
+    [Path]
+    PathExists=/home/yugabyte/controller/bin/yb-controller-server
+    PathExists=/home/yugabyte//controller/conf/server.conf
+
+    [Service]
+    # Start
+    ExecStart=/home/yugabyte/controller/bin/yb-controller-server \
+        --flagfile /home/yugabyte/controller/conf/server.conf \
+        --only_bind --logtostderr
+    Type=oneshot
+    KillMode=control-group
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+
+    [Install]
+    WantedBy=default.target
+    ```
+
+    `yb-controller.service`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte Controller
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    StartLimitInterval=100
+    StartLimitBurst=10
+
+    [Path]
+    PathExists=/home/yugabyte/controller/bin/yb-controller-server
+    PathExists=/home/yugabyte/controller/conf/server.conf
+
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    # Start
+    ExecStart=/home/yugabyte/controller/bin/yb-controller-server \
+        --flagfile /home/yugabyte/controller/conf/server.conf
+    Restart=always
+    RestartSec=5
+    # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+    KillMode=control-group
+    TimeoutStopFailureMode=terminate
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    FinalKillSignal=SIGKILL
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+    # ulimit
+    LimitCORE=infinity
+    LimitNOFILE=1048576
+    LimitNPROC=12000
+
+    [Install]
+    WantedBy=default.target
+    ```
 
 ## Remove YugabyteDB components from the server
 
