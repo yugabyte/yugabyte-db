@@ -231,7 +231,9 @@ interface AZUCloudInfoBase {
   azuClientId: string;
   azuClientSecret: string;
   azuRG: string; // azure resource group
+  azuNetworkRG?: string;
   azuSubscriptionId: string;
+  azuNetworkSubscriptionId?: string;
   azuTenantId: string;
 
   azuHostedZoneId?: string;
