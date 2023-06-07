@@ -142,6 +142,8 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         super(OnPremDestroyInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--install_node_exporter", action="store_true",
                                  help='Check if node exporter should be stopped.')
+        self.parser.add_argument("--provisioning_cleanup", action="store_true",
+                                 help='Check if provisioned services cleanup should be skipped.')
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -152,14 +154,15 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         # Run non-db related tasks.
         self.update_ansible_vars_with_args(args)
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
-        if args.install_node_exporter:
-            logging.info(("[app] Running control script stop " +
+        if args.install_node_exporter and args.provisioning_cleanup:
+            logging.info(("[app] Running control script remove-services " +
                           "against thirdparty services at {}").format(host_info['name']))
             self.cloud.run_control_script(
-                "thirdparty", "stop-services", args, self.extra_vars, host_info)
+                "thirdparty", "remove-services", args, self.extra_vars, host_info)
 
-        self.cloud.run_control_script(
-            "platform-services", "stop-services", args, self.extra_vars, host_info)
+        if args.provisioning_cleanup:
+            self.cloud.run_control_script(
+                "platform-services", "remove-services", args, self.extra_vars, host_info)
 
         # Force db-related commands to use the "yugabyte" user.
         args.ssh_user = "yugabyte"
