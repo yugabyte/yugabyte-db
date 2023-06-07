@@ -30,7 +30,7 @@ const initialStateFeatureInTest = {
   enableAWSProviderValidation: true,
   enableMKR: true,
   enableS3BackupProxy: false,
-  enableRRGflags: false,
+  enableRRGflags: true,
   enableLDAPRoleMapping: true
 };
 
