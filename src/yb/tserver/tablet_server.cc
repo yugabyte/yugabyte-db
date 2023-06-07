@@ -872,6 +872,10 @@ void TabletServer::SetYsqlDBCatalogVersions(
           (*ysql_db_catalog_version_index_used_)[shm_index] = true;
           // Adjust search_starting_index_ for next time.
           ++search_starting_index_;
+          if (search_starting_index_ == TServerSharedData::kMaxNumDbCatalogVersions) {
+            // Wrap around.
+            search_starting_index_ = 0;
+          }
           break;
         }
 
@@ -913,7 +917,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
       catalog_changed = true;
       auto shm_index = it->second.shm_index;
       CHECK(shm_index >= 0 &&
-            shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions)) << shm_index;
+            shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
+        << "shm_index: " << shm_index << ", db_oid: " << db_oid;
       // Mark the corresponding shared memory array db_catalog_versions_ slot as free.
       (*ysql_db_catalog_version_index_used_)[shm_index] = false;
       it = ysql_db_catalog_version_map_.erase(it);

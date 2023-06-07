@@ -767,6 +767,47 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(FixCatalogVersionTable)) {
   conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
 }
 
+// This test exercises the wrap around logic in tserver shared memory free
+// slot allocation algorithm for a newly created database.
+TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(RecyleManyDatabases)) {
+  RestartClusterWithDBCatalogVersionMode();
+  auto conn = ASSERT_RESULT(ConnectToDB("template1"));
+  const auto initial_count = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  PgOid db_oid = kPgFirstNormalObjectId;
+  // Pick a number so that we can trigger wrap around in about 10 passes.
+  constexpr int kNumRows = std::max(kYBCMaxNumDbCatalogVersions / 10, 1);
+  // Run 11 passes to ensure we can trigger wrap around.
+  constexpr int kNumPasses = 11;
+  for (int pass = 0; pass < kNumPasses; ++pass) {
+    // Each pass we simulate creating a batch of databases by inserting
+    // that many rows into pg_yb_catalog_version, then deleting them.
+    // The last pass exercises the wrap around logic.
+    std::ostringstream ss;
+    ss << "INSERT INTO pg_yb_catalog_version VALUES";
+    for (int i = 0; i < kNumRows; ++i) {
+      ss << Format(i == 0 ? "($0, 1, 1)" : ", ($0, 1, 1)", db_oid++);
+    }
+    LOG(INFO) << "Inserting " << kNumRows << " rows";
+    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    ASSERT_OK(conn.Execute(ss.str()));
+    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+    WaitForCatalogVersionToPropagate();
+    auto count = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+        "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+    CHECK_EQ(count, kNumRows + initial_count);
+    LOG(INFO) << "Deleting the newly inserted " << kNumRows << " rows";
+    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "DELETE FROM pg_yb_catalog_version WHERE db_oid >= $0", kPgFirstNormalObjectId));
+    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+    WaitForCatalogVersionToPropagate();
+    count = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+        "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+    CHECK_EQ(count, initial_count);
+  }
+}
+
 TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   const string kDatabaseName = "yugabyte";
 
@@ -811,7 +852,6 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   std::this_thread::sleep_for(2s);
   result = conn1.Fetch("SELECT * FROM t1");
   status = ResultToStatus(result);
-  LOG(INFO) << "status: " << status;
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), msg);
   ASSERT_OK(conn1.Execute("ABORT"));
