@@ -55,6 +55,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     RETURN_NOT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
     VERIFY_RESULT(conn->FetchFormat(
         "SELECT yb_fix_catalog_version_table($0)", per_database_mode ? "true" : "false"));
+    RETURN_NOT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
     return Status::OK();
   }
 
@@ -529,8 +530,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion)) {
   // After the test database is dropped, 'conn_test' should no longer succeed.
   LOG(INFO) << "Read the table from 'conn_test'";
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
-  LOG(INFO) << "status: " << status;
-  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("catalog version for database $0 was not found", new_db_oid));
   ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
@@ -558,8 +558,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion)) {
   // same database and table.
   LOG(INFO) << "Read the table from 'conn_test'";
   status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
-  LOG(INFO) << "status: " << status;
-  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("catalog version for database $0 was not found", new_db_oid));
   ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
@@ -602,8 +601,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionDropDB)) {
   // Execute any query in the test session that requires metadata lookup
   // should fail with error indicating that the database has been dropped.
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM non_exist_table"));
-  LOG(INFO) << "status: " << status;
-  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), Format("base $0", new_db_oid));
   ASSERT_STR_CONTAINS(status.ToString(), "base might have been dropped");
 }
@@ -619,6 +617,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionPrematureOn
   LOG(INFO) << "Preparing pg_yb_catalog_version to have a single row for template1";
   ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
   ASSERT_RESULT(conn.Fetch("SELECT yb_fix_catalog_version_table(false)"));
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
   const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn, kYugabyteDatabase));
 
   // Manually switch back to per-db catalog version mode, but this step is
@@ -629,8 +628,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionPrematureOn
   // Trying to connect to kYugabyteDatabase before it has a row in the table
   // pg_yb_catalog_version should not cause master CHECK failure.
   auto status = ResultToStatus(ConnectToDB(kYugabyteDatabase));
-  LOG(INFO) << "status: " << status;
-  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("catalog version for database $0 was not found", yugabyte_db_oid));
 
@@ -645,11 +643,12 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionPrematureOn
   ASSERT_GT(num_initial_databases, 1);
   // We should not see master CHECK failure if we try to get duplicate
   // db_oid into the same request.
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
   status = conn.Execute(
       "INSERT INTO pg_catalog.pg_yb_catalog_version VALUES "
       "(16384, 1, 1), (16384, 2, 2)");
-  LOG(INFO) << "status: " << status;
-  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+  ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       "duplicate key value violates unique constraint");
 }
@@ -684,6 +683,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(IncrementAllDBCatalogVersio
 
   constexpr CatalogVersion kSecondCatalogVersion{2, 1};
   ASSERT_RESULT(conn_yugabyte.Fetch("SELECT yb_increment_all_db_catalog_versions(false)"));
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
   WaitForCatalogVersionToPropagate();
   expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   for (const auto& entry : expected_versions) {
@@ -692,7 +692,9 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(IncrementAllDBCatalogVersio
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   constexpr CatalogVersion kThirdCatalogVersion{3, 3};
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
   ASSERT_RESULT(conn_yugabyte.Fetch("SELECT yb_increment_all_db_catalog_versions(true)"));
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
   WaitForCatalogVersionToPropagate();
   expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   for (const auto& entry : expected_versions) {
