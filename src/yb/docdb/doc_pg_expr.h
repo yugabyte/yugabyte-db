@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "yb/common/pgsql_protocol.fwd.h"
+#include "yb/dockv/dockv_fwd.h"
 
 #include "yb/qlexpr/ql_expr.h"
 
@@ -34,8 +35,10 @@ namespace docdb {
 // Evaluations are supposed to happen in context of single relation scan, and expected
 // DocPgExprExecutor object's lifespan is the duration of that scan. It is also can be used to
 // evaluate expressions for a single row operation, such as insert or update.
-// Constructor takes relation's schema as a parameter, it is needed to extract column values
-// referenced by the expressions and convert to Postgres format they expect.
+// Constructor takes relation's schema and its projection as parameters. They are needed to look
+// up column references. If column reference provides the column id, it can be found in the
+// projection, otherwise column id should be looked up by the attno in the schema. Column id is
+// expected in most cases, however some legacy structures provide the attno only.
 //
 // After object has been constructed, the expressions and column references should be added, in
 // any order. Column references, where clause and target expressions are treated differently and
@@ -76,7 +79,9 @@ class DocPgExprExecutor {
 
 class DocPgExprExecutorBuilder {
  public:
-  explicit DocPgExprExecutorBuilder(std::reference_wrapper<const Schema> schema);
+  DocPgExprExecutorBuilder(
+      std::reference_wrapper<const Schema> schema,
+      std::reference_wrapper<const dockv::ReaderProjection> projection);
   ~DocPgExprExecutorBuilder();
 
   // Add a where clause expression to the executor.
