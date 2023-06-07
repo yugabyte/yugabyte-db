@@ -309,12 +309,15 @@ public class NodeManager extends DevopsBase {
       }
     }
 
+    ProviderDetails providerDetails = params.getProvider().getDetails();
     if (params instanceof AnsibleDestroyServer.Params
         && providerType.equals(Common.CloudType.onprem)) {
       subCommand.add("--install_node_exporter");
+      if (!providerDetails.skipProvisioning) {
+        subCommand.add("--provisioning_cleanup");
+      }
     }
 
-    ProviderDetails providerDetails = params.getProvider().getDetails();
     subCommand.add("--custom_ssh_port");
     subCommand.add(providerDetails.sshPort.toString());
 
