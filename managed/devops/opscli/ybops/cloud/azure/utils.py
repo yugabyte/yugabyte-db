@@ -33,6 +33,15 @@ import yaml
 SUBSCRIPTION_ID = os.environ.get("AZURE_SUBSCRIPTION_ID")
 RESOURCE_GROUP = os.environ.get("AZURE_RG")
 
+NETWORK_SUBSCRIPTION_ID = \
+    (os.environ.get('AZURE_NETWORK_SUBSCRIPTION_ID')
+     if os.environ.get('AZURE_NETWORK_SUBSCRIPTION_ID')
+     else SUBSCRIPTION_ID)
+NETWORK_RESOURCE_GROUP = \
+    (os.environ.get('AZURE_NETWORK_RG')
+     if os.environ.get('AZURE_NETWORK_RG')
+     else RESOURCE_GROUP)
+
 NETWORK_PROVIDER_BASE_PATH = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network"
 SUBNET_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/virtualNetworks/{}/subnets/{}"
 NSG_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/networkSecurityGroups/{}"
@@ -172,7 +181,7 @@ class AzureBootstrapClient():
         logging.debug("Creating Virtual Network {} with CIDR {}".format(
             YUGABYTE_VNET_PREFIX.format(region), cidr))
         creation_result = self.network_client.virtual_networks.begin_create_or_update(
-            RESOURCE_GROUP,
+            NETWORK_RESOURCE_GROUP,
             YUGABYTE_VNET_PREFIX.format(region),
             vnet_params
         )
@@ -187,7 +196,7 @@ class AzureBootstrapClient():
             cidr
         ))
         creation_result = self.network_client.subnets.begin_create_or_update(
-            RESOURCE_GROUP,
+            NETWORK_RESOURCE_GROUP,
             vNet,
             YUGABYTE_SUBNET_PREFIX.format(region),
             subnet_params
@@ -197,7 +206,7 @@ class AzureBootstrapClient():
 
     def get_default_vnet(self, region):
         vnets = [resource.serialize() for resource in
-                 self.network_client.virtual_networks.list(RESOURCE_GROUP)]
+                 self.network_client.virtual_networks.list(NETWORK_RESOURCE_GROUP)]
         for vnetJson in vnets:
             # parse vnet from ID
             vnetName = id_to_name(vnetJson.get("id"))
@@ -213,7 +222,7 @@ class AzureBootstrapClient():
         vnet - name of the vnet in which to look for subnets
         """
         subnets = [resource.serialize() for resource in
-                   self.network_client.subnets.list(RESOURCE_GROUP, vnet)]
+                   self.network_client.subnets.list(NETWORK_RESOURCE_GROUP, vnet)]
         for subnet in subnets:
             # Maybe change to tags rather than filtering on name prefix
             if subnet.get("name").startswith(YUGABYTE_SUBNET_PREFIX.format('')):
@@ -229,7 +238,7 @@ class AzureBootstrapClient():
         all public Internt access.
         """
         sgs = [resource.serialize() for resource in
-               self.network_client.network_security_groups.list(RESOURCE_GROUP)]
+               self.network_client.network_security_groups.list(NETWORK_RESOURCE_GROUP)]
         for sg in sgs:
             if (sg.get("location") == region and
                     sg.get("name").startswith(YUGABYTE_SG_PREFIX.format(''))):
@@ -271,16 +280,16 @@ class AzureBootstrapClient():
             return
         subnet = self.get_default_subnet(vnet)
         if subnet:
-            self.network_client.subnets.begin_delete(RESOURCE_GROUP, vnet, subnet).result()
+            self.network_client.subnets.begin_delete(NETWORK_RESOURCE_GROUP, vnet, subnet).result()
             logging.debug("Successfully deleted subnet {}".format(subnet))
-        self.network_client.virtual_networks.begin_delete(RESOURCE_GROUP, vnet).result()
+        self.network_client.virtual_networks.begin_delete(NETWORK_RESOURCE_GROUP, vnet).result()
         logging.debug("Successfully deleted vnet {}".format(vnet))
 
     def get_vnet_id(self, vnet):
         """
         Generate vnet id format from vnet name
         """
-        return VNET_ID_FORMAT_STRING.format(SUBSCRIPTION_ID, RESOURCE_GROUP, vnet)
+        return VNET_ID_FORMAT_STRING.format(NETWORK_SUBSCRIPTION_ID, NETWORK_RESOURCE_GROUP, vnet)
 
     def gen_peering_params(self, remote_region, remote_vnet):
         peering_params = {
@@ -305,12 +314,12 @@ class AzureBootstrapClient():
         """
         try:
             self.network_client.virtual_network_peerings.get(
-                RESOURCE_GROUP,
+                NETWORK_RESOURCE_GROUP,
                 vnet1,
                 YUGABYTE_PEERING_FORMAT.format(region1, region2)
             )
             self.network_client.virtual_network_peerings.get(
-                RESOURCE_GROUP,
+                NETWORK_RESOURCE_GROUP,
                 vnet2,
                 YUGABYTE_PEERING_FORMAT.format(region2, region1)
             )
@@ -327,14 +336,14 @@ class AzureBootstrapClient():
         pp2 = self.gen_peering_params(region1, vnet1)
         # Peer 2 to 1
         peer1 = self.network_client.virtual_network_peerings.begin_create_or_update(
-            RESOURCE_GROUP,
+            NETWORK_RESOURCE_GROUP,
             vnet1,
             YUGABYTE_PEERING_FORMAT.format(region1, region2),
             pp1
         )
         # Peer 1 to 2
         peer2 = self.network_client.virtual_network_peerings.begin_create_or_update(
-            RESOURCE_GROUP,
+            NETWORK_RESOURCE_GROUP,
             vnet2,
             YUGABYTE_PEERING_FORMAT.format(region2, region1),
             pp2
@@ -367,7 +376,7 @@ class AzureCloudAdmin():
         self.metadata = metadata
         self.credentials = get_credentials()
         self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID)
-        self.network_client = NetworkManagementClient(self.credentials, SUBSCRIPTION_ID)
+        self.network_client = NetworkManagementClient(self.credentials, NETWORK_SUBSCRIPTION_ID)
 
         self.dns_client = None
 
@@ -485,7 +494,7 @@ class AzureCloudAdmin():
             public_ip_addess_params["tags"] = tags
 
         creation_result = self.network_client.public_ip_addresses.begin_create_or_update(
-            RESOURCE_GROUP,
+            NETWORK_RESOURCE_GROUP,
             self.get_public_ip_name(vm_name),
             public_ip_addess_params
         )
@@ -515,7 +524,7 @@ class AzureCloudAdmin():
         if tags:
             nic_params['tags'] = tags
         creation_result = self.network_client.network_interfaces.begin_create_or_update(
-            RESOURCE_GROUP,
+            NETWORK_RESOURCE_GROUP,
             self.get_nic_name(vm_name),
             nic_params
         )
@@ -549,11 +558,12 @@ class AzureCloudAdmin():
         sleep_sec = 60
         for i in range(1, max_attempts + 1):
             try:
-                nic_info = self.network_client.network_interfaces.get(RESOURCE_GROUP, nic_name)
+                nic_info = self.network_client.network_interfaces.get(NETWORK_RESOURCE_GROUP,
+                                                                      nic_name)
                 if nic_info.tags and nic_info.tags.get('node-uuid') == node_uuid:
                     logging.info("[app] Deleting nic {}".format(nic_name))
-                    nic_del = self.network_client.network_interfaces.begin_delete(RESOURCE_GROUP,
-                                                                                  nic_name)
+                    nic_del = self.network_client.network_interfaces \
+                                  .begin_delete(NETWORK_RESOURCE_GROUP, nic_name)
                     nic_del.wait()
                     logging.info("[app] Deleted nic {}".format(nic_name))
             except CloudError as e:
@@ -574,11 +584,12 @@ class AzureCloudAdmin():
                     raise e
 
         try:
-            ip_addr = self.network_client.public_ip_addresses.get(RESOURCE_GROUP, ip_name)
+            ip_addr = self.network_client.public_ip_addresses.get(NETWORK_RESOURCE_GROUP, ip_name)
             if ip_addr and ip_addr.tags and ip_addr.tags.get('node-uuid') == node_uuid:
                 logging.info("[app] Deleting ip {}".format(ip_name))
-                ip_del = self.network_client.public_ip_addresses.begin_delete(RESOURCE_GROUP,
-                                                                              ip_name)
+                ip_del = self.network_client.public_ip_addresses.begin_delete(
+                                                                        NETWORK_RESOURCE_GROUP,
+                                                                        ip_name)
                 ip_del.wait()
                 logging.info("[app] Deleted ip {}".format(ip_name))
         except CloudError as e:
@@ -639,12 +650,14 @@ class AzureCloudAdmin():
         nic_name = self.get_nic_name(vm_name)
         ip_name = self.get_public_ip_name(vm_name)
         logging.info("[app] Deleting nic {}".format(nic_name))
-        nic_del = self.network_client.network_interfaces.begin_delete(RESOURCE_GROUP, nic_name)
+        nic_del = self.network_client.network_interfaces.begin_delete(NETWORK_RESOURCE_GROUP,
+                                                                      nic_name)
         nic_del.wait()
         logging.info("[app] Deleted nic {}".format(nic_name))
 
         logging.info("[app] Deleting ip {}".format(ip_name))
-        ip_del = self.network_client.public_ip_addresses.begin_delete(RESOURCE_GROUP, ip_name)
+        ip_del = self.network_client.public_ip_addresses.begin_delete(NETWORK_RESOURCE_GROUP,
+                                                                      ip_name)
         ip_del.wait()
         logging.info("[app] Deleted ip {}".format(ip_name))
 
@@ -656,13 +669,13 @@ class AzureCloudAdmin():
 
     def get_subnet_id(self, vnet, subnet):
         return SUBNET_ID_FORMAT_STRING.format(
-            SUBSCRIPTION_ID, RESOURCE_GROUP, vnet, subnet
+            NETWORK_SUBSCRIPTION_ID, NETWORK_RESOURCE_GROUP, vnet, subnet
         )
 
     def get_nsg_id(self, nsg):
         if nsg:
             return NSG_ID_FORMAT_STRING.format(
-                SUBSCRIPTION_ID, RESOURCE_GROUP, nsg
+                NETWORK_SUBSCRIPTION_ID, NETWORK_RESOURCE_GROUP, nsg
             )
         else:
             return
@@ -918,7 +931,7 @@ class AzureCloudAdmin():
         except Exception as e:
             return None
         nic_name = id_to_name(vm.network_profile.network_interfaces[0].id)
-        nic = self.network_client.network_interfaces.get(RESOURCE_GROUP, nic_name)
+        nic = self.network_client.network_interfaces.get(NETWORK_RESOURCE_GROUP, nic_name)
         region = vm.location
         zone = vm.zones[0] if vm.zones else None
         private_ip = nic.ip_configurations[0].private_ip_address
@@ -927,7 +940,7 @@ class AzureCloudAdmin():
         if (nic.ip_configurations[0].public_ip_address):
             ip_name = id_to_name(nic.ip_configurations[0].public_ip_address.id)
             public_ip = (self.network_client.public_ip_addresses
-                         .get(RESOURCE_GROUP, ip_name).ip_address)
+                         .get(NETWORK_RESOURCE_GROUP, ip_name).ip_address)
         subnet = id_to_name(nic.ip_configurations[0].subnet.id)
         server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
         node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
