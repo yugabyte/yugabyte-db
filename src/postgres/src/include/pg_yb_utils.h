@@ -472,7 +472,6 @@ extern bool yb_enable_sequence_pushdown;
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
-extern int *YBCStatementTimeoutPtr;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
