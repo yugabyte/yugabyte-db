@@ -1497,6 +1497,12 @@
         "azuHostedZoneId" : {
           "type" : "string"
         },
+        "azuNetworkRG" : {
+          "type" : "string"
+        },
+        "azuNetworkSubscriptionId" : {
+          "type" : "string"
+        },
         "azuRG" : {
           "type" : "string"
         },
