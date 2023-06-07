@@ -247,8 +247,28 @@ export function ReplicationDetails({
 
   const configTableType = getXClusterConfigTableType(xClusterConfig, sourceUniverseTableQuery.data);
   if (configTableType === undefined) {
+    const redirectUrl = `/universes/${xClusterConfig.sourceUniverseUUID}/replication`;
+    const errorMessage =
+      'Unexpected state. All tables in the xCluster config were dropped in the source universe.';
     return (
-      <YBErrorIndicator customErrorMessage="Unexpected state. A table in the xCluster config was not found amongst its source universe tables." />
+      <div className="xCluster-details-error-container">
+        <YBErrorIndicator customErrorMessage={errorMessage} />
+        <YBButton
+          btnText="Delete Replication"
+          btnClass="btn btn-orange delete-config-button"
+          onClick={() => dispatch(openDialog(XClusterModalName.DELETE_CONFIG))}
+        />
+        {isDeleteConfigModalVisible && (
+          <DeleteConfigModal
+            sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
+            targetUniverseUUID={xClusterConfig.targetUniverseUUID}
+            xClusterConfig={xClusterConfig}
+            onHide={hideModal}
+            visible={showModal && visibleModal === XClusterModalName.DELETE_CONFIG}
+            redirectUrl={redirectUrl}
+          />
+        )}
+      </div>
     );
   }
   if (
