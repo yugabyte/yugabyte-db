@@ -41,7 +41,7 @@ temp_blks_read      | bigint           | Total number of temp blocks read by the
 temp_blks_written   | bigint           | Total number of temp blocks written by the statement |
 blk_read_time       | double precision | Total time the statement spent reading blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
 blk_write_time      | double precision | Total time the statement spent writing blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
-yb_latency_histogram | jsonb           | List of key value pairs where key is the latency range and value is the count of times a query was executed |
+<!-- yb_latency_histogram | jsonb           | List of key value pairs where key is the latency range and value is the count of times a query was executed |-->
 
 ## Configuration parameters
 
@@ -85,6 +85,7 @@ yugabyte=# create extension pg_stat_statements;
 yugabyte=# drop extension pg_stat_statements;
 ```
 
+<!-- Feature due 2.19.1
 ## yb_latency_histogram column
 
 Each row in the `pg_stat_statements` view in YugabyteDB includes the `yb_latency_histogram` column, of type JSONB.
@@ -141,6 +142,7 @@ Time Span (ms) | Resolution (ms)
 209715.2-419430.4 (3.49-6.99 min) | 26214.4 (~26s)
 419430.4-838860.8 (6.99-13.98 min) | 52428.8 (~52s)
 838860.8-1677721.6 (13.98-27.96 min) | 104857.6 (~104s)
+-->
 
 ## Examples
 
@@ -179,8 +181,8 @@ yugabyte=# \d pg_stat_statements;
  temp_blks_written    | bigint           |           |          |
  blk_read_time        | double precision |           |          |
  blk_write_time       | double precision |           |          |
- yb_latency_histogram | jsonb            |           |          |
  ```
+<!--  yb_latency_histogram | jsonb            |           |          |-->
 
 ### Top 10 I/O-intensive queries
 
