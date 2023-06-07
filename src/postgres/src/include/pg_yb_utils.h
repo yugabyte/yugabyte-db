@@ -447,7 +447,6 @@ extern bool yb_plpgsql_disable_prefetch_in_for_query;
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
-extern int *YBCStatementTimeoutPtr;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.

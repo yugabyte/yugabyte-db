@@ -119,8 +119,6 @@ void YBCAssignTransactionPriorityUpperBound(double newval, void* extra) {
   DCHECK_LE(txn_priority_regular_upper_bound, txn_priority_highpri_lower_bound);
 }
 
-int* YBCStatementTimeoutPtr = nullptr;
-
 }
 
 using namespace std::literals;
