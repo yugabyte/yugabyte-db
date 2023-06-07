@@ -69,14 +69,10 @@ class TestCQLService : public YBTableTestBase {
   int server_port() { return cql_server_port_; }
 
   shared_ptr<CQLServer> server() { return server_; }
-  EasyCurl curl_;
-  faststring buf_;
-  Endpoint addr_;
 
  private:
   Status SendRequestAndGetResponse(
       const string& cmd, size_t expected_resp_length, int timeout_in_millis = 60000);
-
 
   Socket client_sock_;
   unique_ptr<boost::asio::io_service> io_;
@@ -116,11 +112,6 @@ void TestCQLService::SetUp() {
   LOG(INFO) << "Starting CQL server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "CQL server successfully started.";
-
-  std::vector<Endpoint> addrs;
-  ASSERT_OK(server_->web_server()->GetBoundAddresses(&addrs));
-  ASSERT_EQ(addrs.size(), 1);
-  addr_ = addrs[0];
 
   Endpoint remote(IpAddress(), server_port());
   CHECK_OK(client_sock_.Init(0));
@@ -598,14 +589,17 @@ TEST_F(TestCQLServiceWithCassAuth, TestReadSystemTableAuthenticated) {
 }
 
 TEST_F(TestCQLService, TestCQLStatementEndpoint) {
+  EasyCurl curl;
+  faststring buf;
+  Endpoint addr = GetWebServerAddress();
   shared_ptr<CQLServiceImpl> cql_service = server()->TEST_cql_service();
   QLEnv ql_env(cql_service->client(),
                cql_service->metadata_cache(),
                cql_service->clock(),
                std::bind(&CQLServiceImpl::TransactionPool, cql_service));
   cql_service->AllocatePreparedStatement("dummyqueryid", "dummyquery", &ql_env);
-  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/statements", ToString(addr_)), &buf_));
-  std::string result = buf_.ToString();
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addr)), &buf));
+  std::string result = buf.ToString();
   ASSERT_STR_CONTAINS(result, "prepared_statements");
   ASSERT_STR_CONTAINS(result, "dummyquery");
   ASSERT_STR_CONTAINS(result, b2a_hex("dummyqueryid"));
@@ -638,15 +632,11 @@ TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
       std::bind(&CQLServiceImpl::TransactionPool, cql_service));
 
   // Store some properties for later comparision.
-  std::string query;
-  std::string query_id;
-  std::shared_ptr<Counters> counters;
-  int64 calls = 0;
-  double total_time = 0.;
+  std::shared_ptr<StmtCounters> counters;
   double select_min_time = INFINITY;
-  double select_max_time = 0;
+  double select_max_time = 0.;
   double insert_min_time = INFINITY;
-  double insert_max_time = 0;
+  double insert_max_time = 0.;
 
   // Used to generate a random double.
   double execute_time_in_msec = 0.;
@@ -654,8 +644,8 @@ TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
   // Generates a random double. We use it to assign a value to the query execution time
   // as the query is not actually being executed.
   auto RandomDouble = [&]() {
-    static const double lower_bound = 0.0005;
-    static const double upper_bound = 20;
+    static const double lower_bound = 0.5;
+    static const double upper_bound = 20000.;
     static const int64 max_rand = 1000000;
     return (lower_bound + (upper_bound - lower_bound)*(random()%max_rand)/max_rand);
   };
@@ -665,49 +655,43 @@ TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
   // GetQueryId and AllocatePreparedStatement are invoked as in the PrepareRequest. Next
   // UpdateCounters method is invoked as in the ExecuteRequest.
   auto ExecuteQuery = [&](std::string query_text) {
-    query = query_text;
-    query_id = CQLStatement::GetQueryId(ql_env.CurrentKeyspace(), query);
+    int64 calls = 0;
+    double total_time = 0.;
+    const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
+      ql_env.CurrentKeyspace(), query_text);
     // First store the previous values of the counters for that query.
     counters = cql_service->GetCounters(query_id);
     if (counters) {
-      calls = counters->calls;
-      total_time = counters->total_time;
+      calls = counters->num_calls;
+      total_time = counters->total_time_in_msec;
     } else {
-      cql_service->AllocatePreparedStatement(query_id, query, &ql_env);
+      cql_service->AllocatePreparedStatement(query_id, query_text, &ql_env);
       calls = 0;
       total_time = 0;
     }
-    cql_service->UpdatePrepStmtCounters(query_id, execute_time_in_msec/1000);
+    cql_service->UpdatePrepStmtCounters(query_id, execute_time_in_msec);
     counters = cql_service->GetCounters(query_id); // Store the updated counters.
     ASSERT_ONLY_NOTNULL(counters.get());
-    ASSERT_EQ(calls+1, counters->calls);
-    ASSERT_EQ(query, counters->query);
-    ASSERT_EQ(total_time+execute_time_in_msec, counters->total_time);
+    ASSERT_EQ(calls + 1, counters->num_calls);
+    ASSERT_EQ(query_text, counters->query);
+    ASSERT_EQ(total_time + execute_time_in_msec, counters->total_time_in_msec);
   };
 
   // Randomly choose between insert or select queries.
   for(int i = 0; i < 10000; i++) {
-    execute_time_in_msec = RandomDouble()*1000; // Converting execute_time to msec.
+    execute_time_in_msec = RandomDouble();
     if (random()%2) {
-      if (execute_time_in_msec < select_min_time) {
-        select_min_time = execute_time_in_msec;
-      }
-      if (select_max_time < execute_time_in_msec) {
-        select_max_time = execute_time_in_msec;
-      }
+      select_min_time = std::min(select_min_time, execute_time_in_msec);
+      select_max_time = std::max(select_max_time, execute_time_in_msec);
       ExecuteQuery("SELECT k, v FROM CassandraKeyValue WHERE k = ?;");
-      ASSERT_EQ(select_min_time, counters->min_time);
-      ASSERT_EQ(select_max_time, counters->max_time);
+      ASSERT_EQ(select_min_time, counters->min_time_in_msec);
+      ASSERT_EQ(select_max_time, counters->max_time_in_msec);
     } else {
-      if (execute_time_in_msec < insert_min_time) {
-        insert_min_time = execute_time_in_msec;
-      }
-      if (insert_max_time < execute_time_in_msec) {
-        insert_max_time = execute_time_in_msec;
-      }
+      insert_min_time = std::min(insert_min_time, execute_time_in_msec);
+      insert_max_time = std::max(insert_max_time, execute_time_in_msec);
       ExecuteQuery("INSERT INTO CassandraKeyValue (k, v) VALUES (?, ?);");
-      ASSERT_EQ(insert_min_time, counters->min_time);
-      ASSERT_EQ(insert_max_time, counters->max_time);
+      ASSERT_EQ(insert_min_time, counters->min_time_in_msec);
+      ASSERT_EQ(insert_max_time, counters->max_time_in_msec);
     }
   }
 }

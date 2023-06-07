@@ -28,7 +28,6 @@ namespace yb {
 namespace cqlserver {
 
 class CQLStatement;
-struct Counters;
 
 // A map of CQL query id to the prepared statement for caching the prepared statments. Shared_ptr
 // is used so that a prepared statement can be aged out and removed from the cache without deleting
@@ -38,6 +37,25 @@ using CQLStatementMap = std::unordered_map<ql::CQLMessage::QueryId, std::shared_
 // A LRU list of CQL statements and position in the list.
 using CQLStatementList = std::list<std::shared_ptr<CQLStatement>>;
 using CQLStatementListPos = CQLStatementList::iterator;
+
+struct StmtCounters{
+  explicit StmtCounters(const std::string& text) : num_calls(0), total_time_in_msec(0.),
+      min_time_in_msec(0.), max_time_in_msec(0.), sum_var_time_in_msec(0.), query(text) {}
+
+  explicit StmtCounters(const std::shared_ptr<StmtCounters>& other) :
+    num_calls(other->num_calls), total_time_in_msec(other->total_time_in_msec),
+    min_time_in_msec(other->min_time_in_msec), max_time_in_msec(other->max_time_in_msec),
+    sum_var_time_in_msec(other->sum_var_time_in_msec), query(other->query) {}
+
+  void WriteAsJson(JsonWriter* jw, const ql::CQLMessage::QueryId& query_id) const;
+
+  int64 num_calls;         // Number of times executed.
+  double total_time_in_msec;   // Total execution time, in msec.
+  double min_time_in_msec;     // Minimum execution time in msec.
+  double max_time_in_msec;     // Maximum execution time in msec.
+  double sum_var_time_in_msec; // Sum of variances in execution time in msec.
+  std::string query;   // Stores the query text.
+};
 
 // A CQL statement that is prepared and cached.
 class CQLStatement : public ql::Statement {
@@ -66,12 +84,12 @@ class CQLStatement : public ql::Statement {
   // Return the query id of a statement.
   static ql::CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& query);
 
-  std::shared_ptr<Counters> GetCounters() {
-    return counters_;
+  std::shared_ptr<StmtCounters> GetCounters() {
+    return stmt_counters_;
   }
 
-  void SetCounters(const std::shared_ptr<Counters>& other) {
-    counters_ = other;
+  void SetCounters(const std::shared_ptr<StmtCounters>& other) {
+    stmt_counters_ = other;
   }
 
  private:
@@ -79,27 +97,9 @@ class CQLStatement : public ql::Statement {
   mutable CQLStatementListPos pos_;
 
   // Stores the metrics for a prepared statements.
-  std::shared_ptr<Counters> counters_;
+  std::shared_ptr<StmtCounters> stmt_counters_;
 
   ScopedTrackedConsumption consumption_;
-};
-
-struct Counters{
-  Counters() : calls(0), total_time(0.), min_time(0.),
-               max_time(0.), sum_var_time(0.) {}
-
-  explicit Counters(const std::shared_ptr<Counters>& other) : calls(other->calls),
-    total_time(other->total_time), min_time(other->min_time), max_time(other->max_time),
-    sum_var_time(other->sum_var_time), query(other->query) {}
-
-  void WriteAsJson(JsonWriter* jw, std::string query_id) const;
-
-  int64 calls;         // Number of times executed.
-  double total_time;   // Total execution time, in msec.
-  double min_time;     // Minimum execution time in msec.
-  double max_time;     // Maximum execution time in msec.
-  double sum_var_time; // Sum of variances in execution time in msec.
-  std::string query;   // Stores the query text.
 };
 
 }  // namespace cqlserver

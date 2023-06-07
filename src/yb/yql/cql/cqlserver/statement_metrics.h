@@ -41,8 +41,8 @@ namespace cqlserver {
 
 class StatementMetrics {
  public:
-  StatementMetrics(const ql::CQLMessage::QueryId query_id,
-                   const Counters counters);
+  StatementMetrics(const ql::CQLMessage::QueryId& query_id,
+                   const std::shared_ptr<const StmtCounters> stmt_counters);
 
   ~StatementMetrics() {}
 
@@ -52,7 +52,7 @@ class StatementMetrics {
 
  private:
   const ql::CQLMessage::QueryId query_id_;
-  const Counters counters_;
+  const std::shared_ptr<const StmtCounters> counters_;
 
 };
 } // namespace cqlserver

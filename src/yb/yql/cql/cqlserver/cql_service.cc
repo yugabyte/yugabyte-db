@@ -448,11 +448,12 @@ void CQLServiceImpl::GetPreparedStatementMetrics(
   int64_t num_statements = 0;
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
   for (auto stmt : prepared_stmts_map_) {
-    if (!stmt.second->GetCounters()) { // To ensure GetCounters does not return null.
-      stmt.second->SetCounters(std::make_shared<Counters>());
-      stmt.second->GetCounters()->query = stmt.second->text();
+    shared_ptr<StmtCounters> stmt_counters = stmt.second->GetCounters();
+    if (!stmt_counters) { // To ensure GetCounters does not return null.
+      stmt_counters = std::make_shared<StmtCounters>(stmt.second->text());
+      stmt.second->SetCounters(stmt_counters);
     }
-    metrics->push_back(std::make_shared<StatementMetrics>(stmt.first, *stmt.second->GetCounters()));
+    metrics->push_back(std::make_shared<StatementMetrics>(stmt.first, stmt_counters));
     if (++num_statements >= statement_limit) {
       break;
     }
@@ -460,53 +461,51 @@ void CQLServiceImpl::GetPreparedStatementMetrics(
 }
 
 void CQLServiceImpl::UpdatePrepStmtCounters(const ql::CQLMessage::QueryId& query_id,
-  double execute_time_in_sec) {
+  double execute_time_in_msec) {
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
   auto itr = prepared_stmts_map_.find(query_id);
   if(itr == prepared_stmts_map_.end()) {
     return;
   }
-  std::shared_ptr<Counters> counters = itr->second->GetCounters();
-  if(!counters) {
-    itr->second->SetCounters(std::make_shared<Counters>());
-    counters = itr->second->GetCounters();
+  std::shared_ptr<StmtCounters> stmt_counters = itr->second->GetCounters();
+  if(!stmt_counters) {
+    stmt_counters = std::make_shared<StmtCounters>(itr->second->text());
+    itr->second->SetCounters(stmt_counters);
   }
-  if(counters->query.empty()) {
-    counters->query = itr->second->text();
-  }
-  UpdateCountersUnlocked(execute_time_in_sec, counters);
+  LOG_IF(DFATAL, stmt_counters->query.empty()) << "Unexpected empty query string in the counters";
+  UpdateCountersUnlocked(execute_time_in_msec, stmt_counters);
 }
 
 void CQLServiceImpl::UpdateCountersUnlocked(
-    double execute_time_in_sec, std::shared_ptr<Counters> counters) {
-  LOG_IF(DFATAL, counters == nullptr) << "Null pointer counters received";
-  double old_mean = (counters->calls ? counters->total_time/counters->calls : 0);
-  double execute_time_in_msec = execute_time_in_sec*1000;  // Converting execute time to msec.
-  counters->calls += 1;
-  counters->total_time += execute_time_in_msec;
-  if (counters->calls == 1) {
-    counters->min_time = execute_time_in_msec;
-    counters->max_time = execute_time_in_msec;
+  double execute_time_in_msec, std::shared_ptr<StmtCounters> stmt_counters) {
+  LOG_IF(DFATAL, stmt_counters == nullptr) << "Null pointer counters received";
+  if (stmt_counters->num_calls == 0) {
+    stmt_counters->num_calls = 1;
+    stmt_counters->total_time_in_msec = execute_time_in_msec;
+    stmt_counters->min_time_in_msec = execute_time_in_msec;
+    stmt_counters->max_time_in_msec = execute_time_in_msec;
   } else {
-    counters->sum_var_time += (execute_time_in_msec - old_mean)*(execute_time_in_msec -
-                                counters->total_time/counters->calls);
+    const double old_mean = (stmt_counters->num_calls ?
+      stmt_counters->total_time_in_msec/stmt_counters->num_calls : 0);
+    stmt_counters->num_calls += 1;
+    stmt_counters->total_time_in_msec += execute_time_in_msec;
+    stmt_counters->sum_var_time_in_msec +=
+      (execute_time_in_msec - old_mean)*(execute_time_in_msec -
+          stmt_counters->total_time_in_msec/stmt_counters->num_calls);
 
-    if (counters->max_time < execute_time_in_msec) {
-      counters->max_time = execute_time_in_msec;
+    if (stmt_counters->max_time_in_msec < execute_time_in_msec) {
+      stmt_counters->max_time_in_msec = execute_time_in_msec;
     }
-    if (counters->min_time > execute_time_in_msec) {
-      counters->min_time = execute_time_in_msec;
+    if (stmt_counters->min_time_in_msec > execute_time_in_msec) {
+      stmt_counters->min_time_in_msec = execute_time_in_msec;
     }
   }
 }
 
-shared_ptr<Counters> CQLServiceImpl::GetCounters(const std::string& query_id) {
+shared_ptr<StmtCounters> CQLServiceImpl::GetCounters(const std::string& query_id) {
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
   auto itr = prepared_stmts_map_.find(query_id);
-  if(itr == prepared_stmts_map_.end()) {
-    return nullptr;
-  }
-  return itr->second->GetCounters();
+  return itr == prepared_stmts_map_.end() ? nullptr : itr->second->GetCounters();
 }
 
 }  // namespace cqlserver

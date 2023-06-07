@@ -53,7 +53,8 @@ ql::CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const s
   return ql::CQLMessage::QueryId(to_char_ptr(md5), sizeof(md5));
 }
 
-void Counters::WriteAsJson(JsonWriter *jw, std::string query_id) const {
+void StmtCounters::WriteAsJson(
+    JsonWriter *jw, const ql::CQLMessage::QueryId& query_id) const {
   jw->StartObject();
   jw->String("query");
   jw->String(this->query);
@@ -61,25 +62,24 @@ void Counters::WriteAsJson(JsonWriter *jw, std::string query_id) const {
   jw->String("query_id");
   jw->String(query_id);
 
-  jw->String("calls");
-  jw->Int64(this->calls);
+  jw->String("num_calls");
+  jw->Int64(this->num_calls);
 
-  jw->String("total_time");
-  jw->Double(this->total_time);
+  jw->String("total_time_in_msec");
+  jw->Double(this->total_time_in_msec);
 
-  jw->String("min_time");
-  jw->Double(this->min_time);
+  jw->String("min_time_in_msec");
+  jw->Double(this->min_time_in_msec);
 
-  jw->String("max_time");
-  jw->Double(this->max_time);
+  jw->String("max_time_in_msec");
+  jw->Double(this->max_time_in_msec);
 
   jw->String("mean_time");
-  jw->Double(this->total_time/this->calls);
+  jw->Double(this->total_time_in_msec/this->num_calls);
 
-  double stddev_time = 0.0;
-  if(this->calls > 1) {
-    stddev_time = sqrt(this->sum_var_time / this->calls);
-  }
+  const double stddev_time = this->num_calls == 0 ? 0. :
+    sqrt(this->sum_var_time_in_msec / this->num_calls);
+  
   jw->String("stddev_time");
   jw->Double(stddev_time);
   jw->EndObject();
