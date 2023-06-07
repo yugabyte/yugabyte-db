@@ -25,7 +25,6 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigGetResp;
@@ -201,34 +200,6 @@ public class XClusterConfigController extends AuthenticatedController {
             "To create a transactional xCluster, you have to delete all the existing xCluster "
                 + "configs on the source and target universes. There could exist at most one "
                 + "transactional xCluster config.");
-      }
-      // Savepoints must be disabled for txn xCluster.
-      Cluster sourceUniversePrimaryCluster =
-          sourceUniverse.getUniverseDetails().getPrimaryCluster();
-      Cluster targetUniversePrimaryCluster =
-          targetUniverse.getUniverseDetails().getPrimaryCluster();
-      if (!Objects.equals(
-              sourceUniversePrimaryCluster.userIntent.masterGFlags.get(
-                  XClusterConfigTaskBase.ENABLE_PG_SAVEPOINTS_GFLAG_NAME),
-              "false")
-          || !Objects.equals(
-              sourceUniversePrimaryCluster.userIntent.tserverGFlags.get(
-                  XClusterConfigTaskBase.ENABLE_PG_SAVEPOINTS_GFLAG_NAME),
-              "false")
-          || !Objects.equals(
-              targetUniversePrimaryCluster.userIntent.masterGFlags.get(
-                  XClusterConfigTaskBase.ENABLE_PG_SAVEPOINTS_GFLAG_NAME),
-              "false")
-          || !Objects.equals(
-              targetUniversePrimaryCluster.userIntent.tserverGFlags.get(
-                  XClusterConfigTaskBase.ENABLE_PG_SAVEPOINTS_GFLAG_NAME),
-              "false")) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "To create a transactional xCluster, you have set %s to `false` on both "
-                    + "source and target universes",
-                XClusterConfigTaskBase.ENABLE_PG_SAVEPOINTS_GFLAG_NAME));
       }
     }
 
