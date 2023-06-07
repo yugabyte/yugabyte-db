@@ -110,6 +110,10 @@ public class RoleBinding extends Model {
     return find.query().where().eq("uuid", roleBindingUUID).findOne();
   }
 
+  public static List<RoleBinding> fetchRoleBindingsForUser(UUID userUUID) {
+    return find.query().where().eq("user_uuid", userUUID).findList();
+  }
+
   public static RoleBinding getOrBadRequest(UUID roleBindingUUID) {
     RoleBinding roleBinding = get(roleBindingUUID);
     if (roleBinding == null) {

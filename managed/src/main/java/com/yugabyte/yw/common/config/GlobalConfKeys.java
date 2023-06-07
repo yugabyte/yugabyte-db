@@ -970,7 +970,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disables Image Bundle Validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<Duration> devopsCommandTimeout =
       new ConfKeyInfo<>(
           "yb.devops.command_timeout",
@@ -979,7 +978,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Devops command timeout",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
   public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
       new ConfKeyInfo<>(
           "ybc.compatible_db_version",
@@ -1004,7 +1002,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Username, used for request authentication against embedded Prometheus",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
   public static final ConfKeyInfo<String> metricsAuthPassword =
       new ConfKeyInfo<>(
           "yb.metrics.auth_password",
@@ -1021,4 +1018,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "For YBC Shutdown during upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useNewRbacAuthz =
+      new ConfKeyInfo<>(
+          "yb.rbac.use_new_authz",
+          ScopeType.GLOBAL,
+          "New RBAC Authz feature",
+          "New RBAC Authz feature with custom role creation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

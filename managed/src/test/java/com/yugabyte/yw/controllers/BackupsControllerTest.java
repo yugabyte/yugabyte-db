@@ -39,6 +39,9 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -50,6 +53,7 @@ import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
@@ -59,8 +63,16 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -91,6 +103,10 @@ public class BackupsControllerTest extends FakeDBApplication {
   private BackupTableParams backupTableParams;
   private UUID taskUUID;
   private TaskInfo taskInfo;
+  private Role role;
+  private ResourceDefinition rd1;
+
+  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.BACKUP_RESTORE);
 
   @Before
   public void setUp() {
@@ -98,6 +114,18 @@ public class BackupsControllerTest extends FakeDBApplication {
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     defaultUniverse = ModelFactory.addNodesToUniverse(defaultUniverse.getUniverseUUID(), 1);
+    role =
+        Role.create(
+            defaultCustomer.getUuid(),
+            "FakeRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1)));
+    rd1 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(defaultUniverse.getUniverseUUID())))
+            .build();
     taskUUID = UUID.randomUUID();
     backupTableParams = new BackupTableParams();
     backupTableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -1349,6 +1377,43 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testStopBackup() throws IOException, InterruptedException, ExecutionException {
+    ProcessBuilder processBuilderObject = new ProcessBuilder("test");
+    Process process = processBuilderObject.start();
+    Util.setPID(defaultBackup.getBackupUUID(), process);
+
+    taskInfo = new TaskInfo(TaskType.CreateTable);
+    taskInfo.setDetails(Json.newObject());
+    taskInfo.setOwner("");
+    taskInfo.setTaskUUID(taskUUID);
+    taskInfo.save();
+
+    defaultBackup.setTaskUUID(taskUUID);
+    defaultBackup.save();
+    ExecutorService executorService = Executors.newSingleThreadExecutor();
+
+    Callable<Result> callable =
+        () -> {
+          return stopBackup(null, defaultBackup.getBackupUUID());
+        };
+    Future<Result> future = executorService.submit(callable);
+    Thread.sleep(1000);
+    taskInfo.setTaskState(State.Failure);
+    taskInfo.save();
+
+    Result result = future.get();
+    executorService.shutdown();
+    assertEquals(200, result.status());
+    assertAuditEntry(1, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testStopBackupWithPermissions()
+      throws IOException, InterruptedException, ExecutionException {
+
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    RoleBinding.create(defaultUser, RoleBindingType.Custom, role, rG);
+
     ProcessBuilder processBuilderObject = new ProcessBuilder("test");
     Process process = processBuilderObject.start();
     Util.setPID(defaultBackup.getBackupUUID(), process);

@@ -15,8 +15,11 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.InstanceTypeResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
@@ -26,6 +29,11 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -81,6 +89,12 @@ public class InstanceTypeController extends AuthenticatedController {
           code = 500,
           message = "If there was a server or database issue when listing the instance types",
           response = YBPError.class))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID, UUID providerUUID, List<String> zoneCodes) {
     Set<String> filterByZoneCodes = new HashSet<>(zoneCodes);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -179,6 +193,12 @@ public class InstanceTypeController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.InstanceType",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(request, InstanceType.class);
 
@@ -211,6 +231,12 @@ public class InstanceTypeController extends AuthenticatedController {
       value = "Delete an instance type",
       response = YBPSuccess.class,
       nickname = "deleteInstanceType")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(
       UUID customerUUID, UUID providerUUID, String instanceTypeCode, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -238,6 +264,12 @@ public class InstanceTypeController extends AuthenticatedController {
       value = "Get details of an instance type",
       response = InstanceTypeResp.class,
       nickname = "instanceTypeDetail")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result index(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
@@ -258,6 +290,7 @@ public class InstanceTypeController extends AuthenticatedController {
       value = "List supported EBS volume types",
       response = StorageType.class,
       responseContainer = "List")
+  @AuthzPath
   public Result getEBSTypes() {
     return PlatformResults.withData(
         Arrays.stream(PublicCloudConstants.StorageType.values())
@@ -274,6 +307,7 @@ public class InstanceTypeController extends AuthenticatedController {
       value = "List supported GCP disk types",
       response = StorageType.class,
       responseContainer = "List")
+  @AuthzPath
   public Result getGCPTypes() {
 
     return PlatformResults.withData(
@@ -291,6 +325,7 @@ public class InstanceTypeController extends AuthenticatedController {
       value = "List supported Azure disk types",
       response = StorageType.class,
       responseContainer = "List")
+  @AuthzPath
   public Result getAZUTypes() {
     return PlatformResults.withData(
         Arrays.stream(PublicCloudConstants.StorageType.values())
