@@ -1,7 +1,6 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.common.base.Strings;
@@ -193,12 +192,6 @@ public class AccessKeyHandler {
    */
   public AccessKey doEdit(
       Provider provider, @Nullable AccessKey accessKey, @Nullable String keyCode) {
-    long universesCount = provider.getUniverseCount();
-    if (universesCount > 0) {
-      throw new PlatformServiceException(
-          FORBIDDEN, "Cannot modify the access key for the provider in use!");
-    }
-
     ProviderDetails details = provider.getDetails();
     String keyPairName = null;
     String sshPrivateKeyContent = null;

@@ -47,6 +47,7 @@ import com.amazonaws.services.ec2.model.Subnet;
 import com.amazonaws.services.ec2.model.Vpc;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
@@ -66,6 +67,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -79,6 +81,9 @@ import com.yugabyte.yw.models.RegionDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
@@ -91,6 +96,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
@@ -1266,6 +1273,109 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 fail();
               }
             });
+  }
+
+  @Test
+  public void testProviderEditInUniverse() {
+    Provider p = ModelFactory.awsProvider(customer);
+    ProviderDetails details = new ProviderDetails();
+    details.setSshUser("ec2-user");
+    p.setDetails(details);
+    p.save();
+
+    // Add Region to the provider.
+    Region region = Region.create(p, "us-west-2", "us-west-2", "yb-image");
+    // Add zone to the region.
+    AvailabilityZone az1 =
+        AvailabilityZone.createOrThrow(
+            region, "us-west-2a", "us-west-2a", "subnet-foo", "subnet-foo");
+    // Add access key to the provider.
+    AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
+
+    Universe u = ModelFactory.createUniverse("provider-edit", customer.getUuid());
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails;
+          universeDetails = new UniverseDefinitionTaskParams();
+          UserIntent userIntent = new UserIntent();
+
+          // Add a desired number of nodes.
+          userIntent.numNodes = 5;
+          userIntent.provider = p.getUuid().toString();
+          universeDetails.nodeDetailsSet = new HashSet<>();
+          for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+            NodeDetails node = new NodeDetails();
+            node.nodeName = "host-n" + idx;
+            node.cloudInfo = new CloudSpecificInfo();
+            node.cloudInfo.cloud = "aws";
+            node.cloudInfo.az = "az-" + idx;
+            node.cloudInfo.region = "test-region";
+            node.cloudInfo.subnet_id = "subnet-1";
+            node.cloudInfo.private_ip = "host-n" + idx;
+            node.azUuid = az1.getUuid();
+            node.state = NodeState.Live;
+            node.isTserver = true;
+            if (idx <= 3) {
+              node.isMaster = true;
+            }
+            node.nodeIdx = idx;
+            universeDetails.nodeDetailsSet.add(node);
+          }
+          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universe.setUniverseDetails(universeDetails);
+        };
+    u = Universe.saveDetails(u.getUniverseUUID(), updater);
+
+    // Modify the provider details
+    p.getDetails().setSshUser("centos");
+    Result result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(result, "Modifying provider details is not allowed for providers in use.");
+
+    p.getDetails().setSshUser("ec2-user");
+    // Delete the region
+    p.setRegions(ImmutableList.of());
+    result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(
+        result, "Cannot delete region us-west-2 as it is associated with running universes.");
+
+    // Modify the existing region details.
+    region.getDetails().getCloudInfo().getAws().setYbImage("Updated");
+    List<Region> regions = new ArrayList<>();
+    regions.add(region);
+    p.setRegions(regions);
+    result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(
+        result, "Modifying region us-west-2 details is not allowed for providers in use.");
+
+    // Delete the in-use availability zone.
+    region.getDetails().getCloudInfo().getAws().setYbImage("yb-image");
+    region.setZones(ImmutableList.of());
+    result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(
+        result, "Cannot delete zone us-west-2a as it is associated with running universes.");
+
+    // Add a new az to the region.
+    List<AvailabilityZone> azs = new ArrayList<>();
+    azs.add(az1);
+    region.setZones(azs);
+
+    result = getProvider(p.getUuid());
+    Provider provider = Json.fromJson(Json.parse(contentAsString(result)), Provider.class);
+    JsonNode providerJson = Json.toJson(provider);
+    JsonNode regionJson = providerJson.get("regions");
+    ObjectMapper objectMapper = new ObjectMapper();
+    ArrayNode regionArrayNode = objectMapper.valueToTree(regionJson).deepCopy();
+    JsonNode azJson = regionArrayNode.get(0).get("zones");
+    ArrayNode arrayNode = objectMapper.valueToTree(azJson).deepCopy();
+    ObjectNode azNode = Json.newObject();
+    azNode.put("name", "us-west-2b");
+    azNode.put("code", "us-west-2b");
+    arrayNode.add(azNode);
+    ((ObjectNode) regionArrayNode.get(0)).set("zones", arrayNode);
+    ((ObjectNode) providerJson).set("regions", regionArrayNode);
+
+    result = editProvider(providerJson, p.getUuid(), false);
+    assertOk(result);
   }
 
   private SecurityGroup getTestSecurityGroup(int fromPort, int toPort, String vpcId) {

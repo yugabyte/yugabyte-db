@@ -17,5 +17,5 @@ public class AvailabilityZoneDetails {
     @ApiModelProperty private KubernetesRegionInfo kubernetes;
   }
 
-  @ApiModelProperty private AZCloudInfo cloudInfo;
+  @ApiModelProperty private AZCloudInfo cloudInfo = new AZCloudInfo();
 }
