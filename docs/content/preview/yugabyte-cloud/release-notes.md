@@ -20,7 +20,7 @@ On this page:
 
 **New Features**
 
-- Ability to create custom roles using Role-Based Access Control (RBAC) to precisely manage user access and permissions to match your organization's specific needs. This includes enhanced viewer permissions which offer a secure and restricted view of cluster information without the risk of unintended modifications.
+- Ability to create custom roles using Role-Based Access Control (RBAC) to precisely manage user access and permissions to match your organization's specific needs. This includes a new built-in Viewer role which offers a secure and restricted view of cluster information without the risk of unintended modifications.
 
 ### May 30, 2023
 
