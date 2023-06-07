@@ -32,9 +32,9 @@ namespace cqlserver {
 
 //------------------------------------------------------------------------------------------------
 CQLStatement::CQLStatement(
-    const string& keyspace, const string& query, const CQLStatementListPos pos)
-    : Statement(keyspace, query), pos_(pos) {
-}
+    const string& keyspace, const string& query, const CQLStatementListPos pos,
+    const MemTrackerPtr& mem_tracker)
+    : Statement(keyspace, query), pos_(pos), consumption_(mem_tracker, DynamicMemoryUsage()) {}
 
 CQLStatement::~CQLStatement() {
 }
