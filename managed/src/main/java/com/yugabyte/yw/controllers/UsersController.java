@@ -7,9 +7,12 @@ import static com.yugabyte.yw.models.Users.UserType;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -21,6 +24,11 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -72,6 +80,12 @@ public class UsersController extends AuthenticatedController {
       value = "Get a user's details",
       nickname = "getUserDetails",
       response = UserWithFeatures.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result index(UUID customerUUID, UUID userUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
@@ -89,6 +103,12 @@ public class UsersController extends AuthenticatedController {
       nickname = "listUsers",
       response = UserWithFeatures.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     List<Users> users = Users.getAll(customerUUID);
@@ -112,6 +132,12 @@ public class UsersController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.UserRegisterFormData",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
   })
   public Result create(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -160,6 +186,12 @@ public class UsersController extends AuthenticatedController {
       nickname = "deleteUser",
       notes = "Deletes the specified user. Note that you can't delete a customer's primary user.",
       response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(UUID customerUUID, UUID userUUID, Http.Request request) {
     Users user = Users.getOrBadRequest(userUUID);
     checkUserOwnership(customerUUID, userUUID, user);
@@ -189,6 +221,12 @@ public class UsersController extends AuthenticatedController {
       value = "Retrieve OIDC auth token",
       nickname = "retrieveOIDCAuthToken",
       response = Users.UserOIDCAuthToken.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result retrieveOidcAuthToken(UUID customerUUID, UUID userUuid, Http.Request request) {
     if (!confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
       throw new PlatformServiceException(
@@ -224,6 +262,12 @@ public class UsersController extends AuthenticatedController {
       value = "Change a user's role",
       nickname = "updateUserRole",
       response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result changeRole(UUID customerUUID, UUID userUUID, String role, Http.Request request) {
     Users user = Users.getOrBadRequest(userUUID);
     checkUserOwnership(customerUUID, userUUID, user);
@@ -257,6 +301,12 @@ public class UsersController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.UserRegisterFormData",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result changePassword(UUID customerUUID, UUID userUUID, Http.Request request) {
     Users user = Users.getOrBadRequest(userUUID);
@@ -316,6 +366,7 @@ public class UsersController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.UserProfileFormData",
         paramType = "body")
   })
+  @AuthzPath
   public Result updateProfile(UUID customerUUID, UUID userUUID, Http.Request request) {
 
     Users user = Users.getOrBadRequest(userUUID);

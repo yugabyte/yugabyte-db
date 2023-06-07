@@ -9,10 +9,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.TaskInfoManager;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.DeleteBackupParams;
@@ -53,6 +56,11 @@ import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
 import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import com.yugabyte.yw.models.paging.RestorePagedApiResponse;
 import com.yugabyte.yw.models.paging.RestorePagedQuery;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -110,6 +118,12 @@ public class BackupsController extends AuthenticatedController {
           code = 500,
           message = "If there was a server or database issue when listing the backups",
           response = YBPError.class))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID, UUID universeUUID) {
     List<Backup> backups = Backup.fetchByUniverseUUID(customerUUID, universeUUID);
     Boolean isStorageLocMasked = isStorageLocationMasked(customerUUID);
@@ -129,6 +143,12 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Get Backup V2", response = Backup.class, nickname = "getBackupV2")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result get(UUID customerUUID, UUID backupUUID) {
     Customer.getOrBadRequest(customerUUID);
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
@@ -154,6 +174,12 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.BackupPagedApiQuery",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result pageBackupList(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -177,6 +203,12 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.RestorePagedApiQuery",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result pageRestoreList(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -195,6 +227,12 @@ public class BackupsController extends AuthenticatedController {
       response = CommonBackupInfo.class,
       responseContainer = "List",
       nickname = "listIncrementalBackups")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listIncrementalBackups(UUID customerUUID, UUID baseBackupUUID) {
     Customer.getOrBadRequest(customerUUID);
     Backup.getOrBadRequest(customerUUID, baseBackupUUID);
@@ -213,6 +251,12 @@ public class BackupsController extends AuthenticatedController {
           code = 500,
           message = "If there was a server or database issue when listing the backups",
           response = YBPError.class))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result fetchBackupsByTaskUUID(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getOrBadRequest(universeUUID, customer);
@@ -221,6 +265,7 @@ public class BackupsController extends AuthenticatedController {
     return PlatformResults.withData(backups);
   }
 
+  // Rename this to createBackup on completion
   @ApiOperation(value = "Create a backup", nickname = "createbackup", response = YBPTask.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
@@ -229,6 +274,15 @@ public class BackupsController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.BackupRequestParams",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
   })
   public Result createBackupYb(UUID customerUUID, Http.Request request) {
     BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
@@ -248,6 +302,15 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.BackupRequestParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+  })
   public Result createBackupScheduleAsync(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -282,6 +345,15 @@ public class BackupsController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.BackupRequestParams",
           required = true))
   @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+  })
   public Result createBackupSchedule(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -408,6 +480,15 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.RestoreBackupParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+  })
   public Result restoreBackup(UUID customerUUID, Http.Request request) {
 
     RestoreBackupParams taskParams = parseJsonAndValidate(request, RestoreBackupParams.class);
@@ -434,6 +515,14 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.BackupTableParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result restore(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -539,6 +628,12 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete backups", response = YBPTasks.class, nickname = "deleteBackups")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // TODO(API): Let's get rid of raw Json.
@@ -599,6 +694,12 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.DeleteBackupParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteYb(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DeleteBackupParams deleteBackupParams = parseJsonAndValidate(request, DeleteBackupParams.class);
@@ -625,6 +726,20 @@ public class BackupsController extends AuthenticatedController {
       notes = "Stop an in-progress backup",
       nickname = "stopBackup",
       response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation =
+            @Resource(
+                path = "backupInfo.universeUUID",
+                sourceType = SourceType.DB,
+                dbClass = Backup.class,
+                identifier = "backups",
+                columnName = "backup_uuid"))
+  })
   public Result stop(UUID customerUUID, UUID backupUUID, Http.Request request) {
     backupHelper.stopBackup(customerUUID, backupUUID);
     auditService()
@@ -649,6 +764,12 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.EditBackupParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result editBackup(UUID customerUUID, UUID backupUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
@@ -755,6 +876,14 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.YbcThrottleParameters",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result setThrottleParams(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID.
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -796,6 +925,14 @@ public class BackupsController extends AuthenticatedController {
       value = "Get throttle params from YB-Controller",
       nickname = "getThrottleParams",
       response = YbcThrottleParametersResponse.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getThrottleParams(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -832,6 +969,15 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.RestorePreflightParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+  })
   public Result restorePreflight(UUID customerUUID, Http.Request request) {
     // Validate customer
     Customer.getOrBadRequest(customerUUID);

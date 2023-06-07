@@ -2,6 +2,9 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -10,6 +13,11 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -39,6 +47,12 @@ public class ImageBundleController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.ImageBundle",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     final Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -59,6 +73,12 @@ public class ImageBundleController extends AuthenticatedController {
       response = ImageBundle.class,
       responseContainer = "List",
       nickname = "getListOfImageBundles")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID, UUID providerUUID) {
     Provider.getOrBadRequest(customerUUID, providerUUID);
     List<ImageBundle> imageBundles = ImageBundle.getAll(providerUUID);
@@ -69,6 +89,12 @@ public class ImageBundleController extends AuthenticatedController {
       value = "Get a image bundle",
       response = ImageBundle.class,
       nickname = "getImageBundle")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result index(UUID customerUUID, UUID providerUUID, UUID imageBundleUUID) {
     Provider.getOrBadRequest(customerUUID, providerUUID);
     ImageBundle bundle = ImageBundle.getOrBadRequest(providerUUID, imageBundleUUID);
@@ -85,6 +111,12 @@ public class ImageBundleController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.ImageBundle",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result edit(UUID customerUUID, UUID providerUUID, UUID iBUUID, Http.Request request) {
     final Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     checkImageBundleUsageInUniverses(providerUUID, iBUUID);
@@ -102,6 +134,12 @@ public class ImageBundleController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete a image bundle", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(UUID customerUUID, UUID providerUUID, UUID iBUUID, Http.Request request) {
     checkImageBundleUsageInUniverses(providerUUID, iBUUID);
     imageBundleHandler.delete(providerUUID, iBUUID);

@@ -14,13 +14,24 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -41,6 +52,11 @@ public class ConfKeysTest extends FakeDBApplication {
   private Provider defaultProvider;
   private String authToken;
 
+  Permission permission1 = new Permission(ResourceType.DEFAULT, Action.CREATE);
+  Permission permission2 = new Permission(ResourceType.DEFAULT, Action.READ);
+  Permission permission3 = new Permission(ResourceType.DEFAULT, Action.UPDATE);
+  Permission permission4 = new Permission(ResourceType.DEFAULT, Action.DELETE);
+
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
@@ -48,6 +64,20 @@ public class ConfKeysTest extends FakeDBApplication {
     defaultProvider = ModelFactory.kubernetesProvider(defaultCustomer);
     Users user = ModelFactory.testUser(defaultCustomer, Users.Role.SuperAdmin);
     authToken = user.createAuthToken();
+    Role role1 =
+        Role.create(
+            defaultCustomer.getUuid(),
+            "FakeRole2",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
+    ResourceDefinition rd3 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.DEFAULT)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(defaultCustomer.getUuid())))
+            .build();
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd3)));
+    RoleBinding.create(user, RoleBindingType.Custom, role1, rG);
   }
 
   private Result setKey(String path, String newVal, UUID scopeUUID) {
