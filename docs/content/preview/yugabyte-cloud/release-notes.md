@@ -16,6 +16,18 @@ On this page:
 
 ## Releases
 
+### June 7, 2023
+
+**New Features**
+
+- Ability to create custom roles using Role-Based Access Control (RBAC) to precisely manage user access and permissions to match your organization’s specific needs. This includes enhanced viewer permissions which offer a secure and restricted view of cluster information—without the risk of unintended modifications.
+
+### May 30, 2023
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.9](../../releases/release-notes/v2.14/#v2.14.9.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
 ### April 28, 2023
 
 **New Features**
