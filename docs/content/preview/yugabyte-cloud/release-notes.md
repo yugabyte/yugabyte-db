@@ -141,7 +141,7 @@ On this page:
 
 **New Features**
 
-- Support for role-based API keys. Assign [roles](../cloud-admin/manage-access/#user-roles) to API keys; keys assigned a developer role can't be used to perform admin tasks. In addition, keys are no longer revoked if the user that created the key is deleted from the account.
+- Support for role-based API keys. Assign [roles](../cloud-admin/managed-roles) to API keys; keys assigned a developer role can't be used to perform admin tasks. In addition, keys are no longer revoked if the user that created the key is deleted from the account.
 
 ### October 17, 2022
 

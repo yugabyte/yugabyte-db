@@ -33,7 +33,7 @@ LDAP authentication is similar to a direct password authentication, except that 
 
 YugabyteDB Anywhere integration with LDAP enables you to use your LDAP server for authentication purposes instead of having to create user accounts on YugabyteDB Anywhere.
 
-Because YugabyteDB Anywhere and the LDAP server are synchronized during login, YugabyteDB Anywhere always uses the up-to-date credentials and roles information, such as role and password changes, as well as removal of users deleted in the LDAP server.
+Because YugabyteDB Anywhere and the LDAP server are synchronized during login, YugabyteDB Anywhere always uses the up-to-date credentials and roles information (such as role and password changes), as well as removal of users deleted in the LDAP server.
 
 If configured by the LDAP server, YugabyteDB Anywhere can prevent the user from being able to change their password.
 

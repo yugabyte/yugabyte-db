@@ -30,8 +30,6 @@ To monitor clusters in real time, use the performance metrics on the cluster [Ov
 
 Enable alerts using the **Configurations** tab on the **Alerts** page.
 
-Only Admin users can configure billing alerts.
-
 ![Alert Configurations](/images/yb-cloud/cloud-alerts-configurations.png)
 
 <!-- To view alert details, select the alert to display the **Alert Policy Settings** sheet.-->

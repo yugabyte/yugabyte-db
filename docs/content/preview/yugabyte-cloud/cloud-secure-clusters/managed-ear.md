@@ -21,7 +21,6 @@ You enable YugabyteDB cluster encryption at rest (EAR) when you create it. See [
 - On the **Security** page of the **Create Cluster** wizard when you create a cluster.
 - On the cluster **Settings** tab under **Encryption at rest**.
 -->
-You must be signed in as an [Admin user](../../cloud-admin/manage-access/) to enable cluster EAR.
 
 Note that, regardless of whether you enable YugabyteDB EAR for a cluster, YugabyteDB Managed uses volume encryption for all data at rest, including your account data, your clusters, and their backups. Data is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, and server-side and persistent disk encryption for GCP. Volume encryption keys are managed by the cloud provider and anchored by hardware security appliances.
 

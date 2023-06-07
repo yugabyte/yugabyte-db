@@ -14,8 +14,6 @@ type: docs
 
 Review your charges and manage your billing profile and payment methods using the **Billing** tab.
 
-You must be signed in as an Admin user; Developer users cannot view the billing profile.
-
 Yugabyte bills for its services as follows:
 
 - Charges by the minute for your YugabyteDB Managed clusters.
