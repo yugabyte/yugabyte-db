@@ -79,7 +79,7 @@ void StmtCounters::WriteAsJson(
 
   const double stddev_time = this->num_calls == 0 ? 0. :
     sqrt(this->sum_var_time_in_msec / this->num_calls);
-  
+
   jw->String("stddev_time");
   jw->Double(stddev_time);
   jw->EndObject();

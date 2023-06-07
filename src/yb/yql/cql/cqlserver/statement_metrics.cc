@@ -42,7 +42,9 @@ StatementMetrics::StatementMetrics(const ql::CQLMessage::QueryId& query_id,
 }
 
 void StatementMetrics::WriteAsJson(JsonWriter* jw) const {
-  counters_->WriteAsJson(jw, b2a_hex(query_id_));
+  if (counters_->num_calls) {
+    counters_->WriteAsJson(jw, b2a_hex(query_id_));
+  }
 }
 } // namespace cqlserver
 

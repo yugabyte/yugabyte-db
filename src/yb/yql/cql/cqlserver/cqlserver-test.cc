@@ -623,7 +623,7 @@ TEST_F(TestCQLService, TestCQLDumpStatementLimit) {
     ||  metrics[0]->query_id() == "dummyqueryid2");
 }
 
-TEST_F(TestCQLService, TestCQLPreparedStmtStats) {
+TEST_F(TestCQLService, TestCQLUpdateStmtCounters) {
   const std::shared_ptr<CQLServiceImpl> cql_service = server()->TEST_cql_service();
   QLEnv ql_env(
       cql_service->client(),

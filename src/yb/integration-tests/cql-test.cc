@@ -34,6 +34,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/status_log.h"
@@ -77,6 +78,7 @@ class CqlTest : public CqlTestBase<MiniCluster> {
   void TestAlteredPrepareForIndexWithPaging(bool check_schema_in_paging,
                                             bool metadata_in_exec_resp = false);
   void TestPrepareWithDropTableWithPaging();
+  void TestCQLPreparedStmtStats();
 };
 
 TEST_F(CqlTest, ProcessorsLimit) {
@@ -777,6 +779,41 @@ TEST_F(CqlTest, AlteredPrepare) {
 
 TEST_F(CqlTest, AlteredPrepare_MetadataInExecResp) {
   TestAlteredPrepare(/* metadata_in_exec_resp =*/ true);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+void CqlTest::TestCQLPreparedStmtStats() {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  EasyCurl curl;
+  faststring buf;
+  std::vector<Endpoint> addrs;
+  CHECK_OK(cql_server_->web_server()->GetBoundAddresses(&addrs));
+  CHECK_EQ(addrs.size(), 1);
+  LOG(INFO) << "Create Table";
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT)"));
+
+  LOG(INFO) << "Prepare";
+  auto sel_prepared = ASSERT_RESULT(session.Prepare("SELECT * FROM t1 WHERE i = ?"));
+  auto ins_prepared = ASSERT_RESULT(session.Prepare("INSERT INTO t1 (i, j) VALUES (?, ?)"));
+
+  for (int i = 0; i < 10; i++) {
+    ASSERT_OK(session.Execute(ins_prepared.Bind().Bind(0, i).Bind(1, i)));
+  }
+
+  for (int i = 0; i < 5; i++) {
+    CassandraResult res =  ASSERT_RESULT(
+      session.ExecuteWithResult(sel_prepared.Bind().Bind(0, i*2)));
+  }
+
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
+  std::string result = buf.ToString();
+  ASSERT_STR_CONTAINS(result, "prepared_statements");
+  ASSERT_STR_CONTAINS(result, "\"num_calls\": 10");
+  ASSERT_STR_CONTAINS(result, "\"num_calls\": 5");
+}
+
+TEST_F(CqlTest, TestCQLPreparedStmtStats) {
+  TestCQLPreparedStmtStats();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
