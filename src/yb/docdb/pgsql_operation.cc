@@ -266,7 +266,7 @@ class FilteringIterator {
       bool is_explicit_request_read_time,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       const DocDBStatistics* statistics) {
-    RETURN_NOT_OK(InitCommon(request, read_context.get().schema()));
+    RETURN_NOT_OK(InitCommon(request, read_context.get().schema(), projection));
     iterator_holder_ = VERIFY_RESULT(CreateIterator(
         ql_storage, request, projection, read_context, txn_op_context, read_operation_data,
         is_explicit_request_read_time, pending_op, statistics));
@@ -284,7 +284,7 @@ class FilteringIterator {
       const QLValuePB& max_ybctid,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       const docdb::DocDBStatistics* statistics) {
-    RETURN_NOT_OK(InitCommon(request, read_context.get().schema()));
+    RETURN_NOT_OK(InitCommon(request, read_context.get().schema(), projection));
     return ql_storage.GetIterator(
         request.stmt_id(), projection, read_context, txn_op_context, read_operation_data,
         min_ybctid, max_ybctid, pending_op, &iterator_holder_, statistics);
@@ -307,12 +307,14 @@ class FilteringIterator {
   }
 
  private:
-  Status InitCommon(const PgsqlReadRequestPB& request, const Schema& schema) {
+  Status InitCommon(
+      const PgsqlReadRequestPB& request, const Schema& schema,
+      const dockv::ReaderProjection& projection) {
     const auto& where_clauses = request.where_clauses();
     if (where_clauses.empty()) {
       return Status::OK();
     }
-    DocPgExprExecutorBuilder builder(schema);
+    DocPgExprExecutorBuilder builder(schema, projection);
     for (const auto& exp : where_clauses) {
       RETURN_NOT_OK(builder.AddWhere(exp));
     }
@@ -429,9 +431,9 @@ bool IsExpression(const PgsqlColumnValuePB& column_value) {
 class ExpressionHelper {
  public:
   Status Init(
-      const Schema& schema, const PgsqlWriteRequestPB& request,
-      const dockv::PgTableRow& table_row) {
-    DocPgExprExecutorBuilder builder(schema);
+      const Schema& schema, const dockv::ReaderProjection& projection,
+      const PgsqlWriteRequestPB& request, const dockv::PgTableRow& table_row) {
+    DocPgExprExecutorBuilder builder(schema, projection);
     for (const auto& column_value : request.column_new_values()) {
       if (IsExpression(column_value)) {
         RETURN_NOT_OK(builder.AddTarget(column_value.expr()));
@@ -828,7 +830,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   if (request_.has_ybctid_column_value()) {
     const auto& schema = doc_read_context_->schema();
     ExpressionHelper expression_helper;
-    RETURN_NOT_OK(expression_helper.Init(schema, request_, table_row));
+    RETURN_NOT_OK(expression_helper.Init(schema, projection(), request_, table_row));
 
     skipped = request_.column_new_values().empty();
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();

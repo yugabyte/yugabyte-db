@@ -24,6 +24,8 @@
 
 #include "yb/docdb/docdb_pgapi.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "ybgate/ybgate_api.h"
 
 #include "yb/util/logging.h"
@@ -69,19 +71,43 @@ class MemoryContextGuard {
   DISALLOW_COPY_AND_ASSIGN(MemoryContextGuard);
 };
 
-inline Result<const ColumnSchema&> ColumnById(const Schema& schema, ColumnId id) {
-  auto result = schema.column_by_id(id);
-  SCHECK(result.ok(), InternalError, "Invalid Schema");
-  return result.get();
-}
+class ColumnIdxResolver {
+ public:
+  ColumnIdxResolver(
+      std::reference_wrapper<const Schema> schema,
+      std::reference_wrapper<const dockv::ReaderProjection> projection)
+      : schema_(schema), projection_(projection) {}
+
+  Result<size_t> GetColumnIdx(ColumnId id) const {
+    auto result = projection_.ColumnIdxById(id);
+    RSTATUS_DCHECK_NE(
+      result, dockv::ReaderProjection::kNotFoundIndex, InternalError, "Invalid projection");
+    return result;
+  }
+
+  Result<size_t> GetColumnIdx(int32_t attno) const {
+    const auto& columns = schema_.columns();
+    auto it = std::find_if(
+        columns.begin(), columns.end(),
+        [attno](const auto& column) { return attno == column.order(); });
+    RSTATUS_DCHECK(it != columns.end(), InternalError, Format("Column not found: $0", attno));
+    return GetColumnIdx(schema_.column_id(std::distance(it, columns.begin())));
+  }
+
+ private:
+  const Schema& schema_;
+  const dockv::ReaderProjection& projection_;
+
+  DISALLOW_COPY_AND_ASSIGN(ColumnIdxResolver);
+};
 
 // Deserialized Postgres expression paired with type information to convert results to DocDB format
 using DocPgEvalExprData = std::pair<YbgPreparedExpr, DocPgVarRef>;
 
 class TSCallExecutor {
  public:
-  explicit TSCallExecutor(const Schema& schema)
-      : schema_(schema) {
+  explicit TSCallExecutor(std::reference_wrapper<const ColumnIdxResolver> resolver)
+      : resolver_(resolver) {
     // Memory context to store things that are needed for executor lifetime, like column references
     // or deserialized expressions.
     CHECK_OK(CreateMemoryContext(nullptr, "DocPg Expression Context", &mem_ctx_));
@@ -102,12 +128,10 @@ class TSCallExecutor {
       return Status::OK();
     }
     VLOG(1) << "Column lookup " << col_id;
-    const auto& column = VERIFY_RESULT_REF(ColumnById(schema_, col_id));
-    SCHECK_EQ(column.order(), column_ref.attno(), InternalError, "Invalid Schema");
     // Prepare DocPgVarRef object and store it in the var_map_ using the attribute number as a key.
     // The DocPgVarRef object encapsulates info needed to extract DocDB from a row and convert it
     // to Postgres format.
-    return DocPgAddVarRef(col_id,
+    return DocPgAddVarRef(VERIFY_RESULT(resolver_.GetColumnIdx(col_id)),
                           column_ref.attno(),
                           column_ref.typid(),
                           column_ref.has_typmod() ? column_ref.typmod() : -1,
@@ -184,14 +208,8 @@ class TSCallExecutor {
         const auto attno = tscall.operands(3 * i + 1).value().int32_value();
         const auto typid = tscall.operands(3 * i + 2).value().int32_value();
         const auto typmod = tscall.operands(3 * i + 3).value().int32_value();
-        for (const auto& col_id : schema_.column_ids()) {
-          const auto& column = VERIFY_RESULT_REF(ColumnById(schema_, col_id));
-          if (column.order() == attno) {
-            RETURN_NOT_OK(DocPgAddVarRef(col_id, attno, typid, typmod, 0 /*collid*/, &var_map_));
-            return prepared_expr;
-          }
-        }
-        return STATUS_FORMAT(InternalError, "Column not found: $0", attno);
+        RETURN_NOT_OK(DocPgAddVarRef(VERIFY_RESULT(resolver_.GetColumnIdx(attno)),
+                      attno, typid, typmod, 0 /*collid*/, &var_map_));
       }
     }
     return prepared_expr;
@@ -238,7 +256,7 @@ class TSCallExecutor {
     return Status::OK();
   }
 
-  const Schema& schema_;
+  const ColumnIdxResolver& resolver_;
 
   // Memory context for permanent allocations. Exists for executor's lifetime.
   YbgMemoryContext mem_ctx_ = nullptr;
@@ -254,6 +272,8 @@ class TSCallExecutor {
   // Storage for column references.
   // Key is the attribute number, value is basically DocDB column id and type info.
   std::map<int, const DocPgVarRef> var_map_;
+
+  DISALLOW_COPY_AND_ASSIGN(TSCallExecutor);
 };
 
 class ConditionFilter {
@@ -282,8 +302,10 @@ class ConditionFilter {
 
 class DocPgExprExecutor::State {
  public:
-  explicit State(const Schema& schema)
-      : schema_(schema) {}
+  State(
+      std::reference_wrapper<const Schema> schema,
+      std::reference_wrapper<const dockv::ReaderProjection> projection)
+      : resolver_(schema, projection) {}
 
   Status AddColumnRef(const PgsqlColRefPB& column_ref) {
     return tscall_executor().AddColumnRef(column_ref);
@@ -325,7 +347,7 @@ class DocPgExprExecutor::State {
 
   TSCallExecutor& tscall_executor() {
     if (!tscall_executor_) {
-      tscall_executor_.emplace(schema_);
+      tscall_executor_.emplace(resolver_);
     }
     return *tscall_executor_;
   }
@@ -337,7 +359,7 @@ class DocPgExprExecutor::State {
     return *condition_filter_;
   }
 
-  const Schema& schema_;
+  const ColumnIdxResolver resolver_;
   std::optional<TSCallExecutor> tscall_executor_;
   std::optional<ConditionFilter> condition_filter_;
 };
@@ -353,8 +375,10 @@ Result<bool> DocPgExprExecutor::Exec(
   return state_->Exec(row, results);
 }
 
-DocPgExprExecutorBuilder::DocPgExprExecutorBuilder(std::reference_wrapper<const Schema> schema)
-    : state_(new DocPgExprExecutor::State(schema)) {
+DocPgExprExecutorBuilder::DocPgExprExecutorBuilder(
+    std::reference_wrapper<const Schema> schema,
+    std::reference_wrapper<const dockv::ReaderProjection> projection)
+    : state_(new DocPgExprExecutor::State(schema, projection)) {
 }
 
 DocPgExprExecutor::DocPgExprExecutor(DocPgExprExecutor&&) = default;
