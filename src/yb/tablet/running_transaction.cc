@@ -86,6 +86,9 @@ void RunningTransaction::SetLocalCommitData(
   last_known_aborted_subtxn_set_ = aborted_subtxn_set;
   local_commit_time_ = time;
   last_known_status_hybrid_time_ = local_commit_time_;
+  if (last_known_status_ == TransactionStatus::ABORTED) {
+    context_.NotifyAbortedTransactionDecrement(id());
+  }
   last_known_status_ = TransactionStatus::COMMITTED;
 }
 
@@ -296,7 +299,9 @@ bool RunningTransaction::UpdateStatus(
   if (transaction_status == last_known_status_) {
     return false;
   }
-
+  if (last_known_status_ == TransactionStatus::ABORTED) {
+    context_.NotifyAbortedTransactionDecrement(id());
+  }
   last_known_status_ = transaction_status;
 
   return transaction_status == TransactionStatus::ABORTED;
@@ -393,6 +398,9 @@ void RunningTransaction::DoStatusReceived(const Status& status,
         if (status_for_waiter && *status_for_waiter == TransactionStatus::PENDING) {
           if (last_known_status_hybrid_time_ > waiter.read_ht) {
             time_of_status = last_known_status_hybrid_time_ = waiter.read_ht;
+          }
+          if (last_known_status_ == TransactionStatus::ABORTED) {
+            context_.NotifyAbortedTransactionDecrement(id());
           }
           transaction_status = last_known_status_ = TransactionStatus::PENDING;
         }
