@@ -13,9 +13,11 @@ menu:
 type: docs
 ---
 
-Invite team members to your account so that they can create, manage, and connect to clusters. You can also manage the login methods available to users for signing in to your YugabyteDB Managed account.
+Invite team members to your account so that they can create and manage clusters, manage billing, audit account activity, and more. Account users are assigned [roles](../managed-roles/), which can be customized to provide access to only the actions and resources needed to perform their tasks.
 
-To access a cluster database, you need to ask a user with administrative privileges on the database for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).
+You can also manage the login methods available to users for signing in to your YugabyteDB Managed account.
+
+(To access a cluster database, you need to ask a user with administrative privileges on the database for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).)
 
 The **Users** tab displays a list of users that are either active or have been invited, including their email, display name, role, and status.
 
