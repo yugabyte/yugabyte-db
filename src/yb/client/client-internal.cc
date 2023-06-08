@@ -2029,7 +2029,8 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
                                       const YBTableName& table_name,
                                       CoarseTimePoint deadline,
                                       std::shared_ptr<YBTableInfo> info,
-                                      StatusCallback callback) {
+                                      StatusCallback callback,
+                                      master::GetTableSchemaResponsePB* resp_ignored) {
   auto rpc = StartRpc<GetTableSchemaRpc>(
       client,
       callback,
@@ -2039,18 +2040,19 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::GetTableSchemaById(YBClient* client,
-                                          const TableId& table_id,
-                                          CoarseTimePoint deadline,
-                                          std::shared_ptr<YBTableInfo> info,
-                                          StatusCallback callback) {
+Status YBClient::Data::GetTableSchema(YBClient* client,
+                                      const TableId& table_id,
+                                      CoarseTimePoint deadline,
+                                      std::shared_ptr<YBTableInfo> info,
+                                      StatusCallback callback,
+                                      master::GetTableSchemaResponsePB* resp) {
   auto rpc = StartRpc<GetTableSchemaRpc>(
       client,
       callback,
       table_id,
       info.get(),
       deadline,
-      nullptr);
+      resp);
   return Status::OK();
 }
 

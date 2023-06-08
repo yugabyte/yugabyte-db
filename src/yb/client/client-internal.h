@@ -252,12 +252,14 @@ class YBClient::Data {
                         const YBTableName& table_name,
                         CoarseTimePoint deadline,
                         std::shared_ptr<YBTableInfo> info,
-                        StatusCallback callback);
-  Status GetTableSchemaById(YBClient* client,
-                            const TableId& table_id,
-                            CoarseTimePoint deadline,
-                            std::shared_ptr<YBTableInfo> info,
-                            StatusCallback callback);
+                        StatusCallback callback,
+                        master::GetTableSchemaResponsePB* resp_ignored = nullptr);
+  Status GetTableSchema(YBClient* client,
+                        const TableId& table_id,
+                        CoarseTimePoint deadline,
+                        std::shared_ptr<YBTableInfo> info,
+                        StatusCallback callback,
+                        master::GetTableSchemaResponsePB* resp = nullptr);
   Status GetTablegroupSchemaById(YBClient* client,
                                  const TablegroupId& tablegroup_id,
                                  CoarseTimePoint deadline,
