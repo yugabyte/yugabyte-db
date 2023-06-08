@@ -92,7 +92,7 @@ For information on the Kubernetes Provider settings, refer to [Provider settings
 
 To add service-level annotations, use the following [overrides](../kubernetes/#overrides):
 
-```config
+```yaml
 serviceEndpoints:
   - name: "yb-master-service"
     type: "LoadBalancer"
@@ -115,19 +115,19 @@ serviceEndpoints:
 
 To disable LoadBalancer, use the following overrides:
 
-```configuration
+```yaml
 enableLoadBalancer: False
 ```
 
 To change the cluster domain name, use the following overrides:
 
-```configuration
+```yaml
 domainName: my.cluster
 ```
 
 To add annotations at the StatefulSet level, use the following overrides:
 
-```configuration
+```yaml
 networkAnnotation:
   annotation1: 'foo'
   annotation2: 'bar'
@@ -193,7 +193,7 @@ Depending on the cloud providers configured for your YugabyteDB Anywhere, you ca
 
 To provision in AWS or GCP cloud, your overrides should include the appropriate `provider_type` and `region_codes` as an array, as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "provider_type": "gcp", # gcp for Google Cloud, aws for Amazon Web Service
@@ -203,7 +203,7 @@ To provision in AWS or GCP cloud, your overrides should include the appropriate 
 
 To provision in Kubernetes, your overrides should include the appropriate `provider_type` and `kube_provider` type, as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "provider_type": "kubernetes",
@@ -215,7 +215,7 @@ To provision in Kubernetes, your overrides should include the appropriate `provi
 
 To override the number of nodes, include the `num_nodes` with the desired value, and then include this parameter along with other parameters for the cloud provider, as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "num_nodes": 4 # default is 3 nodes.
@@ -226,7 +226,7 @@ To override the number of nodes, include the `num_nodes` with the desired value,
 
 To override the replication factor, include `replication` with the desired value, and then include this parameter along with other parameters for the cloud provider, as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "replication": 5,
@@ -240,7 +240,7 @@ To override the replication factor, include `replication` with the desired value
 
 To override the volume settings, include `num_volumes` with the desired value, as well as `volume_size` with the volume size in GB for each of those volumes. For example, to have two volumes with 100GB each, overrides should be specified as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "num_volumes": 2,
@@ -252,7 +252,7 @@ To override the volume settings, include `num_volumes` with the desired value, a
 
 To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in YugabyteDB Anywhere, as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "yb_version": "1.1.6.0-b4"
