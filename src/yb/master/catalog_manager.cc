@@ -6710,6 +6710,8 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& tab
 
 std::vector<TableInfoPtr> CatalogManager::GetTables(GetTablesMode mode) {
   std::vector<TableInfoPtr> result;
+  // Note: TableInfoPtr has a namespace_name field which was introduced in version 2.3.0. The data
+  // for this field is not backfilled (see GH17713/GH17712 for more details).
   {
     SharedLock lock(mutex_);
     result.reserve(table_ids_map_->size());
