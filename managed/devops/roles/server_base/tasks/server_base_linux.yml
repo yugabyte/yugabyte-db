@@ -6,7 +6,7 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 #
-# Common server configuration tasks for Linux (currently Debian and RedHat families).
+# Common server configuration tasks for Linux (currently Debian, RedHat, SUSE families).
 #
 # **** NOTE!! *****
 # This file handles requirements that are common across build/dev environment and prod/test
