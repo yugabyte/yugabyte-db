@@ -205,12 +205,22 @@ Result<YQLPartitionsVTable::TabletData> YQLPartitionsVTable::GetTabletData(
     const scoped_refptr<TabletInfo>& tablet,
     DnsLookupMap* dns_lookups,
     google::protobuf::Arena* arena) const {
-  auto data = TabletData {
-    .namespace_name = tablet->table()->namespace_name(),
-    .table_name = tablet->table()->name(),
-    .table_id = tablet->table()->id(),
-    .tablet_id = tablet->tablet_id(),
-    .locations = google::protobuf::Arena::Create<TabletLocationsPB>(arena),
+  // Resolve namespace name - namespace name field was introduced in 2.3.0, therefore tables created
+  // with older version will not have namespace_name set (GH17713 tracks the fix for
+  // migration/backfill in memory state). This workaround ensures that we send correct information
+  // to client as part of system.partition request.
+  auto namespace_name = tablet->table()->namespace_name();
+  if (namespace_name.empty()) {
+    namespace_name = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
+                                       tablet->table()->namespace_id()))->name();
+  }
+
+  auto data = TabletData{
+      .namespace_name = namespace_name,
+      .table_name = tablet->table()->name(),
+      .table_id = tablet->table()->id(),
+      .tablet_id = tablet->tablet_id(),
+      .locations = google::protobuf::Arena::Create<TabletLocationsPB>(arena),
   };
 
   auto s = master_->catalog_manager()->GetTabletLocations(tablet, data.locations);
