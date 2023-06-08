@@ -104,7 +104,7 @@ As an example, pretend YugabyteDB has only tablet- and row-level granularities. 
 Using the following conflict rules, YugabyteDB can decide if two original locks would conflict based only on whether or not their strong/weak locks at any lockable object would conflict:
 
 - two strong locks conflict if and only if they conflict ignoring their strength
-  - e.g., serializable write conflicts with serializable read per the previous matrix
+  - for example, serializable write conflicts with serializable read per the previous matrix
 - two weak locks never conflict
 - a strong lock conflicts with a weak lock if and only if they conflict ignoring their strength
 
