@@ -759,6 +759,8 @@ class TestUserFrontier : public UserFrontier {
     return Slice();
   }
 
+  void ResetFilter() override {}
+
  private:
   uint64_t value_ = 0;
 };
