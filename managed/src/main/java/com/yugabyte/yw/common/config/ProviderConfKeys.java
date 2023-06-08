@@ -330,4 +330,20 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "A remote temporary directory should be used for performing operations on nodes within the provider scope.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> operationStatusPollingInterval =
+      new ConfKeyInfo<>(
+          "yb.gcp.operation_status_polling_interval",
+          ScopeType.PROVIDER,
+          "Polling interval for Opertion status",
+          "Interval to poll the status of ongoing resource creation operations.",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> operationTimeoutInterval =
+      new ConfKeyInfo<>(
+          "yb.gcp.operation_timeout_interval",
+          ScopeType.PROVIDER,
+          "Operation Timeout interval",
+          "Timeout interval to wait for resource creation operations to complete sucessfully.",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
