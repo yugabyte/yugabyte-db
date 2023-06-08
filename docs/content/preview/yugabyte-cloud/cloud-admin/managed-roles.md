@@ -23,7 +23,7 @@ Roles are also assigned to [API keys](../../managed-automation/managed-apikeys/)
 
 {{< tip title="YugabyteDB Managed account users are not the same as database users" >}}
 
-YugabyteDB Managed account users and roles are distinct from the users and roles on your YugabyteDB databases. For information on managing database users, refer to [Add database users](../../cloud-secure-clusters/add-users/).
+Your account users and roles are distinct from the users and roles on your YugabyteDB databases. For information on managing database users, refer to [Add database users](../../cloud-secure-clusters/add-users/).
 
 {{< /tip >}}
 
