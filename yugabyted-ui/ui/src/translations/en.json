@@ -1161,6 +1161,31 @@
           "inProgress": "In Progress"
         }
       },
+      "alerts": {
+        "tabNotifications": "Notifications",
+        "tabConfiguration": "Configuration",
+        "notification": {
+          "filters": "Filters",
+          "xnotifications": "{{count}} Notifications",
+          "severe": "Severe",
+          "warning": "Warning",
+          "name": "Name",
+          "severity": "Severity",
+          "triggertime": "Trigger Time",
+          "duration": "Duration",
+          "nonotifications": "No notifications available"
+        },
+        "configuration": {
+          "name": "Name",
+          "severity": "Severity",
+          "status": "Status",
+          "severe": "Severe",
+          "warning": "Warning",
+          "enabled": "Enabled",
+          "disabled": "Disabled",
+          "noconfigurations": "No configurations available"
+        }
+      },
       "settings": {
         "general": "General",
         "infrastructure": "Infrastructure",

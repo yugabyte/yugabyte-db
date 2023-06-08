@@ -58,7 +58,7 @@ const useStyles = makeStyles((theme) => ({
   },
   error: {
     background: theme.palette.error[100],
-    color: theme.palette.error[900],
+    color: theme.palette.error[500],
   },
   errorIcon: {
     color: theme.palette.error[700],
