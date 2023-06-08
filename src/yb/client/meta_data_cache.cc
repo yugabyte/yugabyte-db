@@ -117,32 +117,34 @@ struct YBMetaDataCacheEntry {
 
   template <class Id>
   void PerformFetch(YBMetaDataCache* cache, const Id& id, const YBMetaDataCacheEntryPtr& self) {
-    auto open_result = cache->client_->OpenTable(id);
-    std::vector<FetchCallback> to_notify;
-    {
-      std::lock_guard lock(mutex_);
-      to_notify.swap(callbacks);
-      if (open_result.ok()) {
-        table_ = *open_result;
-        if (cache->mem_tracker_) {
-          consumption_ = ScopedTrackedConsumption(
-              cache->mem_tracker_, table_->DynamicMemoryUsage() + sizeof(*this));
-          VLOG(1) << "Consumption for table " << table_->name().ToString() << " is "
-                  << consumption_.consumption() << ", memtrackerid: " << cache->mem_tracker_->id();
+    cache->client_->OpenTableAsync(id, [this, cache, self](const Result<YBTablePtr>& open_result) {
+      std::vector<FetchCallback> to_notify;
+      {
+        std::lock_guard lock(mutex_);
+        to_notify.swap(callbacks);
+        if (open_result.ok()) {
+          table_ = *open_result;
+          if (cache->mem_tracker_) {
+            consumption_ = ScopedTrackedConsumption(
+                cache->mem_tracker_, table_->DynamicMemoryUsage() + sizeof(*this));
+            VLOG(1) << "Consumption for table " << table_->name().ToString() << " is "
+                    << consumption_.consumption()
+                    << ", memtrackerid: " << cache->mem_tracker_->id();
+          }
         }
       }
-    }
 
-    if (open_result.ok()) {
-      std::lock_guard<std::mutex> lock(cache->cached_tables_mutex_);
-      const auto& table = **open_result;
-      cache->cached_tables_by_name_[table.name()] = self;
-      cache->cached_tables_by_id_[table.id()] = self;
-    }
+      if (open_result.ok()) {
+        std::lock_guard<std::mutex> lock(cache->cached_tables_mutex_);
+        const auto& table = **open_result;
+        cache->cached_tables_by_name_[table.name()] = self;
+        cache->cached_tables_by_id_[table.id()] = self;
+      }
 
-    for (const auto& callback : to_notify) {
-      callback(open_result);
-    }
+      for (const auto& callback : to_notify) {
+        callback(open_result);
+      }
+    });
   }
 };
 
