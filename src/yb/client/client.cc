@@ -298,12 +298,6 @@ void FillFromRepeatedTabletLocations(
   }
 }
 
-std::future<FetchPartitionsResult> FetchPartitionsFuture(
-    YBClient* client, const TableId& table_id) {
-  return MakeFuture<FetchPartitionsResult>(
-      [&](const auto& callback) { YBTable::FetchPartitions(client, table_id, callback); });
-}
-
 } // namespace
 
 #define CALL_SYNC_LEADER_MASTER_RPC_EX(service, req, resp, method) \
@@ -783,7 +777,7 @@ Status YBClient::GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<Y
 Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->GetTableSchemaById(this, table_id, deadline, info, callback);
+  return data_->GetTableSchema(this, table_id, deadline, info, callback);
 }
 
 Status YBClient::GetTablegroupSchemaById(const TablegroupId& tablegroup_id,
@@ -2344,26 +2338,64 @@ Result<bool> YBClient::TableExists(const YBTableName& table_name) {
 }
 
 Status YBClient::OpenTable(const YBTableName& table_name, YBTablePtr* table) {
-  YBTableInfo info;
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
-  auto future = FetchPartitionsFuture(this, info.table_id);
-  // In the future, probably will look up the table in some map to reuse YBTable instances.
-  *table = std::make_shared<YBTable>(info, VERIFY_RESULT(future.get()));
-  return Status::OK();
+  return DoOpenTable(table_name, table);
 }
 
 Status YBClient::OpenTable(
     const TableId& table_id, YBTablePtr* table, master::GetTableSchemaResponsePB* resp) {
-  // Fetch partitions first to run GetTableSchema and GetTableLocations RPCs in parallel.
-  auto future = FetchPartitionsFuture(this, table_id);
+  return DoOpenTable(table_id, table, resp);
+}
 
-  YBTableInfo info;
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info, resp));
-  // In the future, probably will look up the table in some map to reuse YBTable instances.
-  *table = std::make_shared<YBTable>(info, VERIFY_RESULT(future.get()));
+template <class Id>
+Status YBClient::DoOpenTable(
+    const Id& id, YBTablePtr* table, master::GetTableSchemaResponsePB* resp) {
+  std::promise<Result<YBTablePtr>> result;
+  DoOpenTableAsync(
+      id, [&result](const auto& res) { result.set_value(res); }, resp);
+  *table = VERIFY_RESULT(result.get_future().get());
   return Status::OK();
+}
+
+void YBClient::OpenTableAsync(
+    const YBTableName& table_name, const OpenTableAsyncCallback& callback) {
+  DoOpenTableAsync(table_name, callback);
+}
+
+void YBClient::OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+                              master::GetTableSchemaResponsePB* resp) {
+  DoOpenTableAsync(table_id, callback, resp);
+}
+
+template <class Id>
+void YBClient::DoOpenTableAsync(const Id& id,
+                                const OpenTableAsyncCallback& callback,
+                                master::GetTableSchemaResponsePB* resp) {
+  auto info = std::make_shared<YBTableInfo>();
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  auto s = data_->GetTableSchema(
+      this, id, deadline, info,
+      Bind(&YBClient::GetTableSchemaCallback, Unretained(this), std::move(info), callback),
+      resp);
+  if (!s.ok()) {
+    callback(s);
+    return;
+  }
+}
+
+void YBClient::GetTableSchemaCallback(std::shared_ptr<YBTableInfo> info,
+                                      const OpenTableAsyncCallback& callback,
+                                      const Status& s) {
+  YBTable::FetchPartitions(
+      this, info->table_id,
+      [info = std::move(info), callback](const FetchPartitionsResult& fetch_result) {
+        if (!fetch_result.ok()) {
+          callback(fetch_result.status());
+        } else {
+          // In the future, probably will look up the table in some map to reuse YBTable instances.
+          auto table = std::make_shared<YBTable>(*info, *fetch_result);
+          callback(table);
+        }
+      });
 }
 
 shared_ptr<YBSession> YBClient::NewSession() {

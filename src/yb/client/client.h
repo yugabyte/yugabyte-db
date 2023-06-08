@@ -113,6 +113,7 @@ class ClientMasterRpcBase;
 
 using GetTableLocationsCallback =
     std::function<void(const Result<master::GetTableLocationsResponsePB*>&)>;
+using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 
 using MasterAddressSource = std::function<std::vector<std::string>()>;
 
@@ -737,12 +738,14 @@ class YBClient {
 
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
-  // Version with table_id is preferable due to parallel run of RPCs.
-  // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
   Status OpenTable(const YBTableName& table_name, YBTablePtr* table);
   Status OpenTable(const TableId& table_id, YBTablePtr* table,
                    master::GetTableSchemaResponsePB* resp = nullptr);
+
+  void OpenTableAsync(const YBTableName& table_name, const OpenTableAsyncCallback& callback);
+  void OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+                      master::GetTableSchemaResponsePB* resp = nullptr);
 
   Result<YBTablePtr> OpenTable(const TableId& table_id);
   Result<YBTablePtr> OpenTable(const YBTableName& name);
@@ -925,6 +928,17 @@ class YBClient {
 
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
       YBClient* client, const YBTablePtr& table);
+
+  template <class Id>
+  Status DoOpenTable(const Id& id, YBTablePtr* table,
+                   master::GetTableSchemaResponsePB* resp = nullptr);
+
+  template <class Id>
+  void DoOpenTableAsync(const Id& id, const OpenTableAsyncCallback& callback,
+                        master::GetTableSchemaResponsePB* resp = nullptr);
+
+  void GetTableSchemaCallback(
+      std::shared_ptr<YBTableInfo> info, const OpenTableAsyncCallback& callback, const Status& s);
 
   CoarseTimePoint PatchAdminDeadline(CoarseTimePoint deadline) const;
 
