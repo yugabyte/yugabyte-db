@@ -161,8 +161,7 @@ You can manually provision each node using the preprovisioning Python script, as
     sudo docker exec -it yugaware bash
     ```
 
-1. Copy and paste the Python script prompted via the UI and substitute for a node IP address and mount points.
-Optionally, use the `--ask_password` flag if the sudo user requires password authentication, as follows:
+1. Copy and paste the Python script prompted via the UI and substitute for a node IP address and mount points. Optionally, use the `--ask_password` flag if the sudo user requires password authentication, as follows:
 
     ```bash
     /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py --ip 10.9.116.65 --mount_points /data --ask_password
