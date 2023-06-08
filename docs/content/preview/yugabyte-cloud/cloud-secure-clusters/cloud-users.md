@@ -14,7 +14,9 @@ type: docs
 
 To manage database access and authorization, YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBAC), consisting of a collection of privileges on resources given to roles.
 
-Clusters in YugabyteDB Managed include a set of default users and roles in YSQL and YCQL.
+(For information on managing your YugabyteDB Managed account users, refer to [Manage account users](../../cloud-admin/manage-access/).)
+
+The YugabyteDB database on your YugabyteDB Managed cluster includes a set of default users and roles in YSQL and YCQL.
 
 ## YSQL default roles and users
 
