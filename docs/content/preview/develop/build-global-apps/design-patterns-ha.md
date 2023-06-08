@@ -8,7 +8,6 @@ image: /images/section_icons/quick_start/sample_apps.png
 menu:
   preview:
     identifier: global-apps-design-patterns-ha
-    parent: build-global-apps
     weight: 2020
 rightNav:
   hideH3: true

@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-For a highly available system, it is typical to opt for a [Global database](../global-database) that spans multiple regions. The raft-based **synchronous replication** guarantees that at least `1 + RF/2` (`RF` = replication factor) nodes are consistent and up-to-date with the latest data. This means a write can complete only after it has been successfully replicated to other nodes. This increases latency when the cluster spans multiple regions.
+For a highly available system, it is typical to opt for a [Global database](../global-database) that spans multiple regions with preferred leaders set to a specific region. This is great for apps that run in a single region.
 
 For apps that have to be run in multiple regions, you can adopt the **Active-Active Multi-Master** design pattern with which you can setup 2 clusters in different regions where both clusters actively take responsibility for the local reads and writes and populate one another **asynchronously**. Let us understand this in more detail.
 
