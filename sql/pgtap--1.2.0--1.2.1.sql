@@ -155,3 +155,30 @@ CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT col_is_pk( $1, $2, $3, 'Column ' || quote_ident($1) || '.' || quote_ident($2) || '(' || quote_ident($3) || ') should be a primary key' );
 $$ LANGUAGE sql;
+
+-- schemas_are( schemas, description )
+CREATE OR REPLACE FUNCTION schemas_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'schemas',
+        ARRAY(
+            SELECT nspname
+              FROM pg_catalog.pg_namespace
+             WHERE nspname NOT LIKE 'pg\_%'
+               AND nspname <> 'information_schema'
+             EXCEPT
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+            EXCEPT
+            SELECT nspname
+              FROM pg_catalog.pg_namespace
+             WHERE nspname NOT LIKE 'pg\_%'
+               AND nspname <> 'information_schema'
+        ),
+        $2
+    );
+$$ LANGUAGE SQL;

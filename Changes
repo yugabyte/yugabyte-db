@@ -26,6 +26,9 @@ Revision history for pgTAP
 * Fixed a test failure caused by the removal of support for select rules in
   postgres/postgres@b23cd18 (expected in Postgres 16). Thanks to @Deltaus for
   the report (#309)!
+* Fixed `LIKE` expression in `schemas_are()` to escape the underscore wildcard,
+  making it `pg\_%` instead of `pg_%`. Thanks to Jehan-Guillaume (ioguix) de
+  Rorthais for the PR (#311)!
 
 1.2.0 2021-12-05T18:08:13Z
 --------------------------

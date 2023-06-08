@@ -4640,7 +4640,7 @@ RETURNS TEXT AS $$
         ARRAY(
             SELECT nspname
               FROM pg_catalog.pg_namespace
-             WHERE nspname NOT LIKE 'pg_%'
+             WHERE nspname NOT LIKE 'pg\_%'
                AND nspname <> 'information_schema'
              EXCEPT
             SELECT $1[i]
@@ -4652,7 +4652,7 @@ RETURNS TEXT AS $$
             EXCEPT
             SELECT nspname
               FROM pg_catalog.pg_namespace
-             WHERE nspname NOT LIKE 'pg_%'
+             WHERE nspname NOT LIKE 'pg\_%'
                AND nspname <> 'information_schema'
         ),
         $2
