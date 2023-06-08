@@ -77,10 +77,10 @@ void StmtCounters::WriteAsJson(
   jw->String("mean_time");
   jw->Double(this->total_time_in_msec/this->num_calls);
 
-	// Note we are calculating the population variance here, not the
+  // Note we are calculating the population variance here, not the
   // sample variance, as we have data for the whole population, so
-	// Bessel's correction is not used, and we don't divide by
-	// this->num_calls-1.
+  // Bessel's correction is not used, and we don't divide by
+  // this->num_calls-1.
   const double stddev_time = this->num_calls == 0 ? 0. :
     sqrt(this->sum_var_time_in_msec / this->num_calls);
 

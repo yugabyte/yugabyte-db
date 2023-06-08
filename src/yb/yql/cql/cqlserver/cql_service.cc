@@ -489,9 +489,9 @@ void CQLServiceImpl::UpdateCountersUnlocked(
       stmt_counters->total_time_in_msec/stmt_counters->num_calls : 0);
     stmt_counters->num_calls += 1;
     stmt_counters->total_time_in_msec += execute_time_in_msec;
-    
-		// Welford's method for accurately computing variance. See
-		// <http://www.johndcook.com/blog/standard_deviation/>
+
+    // Welford's method for accurately computing variance. See
+    // <http://www.johndcook.com/blog/standard_deviation/>
     stmt_counters->sum_var_time_in_msec +=
       (execute_time_in_msec - old_mean)*(execute_time_in_msec -
           stmt_counters->total_time_in_msec/stmt_counters->num_calls);
