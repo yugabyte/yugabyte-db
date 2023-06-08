@@ -557,6 +557,16 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    /bin/systemctl restart yb-collect_metrics, \
    /bin/systemctl enable yb-collect_metrics, \
    /bin/systemctl disable yb-collect_metrics, \
+   /bin/systemctl start yb-bind_check, \
+   /bin/systemctl stop yb-bind_check, \
+   /bin/systemctl restart yb-bind_check, \
+   /bin/systemctl enable yb-bind_check, \
+   /bin/systemctl disable yb-bind_check, \
+   /bin/systemctl start yb-controller, \
+   /bin/systemctl stop yb-controller, \
+   /bin/systemctl restart yb-controller, \
+   /bin/systemctl enable yb-controller, \
+   /bin/systemctl disable yb-controller, \
    /bin/systemctl daemon-reload
    ```
 
@@ -748,8 +758,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     WantedBy=timers.target
     ```
 
-1. For CentOS 7, ensure that you also add the following service files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):
-
     `yb-bind_check.service`
 
     ```sh
@@ -826,7 +834,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
 As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete the node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
 
-You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
+You can manually remove YugabyteDB components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
 
 To completely eliminate all traces of YugabyteDB Anywhere and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).
 

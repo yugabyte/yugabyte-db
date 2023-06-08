@@ -15,7 +15,7 @@ If a virtual machine or a physical server in a universe reaches its end of life 
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 
-When this happens, new Master leaders are elected for the underlying data shards, but since the universe enters a partially under-replicated state, it would not be able to tolerate additional failures. To remedy the situation, you can eliminate the unreachable node by taking actions in the following sequence:
+When this happens, new Master leaders are elected for the underlying data shards, but because the universe enters a partially under-replicated state, it would not be able to tolerate additional failures. To remedy the situation, you can eliminate the unreachable node by taking actions in the following sequence:
 
 - Step 1: [Remove node](#remove-node)
 - Step 2: [Start a new Master process](#start-a-new-master-process), if necessary
@@ -74,6 +74,7 @@ A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove
 ![Start master](/images/yp/start-master.png)
 
 When you execute the start Master action, YugabyteDB Anywhere performs the following:
+
 1. Configures the Master on the subject node.
 
 2. Starts a new Master process on the subject node (in Shell mode).
@@ -81,7 +82,6 @@ When you execute the start Master action, YugabyteDB Anywhere performs the follo
 3. Adds the new Master to the existing Master quorum.
 
 4. Updates the Master addresses g-flag on all other nodes to inform them of the new Master.
-
 
 ## Release node instance
 
