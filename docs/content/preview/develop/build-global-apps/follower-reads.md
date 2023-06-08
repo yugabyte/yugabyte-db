@@ -24,11 +24,11 @@ There are a few scenarios where reading from the leader is not necessary. For ex
 - The data does not change often (eg. movie database)
 - The application does not need the latest data (eg. yesterday’s report)
 
-If little staleness for reads is okay for the app running in the other regions, then **Follower Reads** is the pattern to adopt. Let's look into how this can be beneficial for your application.
+If a little staleness for reads is okay for the app running in the other regions, then **Follower Reads** is the pattern to adopt. Let's look into how this can be beneficial for your application.
 
 ## Initial setup
 
-Let's say you have a [Global Database](./global-database) set up across 3 regions `us-east`, `us-central`, `us-west` and leader preference is set to `us-east`. Let's say that you want to run apps in all the 3 regions. The read latencies would be similar to the following illustration.
+Let's say you have a [Global Database](./global-database) set up across 3 regions `us-east`, `us-central`, `us-west` with leader preference set to `us-east`. Let's say that you want to run apps in all the 3 regions. Then the read latencies would be similar to the following illustration.
 
 ![Global Apps - setup](/images/develop/global-apps/global-apps-follower-reads-setup.png)
 
@@ -41,7 +41,7 @@ SET session characteristics as transaction read only;
 SET yb_read_from_followers = true;
 ```
 
-This will enable the application to read data from the closest follower or leader. 
+This will enable the application to read data from the closest follower (or leader). 
 
 ![Follower reads - setup](/images/develop/global-apps/global-apps-follower-reads-final.png)
 

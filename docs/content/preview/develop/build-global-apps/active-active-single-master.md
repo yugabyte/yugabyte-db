@@ -56,3 +56,9 @@ The replication happens at the DocDB layer bypassing the query layer, some stand
 - Schema changes are not automatically transmitted but have to be applied manually (for now)
 
 Another thing to note in xCluster is that transaction updates are NOT committed atomically from the source to the sink and hence the second cluster could be transactionally inconsistent.
+
+## Learn more
+
+- [xCluster architecture](../../../architecture/docdb-replication/async-replication)
+- [xCluster deployment](../../../explore/multi-region-deployments/asynchronous-replication-ysql/)
+- [Raft consensus protocol](../../../architecture/docdb-replication/replication)

@@ -4,7 +4,7 @@ headerTitle: Compliance design patterns for global applications
 linkTitle: 1. Compliance patterns
 description: Ensure compliance of data residency laws in  global applications
 headcontent: Learn how to design global applications ensuring compliance
-image: /images/section_icons/quick_start/sample_apps.png
+image: /images/section_icons/architecture/distributed_acid.png
 menu:
   preview:
     identifier: global-apps-design-patterns-compliance

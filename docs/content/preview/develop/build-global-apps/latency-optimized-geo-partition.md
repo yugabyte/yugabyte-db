@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-For a highly available system, it is typical to opt for a [Global database](../global-database) that spans multiple regions with preferred leaders set to a specific region. This is great for apps that run in a single region.
+For a single-active highly available system, it is typical to opt for a [Global database](../global-database) that spans multiple regions with preferred leaders set to a specific region. This is great for apps that run in a single region.
 
 For Multi-Active apps that need to be run in multiple regions, you can opt to partition the data per region and place the replicas in nearby regions. This would ensure very low latency for both reads and writes for the local partitions giving a seamless user experience for users close to their partitions. Let us look into this pattern in more detail.
 
@@ -33,7 +33,7 @@ CREATE TABLE users (
 ) PARTITION BY LIST (geo);
 ```
 
-Now partition your data for east and west users. This is to ensure that the app in `us-west` will operate on `west` partition and the app in `us-east` will operate on `east` partition.
+Now partition your data for east and west users. This is to ensure that the app in `us-west` will operate on `west` partition and the app in `us-east` will operate on the `east` partition.
 
 {{<note>}}
 The tablespace definitions are discussed in the next section.
@@ -55,7 +55,7 @@ CREATE TABLE us_east PARTITION OF users (
 
 ## Replica placement
 
-Now configure your `west` partition leader preference to place the leader in `us-west-1`, one replica in `us-west-2` (nearby region) and the other replica in `us-east-2`. (Placing one replica of west data in east has the advantage of enabling follower reads for apps in east if needed).
+Now configure your `west` partition leader preference to place the leader in `us-west-1`, one replica in `us-west-2` (nearby region) and the other replica in `us-east-2`. (Placing one replica of west data in the east has the advantage of enabling follower reads for apps in the east if needed).
 
 ```plpgsql
 --  tablespace for west data
@@ -89,12 +89,18 @@ CREATE TABLESPACE east WITH (
 
 ## Low Latency
 
-Consider the west app for instance. As you have placed the west partition's leader in `us-west-1`, it has a low read latency of `2ms`. As this partition has a replica in a nearby region, the write latency is also low (`<10ms`).
+Consider the West app for instance. As you have placed the west partition's leader in `us-west-1`, it has a low read latency of `2ms`. As this partition has a replica in a nearby region, the write latency is also low (`<10ms`).
 
 ![West app](/images/develop/global-apps/latency-optimized-geo-partition-west-app.png)
 
-Similarly, the east app also has low read and write latencies.
+Similarly, the East app also has low read and write latencies.
 
 ![East app](/images/develop/global-apps/latency-optimized-geo-partition-east-app.png)
 
 This pattern will help apps running in different regions to have low read and write latency as they are reading and writing data to nearby partitions.
+
+## Learn more
+
+- [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
+- [Table partitioning](../../../explore/ysql-language-features/advanced-features/partitions/)
+- [Row level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/)

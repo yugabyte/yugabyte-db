@@ -22,10 +22,10 @@ To be ready for region failures and be highly available, you can set up Yugabyte
 
 ## Replica Placement
 
-Let's say that you want to have your cluster to be distributed across three regions: `us-east`, `us-central`, and `us-west` and that you are going to run your app in `us-east` with failover set to `us-central`. For this, you have to set up an `RF5` with 2 copies of the data in each of these regions and the last copy in the third region.
+Let's say that you want to have your cluster be distributed across three regions: `us-east`, `us-central`, and `us-west` and that you are going to run your app in `us-east` with failover set to `us-central`. For this, you have to set up an `RF5` with 2 copies of the data in each of these regions and the last copy in the third region.
 
 {{<note>}}
-Although you can have an `RF3` cluster, you should set it up as an `RF5` cluster so that you will have 2 copies within the preferred regions. When a leader fails, this would allow a local follower to be elected as a leader rather than a follower in a different region.
+Although you can have an **RF3** cluster, you should set it up as an **RF5** cluster so that you will have 2 copies within the preferred regions. When a leader fails, this would allow a local follower to be elected as a leader rather than a follower in a different region.
 {{</note>}}
 
 You would get a cluster as shown in the following illustration.
@@ -65,3 +65,8 @@ You can reduce the write latencies further by opting to deploy the cluster acros
 ![Global Database - App Failover](/images/develop/global-apps/global-database-closer-regions.png)
 
 This would drastically reduce the write latency to `10ms` from the initial `30ms`.
+
+## Learn more
+
+- [Raft consensus protocol](../../../architecture/docdb-replication/replication)
+- [yb-admin set-preferred-zones](../../../admin/yb-admin/#set-preferred-zones)

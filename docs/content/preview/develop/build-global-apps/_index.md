@@ -4,7 +4,7 @@ headerTitle: Build global applications
 linkTitle: Build global applications
 description: Build globally distributed applications.
 headcontent: Learn how to design globally distributed applications using simple patterns
-image: /images/section_icons/quick_start/sample_apps.png
+image: /images/section_icons/architecture/distributed_acid.png
 menu:
   preview:
     identifier: build-global-apps
@@ -21,7 +21,7 @@ In today's fast-paced world, the internet and cloud technology have revolutioniz
 
 ### Business Continuity and Disaster Recovery
 
-Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year (cf. [AWS Outages](https://en.wikipedia.org/wiki/Timeline_of_Amazon_Web_Services#Amazon_Web_Services_outages), [Google Outages](https://en.wikipedia.org/wiki/Google_services_outages#:~:text=During%20eight%20episodes%2C%20one%20in,Google%20service%20in%20August%202013)). You must run your applications in multiple locations so that you can provide uninterrupted service to your users.
+Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year (cf. [AWS Outages](https://en.wikipedia.org/wiki/Timeline_of_Amazon_Web_Services#Amazon_Web_Services_outages), [Google Outages](https://en.wikipedia.org/wiki/Google_services_outages#:~:text=During%20eight%20episodes%2C%20one%20in,Google%20service%20in%20August%202013)). You must run your applications in multiple locations to provide uninterrupted service to your users.
 
 ### Data Residency for Compliance
 
@@ -31,26 +31,25 @@ To comply with data residency laws in each country, companies operating in that 
 
 When designing today's applications (eg. email, e-commerce websites, or broadcasting events like the Olympics), it's essential to consider that users could be located in various geographies. For instance, if your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, it's crucial to run your applications closer to your users.
 
-## The need for Application Design Patterns
+## The Significance of Application Design Patterns
 
-Running applications in multiple data centers with data split across them is not a trivial task. But YugabyteDB can be deployed in various configurations like single-region multi-zone configuration or multi-region multi-zone with ease. You can leverage some of our battle-tested design paradigms, which offer solutions to common problems faced in these scenarios. These proven paradigms offer solutions that can significantly accelerate your application development by saving time and resources that would otherwise be spent reinventing the wheel.
+Running applications in multiple data centers with data split across them is not a trivial task. YugabyteDB can be deployed in various configurations like single-region multi-zone or multi-region multi-zone configuration with ease. You can leverage some of our battle-tested design paradigms, which offer solutions to common problems faced in these scenarios. These proven paradigms offer solutions that can significantly accelerate your application development by saving time and resources that would otherwise be spent reinventing the wheel.
 
-Let's look at a few classes of application design patterns that you can adopt with YugabyteDB.
+Let's look at a few application design patterns that you can adopt with YugabyteDB.
 
 |                | Follow the Application | Geo-Local Data |
 | -------------- | ---------------------- | -------------- |
-| **Single Active**  | [Global database](./design-patterns-ha#stretch-cluster)    |      N/A |
-| **Multi Active**   | [Duplicate indexes](./global-performance#identity-indexes) | [Active-active multi master](./active-active-multi-master) |
+| **Single Active**  | [Global database](./global-database)    |      N/A |
+| **Multi Active**   | [Duplicate indexes](./duplicate-indexes) | [Active-active multi master](./active-active-multi-master) |
 | **Partitioned Multi Active** | [Latency-optimized geo-partitioning](./latency-optimized-geo-partition) | [Locality-optimized geo-partitioning](./locality-optimized-geo-partition) |
 
 | Data Access Architectures |
 | ------------------------- |
 | [Follower Reads](./follower-reads) |
 
-
 ### Global database - Single cluster spread across multiple regions
 
-You can set up your cluster across different regions/zones with multiple replicas (typically 3) such that the replicas are in different regions/zones. When a node fails in a region or an entire region/zone fails, a replica in another region/zone will be promoted to leader in seconds, without any loss of data. This is possible because of the [synchronous replication using the raft consensus protocol](../../../architecture/docdb-replication/replication).
+You can set up your cluster across different regions/zones with multiple replicas (typically 3 or 5) such that the replicas are in different regions/zones. When a node fails in a region or an entire region/zone fails, a replica in another region/zone will be promoted to leader in seconds, without any loss of data. This is possible because of the [synchronous replication using the raft consensus protocol](../../architecture/docdb-replication/replication).
 
 {{<tip>}}
 For more information, see  [Global database](./global-database)
@@ -63,7 +62,6 @@ Set up two separate clusters which would both handle reads and writes. Data is r
 {{<tip>}}
 For more information, see  [Active-Active Multi-Master](./active-active-multi-master)
 {{</tip>}}
-
 
 ### Active-Active Single-Master - Standby cluster
 

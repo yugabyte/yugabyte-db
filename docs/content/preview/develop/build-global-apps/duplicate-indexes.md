@@ -12,9 +12,7 @@ menu:
 type: docs
 ---
 
-When you have your app running in one region, it is typical to set up a [Global database](../global-database) with preferred leaders set in one region. This is useful when you have your app running in that region.
-
-If you have apps running in multiple regions, they would still have to go the leader in the preferred region for reads and writes. Although writes would always have to go to the leader tablets, the speed of reads could be improved with [Follower Reads](./follower-reads) or [Read replicas](./read-replicas). But in both such setups, the replicas may not be up-to-date with the latest data and would result in stale reads. This may not be acceptable for some applications.
+When you have your app running in one region, it is typical to set up a [Global database](../global-database) with preferred leaders set to that region. But if you have apps running in multiple regions, they would still have to go the leader in the preferred region for reads and writes. Although writes will always go to the leader tablets, the speed of reads could be improved with [Follower Reads](./follower-reads) or [Read replicas](./read-replicas). But in both such setups, the replicas may not be up-to-date with the latest data and would result in stale reads. This may not be acceptable for some applications.
 
 This is where **Duplicate Indexes** would come in handy. Duplicate Indexes will guarantee immediately consistent reads in multiple regions. Let us look into how your applications can benefit from this pattern and understand the costs associated with it.
 
@@ -30,7 +28,7 @@ Let us add an app in `us-central`.
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-central-app.png)
 
-If you notice the app in `us-central` has a read latency of `30ms` whereas the app in `us-east` has a read latency only `2ms`. This becomes worse, when you add an app in `us-west`.
+If you notice the app in `us-central` has a read latency of `30ms` whereas the app in `us-east` has a read latency of only `2ms`. This becomes worse, when you add an app in `us-west`.
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-west-app.png)
 
@@ -38,9 +36,19 @@ The app in `us-west` has a high read latency of `60ms`. Let us see how we can br
 
 ## Duplicate Indexes
 
-All reads go to the leader by default in YugabyteDB. So, even though the replicas are available in other regions, applications will have to incur cross-region latency if the leaders are in a different region than the app. 
+All reads go to the leader by default in YugabyteDB. So, even though the replicas are available in other regions, applications will have to incur cross-region latency if the leaders are in a different region than the app.
 
 Let us create multiple covering indexes with the schema the same as the table and attach them to different tablespaces with leader preference set to each region. To set this up, follow these steps.
+
+1. For illustration, let's consider a simple table of users, which has the `id`, `name` and `city` for each user.
+
+      ```plpgsql
+      CREATE TABLE users (
+          id INTEGER NOT NULL,
+          name VARCHAR,
+          city VARCHAR,
+      );
+      ```
 
 1. Create multiple tablespaces (one for every region you want your index leader to be located in) and set leader preference to that region:
 {{<note title="Note" >}}
@@ -91,7 +99,6 @@ This will create three clones of the covering index, with leaders in different r
 
 ![Duplicate indexes](/images/develop/global-apps/duplicate-indexes-create.png)
 
-
 ## Reduced Read Latency
 
 As you have added all of the columns needed for your queries as part of the covering index, the query executor will not have to go to the tablet leader (in a different region) to fetch the data. The query planner will use the index whose leaders are local to the region when querying.
@@ -109,4 +116,10 @@ Let's take a look at the write latencies.
 
 ![Duplicate indexes](/images/develop/global-apps/duplicate-indexes-write-latencies.png)
 
-The write latencies have increased because each write has to update the tablet leader, its replicas and leaders of 3 indexes and their replicas. Effectively you are sacrificing the write latency to get highly reduced read latency.
+The write latencies have increased because each write has to update the tablet leader, its replicas and 3 index leaders and their replicas. Effectively you are sacrificing the write latency to get highly reduced read latency.
+
+## Learn more
+
+- [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
+- [Covering Indexes](../../../explore/indexes-constraints/covering-index-ysql/)
+- [Create Index](../../../api/ysql/the-sql-language/statements/ddl_create_index/)
