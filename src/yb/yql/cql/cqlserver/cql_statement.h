@@ -49,12 +49,12 @@ struct StmtCounters{
 
   void WriteAsJson(JsonWriter* jw, const ql::CQLMessage::QueryId& query_id) const;
 
-  int64 num_calls;         // Number of times executed.
+  int64 num_calls;             // Number of times executed.
   double total_time_in_msec;   // Total execution time, in msec.
   double min_time_in_msec;     // Minimum execution time in msec.
   double max_time_in_msec;     // Maximum execution time in msec.
   double sum_var_time_in_msec; // Sum of variances in execution time in msec.
-  std::string query;   // Stores the query text.
+  std::string query;           // Stores the query text.
 };
 
 // A CQL statement that is prepared and cached.
