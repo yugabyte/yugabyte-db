@@ -156,7 +156,7 @@ bool auditLogStatement = true;
  * Administrators can choose to have the statement run logged only once instead
  * of on every line.  By default, the statement is repeated on every line of
  * the audit log to facilitate searching, but this can cause the log to be
- * unnecessairly bloated in some environments.
+ * unnecessarily bloated in some environments.
  */
 bool auditLogStatementOnce = false;
 
@@ -704,7 +704,7 @@ log_audit_event(AuditEventStackItem *stackItem)
     append_valid_csv(&auditStr, stackItem->auditEvent.objectName);
 
     /*
-     * If auditLogStatmentOnce is true, then only log the statement and
+     * If auditLogStatementOnce is true, then only log the statement and
      * parameters if they have not already been logged for this substatement.
      */
     appendStringInfoCharMacro(&auditStr, ',');
@@ -1026,7 +1026,7 @@ log_select_dml(Oid auditOid, List *rangeTabls)
         /*
          * Don't log if the session user is not a member of the current
          * role.  This prevents contents of security definer functions
-         * from being logged and supresses foreign key queries unless the
+         * from being logged and suppresses foreign key queries unless the
          * session user is the owner of the referenced table.
          */
         if (!is_member_of_role(GetSessionUserId(), GetUserId()))
@@ -1060,7 +1060,7 @@ log_select_dml(Oid auditOid, List *rangeTabls)
         }
 
         /*
-         * We don't have access to the parsetree here, so we have to generate
+         * We don't have access to the parse tree here, so we have to generate
          * the node type, object type, and command tag by decoding
          * rte->requiredPerms and rte->relkind. For updates we also check
          * rellockmode so that only true UPDATE commands (not
