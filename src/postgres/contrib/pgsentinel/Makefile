@@ -10,6 +10,8 @@ PGFILEDESC = "pgsentinel - active session history"
 
 LDFLAGS_SL += $(filter -lm, $(LIBS))
 
+SHLIB_LINK = -L$(YB_BUILD_ROOT)/lib -lyb_pggate
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

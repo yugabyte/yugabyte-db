@@ -29,6 +29,8 @@
 #include "compat.h"
 #include "pg_wait_sampling.h"
 
+#include "yb/yql/pggate/ybc_pggate.h"
+
 static volatile sig_atomic_t shutdown_requested = false;
 
 static void handle_sigterm(SIGNAL_ARGS);
@@ -437,6 +439,9 @@ pgws_collector_main(Datum main_arg)
 			proc_exit(1);
 
 		ResetLatch(&MyProc->procLatch);
+
+		ereport(LOG, (errmsg("pg_wait_sampling collector sampling")));
+		YBCPingPggate();
 
 		/* Handle request if any */
 		if (pgws_collector_hdr->request != NO_REQUEST)

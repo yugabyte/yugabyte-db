@@ -669,6 +669,8 @@ YBCStatus YBCPrefetchRegisteredSysTables();
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
+void YBCPingPggate();
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

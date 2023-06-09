@@ -353,6 +353,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   PgDocMetrics& metrics() { return metrics_; }
 
+  void PingPggate();
+
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
