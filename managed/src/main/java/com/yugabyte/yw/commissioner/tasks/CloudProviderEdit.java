@@ -14,7 +14,6 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.base.Strings;
-import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -23,15 +22,16 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
 import com.yugabyte.yw.controllers.handlers.AvailabilityZoneHandler;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
 import com.yugabyte.yw.forms.RegionEditFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -39,6 +39,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -48,27 +49,24 @@ public class CloudProviderEdit extends CloudTaskBase {
 
   private RegionHandler regionHandler;
   private AvailabilityZoneHandler availabilityZoneHandler;
-  private CloudAPI.Factory cloudAPIFactory;
-  private ProviderValidator providerValidator;
   private CloudProviderHandler cloudProviderHandler;
   private AccessKeyHandler accessKeyHandler;
+  private ImageBundleHandler imageBundleHandler;
 
   @Inject
   protected CloudProviderEdit(
       BaseTaskDependencies baseTaskDependencies,
       RegionHandler regionHandler,
       AvailabilityZoneHandler availabilityZoneHandler,
-      CloudAPI.Factory cloudAPIFactory,
-      ProviderValidator providerValidator,
       CloudProviderHandler cloudProviderHandler,
-      AccessKeyHandler accessKeyHandler) {
+      AccessKeyHandler accessKeyHandler,
+      ImageBundleHandler imageBundleHandler) {
     super(baseTaskDependencies);
     this.regionHandler = regionHandler;
     this.availabilityZoneHandler = availabilityZoneHandler;
-    this.cloudAPIFactory = cloudAPIFactory;
-    this.providerValidator = providerValidator;
     this.cloudProviderHandler = cloudProviderHandler;
     this.accessKeyHandler = accessKeyHandler;
+    this.imageBundleHandler = imageBundleHandler;
   }
 
   @ApiModel(value = "CloudProviderEditParams", description = "Parameters for editing provider")
@@ -94,6 +92,7 @@ public class CloudProviderEdit extends CloudTaskBase {
       if (editProviderReq.getRegions() != null && !editProviderReq.getRegions().isEmpty()) {
         updateRegionsAndZones(provider, editProviderReq);
       }
+      updateImageBundles(provider, editProviderReq);
       getRunnableTask().runSubTasks();
       provider = Provider.getOrBadRequest(taskParams().providerUUID);
       provider.setUsabilityState(Provider.UsabilityState.READY);
@@ -304,5 +303,32 @@ public class CloudProviderEdit extends CloudTaskBase {
     }
 
     return result;
+  }
+
+  private void updateImageBundles(Provider provider, Provider editProviderReq) {
+    if (!provider.getCloudCode().imageBundleSupported()) {
+      return;
+    }
+
+    Map<UUID, ImageBundle> existingImageBundles =
+        provider.getImageBundles().stream().collect(Collectors.toMap(iB -> iB.getUuid(), iB -> iB));
+    for (ImageBundle bundle : editProviderReq.getImageBundles()) {
+      if (bundle.getUuid() == null) {
+        // Create a new imageBundle.
+        createImageBundleTask(provider, bundle);
+      } else {
+        ImageBundle existingBundle = existingImageBundles.get(bundle.getUuid());
+        if (bundle.isUpdateNeeded(existingBundle)) {
+          imageBundleHandler.doEdit(provider, bundle.getUuid(), bundle);
+        }
+        existingImageBundles.remove(bundle.getUuid());
+      }
+    }
+
+    // Delete the left over bundles.
+    existingImageBundles.forEach(
+        (uuid, bundle) -> {
+          imageBundleHandler.doDelete(provider.getUuid(), bundle.getUuid());
+        });
   }
 }

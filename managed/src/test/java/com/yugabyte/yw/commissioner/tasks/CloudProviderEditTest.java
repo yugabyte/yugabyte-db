@@ -38,6 +38,8 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.AvailabilityZoneDetails;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
@@ -55,6 +57,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -680,6 +683,36 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     bodyJson.put("name", "aws-2");
     Result result = assertPlatformException(() -> editProvider(bodyJson, false));
     assertBadRequest(result, "Provider with name aws-2 already exists.");
+  }
+
+  @Test
+  public void testImageBundleEditProvider() throws InterruptedException {
+    Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.gcp);
+    Region.create(p, "us-west-1", "us-west-1", "yb-image1");
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setGlobalYbImage("yb_image");
+    ImageBundle.create(p, "ib-1", details, true);
+
+    Result providerRes = getProvider(p.getUuid());
+    JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+    ImageBundle ib = new ImageBundle();
+    ib.setName("ib-2");
+    ib.setProvider(p);
+    ib.setDetails(details);
+
+    List<ImageBundle> ibs = p.getImageBundles();
+    ibs.add(ib);
+    p.setImageBundles(ibs);
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    assertEquals(2, p.getImageBundles().size());
   }
 
   private Provider createK8sProvider() {
