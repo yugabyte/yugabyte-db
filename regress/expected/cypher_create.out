@@ -499,8 +499,8 @@ SELECT * FROM cypher('cypher_create', $$
 	CREATE (a {test:1})-[:e_var]->()
 $$) as (a agtype);
 ERROR:  previously declared nodes in a create clause cannot have properties
-LINE 1: SELECT * FROM cypher('cypher_create', $$
-                                               ^
+LINE 4:  CREATE (a {test:1})-[:e_var]->()
+                 ^
 -- Var 'a' cannot change labels
 SELECT * FROM cypher('cypher_create', $$
 	MATCH (a:n_var)
@@ -508,16 +508,16 @@ SELECT * FROM cypher('cypher_create', $$
 	CREATE (a:new_label)-[:e_var]->()
 $$) as (a agtype);
 ERROR:  previously declared variables cannot have a label
-LINE 1: SELECT * FROM cypher('cypher_create', $$
-                                               ^
+LINE 4:  CREATE (a:new_label)-[:e_var]->()
+                 ^
 SELECT * FROM cypher('cypher_create', $$
 	MATCH (a:n_var)-[b]-()
 	WHERE a.name = 'Node A'
 	CREATE (a)-[b:e_var]->()
 $$) as (a agtype);
 ERROR:  variable b already exists
-LINE 1: SELECT * FROM cypher('cypher_create', $$
-                                               ^
+LINE 4:  CREATE (a)-[b:e_var]->()
+                    ^
 -- A valid single vertex path
 SELECT * FROM cypher('cypher_create', $$
 	CREATE p=(a)
@@ -578,7 +578,7 @@ SELECT * FROM cypher('cypher_create', $$
 $$) as (a agtype);
 ERROR:  label existing_elabel is for edges, not vertices
 LINE 2:  CREATE (a:existing_elabel { id: 5})
-                ^
+                 ^
 --
 -- check the cypher CREATE clause inside an INSERT INTO
 --
@@ -641,12 +641,137 @@ SELECT * FROM cypher('cypher_create', $$ MATCH (a:Part) RETURN a $$) as (a agtyp
 
 END;
 --
+-- variable reuse
+--
+-- Valid variable reuse
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p)-[a:new]->(p)
+	RETURN p,a,p
+$$) as (n1 agtype, e agtype, n2 agtype);
+                               n1                               |                                                            e                                                             |                               n2                               
+----------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------
+ {"id": 281474976710681, "label": "", "properties": {}}::vertex | {"id": 3940649673949185, "label": "new", "end_id": 281474976710681, "start_id": 281474976710681, "properties": {}}::edge | {"id": 281474976710681, "label": "", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p:node)-[e:new]->(p)
+	RETURN p,e,p
+$$) as (n1 agtype, e agtype, n2 agtype);
+                                 n1                                  |                                                             e                                                              |                                 n2                                  
+---------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------
+ {"id": 4222124650659841, "label": "node", "properties": {}}::vertex | {"id": 3940649673949186, "label": "new", "end_id": 4222124650659841, "start_id": 4222124650659841, "properties": {}}::edge | {"id": 4222124650659841, "label": "node", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p)
+	CREATE (p)-[a:new]->(p)
+	RETURN p,a,p
+$$) as (n1 agtype, e agtype, n2 agtype);
+                               n1                               |                                                            e                                                             |                               n2                               
+----------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------
+ {"id": 281474976710682, "label": "", "properties": {}}::vertex | {"id": 3940649673949187, "label": "new", "end_id": 281474976710682, "start_id": 281474976710682, "properties": {}}::edge | {"id": 281474976710682, "label": "", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p:n1)
+	CREATE (p)-[a:new]->(p)
+	RETURN p,a,p
+$$) as (n1 agtype, e agtype, n2 agtype);
+                                n1                                 |                                                             e                                                              |                                n2                                 
+-------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------
+ {"id": 4503599627370497, "label": "n1", "properties": {}}::vertex | {"id": 3940649673949188, "label": "new", "end_id": 4503599627370497, "start_id": 4503599627370497, "properties": {}}::edge | {"id": 4503599627370497, "label": "n1", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (p:node)
+	CREATE (p)-[a:new]->(p)
+	RETURN p,a,p
+$$) as (n1 agtype, e agtype, n2 agtype);
+                                 n1                                  |                                                             e                                                              |                                 n2                                  
+---------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------
+ {"id": 4222124650659841, "label": "node", "properties": {}}::vertex | {"id": 3940649673949189, "label": "new", "end_id": 4222124650659841, "start_id": 4222124650659841, "properties": {}}::edge | {"id": 4222124650659841, "label": "node", "properties": {}}::vertex
+(1 row)
+
+-- Invalid variable reuse
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p)-[a:new]->(p {n0:'n1'})
+$$) as (a agtype);
+ERROR:  previously declared nodes in a create clause cannot have properties
+LINE 2:  CREATE (p)-[a:new]->(p {n0:'n1'})
+                              ^
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p:n0)-[a:new]->(p:n1)
+$$) as (a agtype);
+ERROR:  previously declared variables cannot have a label
+LINE 2:  CREATE (p:n0)-[a:new]->(p:n1)
+                                 ^
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=(p)
+$$) as (a agtype);
+ERROR:  variable "p" already exists
+LINE 2:  CREATE p=(p)
+                ^
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=() CREATE (p)
+$$) as (a agtype);
+ERROR:  agtype must resolve to a vertex
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=(a)-[p:b]->(a)
+$$) as (a agtype);
+ERROR:  variable "p" already exists
+LINE 2:  CREATE p=(a)-[p:b]->(a)
+                ^
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=(a)-[:new]->(p)
+$$) as (a agtype);
+ERROR:  variable "p" already exists
+LINE 2:  CREATE p=(a)-[:new]->(p)
+                ^
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (p) CREATE p=()
+$$) as (a agtype);
+ERROR:  variable "p" already exists
+LINE 2:  MATCH (p) CREATE p=()
+                          ^
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (p) CREATE p=(p)
+$$) as (a agtype);
+ERROR:  variable "p" already exists
+LINE 2:  MATCH (p) CREATE p=(p)
+                          ^
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (p) CREATE (a)-[p:b]->(a)
+$$) as (a agtype);
+ERROR:  variable p already exists
+LINE 2:  MATCH (p) CREATE (a)-[p:b]->(a)
+                              ^
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (a)-[e:new]->(p)-[e]->(a)
+$$) as (a agtype);
+ERROR:  relationships must be specify a label in CREATE.
+LINE 2:  CREATE (a)-[e:new]->(p)-[e]->(a)
+                                 ^
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (a)-[e:new]->(p)
+	CREATE (p)-[e:new]->(a)
+$$) as (a agtype);
+ERROR:  variable e already exists
+LINE 3:  CREATE (p)-[e:new]->(a)
+                    ^
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a)-[e:new]->(p)
+	CREATE (p)-[e:new]->(a)
+$$) as (a agtype);
+ERROR:  variable e already exists
+LINE 3:  CREATE (p)-[e:new]->(a)
+                    ^
+--
 -- Clean up
 --
 DROP TABLE simple_path;
 DROP FUNCTION create_test;
 SELECT drop_graph('cypher_create', true);
-NOTICE:  drop cascades to 13 other objects
+NOTICE:  drop cascades to 16 other objects
 DETAIL:  drop cascades to table cypher_create._ag_label_vertex
 drop cascades to table cypher_create._ag_label_edge
 drop cascades to table cypher_create.v
@@ -660,6 +785,9 @@ drop cascades to table cypher_create.existing_vlabel
 drop cascades to table cypher_create.existing_elabel
 drop cascades to table cypher_create.knows
 drop cascades to table cypher_create."Part"
+drop cascades to table cypher_create.new
+drop cascades to table cypher_create.node
+drop cascades to table cypher_create.n1
 NOTICE:  graph "cypher_create" has been dropped
  drop_graph 
 ------------

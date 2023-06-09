@@ -1115,6 +1115,7 @@ path:
 
             p = (cypher_path *)$3;
             p->var_name = $1;
+            p->location = @1;
 
             $$ = (Node *)p;
         }
@@ -1182,7 +1183,7 @@ path_node:
             n->label = $3;
             n->parsed_label = $3;
             n->props = $4;
-            n->location = @1;
+            n->location = @2;
 
             $$ = (Node *)n;
         }

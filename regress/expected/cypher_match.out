@@ -508,43 +508,43 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (a agtype);
 ERROR:  multiple labels for variable 'a' are not supported
 LINE 2:  MATCH (a)-[]-()-[]-(a:v1) RETURN a
-                            ^
+                             ^
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a)-[]-(a:v2)-[]-(a) RETURN a
 $$) AS (a agtype);
 ERROR:  multiple labels for variable 'a' are not supported
 LINE 2:  MATCH (a)-[]-(a:v2)-[]-(a) RETURN a
-                      ^
+                       ^
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a)-[]-(a:v1) RETURN a
 $$) AS (a agtype);
 ERROR:  multiple labels for variable 'a' are not supported
 LINE 2:  MATCH (a)-[]-(a:v1) RETURN a
-                      ^
+                       ^
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a)-[]-(a)-[]-(a:v1) RETURN a
 $$) AS (a agtype);
 ERROR:  multiple labels for variable 'a' are not supported
 LINE 2:  MATCH (a)-[]-(a)-[]-(a:v1) RETURN a
-                             ^
+                              ^
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a)-[]-(a)-[]-(a:invalid_label) RETURN a
 $$) AS (a agtype);
 ERROR:  multiple labels for variable 'a' are not supported
 LINE 2:  MATCH (a)-[]-(a)-[]-(a:invalid_label) RETURN a
-                             ^
+                              ^
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a) MATCH (a:v1) RETURN a
 $$) AS (a agtype);
 ERROR:  multiple labels for variable 'a' are not supported
 LINE 2:  MATCH (a) MATCH (a:v1) RETURN a
-                         ^
+                          ^
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a) MATCH (a:invalid_label) RETURN a
 $$) AS (a agtype);
 ERROR:  multiple labels for variable 'a' are not supported
 LINE 2:  MATCH (a) MATCH (a:invalid_label) RETURN a
-                         ^
+                          ^
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (a:v1)-[]-()-[a]-() RETURN a
 $$) AS (a agtype);
@@ -718,8 +718,8 @@ SELECT * FROM cypher('cypher_match', $$
          MATCH (r1:invalid)-[]->(r1)-[]->(r1)-[]->(r1:invalids) return r1
 $$) AS (r1 agtype);
 ERROR:  multiple labels for variable 'r1' are not supported
-LINE 2:          MATCH (r1:invalid)-[]->(r1)-[]->(r1)-[]->(r1:invali...
-                                                          ^
+LINE 2: ...        MATCH (r1:invalid)-[]->(r1)-[]->(r1)-[]->(r1:invalid...
+                                                             ^
 SELECT * FROM cypher('cypher_match', $$
          MATCH (r1:invalid)-[]->(r1)-[]->(r1)-[]->(r1)-[r1]->() return r1
 $$) AS (r1 agtype);
@@ -732,25 +732,25 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (r1 agtype);
 ERROR:  multiple labels for variable 'r1' are not supported
 LINE 2:          MATCH (r1:e1), (r1:e2) return r1
-                                ^
+                                 ^
 SELECT * FROM cypher('cypher_match', $$
          MATCH (r1:invalid), (r1:e2) return r1
 $$) AS (r1 agtype);
 ERROR:  multiple labels for variable 'r1' are not supported
 LINE 2:          MATCH (r1:invalid), (r1:e2) return r1
-                                     ^
+                                      ^
 SELECT * FROM cypher('cypher_match', $$
          MATCH (r1:e1), (r1:invalid) return r1
 $$) AS (r1 agtype);
 ERROR:  multiple labels for variable 'r1' are not supported
 LINE 2:          MATCH (r1:e1), (r1:invalid) return r1
-                                ^
+                                 ^
 SELECT * FROM cypher('cypher_match', $$
          MATCH (r1:e1), (r1), (r1:invalid) return r1
 $$) AS (r1 agtype);
 ERROR:  multiple labels for variable 'r1' are not supported
 LINE 2:          MATCH (r1:e1), (r1), (r1:invalid) return r1
-                                      ^
+                                       ^
 SELECT * FROM cypher('cypher_match', $$
         MATCH (r0)-[r0]->() MATCH ()-[]->() RETURN r0
 $$) AS (r0 agtype);
@@ -768,7 +768,7 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (r0 agtype);
 ERROR:  variable 'r0' is for a edge
 LINE 2:         MATCH ()-[r0]->() MATCH ()-[]->(r0) RETURN r0
-                                               ^
+                                                ^
 SELECT * FROM cypher('cypher_match', $$
         MATCH ()-[r0:e1]->() MATCH ()-[r0:e2]->() RETURN r0
 $$) AS (r0 agtype);
@@ -1083,7 +1083,7 @@ SELECT * FROM cypher('cypher_match',
 AS (u agtype, e agtype, v agtype);
 ERROR:  variable `x` does not exist
 LINE 2:  $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(x)) RETURN u, e...
-                                                    ^
+                                                     ^
 --
 -- Tests for EXISTS(property)
 --

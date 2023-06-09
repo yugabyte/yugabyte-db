@@ -300,6 +300,92 @@ SELECT * FROM cypher('cypher_create', $$ MATCH (a:Part) RETURN a $$) as (a agtyp
 END;
 
 --
+-- variable reuse
+--
+
+-- Valid variable reuse
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p)-[a:new]->(p)
+	RETURN p,a,p
+$$) as (n1 agtype, e agtype, n2 agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p:node)-[e:new]->(p)
+	RETURN p,e,p
+$$) as (n1 agtype, e agtype, n2 agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p)
+	CREATE (p)-[a:new]->(p)
+	RETURN p,a,p
+$$) as (n1 agtype, e agtype, n2 agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p:n1)
+	CREATE (p)-[a:new]->(p)
+	RETURN p,a,p
+$$) as (n1 agtype, e agtype, n2 agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (p:node)
+	CREATE (p)-[a:new]->(p)
+	RETURN p,a,p
+$$) as (n1 agtype, e agtype, n2 agtype);
+
+-- Invalid variable reuse
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p)-[a:new]->(p {n0:'n1'})
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (p:n0)-[a:new]->(p:n1)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=(p)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=() CREATE (p)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=(a)-[p:b]->(a)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE p=(a)-[:new]->(p)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (p) CREATE p=()
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (p) CREATE p=(p)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (p) CREATE (a)-[p:b]->(a)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (a)-[e:new]->(p)-[e]->(a)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (a)-[e:new]->(p)
+	CREATE (p)-[e:new]->(a)
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	MATCH (a)-[e:new]->(p)
+	CREATE (p)-[e:new]->(a)
+$$) as (a agtype);
+
+--
 -- Clean up
 --
 DROP TABLE simple_path;

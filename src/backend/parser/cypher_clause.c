@@ -4893,6 +4893,18 @@ transform_cypher_create_path(cypher_parsestate *cpstate, List **target_list,
 
     ccp->path_attr_num = InvalidAttrNumber;
 
+    if (in_path)
+    {
+        if (findTarget(*target_list, path->var_name) != NULL)
+        {
+            ereport(ERROR,
+                   (errcode(ERRCODE_DUPLICATE_ALIAS),
+                    errmsg("variable \"%s\" already exists",
+                            path->var_name),
+                    parser_errposition(pstate, path->location)));
+        }
+    }
+
     foreach (lc, path->path)
     {
         if (is_ag_node(lfirst(lc), cypher_node))
@@ -4904,7 +4916,18 @@ transform_cypher_create_path(cypher_parsestate *cpstate, List **target_list,
                 transform_create_cypher_node(cpstate, target_list, node);
 
             if (in_path)
+            {
+                if (node->name && strcmp(node->name, path->var_name) == 0)
+                {
+                    ereport(ERROR,
+                           (errcode(ERRCODE_DUPLICATE_ALIAS),
+                            errmsg("variable \"%s\" already exists",
+                                    path->var_name),
+                            parser_errposition(pstate, path->location)));
+                }
                 rel->flags |= CYPHER_TARGET_NODE_IN_PATH_VAR;
+            }
+                
 
             transformed_path = lappend(transformed_path, rel);
 
@@ -4922,7 +4945,17 @@ transform_cypher_create_path(cypher_parsestate *cpstate, List **target_list,
                 transform_create_cypher_edge(cpstate, target_list, edge);
 
             if (in_path)
+            {
+                if (edge->name && strcmp(edge->name, path->var_name) == 0)
+                {
+                    ereport(ERROR,
+                           (errcode(ERRCODE_DUPLICATE_ALIAS),
+                            errmsg("variable \"%s\" already exists",
+                                    path->var_name),
+                            parser_errposition(pstate, path->location)));
+                }
                 rel->flags |= CYPHER_TARGET_NODE_IN_PATH_VAR;
+            }
 
             transformed_path = lappend(transformed_path, rel);
 
@@ -4934,7 +4967,7 @@ transform_cypher_create_path(cypher_parsestate *cpstate, List **target_list,
         else
         {
             ereport(ERROR,
-                    (errmsg_internal("unrecognized node in create pattern")));
+                   (errmsg_internal("unrecognized node in create pattern")));
         }
     }
 
@@ -4982,10 +5015,7 @@ transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
 
     if (edge->label)
     {
-        label_cache_data *lcd =
-            search_label_name_graph_cache(edge->label, cpstate->graph_oid);
-
-        if (lcd && lcd->kind != LABEL_KIND_EDGE)
+        if (get_label_kind(edge->label, cpstate->graph_oid) == LABEL_KIND_VERTEX)
         {
             ereport(ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -5005,11 +5035,16 @@ transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
          * Variables can be declared in a CREATE clause, but not used if
          * it already exists.
          */
-        if (variable_exists(cpstate, edge->name))
+        transform_entity *entity;
+
+        entity = find_variable(cpstate, edge->name);
+
+        if ((entity && entity->type != ENT_EDGE) || variable_exists(cpstate, edge->name))
         {
-            ereport(ERROR,
-                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg("variable %s already exists", edge->name)));
+                ereport(ERROR,
+                        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                         errmsg("variable %s already exists", edge->name),
+                         parser_errposition(pstate, edge->location)));
         }
 
         rel->variable_name = edge->name;
@@ -5122,10 +5157,7 @@ transform_create_cypher_node(cypher_parsestate *cpstate, List **target_list,
 
     if (node->label)
     {
-        label_cache_data *lcd =
-            search_label_name_graph_cache(node->label, cpstate->graph_oid);
-
-        if (lcd && lcd->kind != LABEL_KIND_VERTEX)
+        if (get_label_kind(node->label, cpstate->graph_oid) == LABEL_KIND_EDGE)
         {
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                             errmsg("label %s is for edges, not vertices",
@@ -5142,9 +5174,16 @@ transform_create_cypher_node(cypher_parsestate *cpstate, List **target_list,
     {
         transform_entity *entity;
 
+        TargetEntry *te = findTarget(*target_list, node->name);
         entity = find_variable(cpstate, node->name);
 
-        if (entity)
+        /*
+         * If we find an entity as well as a target Entry with same name,
+         * that means that the variable is either vertex, edge or vle.
+         * but if we find a target entry but not an entity that means
+         * that the variable can be other than vertex, edge or vle e.g path.
+         */
+        if (entity && te)
         {
             if (entity->type != ENT_VERTEX)
             {
@@ -5156,6 +5195,16 @@ transform_create_cypher_node(cypher_parsestate *cpstate, List **target_list,
 
             return transform_create_cypher_existing_node(cpstate, target_list,
                                                          entity->declared_in_current_clause, node);
+        }
+        else if (te)
+        {
+            /*
+             * Here we are not sure if the te is a vertex, path or something
+             * else. So we will let it pass and the execution stage will catch
+             * the error if variable was not vertex.
+             */
+            return transform_create_cypher_existing_node(cpstate, target_list,
+                                                         te, node);
         }
     }
 
@@ -5197,6 +5246,7 @@ static cypher_target_node *transform_create_cypher_existing_node(
     cypher_node *node)
 {
     cypher_target_node *rel = make_ag_node(cypher_target_node);
+    ParseState *pstate = (ParseState *)cpstate;
 
     rel->type = LABEL_KIND_VERTEX;
     rel->flags = CYPHER_TARGET_NODE_FLAG_NONE;
@@ -5208,13 +5258,15 @@ static cypher_target_node *transform_create_cypher_existing_node(
     {
         ereport(ERROR,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                 errmsg("previously declared nodes in a create clause cannot have properties")));
+                 errmsg("previously declared nodes in a create clause cannot have properties"),
+                 parser_errposition(pstate, node->location)));
     }
     if (node->label)
     {
         ereport(ERROR,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                 errmsg("previously declared variables cannot have a label")));
+                 errmsg("previously declared variables cannot have a label"),
+                 parser_errposition(pstate, node->location)));
     }
     /*
      * When the variable is declared in the same clause this vertex is a part of
