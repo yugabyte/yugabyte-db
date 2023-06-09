@@ -648,6 +648,7 @@ YBInitPostgresBackend(
 		 */
 		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name,
 										&yb_session_stats.current_state));
+		YBCSetTimeout(StatementTimeout, NULL);
 	}
 }
 
