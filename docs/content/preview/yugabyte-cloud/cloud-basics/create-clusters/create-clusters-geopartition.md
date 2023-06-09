@@ -15,6 +15,8 @@ Use [partition-by-region](../../create-clusters-topology/#partition-by-region) c
 
 Clusters consist of a primary region and any number of additional secondary regions, where the partitioned, region-specific data resides. You can add or remove regions as required. When first deploying, you can deploy a single cluster in the primary region.
 
+Currently, Azure is not supported for partition-by-region clusters.
+
 ## Tablespaces
 
 You place data in regions of the cluster using tablespaces. Tables that don't belong to any tablespace are stored in the primary region.
@@ -45,7 +47,7 @@ Partition-by-region clusters include the following features:
 
 ## Prerequisites
 
-- Must be deployed in a VPC. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Peer VPCs](../../cloud-vpcs/cloud-add-vpc-aws/).
+- Must be deployed in a VPC. Create a VPC for each region where you want to deploy the nodes in the cluster. Refer to [VPC network overview](../../cloud-vpcs/cloud-vpc-intro/).
 - Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a partition-by-region cluster

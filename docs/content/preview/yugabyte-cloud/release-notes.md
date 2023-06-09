@@ -345,7 +345,69 @@ This release includes the following features:
 
 ## Cloud provider regions
 
-### GCP
+{{< tabpane text=true >}}
+
+  {{% tab header="AWS" lang="aws" %}}
+
+The following **AWS regions** are available:
+
+- Cape Town (af-south-1)
+- Hong Kong (ap-east-1)
+- Tokyo (ap-northeast-1)
+- Seoul (ap-northeast-2)
+- Osaka (ap-northeast-3)
+- Mumbai (ap-south-1)
+- Singapore (ap-southeast-1)
+- Sydney (ap-southeast-2)
+- Central (ca-central-1)
+- Frankfurt (eu-central-1)
+- Stockholm (eu-north-1)
+- Milan (eu-south-1)
+- Ireland (eu-west-1)
+- London (eu-west-2)
+- Paris (eu-west-3)
+- Bahrain (me-south-1)
+- Sao Paulo (sa-east-1)
+- N. Virginia (us-east-1)
+- Ohio (us-east-2)
+- N. California (us-west-1)*
+- Oregon (us-west-2)
+
+\* Region has 2 availability zones only
+
+  {{% /tab %}}
+
+  {{% tab header="Azure" lang="azure" %}}
+
+The following **Azure regions** are available:
+
+- New South Wales (australiaeast)
+- Sao Paulo State (brazilsouth)
+- Toronto (canadacentral)
+- Pune (centralindia)
+- Iowa (centralus)
+- Hong Kong (eastasia)
+- Virginia (eastus)
+- Virginia (eastus2)
+- Paris (francecentral)
+- Frankfurt (germanywestcentral)
+- Tokyo, Saitama (japaneast)
+- Seoul (koreacentral)
+- Ireland (northeurope)
+- Norway (norwayeast)
+- Johannesburg (southafricanorth)
+- Texas (southcentralus)
+- Singapore (southeastasia)
+- Zurich (switzerlandnorth)
+- Dubai (uaenorth)
+- London (uksouth)
+- Netherlands (westeurope)
+- Washington (westus2)
+- Phoenix (westus3)
+
+  {{% /tab %}}
+
+  {{% tab header="GCP" lang="gcp" %}}
 
 The following **GCP regions** are available:
 
@@ -378,33 +440,9 @@ The following **GCP regions** are available:
 - Salt Lake City (us-west3)
 - Las Vegas (us-west4)
 
-### AWS
+  {{% /tab %}}
 
-The following **AWS regions** are available:
-
-- Cape Town (af-south-1)
-- Hong Kong (ap-east-1)
-- Tokyo (ap-northeast-1)
-- Seoul (ap-northeast-2)
-- Osaka (ap-northeast-3)
-- Mumbai (ap-south-1)
-- Singapore (ap-southeast-1)
-- Sydney (ap-southeast-2)
-- Central (ca-central-1)
-- Frankfurt (eu-central-1)
-- Stockholm (eu-north-1)
-- Milan (eu-south-1)
-- Ireland (eu-west-1)
-- London (eu-west-2)
-- Paris (eu-west-3)
-- Bahrain (me-south-1)
-- Sao Paulo (sa-east-1)
-- N. Virginia (us-east-1)
-- Ohio (us-east-2)
-- N. California (us-west-1)*
-- Oregon (us-west-2)
-
-\* Region has 2 availability zones only
+{{< /tabpane >}}
 
 ## Known issues
 

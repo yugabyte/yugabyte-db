@@ -18,7 +18,7 @@ The following best practices are recommended for production clusters.
 
 | Feature | Recommendation |
 | :--- | :--- |
-| [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
+| [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS, Azure, and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
 | [Fault tolerance](#fault-tolerance) | Region or Availability zone (AZ) level - minimum of three nodes across multiple regions or AZs, with a replication factor of 3. |
 | [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>Clusters support 10 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 10 x 3 x 4 = 120 connections.<br>When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node. |
 | [YugabyteDB version](#yugabytedb-version) | Use the **Stable** release track. |
@@ -39,7 +39,7 @@ Single-region clusters are available in the following topologies:
 - **Single availability zone**. Resilient to node outages.
 - **Multiple availability zones**. Resilient to node and availability zone outages.
 
-Cloud providers like AWS and Google Cloud design zones to minimize the risk of correlated failures caused by physical infrastructure outages like power, cooling, or networking. In other words, single failure events usually affect only a single zone. By deploying nodes across zones in a region, you get resilience to a zone failure as well as high availability.
+Cloud providers design zones to minimize the risk of correlated failures caused by physical infrastructure outages like power, cooling, or networking. In other words, single failure events usually affect only a single zone. By deploying nodes across zones in a region, you get resilience to a zone failure as well as high availability.
 
 Single-region clusters are not resilient to region-level outages.
 
@@ -60,7 +60,16 @@ For more details, refer to [Topologies](../create-clusters-topology/).
 
 #### Provider
 
-YugabyteDB Managed supports AWS and GCP. Your choice of provider will depend primarily on where your existing applications are hosted. YugabyteDB Managed pricing is the same for both.
+YugabyteDB Managed supports AWS, Azure, and GCP. Your choice of provider will depend primarily on where your existing applications are hosted. YugabyteDB Managed pricing is the same for all.
+
+| Feature | AWS | Azure | GCP |
+| :--- | :--- | :--- | :--- |
+| Sandbox | Yes | No | Yes |
+| VPC | Yes | Yes (Required) | Yes |
+| Peering | Yes | No | Yes |
+| Private Service Endpoint | Yes | Yes | No |
+| Topologies | All | Single region only | All |
+| Customer Managed Key encryption | Yes | No | Yes |
 
 #### Region
 
@@ -69,7 +78,7 @@ For best performance as well as lower data transfer costs, you want to minimize 
 - Use the same cloud provider as your application.
 - Locate your cluster in the same region as your application.
 
-For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC and connect it to the application VPC via peering or using a private link. This configuration also provides the best security. To connect using a private link (AWS only), the link endpoints (your cluster and the application) must be in the same region.
+For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC and connect it to the application VPC via peering (AWS or GCP) or using a private link (AWS or Azure). This configuration also provides the best security. To connect using a private link (AWS and Azure only), the link endpoints (your cluster and the application) must be in the same region.
 
 For a list of supported regions, refer to [Cloud provider regions](../../release-notes/#cloud-provider-regions).
 
@@ -80,6 +89,7 @@ An instance in cloud computing is a server resource provided by third-party clou
 Cloud providers offer a variety of instance types across the regions where they have data centers. By default, where possible, YugabyteDB Managed uses the following instance type families for dedicated clusters:
 
 - AWS - m6i
+- Azure - dasv4
 - GCP - n2-standard
 
 In cases where the default is unavailable in a region, YugabyteDB Managed will fall back to a suitable replacement instance type for all nodes in the cluster.
@@ -143,7 +153,6 @@ There is currently no migration path from a preview release to a stable release.
 
 {{< /warning >}}
 
-
 ### Staging cluster
 
 Use a staging cluster for the following tasks:
@@ -175,11 +184,11 @@ YugabyteDB Managed performs full cluster (all namespaces) level backups, and the
 
 Clusters are secure by default. You need to explicitly allow access to clusters by adding IP addresses of clients connecting to the cluster to the cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
 
-If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. You also need to add the CIDR ranges of any application VPCs to your cluster IP allow list.
+If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. If you are using peering, you also need to add the CIDR ranges of peered application VPCs to your cluster IP allow list.
 
 Multi-region clusters must be deployed in VPCs; in AWS, each region or read replica must be deployed in its own VPC.
 
-You need to create VPCs before you deploy the cluster. YugabyteDB Managed supports AWS and GCP for VPCs. Refer to [VPC network](../cloud-vpcs/).
+You need to create VPCs before you deploy the cluster. YugabyteDB Managed supports AWS, Azure, and GCP for VPCs. Refer to [VPC network](../cloud-vpcs/).
 
 #### Database user authorization
 

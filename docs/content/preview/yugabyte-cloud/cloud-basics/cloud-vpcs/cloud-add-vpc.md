@@ -49,6 +49,17 @@ To create a VPC, do the following:
 
   {{% /tab %}}
 
+  {{% tab header="Azure" lang="azure" %}}
+
+1. On the **Network Access** page, select **VPC Network**, then **VPCs**.
+1. Click **Create VPC** to display the **Create VPC** sheet.
+1. Enter a name for the VPC.
+1. Choose the provider (Azure).
+1. Select the [region](../cloud-vpc-intro/#choose-the-region-for-your-vpc).
+1. Click **Save**.
+
+  {{% /tab %}}
+
   {{% tab header="GCP" lang="gcp" %}}
 
 1. On the **Network Access** page, select **VPC Network**, then **VPCs**.
