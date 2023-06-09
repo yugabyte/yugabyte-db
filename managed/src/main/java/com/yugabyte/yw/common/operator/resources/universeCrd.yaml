@@ -463,6 +463,15 @@ spec:
               properties:
                 universeStatus:
                   type: string
+                sqlEndpoints:
+                  type: array
+                  items:
+                    type: string
+                cqlEndpoints:
+                  type: array
+                  items:
+                    type: string
+
       subresources:
         status: {}
   names:

@@ -1688,7 +1688,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   protected void updateYBUniverseStatusAfterUnlock() {
     if (getUniverse().getUniverseDetails().isKubernetesOperatorControlled) {
-      KubernetesOperatorStatusUpdater.updateStatus(getUniverse(), "Completed task");
+      KubernetesOperatorStatusUpdater.updateStatus(
+          getUniverse(), "Last Completed YBA task " + getUserTaskUUID().toString());
     }
   }
 
