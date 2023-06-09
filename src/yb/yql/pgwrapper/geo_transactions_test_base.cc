@@ -184,7 +184,8 @@ void GeoTransactionsTestBase::SetupTables(size_t tables_per_region) {
 
     for (size_t j = 1; j <= tables_per_region; ++j) {
       ASSERT_OK(conn.ExecuteFormat(
-          "CREATE TABLE $0$1_$2(value int) TABLESPACE tablespace$1", kTablePrefix, i, j));
+          "CREATE TABLE $0$1_$2(value int, other_value int) TABLESPACE tablespace$1",
+          kTablePrefix, i, j));
     }
 
     if (wait_for_hash) {

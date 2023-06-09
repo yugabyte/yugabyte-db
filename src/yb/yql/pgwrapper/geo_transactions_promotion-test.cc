@@ -22,6 +22,7 @@ DECLARE_int32(TEST_txn_status_moved_rpc_handle_delay_ms);
 DECLARE_int32(TEST_old_txn_status_abort_delay_ms);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_uint64(TEST_override_transaction_priority);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
@@ -237,6 +238,40 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
             0 /* rows */, 1 /* columns */));
     }
   }
+
+  void PerformConflictTest(uint64_t delay_before_promotion_us) {
+    // Add a unique index to conflict on.
+    auto conn0 = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn0.ExecuteFormat(
+        "CREATE UNIQUE INDEX $0$1_1_key ON $0$1_1(value) TABLESPACE tablespace$1",
+        kTablePrefix, kLocalRegion));
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+    auto conn1 = ASSERT_RESULT(Connect());
+    auto conn2 = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(conn1.Execute("SET force_global_transaction = false"));
+    ASSERT_OK(conn2.Execute("SET force_global_transaction = false"));
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_override_transaction_priority) = 100;
+    ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    ASSERT_OK(conn1.ExecuteFormat(
+        "INSERT INTO $0$1_1(value, other_value) VALUES (1, 1)", kTablePrefix, kLocalRegion));
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_override_transaction_priority) = 200;
+    ASSERT_OK(conn2.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    ASSERT_OK(conn2.ExecuteFormat(
+        "INSERT INTO $0$1_1(value, other_value) VALUES (1, 2)", kTablePrefix, kLocalRegion));
+    ASSERT_OK(conn2.CommitTransaction());
+
+    std::this_thread::sleep_for(delay_before_promotion_us * 1us);
+
+    // Attempt to trigger promotion to global on conn1. This should not trigger a DFATAL.
+    auto insert_status = conn1.ExecuteFormat(
+        "INSERT INTO $0$1_1(value, other_value) VALUES (1, 1)", kTablePrefix, kOtherRegion);
+    ASSERT_TRUE(!insert_status.ok() || !conn1.CommitTransaction().ok());
+  }
 };
 
 
@@ -386,6 +421,18 @@ TEST_F(GeoTransactionsPromotionTest,
   };
   CheckPromotion(TestTransactionType::kAbort, TestTransactionSuccess::kTrue, pre_commit_hook);
   CheckPromotion(TestTransactionType::kCommit, TestTransactionSuccess::kTrue, pre_commit_hook);
+}
+
+TEST_F(GeoTransactionsPromotionTest,
+       YB_DISABLE_TEST_IN_TSAN(TestNoPromotionFromAbortedState)) {
+  // Wait for heartbeat for conn1 to be informed about abort due to conflict before promotion.
+  PerformConflictTest(FLAGS_transaction_heartbeat_usec /* delay_before_promotion_us */);
+}
+
+TEST_F(GeoTransactionsPromotionTest,
+       YB_DISABLE_TEST_IN_TSAN(TestPromotionReturningToAbortedState)) {
+  // Wait for heartbeat for conn1 to be informed about abort due to conflict before promotion.
+  PerformConflictTest(0 /* delay_before_promotion_us */);
 }
 
 } // namespace client
