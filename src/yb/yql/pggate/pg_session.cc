@@ -897,5 +897,9 @@ Result<bool> PgSession::CheckIfPitrActive() {
   return pg_client_.CheckIfPitrActive();
 }
 
+void PgSession::PingPggate() {
+  LOG(INFO) << "Inside pggate from extension";
+}
+
 }  // namespace pggate
 }  // namespace yb

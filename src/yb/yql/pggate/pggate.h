@@ -643,6 +643,8 @@ class PgApiImpl {
 
   MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
 
+  void PingPggate();
+
  private:
   class Interrupter;
 

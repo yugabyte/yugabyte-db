@@ -1561,6 +1561,10 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
   return ToYBCStatus(res.status());
 }
 
+void YBCPingPggate() {
+  return pgapi->PingPggate();
+}
+
 } // extern "C"
 
 } // namespace yb::pggate
