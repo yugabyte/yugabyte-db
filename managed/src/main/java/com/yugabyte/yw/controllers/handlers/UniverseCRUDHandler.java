@@ -67,6 +67,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
@@ -470,6 +471,15 @@ public class UniverseCRUDHandler {
             UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
       }
       validateRegionsAndZones(provider, c);
+      // Configure the defaultimageBundle in case not specified.
+      if (c.userIntent.imageBundleUUID == null && provider.getCloudCode().imageBundleSupported()) {
+        if (provider.getImageBundles().size() > 0) {
+          ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
+          if (bundle != null) {
+            c.userIntent.imageBundleUUID = bundle.getUuid();
+          }
+        }
+      }
 
       // Set the node exporter config based on the provider
       if (!c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {

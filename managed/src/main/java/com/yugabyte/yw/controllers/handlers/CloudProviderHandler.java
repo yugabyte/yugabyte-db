@@ -52,6 +52,7 @@ import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -833,7 +834,6 @@ public class CloudProviderHandler {
      * 2. Removal of region/availability zone from the provider, in case they are not used.
      * 3. Addition of new access keys, we will not allow removal of the existing ones.
      * 4. Addition of new image bundles/ removal of unused image bundles.
-     *   (will be handled as part of PLAT-8114)
      */
 
     // Check if provider details are being modified
@@ -926,6 +926,34 @@ public class CloudProviderHandler {
         }
       }
     }
+
+    // Validate the imageBundles, deletion of in-use imageBundles is not allowed
+    Map<UUID, ImageBundle> existingImageBundles =
+        provider.getImageBundles().stream().collect(Collectors.toMap(iB -> iB.getUuid(), iB -> iB));
+    Map<UUID, ImageBundle> currentImageBundles =
+        editProviderReq.getImageBundles().stream()
+            .filter(iB -> iB.getUuid() != null)
+            .collect(Collectors.toMap(iB -> iB.getUuid(), iB -> iB));
+
+    existingImageBundles.forEach(
+        (uuid, imageBundle) -> {
+          if (!currentImageBundles.containsKey(uuid) && imageBundle.getUniverseCount() > 0) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Image Bundle %s is associated with some universes. Cannot delete!",
+                    imageBundle.getName()));
+          }
+          ImageBundle currentImageBundle = currentImageBundles.get(uuid);
+          if (imageBundle.getUniverseCount() > 0
+              && currentImageBundle.isUpdateNeeded(imageBundle)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Image Bundle %s is associated with some universes. Cannot modify!",
+                    imageBundle.getName()));
+          }
+        });
   }
 
   private void validateEditProvider(
