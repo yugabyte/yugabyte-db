@@ -205,7 +205,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       ![CloudType.kubernetes, CloudType.gcp, CloudType.azu].includes(provider?.code);
 
     const smartResizePossible =
-      [CloudType.aws, CloudType.gcp].includes(provider?.code) &&
+      [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) &&
       !isEphemeralAwsStorageInstance(instance) &&
       fieldValue?.storageType !== StorageType.Scratch &&
       isPrimary;
