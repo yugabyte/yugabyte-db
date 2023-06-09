@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +45,8 @@ import play.mvc.Http.Status;
 @EqualsAndHashCode(callSuper = true)
 @Slf4j
 public class ResizeNodeParams extends UpgradeTaskParams {
+
+  private static final Pattern AZU_NO_LOCAL_DISK = Pattern.compile("Standard_(D|E)[0-9]*as\\_v5");
 
   public static final int AZU_DISK_LIMIT_NO_DOWNTIME = 4 * 1024; // 4 TiB
 
@@ -217,10 +220,6 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     if (!SUPPORTED_CLOUD_TYPES.contains(currentUserIntent.providerType)) {
       return "Smart resizing is only supported for AWS / GCP / K8S/ Azu, It is: "
           + currentUserIntent.providerType.toString();
-    }
-    if (currentUserIntent.providerType == Common.CloudType.azu
-        && !runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.cloudEnabled)) {
-      return "Not yet supported in YBA";
     }
     if (currentUserIntent.dedicatedNodes != newUserIntent.dedicatedNodes) {
       return "Smart resize is not possible if is dedicated mode changed";
@@ -462,9 +461,21 @@ public class ResizeNodeParams extends UpgradeTaskParams {
                 "Provider %s of type %s does not contain the intended instance type '%s'",
                 currentUserIntent.provider, currentUserIntent.providerType, newInstanceTypeCode));
       }
+      if (currentUserIntent.providerType == Common.CloudType.azu
+          && isAzureWithLocalDisk(currentInstanceTypeCode)
+              != isAzureWithLocalDisk(newInstanceTypeCode)) {
+        errorConsumer.accept(
+            String.format(
+                "Cannot switch between instances with and without local disk (%s and %s)",
+                currentInstanceTypeCode, newInstanceTypeCode));
+      }
       return true;
     }
     return false;
+  }
+
+  private static boolean isAzureWithLocalDisk(String instanceType) {
+    return AZU_NO_LOCAL_DISK.matcher(instanceType).matches();
   }
 
   public boolean flagsProvided() {

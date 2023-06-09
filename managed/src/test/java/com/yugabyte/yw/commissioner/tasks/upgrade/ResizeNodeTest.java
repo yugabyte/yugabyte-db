@@ -155,7 +155,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     "aws, 0, 10, m3.medium, c4.medium, true",
     "aws, 0, -10, m3.medium, m3.medium, false", // decrease volume
     "aws, 1, 10, m3.medium, m3.medium, false", // change num of volumes
-    "azu, 0, 10, m3.medium, m3.medium, false", // wrong provider
     "aws, 0, 10, m3.medium, fake_type, false", // unknown instance type
     "aws, 0, 10, i3.instance, m3.medium, false", // ephemeral instance type
     "aws, 0, 10, c5d.instance, m3.medium, false", // ephemeral instance type
@@ -199,11 +198,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   @Parameters({
-    "10, c3.medium, c3.medium, UltraSSD_LRS, false",
-    "0, c3.medium, c4.medium, UltraSSD_LRS, true",
-    "10, c3.medium, c3.medium, StandardSSD_LRS, true",
-    "10, c3.medium, c4.medium, StandardSSD_LRS, true",
-    "5000, c3.medium, c3.medium, StandardSSD_LRS, false",
+    "10, Standard_DS2_v2, Standard_DS2_v2, UltraSSD_LRS, false",
+    "0, Standard_DS2_v2, Standard_DS4_v2, UltraSSD_LRS, true",
+    "10, Standard_DS2_v2, Standard_DS2_v2, StandardSSD_LRS, true",
+    "10, Standard_DS2_v2, Standard_DS4_v2, StandardSSD_LRS, true",
+    "10, Standard_DS2_v2, Standard_E2as_v5, StandardSSD_LRS, false", // local to no local
+    "10, Standard_E2as_v5, Standard_D32as_v5, StandardSSD_LRS, true", // no local to no local
+    "10, Standard_D32as_v5, Standard_DS2_v5, StandardSSD_LRS, false", // no local to local
+    "5000, Standard_DS2_v2, Standard_DS2_v2, StandardSSD_LRS, false",
   })
   @Test
   public void testResizeNodeAzu(
@@ -212,7 +214,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       String targetInstanceTypeCode,
       String volumeType,
       boolean expected) {
-    RuntimeConfigEntry.upsertGlobal("yb.cloud.enabled", "true");
     testResizeNodeAvailable(
         Common.CloudType.azu.toString(),
         0,
@@ -431,7 +432,20 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     currentIntent.deviceInfo.numVolumes = 1;
     currentIntent.deviceInfo.storageType = storageType;
     currentIntent.providerType = cloudType;
-    currentIntent.provider = defaultProvider.getUuid().toString();
+    switch (cloudType) {
+      case aws:
+        currentIntent.provider = defaultProvider.getUuid().toString();
+        break;
+      case gcp:
+        currentIntent.provider = gcpProvider.getUuid().toString();
+        break;
+      case azu:
+        currentIntent.provider = azuProvider.getUuid().toString();
+        break;
+      case kubernetes:
+        currentIntent.provider = kubernetesProvider.getUuid().toString();
+        break;
+    }
     currentIntent.instanceType = instanceTypeCode;
     return currentIntent;
   }

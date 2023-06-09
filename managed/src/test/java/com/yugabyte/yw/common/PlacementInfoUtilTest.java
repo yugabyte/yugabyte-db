@@ -1022,7 +1022,6 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     "aws, 0, 10, m3.medium, c4.medium, true",
     "aws, 0, -10, m3.medium, m3.medium, true", // decrease volume still true (not checked here)
     "aws, 1, 10, m3.medium, m3.medium, false", // change num of volumes
-    "azu, 0, 10, m3.medium, m3.medium, false", // wrong provider
     "aws, 0, 10, m3.medium, fake_type, false", // unknown instance type
     "aws, 0, 10, i3.instance, m3.medium, false", // ephemeral instance type
     "aws, 0, 10, c5d.instance, m3.medium, false", // ephemeral instance type
