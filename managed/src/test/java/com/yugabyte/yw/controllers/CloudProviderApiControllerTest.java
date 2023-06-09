@@ -1285,6 +1285,12 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
     // Add Region to the provider.
     Region region = Region.create(p, "us-west-2", "us-west-2", "yb-image");
+    // Add image bundle to the provider.
+    ImageBundleDetails ibDetails = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-2", new ImageBundleDetails.BundleInfo());
+    ibDetails.setRegions(regionImageInfo);
+    ImageBundle ib = ImageBundle.create(p, "ib-1", ibDetails, true);
     // Add zone to the region.
     AvailabilityZone az1 =
         AvailabilityZone.createOrThrow(
@@ -1302,6 +1308,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
           // Add a desired number of nodes.
           userIntent.numNodes = 5;
           userIntent.provider = p.getUuid().toString();
+          userIntent.imageBundleUUID = ib.getUuid();
           universeDetails.nodeDetailsSet = new HashSet<>();
           for (int idx = 1; idx <= userIntent.numNodes; idx++) {
             NodeDetails node = new NodeDetails();
@@ -1358,6 +1365,16 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     List<AvailabilityZone> azs = new ArrayList<>();
     azs.add(az1);
     region.setZones(azs);
+
+    // Delete the in-use image bundle.
+    p.setImageBundles(ImmutableList.of());
+    result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(result, "Image Bundle ib-1 is associated with some universes. Cannot delete!");
+
+    ib.setUseAsDefault(false);
+    p.setImageBundles(ImmutableList.of(ib));
+    result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(result, "Image Bundle ib-1 is associated with some universes. Cannot modify!");
 
     result = getProvider(p.getUuid());
     Provider provider = Json.fromJson(Json.parse(contentAsString(result)), Provider.class);
