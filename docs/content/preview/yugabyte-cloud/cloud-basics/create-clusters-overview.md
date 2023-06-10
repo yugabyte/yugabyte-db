@@ -68,8 +68,9 @@ YugabyteDB Managed supports AWS, Azure, and GCP. Your choice of provider will de
 | VPC | Yes | Yes (Required) | Yes |
 | Peering | Yes | No | Yes |
 | Private Service Endpoint | Yes | Yes | No |
-| Topologies | All | Single region only | All |
-| Customer Managed Key encryption | Yes | No | Yes |
+| Topologies | Single region<br/>Replicate across regions<br/>Partition by region | Single region | Single region<br/>Replicate across regions<br/>Partition by region |
+| Read replicas | Yes | No | Yes |
+| Customer Managed Key | Yes | No | Yes |
 
 #### Region
 

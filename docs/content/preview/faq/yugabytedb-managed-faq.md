@@ -22,7 +22,7 @@ rightNav:
 
 - [What is YugabyteDB Managed?](#what-is-yugabytedb-managed)
 - [How is YugabyteDB Managed priced?](#how-is-yugabytedb-managed-priced)
-- [What regions in AWS and GCP are available?](#what-regions-in-aws-and-gcp-are-available)
+- [What regions are available?](#what-regions-are-available)
 
 ##### Clusters
 
@@ -63,7 +63,7 @@ rightNav:
 
 ### What is YugabyteDB Managed?
 
-YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS).
+YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP), Microsoft Azure, and Amazon Web Services (AWS).
 
 You access your YugabyteDB Managed clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using [YugabyteDB Managed](https://cloud.yugabyte.com/login).
 
@@ -81,7 +81,7 @@ Yugabyte bills for its services as follows:
 
 For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../../yugabyte-cloud/cloud-admin/cloud-billing-costs/).
 
-### What regions in AWS and GCP are available?
+### What regions are available?
 
 Refer to [Cloud provider regions](../../yugabyte-cloud/release-notes/#cloud-provider-regions) for a list currently supported regions.
 

@@ -15,18 +15,6 @@ Clusters [replicated across regions](../../create-clusters-topology/#replicate-a
 
 Currently, Azure is not supported for replicated across region clusters.
 
-## Features
-
-Multi-region replicated clusters include the following features:
-
-- Replicated synchronously across 3 regions with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3.
-- No limit on cluster size - choose any cluster size based on your use case.
-- Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
-- VPC networking required.
-- Automated and on-demand backups.
-- Available in all [regions](../../../release-notes#cloud-provider-regions).
-- Enterprise support.
-
 ## Preferred region
 
 You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients.
@@ -41,11 +29,23 @@ You can enable [follower reads](../../../../explore/ysql-language-features/going
 
 In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
 
+## Features
+
+Multi-region replicated clusters include the following features:
+
+- Replicated synchronously across 3 regions with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3.
+- No limit on cluster size - choose any cluster size based on your use case.
+- Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
+- VPC networking required.
+- Automated and on-demand backups.
+- Available in all [regions](../../../release-notes#cloud-provider-regions).
+- Enterprise support.
+
 ## Prerequisites
 
-- Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Peer VPCs](../../cloud-vpcs/cloud-add-vpc-aws/#create-a-vpc).
-- By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses. Unless you enable [Public Access](../../../cloud-secure-clusters/add-connections/), you can only connect to multi-region clusters from applications that reside on a peered network, and the peering connection must be Active. Refer to [Peering connections](../../cloud-vpcs/cloud-add-peering).
-- Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
+- Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. Refer to [VPC network overview](../../cloud-vpcs/cloud-vpc-intro/).
+- By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses. Unless you enable [Public Access](../../../cloud-secure-clusters/add-connections/), you can only connect from resources inside the VPC network. Refer to [VPC network overview](../../cloud-vpcs/).
+- A billing profile and payment method. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a multi-region replicated cluster
 
