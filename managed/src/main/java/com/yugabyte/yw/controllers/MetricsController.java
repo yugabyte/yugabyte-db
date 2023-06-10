@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.Metric;
@@ -44,6 +45,12 @@ public class MetricsController extends Controller {
   private static final String KAMON_EMBEDDED_SERVER_HOST =
       "kamon.prometheus.embedded-server.hostname";
   private static final String KAMON_EMBEDDED_SERVER_PORT = "kamon.prometheus.embedded-server.port";
+
+  @Inject
+  public MetricsController(AppInit appInit) {
+    // Bind AppInit so that the metrics are not published before the app initialisation completes.
+    // No-op performed.
+  }
 
   @Inject private MetricService metricService;
 

@@ -1,5 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
+package com.yugabyte.yw.common;
+
 import static com.yugabyte.yw.common.Util.setYbaVersion;
 import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 
@@ -20,14 +22,6 @@ import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
-import com.yugabyte.yw.common.AppConfigHelper;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.CustomerTaskManager;
-import com.yugabyte.yw.common.ExtraMigrationManager;
-import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.common.ShellLogsManager;
-import com.yugabyte.yw.common.SnapshotCleanup;
-import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
