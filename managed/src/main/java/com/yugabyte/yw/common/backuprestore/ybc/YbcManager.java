@@ -1,14 +1,19 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.common.ybc;
+package com.yugabyte.yw.common.backuprestore.ybc;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.protobuf.Descriptors.FieldDescriptor;
-import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
+import com.yugabyte.yw.common.FileHelperService;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.NFSUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -27,8 +32,11 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -38,6 +46,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
@@ -55,6 +64,8 @@ import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.BackupServiceTaskCreateResponse;
 import org.yb.ybc.BackupServiceTaskDeleteRequest;
 import org.yb.ybc.BackupServiceTaskDeleteResponse;
+import org.yb.ybc.BackupServiceTaskEnabledFeaturesRequest;
+import org.yb.ybc.BackupServiceTaskEnabledFeaturesResponse;
 import org.yb.ybc.BackupServiceTaskResultRequest;
 import org.yb.ybc.BackupServiceTaskResultResponse;
 import org.yb.ybc.BackupServiceTaskThrottleParametersGetRequest;
@@ -73,29 +84,38 @@ public class YbcManager {
 
   private final YbcClientService ybcClientService;
   private final CustomerConfigService customerConfigService;
-  private final BackupUtil backupUtil;
   private final RuntimeConfGetter confGetter;
   private final ReleaseManager releaseManager;
   private final NodeManager nodeManager;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
+  private final FileHelperService fileHelperService;
+  private final StorageUtilFactory storageUtilFactory;
 
   private static final int WAIT_EACH_ATTEMPT_MS = 5000;
   private static final int WAIT_EACH_SHORT_ATTEMPT_MS = 2000;
   private static final int MAX_RETRIES = 10;
+  private static final int MAX_NUM_RETRIES = 20;
+  private static final long INITIAL_SLEEP_TIME_IN_MS = 1000L;
+  private static final long INCREMENTAL_SLEEP_TIME_IN_MS = 2000L;
 
   @Inject
   public YbcManager(
       YbcClientService ybcClientService,
       CustomerConfigService customerConfigService,
-      BackupUtil backupUtil,
       RuntimeConfGetter confGetter,
       ReleaseManager releaseManager,
-      NodeManager nodeManager) {
+      NodeManager nodeManager,
+      KubernetesManagerFactory kubernetesManagerFactory,
+      FileHelperService fileHelperService,
+      StorageUtilFactory storageUtilFactory) {
     this.ybcClientService = ybcClientService;
     this.customerConfigService = customerConfigService;
-    this.backupUtil = backupUtil;
     this.confGetter = confGetter;
     this.releaseManager = releaseManager;
     this.nodeManager = nodeManager;
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
+    this.fileHelperService = fileHelperService;
+    this.storageUtilFactory = storageUtilFactory;
   }
 
   // Enum for YBC throttle param type.
@@ -398,23 +418,16 @@ public class YbcManager {
     YbcClient ybcClient = null;
     try {
       ybcClient = getYbcClient(backup.getUniverseUUID());
-      CustomerConfigStorageNFSData configData =
-          (CustomerConfigStorageNFSData)
-              customerConfigService
-                  .getOrBadRequest(
-                      backup.getCustomerUUID(), backup.getBackupInfo().storageConfigUUID)
-                  .getDataObject();
-      String nfsDir = configData.backupLocation;
-      for (String location : backupUtil.getBackupLocations(backup)) {
-        String cloudDir = BackupUtil.getBackupIdentifier(location, true);
-        BackupServiceNfsDirDeleteRequest nfsDirDelRequest =
-            BackupServiceNfsDirDeleteRequest.newBuilder()
-                .setNfsDir(nfsDir)
-                .setBucket(configData.nfsBucket)
-                .setCloudDir(cloudDir)
-                .build();
+      CustomerConfigData configData =
+          customerConfigService
+              .getOrBadRequest(backup.getCustomerUUID(), backup.getBackupInfo().storageConfigUUID)
+              .getDataObject();
+      List<BackupServiceNfsDirDeleteRequest> nfsDirDeleteRequests =
+          ((NFSUtil) storageUtilFactory.getStorageUtil("NFS"))
+              .getBackupServiceNfsDirDeleteRequest(backup.getBackupParamsCollection(), configData);
+      for (BackupServiceNfsDirDeleteRequest nfsDirDeleteRequest : nfsDirDeleteRequests) {
         BackupServiceNfsDirDeleteResponse nfsDirDeleteResponse =
-            ybcClient.backupServiceNfsDirDelete(nfsDirDelRequest);
+            ybcClient.backupServiceNfsDirDelete(nfsDirDeleteRequest);
         if (!nfsDirDeleteResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
           LOG.error(
               "Nfs Dir deletion for backup {} failed with error: {}.",
@@ -558,6 +571,21 @@ public class YbcManager {
           taskID,
           e.getMessage());
       return successMarker;
+    } finally {
+      ybcClientService.closeClient(ybcClient);
+    }
+  }
+
+  public BackupServiceTaskEnabledFeaturesResponse getEnabledBackupFeatures(UUID universeUUID) {
+    YbcClient ybcClient = null;
+    try {
+      ybcClient = getYbcClient(universeUUID);
+      return ybcClient.backupServiceTaskEnabledFeatures(
+          BackupServiceTaskEnabledFeaturesRequest.getDefaultInstance());
+    } catch (Exception e) {
+      throw new RuntimeException(
+          String.format(
+              "Unable to fetch enabled backup features for Universe %s", universeUUID.toString()));
     } finally {
       ybcClientService.closeClient(ybcClient);
     }
@@ -724,5 +752,132 @@ public class YbcManager {
     UUID providerUuid = UUID.fromString(cluster.userIntent.provider);
     UUID regionUuid = cluster.userIntent.regionList.get(0);
     return Region.getOrBadRequest(customer.getUuid(), providerUuid, regionUuid);
+  }
+
+  public void copyYbcPackagesOnK8s(
+      Map<String, String> config,
+      Universe universe,
+      NodeDetails nodeDetails,
+      String ybcSoftwareVersion) {
+    ReleaseManager.ReleaseMetadata releaseMetadata =
+        releaseManager.getYbcReleaseByVersion(
+            ybcSoftwareVersion,
+            OsType.LINUX.toString().toLowerCase(),
+            Architecture.x86_64.name().toLowerCase());
+    String ybcPackage = releaseMetadata.filePath;
+    Map<String, String> ybcGflags =
+        GFlagsUtil.getYbcFlagsForK8s(universe.getUniverseUUID(), nodeDetails.nodeName);
+    try {
+      Path confFilePath =
+          fileHelperService.createTempFile(
+              universe.getUniverseUUID().toString() + "_" + nodeDetails.nodeName, ".conf");
+      Files.write(
+          confFilePath,
+          () ->
+              ybcGflags.entrySet().stream()
+                  .<CharSequence>map(e -> "--" + e.getKey() + "=" + e.getValue())
+                  .iterator());
+      kubernetesManagerFactory
+          .getManager()
+          .copyFileToPod(
+              config,
+              nodeDetails.cloudInfo.kubernetesNamespace,
+              nodeDetails.cloudInfo.kubernetesPodName,
+              "yb-controller",
+              confFilePath.toAbsolutePath().toString(),
+              "/mnt/disk0/yw-data/controller/conf/server.conf");
+      kubernetesManagerFactory
+          .getManager()
+          .copyFileToPod(
+              config,
+              nodeDetails.cloudInfo.kubernetesNamespace,
+              nodeDetails.cloudInfo.kubernetesPodName,
+              "yb-controller",
+              ybcPackage,
+              "/mnt/disk0/yw-data/controller/tmp/");
+    } catch (Exception ex) {
+      LOG.error(ex.getMessage(), ex);
+      throw new RuntimeException("Could not upload the ybc contents", ex);
+    }
+  }
+
+  public void performActionOnYbcK8sNode(
+      Map<String, String> config, NodeDetails nodeDetails, List<String> commandArgs) {
+    kubernetesManagerFactory
+        .getManager()
+        .performYbcAction(
+            config,
+            nodeDetails.cloudInfo.kubernetesNamespace,
+            nodeDetails.cloudInfo.kubernetesPodName,
+            "yb-controller",
+            commandArgs);
+  }
+
+  public void waitForYbc(Universe universe, Set<NodeDetails> nodeDetailsSet) {
+    String certFile = universe.getCertificateNodetoNode();
+    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+    String errMsg = "";
+
+    LOG.info("Universe uuid: {}, ybcPort: {} to be used", universe.getUniverseUUID(), ybcPort);
+    YbcClient client = null;
+    boolean isYbcConfigured = true;
+    Random rand = new Random();
+    for (NodeDetails node : nodeDetailsSet) {
+      String nodeIp = node.cloudInfo.private_ip;
+      LOG.info("Node IP: {} to connect to YBC", nodeIp);
+
+      try {
+        client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+        if (client == null) {
+          throw new Exception("Could not create Ybc client.");
+        }
+        LOG.info("Node IP: {} Client created", nodeIp);
+        long seqNum = rand.nextInt();
+        PingRequest pingReq = PingRequest.newBuilder().setSequence(seqNum).build();
+        int numTries = 0;
+        do {
+          LOG.info("Node IP: {} Making a ping request", nodeIp);
+          PingResponse pingResp = client.ping(pingReq);
+          if (pingResp != null && pingResp.getSequence() == seqNum) {
+            LOG.info("Node IP: {} Ping successful", nodeIp);
+            break;
+          } else if (pingResp == null) {
+            numTries++;
+            long waitTimeInMillis =
+                INITIAL_SLEEP_TIME_IN_MS + INCREMENTAL_SLEEP_TIME_IN_MS * (numTries - 1);
+            LOG.info(
+                "Node IP: {} Ping not complete. Sleeping for {} millis", nodeIp, waitTimeInMillis);
+            Duration duration = Duration.ofMillis(waitTimeInMillis);
+            Thread.sleep(duration.toMillis());
+            if (numTries <= MAX_NUM_RETRIES) {
+              LOG.info("Node IP: {} Ping not complete. Continuing", nodeIp);
+              continue;
+            }
+          }
+          if (numTries > MAX_NUM_RETRIES) {
+            LOG.info("Node IP: {} Ping failed. Exceeded max retries", nodeIp);
+            errMsg = String.format("Exceeded max retries: %s", MAX_NUM_RETRIES);
+            isYbcConfigured = false;
+            break;
+          } else if (pingResp.getSequence() != seqNum) {
+            errMsg =
+                String.format(
+                    "Returned incorrect seqNum. Expected: %s, Actual: %s",
+                    seqNum, pingResp.getSequence());
+            isYbcConfigured = false;
+            break;
+          }
+        } while (true);
+      } catch (Exception e) {
+        LOG.error("{} hit error : {}", "WaitForYbcServer", e.getMessage());
+        throw new RuntimeException(e);
+      } finally {
+        ybcClientService.closeClient(client);
+        if (!isYbcConfigured) {
+          throw new RuntimeException(
+              String.format("Exception in pinging yb-controller server at %s: %s", nodeIp, errMsg));
+        }
+      }
+    }
   }
 }

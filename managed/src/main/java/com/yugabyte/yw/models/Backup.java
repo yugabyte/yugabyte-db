@@ -16,9 +16,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
@@ -281,6 +282,10 @@ public class Backup extends Model {
   @Column
   private TimeUnit expiryTimeUnit;
 
+  @ApiModelProperty(value = "Whether the backup has KMS history metadata", accessMode = READ_ONLY)
+  @Column(name = "has_kms_history")
+  private boolean hasKMSHistory;
+
   public void updateExpiryTimeUnit(TimeUnit expiryTimeUnit) {
     setExpiryTimeUnit(expiryTimeUnit);
     save();
@@ -340,6 +345,9 @@ public class Backup extends Model {
       if (universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID != null) {
         params.kmsConfigUUID = universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID;
       }
+      backup.setHasKMSHistory(
+          CollectionUtils.isNotEmpty(
+              EncryptionAtRestUtil.getAllUniverseKeys(backup.getUniverseUUID())));
     }
     backup.setState(BackupState.InProgress);
     backup.setCategory(category);

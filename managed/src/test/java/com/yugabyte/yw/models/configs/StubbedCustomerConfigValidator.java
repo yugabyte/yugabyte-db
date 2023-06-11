@@ -18,6 +18,7 @@ import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.Storage.BlobListOption;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
@@ -49,8 +50,11 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
 
   private boolean refuseKeys = false;
 
-  public StubbedCustomerConfigValidator(BeanValidator beanValidator, List<String> allowedBuckets) {
-    super(beanValidator);
+  public StubbedCustomerConfigValidator(
+      BeanValidator beanValidator,
+      List<String> allowedBuckets,
+      StorageUtilFactory storageUtilFactory) {
+    super(beanValidator, storageUtilFactory);
 
     lenient()
         .when(s3Client.doesBucketExistV2(any(String.class)))

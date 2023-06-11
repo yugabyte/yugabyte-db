@@ -1544,6 +1544,11 @@
           "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
           "type" : "string"
         },
+        "hasKMSHistory" : {
+          "description" : "Whether the backup has KMS history metadata",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "incrementalBackup" : {
           "type" : "boolean"
         },
@@ -2057,6 +2062,10 @@
         "oldOwner" : {
           "description" : "User name of the current tables owner",
           "type" : "string"
+        },
+        "selectiveTableRestore" : {
+          "description" : "Is selective table restore",
+          "type" : "boolean"
         },
         "sse" : {
           "description" : "Is SSE",
@@ -7081,6 +7090,43 @@
       "required" : [ "buildNumber" ],
       "type" : "object"
     },
+    "PerBackupLocationKeyspaceTables" : {
+      "properties" : {
+        "originalKeyspace" : {
+          "description" : "Original keyspace name",
+          "type" : "string"
+        },
+        "tableNameList" : {
+          "description" : "List of parent tables associated with the keyspace",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "type" : "object"
+    },
+    "PerLocationBackupInfo" : {
+      "properties" : {
+        "backupLocation" : {
+          "description" : "Backup location",
+          "type" : "string"
+        },
+        "isSelectiveRestoreSupported" : {
+          "description" : "Whether selective table restore is supported for this backup",
+          "type" : "boolean"
+        },
+        "isYSQLBackup" : {
+          "description" : "Whether backup type is YSQL",
+          "type" : "boolean"
+        },
+        "perBackupLocationKeyspaceTables" : {
+          "$ref" : "#/definitions/PerBackupLocationKeyspaceTables",
+          "description" : "Keyspace and tables list for given backup location"
+        }
+      },
+      "type" : "object"
+    },
     "PerProcessFlags" : {
       "properties" : {
         "value" : {
@@ -8850,6 +8896,56 @@
         }
       },
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
+      "type" : "object"
+    },
+    "RestorePreflightParams" : {
+      "properties" : {
+        "backupLocations" : {
+          "description" : "List of backup locations",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "backupUUID" : {
+          "description" : "The backup of which the restore is being attempted",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "storageConfigUUID" : {
+          "description" : "Storage config UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "universeUUID" : {
+          "description" : "Target universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "backupLocations", "storageConfigUUID", "universeUUID" ],
+      "type" : "object"
+    },
+    "RestorePreflightResponse" : {
+      "properties" : {
+        "backupCategory" : {
+          "description" : "Backup Category",
+          "enum" : [ "YB_BACKUP_SCRIPT", "YB_CONTROLLER" ],
+          "type" : "string"
+        },
+        "hasKMSHistory" : {
+          "description" : "Whether backup was KMS encrypted",
+          "type" : "boolean"
+        },
+        "perLocationBackupInfoMap" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerLocationBackupInfo"
+          },
+          "description" : "Map of backup location and backup-info object",
+          "type" : "object"
+        }
+      },
       "type" : "object"
     },
     "RestoreResp" : {
@@ -18495,6 +18591,44 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List Backup Restores (paginated)",
+        "tags" : [ "Backups" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/restore/preflight" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "restorePreflight",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Parameters fr restore preflight check",
+          "in" : "body",
+          "name" : "restorePreflightParams",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RestorePreflightParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RestorePreflightResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Restore preflight checks",
         "tags" : [ "Backups" ]
       }
     },

@@ -403,6 +403,7 @@ POST    /customers/:cUUID/schedules/page                                       c
 POST    /customers/:cUUID/restore/page                                         com.yugabyte.yw.controllers.BackupsController.pageRestoreList(cUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/schedules/:sUUID/delete                              com.yugabyte.yw.controllers.ScheduleController.deleteYb(cUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/backups/:backupUUID/list_increments                  com.yugabyte.yw.controllers.BackupsController.listIncrementalBackups(cUUID: java.util.UUID, backupUUID: java.util.UUID)
+POST    /customers/:cUUID/restore/preflight                                    com.yugabyte.yw.controllers.BackupsController.restorePreflight(cUUID: java.util.UUID, request: Request)
 
 # Task History API
 GET    /customers/:cUUID/tasks                                                 com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)

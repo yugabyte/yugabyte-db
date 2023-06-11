@@ -1,6 +1,6 @@
 package com.yugabyte.yw.models.helpers;
 
-import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import java.util.List;
 import java.util.UUID;
 import lombok.Builder;

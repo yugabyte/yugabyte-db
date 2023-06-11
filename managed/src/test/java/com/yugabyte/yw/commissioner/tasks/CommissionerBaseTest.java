@@ -21,7 +21,6 @@ import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
@@ -43,6 +42,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -111,8 +111,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected SupportBundleComponentFactory mockSupportBundleComponentFactory;
   protected ReleaseManager mockReleaseManager;
   protected GFlagsValidation mockGFlagsValidation;
-  protected BackupUtil mockBackupUtil;
   protected ProviderEditRestrictionManager providerEditRestrictionManager;
+  protected BackupHelper mockBackupHelper;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -203,8 +203,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockSupportBundleComponentFactory = mock(SupportBundleComponentFactory.class);
     mockGFlagsValidation = mock(GFlagsValidation.class);
     mockReleaseManager = mock(ReleaseManager.class);
-    mockBackupUtil = mock(BackupUtil.class);
     mockCloudAPIFactory = mock(CloudAPI.Factory.class);
+    mockBackupHelper = mock(BackupHelper.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -241,8 +241,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
-                .overrides(bind(BackupUtil.class).toInstance(mockBackupUtil))
                 .overrides(bind(NodeUIApiHelper.class).toInstance(mockNodeUIApiHelper))
+                .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .build();

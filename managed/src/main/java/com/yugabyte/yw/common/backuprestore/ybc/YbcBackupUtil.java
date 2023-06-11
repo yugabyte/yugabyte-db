@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.common.ybc;
+package com.yugabyte.yw.common.backuprestore.ybc;
 
 import static java.util.stream.Collectors.joining;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -9,6 +9,7 @@ import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonEnumDefaultValue;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -20,42 +21,42 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
-import com.yugabyte.yw.common.BackupUtil;
-import com.yugabyte.yw.common.FileHelperService;
-import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.StorageUtil;
+import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.BackupUtil.PerBackupLocationKeyspaceTables;
+import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.TablesMetadata.TableDetails;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.TablesMetadata.TableDetails.IndexTable;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.NamespaceData;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.SnapshotObjectData;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.TableData;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.common.services.YbcClientService;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.TableData;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.annotation.EnumValue;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Duration;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import javax.validation.ConstraintViolation;
@@ -64,14 +65,21 @@ import javax.validation.Validation;
 import javax.validation.Validator;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NonNull;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.codec.DecoderException;
+import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
-import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.BackupServiceTaskExtendedArgs;
 import org.yb.ybc.BackupServiceTaskProgressRequest;
@@ -80,10 +88,9 @@ import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.CloudType;
 import org.yb.ybc.NamespaceType;
-import org.yb.ybc.PingRequest;
-import org.yb.ybc.PingResponse;
 import org.yb.ybc.TableBackup;
 import org.yb.ybc.TableBackupSpec;
+import org.yb.ybc.TableRestoreSpec;
 import org.yb.ybc.UserChangeSpec;
 import play.libs.Json;
 
@@ -96,18 +103,29 @@ public class YbcBackupUtil {
   public static final int MAX_TASK_RETRIES = 10;
   public static final String DEFAULT_REGION_STRING = "default_region";
   public static final String YBC_SUCCESS_MARKER_TASK_SUFFIX = "_success_marker";
-  private static final int MAX_NUM_RETRIES = 20;
-  private static final long INITIAL_SLEEP_TIME_IN_MS = 1000L;
-  private static final long INCREMENTAL_SLEEP_TIME_IN_MS = 2000L;
+  public static final String YBC_SUCCESS_MARKER_FILE_NAME = "success";
 
-  @Inject UniverseInfoHandler universeInfoHandler;
-  @Inject YbcClientService ybcService;
-  @Inject BackupUtil backupUtil;
-  @Inject CustomerConfigService configService;
-  @Inject EncryptionAtRestManager encryptionAtRestManager;
-  @Inject ReleaseManager releaseManager;
-  @Inject FileHelperService fileHelperService;
-  @Inject KubernetesManagerFactory kubernetesManagerFactory;
+  private final UniverseInfoHandler universeInfoHandler;
+  private final CustomerConfigService configService;
+  private final EncryptionAtRestManager encryptionAtRestManager;
+  private final BackupHelper backupHelper;
+  private final StorageUtilFactory storageUtilFactory;
+
+  @Inject
+  public YbcBackupUtil(
+      UniverseInfoHandler universeInfoHandler,
+      CustomerConfigService configService,
+      EncryptionAtRestManager encryptionAtRestManager,
+      BackupHelper backupHelper,
+      StorageUtilFactory storageUtilFactory) {
+    this.universeInfoHandler = universeInfoHandler;
+    this.configService = configService;
+    this.encryptionAtRestManager = encryptionAtRestManager;
+    this.backupHelper = backupHelper;
+    this.storageUtilFactory = storageUtilFactory;
+  }
+
+  public static final Logger LOG = LoggerFactory.getLogger(YbcBackupUtil.class);
 
   public enum SnapshotObjectType {
     @EnumValue("NAMESPACE")
@@ -121,6 +139,77 @@ public class YbcBackupUtil {
     public static class Constants {
       public static final String NAMESPACE = "NAMESPACE";
       public static final String TABLE = "TABLE";
+    }
+  }
+
+  @Data
+  @AllArgsConstructor
+  public static class TablesMetadata {
+    private final Map<String, TableDetails> tableDetailsMap;
+
+    @Data
+    @RequiredArgsConstructor
+    @AllArgsConstructor
+    public static class TableDetails {
+      private @NonNull UUID tableIdentifier;
+      private boolean hasIndexTables = false;
+      private Set<IndexTable> indexTableRelations;
+
+      @Data
+      @AllArgsConstructor
+      public static class IndexTable {
+        private UUID indexTableUUID;
+        private String indexTableName;
+      }
+
+      @JsonIgnore
+      public Set<String> getAllIndexTables() {
+        if (!hasIndexTables) {
+          return new HashSet<>();
+        }
+        return indexTableRelations
+            .parallelStream()
+            .map(iT -> iT.indexTableName)
+            .collect(Collectors.toSet());
+      }
+    }
+
+    @JsonIgnore
+    public Set<String> getIndexTables(Set<String> parentTables) {
+      Set<String> tablesSet =
+          tableDetailsMap
+              .entrySet()
+              .parallelStream()
+              .filter(
+                  tDE ->
+                      CollectionUtils.isNotEmpty(parentTables)
+                          ? parentTables.contains(tDE.getKey())
+                          : true)
+              .flatMap(tDE -> tDE.getValue().getAllIndexTables().parallelStream())
+              .collect(Collectors.toSet());
+      return tablesSet;
+    }
+
+    @JsonIgnore
+    public Set<String> getAllIndexTables() {
+      return getIndexTables(null);
+    }
+
+    @JsonIgnore
+    public Set<String> getParentTables() {
+      return tableDetailsMap.keySet();
+    }
+
+    @JsonIgnore
+    public Map<String, Set<String>> getTablesWithIndexesMap() {
+      Map<String, Set<String>> tablesWithIndexesMap =
+          tableDetailsMap
+              .entrySet()
+              .parallelStream()
+              .filter(tDE -> tDE.getValue().hasIndexTables)
+              .collect(
+                  Collectors.toMap(Map.Entry::getKey, tDE -> tDE.getValue().getAllIndexTables()));
+      return tablesWithIndexesMap;
     }
   }
 
@@ -169,11 +258,23 @@ public class YbcBackupUtil {
         @JsonAlias("prev_cloud_dir")
         public String prevCloudDir;
       }
+
+      @JsonIgnore
+      public Map<String, BucketLocation> getBucketLocationsMap() {
+        Map<String, BucketLocation> regionBucketLocationMap = new HashMap<>();
+        regionBucketLocationMap.put(DEFAULT_REGION_STRING, defaultLocation);
+        if (MapUtils.isNotEmpty(regionLocations)) {
+          regionBucketLocationMap.putAll(regionLocations);
+        }
+        return regionBucketLocationMap;
+      }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class SnapshotObjectDetails {
       @NotNull public SnapshotObjectType type;
+
+      @NotNull public String id;
 
       @NotNull
       @Valid
@@ -207,6 +308,9 @@ public class YbcBackupUtil {
         @JsonAlias("namespace_name")
         @NotNull
         public String snapshotNamespaceName;
+
+        @JsonAlias("indexed_table_id")
+        public String indexedTableID;
       }
 
       @JsonIgnoreProperties(ignoreUnknown = true)
@@ -224,7 +328,7 @@ public class YbcBackupUtil {
    * @param metadata
    * @return YbcBackupResponse object
    */
-  public YbcBackupResponse parseYbcBackupResponse(String metadata) {
+  public static YbcBackupResponse parseYbcBackupResponse(String metadata) {
     ObjectMapper mapper = new ObjectMapper();
     // For custom types in Snapshot Info.
     mapper.enable(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_USING_DEFAULT_VALUE);
@@ -253,7 +357,7 @@ public class YbcBackupUtil {
     }
   }
 
-  public JsonNode getUniverseKeysJsonFromSuccessMarker(String extendedArgs) {
+  public static JsonNode getUniverseKeysJsonFromSuccessMarker(String extendedArgs) {
     ObjectMapper mapper = new ObjectMapper();
     JsonNode args = null;
     try {
@@ -278,7 +382,7 @@ public class YbcBackupUtil {
         configService.getOrBadRequest(tableParams.customerUuid, tableParams.storageConfigUUID);
     CustomerConfigStorageData configData = (CustomerConfigStorageData) config.getDataObject();
     Map<String, String> regionLocationMap =
-        StorageUtil.getStorageUtil(config.getName()).getRegionLocationsMap(configData);
+        storageUtilFactory.getStorageUtil(config.getName()).getRegionLocationsMap(configData);
     List<BackupUtil.RegionLocations> regionLocations = new ArrayList<>();
     regionMap.forEach(
         (r, bL) -> {
@@ -357,7 +461,7 @@ public class YbcBackupUtil {
 
     // For previous backup location( default + regional)
     Map<String, String> keyspacePreviousLocationsMap =
-        backupUtil.getLocationMap(previousTableParams);
+        BackupUtil.getLocationMap(previousTableParams);
     CloudStoreConfig cloudStoreConfig =
         createBackupConfig(config, specificCloudDir, keyspacePreviousLocationsMap);
     BackupServiceTaskExtendedArgs extendedArgs = getExtendedArgsForBackup(backupTableParams);
@@ -365,9 +469,9 @@ public class YbcBackupUtil {
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
         backupServiceTaskCreateBuilder(taskID, namespaceType, extendedArgs);
     backupServiceTaskCreateRequestBuilder.setCsConfig(cloudStoreConfig);
-    if (CollectionUtils.isNotEmpty(backupTableParams.tableNameList)) {
-      TableBackupSpec tableBackupSpec = getTableBackupSpec(backupTableParams);
-      backupServiceTaskCreateRequestBuilder.setTbs(tableBackupSpec);
+    if (!backupTableParams.allTables
+        && CollectionUtils.isNotEmpty(backupTableParams.tableNameList)) {
+      backupServiceTaskCreateRequestBuilder.setTbs(getTableBackupSpec(backupTableParams));
     } else {
       backupServiceTaskCreateRequestBuilder.setNs(backupTableParams.getKeyspace());
     }
@@ -383,7 +487,6 @@ public class YbcBackupUtil {
       String taskId,
       YbcBackupResponse successMarker) {
     NamespaceType namespaceType = getNamespaceType(backupStorageInfo.backupType);
-    String keyspace = backupStorageInfo.keyspace;
     BackupServiceTaskExtendedArgs.Builder extendedArgs = BackupServiceTaskExtendedArgs.newBuilder();
     if (StringUtils.isNotBlank(backupStorageInfo.newOwner)) {
       extendedArgs.setUserSpec(
@@ -396,7 +499,8 @@ public class YbcBackupUtil {
         backupServiceTaskCreateBuilder(taskId, namespaceType, extendedArgs.build());
     CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
     CloudStoreConfig cloudStoreConfig = createRestoreConfig(config, successMarker);
-    backupServiceTaskCreateRequestBuilder.setNs(keyspace).setCsConfig(cloudStoreConfig);
+    backupServiceTaskCreateRequestBuilder.setCsConfig(cloudStoreConfig);
+    addRestoreSpec(backupServiceTaskCreateRequestBuilder, backupStorageInfo, successMarker);
     return backupServiceTaskCreateRequestBuilder.build();
   }
 
@@ -420,7 +524,18 @@ public class YbcBackupUtil {
     return createDsmRequest(customerUUID, storageConfigUUID, taskId, storageInfo);
   }
 
-  public BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateBuilder(
+  // Static method for use outside backup/restore tasks.
+  public static BackupServiceTaskCreateRequest createDsmRequest(
+      CloudStoreSpec cloudStoreSpec, String taskId, NamespaceType nsType) {
+    BackupServiceTaskExtendedArgs extendedArgs = BackupServiceTaskExtendedArgs.newBuilder().build();
+    BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
+        backupServiceTaskCreateBuilder(taskId, nsType, extendedArgs);
+    CloudStoreConfig cloudStoreConfig =
+        CloudStoreConfig.newBuilder().setDefaultSpec(cloudStoreSpec).build();
+    return backupServiceTaskCreateRequestBuilder.setCsConfig(cloudStoreConfig).setDsm(true).build();
+  }
+
+  private static BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateBuilder(
       String taskId, NamespaceType nsType, BackupServiceTaskExtendedArgs exArgs) {
     // Redundant for now.
     boolean setCompression = false;
@@ -453,6 +568,49 @@ public class YbcBackupUtil {
     }
     TableBackupSpec tableBackupSpec = tableBackupSpecBuilder.addAllTables(tableBackupList).build();
     return tableBackupSpec;
+  }
+
+  private void addRestoreSpec(
+      BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder,
+      BackupStorageInfo bSInfo,
+      YbcBackupResponse successMarker) {
+    String keyspace = bSInfo.keyspace;
+    if (bSInfo.selectiveTableRestore && CollectionUtils.isNotEmpty(bSInfo.tableNameList)) {
+      Set<String> restorableTablesList =
+          getTableListFromSuccessMarker(successMarker, bSInfo.backupType, true).getParentTables();
+      if (CollectionUtils.isEqualCollection(restorableTablesList, bSInfo.tableNameList)) {
+        // No need for selective restore here.
+        backupServiceTaskCreateRequestBuilder.setNs(keyspace);
+      } else {
+        backupServiceTaskCreateRequestBuilder.setTrs(getTableRestoreSpec(successMarker, bSInfo));
+      }
+    } else {
+      backupServiceTaskCreateRequestBuilder.setNs(keyspace);
+    }
+  }
+
+  /**
+   * Get table restore spec for restore using BackupStorageInfo's tableNameList and keyspace. For
+   * selective restore, also add index tables relation here. Expects that the tableNameList from
+   * params is not null here.
+   *
+   * @param successMarker The YbcBackupResponse object
+   * @param bSInfo The BackupStorageInfo object
+   * @return The generated TableRestoreSpec
+   */
+  public static TableRestoreSpec getTableRestoreSpec(
+      YbcBackupResponse successMarker, BackupStorageInfo bSInfo) {
+    if (CollectionUtils.isEmpty(bSInfo.tableNameList)) {
+      throw new RuntimeException("Table restore attempted on empty table list");
+    }
+    TableRestoreSpec.Builder tableRestoreSpecBuilder = TableRestoreSpec.newBuilder();
+    TablesMetadata tables = getTableListFromSuccessMarker(successMarker, bSInfo.backupType, false);
+    Set<String> tablesToRestore = new HashSet<>(bSInfo.tableNameList);
+    tablesToRestore.addAll(tables.getIndexTables(tablesToRestore));
+    return tableRestoreSpecBuilder
+        .setKeyspace(bSInfo.keyspace)
+        .addAllTable(tablesToRestore)
+        .build();
   }
 
   public NamespaceType getNamespaceType(TableType tableType) {
@@ -513,16 +671,16 @@ public class YbcBackupUtil {
     CustomerConfigData configData = config.getDataObject();
     CloudStoreSpec defaultSpec = null;
     CloudStoreConfig.Builder cloudStoreConfigBuilder = CloudStoreConfig.newBuilder();
-    StorageUtil storageUtil = StorageUtil.getStorageUtil(configType);
+    StorageUtil storageUtil = storageUtilFactory.getStorageUtil(configType);
     defaultSpec =
         storageUtil.createCloudStoreSpec(
-            ((CustomerConfigStorageData) configData).backupLocation,
+            DEFAULT_REGION_STRING,
             commonSuffix,
             keyspacePreviousLocationsMap.get(DEFAULT_REGION_STRING),
             configData);
     cloudStoreConfigBuilder.setDefaultSpec(defaultSpec);
     Map<String, String> regionLocationMap =
-        StorageUtil.getStorageUtil(config.getName()).getRegionLocationsMap(configData);
+        storageUtilFactory.getStorageUtil(config.getName()).getRegionLocationsMap(configData);
     Map<String, CloudStoreSpec> regionSpecMap = new HashMap<>();
     if (MapUtils.isNotEmpty(regionLocationMap)) {
       regionLocationMap.forEach(
@@ -530,7 +688,7 @@ public class YbcBackupUtil {
             regionSpecMap.put(
                 r,
                 storageUtil.createCloudStoreSpec(
-                    bL, commonSuffix, keyspacePreviousLocationsMap.get(r), configData));
+                    r, commonSuffix, keyspacePreviousLocationsMap.get(r), configData));
           });
     }
     if (MapUtils.isNotEmpty(regionSpecMap)) {
@@ -543,31 +701,22 @@ public class YbcBackupUtil {
       CustomerConfig config, YbcBackupResponse successMarker) {
     CustomerConfigData configData = config.getDataObject();
 
-    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.getName());
+    StorageUtil storageUtil = storageUtilFactory.getStorageUtil(config.getName());
     YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation defaultBucketLocation =
         successMarker.responseCloudStoreSpec.defaultLocation;
     CloudStoreSpec defaultSpec =
         storageUtil.createRestoreCloudStoreSpec(
-            ((CustomerConfigStorageData) configData).backupLocation,
-            defaultBucketLocation.cloudDir,
-            configData,
-            false);
+            DEFAULT_REGION_STRING, defaultBucketLocation.cloudDir, configData, false);
 
     CloudStoreConfig.Builder csConfigBuilder =
         CloudStoreConfig.newBuilder().setDefaultSpec(defaultSpec);
 
-    Map<String, String> regionLocationMap =
-        StorageUtil.getStorageUtil(config.getName()).getRegionLocationsMap(configData);
     Map<String, CloudStoreSpec> regionSpecMap = new HashMap<>();
     if (MapUtils.isNotEmpty(successMarker.responseCloudStoreSpec.regionLocations)) {
       successMarker.responseCloudStoreSpec.regionLocations.forEach(
           (r, bL) -> {
-            if (regionLocationMap.containsKey(r)) {
-              regionSpecMap.put(
-                  r,
-                  storageUtil.createRestoreCloudStoreSpec(
-                      regionLocationMap.get(r), bL.cloudDir, configData, false));
-            }
+            regionSpecMap.put(
+                r, storageUtil.createRestoreCloudStoreSpec(r, bL.cloudDir, configData, false));
           });
     }
     if (MapUtils.isNotEmpty(regionSpecMap)) {
@@ -578,51 +727,123 @@ public class YbcBackupUtil {
 
   public CloudStoreConfig createDsmConfig(CustomerConfig config, String defaultBackupLocation) {
     CustomerConfigData configData = config.getDataObject();
-    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.getName());
+    StorageUtil storageUtil = storageUtilFactory.getStorageUtil(config.getName());
     CloudStoreSpec defaultSpec =
-        storageUtil.createRestoreCloudStoreSpec(defaultBackupLocation, "", configData, true);
+        storageUtil.createDsmCloudStoreSpec(defaultBackupLocation, configData);
 
     CloudStoreConfig.Builder csConfigBuilder =
         CloudStoreConfig.newBuilder().setDefaultSpec(defaultSpec);
     return csConfigBuilder.build();
   }
 
-  public List<String> getTableListFromSuccessMarker(YbcBackupResponse successMarker) {
+  public static TablesMetadata getTableListFromSuccessMarker(YbcBackupResponse successMarker) {
     return getTableListFromSuccessMarker(successMarker, null);
   }
 
-  public List<String> getTableListFromSuccessMarker(
+  public static TablesMetadata getTableListFromSuccessMarker(
       YbcBackupResponse successMarker, TableType tableType) {
-    List<String> ycqlTableList =
-        successMarker.snapshotObjectDetails.stream()
-            .filter(
-                sOD ->
-                    sOD.type.equals(SnapshotObjectType.TABLE)
-                        && (tableType != null
-                            ? ((TableData) sOD.data).snapshotNamespaceType.equals(tableType)
-                            : true))
-            .map(sOD -> sOD.data.snapshotObjectName)
-            .collect(Collectors.toList());
-    return ycqlTableList;
+    return getTableListFromSuccessMarker(successMarker, null, false);
   }
 
-  public boolean validateYCQLTableListOverwrites(
-      YbcBackupResponse successMarker, UUID universeUUID, String keyspace) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-    List<String> existentTables =
-        backupUtil.getTableInfosOrEmpty(universe).stream()
-            .filter(
-                tIL ->
-                    tIL.getNamespace().getName().equals(keyspace)
-                        && tIL.getTableType().equals(TableType.YQL_TABLE_TYPE))
-            .map(tIL -> tIL.getName())
-            .collect(Collectors.toList());
-    List<String> restoreTables =
-        getTableListFromSuccessMarker(successMarker, TableType.YQL_TABLE_TYPE);
-    return !CollectionUtils.containsAny(existentTables, restoreTables);
+  // Convert non "-" hyphen containing UUID string to UUID.
+  private static UUID getUUIDFromString(String uuidString) {
+    try {
+      byte[] uuidData = Hex.decodeHex(uuidString.toCharArray());
+      return new UUID(
+          ByteBuffer.wrap(uuidData, 0, 8).getLong(), ByteBuffer.wrap(uuidData, 8, 8).getLong());
+    } catch (DecoderException e) {
+      throw new RuntimeException("Unable to parse uuid string to UUID");
+    }
   }
 
-  public void validateConfigWithSuccessMarker(
+  // @formatter:off
+  /**
+   * Generate Table list from success marker file YBC. A sample response with index tables: <pre>
+   * {@code {
+   *    "emp" : {
+   *      "tableIdentifier" : "1ce3234b-e6b2-4e08-8946-fdd9a152905b",
+   *      "hasIndexTables" : true,
+   *      "indexTableRelations" : [ {
+   *        "indexTableUUID" : "62ebe319-b183-4dd7-a8e7-16e6567bea0a",
+   *        "indexTableName" : "emp_by_userid"
+   *       } ]
+   *    },
+   *    "items" : {
+   *      "tableIdentifier" : "5060ca20-4c19-499f-9488-e0763cd94be5",
+   *      "hasIndexTables" : false
+   *    },
+   *    "cassandrakeyvalue" : {
+   *      "tableIdentifier" : "468da871-d007-4bb2-b2f4-7779f6ceb91e",
+   *      "hasIndexTables" : false
+   *    }
+   * }
+   * </pre>
+   *
+   * @param successMarker The YbcBackupResponse object
+   * @param tableType The table type PGSQL/YQL
+   * @param filterIndexTables Whether to filter out index tables in response
+   */
+  // @formatter:on
+  public static TablesMetadata getTableListFromSuccessMarker(
+      YbcBackupResponse successMarker, TableType tableType, boolean filterIndexTables) {
+
+    // Map to return
+    Map<String, TableDetails> tablesToReturn = new ConcurrentHashMap<>();
+    // Intermediate map which stores parent table info
+    Map<String, String> parentTablesMap = new ConcurrentHashMap<>();
+
+    // Get parent tables first
+    successMarker
+        .snapshotObjectDetails
+        .parallelStream()
+        .filter(
+            sOD ->
+                sOD.type.equals(SnapshotObjectType.TABLE)
+                    && (tableType != null
+                        ? ((TableData) sOD.data).snapshotNamespaceType.equals(tableType)
+                        : true)
+                    && ((TableData) sOD.data).indexedTableID == null)
+        .forEach(
+            sOD -> {
+              String tableIdentifier = sOD.id;
+              UUID tableUUID = getUUIDFromString(tableIdentifier);
+              String tableName = sOD.data.snapshotObjectName;
+              tablesToReturn.put(tableName, new TableDetails(tableUUID));
+              parentTablesMap.put(tableIdentifier, tableName);
+            });
+
+    // Add index tables if required
+    if (!filterIndexTables) {
+      successMarker
+          .snapshotObjectDetails
+          .parallelStream()
+          .filter(
+              sOD ->
+                  sOD.type.equals(SnapshotObjectType.TABLE)
+                      && (tableType != null
+                          ? ((TableData) sOD.data).snapshotNamespaceType.equals(tableType)
+                          : true)
+                      && (((TableData) sOD.data).indexedTableID != null))
+          .forEach(
+              sOD -> {
+                String parentTableName = parentTablesMap.get(((TableData) sOD.data).indexedTableID);
+                UUID indexTableUUID = getUUIDFromString(sOD.id);
+                String indexTableName = sOD.data.snapshotObjectName;
+                TableDetails tDetails = tablesToReturn.get(parentTableName);
+                if (!tablesToReturn.get(parentTableName).hasIndexTables) {
+                  tDetails.indexTableRelations = new HashSet<>();
+                  tDetails.hasIndexTables = true;
+                }
+                tablesToReturn
+                    .get(parentTableName)
+                    .indexTableRelations
+                    .add(new IndexTable(indexTableUUID, indexTableName));
+              });
+    }
+    return new TablesMetadata(tablesToReturn);
+  }
+
+  public static void validateConfigWithSuccessMarker(
       YbcBackupResponse successMarker, CloudStoreConfig config, boolean forPrevDir)
       throws PlatformServiceException {
     BiFunction<YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation, CloudStoreSpec, Boolean>
@@ -742,130 +963,195 @@ public class YbcBackupUtil {
     return keyspaceToParamsMap;
   }
 
-  public void copyYbcPackagesOnK8s(
-      Map<String, String> config,
-      Universe universe,
-      NodeDetails nodeDetails,
-      String ybcSoftwareVersion) {
-    ReleaseManager.ReleaseMetadata releaseMetadata =
-        releaseManager.getYbcReleaseByVersion(
-            ybcSoftwareVersion,
-            OsType.LINUX.toString().toLowerCase(),
-            Architecture.x86_64.name().toLowerCase());
-    String ybcPackage = releaseMetadata.filePath;
-    Map<String, String> ybcGflags =
-        GFlagsUtil.getYbcFlagsForK8s(universe.getUniverseUUID(), nodeDetails.nodeName);
-    try {
-      Path confFilePath =
-          fileHelperService.createTempFile(
-              universe.getUniverseUUID().toString() + "_" + nodeDetails.nodeName, ".conf");
-      Files.write(
-          confFilePath,
-          () ->
-              ybcGflags.entrySet().stream()
-                  .<CharSequence>map(e -> "--" + e.getKey() + "=" + e.getValue())
-                  .iterator());
-      kubernetesManagerFactory
-          .getManager()
-          .copyFileToPod(
-              config,
-              nodeDetails.cloudInfo.kubernetesNamespace,
-              nodeDetails.cloudInfo.kubernetesPodName,
-              "yb-controller",
-              confFilePath.toAbsolutePath().toString(),
-              "/mnt/disk0/yw-data/controller/conf/server.conf");
-      kubernetesManagerFactory
-          .getManager()
-          .copyFileToPod(
-              config,
-              nodeDetails.cloudInfo.kubernetesNamespace,
-              nodeDetails.cloudInfo.kubernetesPodName,
-              "yb-controller",
-              ybcPackage,
-              "/mnt/disk0/yw-data/controller/tmp/");
-    } catch (Exception ex) {
-      log.error(ex.getMessage(), ex);
-      throw new RuntimeException("Could not upload the ybc contents", ex);
-    }
+  /**
+   * Comprehensive validate restore overwrite using backup metadata, so that even partial restores
+   * do not have overwrites, over multiple sub-parts of same keyspace type restore. Note that this
+   * method only validates against restore request, and returns a map of TableType and keyspace
+   * tables list if applicable. The map can then be used further to validate against Universe
+   * content.
+   *
+   * @param backupStorageInfoList List of BackupStorageInfo objects, to extract tables/keyspaces to
+   *     restore.
+   * @param perLocationBackupInfoMap Map of string<->PerLocationBackupInfo which is the
+   *     keyspace/table metadata for each of the locations.
+   */
+  public static Map<TableType, Map<String, Set<String>>> generateMapToRestoreNonRedisYBC(
+      List<BackupStorageInfo> backupStorageInfoList,
+      Map<String, PerLocationBackupInfo> perLocationBackupInfoMap) {
+    Map<TableType, Map<String, Set<String>>> restoreMap = new HashMap<>();
+    restoreMap.put(TableType.PGSQL_TABLE_TYPE, new HashMap<String, Set<String>>());
+    restoreMap.put(TableType.YQL_TABLE_TYPE, new HashMap<String, Set<String>>());
+    backupStorageInfoList.stream()
+        // Filter out REDIS, we don't validate anything for it.
+        .filter(bSI -> !bSI.backupType.equals(TableType.REDIS_TABLE_TYPE))
+        .forEach(
+            bSI -> {
+              String location = bSI.storageLocation;
+              String keyspace = bSI.keyspace;
+              PerLocationBackupInfo bInfo = perLocationBackupInfoMap.get(location);
+
+              // Verify no unknown tables request for backup
+              if (bSI.backupType.equals(TableType.YQL_TABLE_TYPE)
+                  && CollectionUtils.isNotEmpty(bSI.tableNameList)
+                  && !bInfo
+                      .getPerBackupLocationKeyspaceTables()
+                      .getTableNameList()
+                      .containsAll(bSI.tableNameList)) {
+                throw new PlatformServiceException(
+                    PRECONDITION_FAILED,
+                    String.format(
+                        "Unknown tables to restore found for keyspace: %s, backup location: %s",
+                        keyspace, location));
+              }
+              // If keyspace seen for the first time.
+              if (!restoreMap.get(bSI.backupType).containsKey(keyspace)) {
+                restoreMap.get(bSI.backupType).put(keyspace, new HashSet<String>());
+                if (bSI.backupType.equals(TableType.YQL_TABLE_TYPE)) {
+                  Set<String> tablesToAdd =
+                      getTablesToAddToRestoreMap(bInfo.getPerBackupLocationKeyspaceTables(), bSI);
+
+                  restoreMap.get(bSI.backupType).get(keyspace).addAll(tablesToAdd);
+                }
+              } else {
+                // For YSQL: If found DB again, throw error since there is a repetition request
+                // For YCQL: If found keyspace again, check at table level whether there is a
+                // repetition of request
+                if (bSI.backupType.equals(TableType.PGSQL_TABLE_TYPE)
+                    || !bSI.selectiveTableRestore
+                    || CollectionUtils.isEmpty(bSI.tableNameList)
+                    || CollectionUtils.containsAny(
+                        restoreMap.get(TableType.YQL_TABLE_TYPE).get(keyspace),
+                        bSI.tableNameList)) {
+                  throw new PlatformServiceException(
+                      PRECONDITION_FAILED,
+                      String.format("Overwrite of data attempted for keyspace %s", keyspace));
+                }
+                Set<String> tablesToAdd =
+                    getTablesToAddToRestoreMap(bInfo.getPerBackupLocationKeyspaceTables(), bSI);
+                restoreMap.get(TableType.YQL_TABLE_TYPE).get(keyspace).addAll(tablesToAdd);
+              }
+            });
+    return restoreMap;
   }
 
-  public void performActionOnYbcK8sNode(
-      Map<String, String> config, NodeDetails nodeDetails, List<String> commandArgs) {
-    kubernetesManagerFactory
-        .getManager()
-        .performYbcAction(
-            config,
-            nodeDetails.cloudInfo.kubernetesNamespace,
-            nodeDetails.cloudInfo.kubernetesPodName,
-            "yb-controller",
-            commandArgs);
+  private static Set<String> getTablesToAddToRestoreMap(
+      PerBackupLocationKeyspaceTables perLocationBackupInfo, BackupStorageInfo bSI) {
+    Set<String> tablesToAdd = new HashSet<>();
+
+    // For table names provided and selective restore case.
+    if (CollectionUtils.isNotEmpty(bSI.tableNameList) && bSI.selectiveTableRestore) {
+      Set<String> tableNames = new HashSet<>(bSI.tableNameList);
+      tablesToAdd.addAll(bSI.tableNameList);
+      // Add index info if available
+      tablesToAdd.addAll(perLocationBackupInfo.getIndexesOfTables(tableNames));
+    } else {
+      tablesToAdd.addAll(perLocationBackupInfo.getAllTables());
+    }
+    return tablesToAdd;
   }
 
-  public void waitForYbc(Universe universe, Set<NodeDetails> nodeDetailsSet) {
-    String certFile = universe.getCertificateNodetoNode();
-    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    String errMsg = "";
+  // @formatter:off
+  /**
+   * Using provided backup-location and corresponding YbcBackupResponse object, generate
+   * RestorePreflightReponse object. A sample response: <pre>
+   * {@code {
+   *     "hasKMSHistory" : false,
+   *     "backupCategory" : "YB_CONTROLLER",
+   *     "perLocationBackupInfoMap" : {
+   *      "s3://vkumar-gp-2/test/univ-70ba557a-1c1e-48d7-ac28-a26cd1d06ad7/..." : {
+   *         "isYSQLBackup" : false,
+   *         "isSelectiveRestoreSupported" : true,
+   *         "backupLocation" : "s3://vkumar-gp-2/test/univ-70ba557a-1c1e-48d7-ac28-a26cd1...",
+   *         "perBackupLocationKeyspaceTables" : {
+   *           "originalKeyspace" : "ybdemo_keyspace",
+   *           "tableNameList" : [ "emp", "items", "cassandrakeyvalue" ],
+   *           "tablesWithIndexesMap" : {
+   *             "emp" : [ "emp_by_userid" ]
+   *           }
+   *         }
+   *       }
+   *     }
+   * }
+   * </pre>
+   *
+   * @param ybcSuccessMarkerMap The map of backup_location<->YbcBackupResponse object
+   * @param selectiveRestoreYbcCheck Boolean flag of whether the given YBC version supports
+   *     selective restore or not
+   * @param filterIndexes Boolean flag whether to to filter indexes in preflight tables response
+   */
+  // @formatter:on
+  public static RestorePreflightResponse generateYBCRestorePreflightResponseUsingMetadata(
+      Map<String, YbcBackupResponse> ybcSuccessMarkerMap,
+      boolean selectiveRestoreYbcCheck,
+      boolean filterIndexes) {
+    RestorePreflightResponse.RestorePreflightResponseBuilder restorePreflightResponseBuilder =
+        RestorePreflightResponse.builder();
 
-    log.info("Universe uuid: {}, ybcPort: {} to be used", universe.getUniverseUUID(), ybcPort);
-    YbcClient client = null;
-    boolean isYbcConfigured = true;
-    Random rand = new Random();
-    for (NodeDetails node : nodeDetailsSet) {
-      String nodeIp = node.cloudInfo.private_ip;
-      log.info("Node IP: {} to connect to YBC", nodeIp);
+    // Populate success marker map
+    restorePreflightResponseBuilder.successMarkerMap(ybcSuccessMarkerMap);
 
-      try {
-        client = ybcService.getNewClient(nodeIp, ybcPort, certFile);
-        if (client == null) {
-          throw new Exception("Could not create Ybc client.");
-        }
-        log.info("Node IP: {} Client created", nodeIp);
-        long seqNum = rand.nextInt();
-        PingRequest pingReq = PingRequest.newBuilder().setSequence(seqNum).build();
-        int numTries = 0;
-        do {
-          log.info("Node IP: {} Making a ping request", nodeIp);
-          PingResponse pingResp = client.ping(pingReq);
-          if (pingResp != null && pingResp.getSequence() == seqNum) {
-            log.info("Node IP: {} Ping successful", nodeIp);
-            break;
-          } else if (pingResp == null) {
-            numTries++;
-            long waitTimeInMillis =
-                INITIAL_SLEEP_TIME_IN_MS + INCREMENTAL_SLEEP_TIME_IN_MS * (numTries - 1);
-            log.info(
-                "Node IP: {} Ping not complete. Sleeping for {} millis", nodeIp, waitTimeInMillis);
-            Duration duration = Duration.ofMillis(waitTimeInMillis);
-            Thread.sleep(duration.toMillis());
-            if (numTries <= MAX_NUM_RETRIES) {
-              log.info("Node IP: {} Ping not complete. Continuing", nodeIp);
-              continue;
-            }
-          }
-          if (numTries > MAX_NUM_RETRIES) {
-            log.info("Node IP: {} Ping failed. Exceeded max retries", nodeIp);
-            errMsg = String.format("Exceeded max retries: %s", MAX_NUM_RETRIES);
-            isYbcConfigured = false;
-            break;
-          } else if (pingResp.getSequence() != seqNum) {
-            errMsg =
-                String.format(
-                    "Returned incorrect seqNum. Expected: %s, Actual: %s",
-                    seqNum, pingResp.getSequence());
-            isYbcConfigured = false;
-            break;
-          }
-        } while (true);
-      } catch (Exception e) {
-        log.error("{} hit error : {}", "WaitForYbcServer", e.getMessage());
-        throw new RuntimeException(e);
-      } finally {
-        ybcService.closeClient(client);
-        if (!isYbcConfigured) {
-          throw new RuntimeException(
-              String.format("Exception in pinging yb-controller server at %s: %s", nodeIp, errMsg));
-        }
-      }
-    }
+    // Populate category as YB_CONTROLLER
+    restorePreflightResponseBuilder.backupCategory(BackupCategory.YB_CONTROLLER);
+
+    // Populate KMS param here
+    boolean hasKMSHistory =
+        ybcSuccessMarkerMap.values().stream()
+            .anyMatch(sM -> getUniverseKeysJsonFromSuccessMarker(sM.extendedArgsString) != null);
+    restorePreflightResponseBuilder.hasKMSHistory(hasKMSHistory);
+
+    // Populate namespace type, name, tables list( if applicable ) etc. here
+    Map<String, PerLocationBackupInfo> perLocationBackupInfoMap =
+        ybcSuccessMarkerMap.entrySet().stream()
+            .collect(
+                Collectors.toMap(
+                    Map.Entry::getKey,
+                    e -> {
+                      PerLocationBackupInfo.PerLocationBackupInfoBuilder
+                          perLocationBackupInfoBuilder = PerLocationBackupInfo.builder();
+                      perLocationBackupInfoBuilder.backupLocation(e.getKey());
+                      YbcBackupResponse sMarker = e.getValue();
+                      SnapshotObjectData namespaceDetails =
+                          sMarker
+                              .snapshotObjectDetails
+                              .parallelStream()
+                              .filter(sOD -> sOD.type.equals(SnapshotObjectType.NAMESPACE))
+                              .findAny()
+                              .get()
+                              .data;
+
+                      // Check database type
+                      Boolean isYSQLBackup =
+                          ((NamespaceData) namespaceDetails)
+                              .snapshotDatabaseType.equals(YQLDatabase.YQL_DATABASE_PGSQL);
+                      perLocationBackupInfoBuilder.isYSQLBackup(isYSQLBackup);
+                      PerBackupLocationKeyspaceTables.PerBackupLocationKeyspaceTablesBuilder
+                          perBackupKeyspaceTablesBuilder =
+                              PerBackupLocationKeyspaceTables.builder();
+
+                      // Populate keyspace name
+                      perBackupKeyspaceTablesBuilder.originalKeyspace(
+                          namespaceDetails.snapshotObjectName);
+
+                      // If not YSQL, add table names and selective restore boolean.
+                      if (!isYSQLBackup) {
+                        TablesMetadata tablesMetadata =
+                            getTableListFromSuccessMarker(
+                                sMarker, TableType.YQL_TABLE_TYPE, filterIndexes);
+                        Set<String> parentTables = tablesMetadata.getParentTables();
+                        perBackupKeyspaceTablesBuilder.tableNameList(
+                            new ArrayList<String>(parentTables));
+                        if (!filterIndexes) {
+                          perBackupKeyspaceTablesBuilder.tablesWithIndexesMap(
+                              tablesMetadata.getTablesWithIndexesMap());
+                        }
+                        perLocationBackupInfoBuilder.isSelectiveRestoreSupported(
+                            selectiveRestoreYbcCheck);
+                      }
+                      perLocationBackupInfoBuilder.perBackupLocationKeyspaceTables(
+                          perBackupKeyspaceTablesBuilder.build());
+                      return perLocationBackupInfoBuilder.build();
+                    }));
+    restorePreflightResponseBuilder.perLocationBackupInfoMap(perLocationBackupInfoMap);
+    return restorePreflightResponseBuilder.build();
   }
 }

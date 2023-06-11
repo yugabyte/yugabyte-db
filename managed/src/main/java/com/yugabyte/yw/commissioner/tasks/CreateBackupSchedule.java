@@ -11,8 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.common.BackupUtil;
-import com.yugabyte.yw.common.StorageUtil;
+import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Schedule;
@@ -26,17 +25,17 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class CreateBackupSchedule extends UniverseTaskBase {
 
-  private final BackupUtil backupUtil;
   private final CustomerConfigService customerConfigService;
+  private final StorageUtilFactory storageUtilFactory;
 
   @Inject
   protected CreateBackupSchedule(
       BaseTaskDependencies baseTaskDependencies,
       CustomerConfigService customerConfigService,
-      BackupUtil backupUtil) {
+      StorageUtilFactory storageUtilFactory) {
     super(baseTaskDependencies);
-    this.backupUtil = backupUtil;
     this.customerConfigService = customerConfigService;
+    this.storageUtilFactory = storageUtilFactory;
   }
 
   protected BackupRequestParams params() {
@@ -51,7 +50,8 @@ public class CreateBackupSchedule extends UniverseTaskBase {
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(
             taskParams.customerUUID, taskParams.storageConfigUUID);
-    StorageUtil.getStorageUtil(customerConfig.getName())
+    storageUtilFactory
+        .getStorageUtil(customerConfig.getName())
         .validateStorageConfigOnUniverse(customerConfig, universe);
 
     Schedule schedule =

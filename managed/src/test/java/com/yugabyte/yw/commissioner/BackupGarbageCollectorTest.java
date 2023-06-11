@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -12,7 +13,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
@@ -20,9 +20,10 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -55,7 +56,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   private BackupGarbageCollector backupGC;
   private CustomerConfigService customerConfigService;
   private TableManagerYb tableManagerYb;
-  private BackupUtil mockBackupUtil;
+  private BackupHelper mockBackupHelper;
   private YbcManager mockYbcManager;
   private CustomerConfig s3StorageConfig;
 
@@ -67,7 +68,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     customerConfigService = app.injector().instanceOf(CustomerConfigService.class);
     tableManagerYb = app.injector().instanceOf(TableManagerYb.class);
-    mockBackupUtil = mock(BackupUtil.class);
+    mockBackupHelper = mock(BackupHelper.class);
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST0");
     defaultUser = ModelFactory.testUser(defaultCustomer);
     backupGC =
@@ -76,10 +77,11 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
             customerConfigService,
             mockRuntimeConfigFactory,
             tableManagerYb,
-            mockBackupUtil,
+            mockBackupHelper,
             mockYbcManager,
             mockTaskManager,
-            mockCommissioner);
+            mockCommissioner,
+            mockStorageUtilFactory);
   }
 
   @Test
@@ -92,7 +94,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     backup.transitionState(BackupState.QueuedForDeletion);
     List<String> backupLocations = new ArrayList<>();
     backupLocations.add(backup.getBackupInfo().storageLocation);
-    when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
+    when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockAWSUtil);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -108,8 +110,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     List<String> backupLocations = new ArrayList<>();
+    when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockGCPUtil);
     backupLocations.add(backup.getBackupInfo().storageLocation);
-    when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -125,8 +127,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     List<String> backupLocations = new ArrayList<>();
+    when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockAZUtil);
     backupLocations.add(backup.getBackupInfo().storageLocation);
-    when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -141,6 +143,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
     Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
     backup.transitionState(BackupState.QueuedForDeletion);
+    when(mockStorageUtilFactory.getStorageUtil(anyString())).thenReturn(mockNfsUtil);
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
@@ -175,7 +178,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
-        .when(mockBackupUtil)
+        .when(mockBackupHelper)
         .validateStorageConfig(any());
     backupGC.scheduleRunner();
     backup = Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
@@ -193,6 +196,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"error\": true}";
     shellResponse.code = 2;
+    when(mockStorageUtilFactory.getStorageUtil(anyString())).thenReturn(mockNfsUtil);
     when(mockTableManagerYb.deleteBackup(any())).thenReturn(shellResponse);
     backupGC.scheduleRunner();
     backup = Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
@@ -209,7 +213,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     backup.transitionState(BackupState.QueuedForDeletion);
     List<String> backupLocations = new ArrayList<>();
     backupLocations.add(backup.getBackupInfo().storageLocation);
-    when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
+    when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockAWSUtil);
     doThrow(new RuntimeException()).when(mockAWSUtil).deleteKeyIfExists(any(), any());
     backupGC.scheduleRunner();
     backup = Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
@@ -240,9 +244,9 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     customerConfig.updateState(ConfigState.QueuedForDeletion);
+    when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockAWSUtil);
     List<String> backupLocations = new ArrayList<>();
     backupLocations.add(backup.getBackupInfo().storageLocation);
-    when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -280,7 +284,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
-        .when(mockBackupUtil)
+        .when(mockBackupHelper)
         .validateStorageConfig(any());
     customerConfig.updateState(ConfigState.QueuedForDeletion);
     backupGC.scheduleRunner();
