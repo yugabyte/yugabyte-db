@@ -2,12 +2,12 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
-import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
 import static com.yugabyte.yw.common.DevopsBase.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.VM_CERT_DIR;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -61,8 +61,6 @@ public class TableManagerTest extends FakeDBApplication {
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock ReleaseManager releaseManager;
-
-  // @Mock BackupUtil backupUtil;
 
   @InjectMocks TableManager tableManager;
 

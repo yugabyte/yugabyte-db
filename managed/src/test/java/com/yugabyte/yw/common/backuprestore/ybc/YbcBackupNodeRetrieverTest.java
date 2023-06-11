@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.common.ybc;
+package com.yugabyte.yw.common.backuprestore.ybc;
 
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThrows;

@@ -7,8 +7,8 @@ import com.azure.storage.blob.models.BlobStorageException;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
-import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
+import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
@@ -27,15 +27,19 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
   private static final Collection<String> AZ_URL_SCHEMES = Arrays.asList(new String[] {"https"});
 
   private final CloudClientsFactory factory;
+  private final StorageUtilFactory storageUtilFactory;
 
   private final List<ExtraPermissionToValidate> permissions =
       ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST);
 
   @Inject
   public CustomerConfigStorageAzureValidator(
-      BeanValidator beanValidator, CloudClientsFactory factory) {
+      BeanValidator beanValidator,
+      CloudClientsFactory factory,
+      StorageUtilFactory storageUtilFactory) {
     super(beanValidator, AZ_URL_SCHEMES);
     this.factory = factory;
+    this.storageUtilFactory = storageUtilFactory;
   }
 
   @Override
@@ -88,7 +92,7 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
       try {
         BlobContainerClient blobContainerClient =
             factory.createBlobContainerClient(azUrl, azSasToken, container);
-        ((AZUtil) (CloudUtil.getCloudUtil(Util.AZ)))
+        ((AZUtil) (storageUtilFactory.getCloudUtil(Util.AZ)))
             .validateOnBlobContainerClient(blobContainerClient, permissions);
       } catch (BlobStorageException e) {
         String exceptionMsg = e.getMessage();

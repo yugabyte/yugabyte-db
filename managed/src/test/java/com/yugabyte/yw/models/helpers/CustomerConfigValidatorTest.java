@@ -73,7 +73,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   public void setUp() {
     customerConfigValidator =
         new StubbedCustomerConfigValidator(
-            app.injector().instanceOf(BeanValidator.class), allowedBuckets);
+            app.injector().instanceOf(BeanValidator.class), allowedBuckets, mockStorageUtilFactory);
+    when(mockStorageUtilFactory.getCloudUtil("AZ")).thenReturn(mockAZUtil);
   }
 
   @Test

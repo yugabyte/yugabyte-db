@@ -287,7 +287,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
             new PlatformServiceException(
                 BAD_REQUEST,
                 "Incremental backup frequency should be lower than full backup frequency."))
-        .when(mockBackupUtil)
+        .when(mockBackupHelper)
         .validateIncrementalScheduleFrequency(anyLong(), anyLong(), any());
     backupRequestParams = new BackupRequestParams();
     backupRequestParams.setUniverseUUID(defaultUniverse.getUniverseUUID());

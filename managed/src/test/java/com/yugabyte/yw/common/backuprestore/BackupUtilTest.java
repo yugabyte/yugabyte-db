@@ -1,19 +1,17 @@
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.backuprestore;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.MockitoAnnotations.initMocks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.protobuf.ByteString;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupVersion;
@@ -22,7 +20,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,10 +32,6 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
-import org.yb.CommonTypes.TableType;
-import org.yb.CommonTypes.YQLDatabase;
-import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
-import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -259,26 +252,6 @@ public class BackupUtilTest extends FakeDBApplication {
     }
   }
 
-  @Test
-  @Parameters(
-      value = {
-        "s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
-        "s3://foo/univ-318EEf98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
-        "s3://foo/univ-318eef98-044B-42A3-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
-        "s3://foo//univ-318eef98-044B-42A3-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
-        "s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup_ybc-foo/bar, false",
-        "s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/bar_ybc, false",
-        "s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/ybc_backup, false",
-        "/tmp/nfs/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/ybc_backup, false",
-        "/tmp/nfs/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
-        "/nfs/yugabyte_backup/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar"
-            + ", true"
-      })
-  public void testIsYbcBackup(String backupLocation, boolean expected) {
-    boolean actual = backupUtil.isYbcBackup(backupLocation);
-    assertEquals(expected, actual);
-  }
-
   @SuppressWarnings("unused")
   private Object[] updateStorageLocationParams() {
 
@@ -373,97 +346,5 @@ public class BackupUtilTest extends FakeDBApplication {
       assertEquals(2, tableParams.storageLocation.split("//").length);
     }
     assertTrue(tableParams.storageLocation.contains(expectedStorageLocation));
-  }
-
-  private TableInfo getTableInfoYCQL(UUID tableUUID, String tableName, String keyspace) {
-    return TableInfo.newBuilder()
-        .setName(tableName)
-        .setTableType(TableType.YQL_TABLE_TYPE)
-        .setId(ByteString.copyFromUtf8(tableUUID.toString()))
-        .setNamespace(
-            NamespaceIdentifierPB.newBuilder()
-                .setId(ByteString.copyFromUtf8(tableUUID.toString()))
-                .setDatabaseType(YQLDatabase.YQL_DATABASE_CQL)
-                .setName(keyspace)
-                .build())
-        .build();
-  }
-
-  @Test(expected = Test.None.class)
-  public void testValidateBackupRequestYCQLSameKeyspaceValid() {
-    List<KeyspaceTable> kTList = new ArrayList<>();
-    KeyspaceTable kT1 = new KeyspaceTable();
-    kT1.keyspace = "foo";
-    UUID tableUUID1 = UUID.randomUUID();
-    kT1.tableUUIDList.add(tableUUID1);
-    kTList.add(kT1);
-
-    KeyspaceTable kT2 = new KeyspaceTable();
-    kT2.keyspace = "foo";
-    UUID tableUUID2 = UUID.randomUUID();
-    kT2.tableUUIDList.add(tableUUID2);
-    kTList.add(kT2);
-    UUID tableUUID3 = UUID.randomUUID();
-    kT2.tableUUIDList.add(tableUUID3);
-
-    List<TableInfo> ybClientTableList = new ArrayList<>();
-    ybClientTableList.add(getTableInfoYCQL(tableUUID1, "table_1", "foo"));
-    ybClientTableList.add(getTableInfoYCQL(tableUUID2, "table_2", "foo"));
-    ybClientTableList.add(getTableInfoYCQL(tableUUID3, "table_3", "foo"));
-    doReturn(ybClientTableList).when(backupUtil).getTableInfosOrEmpty(any());
-    doNothing().when(backupUtil).validateTables(any(), any(), anyString(), any());
-    backupUtil.validateBackupRequest(kTList, testUniverse, TableType.YQL_TABLE_TYPE);
-  }
-
-  @Test(expected = Test.None.class)
-  public void testValidateBackupRequestYCQLDifferentKeyspaceValid() {
-    List<KeyspaceTable> kTList = new ArrayList<>();
-    KeyspaceTable kT1 = new KeyspaceTable();
-    kT1.keyspace = "foo";
-    UUID tableUUID1 = UUID.randomUUID();
-    kT1.tableUUIDList.add(tableUUID1);
-    kTList.add(kT1);
-
-    KeyspaceTable kT2 = new KeyspaceTable();
-    kT2.keyspace = "bar";
-    UUID tableUUID2 = UUID.randomUUID();
-    kT2.tableUUIDList.add(tableUUID2);
-    kTList.add(kT2);
-
-    List<TableInfo> ybClientTableList = new ArrayList<>();
-    ybClientTableList.add(getTableInfoYCQL(tableUUID1, "table_1", "foo"));
-    ybClientTableList.add(getTableInfoYCQL(tableUUID2, "table_1", "bar"));
-    doReturn(ybClientTableList).when(backupUtil).getTableInfosOrEmpty(any());
-    doNothing().when(backupUtil).validateTables(any(), any(), anyString(), any());
-    backupUtil.validateBackupRequest(kTList, testUniverse, TableType.YQL_TABLE_TYPE);
-  }
-
-  @Test
-  public void testValidateBackupRequestYCQLSameKeyspaceInvalid() {
-    List<KeyspaceTable> kTList = new ArrayList<>();
-    KeyspaceTable kT1 = new KeyspaceTable();
-    kT1.keyspace = "foo";
-    UUID tableUUID1 = UUID.randomUUID();
-    kT1.tableUUIDList = Arrays.asList(tableUUID1);
-    kTList.add(kT1);
-
-    KeyspaceTable kT2 = new KeyspaceTable();
-    kT2.keyspace = "foo";
-    UUID tableUUID2 = UUID.randomUUID();
-    kT2.tableUUIDList.add(tableUUID2);
-    kTList.add(kT2);
-    kT2.tableUUIDList.add(tableUUID1);
-
-    List<TableInfo> ybClientTableList = new ArrayList<>();
-    ybClientTableList.add(getTableInfoYCQL(tableUUID1, "table_1", "foo"));
-    ybClientTableList.add(getTableInfoYCQL(tableUUID2, "table_2", "foo"));
-    doReturn(ybClientTableList).when(backupUtil).getTableInfosOrEmpty(any());
-    doNothing().when(backupUtil).validateTables(any(), any(), anyString(), any());
-
-    PlatformServiceException ex =
-        assertThrows(
-            PlatformServiceException.class,
-            () -> backupUtil.validateBackupRequest(kTList, testUniverse, TableType.YQL_TABLE_TYPE));
-    assertTrue(ex.getMessage().contains("Repeated tables in backup request for keyspace"));
   }
 }

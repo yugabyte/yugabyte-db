@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.common.ybc;
+package com.yugabyte.yw.common.backuprestore.ybc;
 
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -12,6 +12,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -32,6 +33,7 @@ public class YbcManagerTest extends FakeDBApplication {
 
   private CustomerConfigService mockCustomerConfigService;
   private RuntimeConfGetter mockConfGetter;
+  private KubernetesManagerFactory mockKubernetesManagerFactory;
   private YbcManager spyYbcManager;
   private YbcManager ybcManager;
 
@@ -42,14 +44,17 @@ public class YbcManagerTest extends FakeDBApplication {
   public void setup() {
     mockCustomerConfigService = mock(CustomerConfigService.class);
     mockConfGetter = mock(RuntimeConfGetter.class);
+    mockKubernetesManagerFactory = mock(KubernetesManagerFactory.class);
     ybcManager =
         new YbcManager(
             mockYbcClientService,
             mockCustomerConfigService,
-            mockBackupUtil,
             mockConfGetter,
             mockReleaseManager,
-            mockNodeManager);
+            mockNodeManager,
+            mockKubernetesManagerFactory,
+            mockFileHelperService,
+            mockStorageUtilFactory);
     spyYbcManager = spy(ybcManager);
     testCustomer = ModelFactory.testCustomer();
     testUniverse = ModelFactory.createUniverse(testCustomer.getId());

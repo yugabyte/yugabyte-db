@@ -13,7 +13,6 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
@@ -271,9 +270,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
           getRestoreBackupParams(sourceUniverse, targetUniverse, backupRequestParams, backup);
       Restore restore =
           createAllRestoreSubtasks(
-              restoreBackupParams,
-              UserTaskDetails.SubTaskGroupType.RestoringBackup,
-              backup.getCategory().equals(BackupCategory.YB_CONTROLLER));
+              restoreBackupParams, UserTaskDetails.SubTaskGroupType.RestoringBackup);
       restoreList.add(restore);
 
       // Assign the created restore UUID for the tables in the DB.

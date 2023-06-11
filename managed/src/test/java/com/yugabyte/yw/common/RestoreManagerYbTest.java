@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.BackupUtil.BACKUP_SCRIPT;
-import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
-import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
 import static com.yugabyte.yw.common.DevopsBase.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.BACKUP_SCRIPT;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.VM_CERT_DIR;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;

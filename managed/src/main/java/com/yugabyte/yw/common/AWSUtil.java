@@ -34,17 +34,22 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 import java.io.InputStream;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -82,7 +87,8 @@ public class AWSUtil implements CloudUtil {
 
   // This method is a way to check if given S3 config can extract objects.
   @Override
-  public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
+  public boolean canCredentialListObjects(
+      CustomerConfigData configData, Collection<String> locations) {
     if (CollectionUtils.isEmpty(locations)) {
       return true;
     }
@@ -159,10 +165,21 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
+  // For S3 location: s3://bucket/suffix
+  // splitLocation[0] gives the bucket
+  // splitLocation[1] gives the suffix string
   public static String[] getSplitLocationValue(String location) {
     location = location.substring(5);
     String[] split = location.split("/", 2);
     return split;
+  }
+
+  @Override
+  public ConfigLocationInfo getConfigLocationInfo(String location) {
+    String[] splitLocations = getSplitLocationValue(location);
+    String bucket = splitLocations.length > 0 ? splitLocations[0] : "";
+    String cloudPath = splitLocations.length > 1 ? splitLocations[1] : "";
+    return new ConfigLocationInfo(bucket, cloudPath);
   }
 
   public static String getClientRegion(String fallbackRegion) {
@@ -344,6 +361,43 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
+  @Override
+  public boolean checkFileExists(
+      CustomerConfigData configData,
+      Set<String> locations,
+      String fileName,
+      boolean checkExistsOnAll) {
+    try {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
+      AtomicInteger count = new AtomicInteger(0);
+      return locations.stream()
+          .map(
+              l -> {
+                // For S3 location s3://bucket/suffix
+                // The splitLocation[0] gets bucket
+                // The splitLocation[1] gets any suffix string attached to it
+                // We append the suffix with the file name to get exact path fo file
+                String[] splitLocation = getSplitLocationValue(l);
+                String bucketName = splitLocation[0];
+                String objectSuffix =
+                    splitLocation.length > 1
+                        ? BackupUtil.getPathWithPrefixSuffixJoin(splitLocation[1], fileName)
+                        : fileName;
+                ListObjectsV2Result listResult = s3Client.listObjectsV2(bucketName, objectSuffix);
+                if (listResult.getKeyCount() > 0) {
+                  count.incrementAndGet();
+                }
+                return count;
+              })
+          .anyMatch(i -> checkExistsOnAll ? (i.get() == locations.size()) : (i.get() == 1));
+    } catch (SdkClientException e) {
+      throw new RuntimeException("Error checking files on locations", e);
+    } finally {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+    }
+  }
+
   public void retrieveAndDeleteObjects(
       ListObjectsV2Result listObjectsResult, String bucketName, AmazonS3 s3Client)
       throws AmazonS3Exception {
@@ -360,18 +414,19 @@ public class AWSUtil implements CloudUtil {
 
   @Override
   public CloudStoreSpec createCloudStoreSpec(
-      String storageLocation,
+      String region,
       String commonDir,
       String previousBackupLocation,
       CustomerConfigData configData) {
     CloudStoreSpec.Builder cloudStoreSpecBuilder =
         CloudStoreSpec.newBuilder().setType(CloudType.S3);
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    String storageLocation = getRegionLocationsMap(configData).get(region);
     String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
     String cloudDir =
         splitValues.length > 1
-            ? BackupUtil.getCloudpathWithConfigSuffix(splitValues[1], commonDir)
+            ? BackupUtil.getPathWithPrefixSuffixJoin(splitValues[1], commonDir)
             : commonDir;
     cloudDir = BackupUtil.appendSlash(cloudDir);
     String previousCloudDir = "";
@@ -394,16 +449,17 @@ public class AWSUtil implements CloudUtil {
 
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
-      String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+      String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {
     CloudStoreSpec.Builder cloudStoreSpecBuilder =
         CloudStoreSpec.newBuilder().setType(CloudType.S3);
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    String storageLocation = getRegionLocationsMap(configData).get(region);
     String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
     Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
     cloudStoreSpecBuilder.setBucket(bucket).setPrevCloudDir("").putAllCreds(s3CredsMap);
     if (isDsm) {
-      String location = BackupUtil.appendSlash(splitValues[1]);
+      String location = BackupUtil.appendSlash(getSplitLocationValue(cloudDir)[1]);
       cloudStoreSpecBuilder.setCloudDir(location);
     } else {
       cloudStoreSpecBuilder.setCloudDir(cloudDir);
@@ -514,6 +570,7 @@ public class AWSUtil implements CloudUtil {
     if (CollectionUtils.isNotEmpty(s3Data.regionLocations)) {
       s3Data.regionLocations.stream().forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
     }
+    regionLocationsMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data.backupLocation);
     return regionLocationsMap;
   }
 

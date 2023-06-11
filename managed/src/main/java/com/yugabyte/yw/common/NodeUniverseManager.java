@@ -175,6 +175,28 @@ public class NodeUniverseManager extends DevopsBase {
     return executeNodeAction(UniverseNodeAction.COPY_FILE, universe, node, actionArgs, context);
   }
 
+  public ShellResponse bulkCheckFilesExist(
+      NodeDetails node,
+      Universe universe,
+      String ybDir,
+      String sourceFilesPath,
+      String targetLocalFilePath) {
+    universeLock.acquireLock(universe.getUniverseUUID());
+    try {
+      List<String> actionArgs = new ArrayList<>();
+      actionArgs.add("--yb_dir");
+      actionArgs.add(ybDir);
+      actionArgs.add("--source_files_to_check_path");
+      actionArgs.add(sourceFilesPath);
+      actionArgs.add("--target_local_file_path");
+      actionArgs.add(targetLocalFilePath);
+      return executeNodeAction(
+          UniverseNodeAction.BULK_CHECK_FILES_EXIST, universe, node, actionArgs, DEFAULT_CONTEXT);
+    } finally {
+      universeLock.releaseLock(universe.getUniverseUUID());
+    }
+  }
+
   public ShellResponse uploadFileToNode(
       NodeDetails node,
       Universe universe,
@@ -572,6 +594,7 @@ public class NodeUniverseManager extends DevopsBase {
     DOWNLOAD_FILE,
     COPY_FILE,
     UPLOAD_FILE,
-    TEST_DIRECTORY
+    TEST_DIRECTORY,
+    BULK_CHECK_FILES_EXIST
   }
 }
