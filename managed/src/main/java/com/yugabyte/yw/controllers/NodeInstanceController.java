@@ -299,6 +299,14 @@ public class NodeInstanceController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Detached node action", response = YBPTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Node action",
+        value = "Node action data to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.NodeActionFormData",
+        paramType = "body")
+  })
   public Result detachedNodeAction(
       UUID customerUUID, UUID providerUUID, String instanceIP, Http.Request request) {
     // Validate customer UUID and universe UUID and AWS provider.

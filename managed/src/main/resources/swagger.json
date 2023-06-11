@@ -17689,6 +17689,14 @@
           "in" : "query",
           "name" : "request",
           "required" : false
+        }, {
+          "description" : "Node action data to be updated",
+          "in" : "body",
+          "name" : "Node action",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NodeActionFormData"
+          }
         } ],
         "responses" : {
           "200" : {
