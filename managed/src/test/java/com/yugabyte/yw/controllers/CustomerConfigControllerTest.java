@@ -66,7 +66,9 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     customerConfigService = app.injector().instanceOf(CustomerConfigService.class);
     customerConfigService.setConfigValidator(
         new StubbedCustomerConfigValidator(
-            app.injector().instanceOf(BeanValidator.class), allowedBuckets));
+            app.injector().instanceOf(BeanValidator.class),
+            allowedBuckets,
+            mockStorageUtilFactory));
   }
 
   @Test

@@ -4,19 +4,16 @@ package com.yugabyte.yw.commissioner;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
-import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YbcClientService;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
@@ -54,11 +51,7 @@ public class YbcUpgrade {
   private final RuntimeConfGetter confGetter;
   private final YbcClientService ybcClientService;
   private final YbcManager ybcManager;
-  private final YbcBackupUtil ybcBackupUtil;
   private final NodeUniverseManager nodeUniverseManager;
-  private final KubernetesManagerFactory kubernetesManagerFactory;
-  private final ReleaseManager releaseManager;
-  private final Commissioner commissioner;
 
   public static final String YBC_UPGRADE_INTERVAL = "ybc.upgrade.scheduler_interval";
   public static final String YBC_UNIVERSE_UPGRADE_BATCH_SIZE_PATH =
@@ -72,7 +65,6 @@ public class YbcUpgrade {
   public final int MAX_YBC_UPGRADE_POLL_RESULT_TRIES = 30;
   public final long YBC_UPGRADE_POLL_RESULT_SLEEP_MS = 10000;
   private final long YBC_REMOTE_TIMEOUT_SEC = 60;
-  private final int MAX_NUM_RETRIES = 50;
   private final String PACKAGE_PERMISSIONS = "755";
   private final String PLAT_YBC_PACKAGE_URL;
 
@@ -89,20 +81,12 @@ public class YbcUpgrade {
       RuntimeConfGetter confGetter,
       YbcClientService ybcClientService,
       YbcManager ybcManager,
-      YbcBackupUtil ybcBackupUtil,
-      NodeUniverseManager nodeUniverseManager,
-      KubernetesManagerFactory kubernetesManagerFactory,
-      ReleaseManager releaseManager,
-      Commissioner commissioner) {
+      NodeUniverseManager nodeUniverseManager) {
     this.platformScheduler = platformScheduler;
     this.confGetter = confGetter;
     this.ybcClientService = ybcClientService;
     this.ybcManager = ybcManager;
-    this.ybcBackupUtil = ybcBackupUtil;
     this.nodeUniverseManager = nodeUniverseManager;
-    this.kubernetesManagerFactory = kubernetesManagerFactory;
-    this.releaseManager = releaseManager;
-    this.commissioner = commissioner;
     this.YBC_UNIVERSE_UPGRADE_BATCH_SIZE = getYBCUniverseBatchSize();
     this.YBC_NODE_UPGRADE_BATCH_SIZE = getYBCNodeBatchSize();
     this.PLAT_YBC_PACKAGE_URL = "http://" + Util.getHostIP() + ":9000/api/v1/fetch_package";
@@ -350,8 +334,8 @@ public class YbcUpgrade {
           KubernetesUtil.getKubernetesConfigPerPodName(primaryPI, primaryTservers);
       for (NodeDetails primaryTserver : primaryTservers) {
         Map<String, String> config = k8sConfigMap.get(primaryTserver.nodeName);
-        ybcBackupUtil.copyYbcPackagesOnK8s(config, universe, primaryTserver, ybcVersion);
-        ybcBackupUtil.performActionOnYbcK8sNode(config, primaryTserver, commandArgs);
+        ybcManager.copyYbcPackagesOnK8s(config, universe, primaryTserver, ybcVersion);
+        ybcManager.performActionOnYbcK8sNode(config, primaryTserver, commandArgs);
       }
 
       if (universe.getUniverseDetails().getReadOnlyClusters().size() != 0) {
@@ -362,8 +346,8 @@ public class YbcUpgrade {
         k8sConfigMap = KubernetesUtil.getKubernetesConfigPerPodName(readOnlyPI, readOnlyTservers);
         for (NodeDetails readOnlyTserver : readOnlyTservers) {
           Map<String, String> config = k8sConfigMap.get(readOnlyTserver.nodeName);
-          ybcBackupUtil.copyYbcPackagesOnK8s(config, universe, readOnlyTserver, ybcVersion);
-          ybcBackupUtil.performActionOnYbcK8sNode(config, readOnlyTserver, commandArgs);
+          ybcManager.copyYbcPackagesOnK8s(config, universe, readOnlyTserver, ybcVersion);
+          ybcManager.performActionOnYbcK8sNode(config, readOnlyTserver, commandArgs);
         }
       }
       failedYBCUpgradeUniverseSetOnK8s.remove(universeUUID);
@@ -376,7 +360,7 @@ public class YbcUpgrade {
   public synchronized boolean waitForYbcServersOnK8s(UUID universeUUID, String ybcVersion) {
     try {
       Universe universe = Universe.getOrBadRequest(universeUUID);
-      ybcBackupUtil.waitForYbc(universe, new HashSet<NodeDetails>(universe.getTServers()));
+      ybcManager.waitForYbc(universe, new HashSet<NodeDetails>(universe.getTServers()));
       updateUniverseYBCVersion(universeUUID, ybcVersion);
       removeYBCUpgradeProcessOnK8s(universeUUID);
       failedYBCUpgradeUniverseSet.remove(universeUUID);

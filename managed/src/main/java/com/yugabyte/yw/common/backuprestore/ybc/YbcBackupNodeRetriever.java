@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.common.ybc;
+package com.yugabyte.yw.common.backuprestore.ybc;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;

@@ -2,18 +2,19 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.BackupUtil.BACKUP_SCRIPT;
-import static com.yugabyte.yw.common.BackupUtil.EMR_MULTIPLE;
-import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
-import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
-import static com.yugabyte.yw.common.BackupUtil.YB_CLOUD_COMMAND_TYPE;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.DELETE;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.BACKUP_SCRIPT;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.EMR_MULTIPLE;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.VM_CERT_DIR;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.YB_CLOUD_COMMAND_TYPE;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -68,7 +69,7 @@ public class TableManagerYb extends DevopsBase {
   }
 
   @Inject ReleaseManager releaseManager;
-  @Inject BackupUtil backupUtil;
+  @Inject StorageUtilFactory storageUtilFactory;
 
   public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams)
       throws PlatformServiceException {
@@ -171,7 +172,9 @@ public class TableManagerYb extends DevopsBase {
         CustomerConfigStorageData configData =
             (CustomerConfigStorageData) customerConfig.getDataObject();
         Map<String, String> regionLocationMap =
-            StorageUtil.getStorageUtil(customerConfig.getName()).getRegionLocationsMap(configData);
+            storageUtilFactory
+                .getStorageUtil(customerConfig.getName())
+                .getRegionLocationsMap(configData);
         if (MapUtils.isNotEmpty(regionLocationMap)) {
           regionLocationMap.forEach(
               (r, bL) -> {

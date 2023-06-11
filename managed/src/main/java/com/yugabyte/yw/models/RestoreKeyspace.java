@@ -8,7 +8,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
-import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import io.ebean.ExpressionList;

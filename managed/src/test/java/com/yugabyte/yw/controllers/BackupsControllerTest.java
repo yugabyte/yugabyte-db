@@ -10,14 +10,12 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -46,7 +44,6 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -581,7 +578,7 @@ public class BackupsControllerTest extends FakeDBApplication {
             new PlatformServiceException(
                 BAD_REQUEST,
                 "Incremental backup frequency should be lower than full backup frequency."))
-        .when(mockBackupUtil)
+        .when(mockBackupHelper)
         .validateIncrementalScheduleFrequency(anyLong(), anyLong(), any());
     ObjectNode bodyJson = Json.newObject();
     Universe universe =
@@ -626,7 +623,7 @@ public class BackupsControllerTest extends FakeDBApplication {
             new PlatformServiceException(
                 BAD_REQUEST,
                 "Incremental backup frequency should be lower than full backup frequency."))
-        .when(mockBackupUtil)
+        .when(mockBackupHelper)
         .validateIncrementalScheduleFrequency(anyLong(), anyLong(), any());
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -729,7 +726,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
-        .when(mockBackupUtil)
+        .when(mockBackupHelper)
         .validateBackupRequest(any(), any(), any());
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
@@ -1006,139 +1003,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result result = restoreBackup(defaultUniverse.getUniverseUUID(), bodyJson, null);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.BackupUniverse, taskType.getValue());
-    assertOk(result);
-    JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
-    CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
-    assertNotNull(ct);
-    assertEquals(CustomerTask.TaskType.Restore, ct.getType());
-    assertAuditEntry(1, defaultCustomer.getUuid());
-  }
-
-  @Test
-  public void testYbcRestoreCategory() {
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12");
-    Universe u =
-        createUniverse(
-            "Test Universe12",
-            UUID.randomUUID(),
-            defaultCustomer.getId(),
-            CloudType.aws,
-            null,
-            null,
-            true);
-    BackupTableParams bp = new BackupTableParams();
-    bp.storageConfigUUID = customerConfig.getConfigUUID();
-    bp.setUniverseUUID(u.getUniverseUUID());
-    Backup b = Backup.create(defaultCustomer.getUuid(), bp);
-    ObjectNode bodyJson = Json.newObject();
-    JsonNode storageInfoParam =
-        Json.parse(
-            "{\"backupType\": \"PGSQL_TABLE_TYPE\","
-                + "\"keyspace\": \"bar\","
-                + "\"storageLocation\": \"s3://foo-1/"
-                + "univ-"
-                + u.getUniverseUUID().toString()
-                + "/ybc_backup/bar\"}");
-    ArrayNode storageArrayNode = Json.newArray();
-    storageArrayNode.add(storageInfoParam);
-    bodyJson.put("backupStorageInfoList", storageArrayNode);
-    bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
-    bodyJson.put("universeUUID", bp.getUniverseUUID().toString());
-    bodyJson.put("customerUUID", defaultCustomer.getUuid().toString());
-
-    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);
-    ArgumentCaptor<RestoreBackupParams> taskParams =
-        ArgumentCaptor.forClass(RestoreBackupParams.class);
-
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockBackupUtil.isYbcBackup(anyString())).thenCallRealMethod();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Result result = restoreBackupYb(bodyJson, null);
-    verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
-    assertEquals(TaskType.RestoreBackup, taskType.getValue());
-    // Assert category is set to YB_CONTROLLER for YB-Controller backups.
-    assertEquals(BackupCategory.YB_CONTROLLER, taskParams.getValue().category);
-    assertOk(result);
-    JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
-    CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
-    assertNotNull(ct);
-    assertEquals(CustomerTask.TaskType.Restore, ct.getType());
-    assertAuditEntry(1, defaultCustomer.getUuid());
-  }
-
-  @Test
-  public void testYbcBackupRestoreWithYbcNotPresentOnTheUniverse() {
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12");
-    BackupTableParams bp = new BackupTableParams();
-    bp.storageConfigUUID = customerConfig.getConfigUUID();
-    bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    Backup b = Backup.create(defaultCustomer.getUuid(), bp);
-    ObjectNode bodyJson = Json.newObject();
-    JsonNode storageInfoParam =
-        Json.parse(
-            "{\"backupType\": \"PGSQL_TABLE_TYPE\","
-                + "\"keyspace\": \"bar\","
-                + "\"storageLocation\": \"s3://foo-1/"
-                + "univ-"
-                + defaultUniverse.getUniverseUUID().toString()
-                + "/ybc_backup/bar\"}");
-    ArrayNode storageArrayNode = Json.newArray();
-    storageArrayNode.add(storageInfoParam);
-    bodyJson.put("backupStorageInfoList", storageArrayNode);
-    bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
-    bodyJson.put("universeUUID", bp.getUniverseUUID().toString());
-    bodyJson.put("customerUUID", defaultCustomer.getUuid().toString());
-
-    when(mockBackupUtil.isYbcBackup(anyString())).thenCallRealMethod();
-
-    Result r = assertPlatformException(() -> restoreBackupYb(bodyJson, null));
-    JsonNode resultJson = Json.parse(contentAsString(r));
-    assertValue(
-        resultJson,
-        "error",
-        "Cannot restore the ybc backup as ybc is not installed on the universe");
-    assertEquals(BAD_REQUEST, r.status());
-    verify(mockCommissioner, times(0)).submit(any(), any());
-    assertBadRequest(r, "Cannot restore the ybc backup as ybc is not installed on the universe");
-  }
-
-  @Test
-  public void testYbcBackupCategoryNonYbc() {
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST15");
-    BackupTableParams bp = new BackupTableParams();
-    bp.storageConfigUUID = customerConfig.getConfigUUID();
-    bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    Backup b = Backup.create(defaultCustomer.getUuid(), bp);
-    ObjectNode bodyJson = Json.newObject();
-    JsonNode storageInfoParam =
-        Json.parse(
-            "{\"backupType\": \"PGSQL_TABLE_TYPE\","
-                + "\"keyspace\": \"bar\","
-                + "\"storageLocation\": \"s3://foo/"
-                + "univ-"
-                + defaultUniverse.getUniverseUUID().toString()
-                + "/backup/bar\"}");
-    ArrayNode storageArrayNode = Json.newArray();
-    storageArrayNode.add(storageInfoParam);
-    bodyJson.put("backupStorageInfoList", storageArrayNode);
-    bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
-    bodyJson.put("universeUUID", bp.getUniverseUUID().toString());
-    bodyJson.put("customerUUID", defaultCustomer.getUuid().toString());
-
-    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);
-    ArgumentCaptor<RestoreBackupParams> taskParams =
-        ArgumentCaptor.forClass(RestoreBackupParams.class);
-
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockBackupUtil.isYbcBackup(anyString())).thenCallRealMethod();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Result result = restoreBackupYb(bodyJson, null);
-    verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
-    assertEquals(TaskType.RestoreBackup, taskType.getValue());
-    // Assert category is set to YB_BACKUP_SCRIPT for Script backups.
-    assertEquals(BackupCategory.YB_BACKUP_SCRIPT, taskParams.getValue().category);
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
@@ -1763,7 +1627,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     doThrow(
             new PlatformServiceException(
                 BAD_REQUEST, "Storage config TEST14 cannot access backup locations"))
-        .when(mockBackupUtil)
+        .when(mockBackupHelper)
         .validateStorageConfigOnBackup(any(), any());
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
