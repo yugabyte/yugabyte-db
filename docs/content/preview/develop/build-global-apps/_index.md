@@ -31,7 +31,7 @@ To comply with data residency laws in each country, companies operating in that 
 
 When designing today's applications (eg. email, e-commerce websites, or broadcasting events like the Olympics), it's essential to consider that users could be located in various geographies. For instance, if your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, it's crucial to run your applications closer to your users.
 
-## The Significance of Application Design Patterns
+## Application design patterns
 
 Running applications in multiple data centers with data split across them is not a trivial task. YugabyteDB can be deployed in various configurations like single-region multi-zone or multi-region multi-zone configuration with ease. You can leverage some of our battle-tested design paradigms, which offer solutions to common problems faced in these scenarios. These proven paradigms offer solutions that can significantly accelerate your application development by saving time and resources that would otherwise be spent reinventing the wheel.
 
@@ -95,8 +95,6 @@ Partition your data and place them in a manner that the data belonging to nearby
 For more details, see  [Latency-optimized geo-partitioning](./latency-optimized-geo-partition)
 {{</tip>}}
 
-Adopting such design patterns can vastly accelerate your application development. These are proven paradigms that would save time without having to reinvent solutions.
-
 ### Follower Reads - Fast stale reads
 
 Read from local followers instead of going to the leaders in a different region.
@@ -104,3 +102,5 @@ Read from local followers instead of going to the leaders in a different region.
 {{<tip>}}
 For more details, see  [Follower Reads](./follower-reads)
 {{</tip>}}
+
+Adopting such design patterns can vastly accelerate your application development. These are proven paradigms that would save time without having to reinvent solutions.
