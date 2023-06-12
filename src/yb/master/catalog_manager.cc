@@ -408,12 +408,20 @@ DECLARE_CAPABILITY(TabletReportLimit);
 
 DEFINE_test_flag(int32, num_missing_tablets, 0, "Simulates missing tablets in a table");
 
-DEFINE_RUNTIME_int32(partitions_vtable_cache_refresh_secs, 0,
+DEFINE_RUNTIME_int32(partitions_vtable_cache_refresh_secs, 30,
     "Amount of time to wait before refreshing the system.partitions cached vtable. "
     "If generate_partitions_vtable_on_changes is true and this flag is > 0, then this background "
     "task will update the cached vtable using the internal map. "
     "If generate_partitions_vtable_on_changes is false and this flag is > 0, then this background "
     "task will be responsible for regenerating and updating the entire cached vtable.");
+
+DEFINE_RUNTIME_bool(invalidate_yql_partitions_cache_on_create_table, true,
+                    "Whether the YCQL system.partitions vtable cache should be invalidated "
+                    "on a create table. Note that this requires "
+                    "partitions_vtable_cache_refresh_secs > 0 and "
+                    "generate_partitions_vtable_on_changes = false in order to take effect. "
+                    "If set to true, then this will ensure that newly created tables will be seen "
+                    "immediately in system.partitions.");
 
 DEFINE_RUNTIME_int32(txn_table_wait_min_ts_count, 1,
     "Minimum Number of TS to wait for before creating the transaction status table."
@@ -4943,10 +4951,9 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
 
   // Sanity check that this table is present in system.partitions if it is a YCQL table.
   // Only check if we are automatically generating the vtable on changes. If we are creating via
-  // the bg task, then there may be a delay.
-  if (DCHECK_IS_ON() &&
-      IsYcqlTable(*table) &&
-      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
+  // the bg task, then see below where we invalidate the cache.
+  if (DCHECK_IS_ON() && IsYcqlTable(*table) &&
+      YQLPartitionsVTable::ShouldGeneratePartitionsVTableOnChanges() &&
       FLAGS_TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done) {
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
@@ -4954,6 +4961,14 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
     if (!FLAGS_TEST_create_table_in_running_state) {
       DCHECK(GetYqlPartitionsVtable().CheckTableIsPresent(table->id(), table->NumPartitions()));
     }
+  }
+
+  // On create table, invalidate the yql system.partitions cache - this will cause the next
+  // partitions query or the next bg thread rebuild to regenerate the cache and include the new
+  // table + tablets.
+  if (FLAGS_invalidate_yql_partitions_cache_on_create_table && IsYcqlTable(*table) &&
+      YQLPartitionsVTable::ShouldGeneratePartitionsVTableWithBgTask()) {
+    GetYqlPartitionsVtable().InvalidateCache();
   }
 
   // If this is a transactional table we are not done until the transaction status table is created.
@@ -12672,21 +12687,15 @@ void CatalogManager::RebuildYQLSystemPartitions() {
   // This task will keep running, but only want it to do anything if
   // FLAGS_partitions_vtable_cache_refresh_secs is explicitly set to some value >0.
   const bool use_bg_thread_to_update_cache =
-      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
+      YQLPartitionsVTable::ShouldGeneratePartitionsVTableOnChanges() &&
       FLAGS_partitions_vtable_cache_refresh_secs > 0;
 
-  if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() || use_bg_thread_to_update_cache) {
+  if (YQLPartitionsVTable::ShouldGeneratePartitionsVTableWithBgTask() ||
+      use_bg_thread_to_update_cache) {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.IsInitializedAndIsLeader()) {
       if (system_partitions_tablet_ != nullptr) {
-        Status s;
-        if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask()) {
-          // If we are not generating the vtable on changes, then we need to do a full refresh.
-          s = ResultToStatus(GetYqlPartitionsVtable().GenerateAndCacheData());
-        } else {
-          // Otherwise, we can simply update the cached vtable with the internal map.
-          s = GetYqlPartitionsVtable().UpdateCache();
-        }
+        Status s = ResultToStatus(GetYqlPartitionsVtable().GenerateAndCacheData());
         if (!s.ok()) {
           LOG(ERROR) << "Error rebuilding system.partitions: " << s.ToString();
         }
