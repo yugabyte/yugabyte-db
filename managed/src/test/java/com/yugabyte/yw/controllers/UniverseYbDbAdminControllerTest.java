@@ -33,6 +33,7 @@ import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.lang3.StringUtils;
@@ -280,5 +281,88 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       assertBadRequest(result, UniverseYbDbAdminHandler.RUN_QUERY_ISNT_ALLOWED);
       assertAuditEntry(0, customer.getUuid());
     }
+  }
+
+  @Test
+  public void testConfigureYSQL() {
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    ObjectNode bodyJson = Json.newObject().put("enableYSQL", false).put("enableYSQLAuth", false);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "cannot disable YSQL once it is enabled.");
+    updateUniverseAPIDetails(universe, false, false, true, false);
+    bodyJson.put("enableYSQL", true).put("ysqlPassword", "foo");
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Cannot set password while YSQL auth is disabled.");
+    bodyJson.put("enableYSQLAuth", true);
+    bodyJson.remove("ysqlPassword");
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Required password to configure YSQL auth.");
+    bodyJson.put("ysqlPassword", "foo");
+    when(mockCommissioner.submit(any(), any())).thenReturn(UUID.randomUUID());
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+  }
+
+  @Test
+  public void testConfigureYCQL() {
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, true, false, false);
+    ObjectNode bodyJson = Json.newObject().put("enableYCQL", false).put("enableYCQLAuth", true);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ycql";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Cannot enable YCQL auth when API is disabled.");
+    updateUniverseAPIDetails(universe, false, false, true, false);
+    bodyJson.put("enableYCQL", true).put("enableYCQLAuth", false).put("ycqlPassword", "foo");
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Cannot set password while YCQL auth is disabled.");
+    bodyJson.put("enableYCQLAuth", true);
+    bodyJson.remove("ycqlPassword");
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Required password to configure YCQL auth.");
+    bodyJson.put("ycqlPassword", "foo");
+    when(mockCommissioner.submit(any(), any())).thenReturn(UUID.randomUUID());
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+  }
+
+  private void updateUniverseAPIDetails(
+      Universe universe,
+      boolean enableYSQL,
+      boolean enableYSQLAuth,
+      boolean enableYCQL,
+      boolean enableYCQLAuth) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.enableYSQL = enableYSQL;
+    userIntent.enableYSQLAuth = enableYSQLAuth;
+    userIntent.enableYCQL = enableYCQL;
+    userIntent.enableYCQLAuth = enableYCQLAuth;
+    details.upsertPrimaryCluster(userIntent, null);
+    universe.setUniverseDetails(details);
+    universe.save();
   }
 }

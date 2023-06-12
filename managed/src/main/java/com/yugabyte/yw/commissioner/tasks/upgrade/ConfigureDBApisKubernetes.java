@@ -33,7 +33,6 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
-          taskParams().verifyParams(universe);
 
           // Reset password to default before disable.
           createResetAPIPasswordTask(taskParams(), getTaskSubGroupType());
