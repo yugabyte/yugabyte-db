@@ -237,8 +237,8 @@ DEFINE_test_flag(bool, tablet_verify_flushed_frontier_after_modifying, false,
 DEFINE_test_flag(bool, docdb_log_write_batches, false,
                  "Dump write batches being written to RocksDB");
 
-DEFINE_test_flag(bool, export_intentdb_metrics, false,
-                 "Dump intentsdb statistics to prometheus metrics");
+DEFINE_NON_RUNTIME_bool(export_intentdb_metrics, true,
+                    "Dump intentsdb statistics to prometheus metrics");
 
 DEFINE_test_flag(bool, pause_before_full_compaction, false,
                  "Pause before triggering full compaction.");
@@ -502,9 +502,9 @@ Tablet::Tablet(const TabletInitData& data)
     regulardb_statistics_ =
         rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_);
     intentsdb_statistics_ =
-        (GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics)
+        (GetAtomicFlag(&FLAGS_export_intentdb_metrics)
              ? rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_, true)
-             : rocksdb::CreateDBStatistics(table_metrics_entity_, nullptr, true));
+             : rocksdb::CreateDBStatistics(nullptr, nullptr, true));
 
     metrics_.reset(new TabletMetrics(table_metrics_entity_, tablet_metrics_entity_));
 
