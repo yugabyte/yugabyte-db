@@ -3215,7 +3215,8 @@ TEST_F_EX(CppCassandraDriverTest,
   // We are now just after a cache update, so we should expect that we only get the cached value
   // for the next kCacheRefreshSecs seconds.
 
-  // Add a table to update system.partitions again.
+  // Add a table to update system.partitions again. Don't invalidate the cache on this create.
+  ASSERT_OK(cluster_->SetFlagOnMasters("invalidate_yql_partitions_cache_on_create_table", "false"));
   ASSERT_OK(AddTable());
 
   // Check that we still get the same cached version as the bg task has not run yet.
@@ -3225,6 +3226,16 @@ TEST_F_EX(CppCassandraDriverTest,
   // Wait for the cache to update.
   SleepFor(MonoDelta::FromSeconds(kCacheRefreshSecs));
   // Verify that we get the new cached value.
+  new_results = ResultsToList(ASSERT_RESULT(session_.ExecuteWithResult(statement)));
+  ASSERT_NE(old_results, new_results);
+  old_results = new_results;
+
+  // Add another table to update system.partitions again, but this time enable the gflag to
+  // invalidate the cache.
+  ASSERT_OK(cluster_->SetFlagOnMasters("invalidate_yql_partitions_cache_on_create_table", "true"));
+  ASSERT_OK(AddTable());
+
+  // The cache was invalidated, so the new results should be updated.
   new_results = ResultsToList(ASSERT_RESULT(session_.ExecuteWithResult(statement)));
   ASSERT_NE(old_results, new_results);
   old_results = new_results;
