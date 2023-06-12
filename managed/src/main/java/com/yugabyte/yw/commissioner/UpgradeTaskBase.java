@@ -563,7 +563,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * Create a task to up update server conf files on DB nodes.
+   * Create a task to update server conf files on DB nodes.
    *
    * @param userIntent modified user intent of the current cluster.
    * @param nodes set of nodes on which the file needs to be updated.
