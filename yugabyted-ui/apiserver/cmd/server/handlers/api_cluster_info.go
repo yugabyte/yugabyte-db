@@ -6,6 +6,7 @@ import (
     "apiserver/cmd/server/models"
     "context"
     "encoding/json"
+    "errors"
     "fmt"
     "math"
     "net"
@@ -87,8 +88,11 @@ func getNodes(clusterType ...string) ([]string, error) {
                 }
                 replicationInfo := clusterConfigResponse.ClusterConfig.ReplicationInfo
                 if clusterType[0] == "READ_REPLICA" {
-                        readReplicaUuid := replicationInfo.ReadReplicas[0].PlacementUuid
-                        // readReplicaTablets := tabletServersResponse.Tablets[readReplicaUuid]
+                        readReplicas := replicationInfo.ReadReplicas
+                        if len(readReplicas) == 0 {
+                                return hostNames, errors.New("No Read Replica nodes Present.")
+                        }
+                        readReplicaUuid := readReplicas[0].PlacementUuid
                         for hostport := range tabletServersResponse.Tablets[readReplicaUuid] {
                                 host, _, err := net.SplitHostPort(hostport)
                                 if err == nil {

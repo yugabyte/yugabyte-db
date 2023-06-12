@@ -21,6 +21,10 @@ The following project is recommended for implementing PHP applications using the
 | :------ | :----------- |
 | php-pgsql Driver | [Hello World](ysql/) |
 
+| Project | Documentation and Guides | Example Apps |
+| ------- | ------------------------ | ------------ |
+| Laravel ORM | [Documentation](laravel/)<br />[Hello World](../orms/php/ysql-laravel/) | [Laravel ORM App](https://github.com/yugabyte/orm-examples/tree/master/php/laravel/)
+
 For fully-runnable code snippets and explanations of common operations, see the **example apps**. Before running the example apps, make sure you have installed the prerequisites.
 
 ## Prerequisites

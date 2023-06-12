@@ -94,9 +94,8 @@ class ByteBuffer {
   void Assign(Slice slice1, Slice slice2) {
     auto sum_sizes = slice1.size() + slice2.size();
     auto* out = EnsureCapacity(sum_sizes, 0);
-    memcpy(out, slice1.data(), slice1.size());
-    out += slice1.size();
-    memcpy(out, slice2.data(), slice2.size());
+    slice1.CopyTo(out);
+    slice2.CopyTo(out + slice1.size());
     size_ = sum_sizes;
   }
 

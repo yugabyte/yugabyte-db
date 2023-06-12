@@ -30,6 +30,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import junitparams.JUnitParamsRunner;
@@ -170,6 +171,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     "true, \"\", baz, baz, baz, false, true,",
     // cloud customer, neither YSQL nor YCQL user
     "true,,,,, false, false, Need to provide YSQL and/or YCQL username.",
+    // non-cloud customer but change in password of default user
+    "false, yugabyte, baz, cassandra, baz, true, true,"
   })
   // @formatter:on
   public void testSetDatabaseCredentials(
@@ -182,6 +185,13 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       boolean ycqlProcessed,
       String responseError) {
     Universe u = createUniverse(customer.getId());
+    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.enableYSQLAuth = true;
+    userIntent.enableYCQLAuth = true;
+    details.upsertPrimaryCluster(userIntent, null);
+    u.setUniverseDetails(details);
+    u.save();
     if (isCloudCustomer) {
       when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
     }

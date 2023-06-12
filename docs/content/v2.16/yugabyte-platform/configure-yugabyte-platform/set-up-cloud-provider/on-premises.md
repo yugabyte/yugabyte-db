@@ -62,7 +62,7 @@ type: docs
 
 </ul>
 
-<br>You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
+You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
 
 ## Configure the on-premises provider
 
@@ -161,8 +161,7 @@ You can manually provision each node using the preprovisioning Python script, as
     sudo docker exec -it yugaware bash
     ```
 
-1. Copy and paste the Python script prompted via the UI and substitute for a node IP address and mount points.
-Optionally, use the `--ask_password` flag if the sudo user requires password authentication, as follows:
+1. Copy and paste the Python script prompted via the UI and substitute for a node IP address and mount points. Optionally, use the `--ask_password` flag if the sudo user requires password authentication, as follows:
 
     ```bash
     /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py --ip 10.9.116.65 --mount_points /data --ask_password
@@ -189,13 +188,24 @@ If the SSH user configured in the on-premises provider does not have sudo privil
 
 For each node, perform the following:
 
-- [Set up time synchronization](#set-up-time-synchronization)
-- [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
-- [Preprovision the node](#preprovision-nodes-manually)
-- [Install Prometheus node exporter](#install-prometheus-node-exporter)
-- [Install backup utilities](#install-backup-utilities)
-- [Set crontab permissions](#set-crontab-permissions)
-- [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
+- [Configure the on-premises provider](#configure-the-on-premises-provider)
+  - [Complete the provider information](#complete-the-provider-information)
+  - [Configure hardware for YugabyteDB nodes](#configure-hardware-for-yugabytedb-nodes)
+  - [Define regions and zones](#define-regions-and-zones)
+- [Add YugabyteDB nodes](#add-yugabytedb-nodes)
+  - [Provision nodes manually](#provision-nodes-manually)
+    - [Running the preprovisioning script](#running-the-preprovisioning-script)
+    - [Setting up database nodes manually](#setting-up-database-nodes-manually)
+      - [Set up time synchronization](#set-up-time-synchronization)
+      - [Open incoming TCP/IP ports](#open-incoming-tcpip-ports)
+      - [Preprovision nodes manually](#preprovision-nodes-manually)
+      - [Install Prometheus node exporter](#install-prometheus-node-exporter)
+      - [Install backup utilities](#install-backup-utilities)
+      - [Set crontab permissions](#set-crontab-permissions)
+      - [Install systemd-related database service unit files](#install-systemd-related-database-service-unit-files)
+- [Remove YugabyteDB components from the server](#remove-yugabytedb-components-from-the-server)
+  - [Delete database server nodes](#delete-database-server-nodes)
+  - [Delete YugabyteDB Anywhere from the server](#delete-yugabytedb-anywhere-from-the-server)
 
 ##### Set up time synchronization
 
@@ -359,13 +369,13 @@ On each node, perform the following as a user with sudo access:
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
     sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
-    sudo adduser --shell /bin/bash prometheus # (also adds group “prometheus”)
+    sudo adduser --shell /bin/bash prometheus # (also adds group "prometheus")
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
     sudo chown -R prometheus:prometheus /var/log/prometheus
     sudo chown -R prometheus:prometheus /var/run/prometheus
     sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
-    sudo su - prometheus (user session is now as user “prometheus”)
+    sudo su - prometheus (user session is now as user "prometheus")
     ```
 
 1. Run the following commands as user `prometheus`:
@@ -547,333 +557,284 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    /bin/systemctl restart yb-collect_metrics, \
    /bin/systemctl enable yb-collect_metrics, \
    /bin/systemctl disable yb-collect_metrics, \
+   /bin/systemctl start yb-bind_check, \
+   /bin/systemctl stop yb-bind_check, \
+   /bin/systemctl restart yb-bind_check, \
+   /bin/systemctl enable yb-bind_check, \
+   /bin/systemctl disable yb-bind_check, \
+   /bin/systemctl start yb-controller, \
+   /bin/systemctl stop yb-controller, \
+   /bin/systemctl restart yb-controller, \
+   /bin/systemctl enable yb-controller, \
+   /bin/systemctl disable yb-controller, \
    /bin/systemctl daemon-reload
    ```
 
-2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):<br><br>
-
-   `yb-master.service`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte master service
-   Requires=network-online.target
-   After=network.target network-online.target multi-user.target
-   StartLimitInterval=100
-   StartLimitBurst=10
-
-   [Path]
-   PathExists=/home/yugabyte/master/bin/yb-master
-   PathExists=/home/yugabyte/master/conf/server.conf
-
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   # Start
-   ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
-   Restart=on-failure
-   RestartSec=5
-   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
-   KillMode=process
-   TimeoutStopFailureMode=terminate
-   KillSignal=SIGTERM
-   TimeoutStopSec=10
-   FinalKillSignal=SIGKILL
-   # Logs
-   StandardOutput=syslog
-   StandardError=syslog
-   # ulimit
-   LimitCORE=infinity
-   LimitNOFILE=1048576
-   LimitNPROC=12000
-
-   [Install]
-   WantedBy=default.target
-   ```
-
-   `yb-tserver.service`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte tserver service
-   Requires=network-online.target
-   After=network.target network-online.target multi-user.target
-   StartLimitInterval=100
-   StartLimitBurst=10
-
-   [Path]
-   PathExists=/home/yugabyte/tserver/bin/yb-tserver
-   PathExists=/home/yugabyte/tserver/conf/server.conf
-
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   # Start
-   ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
-   Restart=on-failure
-   RestartSec=5
-   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
-   KillMode=process
-   TimeoutStopFailureMode=terminate
-   KillSignal=SIGTERM
-   TimeoutStopSec=10
-   FinalKillSignal=SIGKILL
-   # Logs
-   StandardOutput=syslog
-   StandardError=syslog
-   # ulimit
-   LimitCORE=infinity
-   LimitNOFILE=1048576
-   LimitNPROC=12000
-
-   [Install]
-   WantedBy=default.target
-   ```
-
-   `yb-zip_purge_yb_logs.service`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte logs
-   Wants=yb-zip_purge_yb_logs.timer
-
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-   `yb-zip_purge_yb_logs.timer`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte logs
-   Requires=yb-zip_purge_yb_logs.service
-
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-zip_purge_yb_logs.service
-   # Run hourly at minute 0 (beginning) of every hour
-   OnCalendar=00/1:00
-
-   [Install]
-   WantedBy=timers.target
-   ```
-
-   `yb-clean_cores.service`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte clean cores
-   Wants=yb-clean_cores.timer
-
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-   `yb-clean_cores.timer`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte clean cores
-   Requires=yb-clean_cores.service
-
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-clean_cores.service
-   # Run every 10 minutes offset by 5 (5, 15, 25...)
-   OnCalendar=*:0/10:30
-
-   [Install]
-   WantedBy=timers.target
-   ```
-
-   `yb-collect_metrics.service`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte collect metrics
-   Wants=yb-collect_metrics.timer
-
-   [Service]
-   User=yugabyte
-   Group=yugabyte
-   Type=oneshot
-   WorkingDirectory=/home/yugabyte/bin
-   ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-   `yb-collect_metrics.timer`
-
-   ```sh
-   [Unit]
-   Description=Yugabyte collect metrics
-   Requires=yb-collect_metrics.service
-
-   [Timer]
-   User=yugabyte
-   Group=yugabyte
-   Unit=yb-collect_metrics.service
-   # Run every 1 minute
-   OnCalendar=*:0/1:0
-
-   [Install]
-   WantedBy=timers.target
-   ```
-
-### Use node agents
-
-To automate some of the steps outlined in [Provision nodes manually](#provision-nodes-manually), YugabyteDB Anywhere provides a node agent that you can run on each node meeting the following requirements:
-
-- The node has already been set up with the `yugabyte` user group and home.
-- The bi-directional communication between the node and YugabyteDB Anywhere has been established (that is, the IP address can reach the host and vice versa).
-
-#### Installation
-
-You can install a node agent as follows:
-
-1. Download the installer from YugabyteDB Anywhere using the API token of the Super Admin, as follows:
-
-   ```sh
-   curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
-   ```
-
-3. Verify that the installer file contains the script.
-
-3. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
-
-   ```sh
-   ./installer.sh -t install -u https://<yugabytedb_anywhere_address> -at <api_token>
-   ```
-
-   For example, if you execute `./installer.sh  -t install -u http://100.98.0.42:9000 -at 301fc382-cf06-4a1b-b5ef-0c8c45273aef`, expect the following output:
-
-   ```output
-   * Starting YB Node Agent install
-   * Creating Node Agent Directory
-   * Changing directory to node agent
-   * Creating Sub Directories
-   * Downloading YB Node Agent build package
-   * Getting Linux/amd64 package
-   * Downloaded Version - 2.17.1.0-PRE_RELEASE
-   * Extracting the build package
-   * The current value of Node IP is not set; Enter new value or enter to skip: 10.9.198.2
-   * The current value of Node Name is not set; Enter new value or enter to skip: Test
-   * Select your Onprem Provider
-   1. Provider ID: 41ac964d-1db2-413e-a517-2a8d840ff5cd, Provider Name: onprem
-           Enter the option number: 1
-   * Select your Instance Type
-   1. Instance Code: c5.large
-           Enter the option number: 1
-   * Select your Region
-   1. Region ID: dc0298f6-21bf-4f90-b061-9c81ed30f79f, Region Code: us-west-2
-           Enter the option number: 1
-   * Select your Zone
-   1. Zone ID: 99c66b32-deb4-49be-85f9-c3ef3a6e04bc, Zone Name: us-west-2c
-           Enter the option number: 1
-           • Completed Node Agent Configuration
-           • Node Agent Registration Successful
-   You can install a systemd service on linux machines by running node-agent-installer.sh -t install-service (Requires sudo access).
-   ```
-
-4. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
-
-   ```sh
-   sudo node-agent-installer.sh -t install-service
-   ```
-
-When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
-
-#### Registration
-
-To enable secured communication, the node agent is automatically registered during its installation so the YugabyteDB Anywhere is aware of its existence. You can also register and unregister the node agent manually during configuration.
-
-The following is the node agent registration command:
-
-```sh
-node-agent node register --api-token <api_token>
-```
-
-If you need to overwrite any previously configured values, you can use the following parameters within the registration command:
-
-- `--node_ip` represents the node IP address.
-- `--url` represents the YugabyteDB Anywhere address.
-
-For secured communication, YugabyteDB Anywhere generates a key pair (private, public, and server certificate) that is sent to the node agent as part of its registration process.
-
-<!--
-
-You can obtain a list of existing node agents using the following API:
-
-```http
-GET /api/v1/customers/<customer_id>/node_agents
-```
-
-To unregister a node agent, use the following API:
-
-```http
-DELETE /api/v1/customers/<customer_id>/node_agents/<node_agent_id>
-```
-
--->
-
-To unregister a node agent, use the following command:
-
-```sh
-node-agent node unregister
-```
-
-#### Operations
-
-Even though the node agent installation, configuration, and registration are sufficient, the following supplementary commands are also supported:
-
-- `node-agent node unregister` is used for unregistersing the node and node agent from YugabyteDB Anywhere. This can be done to restart the registration process.
-- `node-agent node register` is used for registering a node and node agent to YugabyteDB Anywhere if they were unregistered manually. Registering an already registered node agent fails as YugabyteDB Anywhere keeps a record of the node agent with this IP.
-- `node-agent service start` and `node-agent service stop` are used for starting or stopping the node agent as a gRPC server.
-- `node-agent node preflight-check` is used for checking if a node is configured as a YugabyteDB Anywhere node. After the node agent and the node have been registered with YugabyteDB Anywhere, this command can be run on its own, if the result needs to be published to YugabyteDB Anywhere. For more information, see [Preflight check](#preflight-check).
-
-#### Preflight check
-
-Once the node agent is installed, configured, and connected to YugabyteDB Anywhere, you can perform a series of preflight checks without sudo privileges by using the following command:
-
-```sh
-node-agent node preflight-check
-```
-
-The result of the check is forwarded to YugabyteDB Anywhere for validation. The validated information is posted in a tabular form on the terminal. If there is a failure against a required check, you can apply a fix and then rerun the preflight check.
-
-Expect an output similar to the following:
-
-![Result](/images/yp/node-agent-preflight-check.png)
-
-If the preflight check is successful, you would be able to add the node to the provider (if required) by executing the following:
-
-```sh
-node-agent node preflight-check --add_node
-```
+1. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):
+
+    `yb-master.service`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte master service
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    StartLimitInterval=100
+    StartLimitBurst=10
+
+    [Path]
+    PathExists=/home/yugabyte/master/bin/yb-master
+    PathExists=/home/yugabyte/master/conf/server.conf
+
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    # Start
+    ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
+    Restart=on-failure
+    RestartSec=5
+    # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+    KillMode=process
+    TimeoutStopFailureMode=terminate
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    FinalKillSignal=SIGKILL
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+    # ulimit
+    LimitCORE=infinity
+    LimitNOFILE=1048576
+    LimitNPROC=12000
+
+    [Install]
+    WantedBy=default.target
+    ```
+
+    `yb-tserver.service`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte tserver service
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    StartLimitInterval=100
+    StartLimitBurst=10
+
+    [Path]
+    PathExists=/home/yugabyte/tserver/bin/yb-tserver
+    PathExists=/home/yugabyte/tserver/conf/server.conf
+
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    # Start
+    ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
+    Restart=on-failure
+    RestartSec=5
+    # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+    KillMode=process
+    TimeoutStopFailureMode=terminate
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    FinalKillSignal=SIGKILL
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+    # ulimit
+    LimitCORE=infinity
+    LimitNOFILE=1048576
+    LimitNPROC=12000
+
+    [Install]
+    WantedBy=default.target
+    ```
+
+    `yb-zip_purge_yb_logs.service`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte logs
+    Wants=yb-zip_purge_yb_logs.timer
+
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    Type=oneshot
+    WorkingDirectory=/home/yugabyte/bin
+    ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+    `yb-zip_purge_yb_logs.timer`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte logs
+    Requires=yb-zip_purge_yb_logs.service
+
+    [Timer]
+    User=yugabyte
+    Group=yugabyte
+    Unit=yb-zip_purge_yb_logs.service
+    # Run hourly at minute 0 (beginning) of every hour
+    OnCalendar=00/1:00
+
+    [Install]
+    WantedBy=timers.target
+    ```
+
+    `yb-clean_cores.service`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte clean cores
+    Wants=yb-clean_cores.timer
+
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    Type=oneshot
+    WorkingDirectory=/home/yugabyte/bin
+    ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+    `yb-clean_cores.timer`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte clean cores
+    Requires=yb-clean_cores.service
+
+    [Timer]
+    User=yugabyte
+    Group=yugabyte
+    Unit=yb-clean_cores.service
+    # Run every 10 minutes offset by 5 (5, 15, 25...)
+    OnCalendar=*:0/10:30
+
+    [Install]
+    WantedBy=timers.target
+    ```
+
+    `yb-collect_metrics.service`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte collect metrics
+    Wants=yb-collect_metrics.timer
+
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    Type=oneshot
+    WorkingDirectory=/home/yugabyte/bin
+    ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+    `yb-collect_metrics.timer`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte collect metrics
+    Requires=yb-collect_metrics.service
+
+    [Timer]
+    User=yugabyte
+    Group=yugabyte
+    Unit=yb-collect_metrics.service
+    # Run every 1 minute
+    OnCalendar=*:0/1:0
+
+    [Install]
+    WantedBy=timers.target
+    ```
+
+    `yb-bind_check.service`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte IP Bind Check
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    Before=yb-controller.service yb-tserver.service yb-master.service yb-collect_metrics.timer
+    StartLimitInterval=100
+    StartLimitBurst=10
+
+    [Path]
+    PathExists=/home/yugabyte/controller/bin/yb-controller-server
+    PathExists=/home/yugabyte//controller/conf/server.conf
+
+    [Service]
+    # Start
+    ExecStart=/home/yugabyte/controller/bin/yb-controller-server \
+        --flagfile /home/yugabyte/controller/conf/server.conf \
+        --only_bind --logtostderr
+    Type=oneshot
+    KillMode=control-group
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+
+    [Install]
+    WantedBy=default.target
+    ```
+
+    `yb-controller.service`
+
+    ```sh
+    [Unit]
+    Description=Yugabyte Controller
+    Requires=network-online.target
+    After=network.target network-online.target multi-user.target
+    StartLimitInterval=100
+    StartLimitBurst=10
+
+    [Path]
+    PathExists=/home/yugabyte/controller/bin/yb-controller-server
+    PathExists=/home/yugabyte/controller/conf/server.conf
+
+    [Service]
+    User=yugabyte
+    Group=yugabyte
+    # Start
+    ExecStart=/home/yugabyte/controller/bin/yb-controller-server \
+        --flagfile /home/yugabyte/controller/conf/server.conf
+    Restart=always
+    RestartSec=5
+    # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+    KillMode=control-group
+    TimeoutStopFailureMode=terminate
+    KillSignal=SIGTERM
+    TimeoutStopSec=10
+    FinalKillSignal=SIGKILL
+    # Logs
+    StandardOutput=syslog
+    StandardError=syslog
+    # ulimit
+    LimitCORE=infinity
+    LimitNOFILE=1048576
+    LimitNPROC=12000
+
+    [Install]
+    WantedBy=default.target
+    ```
 
 ## Remove YugabyteDB components from the server
 
-As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
+As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete the node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
 
-You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
+You can manually remove YugabyteDB components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
 
 To completely eliminate all traces of YugabyteDB Anywhere and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).
 
@@ -881,7 +842,7 @@ To completely eliminate all traces of YugabyteDB Anywhere and configuration, you
 
 You can remove YugabyteDB components and configuration from the database server nodes as follows:
 
-- Login to the server node as the `yugabyte` user.
+- Log in to the server node as the `yugabyte` user.
 
 - Navigate to the `/home/yugabyte/bin` directory that contains a number of scripts including `yb-server-ctl.sh`. The arguments set in this script allow you to perform various functions on the YugabyteDB processes running on the node.
 
@@ -925,7 +886,7 @@ You may now choose to reverse the system settings that you configured in [Provis
 
 ### Delete YugabyteDB Anywhere from the server
 
-To remove YugabyteDB Anywhere and Replicated components from the host server, execute the following commands as the `root` user (or prepend `sudo` to each command) :
+To remove YugabyteDB Anywhere and Replicated components from the host server, execute the following commands as the `root` user (or prepend `sudo` to each command):
 
 ```sh
 systemctl stop replicated replicated-ui replicated-operator

@@ -753,7 +753,7 @@ class DocDBTableReader::GetHelperBase {
     DVLOG_WITH_PREFIX_AND_FUNC(4)
         << "Seek next column: "
         << dockv::SubDocKey::DebugSliceToString(*root_key_entry_);
-    reader_.iter_->SeekForward(root_key_entry_);
+    reader_.iter_->SeekForward(root_key_entry_->AsSlice());
     root_key_entry_->Truncate(root_doc_key_.size());
   }
 

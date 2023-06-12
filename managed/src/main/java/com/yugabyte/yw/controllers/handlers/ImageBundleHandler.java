@@ -31,7 +31,8 @@ public class ImageBundleHandler {
   }
 
   public UUID doCreate(Customer customer, Provider provider, ImageBundle bundle) {
-    CloudImageBundleSetup.Params taskParams = getCloudImageBundleParams(provider, bundle);
+    CloudImageBundleSetup.Params taskParams =
+        ImageBundleHandler.getCloudImageBundleParams(provider, bundle);
     UUID taskUUID = commissioner.submit(TaskType.CloudImageBundleSetup, taskParams);
 
     CustomerTask.create(
@@ -47,26 +48,24 @@ public class ImageBundleHandler {
   public void delete(UUID providerUUID, UUID iBUUID) {
     log.info("Deleting image bundle {} for provider {}.", iBUUID, providerUUID);
     providerEditRestrictionManager.tryEditProvider(
-        providerUUID,
-        () -> {
-          int imageBundleCount = ImageBundle.getImageBundleCount(providerUUID);
-          if (imageBundleCount == 1) {
-            throw new PlatformServiceException(
-                BAD_REQUEST,
-                "Minimum one image bundle must be associated with provider. Cannot delete");
-          }
-          ImageBundle bundle = ImageBundle.getOrBadRequest(providerUUID, iBUUID);
-          if (bundle.getUseAsDefault()) {
-            log.error(
-                "Image Bundle {} is currently marked as default. Cannot delete", bundle.getUuid());
-            throw new PlatformServiceException(
-                BAD_REQUEST,
-                String.format(
-                    "Image Bundle %s is currently marked as default. Cannot delete",
-                    bundle.getUuid()));
-          }
-          bundle.delete();
-        });
+        providerUUID, () -> doDelete(providerUUID, iBUUID));
+  }
+
+  public void doDelete(UUID providerUUID, UUID iBUUID) {
+    int imageBundleCount = ImageBundle.getImageBundleCount(providerUUID);
+    if (imageBundleCount == 1) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Minimum one image bundle must be associated with provider. Cannot delete");
+    }
+    ImageBundle bundle = ImageBundle.getOrBadRequest(providerUUID, iBUUID);
+    if (bundle.getUseAsDefault()) {
+      log.error("Image Bundle {} is currently marked as default. Cannot delete", bundle.getUuid());
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Image Bundle %s is currently marked as default. Cannot delete", bundle.getUuid()));
+    }
+    bundle.delete();
   }
 
   public ImageBundle edit(Provider provider, UUID iBUUID, ImageBundle bundle) {
@@ -96,7 +95,7 @@ public class ImageBundleHandler {
     return oBundle;
   }
 
-  public CloudImageBundleSetup.Params getCloudImageBundleParams(
+  public static CloudImageBundleSetup.Params getCloudImageBundleParams(
       Provider provider, ImageBundle bundle) {
     CloudImageBundleSetup.Params params = new CloudImageBundleSetup.Params();
     List<ImageBundle> imageBundles = new ArrayList<>();

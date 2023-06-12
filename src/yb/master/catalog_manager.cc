@@ -2213,6 +2213,16 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   return l->pb.replication_info();
 }
 
+Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(const TableInfoPtr& table) {
+  ReplicationInfoPB cluster_replication_info;
+  {
+    auto l = ClusterConfig()->LockForRead();
+    cluster_replication_info = l->pb.replication_info();
+  }
+  return CatalogManagerUtil::GetTableReplicationInfo(
+      table, GetTablespaceManager(), cluster_replication_info);
+}
+
 std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() const {
   SharedLock lock(tablespace_mutex_);
   return tablespace_manager_;
@@ -3080,7 +3090,7 @@ Status CatalogManager::ValidateSplitCandidateUnlocked(
     const scoped_refptr<TabletInfo>& tablet, const ManualSplit is_manual_split) {
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
   RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTable(
-      *tablet->table(), ignore_disabled_list));
+      tablet->table(), ignore_disabled_list));
   RETURN_NOT_OK(ValidateSplitCandidateTableCdcUnlocked(*tablet->table()));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
@@ -3535,27 +3545,24 @@ size_t GetNumReplicasFromPlacementInfo(const PlacementInfoPB& placement_info) {
       placement_info.num_replicas() : FLAGS_replication_factor;
 }
 
-Status CheckNumReplicas(const PlacementInfoPB& placement_info,
-                        const TSDescriptorVector& ts_descs,
-                        const vector<Partition>& partitions,
-                        CreateTableResponsePB* resp) {
-  auto max_tablets = FLAGS_max_create_tablets_per_ts * ts_descs.size();
-  auto num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
-  if (num_replicas > 1 && max_tablets > 0 && partitions.size() > max_tablets) {
-    std::string msg = Substitute("The requested number of tablets ($0) is over the permitted "
-                                 "maximum ($1)", partitions.size(), max_tablets);
-    Status s = STATUS(InvalidArgument, msg);
-    LOG(WARNING) << msg;
-    return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
-  }
-
-  return Status::OK();
-}
-
 std::string GetStatefulServiceTableName(const StatefulServiceKind& service_kind) {
   return ToLowerCase(StatefulServiceKind_Name(service_kind)) + "_table";
 }
 } // namespace
+
+Status CatalogManager::CanAddPartitionsToTable(
+    size_t desired_partitions, const PlacementInfoPB& placement_info) {
+  TSDescriptorVector ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
+  auto max_tablets = FLAGS_max_create_tablets_per_ts * ts_descs.size();
+  auto num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
+  if (num_replicas > 1 && max_tablets > 0 && desired_partitions > max_tablets) {
+    std::string msg = Substitute("The requested number of tablets ($0) is over the permitted "
+                                 "maximum ($1)", desired_partitions, max_tablets);
+    return STATUS(InvalidArgument, msg);
+  }
+  return Status::OK();
+}
 
 // Create a new table.
 // See README file in this directory for a description of the design.
@@ -3728,12 +3735,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     GetTableReplicationInfo(req.replication_info(), req.tablespace_id()));
   const PlacementInfoPB& placement_info = replication_info.live_replicas();
 
+  int num_tablets = VERIFY_RESULT(CalculateNumTabletsForTableCreation(req, schema, placement_info));
+  Status s = CanAddPartitionsToTable(num_tablets, placement_info);
+  if (!s.ok()) {
+    LOG(WARNING) << s;
+    return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
+  }
   const auto [partition_schema, partitions] =
-      VERIFY_RESULT(CreatePartitions(schema, placement_info, colocated, &req, resp));
+      VERIFY_RESULT(CreatePartitions(schema, num_tablets, colocated, &req, resp));
 
-  TSDescriptorVector all_ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
-  RETURN_NOT_OK(CheckNumReplicas(placement_info, all_ts_descs, partitions, resp));
 
   if (!FLAGS_TEST_skip_placement_validation_createtable_api) {
     ValidateReplicationInfoRequestPB validate_req;
@@ -3785,7 +3795,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   scoped_refptr<TableInfo> table;
   TabletInfos tablets;
-  Status s;
 
   // Whether the table is joining an existing colocation group - i.e. is a
   // colocated non-parent table.
@@ -7435,6 +7444,8 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& tab
 
 std::vector<TableInfoPtr> CatalogManager::GetTables(GetTablesMode mode) {
   std::vector<TableInfoPtr> result;
+  // Note: TableInfoPtr has a namespace_name field which was introduced in version 2.3.0. The data
+  // for this field is not backfilled (see GH17713/GH17712 for more details).
   {
     SharedLock lock(mutex_);
     auto tables_it = tables_->GetAllTables();
@@ -11571,10 +11582,11 @@ Result<int> CatalogManager::CalculateNumTabletsForTableCreation(
 }
 
 Result<std::pair<PartitionSchema, std::vector<Partition>>> CatalogManager::CreatePartitions(
-    const Schema& schema, const PlacementInfoPB& placement_info, bool colocated,
-    CreateTableRequestPB* request, CreateTableResponsePB* resp) {
-  int num_tablets = VERIFY_RESULT(CalculateNumTabletsForTableCreation(
-      *request, schema, placement_info));
+    const Schema& schema,
+    int num_tablets,
+    bool colocated,
+    CreateTableRequestPB* request,
+    CreateTableResponsePB* resp) {
   PartitionSchema partition_schema;
   vector<Partition> partitions;
   if (colocated) {

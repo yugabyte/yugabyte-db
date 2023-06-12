@@ -393,7 +393,7 @@ void SetAtomicFlag(U value, T* flag) {
 template <class T>
 void AtomicFlagSleepMs(T* flag) {
   auto value = GetAtomicFlag(flag);
-  if (value != 0) {
+  if (PREDICT_FALSE(value != 0)) {
     std::this_thread::sleep_for(std::chrono::milliseconds(value));
   }
 }

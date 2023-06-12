@@ -140,6 +140,9 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   int count = 0;
   YBCTestGetTypeTable(&type_table, &count);
   YBCPgCallbacks callbacks;
+  auto* session_stats =
+      static_cast<YBCPgExecStatsState*>(PggateTestAlloc(sizeof(YBCPgExecStatsState)));
+  memset(session_stats, 0, sizeof(YBCPgExecStatsState));
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
 
@@ -158,7 +161,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   YBCInitPgGate(type_table, count, callbacks);
 
   // Setup session.
-  CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* database_name */));
+  CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* database_name */, session_stats));
 
   // Setup database
   SetupDB();

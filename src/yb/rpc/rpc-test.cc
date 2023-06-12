@@ -950,7 +950,7 @@ TEST_F(TestRpc, DumpTimedOutCall) {
   thread.join();
 }
 
-#if defined(YB_TCMALLOC_ENABLED) && defined(YB_GPERFTOOLS_TCMALLOC)
+#if YB_GPERFTOOLS_TCMALLOC
 
 namespace {
 
@@ -968,14 +968,14 @@ TEST_F(TestRpc, SendingQueueMemoryUsage) {
   MemoryUsage current, latest_before_realloc;
 
   StartAllocationsTracking();
-  const auto heap_allocated_bytes_initial = MemTracker::GetTCMallocCurrentAllocatedBytes();
+  const auto heap_allocated_bytes_initial = GetTCMallocCurrentAllocatedBytes();
   while (current.heap_allocated_bytes < 1_MB) {
     auto data_ptr = std::make_shared<StringOutboundData>(
         kEmptyMsgLengthPrefix, kMsgLengthPrefixLength, "Empty message");
     sending.emplace_back(data_ptr, tracker);
 
     const size_t heap_allocated_bytes =
-        MemTracker::GetTCMallocCurrentAllocatedBytes() - heap_allocated_bytes_initial;
+        GetTCMallocCurrentAllocatedBytes() - heap_allocated_bytes_initial;
     if (heap_allocated_bytes != current.heap_allocated_bytes) {
       latest_before_realloc = current;
     }
@@ -1008,7 +1008,7 @@ TEST_F(TestRpc, SendingQueueMemoryUsage) {
       latest_before_realloc.heap_requested_bytes * kMemoryAllocationAccuracyHighLimit);
 }
 
-#endif // defined(YB_TCMALLOC_ENABLED)
+#endif // YB_GPERFTOOLS_TCMALLOC
 
 namespace {
 
@@ -1087,10 +1087,10 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
     constexpr auto target_memory_consumption = kMemoryLimitHardBytes * 0.6;
     wait_status = LoggedWaitFor(
         [] {
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
           // Don't rely on root mem tracker consumption, since it includes memory released by
           // the application, but not yet released by TCMalloc.
-          const auto consumption = MemTracker::GetTCMallocCurrentAllocatedBytes();
+          const auto consumption = GetTCMallocCurrentAllocatedBytes();
 #else
           // For TSAN/ASAN we don't have TCMalloc and rely on root mem tracker consumption.
           const auto consumption = MemTracker::GetRootTracker()->consumption();

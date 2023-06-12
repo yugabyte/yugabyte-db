@@ -40,7 +40,7 @@ class ScanChoices {
   virtual bool FinishedWithScanChoices() const { return finished_; }
 
   // Go to the next scan target if any.
-  virtual Status DoneWithCurrentTarget() = 0;
+  virtual Result<bool> DoneWithCurrentTarget() = 0;
 
   // Go (directly) to the new target (or the one after if new_target does not
   // exist in the desired list/range). If the new_target is larger than all scan target options it
@@ -53,7 +53,7 @@ class ScanChoices {
 
   // If the given doc_key isn't already at the desired target, seek appropriately to go to the
   // current target.
-  virtual Status SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) = 0;
+  virtual void SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) = 0;
 
   // Append KeyEntryValue to target. After every append, we need to check if it is the last hash key
   // column. Subsequently, we need to add a kGroundEnd after that if it is the last hash key cokumn.
@@ -284,8 +284,8 @@ class HybridScanChoices : public ScanChoices {
       const dockv::KeyBytes& upper_doc_key);
 
   Result<bool> SkipTargetsUpTo(const Slice& new_target) override;
-  Status DoneWithCurrentTarget() override;
-  Status SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) override;
+  Result<bool> DoneWithCurrentTarget() override;
+  void SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) override;
 
  protected:
   friend class ScanChoicesTest;

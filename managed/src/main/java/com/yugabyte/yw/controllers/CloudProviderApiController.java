@@ -127,21 +127,6 @@ public class CloudProviderApiController extends AuthenticatedController {
       Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-
-    if (!runtimeConfigFactory
-        .globalRuntimeConf()
-        .getBoolean("yb.provider.allow_used_provider_edit")) {
-      // Relaxing the edit provider call for used provider based on runtime flag
-      // If disabled we will not allow editing of used providers.
-      long universeCount = provider.getUniverseCount();
-      if (universeCount > 0) {
-        throw new PlatformServiceException(
-            FORBIDDEN,
-            String.format(
-                "There %s %d universe%s using this provider, cannot modify",
-                universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
-      }
-    }
     JsonNode requestBody = mayBeMassageRequest(request.body().asJson(), true);
 
     Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);

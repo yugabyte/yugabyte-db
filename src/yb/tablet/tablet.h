@@ -42,6 +42,7 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_types.pb.h"
 
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/key_bounds.h"
@@ -331,9 +332,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   Status ApplyKeyValueRowOperations(
-      int64_t batch_idx, // index of this batch in its transaction
+      int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch,
-      const rocksdb::UserFrontiers* frontiers,
+      docdb::ConsensusFrontiers* frontiers,
       HybridTime hybrid_time,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
 

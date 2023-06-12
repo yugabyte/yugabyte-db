@@ -70,14 +70,10 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   void Seek(Slice key) override;
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
-  // doesn't have hybrid time). For efficiency, the method that takes a non-const KeyBytes pointer
-  // avoids memory allocation by using the KeyBytes buffer to prepare the key to seek to, and may
-  // append up to kMaxBytesPerEncodedHybridTime + 1 bytes of data to the buffer. The appended data
-  // is removed when the method returns.
+  // doesn't have hybrid time).
   void SeekForward(Slice key) override;
-  void SeekForward(dockv::KeyBytes* key) override;
 
-  void SkipSeekForward(dockv::KeyBytes* key);
+  void SkipSeekForward(Slice key);
 
   // Seek past specified subdoc key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
@@ -164,7 +160,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // PushPrefix.
   void PopPrefix(Slice prefix);
 
-  void DoSeekForward(dockv::KeyBytes* key);
+  void DoSeekForward(Slice key);
 
   // Seek forward on regular sub-iterator.
   void SeekForwardRegular(Slice slice);
@@ -184,7 +180,8 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // 2 - record has hybrid time > read limit: will skip all records for this key, since all of
   // them are after earliest record which is after read limit. Then will act the same way on
   // previous key.
-  void SkipFutureRecords(Direction direction);
+  template <Direction direction>
+  void SkipFutureRecords();
 
   // Skips intents with hybrid time after read limit.
   void SkipFutureIntents();
@@ -271,7 +268,8 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   void UpdatePlannedIntentSeekForward(
       Slice key, Slice suffix, bool use_suffix_for_prefix = true);
 
-  bool NextRegular(Direction direction);
+  template <Direction direction>
+  bool NextRegular();
 
   void HandleStatus(const Status& status);
 
@@ -305,9 +303,10 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // case of intent is written by current transaction (stored in txn_op_context_).
   EncodedDocHybridTime resolved_intent_txn_dht_;
   EncodedDocHybridTime intent_dht_from_same_txn_{EncodedDocHybridTime::kMin};
-  dockv::KeyBytes resolved_intent_sub_doc_key_encoded_;
+  KeyBuffer resolved_intent_sub_doc_key_encoded_;
   dockv::KeyBytes resolved_intent_value_;
 
+  // Prefix data stored externally and caller should guarantee its lifetime.
   Slice prefix_;
   TransactionStatusCache transaction_status_cache_;
 
@@ -317,8 +316,8 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   SeekIntentIterNeeded seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
 
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
-  dockv::KeyBytes seek_key_buffer_;
-  Slice seek_key_prefix_;
+  KeyBuffer planned_intent_seek_buffer_;
+  Slice planned_intent_seek_prefix_;
 };
 
 class NODISCARD_CLASS IntentAwareIteratorPrefixScope {

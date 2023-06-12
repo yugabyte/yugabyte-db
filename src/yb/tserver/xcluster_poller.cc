@@ -77,7 +77,8 @@ XClusterPoller::XClusterPoller(
     bool use_local_tserver,
     const std::vector<TabletId>& global_transaction_status_tablets,
     bool enable_replicate_transaction_status_table,
-    SchemaVersion last_compatible_consumer_schema_version)
+    SchemaVersion last_compatible_consumer_schema_version,
+    rocksdb::RateLimiter* rate_limiter)
     : producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
       op_id_(consensus::MinimumOpId()),
@@ -93,7 +94,8 @@ XClusterPoller::XClusterPoller(
           std::bind(&XClusterPoller::HandleApplyChanges, this, _1),
           use_local_tserver,
           global_transaction_status_tablets,
-          enable_replicate_transaction_status_table)),
+          enable_replicate_transaction_status_table,
+          rate_limiter)),
       producer_client_(producer_client),
       thread_pool_(thread_pool),
       rpcs_(rpcs),

@@ -42,13 +42,13 @@ YugabyteDB replicates data across nodes (or fault domains) in order to tolerate 
 
 Replication of data in DocDB is achieved at the level of tablets, using tablet peers, with each table sharded into a set of tablets, as demonstrated in the following diagram:
 
-<img src="/images/architecture/replication/tablets_in_a_docsb_table.png" style="max-width:750px;"/>
+![Tablets in a table](/images/architecture/replication/tablets_in_a_docsb_table.png)
 
 Each tablet comprises of a set of tablet peers, each of which stores one copy of the data belonging to the tablet. There are as many tablet peers for a tablet as the replication factor, and they form a Raft group. The tablet peers are hosted on different nodes to allow data redundancy to protect against node failures. The replication of data between the tablet peers is strongly consistent.
 
 The following diagram depicts three tablet peers that belong to a tablet called `tablet 1`. The tablet peers are hosted on different YB-TServers and form a Raft group for leader election, failure detection, and replication of the write-ahead logs.
 
-![raft_replication](/images/architecture/raft_replication.png)
+![RAFT Replication](/images/architecture/raft_replication.png)
 
 ### Raft replication
 
@@ -56,7 +56,7 @@ As soon as a tablet initiates, it elects one of the tablet peers as the tablet l
 
 The set of DocDB updates depends on the user-issued write, and involves locking a set of keys to establish a strict update order, and optionally reading the older value to modify and update in case of a read-modify-write operation. The Raft log is used to ensure that the database state-machine of a tablet is replicated amongst the tablet peers with strict ordering and correctness guarantees even in the face of failures or membership changes. This is essential to achieving strong consistency.
 
-Once the Raft log is replicated to a majority of tablet-peers and successfully persisted on the majority, the write is applied into the DocDB document storage layer and is subsequently available for reads. Once the write is persisted on disk by the document storage layer, the write entries can be purged from the Raft log. This is performed as a controlled background operation without any impact to the foreground operations.
+After the Raft log is replicated to a majority of tablet-peers and successfully persisted on the majority, the write is applied into the DocDB document storage layer and is subsequently available for reads. After the write is persisted on disk by the document storage layer, the write entries can be purged from the Raft log. This is performed as a controlled background operation without any impact to the foreground operations.
 
 ## Replication in a cluster
 
@@ -64,29 +64,29 @@ The replicas of data can be placed across multiple fault domains. The following 
 
 ### Multi-zone deployment
 
-In the case of a multi-zone deployement, the data in each of the tablets in a node is replicated across multiple zones using the Raft consensus algorithm. All the read and write queries for the rows that belong to a given tablet are handled by that tablet’s leader, as per the following diagram:
+In the case of a multi-zone deployment, the data in each of the tablets in a node is replicated across multiple zones using the Raft consensus algorithm. All the read and write queries for the rows that belong to a given tablet are handled by that tablet's leader, as per the following diagram:
 
-<img src="/images/architecture/replication/raft-replication-across-zones.png" style="max-width:750px;"/>
+![Replication across zones](/images/architecture/replication/raft-replication-across-zones.png)
 
 As a part of the Raft replication, each tablet peer first elects a tablet leader responsible for serving reads and writes. The distribution of tablet leaders across different zones is determined by a user-specified data placement policy, which, in the preceding scenario, ensures that in the steady state, each of the zones has an equal number of tablet leaders. The following diagram shows how the tablet leaders are dispersed:
 
-<img src="/images/architecture/replication/optimal-tablet-leader-placement.png" style="max-width:750px;"/>
+![Tablet leader placement](/images/architecture/replication/optimal-tablet-leader-placement.png)
 
 ### Tolerating a zone outage
 
 As soon as a zone outage occurs, YugabyteDB assumes that all nodes in that zone become unavailable simultaneously. This results in one-third of the tablets (which have their tablet leaders in the zone that just failed) not being able to serve any requests. The other two-thirds of the tablets are not affected. The following illustration shows the tablet peers in the zone that failed:
 
-<img src="/images/architecture/replication/tablet-leaders-vs-followers-zone-outage.png" style="max-width:750px;"/>
+![Tablet peers in a failed zone](/images/architecture/replication/tablet-leaders-vs-followers-zone-outage.png)
 
 For the affected one-third, YugabyteDB automatically performs a failover to instances in the other two zones. Once again, the tablets being failed over are distributed across the two remaining zones evenly, as per the following diagram:
 
-<img src="/images/architecture/replication/automatic-failover-zone-outage.png" style="max-width:750px;"/>
+![Automatic failover](/images/architecture/replication/automatic-failover-zone-outage.png)
 
 ### RPO and RTO on zone outage
 
 The recovery point objective (RPO) for each of these tablets is 0, meaning no data is lost in the failover to another zone. The recovery time objective (RTO) is 3 seconds, which is the time window for completing the failover and becoming operational out of the new zones, as per the following diagram:
 
-<img src="/images/architecture/replication/rpo-vs-rto-zone-outage.png" style="max-width:750px;"/>
+![RPO vs RTO](/images/architecture/replication/rpo-vs-rto-zone-outage.png)
 
 ## Follower reads
 

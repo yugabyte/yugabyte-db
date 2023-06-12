@@ -489,8 +489,8 @@ Status GetRedisSubDocument(
     subkey.AppendToKey(&key_bytes);
     key_bytes.Reserve(key_bytes.size() + kMaxBytesPerEncodedHybridTime + 1);
     // This seek is to initialize the iterator for BuildSubDocument call.
-    IntentAwareIteratorPrefixScope prefix_scope(key_bytes, db_iter);
-    db_iter->SeekForward(&key_bytes);
+    IntentAwareIteratorPrefixScope subkey_prefix_scope(key_bytes, db_iter);
+    db_iter->SeekForward(key_bytes);
     SubDocument descendant(ValueEntryType::kInvalid);
     int64 num_values_observed = 0;
     RETURN_NOT_OK(BuildSubDocument(

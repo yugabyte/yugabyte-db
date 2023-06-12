@@ -27,6 +27,8 @@
 
 #include "yb/master/master_client.fwd.h"
 
+#include "yb/rocksdb/rate_limiter.h"
+
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
@@ -37,6 +39,11 @@
 
 #include <boost/optional.hpp>
 
+namespace rocksdb {
+
+class RateLimiter;
+
+}
 namespace yb {
 
 class Thread;
@@ -480,6 +487,8 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // Used to protect tablet_checkpoints_ and stream_metadata_ maps.
   mutable rw_spinlock mutex_;
+
+  std::unique_ptr<rocksdb::RateLimiter> rate_limiter_;
 
   std::unique_ptr<Impl> impl_;
 

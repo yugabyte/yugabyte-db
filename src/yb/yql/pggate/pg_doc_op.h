@@ -228,7 +228,7 @@ class PgDocResponse {
   explicit PgDocResponse(ProviderPtr provider);
 
   bool Valid() const;
-  Result<Data> Get(MonoDelta* wait_time);
+  Result<Data> Get();
 
  private:
   std::variant<PerformFuture, ProviderPtr> holder_;
@@ -308,14 +308,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   Status CreateRequests();
 
   const PgTable& table() const { return table_; }
-
-  // RPC stats for EXPLAIN ANALYZE
-  void GetAndResetReadRpcStats(uint64_t* read_rpc_count, uint64_t* read_rpc_wait_time) {
-    *read_rpc_count = read_rpc_count_;
-    read_rpc_count_ = 0;
-    *read_rpc_wait_time = read_rpc_wait_time_.ToNanoseconds();
-    read_rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
-  }
 
  protected:
   PgDocOp(
@@ -412,10 +404,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   // Output parameter of the execution.
   std::string out_param_backfill_spec_;
-
-  // Read RPC stats for EXPLAIN ANALYZE.
-  uint64_t read_rpc_count_ = 0;
-  MonoDelta read_rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
 
  private:
   Status SendRequest(ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);

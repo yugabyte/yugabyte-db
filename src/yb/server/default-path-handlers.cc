@@ -57,7 +57,7 @@
 #include <boost/algorithm/string.hpp>
 #include "yb/util/string_case.h"
 
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
 #endif
 

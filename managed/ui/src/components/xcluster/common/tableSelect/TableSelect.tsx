@@ -445,10 +445,9 @@ export const TableSelect = (props: TableSelectProps) => {
                   YBA support for transactional atomicity has the following constraints:
                   <ol>
                     <li>
-                      The minimum YBDB version that supports transactional atomicity is 2.17.3.0-b2.
+                      The minimum YBDB version that supports transactional atomicity is 2.18.1.0-b1.
                     </li>
                     <li>PITR must be enabled on the target universe.</li>
-                    <li>enable_pg_savepoint must be set to false for both tserver and master</li>
                     <li>
                       Neither the source universe nor the target universe universe is a participant
                       in any other xCluster configuration.

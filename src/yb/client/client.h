@@ -618,7 +618,8 @@ class YBClient {
   // If primary_only is set to true, we expect the primary/sync cluster tserver count only.
   // If use_cache is set to true, we return old value.
   Status TabletServerCount(int *tserver_count, bool primary_only = false,
-      bool use_cache = false);
+      bool use_cache = false, const std::string* tablespace_id = nullptr,
+      const master::ReplicationInfoPB* replication_info = nullptr);
 
   Result<std::vector<YBTabletServer>> ListTabletServers();
 
@@ -785,7 +786,9 @@ class YBClient {
   // Get the number of tablets to be created for a new user table.
   // This will be based on --num_shards_per_tserver or --ysql_num_shards_per_tserver
   // and number of tservers.
-  Result<int> NumTabletsForUserTable(TableType table_type);
+  Result<int> NumTabletsForUserTable(
+      TableType table_type, const std::string* tablespace_id = nullptr,
+      const master::ReplicationInfoPB* replication_info = nullptr);
 
   void TEST_set_admin_operation_timeout(const MonoDelta& timeout);
 

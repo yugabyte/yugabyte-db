@@ -167,6 +167,8 @@ class MiniCluster : public MiniClusterBase {
   // elected within kMasterLeaderElectionWaitTimeSeconds. May block until a leader Master is ready.
   Result<master::MiniMaster*> GetLeaderMiniMaster();
 
+  Result<TabletServerId> StepDownMasterLeader(const std::string& new_leader_uuid = "");
+
   ssize_t LeaderMasterIdx();
 
   // Returns the Master at index 'idx' for this MiniCluster.

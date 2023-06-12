@@ -963,7 +963,7 @@ Status TabletSplitExternalMiniClusterITest::WaitForAnySstFiles(
 
 Status TabletSplitExternalMiniClusterITest::WaitTServerToBeQuietOnTablet(
     itest::TServerDetails* ts_desc, const TabletId& tablet_id) {
-  return itest::WaitForServerToBeQuite(10s * kTimeMultiplier, { ts_desc }, tablet_id,
+  return itest::WaitForServerToBeQuiet(10s * kTimeMultiplier, { ts_desc }, tablet_id,
       /* last_logged_opid = */ nullptr, itest::MustBeCommitted::kTrue);
 }
 
@@ -995,7 +995,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
       cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>(), &cluster_->proxy_cache()));
 
   // Wait until WRITE_OP is replicated across all peers.
-  RETURN_NOT_OK(itest::WaitForServerToBeQuite(10s * kTimeMultiplier, ts_map, tablet_id,
+  RETURN_NOT_OK(itest::WaitForServerToBeQuiet(10s * kTimeMultiplier, ts_map, tablet_id,
       /* last_logged_opid = */ nullptr, itest::MustBeCommitted::kTrue));
 
   RETURN_NOT_OK(FlushTestTable());

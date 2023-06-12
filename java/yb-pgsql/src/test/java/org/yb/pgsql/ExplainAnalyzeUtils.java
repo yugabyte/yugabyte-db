@@ -35,10 +35,22 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_VALUES_SCAN = "Values Scan";
   public static final String NODE_YB_SEQ_SCAN = "YB Seq Scan";
 
+  public static final String OPERATION_INSERT = "Insert";
+  public static final String OPERATION_UPDATE = "Update";
+
+  public static final String RELATIONSHIP_OUTER_TABLE = "Outer";
+  public static final String RELATIONSHIP_INNER_TABLE = "Inner";
+
   public interface TopLevelCheckerBuilder extends ObjectCheckerBuilder {
     TopLevelCheckerBuilder plan(ObjectChecker checker);
     TopLevelCheckerBuilder storageReadRequests(ValueChecker<Long> checker);
+    TopLevelCheckerBuilder storageReadExecutionTime(ValueChecker<Double> checker);
     TopLevelCheckerBuilder storageWriteRequests(ValueChecker<Long> checker);
+    TopLevelCheckerBuilder catalogReadRequests(ValueChecker<Long> checker);
+    TopLevelCheckerBuilder catalogReadExecutionTime(ValueChecker<Double> checker);
+    TopLevelCheckerBuilder catalogWriteRequests(ValueChecker<Long> checker);
+    TopLevelCheckerBuilder storageFlushRequests(ValueChecker<Long> checker);
+    TopLevelCheckerBuilder storageFlushExecutionTime(ValueChecker<Double> checker);
     TopLevelCheckerBuilder storageExecutionTime(ValueChecker<Double> checker);
   }
 
@@ -46,13 +58,29 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder alias(String value);
     PlanCheckerBuilder indexName(String value);
     PlanCheckerBuilder nodeType(String value);
+    PlanCheckerBuilder operation(String value);
     PlanCheckerBuilder planRows(ValueChecker<Long> checker);
     PlanCheckerBuilder plans(Checker... checker);
     PlanCheckerBuilder relationName(String value);
+    PlanCheckerBuilder parentRelationship(String value);
+    PlanCheckerBuilder actualLoops(ValueChecker<Long> checker);
+
+    // Table Reads
     PlanCheckerBuilder storageTableReadRequests(ValueChecker<Long> checker);
-    PlanCheckerBuilder storageTableExecutionTime(ValueChecker<Double> checker);
+    PlanCheckerBuilder storageTableReadExecutionTime(ValueChecker<Double> checker);
+
+    // Table Writes
+    PlanCheckerBuilder storageTableWriteRequests(ValueChecker<Long> checker);
+
+    // Index Reads
     PlanCheckerBuilder storageIndexReadRequests(ValueChecker<Long> checker);
-    PlanCheckerBuilder storageIndexExecutionTime(ValueChecker<Double> checker);
+    PlanCheckerBuilder storageIndexReadExecutionTime(ValueChecker<Double> checker);
+
+    // Index Writes
+    PlanCheckerBuilder storageIndexWriteRequests(ValueChecker<Long> checker);
+
+    // Catalog Reads
+    PlanCheckerBuilder storageCatalogReadRequests(ValueChecker<Long> checker);
   }
 
   private static void testExplain(

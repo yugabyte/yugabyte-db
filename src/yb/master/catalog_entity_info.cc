@@ -429,6 +429,8 @@ const NamespaceId TableInfo::namespace_id() const {
   return LockForRead()->namespace_id();
 }
 
+// namespace_name can be null if table was created on version < 2.3.0 (see GH17713/GH17712 for more
+// details)
 const NamespaceName TableInfo::namespace_name() const {
   return LockForRead()->namespace_name();
 }

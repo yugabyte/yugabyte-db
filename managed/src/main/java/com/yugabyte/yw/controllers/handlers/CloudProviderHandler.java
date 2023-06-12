@@ -45,12 +45,14 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -120,11 +122,11 @@ public class CloudProviderHandler {
   @Inject private Config config;
   @Inject private CloudQueryHelper queryHelper;
   @Inject private AccessKeyRotationUtil accessKeyRotationUtil;
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject private AWSInitializer awsInitializer;
   @Inject private GCPInitializer gcpInitializer;
   @Inject private AZUInitializer azuInitializer;
+  @Inject private RuntimeConfGetter confGetter;
 
   public UUID delete(Customer customer, UUID providerUUID) {
     CloudProviderDelete.Params params = new CloudProviderDelete.Params();
@@ -823,11 +825,149 @@ public class CloudProviderHandler {
     return taskUUID;
   }
 
+  private void validateProviderEditPayload(Provider provider, Provider editProviderReq) {
+    /*
+     * For the providers associated with the running universes, we will only allow properties
+     * that does not impact the running universes.
+     * Things that can be modified.
+     * 1. Region/Availablity Zone addition to the provider.
+     * 2. Removal of region/availability zone from the provider, in case they are not used.
+     * 3. Addition of new access keys, we will not allow removal of the existing ones.
+     * 4. Addition of new image bundles/ removal of unused image bundles.
+     */
+
+    // Check if provider details are being modified
+    if (!provider.getDetails().equals(editProviderReq.getDetails())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Modifying provider details is not allowed for providers in use.");
+    }
+
+    // Collect existing and current regions into maps
+    Map<String, Region> existingRegions =
+        provider.getRegions().stream().collect(Collectors.toMap(r -> r.getCode(), r -> r));
+    Map<String, Region> currentRegions =
+        editProviderReq.getRegions().stream().collect(Collectors.toMap(r -> r.getCode(), r -> r));
+
+    // Compute regions to be deleted
+    Map<String, Region> regionsToBeDeleted =
+        existingRegions.entrySet().stream()
+            .filter(entry -> !currentRegions.containsKey(entry.getKey()))
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+    // Check if any regions to be deleted are associated with universes
+    regionsToBeDeleted.forEach(
+        (code, region) -> {
+          if (region.getNodeCount() > 0) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot delete region %s as it is associated with running universes.", code));
+          }
+        });
+
+    // Iterate through current regions
+    for (Region currentRegion : editProviderReq.getRegions()) {
+      String regionCode = currentRegion.getCode();
+
+      // Check if the region exists in the existing regions
+      if (existingRegions.containsKey(regionCode)) {
+        Region existingRegion = existingRegions.get(regionCode);
+
+        // Check if region details are being modified & the region is in use by universe.
+        if (existingRegion.isUpdateNeeded(currentRegion) && existingRegion.getNodeCount() > 0) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Modifying region %s details is not allowed for providers in use.", regionCode));
+        }
+
+        // Collect existing and current availability zones into maps
+        Map<String, AvailabilityZone> existingAZs =
+            existingRegion.getZones().stream()
+                .collect(Collectors.toMap(az -> az.getCode(), az -> az));
+        Map<String, AvailabilityZone> currentAZs =
+            currentRegion.getZones().stream()
+                .collect(Collectors.toMap(az -> az.getCode(), az -> az));
+
+        // Compute availability zones to be deleted
+        Map<String, AvailabilityZone> azsToBeDeleted =
+            existingAZs.entrySet().stream()
+                .filter(entry -> !currentAZs.containsKey(entry.getKey()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        // Check if any availability zones to be deleted are associated with universes
+        azsToBeDeleted.forEach(
+            (azCode, az) -> {
+              if (az.getNodeCount() > 0) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "Cannot delete zone %s as it is associated with running universes.",
+                        azCode));
+              }
+            });
+
+        // Iterate through current availability zones
+        for (AvailabilityZone currentZone : currentRegion.getZones()) {
+          String zoneCode = currentZone.getCode();
+
+          // Check if the availability zone exists in the existing availability zones
+          if (existingAZs.containsKey(zoneCode)) {
+            AvailabilityZone existingZone = existingAZs.get(zoneCode);
+
+            // Check if availability zone details are being modified & the az is in use by universe.
+            if (existingZone.isUpdateNeeded(currentZone) && existingZone.getNodeCount() > 0) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format(
+                      "Modifying zone %s details is not allowed for providers in use.", zoneCode));
+            }
+          }
+        }
+      }
+    }
+
+    // Validate the imageBundles, deletion of in-use imageBundles is not allowed
+    Map<UUID, ImageBundle> existingImageBundles =
+        provider.getImageBundles().stream().collect(Collectors.toMap(iB -> iB.getUuid(), iB -> iB));
+    Map<UUID, ImageBundle> currentImageBundles =
+        editProviderReq.getImageBundles().stream()
+            .filter(iB -> iB.getUuid() != null)
+            .collect(Collectors.toMap(iB -> iB.getUuid(), iB -> iB));
+
+    existingImageBundles.forEach(
+        (uuid, imageBundle) -> {
+          if (!currentImageBundles.containsKey(uuid) && imageBundle.getUniverseCount() > 0) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Image Bundle %s is associated with some universes. Cannot delete!",
+                    imageBundle.getName()));
+          }
+          ImageBundle currentImageBundle = currentImageBundles.get(uuid);
+          if (imageBundle.getUniverseCount() > 0
+              && currentImageBundle.isUpdateNeeded(imageBundle)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Image Bundle %s is associated with some universes. Cannot modify!",
+                    imageBundle.getName()));
+          }
+        });
+  }
+
   private void validateEditProvider(
       Provider editProviderReq,
       Provider provider,
       boolean cloudValidate,
       boolean ignoreCloudValidationErrors) {
+    // Validate the provider request so as to ensure we only allow editing of fields
+    // that does not impact the existing running universes.
+    long universeCount = provider.getUniverseCount();
+    if (!confGetter.getGlobalConf(GlobalConfKeys.allowUsedProviderEdit) && universeCount > 0) {
+      validateProviderEditPayload(provider, editProviderReq);
+    }
+
     if (editProviderReq.getVersion() < provider.getVersion()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Provider has changed, please refresh and try again");
