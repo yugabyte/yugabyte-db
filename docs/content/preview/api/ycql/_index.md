@@ -138,5 +138,5 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 [User-defined data types](ddl_create_type) are also supported.
 
 {{<warning title="Unsupported">}}
-For the features that are not supported and with behavior different from Cassandra, see [Cassandra Compatibility](./cassandra-compatibility)
+For a list of features that are not supported or behave differently from Cassandra, see [Cassandra Compatibility](./cassandra-compatibility).
 {{</warning>}}
