@@ -53,6 +53,7 @@ import play.libs.Json;
 @Slf4j
 public class Commissioner {
 
+  public static final String TASK_ID = "commissioner_task_id";
   public static final String SUBTASK_ABORT_POSITION_PROPERTY = "subtask-abort-position";
   public static final String SUBTASK_PAUSE_POSITION_PROPERTY = "subtask-pause-position";
 

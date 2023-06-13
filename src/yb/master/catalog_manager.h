@@ -1008,6 +1008,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id) override;
 
+  Result<ReplicationInfoPB> GetTableReplicationInfo(const TableInfoPtr& table) override;
+
   Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const override;
 
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
@@ -1367,6 +1369,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) override;
 
   HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
+
+  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
+      const TablespaceId& tablespace_id);
 
   // Promote the table from a PREPARING state to a RUNNING state, and persist in sys_catalog.
   Status PromoteTableToRunningState(TableInfoPtr table_info) override;
@@ -1791,9 +1796,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
 
-  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
-      const TablespaceId& tablespace_id);
-
   // Report metrics.
   void ReportMetrics();
 
@@ -2161,6 +2163,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void CreateXClusterSafeTimeTableAndStartService();
 
+  Status CanAddPartitionsToTable(
+      size_t desired_partitions, const PlacementInfoPB& placement_info) override;
+
  private:
   friend class SnapshotLoader;
   friend class yb::master::ClusterLoadBalancer;
@@ -2322,7 +2327,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const PlacementInfoPB& placement_info);
 
   Result<std::pair<dockv::PartitionSchema, std::vector<dockv::Partition>>> CreatePartitions(
-      const Schema& schema, const PlacementInfoPB& placement_info, bool colocated,
+      const Schema& schema, int num_tablets, bool colocated,
       CreateTableRequestPB* request, CreateTableResponsePB* resp);
 
   Status RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id) REQUIRES(mutex_);

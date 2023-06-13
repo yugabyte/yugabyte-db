@@ -62,7 +62,6 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_entity_info.h"
@@ -367,19 +366,19 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
       tablet_id, minimum_index, timeout, must_be_committed, received_ids, committed_ids);
 }
 
-Status WaitForServerToBeQuite(const MonoDelta& timeout,
+Status WaitForServerToBeQuiet(const MonoDelta& timeout,
                               const TabletServerMap& tablet_servers,
                               const TabletId& tablet_id,
                               OpId* last_logged_opid,
                               MustBeCommitted must_be_committed) {
-  return WaitForServerToBeQuite(timeout,
+  return WaitForServerToBeQuiet(timeout,
                                 TServerDetailsVector(tablet_servers),
                                 tablet_id,
                                 last_logged_opid,
                                 must_be_committed);
 }
 
-Status WaitForServerToBeQuite(const MonoDelta& timeout,
+Status WaitForServerToBeQuiet(const MonoDelta& timeout,
                               const vector<TServerDetails*>& tablet_servers,
                               const TabletId& tablet_id,
                               OpId* last_logged_opid,
@@ -1249,8 +1248,21 @@ Status GetTableLocations(MiniCluster* cluster,
   return Status::OK();
 }
 
-size_t GetNumTabletsOfTableOnTS(tserver::TabletServer* tserver, const TableId& table_id) {
-  return tserver->tablet_manager()->GetTabletPeersWithTableId(table_id).size();
+size_t GetNumTabletsOfTableOnTS(
+    tserver::TabletServer* const tserver,
+    const TableId& table_id,
+    TabletPeerFilter filter) {
+  auto peers = tserver->tablet_manager()->GetTabletPeersWithTableId(table_id);
+  if (!filter) {
+    return peers.size();
+  }
+  size_t num = 0;
+  for (const auto& peer : peers) {
+    if (filter(peer)) {
+      ++num;
+    }
+  }
+  return num;
 }
 
 Status WaitForNumVotersInConfigOnMaster(

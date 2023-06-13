@@ -23,7 +23,7 @@ Failures of each of the YQL layer, tablet peer followers, and tablet peer leader
 
 ### YQL failure
 
-From the application’s perspective, YQL is stateless. Hence the client that issued the request simply sends the request to YQL on a different node. In the case of smart clients, they search for the ideal YB-TServer location based on the tablet owning the keys, and then send the request directly to that node.
+From the application's perspective, YQL is stateless. Hence the client that issued the request simply sends the request to YQL on a different node. In the case of smart clients, they search for the ideal YB-TServer location based on the tablet owning the keys, and then send the request directly to that node.
 
 ### Tablet peer follower failure
 
@@ -31,7 +31,7 @@ The tablet peer followers are not in the critical path. Their failure does not i
 
 ### Tablet peer leader failure
 
-The failure of any tablet peer leader automatically triggers a new Raft-level leader election within seconds, and another tablet peer on a different YB-TServer takes its place as the new leader. The unavailability window is approximately 2 seconds (assuming the default heartbeat interval of 500 ms) in the event of a failure of the tablet peer leader.
+The failure of any tablet peer leader automatically triggers a new Raft-level leader election within seconds, and another tablet peer on a different YB-TServer takes its place as the new leader. The unavailability window is approximately 3 seconds (assuming the default heartbeat interval of 500 ms) in the event of a failure of the tablet peer leader.
 
 ## YB-Master failure
 

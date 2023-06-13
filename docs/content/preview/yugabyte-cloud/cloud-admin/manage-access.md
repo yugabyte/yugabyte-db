@@ -1,6 +1,7 @@
 ---
 title: Manage account access
-linkTitle: Manage account access
+headertitle: Manage account users
+linkTitle: Manage account users
 description: Manage access to your YugabyteDB Managed account and your clusters.
 headcontent: Invite team members to your YugabyteDB Managed account
 image: /images/section_icons/secure/create-roles.png
@@ -12,38 +13,19 @@ menu:
 type: docs
 ---
 
-Invite team members to your account so that they can create, manage, and connect to clusters. You can also manage the login methods available to users for signing in to your YugabyteDB Managed account.
+Invite team members to your account so that they can create and manage clusters, manage billing, audit account activity, and more. Account users are assigned [roles](../managed-roles/), which can be customized to provide access to only the actions and resources needed to perform their tasks.
 
-You must be signed in as an Admin user to invite other users, change roles, and manage login methods.
+You can also manage the login methods available to users for signing in to your YugabyteDB Managed account.
+
+(To access a cluster database, you need to ask a user with administrative privileges on the database for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).)
 
 The **Users** tab displays a list of users that are either active or have been invited, including their email, display name, role, and status.
 
 ![Admin Users page](/images/yb-cloud/managed-admin-users.png)
 
-## User roles
-
-A YugabyteDB Managed user is either an Admin or a Developer.
-
-### Admin
-
-Admin users have full access to all features. There must always be at least one Admin user. The primary account user (the user who created the YugabyteDB Managed account) is automatically assigned an Admin role.
-
-### Developer
-
-Developer users have access to all features, with the exception of the following administrative tasks:
-
-- invite users
-- delete or change the role of other users
-- change login methods
-- create or revoke API keys
-- create a billing profile
-- view account activity
-
-To access a cluster database, you need to ask a user with administrative privileges on the database for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).
-
 ## Manage login methods
 
-Users can log in to YugabyteDB Managed using either an email-based account or a social login. The available social logins include Google, GitHub, and LinkedIn. All three are enabled by default. Only an Admin user can modify the login methods.
+Users can log in to YugabyteDB Managed using either an email-based account or a social login. The available social logins include Google, GitHub, and LinkedIn. All three are enabled by default.
 
 To manage the social logins available to users, do the following:
 
@@ -55,13 +37,13 @@ If you revoke a social login that is already in use, users using that social log
 
 ## Invite users
 
-You add users by sending them an invitation. Only an Admin user can invite users.
+You add users by sending them an invitation.
 
 To invite a user:
 
 1. Navigate to **Admin > Access Control > Users**, then click **Invite User** to display the **Invite User** dialog.
 1. Enter one or more email addresses of people you're inviting.
-1. Choose a role for the new users.
+1. Choose a [role](../managed-roles/) for the new users.
 1. Click **Invite**.
 
 Users will receive a verification email with a link to create their account and set up a password. Invitations expire after 24 hours.
@@ -70,15 +52,23 @@ For users that have not responded to their invitation (their status is Invited),
 
 ## Delete a user
 
-Only an Admin user can delete users. You cannot delete your own account.
+You cannot delete your own account.
 
-To delete a user, click **Delete** next to the username in the list, then click **Confirm**.
+To delete a user, in the row of the user you want to delete, click the trash icon, then click **Confirm**.
 
 ## Change a user's role
 
-Only an Admin user can change the role of other users. You cannot change your own role.
+You cannot change your own role.
 
 To change a user's role, in the **User Role** column, select a role for the user.
+
+{{< warning title="Use caution when changing roles" >}}
+
+Changing user roles can impact account security. Use caution when assigning roles with permissions for changing and assigning roles, inviting users, or creating API keys. If you are unsure, review role details before assigning.
+
+{{< /warning >}}
+
+To create and manage roles, refer to [Manage account roles](../managed-roles/).
 
 ## Reset your password
 

@@ -43,6 +43,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
+#include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
@@ -50,14 +51,18 @@
 using std::shared_ptr;
 using std::vector;
 
+METRIC_DEFINE_coarse_histogram(
+    server, load_balancer_duration, "Load balancer duration",
+    yb::MetricUnit::kMilliseconds, "Duration of one load balancer run (in milliseconds)");
+
 DEFINE_RUNTIME_int32(catalog_manager_bg_task_wait_ms, 1000,
     "Amount of time the catalog manager background task thread waits between runs");
 
-DEFINE_UNKNOWN_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
+DEFINE_RUNTIME_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
              "Amount of time to wait between becoming master leader and enabling the load "
              "balancer.");
 
-DEFINE_UNKNOWN_bool(sys_catalog_respect_affinity_task, true,
+DEFINE_RUNTIME_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
@@ -86,7 +91,9 @@ CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
       pending_updates_(false),
       cond_(&lock_),
       thread_(nullptr),
-      catalog_manager_(catalog_manager) {
+      catalog_manager_(catalog_manager),
+      load_balancer_duration_(METRIC_load_balancer_duration.Instantiate(
+          catalog_manager->master_->metric_entity())) {
 }
 
 void CatalogManagerBgTasks::Wake() {
@@ -230,7 +237,9 @@ void CatalogManagerBgTasks::Run() {
       if (!processed_tablets) {
         if (catalog_manager_->TimeSinceElectedLeader() >
             MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
+          auto start = CoarseMonoClock::Now();
           catalog_manager_->load_balance_policy_->RunLoadBalancer();
+          load_balancer_duration_->Increment(ToMilliseconds(CoarseMonoClock::now() - start));
         }
       }
 
@@ -296,6 +305,7 @@ void CatalogManagerBgTasks::Run() {
       // leader_status is not ok.
       if (was_leader_) {
         LOG(INFO) << "Begin one-time cleanup on losing leadership";
+        load_balancer_duration_->Reset();
         catalog_manager_->ResetMetrics();
         catalog_manager_->ResetTasksTrackers();
         catalog_manager_->master_->ysql_backends_manager()->AbortAllJobs();

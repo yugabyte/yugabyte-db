@@ -159,10 +159,11 @@ struct BootstrapTabletData {
   ThreadPool* append_pool = nullptr;
   ThreadPool* allocation_pool = nullptr;
   ThreadPool* log_sync_pool = nullptr;
-  consensus::RetryableRequests* retryable_requests = nullptr;
+  consensus::RetryableRequestsManager* retryable_requests_manager = nullptr;
   std::shared_ptr<TabletBootstrapTestHooksIf> test_hooks = nullptr;
   bool bootstrap_retryable_requests = true;
   consensus::ConsensusMetadata* consensus_meta = nullptr;
+  log::PreLogRolloverCallback pre_log_rollover_callback = {};
 };
 
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet

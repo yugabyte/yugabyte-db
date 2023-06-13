@@ -449,10 +449,10 @@ public class PlatformReplicationManager {
       if (excludePrometheus) {
         commandArgs.add("--exclude_prometheus");
       }
-
       if (excludeReleases) {
         commandArgs.add("--exclude_releases");
       }
+      commandArgs.add("--disable_version_check");
 
       String installation = replicationHelper.getInstallationType();
       if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {

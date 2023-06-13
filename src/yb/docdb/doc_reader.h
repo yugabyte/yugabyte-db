@@ -44,9 +44,9 @@ YB_DEFINE_ENUM(DocReaderResult, (kNotFound)(kFoundAndFinished)(kFoundNotFinished
 // Get table tombstone time from doc_db. If the table is not a colocated table as indicated
 // by the provided root_doc_key, this method returns DocHybridTime::kInvalid.
 Result<DocHybridTime> GetTableTombstoneTime(
-    const Slice& root_doc_key, const DocDB& doc_db,
+    Slice root_doc_key, const DocDB& doc_db,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline, const ReadHybridTime& read_time);
+    const ReadOperationData& read_operation_data);
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
@@ -64,12 +64,11 @@ Result<DocHybridTime> GetTableTombstoneTime(
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in e.g. doc_rowwise_iterator.
 Result<std::optional<dockv::SubDocument>> TEST_GetSubDocument(
-    const Slice& sub_doc_key,
+    Slice sub_doc_key,
     const DocDB& doc_db,
     const rocksdb::QueryId query_id,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time = ReadHybridTime::Max(),
+    const ReadOperationData& read_operation_data,
     const dockv::ReaderProjection* projection = nullptr);
 
 // This class reads SubDocument instances for a given table. The caller should initialize with
@@ -100,26 +99,30 @@ class DocDBTableReader {
 
   // Read value (i.e. row), identified by root_doc_key to result.
   // Returns true if value was found, false otherwise.
-  Result<DocReaderResult> Get(const Slice& root_doc_key, dockv::SubDocument* result);
+  Result<DocReaderResult> Get(Slice root_doc_key, dockv::SubDocument* result);
 
   // Same as get, but for rows that have doc keys with only one subkey.
   // This is always true for YSQL.
   // result shouldn't be nullptr and will be filled with the same number of primitives as number of
   // columns passed to ctor in projection and in the same order.
-  Result<DocReaderResult> GetFlat(const Slice& root_doc_key, qlexpr::QLTableRow* result);
-  Result<DocReaderResult> GetFlat(const Slice& root_doc_key, dockv::PgTableRow* result);
+  Result<DocReaderResult> GetFlat(Slice root_doc_key, qlexpr::QLTableRow* result);
+  Result<DocReaderResult> GetFlat(Slice root_doc_key, dockv::PgTableRow* result);
 
  private:
   // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info
   // at that row.
-  Status InitForKey(const Slice& sub_doc_key);
+  Status InitForKey(Slice sub_doc_key);
 
-  template <bool is_flat_doc, bool ysql>
+  template <class Res>
+  Result<DocReaderResult> DoGetFlat(Slice root_doc_key, Res* result);
+
+  template <bool is_flat_doc, bool ysql, bool check_exists_only>
   class GetHelperBase;
-
+  template <class ResultType>
   class GetHelper;
   template <class ResultType>
   class FlatGetHelper;
+
   class PackedRowData;
 
   // Owned by caller.

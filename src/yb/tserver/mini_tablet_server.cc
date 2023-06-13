@@ -347,5 +347,10 @@ FsManager& MiniTabletServer::fs_manager() const {
   return *server_->fs_manager();
 }
 
+MetricEntity& MiniTabletServer::metric_entity() const {
+  CHECK(started_);
+  return *server_->metric_entity();
+}
+
 } // namespace tserver
 } // namespace yb

@@ -70,7 +70,7 @@ class PgsqlWriteOperation :
       yb::docdb::Direction direction);
   Result<bool> HasDuplicateUniqueIndexValue(
       const DocOperationApplyData& data,
-      ReadHybridTime read_time);
+      const ReadHybridTime& read_time);
   Result<HybridTime> FindOldestOverwrittenTimestamp(
       IntentAwareIterator* iter,
       const dockv::SubDocKey& sub_doc_key,
@@ -95,7 +95,7 @@ class PgsqlWriteOperation :
   Status ApplyFetchSequence(const DocOperationApplyData& data);
 
   Status DeleteRow(const dockv::DocPath& row_path, DocWriteBatch* doc_write_batch,
-                   const ReadHybridTime& read_ht, CoarseTimePoint deadline);
+                   const ReadOperationData& read_operation_data);
 
   // Reading current row before operating on it.
   // Returns true if row was present.
@@ -168,8 +168,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   //   batch protobuf will carry many ybctids.
   //     SELECT ... WHERE ybctid IN (y1, y2, y3)
   Result<size_t> Execute(const YQLStorageIf& ql_storage,
-                         CoarseTimePoint deadline,
-                         const ReadHybridTime& read_time,
+                         const ReadOperationData& read_operation_data,
                          bool is_explicit_request_read_time,
                          const DocReadContext& doc_read_context,
                          const DocReadContext* index_doc_read_context,
@@ -185,8 +184,7 @@ class PgsqlReadOperation : public DocExprExecutor {
  private:
   // Execute a READ operator for a given scalar argument.
   Result<size_t> ExecuteScalar(const YQLStorageIf& ql_storage,
-                               CoarseTimePoint deadline,
-                               const ReadHybridTime& read_time,
+                               const ReadOperationData& read_operation_data,
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
                                const DocReadContext* index_doc_read_context,
@@ -198,8 +196,7 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   // Execute a READ operator for a given batch of ybctids.
   Result<size_t> ExecuteBatchYbctid(const YQLStorageIf& ql_storage,
-                                    CoarseTimePoint deadline,
-                                    const ReadHybridTime& read_time,
+                                    const ReadOperationData& read_operation_data,
                                     const DocReadContext& doc_read_context,
                                     std::reference_wrapper<const ScopedRWOperation> pending_op,
                                     WriteBuffer* result_buffer,
@@ -207,8 +204,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                     const DocDBStatistics* statistics);
 
   Result<size_t> ExecuteSample(const YQLStorageIf& ql_storage,
-                               CoarseTimePoint deadline,
-                               const ReadHybridTime& read_time,
+                               const ReadOperationData& read_operation_data,
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
                                std::reference_wrapper<const ScopedRWOperation> pending_op,

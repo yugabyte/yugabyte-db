@@ -12,13 +12,13 @@ menu:
 type: docs
 ---
 
-When you create a cluster in YugabyteDB Managed, you set up the database admin credentials, which you use to access the YugabyteDB database. Use this account to:
+When you create a cluster in YugabyteDB Managed, you set up the database admin credentials, which you use to access the YugabyteDB database installed on your cluster. Use this account to:
 
 - add more database users
 - assign privileges to users
 - change your password, or the passwords of other users
 
-YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBAC) to [manage authorization](../cloud-users/). A database user's access is determined by the roles they are assigned. You should grant users only the privileges that they require.
+YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBAC) to [manage database authorization](../cloud-users/). A database user's access is determined by the roles they are assigned. You should grant database users only the privileges that they require.
 
 ## Create and manage users and roles
 

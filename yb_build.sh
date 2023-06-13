@@ -78,6 +78,10 @@ Build options:
     Do not build tests
   --no-tcmalloc
     Do not use tcmalloc.
+  --use-google-tcmalloc, --google-tcmalloc
+    Use Google's implementation of tcmalloc from https://github.com/google/tcmalloc
+  --no-google-tcmalloc, --use-gperftools-tcmalloc, --gperftools-tcmalloc
+    Use the gperftools implementation of tcmalloc
 
   --clean-postgres
     Do a clean build of the PostgreSQL subtree.
@@ -854,6 +858,7 @@ run_java_tests=false
 save_log=false
 make_targets=()
 no_tcmalloc=false
+must_use_tcmalloc=false
 cxx_test_name=""
 test_existence_check=true
 object_files_to_delete=()
@@ -908,6 +913,8 @@ export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=0
 
 cxx_test_filter_regex=""
 reset_cxx_test_filter=false
+
+use_google_tcmalloc=""
 
 # -------------------------------------------------------------------------------------------------
 # Switches deciding what components or targets to build
@@ -1041,11 +1048,13 @@ while [[ $# -gt 0 ]]; do
     --no-tcmalloc)
       no_tcmalloc=true
     ;;
-    --no-google-tcmalloc)
+    --no-google-tcmalloc|--use-gperftools-tcmalloc|--gperftools-tcmalloc)
       use_google_tcmalloc=false
+      must_use_tcmalloc=true
     ;;
-    --use-google-tcmalloc)
+    --use-google-tcmalloc|--google-tcmalloc)
       use_google_tcmalloc=true
+      must_use_tcmalloc=true
     ;;
     --cxx-test|--ct)
       set_cxx_test_name "$2"
@@ -1496,15 +1505,16 @@ handle_predefined_build_root
 
 # Setting CMake options.
 cmake_opts=()
+
+if is_mac && [[ $should_build_clangd_index == "true" && ${YB_COMPILER_TYPE:-} == "" ]]; then
+  # On macOS, we need to use our custom-built version of Clang to build the clangd index.
+  YB_COMPILER_TYPE=clang16
+fi
 set_cmake_build_type_and_compiler_type
 
-if [[ -z "${use_google_tcmalloc:-}" ]]; then
-  # Enable Google TCMalloc in fastdebug for getting long term stability results.
-  if [[ $build_type == "fastdebug" &&  ${is_linux} == "true" ]]; then
-    use_google_tcmalloc=true
-  else
-    use_google_tcmalloc=false
-  fi
+if [[ $should_build_clangd_index == "true" && ! ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ ]]; then
+  fatal "Cannot build clangd index with compiler type: ${YB_COMPILER_TYPE}." \
+        "Use a version of Clang that includes clangd-indexer (specify --clang<version>)."
 fi
 
 if [[ -n ${cxx_test_filter_regex} ]]; then
@@ -1520,10 +1530,19 @@ fi
 log "YugabyteDB build is running on host '$HOSTNAME'"
 log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
 
+normalize_build_type
 if [[ ${verbose} == "true" ]]; then
   log "build_type=$build_type, cmake_build_type=$cmake_build_type"
 fi
 export BUILD_TYPE=$build_type
+
+if [[ -z "${use_google_tcmalloc:-}" ]]; then
+  if is_linux && [[ ! ${build_type} =~ ^(asan|tsan)$ ]]; then
+    use_google_tcmalloc=true
+  else
+    use_google_tcmalloc=false
+  fi
+fi
 
 if [[ ${force_run_cmake} == "true" && ${force_no_run_cmake} == "true" ]]; then
   fatal "--force-run-cmake and --force-no-run-cmake are incompatible"
@@ -1790,6 +1809,11 @@ if [[ ${no_ccache} == "true" ]]; then
   export YB_NO_CCACHE=1
 fi
 
+if [[ ${no_tcmalloc} == "true" && ${must_use_tcmalloc} == "true" ]]; then
+  fatal "--no-tcmalloc was specified along with one of the options that implies we must use" \
+        "some version of tcmalloc (Google tcmalloc or gperftools tcmalloc)"
+fi
+
 if [[ ${no_tcmalloc} == "true" ]]; then
   cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
 elif [[ -n ${YB_TCMALLOC_ENABLED:-} ]]; then
@@ -1797,7 +1821,7 @@ elif [[ -n ${YB_TCMALLOC_ENABLED:-} ]]; then
 fi
 
 if [[ ${use_google_tcmalloc} == "true" ]]; then
-  if [[ ${is_linux} != "true" ]]; then
+  if ! is_linux; then
     fatal "Google TCMalloc is only supported on linux. is_linux is: '${is_linux}'."
   fi
   cmake_opts+=( -DYB_GOOGLE_TCMALLOC=1 )

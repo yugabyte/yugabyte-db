@@ -373,9 +373,9 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
   @Test
   public void runApiTriggeredHooksForCluster() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    UUID clusterUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe universe = ModelFactory.createUniverse();
+    UUID clusterUUID = universe.getUniverseDetails().clusters.get(0).uuid;
     String uri =
         "/api/customers/"
             + defaultCustomer.getUuid()

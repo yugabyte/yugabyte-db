@@ -13,6 +13,7 @@ import io.swagger.annotations.ApiParam;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.Data;
+import org.apache.commons.lang3.StringUtils;
 
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -27,6 +28,8 @@ public class AzureCloudInfo implements CloudInfoInterface {
           .put("azuSubscriptionId", "AZURE_SUBSCRIPTION_ID")
           .put("azuRG", "AZURE_RG")
           .put("azuHostedZoneId", "HOSTED_ZONE_ID")
+          .put("azuNetworkRG", "AZURE_NETWORK_RG")
+          .put("azuNetworkSubscriptionId", "AZURE_NETWORK_SUBSCRIPTION_ID")
           .build();
 
   @JsonAlias("AZURE_TENANT_ID")
@@ -45,9 +48,17 @@ public class AzureCloudInfo implements CloudInfoInterface {
   @ApiModelProperty
   public String azuSubscriptionId;
 
+  @JsonAlias("AZURE_NETWORK_SUBSCRIPTION_ID")
+  @ApiModelProperty
+  public String azuNetworkSubscriptionId;
+
   @JsonAlias("AZURE_RG")
   @ApiModelProperty
   public String azuRG;
+
+  @JsonAlias("AZURE_NETWORK_RG")
+  @ApiModelProperty
+  public String azuNetworkRG;
 
   @JsonAlias("HOSTED_ZONE_ID")
   @ApiModelProperty
@@ -73,6 +84,12 @@ public class AzureCloudInfo implements CloudInfoInterface {
       envVars.put("AZURE_CLIENT_SECRET", azuClientSecret);
       envVars.put("AZURE_SUBSCRIPTION_ID", azuSubscriptionId);
       envVars.put("AZURE_RG", azuRG);
+      if (StringUtils.isNotBlank(azuNetworkRG)) {
+        envVars.put("AZURE_NETWORK_RG", azuNetworkRG);
+      }
+      if (StringUtils.isNotBlank(azuNetworkSubscriptionId)) {
+        envVars.put("AZURE_NETWORK_SUBSCRIPTION_ID", azuNetworkSubscriptionId);
+      }
       if (azuHostedZoneId != null) {
         envVars.put("HOSTED_ZONE_ID", azuHostedZoneId);
       }

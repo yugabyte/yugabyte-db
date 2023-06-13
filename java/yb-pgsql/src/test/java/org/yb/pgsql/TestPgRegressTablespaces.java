@@ -24,7 +24,6 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import java.sql.Connection;
 import java.sql.Statement;
 
-import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
@@ -83,12 +82,12 @@ public class TestPgRegressTablespaces extends BasePgSQLTest {
     runPgRegressTest("yb_tablespaces_schedule");
   }
 
-  private TopLevelCheckerBuilder makeTopLevelBuilder() {
-    return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class);
+  private static TopLevelCheckerBuilder makeTopLevelBuilder() {
+    return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class, false /* nullify */);
   }
 
   private static PlanCheckerBuilder makePlanBuilder() {
-    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
+    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false /* nullify */);
   }
 
   @Test

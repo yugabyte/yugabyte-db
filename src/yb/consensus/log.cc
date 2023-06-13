@@ -565,6 +565,7 @@ Status Log::Open(const LogOptions &options,
                  ThreadPool* background_sync_threadpool,
                  int64_t cdc_min_replicated_index,
                  scoped_refptr<Log>* log,
+                 const PreLogRolloverCallback& pre_log_rollover_callback,
                  NewSegmentAllocationCallback callback,
                  CreateNewSegment create_new_segment) {
 
@@ -586,6 +587,7 @@ Status Log::Open(const LogOptions &options,
                                      allocation_thread_pool,
                                      background_sync_threadpool,
                                      callback,
+                                     pre_log_rollover_callback,
                                      create_new_segment));
   RETURN_NOT_OK(new_log->Init());
   log->swap(new_log);
@@ -605,6 +607,7 @@ Log::Log(
     ThreadPool* allocation_thread_pool,
     ThreadPool* background_sync_threadpool,
     NewSegmentAllocationCallback callback,
+    const PreLogRolloverCallback& pre_log_rollover_callback,
     CreateNewSegment create_new_segment)
     : options_(std::move(options)),
       wal_dir_(std::move(wal_dir)),
@@ -632,7 +635,8 @@ Log::Log(
       on_disk_size_(0),
       log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)),
       create_new_segment_at_start_(create_new_segment),
-      new_segment_allocation_callback_(callback) {
+      new_segment_allocation_callback_(callback),
+      pre_log_rollover_callback_(pre_log_rollover_callback) {
   set_wal_retention_secs(options.retention_secs);
   if (table_metric_entity_ && tablet_metric_entity_) {
     metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
@@ -738,6 +742,10 @@ Status Log::CloseCurrentSegment() {
 }
 
 Status Log::RollOver() {
+  if (pre_log_rollover_callback_) {
+    pre_log_rollover_callback_();
+  }
+
   LOG_SLOW_EXECUTION(WARNING, 50, LogPrefix() + "Log roll took a long time") {
     SCOPED_LATENCY_METRIC(metrics_, roll_latency);
     RSTATUS_DCHECK(active_segment_, InternalError, "Called RollOver without active segment.");
@@ -1013,7 +1021,7 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
 
   active_segment_sequence_number_ = recover_segment->header().sequence_number();
   RETURN_NOT_OK(new_segment->ReuseHeader(recover_segment->header(),
-                                         recover_segment->first_entry_offset(), file_size));
+                                         recover_segment->first_entry_offset()));
 
   {
     std::lock_guard<std::mutex> lock(active_segment_mutex_);

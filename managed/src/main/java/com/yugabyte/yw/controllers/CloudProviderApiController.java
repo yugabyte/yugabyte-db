@@ -99,6 +99,7 @@ public class CloudProviderApiController extends AuthenticatedController {
       notes = "Refresh provider pricing info",
       response = YBPSuccess.class)
   public Result refreshPricing(UUID customerUUID, UUID providerUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);
     auditService()
@@ -126,21 +127,6 @@ public class CloudProviderApiController extends AuthenticatedController {
       Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-
-    if (!runtimeConfigFactory
-        .globalRuntimeConf()
-        .getBoolean("yb.provider.allow_used_provider_edit")) {
-      // Relaxing the edit provider call for used provider based on runtime flag
-      // If disabled we will not allow editing of used providers.
-      long universeCount = provider.getUniverseCount();
-      if (universeCount > 0) {
-        throw new PlatformServiceException(
-            FORBIDDEN,
-            String.format(
-                "There %s %d universe%s using this provider, cannot modify",
-                universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
-      }
-    }
     JsonNode requestBody = mayBeMassageRequest(request.body().asJson(), true);
 
     Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
@@ -236,6 +222,7 @@ public class CloudProviderApiController extends AuthenticatedController {
   public Result accessKeysRotation(UUID customerUUID, UUID providerUUID, Http.Request request) {
     RotateAccessKeyFormData params = parseJsonAndValidate(request, RotateAccessKeyFormData.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     String newKeyCode = params.newKeyCode;
     boolean rotateAllUniverses = params.rotateAllUniverses;
     if (!rotateAllUniverses && params.universeUUIDs.size() == 0) {
@@ -275,6 +262,7 @@ public class CloudProviderApiController extends AuthenticatedController {
   public Result scheduledAccessKeysRotation(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     ScheduledAccessKeyRotateFormData params =
         parseJsonAndValidate(request, ScheduledAccessKeyRotateFormData.class);
     int schedulingFrequencyDays = params.schedulingFrequencyDays;

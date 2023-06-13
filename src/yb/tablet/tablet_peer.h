@@ -52,6 +52,7 @@
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/mvcc.h"
+#include "yb/tablet/retryable_requests_flusher.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/operations/operation_tracker.h"
@@ -166,9 +167,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
       ThreadPool* raft_pool,
       ThreadPool* tablet_prepare_pool,
-      consensus::RetryableRequests* retryable_requests,
+      consensus::RetryableRequestsManager* retryable_requests_manager,
       std::unique_ptr<consensus::ConsensusMetadata> consensus_meta,
-      consensus::MultiRaftManager* multi_raft_manager);
+      consensus::MultiRaftManager* multi_raft_manager,
+      ThreadPool* flush_retryable_requests_pool);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -242,6 +244,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   std::shared_ptr<consensus::Consensus> shared_consensus() const;
   std::shared_ptr<consensus::RaftConsensus> shared_raft_consensus() const;
+
+  std::shared_ptr<RetryableRequestsFlusher> shared_retryable_requests_flusher() const;
 
   // ----------------------------------------------------------------------------------------------
   // Functions for accessing the tablet. We need to gradually improve the safety so that all callers
@@ -445,6 +449,13 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // new peer post RBS.
   Status ChangeRole(const std::string& requestor_uuid);
 
+  Result<consensus::RetryableRequests> GetRetryableRequests();
+  Status FlushRetryableRequests();
+  Status CopyRetryableRequestsTo(const std::string& dest_path);
+  Status SubmitFlushRetryableRequestsTask();
+
+  bool TEST_HasRetryableRequestsOnDisk();
+
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
@@ -562,6 +573,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   mutable std::atomic<client::YBClient*> client_cache_{nullptr};
 
   rpc::Messenger* messenger_;
+
+  std::shared_ptr<RetryableRequestsFlusher> retryable_requests_flusher_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };

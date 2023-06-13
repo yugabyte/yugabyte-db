@@ -1664,7 +1664,16 @@ void YBClient::GetTableLocations(
       std::move(callback));
 }
 
-Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
+Status YBClient::TabletServerCount(int *tserver_count, bool primary_only,
+                                   bool use_cache,
+                                   const std::string* tablespace_id,
+                                   const master::ReplicationInfoPB* replication_info) {
+  // Must make an RPC call if replication info must be fetched
+  // (ie. cannot use the tserver count cache)
+  bool is_replication_info_required = tablespace_id || replication_info;
+  SCHECK(!use_cache || !is_replication_info_required, InvalidArgument,
+         "Cannot use cache when replication info must be fetched");
+
   int tserver_count_cached = data_->tserver_count_cached_[primary_only].load(
       std::memory_order_acquire);
   if (use_cache && tserver_count_cached > 0) {
@@ -1675,6 +1684,14 @@ Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool u
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
   req.set_primary_only(primary_only);
+  if (tablespace_id && !tablespace_id->empty())
+    req.set_tablespace_id(*tablespace_id);
+  if (replication_info)
+    req.mutable_replication_info()->CopyFrom(*replication_info);
+  // We should only refer to the TServers in the primary/sync cluster,
+  // not the secondary read replica cluster.
+  if (req.has_tablespace_id() || req.has_replication_info())
+    req.set_primary_only(true);
   CALL_SYNC_LEADER_MASTER_RPC_EX(Cluster, req, resp, ListTabletServers);
   data_->tserver_count_cached_[primary_only].store(resp.servers_size(), std::memory_order_release);
   *tserver_count = resp.servers_size();
@@ -2357,7 +2374,10 @@ bool YBClient::IsMultiMaster() const {
   return data_->IsMultiMaster();
 }
 
-Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {
+Result<int> YBClient::NumTabletsForUserTable(
+    TableType table_type,
+    const std::string* tablespace_id,
+    const master::ReplicationInfoPB* replication_info) {
   if (table_type == TableType::PGSQL_TABLE_TYPE &&
         FLAGS_ysql_num_tablets > 0) {
     VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ysql_num_tablets
@@ -2372,7 +2392,8 @@ Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {
   }
 
   int tserver_count = 0;
-  RETURN_NOT_OK(TabletServerCount(&tserver_count, true /* primary_only */));
+  RETURN_NOT_OK(TabletServerCount(&tserver_count, true /* primary_only */,
+        false /* use_cache */, tablespace_id, replication_info));
   SCHECK_GE(tserver_count, 0, IllegalState, "Number of tservers cannot be negative.");
 
   const auto num_tablets = GetInitialNumTabletsPerTable(table_type, tserver_count);

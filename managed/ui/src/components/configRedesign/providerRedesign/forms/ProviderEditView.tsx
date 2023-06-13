@@ -81,10 +81,14 @@ export const ProviderEditView = ({ isProviderInUse, providerConfig }: ProviderEd
                 </a>
               </span>
             );
+          } else {
+            toast.success('Provider edit succeeded.');
           }
           queryClient.invalidateQueries(providerQueryKey.ALL, { exact: true });
           queryClient.invalidateQueries(providerQueryKey.detail(variables.providerUUID));
         });
+      } else {
+        toast.success('Provider edit succeeded.');
       }
     }
   });

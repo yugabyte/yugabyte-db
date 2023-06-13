@@ -361,6 +361,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_profile;
   const bool*     ysql_disable_global_impact_ddl_statements;
   const bool*     ysql_disable_per_tuple_memory_context_in_update_relattrs;
+  const bool*     ysql_minimal_catalog_caches_preload;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -408,6 +409,27 @@ typedef enum PgBoundType {
   YB_YQL_BOUND_VALID,
   YB_YQL_BOUND_VALID_INCLUSIVE
 } YBCPgBoundType;
+
+typedef struct PgExecReadWriteStats {
+  uint64_t reads;
+  uint64_t writes;
+  uint64_t read_wait;
+} YBCPgExecReadWriteStats;
+
+typedef struct PgExecStats {
+  YBCPgExecReadWriteStats tables;
+  YBCPgExecReadWriteStats indices;
+  YBCPgExecReadWriteStats catalog;
+
+  uint64_t num_flushes;
+  uint64_t flush_wait;
+
+} YBCPgExecStats;
+
+typedef struct PgExecStatsState {
+  YBCPgExecStats stats;
+  bool is_timing_required;
+} YBCPgExecStatsState;
 
 // source:
 // https://github.com/gperftools/gperftools/blob/master/src/gperftools/malloc_extension.h#L154

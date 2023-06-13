@@ -384,7 +384,11 @@ Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-
 
 Default: `false`
 
-Note that this value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+{{< note title="Important" >}}
+
+This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< /note >}}
 
 ##### --post_split_trigger_compaction_pool_max_threads
 

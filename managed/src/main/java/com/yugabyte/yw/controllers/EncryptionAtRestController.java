@@ -39,6 +39,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
@@ -109,7 +110,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
               SERVICE_UNAVAILABLE, "Cloud not create CloudAPI to validate the credentials");
         }
         if (!cloudAPI.isValidCredsKms(formData, customerUUID)) {
-          throw new PlatformServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Invalid AWS Credentials or it has insuffient permissions.");
         }
         break;
       case SMARTKEY:
@@ -468,7 +470,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
       responseContainer = "Map")
   public Result getKMSConfig(UUID customerUUID, UUID configUUID) {
     LOG.info(String.format("Retrieving KMS configuration %s", configUUID.toString()));
-    KmsConfig config = KmsConfig.get(configUUID);
+    Customer.getOrBadRequest(customerUUID);
+    KmsConfig config = KmsConfig.getOrBadRequest(customerUUID, configUUID);
     ObjectNode kmsConfig =
         keyManager.getServiceInstance(config.getKeyProvider().name()).getAuthConfig(configUUID);
     if (kmsConfig == null) {
@@ -526,7 +529,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             configUUID.toString(), customerUUID.toString()));
     Customer customer = Customer.getOrBadRequest(customerUUID);
     try {
-      KmsConfig config = KmsConfig.get(configUUID);
+      KmsConfig config = KmsConfig.getOrBadRequest(customerUUID, configUUID);
       TaskType taskType = TaskType.DeleteKMSConfig;
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
       taskParams.kmsProvider = config.getKeyProvider();
@@ -569,7 +572,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         "Refreshing KMS configuration '{}' for customer '{}'.",
         configUUID.toString(),
         customerUUID.toString());
-    KmsConfig kmsConfig = KmsConfig.getOrBadRequest(configUUID);
+    Customer.getOrBadRequest(customerUUID);
+    KmsConfig kmsConfig = KmsConfig.getOrBadRequest(customerUUID, configUUID);
     keyManager.getServiceInstance(kmsConfig.getKeyProvider().name()).refreshKms(configUUID);
     auditService()
         .createAuditEntryWithReqBody(
@@ -589,6 +593,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         String.format(
             "Retrieving universe key for customer %s and universe %s",
             customerUUID.toString(), universeUUID.toString()));
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID, customer);
     ObjectNode formData = (ObjectNode) request.body().asJson();
     byte[] keyRef = Base64.getDecoder().decode(formData.get("reference").asText());
     UUID configUUID = UUID.fromString(formData.get("configUUID").asText());
@@ -625,6 +631,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         String.format(
             "Retrieving key ref history for customer %s and universe %s",
             customerUUID.toString(), universeUUID.toString()));
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID, customer);
     return PlatformResults.withData(
         KmsHistory.getAllTargetKeyRefs(universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY).stream()
             .map(
@@ -645,6 +653,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         String.format(
             "Removing key ref for customer %s with universe %s",
             customerUUID.toString(), universeUUID.toString()));
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID, customer);
     keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
     auditService()
         .createAuditEntry(
@@ -664,6 +674,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         String.format(
             "Retrieving key ref for customer %s and universe %s",
             customerUUID.toString(), universeUUID.toString()));
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID, customer);
     KmsHistory activeKey = EncryptionAtRestUtil.getActiveKeyOrBadRequest(universeUUID);
     String keyRef = activeKey.getUuid().keyRef;
     if (keyRef == null || keyRef.length() == 0) {

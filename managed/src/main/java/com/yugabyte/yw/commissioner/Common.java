@@ -103,5 +103,9 @@ public class Common {
     public boolean enforceInstanceTags() {
       return this == aws || this == azu || this == gcp;
     }
+
+    public boolean imageBundleSupported() {
+      return this == aws || this == azu || this == gcp;
+    }
   }
 }

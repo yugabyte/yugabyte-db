@@ -83,7 +83,7 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
     isFetchingNextPage
   } = useInfiniteQuery(
     ['scheduled_backup_list'],
-    ({ pageParam = 0 }) => getScheduledBackupList(pageParam),
+    ({ pageParam = 0 }) => getScheduledBackupList(pageParam, universeUUID),
     {
       getNextPageParam: (lastPage) => lastPage.data.hasNext
     }
@@ -342,9 +342,9 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
               <div className="info-val">
                 {schedule.backupInfo?.timeBeforeDelete
                   ? convertMsecToTimeFrame(
-                      schedule.backupInfo.timeBeforeDelete,
-                      schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
-                    )
+                    schedule.backupInfo.timeBeforeDelete,
+                    schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
+                  )
                   : 'Indefinitely'}
               </div>
             </Col>

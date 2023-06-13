@@ -20,16 +20,21 @@
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_round.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/opid_util.h"
 
 #include "yb/tablet/operations.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/rw_mutex.h"
 #include "yb/util/status_format.h"
 
 using namespace std::literals;
@@ -75,14 +80,23 @@ struct RunningRetryableRequest {
 struct ReplicatedRetryableRequestRange {
   mutable RetryableRequestId first_id;
   RetryableRequestId last_id;
-  yb::OpId min_op_id;
+  OpId min_op_id;
   mutable RestartSafeCoarseTimePoint min_time;
   mutable RestartSafeCoarseTimePoint max_time;
 
-  ReplicatedRetryableRequestRange(RetryableRequestId id, const yb::OpId& op_id,
-                              RestartSafeCoarseTimePoint time)
-      : first_id(id), last_id(id), min_op_id(op_id), min_time(time),
-        max_time(time) {}
+  ReplicatedRetryableRequestRange(RetryableRequestId id_,
+                                  const OpId& op_id_,
+                                  RestartSafeCoarseTimePoint time_)
+      : first_id(id_), last_id(id_), min_op_id(op_id_), min_time(time_),
+        max_time(time_) {}
+
+  ReplicatedRetryableRequestRange(RetryableRequestId first_id_,
+                                  RetryableRequestId last_id_,
+                                  const OpId& min_op_id_,
+                                  RestartSafeCoarseTimePoint min_time_,
+                                  RestartSafeCoarseTimePoint max_time_)
+      : first_id(first_id_), last_id(last_id_), min_op_id(min_op_id_), min_time(min_time_),
+        max_time(max_time_) {}
 
   void InsertTime(const RestartSafeCoarseTimePoint& time) const {
     min_time = std::min(min_time, time);
@@ -205,14 +219,172 @@ std::ostream& operator<<(std::ostream& out, const ReplicateData& data) {
 
 } // namespace
 
+Status RetryableRequestsManager::Init() {
+  if (!fs_manager_->Exists(dir_)) {
+    LOG(INFO) << "Wal dir is not created, skip initializing RetryableRequestsManager for "
+              << tablet_id_;
+    // For first startup.
+    has_file_on_disk_ = false;
+    return Status::OK();
+  }
+  RETURN_NOT_OK(DoInit());
+  LOG(INFO) << "Initialized RetryableRequestsManager, found a file ? "
+            << (has_file_on_disk_ ? "yes" : "no")
+            << ", wal dir=" << dir_;
+  return Status::OK();
+}
+
+Status RetryableRequestsManager::SaveToDisk(std::unique_ptr<RetryableRequests> retryable_requests) {
+  if (!retryable_requests) {
+    return STATUS(IllegalState, "retryable_requests_copy_ is null,"
+        "should set it before calling SaveToDisk");
+  }
+  RetryableRequestsPB pb;
+  retryable_requests->ToPB(&pb);
+  auto path = NewFilePath();
+  LOG(INFO) << "Saving retryable requests up to " << pb.last_op_id() << " to " << path;
+  auto* env = fs_manager()->env();
+  RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
+                            env, path, pb,
+                            pb_util::OVERWRITE, pb_util::SYNC),
+                            "Failed to write retryable requests to disk");
+  // Delete the current file and rename new file to current file.
+  if (has_file_on_disk_) {
+    RETURN_NOT_OK(env->DeleteFile(CurrentFilePath()));
+  }
+  LOG(INFO) << "Renaming " << NewFileName() << " to " << FileName();
+  RETURN_NOT_OK(env->RenameFile(NewFilePath(), CurrentFilePath()));
+  has_file_on_disk_ = true;
+  return env->SyncDir(dir_);
+}
+
+Status RetryableRequestsManager::LoadFromDisk() {
+  if (!has_file_on_disk_) {
+    return STATUS(NotFound, "Retryable requests has not been flushed");
+  }
+  RetryableRequestsPB pb;
+  auto path = CurrentFilePath();
+  RETURN_NOT_OK_PREPEND(
+      pb_util::ReadPBContainerFromPath(fs_manager()->env(), path, &pb),
+      Format("Could not load retryable requests from $0", path));
+  retryable_requests_.FromPB(pb);
+  LOG(INFO) << Format("Loaded tablet ($0) retryable requests "
+                      "(max_replicated_op_id_=$1) from $2",
+                      tablet_id_, pb.last_op_id(), path);
+  return Status::OK();
+}
+
+Status RetryableRequestsManager::CopyTo(const std::string& dest_path) {
+  if (!has_file_on_disk_) {
+    return STATUS_FORMAT(NotFound, "Retryable requests has not been flushed");
+  }
+  auto* env = fs_manager()->env();
+  auto path = CurrentFilePath();
+  auto dest_path_tmp = pb_util::MakeTempPath(dest_path);
+  LOG(INFO) << "Copying retryable requests from " << path << " to " << dest_path;
+  DCHECK(fs_manager()->Exists(path));
+
+  WritableFileOptions options;
+  options.sync_on_close = true;
+  RETURN_NOT_OK(env_util::CopyFile(
+      fs_manager()->env(), path, dest_path_tmp, options));
+  RETURN_NOT_OK(env->RenameFile(dest_path_tmp, dest_path));
+  return env->SyncDir(dir_);
+}
+
+std::unique_ptr<RetryableRequests> RetryableRequestsManager::TakeSnapshotOfRetryableRequests() {
+  if (!HasUnflushedData()) {
+    // Simply return false if no new data to flush.
+    YB_LOG_EVERY_N_SECS(INFO, 60)
+        << "Tablet " << tablet_id_ << " has no new retryable requests to flush";
+    return nullptr;
+  }
+  return std::make_unique<RetryableRequests>(retryable_requests_);
+}
+
+Status RetryableRequestsManager::DoInit() {
+  auto* env = fs_manager_->env();
+  // Do cleanup - dlete temp new file if it exists.
+  auto temp_file_path = pb_util::MakeTempPath(NewFilePath());
+  if (env->FileExists(temp_file_path)) {
+    RETURN_NOT_OK(env->DeleteFile(temp_file_path));
+  }
+  bool has_current = env->FileExists(CurrentFilePath());
+  bool has_new = env->FileExists(NewFilePath());
+  if (has_new) {
+    // Should always load from the new file if it exists.
+    if (has_current) {
+      // If the current file exists, should delete it and rename the
+      // new file to current file.
+      RETURN_NOT_OK(env->DeleteFile(CurrentFilePath()));
+    }
+    RETURN_NOT_OK(env->RenameFile(NewFilePath(), CurrentFilePath()));
+  }
+  has_file_on_disk_ = has_new || has_current;
+  return env->SyncDir(dir_);
+}
+
 class RetryableRequests::Impl {
  public:
   explicit Impl(std::string log_prefix) : log_prefix_(std::move(log_prefix)) {
     VLOG_WITH_PREFIX(1) << "Start";
   }
 
+  bool HasUnflushedData() const {
+    return max_replicated_op_id_ != last_flushed_op_id_;
+  }
+
   void set_log_prefix(const std::string& log_prefix) {
     log_prefix_ = log_prefix;
+  }
+
+  OpId GetMaxReplicatedOpId() const {
+    return max_replicated_op_id_;
+  }
+
+  void SetLastFlushedOpId(const OpId& op_id) {
+    DCHECK_GE(op_id, last_flushed_op_id_);
+    last_flushed_op_id_ = op_id;
+  }
+
+  void ToPB(RetryableRequestsPB* pb) const {
+    max_replicated_op_id_.ToPB(pb->mutable_last_op_id());
+    for (const auto& client_requests : clients_) {
+      auto* client_requests_pb = pb->add_client_requests();
+      auto pair = client_requests.first.ToUInt64Pair();
+      client_requests_pb->set_client_id1(pair.first);
+      client_requests_pb->set_client_id2(pair.second);
+      VLOG_WITH_PREFIX(4) << Format("Saving $0 ranges for client $1",
+          client_requests.second.replicated.size(), client_requests.first);
+      for (const auto& range : client_requests.second.replicated) {
+        auto* range_pb = client_requests_pb->add_range();
+        range_pb->set_first_id(range.first_id);
+        range_pb->set_last_id(range.last_id);
+        *range_pb->mutable_min_op_id() = MakeOpIdPB(range.min_op_id);
+        range_pb->set_min_time(range.min_time.ToUInt64());
+        range_pb->set_max_time(range.max_time.ToUInt64());
+      }
+    }
+  }
+
+  void FromPB(const RetryableRequestsPB& pb) {
+    max_replicated_op_id_ = last_flushed_op_id_ = OpId::FromPB(pb.last_op_id());
+    for (auto& reqs : pb.client_requests()) {
+      ClientId client_id(reqs.client_id1(), reqs.client_id2());
+      auto& client_requests = clients_[client_id];
+      auto& replicated_requests = client_requests.replicated;
+      VLOG_WITH_PREFIX(4) << Format("Loaded $0 ranges for client $1:\n$2",
+          reqs.range_size(), client_id, reqs.DebugString());
+      for (auto& r : reqs.range()) {
+        replicated_requests.emplace(r.first_id(), r.last_id(),
+                                    OpId::FromPB(r.min_op_id()),
+                                    RestartSafeCoarseTimePoint::FromUInt64(r.min_time()),
+                                    RestartSafeCoarseTimePoint::FromUInt64(r.max_time()));
+        if (replicated_request_ranges_gauge_) {
+          replicated_request_ranges_gauge_->Increment();
+        }
+      }
+    }
   }
 
   Result<bool> Register(const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
@@ -340,6 +512,10 @@ class RetryableRequests::Impl {
 
   void Bootstrap(
       const LWReplicateMsg& replicate_msg, RestartSafeCoarseTimePoint entry_time) {
+    if (max_replicated_op_id_ >= OpId::FromPB(replicate_msg.id())) {
+      // Skip ops that already in retryable requests structure.
+      return;
+    }
     auto data = ReplicateData::FromMsg(replicate_msg);
     if (!data) {
       return;
@@ -369,12 +545,14 @@ class RetryableRequests::Impl {
   }
 
   void SetMetricEntity(const scoped_refptr<MetricEntity>& metric_entity) {
-    running_requests_gauge_ = METRIC_running_retryable_requests.Instantiate(metric_entity, 0);
+    RetryableRequestsCounts counts = Counts();
+    running_requests_gauge_ = METRIC_running_retryable_requests.Instantiate(
+        metric_entity, counts.running);
     replicated_request_ranges_gauge_ = METRIC_replicated_retryable_request_ranges.Instantiate(
-        metric_entity, 0);
+        metric_entity, counts.replicated);
   }
 
-  RetryableRequestsCounts TEST_Counts() {
+  RetryableRequestsCounts Counts() {
     RetryableRequestsCounts result;
     for (const auto& p : clients_) {
       result.running += p.second.running.size();
@@ -431,6 +609,11 @@ class RetryableRequests::Impl {
 
       LOG_WITH_PREFIX(DFATAL) << "Request already replicated: " << data;
       return;
+    }
+
+    if (max_replicated_op_id_ < op_id) {
+      VLOG_WITH_PREFIX(4) << "Setting max_replicated_op_id_ to " << op_id;
+      max_replicated_op_id_ = op_id;
     }
 
     // Check that we have range right after this id, and we could extend it.
@@ -539,6 +722,8 @@ class RetryableRequests::Impl {
   }
 
   std::string log_prefix_;
+  OpId max_replicated_op_id_ = OpId::Min();
+  OpId last_flushed_op_id_ = OpId::Min();
   std::unordered_map<ClientId, ClientRetryableRequests, ClientIdHash> clients_;
   RestartSafeCoarseMonoClock clock_;
   scoped_refptr<AtomicGauge<int64_t>> running_requests_gauge_;
@@ -560,6 +745,22 @@ RetryableRequests::RetryableRequests(RetryableRequests&& rhs) : impl_(std::move(
 
 void RetryableRequests::operator=(RetryableRequests&& rhs) {
   impl_ = std::move(rhs.impl_);
+}
+
+OpId RetryableRequests::GetMaxReplicatedOpId() const {
+  return impl_->GetMaxReplicatedOpId();
+}
+
+void RetryableRequests::SetLastFlushedOpId(const OpId& op_id) {
+  impl_->SetLastFlushedOpId(op_id);
+}
+
+void RetryableRequests::ToPB(RetryableRequestsPB *pb) const {
+  impl_->ToPB(pb);
+}
+
+void RetryableRequests::FromPB(const RetryableRequestsPB &pb) {
+  impl_->FromPB(pb);
 }
 
 Result<bool> RetryableRequests::Register(
@@ -586,7 +787,7 @@ RestartSafeCoarseMonoClock& RetryableRequests::Clock() {
 }
 
 RetryableRequestsCounts RetryableRequests::TEST_Counts() {
-  return impl_->TEST_Counts();
+  return impl_->Counts();
 }
 
 Result<RetryableRequestId> RetryableRequests::MinRunningRequestId(
@@ -600,6 +801,10 @@ void RetryableRequests::SetMetricEntity(const scoped_refptr<MetricEntity>& metri
 
 void RetryableRequests::set_log_prefix(const std::string& log_prefix) {
   impl_->set_log_prefix(log_prefix);
+}
+
+bool RetryableRequests::HasUnflushedData() const {
+  return impl_->HasUnflushedData();
 }
 
 } // namespace consensus

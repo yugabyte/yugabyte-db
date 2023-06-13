@@ -39,10 +39,15 @@
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
+#include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 
 #include "yb/common/wire_protocol-test-util.h"
+
+#include "yb/consensus/log.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -54,13 +59,23 @@
 #include "yb/integration-tests/create-table-itest-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/catalog_entity_info.h"
 
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -70,6 +85,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/sync_point.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -87,6 +103,13 @@ DEFINE_NON_RUNTIME_int32(test_delete_leader_num_writer_threads, 1,
 DEFINE_NON_RUNTIME_int32(remote_bootstrap_itest_timeout_sec, 180,
              "Timeout in seconds to use in remote bootstrap integration test.");
 
+DECLARE_bool(enable_flush_retryable_requests);
+DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
+DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_leader_failure_detection);
+DECLARE_int32(retryable_request_timeout_secs);
+
+using yb::client::YBClient;
 using yb::client::YBSchema;
 using yb::client::YBSchemaFromSchema;
 using yb::client::YBTableCreator;
@@ -1938,6 +1961,197 @@ TEST_F(RemoteBootstrapITest, YB_DISABLE_TEST_IN_TSAN(TestRBSWithLazySuperblockFl
   ASSERT_NO_FATALS(StartCluster(
       ts_flags, /* master_flags = */ {}, /* num_tablet_servers = */ 3, /* enable_ysql = */ true));
   RBSWithLazySuperblockFlush(/* num_tables */ 20);
+}
+
+class RemoteBootstrapMiniClusterITest: public YBMiniClusterTestBase<MiniCluster> {
+ public:
+  RemoteBootstrapMiniClusterITest() : num_tablets_(1), num_tablet_servers_(3) {}
+
+  void SetUp() override {
+    const char* const kNamespace = "my_namespace";
+    const char* const kTableName = "my_table";
+    YBMiniClusterTestBase::SetUp();
+    MiniClusterOptions opts;
+
+    opts.num_tablet_servers = num_tablet_servers_;
+    opts.num_masters = 1;
+
+    cluster_.reset(new MiniCluster(opts));
+    ASSERT_OK(cluster_->Start());
+
+    client_ = ASSERT_RESULT(cluster_->CreateClient());
+
+    // Create the table.
+    const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, kTableName);
+    client::kv_table_test::CreateTable(
+        client::Transactional::kTrue, num_tablets_, client_.get(), &table_handle_, table_name);
+  }
+
+  void DoTearDown() override {
+    client_.reset();
+    cluster_->Shutdown();
+  }
+
+  Result<TabletId> GetSingleTabletId() const {
+    for (tablet::TabletPeerPtr peer : cluster_->GetTabletPeers(0)) {
+      if (peer->tablet_metadata()->table_id() == table_handle_.table()->id()) {
+        return peer->tablet_id();
+      }
+    }
+    return STATUS(NotFound, "No tablets found");
+  }
+
+  Result<scoped_refptr<master::TabletInfo>> GetSingleTestTabletInfo(
+      master::CatalogManagerIf* catalog_mgr) {
+    auto tablet_infos = catalog_mgr->GetTableInfo(table_handle_.table()->id())->GetTablets();
+
+    SCHECK_EQ(tablet_infos.size(), 1U, IllegalState, "Expect test table to have only 1 tablet");
+    return tablet_infos.front();
+  }
+
+ protected:
+  Status WriteRow(int32_t k, int32_t v) {
+    VERIFY_RESULT(client::kv_table_test::WriteRow(&table_handle_, client_->NewSession(), k, v));
+    return Status::OK();
+  }
+
+  Result<int32_t> ReadRow(int32_t k) {
+    return client::kv_table_test::SelectRow(&table_handle_, client_->NewSession(), k);
+  }
+
+  std::unique_ptr<YBClient> client_;
+  client::TableHandle table_handle_;
+  int num_tablets_;
+  int num_tablet_servers_;
+};
+
+class PersistRetryableRequestsRBSITest: public RemoteBootstrapMiniClusterITest {
+ public:
+  void SetUp() override {
+    FLAGS_enable_flush_retryable_requests = true;
+    FLAGS_enable_load_balancing = false;
+    FLAGS_retryable_request_timeout_secs = 20;
+    RemoteBootstrapMiniClusterITest::SetUp();
+  }
+
+  void BuildTServerMap() {
+    master::MasterClusterProxy master_proxy(
+        &client_->proxy_cache(), cluster_->mini_master()->bound_rpc_addr());
+    ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client_->proxy_cache()));
+  }
+
+  void AddTabletToNewTServer(const TabletId& tablet_id,
+                         const std::string& leader_id,
+                         consensus::PeerMemberType peer_type,
+                         bool elect_new_replica_as_leader) {
+    const auto new_ts = cluster_->num_tablet_servers();
+    ASSERT_OK(cluster_->AddTabletServer());
+    ASSERT_OK(cluster_->WaitForTabletServerCount(new_ts + 1));
+    const auto new_tserver = cluster_->mini_tablet_server(new_ts)->server();
+    const auto new_ts_id = new_tserver->permanent_uuid();
+    LOG(INFO) << "Added new tserver: " << new_ts_id;
+
+    auto* const catalog_mgr = &CHECK_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    const auto tablet = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+    BuildTServerMap();
+    const auto leader = ts_map_[leader_id].get();
+
+    // Replicate to the new tserver.
+    ASSERT_OK(itest::AddServer(
+        leader, tablet_id, ts_map_[new_ts_id].get(), peer_type, boost::none, 10s));
+
+    // Wait for config change reported to master.
+    ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_id, consensus::ADD_SERVER));
+
+    // Wait until replicated to new tserver and ready for electing it as new leader.
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      return itest::GetNumTabletsOfTableOnTS(
+          new_tserver,
+          table_handle_.table()->id(),
+          [&](tablet::TabletPeerPtr peer) -> bool {
+            return peer->raft_consensus() && peer->raft_consensus()->IsRunning();
+          }) == 1;
+    }, 20s * kTimeMultiplier, "Waiting for new tserver having one tablet."));
+
+    if (elect_new_replica_as_leader) {
+      SleepFor(5s);
+      ASSERT_OK(itest::LeaderStepDown(
+          ts_map_[leader_id].get(), tablet_id, ts_map_[new_ts_id].get(), 10s));
+      ASSERT_OK(WaitFor([&] {
+        return new_tserver->LeaderAndReady(tablet_id);
+      }, 10s, "New tablet peer is elected as new leader"));
+    }
+  }
+
+  itest::TabletServerMap ts_map_;
+};
+
+// Test the following scenario:
+// 1. Do a write and Rollover the log.
+// 2. Before receiving the response, add a new replica to the raft group
+//    and RBS should be triggered.
+// 3. Elect the new replica as new leader.
+// 4. Fake a TimedOut error for the write in step 1.
+// 5. The new leader should be able to reject the duplicate write.
+TEST_F(PersistRetryableRequestsRBSITest, TestRetryableWrite) {
+  auto tablet_id = CHECK_RESULT(GetSingleTabletId());
+  // Get the leader peer.
+  auto leader_peers = ListTableActiveTabletLeadersPeers(
+      cluster_.get(), table_handle_.table()->id());
+  ASSERT_EQ(leader_peers.size(), 1) << "Number of tablets is not expected";
+  auto leader_peer = leader_peers[0];
+
+#ifndef NDEBUG
+  SyncPoint::GetInstance()->LoadDependency({
+      {"AsyncRpc::Finished:SetTimedOut:1",
+       "PersistRetryableRequestsRBSITest::TestRetryableWrite:WaitForSetTimedOut"},
+      {"PersistRetryableRequestsRBSITest::TestRetryableWrite:ServerAdded",
+       "AsyncRpc::Finished:SetTimedOut:2"}
+  });
+
+  SyncPoint::GetInstance()->EnableProcessing();
+#endif
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = true;
+  // Start a new thread for writing a new row.
+  std::thread th([&] {
+    CHECK_OK(WriteRow(/* k = */ 1, /* v = */ 1));
+  });
+
+  ASSERT_OK(WaitFor([&]() -> bool {
+    return leader_peer->raft_consensus()->GetLastCommittedOpId().index == 2;
+  }, 10s, "the row is replicated"));
+
+  // Rollover the log and should trigger flushing retryable requests.
+  ASSERT_OK(leader_peer->log()->AllocateSegmentAndRollOver());
+  ASSERT_OK(WaitFor([&] {
+    return leader_peer->TEST_HasRetryableRequestsOnDisk();
+  }, 10s, "retryable requests flushed to disk"));
+
+  ASSERT_OK(leader_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+
+  TEST_SYNC_POINT("PersistRetryableRequestsRBSITest::TestRetryableWrite:WaitForSetTimedOut");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = false;
+
+  // Add a new server and elect it as new leader.
+  AddTabletToNewTServer(
+      tablet_id, leader_peer->permanent_uuid(), consensus::PeerMemberType::PRE_VOTER, true);
+
+  ASSERT_OK(WriteRow(/* k = */ 1, /* v = */ 2));
+
+  TEST_SYNC_POINT("PersistRetryableRequestsRBSITest::TestRetryableWrite:ServerAdded");
+
+  th.join();
+
+  // Check value.
+  auto value = CHECK_RESULT(ReadRow(/* k = */ 1));
+  ASSERT_EQ(value, 2);
+
+#ifndef NDEBUG
+     SyncPoint::GetInstance()->DisableProcessing();
+     SyncPoint::GetInstance()->ClearTrace();
+#endif // NDEBUG
 }
 
 }  // namespace yb

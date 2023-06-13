@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 const failEarlyFile string = "/opt/yba-ctl/.fail_step_name"

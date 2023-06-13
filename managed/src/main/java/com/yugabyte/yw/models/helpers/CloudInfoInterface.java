@@ -76,7 +76,7 @@ public interface CloudInfoInterface {
     ProviderDetails.CloudInfo cloudInfo = providerDetails.getCloudInfo();
     if (cloudInfo == null) {
       cloudInfo = new ProviderDetails.CloudInfo();
-      providerDetails.cloudInfo = cloudInfo;
+      providerDetails.setCloudInfo(cloudInfo);
     }
     return getCloudInfo(cloudInfo, cloudType, maskSensitiveData);
   }
@@ -115,7 +115,7 @@ public interface CloudInfoInterface {
     AvailabilityZoneDetails.AZCloudInfo cloudInfo = azDetails.getCloudInfo();
     if (cloudInfo == null) {
       cloudInfo = new AvailabilityZoneDetails.AZCloudInfo();
-      azDetails.cloudInfo = cloudInfo;
+      azDetails.setCloudInfo(cloudInfo);
     }
     return getCloudInfo(cloudInfo, cloudType, maskSensitiveData);
   }
@@ -267,7 +267,7 @@ public interface CloudInfoInterface {
       return null;
     }
     RegionDetails details = Json.fromJson(detailsJson, RegionDetails.class);
-    get(details, true, region.getProvider().getCloudCode());
+    get(details, true, region.getProviderCloudCode());
     return details;
   }
 
@@ -280,7 +280,7 @@ public interface CloudInfoInterface {
       return null;
     }
     AvailabilityZoneDetails details = Json.fromJson(detailsJson, AvailabilityZoneDetails.class);
-    get(details, true, zone.getRegion().getProvider().getCloudCode());
+    get(details, true, zone.getProviderCloudCode());
     return details;
   }
 

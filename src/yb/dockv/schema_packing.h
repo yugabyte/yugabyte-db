@@ -89,12 +89,12 @@ class SchemaPacking {
 
   bool SkippedColumn(ColumnId column_id) const;
   int64_t GetIndex(ColumnId column_id) const;
-  Slice GetValue(size_t idx, const Slice& packed) const;
-  std::optional<Slice> GetValue(ColumnId column_id, const Slice& packed) const;
+  Slice GetValue(size_t idx, Slice packed) const;
+  std::optional<Slice> GetValue(ColumnId column_id, Slice packed) const;
 
   // Fills `bounds` with pointers of all packed columns in row represented by `packed`.
   void GetBounds(
-      const Slice& packed, boost::container::small_vector_base<const uint8_t*>* bounds) const;
+      Slice packed, boost::container::small_vector_base<const uint8_t*>* bounds) const;
   void ToPB(SchemaPackingPB* out) const;
 
   bool CouldPack(const google::protobuf::RepeatedPtrField<QLColumnValuePB>& values) const;

@@ -14,6 +14,7 @@
 #pragma once
 
 #include <condition_variable>
+#include <future>
 #include <mutex>
 #include <unordered_map>
 #include <utility>
@@ -44,15 +45,15 @@ enum class CacheEntryFetchStatus {
   FETCHED,
 };
 
-struct YBMetaDataCacheEntry {
-  // Protects concurrent calls to YBClient::OpenTable for the entry.
-  std::mutex mutex_;
-  std::condition_variable fetch_wait_cv_;
+struct YBMetaDataCacheEntry;
+using YBMetaDataCacheEntryPtr = std::shared_ptr<YBMetaDataCacheEntry>;
 
-  CacheEntryFetchStatus fetch_status_ = {CacheEntryFetchStatus::NOT_FETCHING};
-  std::shared_ptr<YBTable> table_;
-  ScopedTrackedConsumption consumption_;
+struct GetTableResult {
+  YBTablePtr table;
+  bool cache_used;
 };
+
+using GetTableAsyncCallback = std::function<void(const Result<GetTableResult>&)>;
 
 class YBMetaDataCache {
  public:
@@ -64,12 +65,23 @@ class YBMetaDataCache {
   // Opens the table with the given name or id. If the table has been opened before, returns the
   // previously opened table from cached_tables_. If the table has not been opened before
   // in this client, this will do an RPC to ensure that the table exists and look up its schema.
-  Status GetTable(const YBTableName& table_name,
-                  std::shared_ptr<YBTable>* table,
-                  bool* cache_used);
-  Status GetTable(const TableId& table_id,
-                  std::shared_ptr<YBTable>* table,
-                  bool* cache_used);
+  void GetTableAsync(const YBTableName& table_name, const GetTableAsyncCallback& callback);
+  void GetTableAsync(const TableId& table_id, const GetTableAsyncCallback& callback);
+
+  template <class Id>
+  Result<GetTableResult> GetTableEx(const Id& id) {
+    std::promise<Result<GetTableResult>> result;
+    GetTableAsync(id, [&result](const auto& res) {
+      result.set_value(res);
+    });
+    return result.get_future().get();
+  }
+
+
+  template <class Id>
+  Result<YBTablePtr> GetTable(const Id& id) {
+    return VERIFY_RESULT(GetTableEx(id)).table;
+  }
 
   // Remove the table from cached_tables_ if it is in the cache.
   void RemoveCachedTable(const YBTableName& table_name);
@@ -115,23 +127,16 @@ class YBMetaDataCache {
       const CacheCheckMode check_mode =  CacheCheckMode::RETRY);
 
  private:
-  template <typename T>
-  std::shared_ptr<YBMetaDataCacheEntry> GetOrCreateEntryInCacheUnlocked(
-      std::unordered_map<T, std::shared_ptr<YBMetaDataCacheEntry>, boost::hash<T>>* cache,
-      const T& table_identifier,
-      std::shared_ptr<YBTable>* table,
-      bool* cache_used);
+  friend struct YBMetaDataCacheEntry;
 
-  template <typename T>
-  Status FetchTableDetailsInCache(const std::shared_ptr<YBMetaDataCacheEntry> entry,
-                                  const T table_identifier,
-                                  std::shared_ptr<YBTable>* table,
-                                  bool* cache_used);
+  template <class Id, class Cache>
+  void DoGetTableAsync(
+      const Id& id, const GetTableAsyncCallback& callback, Cache* cache);
 
   template <typename T, typename V, typename F>
   void RemoveFromCache(
-      std::unordered_map<T, std::shared_ptr<YBMetaDataCacheEntry>, boost::hash<T>>* direct_cache,
-      std::unordered_map<V, std::shared_ptr<YBMetaDataCacheEntry>, boost::hash<V>>* indirect_cache,
+      std::unordered_map<T, YBMetaDataCacheEntryPtr, boost::hash<T>>* direct_cache,
+      std::unordered_map<V, YBMetaDataCacheEntryPtr, boost::hash<V>>* indirect_cache,
       const T& direct_key,
       const F& get_indirect_key);
 
@@ -141,13 +146,13 @@ class YBMetaDataCache {
 
   // Map from table-name to YBTable instances.
   typedef std::unordered_map<YBTableName,
-                             std::shared_ptr<YBMetaDataCacheEntry>,
+                             YBMetaDataCacheEntryPtr,
                              boost::hash<YBTableName>> YBTableByNameMap;
   YBTableByNameMap cached_tables_by_name_ GUARDED_BY(cached_tables_mutex_);
 
   // Map from table-id to YBTable instances.
   typedef std::unordered_map<TableId,
-                             std::shared_ptr<YBMetaDataCacheEntry>,
+                             YBMetaDataCacheEntryPtr,
                              boost::hash<TableId>> YBTableByIdMap;
   YBTableByIdMap cached_tables_by_id_ GUARDED_BY(cached_tables_mutex_);
 

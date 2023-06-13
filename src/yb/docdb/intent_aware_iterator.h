@@ -55,8 +55,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   IntentAwareIterator(
       const DocDB& doc_db,
       const rocksdb::ReadOptions& read_opts,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const ReadOperationData& read_operation_data,
       const TransactionOperationContext& txn_op_context,
       rocksdb::Statistics* intentsdb_statistics = nullptr);
 
@@ -68,23 +67,21 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
 
   // Seek to specified encoded key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
-  void Seek(const Slice& key) override;
+  void Seek(Slice key) override;
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
-  // doesn't have hybrid time). For efficiency, the method that takes a non-const KeyBytes pointer
-  // avoids memory allocation by using the KeyBytes buffer to prepare the key to seek to, and may
-  // append up to kMaxBytesPerEncodedHybridTime + 1 bytes of data to the buffer. The appended data
-  // is removed when the method returns.
-  void SeekForward(const Slice& key) override;
-  void SeekForward(dockv::KeyBytes* key) override;
+  // doesn't have hybrid time).
+  void SeekForward(Slice key) override;
+
+  void SkipSeekForward(Slice key);
 
   // Seek past specified subdoc key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
-  void SeekPastSubKey(const Slice& key);
+  void SeekPastSubKey(Slice key);
 
   // Seek out of subdoc key (it is responsibility of caller to make sure it doesn't have hybrid
   // time).
-  void SeekOutOfSubDoc(const Slice& key) override;
+  void SeekOutOfSubDoc(Slice key) override;
   // For efficiency, this overload takes a non-const KeyBytes pointer avoids memory allocation by
   // using the KeyBytes buffer to prepare the key to seek to by appending an extra byte. The
   // appended byte is removed when the method returns.
@@ -99,7 +96,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // This method positions the iterator at the beginning of the DocKey found before the doc_key
   // provided.
   void PrevDocKey(const dockv::DocKey& doc_key);
-  void PrevDocKey(const Slice& encoded_doc_key) override;
+  void PrevDocKey(Slice encoded_doc_key) override;
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
@@ -129,7 +126,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // write time of the found record, and optionally also the result value. This latest record may
   // not be a full record, but instead a merge record (e.g. a TTL row).
   Status FindLatestRecord(
-      const Slice& key_without_ht,
+      Slice key_without_ht,
       EncodedDocHybridTime* max_overwrite_time,
       Slice* result_value = nullptr);
 
@@ -138,11 +135,15 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // This record may not be a full record, but instead a merge record (e.g. a
   // TTL row).
   // Returns HybridTime::kInvalid if no such record was found.
-  Result<HybridTime> FindOldestRecord(const Slice& key_without_ht,
+  Result<HybridTime> FindOldestRecord(Slice key_without_ht,
                                       HybridTime min_hybrid_time);
 
   // Set the upper bound for the iterator.
-  void SetUpperbound(const Slice& upperbound) override;
+  void SetUpperbound(Slice upperbound) override;
+
+  size_t NumberOfBytesAppendedDuringSeekForward() const {
+    return 1 + encoded_read_time_.global_limit.size();
+  }
 
   void DebugDump();
 
@@ -151,17 +152,18 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
  private:
   friend class IntentAwareIteratorPrefixScope;
 
-  // Adds new value to prefix stack. The top value of this stack is used to filter returned entries.
-  void PushPrefix(const Slice& prefix);
+  // Assign new value for prefix returning existing one. Expecting that new value is more strict
+  // than existing one.
+  Slice PushPrefix(Slice prefix);
 
-  // Removes top value from prefix stack. This iteration could became valid after popping prefix,
-  // if new top prefix is a prefix of currently pointed value.
-  void PopPrefix();
+  // Assign new value for prefix. Expecting that new value was returned by previous call to
+  // PushPrefix.
+  void PopPrefix(Slice prefix);
 
-  Slice CurrentPrefix() const;
+  void DoSeekForward(Slice key);
 
   // Seek forward on regular sub-iterator.
-  void SeekForwardRegular(const Slice& slice);
+  void SeekForwardRegular(Slice slice);
 
   // Seek to latest doc key among regular and intent iterator.
   void SeekToLatestDocKeyInternal();
@@ -178,7 +180,8 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // 2 - record has hybrid time > read limit: will skip all records for this key, since all of
   // them are after earliest record which is after read limit. Then will act the same way on
   // previous key.
-  void SkipFutureRecords(Direction direction);
+  template <Direction direction>
+  void SkipFutureRecords();
 
   // Skips intents with hybrid time after read limit.
   void SkipFutureIntents();
@@ -221,13 +224,13 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
 
   // Seeks to the appropriate intent-prefix and returns the associated
   // DocHybridTime.
-  Result<EncodedDocHybridTime> FindMatchingIntentRecordDocHybridTime(const Slice& key_without_ht);
+  Result<EncodedDocHybridTime> FindMatchingIntentRecordDocHybridTime(Slice key_without_ht);
 
   // Returns the DocHybridTime associated with the current regular record
   // pointed to, if it matches the key that is passed as the argument.
   // If the current record does not match the passed key, invalid hybrid time
   // is returned.
-  Result<EncodedDocHybridTime> GetMatchingRegularRecordDocHybridTime(const Slice& key_without_ht);
+  Result<EncodedDocHybridTime> GetMatchingRegularRecordDocHybridTime(Slice key_without_ht);
 
   // Whether current entry is regular key-value pair.
   bool IsEntryRegular(bool descending = false);
@@ -244,15 +247,15 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   //   table), we will fall back to scanning the entire intents RocksDB.
   void ResetIntentUpperbound();
 
-  void DoSetIntentUpperBound(const Slice& intent_upper_bound);
+  void DoSetIntentUpperBound(Slice intent_upper_bound);
 
   void SeekIntentIterIfNeeded();
 
   // Does initial steps for prev doc key/sub doc key seek.
   // Returns true if prepare succeed.
-  bool PreparePrev(const Slice& key);
+  bool PreparePrev(Slice key);
 
-  bool SatisfyBounds(const Slice& slice);
+  bool SatisfyBounds(Slice slice);
 
   const EncodedDocHybridTime& GetIntentDocHybridTime(bool* same_transaction = nullptr);
 
@@ -263,9 +266,10 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // for key + suffix.
   // If use_suffix_for_prefix then suffix is used in seek_key_prefix_, otherwise it will match key.
   void UpdatePlannedIntentSeekForward(
-      const Slice& key, const Slice& suffix, bool use_suffix_for_prefix = true);
+      Slice key, Slice suffix, bool use_suffix_for_prefix = true);
 
-  bool NextRegular(Direction direction);
+  template <Direction direction>
+  bool NextRegular();
 
   void HandleStatus(const Status& status);
 
@@ -299,10 +303,11 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // case of intent is written by current transaction (stored in txn_op_context_).
   EncodedDocHybridTime resolved_intent_txn_dht_;
   EncodedDocHybridTime intent_dht_from_same_txn_{EncodedDocHybridTime::kMin};
-  dockv::KeyBytes resolved_intent_sub_doc_key_encoded_;
+  KeyBuffer resolved_intent_sub_doc_key_encoded_;
   dockv::KeyBytes resolved_intent_value_;
 
-  std::vector<Slice> prefix_stack_;
+  // Prefix data stored externally and caller should guarantee its lifetime.
+  Slice prefix_;
   TransactionStatusCache transaction_status_cache_;
 
   bool skip_future_records_needed_ = false;
@@ -311,23 +316,26 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   SeekIntentIterNeeded seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
 
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
-  dockv::KeyBytes seek_key_buffer_;
-  Slice seek_key_prefix_;
+  KeyBuffer planned_intent_seek_buffer_;
+  Slice planned_intent_seek_prefix_;
 };
 
 class NODISCARD_CLASS IntentAwareIteratorPrefixScope {
  public:
-  IntentAwareIteratorPrefixScope(const Slice& prefix, IntentAwareIterator* iterator)
-      : iterator_(iterator) {
-    iterator->PushPrefix(prefix);
+  IntentAwareIteratorPrefixScope(Slice prefix, IntentAwareIterator* iterator)
+      : iterator_(iterator), prev_prefix_(iterator->PushPrefix(prefix)) {
   }
 
+  IntentAwareIteratorPrefixScope(const IntentAwareIteratorPrefixScope&) = delete;
+  void operator=(const IntentAwareIteratorPrefixScope&) = delete;
+
   ~IntentAwareIteratorPrefixScope() {
-    iterator_->PopPrefix();
+    iterator_->PopPrefix(prev_prefix_);
   }
 
  private:
   IntentAwareIterator* iterator_;
+  Slice prev_prefix_;
 };
 
 } // namespace docdb

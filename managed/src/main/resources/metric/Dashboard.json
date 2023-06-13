@@ -6399,19 +6399,24 @@
     "id" : 81,
     "targets" : [ {
       "hide" : false,
+      "legendFormat" : "Total",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_memory_MemTotal_bytes\"}[300s])) by (saved_name) / 1073741824",
+      "refId" : "A"
+    }, {
+      "hide" : false,
       "legendFormat" : "Free",
       "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_memory_MemFree_bytes\"}[300s])) by (saved_name) / 1073741824",
-      "refId" : "A"
+      "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Cached",
       "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_memory_Cached_bytes\"}[300s])) by (saved_name) / 1073741824",
-      "refId" : "B"
+      "refId" : "C"
     }, {
       "hide" : false,
       "legendFormat" : "Buffered",
       "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_memory_Buffers_bytes\"}[300s])) by (saved_name) / 1073741824",
-      "refId" : "C"
+      "refId" : "D"
     } ],
     "gridPos" : {
       "w" : 12,

@@ -39,13 +39,17 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/dockv/partial_row.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema.h"
+
+#include "yb/docdb/read_operation_data.h"
+
+#include "yb/dockv/partial_row.h"
 
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/read_result.h"
@@ -130,7 +134,7 @@ class CompositePushdownTest : public YBTabletTest {
     QLAddColumns(schema_, {}, req);
     WriteBuffer rows_data(1024);
     EXPECT_OK(tablet()->HandleQLReadRequest(
-        CoarseTimePoint::max() /* deadline */, read_time, *req, transaction, &result, &rows_data));
+        docdb::ReadOperationData::FromReadTime(read_time), *req, transaction, &result, &rows_data));
 
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status())
         << "Error: " << result.response.error_message();

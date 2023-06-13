@@ -15,17 +15,24 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+
+#include "yb/util/countdown_latch.h"
+#include "yb/util/hdr_histogram.h"
 #include "yb/util/range.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
-DECLARE_string(ysql_pg_conf_csv);
+
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb::pgwrapper {
 
@@ -76,8 +83,12 @@ class PgSingleTServerTest : public PgMiniTestBase {
       google::SetVLOGLevel("docdb", 4);
     }
 
+    auto read_histogram = cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateHistogram(
+        &METRIC_handler_latency_yb_tserver_TabletServerService_Read)->histogram();
+
     for (int i = 0; i != reads; ++i) {
       int64_t fetched_rows;
+      auto metric_start = read_histogram->TotalSum();
       auto start = MonoTime::Now();
       if (aggregate) {
         fetched_rows = ASSERT_RESULT(conn.FetchValue<PGUint64>(select_cmd));
@@ -86,8 +97,10 @@ class PgSingleTServerTest : public PgMiniTestBase {
         fetched_rows = PQntuples(res.get());
       }
       auto finish = MonoTime::Now();
+      auto metric_finish = read_histogram->TotalSum();
       ASSERT_EQ(rows, fetched_rows);
-      LOG(INFO) << i << ") Full Time: " << finish - start;
+      LOG(INFO) << i << ") Full Time: " << finish - start
+                << ", tserver time: " << MonoDelta::FromMicroseconds(metric_finish - metric_start);
     }
   }
 };
@@ -231,6 +244,32 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanBigPK), PgMiniBigPref
       /* compact= */ false, /* aggregate = */ false);
 }
 
+TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanSkipValues), PgMiniBigPrefetchTest) {
+  constexpr auto kNumRows = kScanRows / 4;
+  constexpr auto kNumExtraColumns = 10;
+
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+
+  std::string create_cmd = "CREATE TABLE t (k INT PRIMARY KEY, value INT";
+  std::string insert_cmd = "INSERT INTO t (k, value";
+  std::string insert_cmd_suffix;
+  for (const auto i : Range(kNumExtraColumns)) {
+    create_cmd += Format(", extra_value$0 TEXT", i);
+    insert_cmd += Format(", extra_value$0", i);
+    insert_cmd_suffix += ", md5(random()::TEXT)";
+  }
+  create_cmd += ")";
+  insert_cmd += ") VALUES (generate_series($0, $1), trunc(random()*100000000)";
+  insert_cmd += insert_cmd_suffix;
+  insert_cmd += ")";
+  const std::string select_cmd = "SELECT value FROM t";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, kScanReads,
+      /* compact= */ false, /* aggregate = */ false);
+}
+
+
 TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
   constexpr size_t kValueSize = 32_MB;
   constexpr int kKey = 42;
@@ -293,6 +332,57 @@ TEST_F_EX(
   ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
   ASSERT_OK(conn.Fetch("SELECT * FROM test"));
   ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+TEST_F_EX(
+    PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(TestDeferrablePagingInSerializableIsolation),
+    PgSmallPrefetchTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (key INT PRIMARY KEY, v INT)"));
+  constexpr auto kNumRows = 4u;
+  for (auto i = 0u; i < kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, $1)", i, 0));
+  }
+
+  constexpr auto kWriteNumIterations = 1000u;
+
+  TestThreadHolder thread_holder;
+  CountDownLatch sync_start_latch(2);
+  std::atomic<size_t> num_write_iterations{0};
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(), &num_write_iterations, &sync_start_latch]() {
+        auto write_conn = ASSERT_RESULT(Connect());
+        sync_start_latch.CountDown();
+        sync_start_latch.Wait();
+        while (!stop.load(std::memory_order_acquire)) {
+          ASSERT_OK(write_conn.Execute("UPDATE test SET v=0"));
+          ASSERT_OK(write_conn.Execute("UPDATE test SET v=1"));
+          num_write_iterations.fetch_add(2, std::memory_order_acq_rel);
+        }
+      });
+
+  // Since each DEFERRABLE waits for max_clock_skew_usec, set it to a low value to avoid a
+  // very large test time.
+  SetAtomicFlag(2 * 1000, &FLAGS_max_clock_skew_usec);
+
+  constexpr auto kReadNumIterations = 1000u;
+  auto read_conn = ASSERT_RESULT(Connect());
+  sync_start_latch.CountDown();
+  sync_start_latch.Wait();
+  for (auto i = 0u; i < kReadNumIterations ||
+          num_write_iterations.load(std::memory_order_acquire) < kWriteNumIterations; ++i) {
+    ASSERT_OK(read_conn.Execute(
+        "BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE"));
+
+    auto res = ASSERT_RESULT(read_conn.FetchMatrix("SELECT v FROM test", kNumRows, 1));
+
+    // Ensure that all rows in the table have the same value.
+    auto common_value_for_all_rows = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    for (auto i = 1u; i < kNumRows; ++i) {
+      ASSERT_EQ(common_value_for_all_rows, ASSERT_RESULT(GetInt32(res.get(), i, 0)));
+    }
+    ASSERT_OK(read_conn.Execute("COMMIT"));
+  }
 }
 
 // Microbenchmark, see

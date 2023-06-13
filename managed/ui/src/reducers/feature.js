@@ -31,8 +31,8 @@ const initialStateFeatureInTest = {
   enableGFlagHBAConf: false,
   enableMKR: true,
   enableS3BackupProxy: false,
-  enableRRGflags: false,
-  enableLDAPRoleMapping: false
+  enableRRGflags: true,
+  enableLDAPRoleMapping: true
 };
 
 const initialStateFeatureReleased = {
@@ -58,7 +58,6 @@ const initialStateFeatureReleased = {
   enableRunTimeConfig: true,
   enablePITR: true,
   enableNotificationTemplates: false,
-
   enableRestore: true,
   enablePrefillKubeConfig: true,
   enableCustomEmailTemplates: true,

@@ -146,7 +146,12 @@ export default class UniverseAppsModal extends Component {
       const command =
         appType.title === 'YCQL'
           ? sampleAppCommandTxt
-          : commandSyntax + ' --workload ' + appType.code + ' --nodes ' + hostPorts;
+          : commandSyntax +
+            ' --workload ' +
+            appType.code +
+            ' --nodes ' +
+            hostPorts +
+            ' --username yugabyte --password <your_password> ';
 
       return (
         <Tab eventKey={idx} title={appType.title} key={appType.code}>

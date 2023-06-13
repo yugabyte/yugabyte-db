@@ -39,11 +39,15 @@
 #include "yb/client/error.h"
 #include "yb/client/client.h"
 
+#include "yb/rocksdb/rate_limiter.h"
+#include "yb/rocksdb/util/rate_limiter.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/server/secure.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
@@ -60,6 +64,9 @@ DEFINE_RUNTIME_int32(xcluster_safe_time_update_interval_secs, 1,
     "The interval at which xcluster safe time is computed. This controls the staleness of the data "
     "seen when performing database level xcluster consistent reads. If there is any additional lag "
     "in the replication, then it will add to the overall staleness of the data.");
+
+DEFINE_RUNTIME_int32(apply_changes_max_send_rate_mbps, 100,
+                    "Server-wide max apply rate for xcluster traffic.");
 
 static bool ValidateXClusterSafeTimeUpdateInterval(const char* flagname, int32 value) {
   if (value <= 0) {
@@ -156,7 +163,11 @@ XClusterConsumer::XClusterConsumer(
       log_prefix_(Format("[TS $0]: ", ts_uuid)),
       local_client_(std::move(local_client)),
       last_safe_time_published_at_(MonoTime::Now()),
-      transaction_manager_(transaction_manager) {}
+      transaction_manager_(transaction_manager),
+      rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
+          GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB))) {
+        rate_limiter_->EnableLoggingWithDescription("XCluster Output Client");
+      }
 
 XClusterConsumer::~XClusterConsumer() {
   Shutdown();
@@ -227,6 +238,8 @@ void XClusterConsumer::RunThread() {
 
     auto s = PublishXClusterSafeTime();
     YB_LOG_IF_EVERY_N(WARNING, !s.ok(), 10) << "PublishXClusterSafeTime failed: " << s;
+
+    rate_limiter_->SetBytesPerSecond(GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB);
   }
 }
 
@@ -531,7 +544,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             producer_tablet_info, consumer_tablet_info, thread_pool_.get(), rpcs_.get(),
             local_client_, remote_clients_[replication_group_id], this, use_local_tserver,
             global_transaction_status_tablets_, enable_replicate_transaction_status_table_,
-            last_compatible_consumer_schema_version);
+            last_compatible_consumer_schema_version, rate_limiter_.get());
 
         UpdatePollerSchemaVersionMaps(xcluster_poller, producer_tablet_info.stream_id);
 

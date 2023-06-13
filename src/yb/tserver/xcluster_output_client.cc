@@ -34,6 +34,9 @@
 
 #include "yb/master/master_replication.pb.h"
 
+#include "yb/rocksdb/rate_limiter.h"
+#include "yb/rocksdb/util/rate_limiter.h"
+
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/tserver/xcluster_consumer.h"
@@ -45,6 +48,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/stopwatch.h"
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
@@ -62,6 +66,7 @@ DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
 
 DEFINE_test_flag(bool, xcluster_disable_replication_transaction_status_table, false,
                  "Whether or not to disable replication of txn status table.");
+
 using namespace std::placeholders;
 
 namespace yb {
@@ -79,7 +84,8 @@ class XClusterOutputClient : public XClusterOutputClientIf {
       std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk,
       bool use_local_tserver,
       const std::vector<TabletId>& global_transaction_status_tablets,
-      bool enable_replicate_transaction_status_table)
+      bool enable_replicate_transaction_status_table,
+      rocksdb::RateLimiter* rate_limiter)
       : xcluster_consumer_(xcluster_consumer),
         consumer_tablet_info_(consumer_tablet_info),
         producer_tablet_info_(producer_tablet_info),
@@ -91,7 +97,8 @@ class XClusterOutputClient : public XClusterOutputClientIf {
         use_local_tserver_(use_local_tserver),
         all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")),
         global_transaction_status_tablets_(global_transaction_status_tablets),
-        enable_replicate_transaction_status_table_(enable_replicate_transaction_status_table) {}
+        enable_replicate_transaction_status_table_(enable_replicate_transaction_status_table),
+        rate_limiter_(rate_limiter) {}
 
   ~XClusterOutputClient() {
     VLOG_WITH_PREFIX_UNLOCKED(1) << "Destroying XClusterOutputClient";
@@ -258,6 +265,8 @@ class XClusterOutputClient : public XClusterOutputClientIf {
   std::unique_ptr<XClusterWriteInterface> write_strategy_ GUARDED_BY(lock_);
 
   bool enable_replicate_transaction_status_table_;
+
+  rocksdb::RateLimiter* rate_limiter_;
 };
 
 #define HANDLE_ERROR_AND_RETURN_IF_NOT_OK(status) \
@@ -772,6 +781,10 @@ Result<bool> XClusterOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record)
 }
 
 void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request) {
+  LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, 1 /* n_secs */, 100 /* max_expected_millis */,
+      Format("Rate limiting write request for tablet $0", write_request->tablet_id())) {
+    rate_limiter_->Request(write_request->ByteSizeLong(), IOPriority::kHigh);
+  };
   // TODO: This should be parallelized for better performance with M:N setups.
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
@@ -1058,11 +1071,12 @@ std::shared_ptr<XClusterOutputClientIf> CreateXClusterOutputClient(
     std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk,
     bool use_local_tserver,
     const std::vector<TabletId>& global_transaction_status_tablets,
-    bool enable_replicate_transaction_status_table) {
+    bool enable_replicate_transaction_status_table,
+    rocksdb::RateLimiter* rate_limiter) {
   return std::make_unique<XClusterOutputClient>(
       xcluster_consumer, consumer_tablet_info, producer_tablet_info, local_client, thread_pool,
       rpcs, std::move(apply_changes_clbk), use_local_tserver, global_transaction_status_tablets,
-      enable_replicate_transaction_status_table);
+      enable_replicate_transaction_status_table, rate_limiter);
 }
 
 }  // namespace tserver

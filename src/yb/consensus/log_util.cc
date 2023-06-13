@@ -1029,20 +1029,18 @@ WritableLogSegment::WritableLogSegment(string path,
     : path_(std::move(path)),
       writable_file_(std::move(writable_file)),
       is_header_written_(false),
-      is_footer_written_(false),
-      written_offset_(0) {}
+      is_footer_written_(false) {}
 
 Status WritableLogSegment::ReuseHeader(const LogSegmentHeaderPB& new_header,
-                                              const int64_t first_entry_offset,
-                                              const int64_t written_offset) {
+                                              const int64_t first_entry_offset) {
   DCHECK(!IsHeaderWritten()) << "Can only open header once";
   DCHECK(new_header.IsInitialized())
       << "Log segment header must be initialized" << new_header.InitializationErrorString();
 
   header_.CopyFrom(new_header);
   first_entry_offset_ = first_entry_offset;
-  written_offset_ = written_offset;
   is_header_written_ = true;
+  DCHECK_GE(written_offset(), first_entry_offset_);
   return Status::OK();
 }
 
@@ -1062,8 +1060,8 @@ Status WritableLogSegment::WriteHeader(const LogSegmentHeaderPB& new_header) {
 
   header_.CopyFrom(new_header);
   first_entry_offset_ = buf.size();
-  written_offset_ = first_entry_offset_;
   is_header_written_ = true;
+  DCHECK_EQ(written_offset(), first_entry_offset_);
 
   return Status::OK();
 }
@@ -1107,8 +1105,6 @@ Status WritableLogSegment::WriteIndexWithFooterAndClose(
 
   RETURN_NOT_OK(writable_file_->Close());
 
-  written_offset_ += buf.size();
-
   return Status::OK();
 }
 
@@ -1136,7 +1132,6 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
 
   // Write the header to the file, followed by the batch data itself.
   RETURN_NOT_OK(writable_file_->AppendSlices(slices.data(), slices.size()));
-  written_offset_ += sizeof(header_buf) + data.size();
 
   return Status::OK();
 }
@@ -1161,7 +1156,6 @@ Status WritableLogSegment::TEST_WriteCorruptedEntryBatchAndSync() {
 
   // Only append the header.
   RETURN_NOT_OK(writable_file_->Append(Slice(header_buf, sizeof(header_buf))));
-  written_offset_ += sizeof(header_buf);
 
   RETURN_NOT_OK(Sync());
   return Status::OK();

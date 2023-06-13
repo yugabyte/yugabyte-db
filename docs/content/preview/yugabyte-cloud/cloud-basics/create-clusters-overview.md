@@ -183,12 +183,12 @@ You need to create VPCs before you deploy the cluster. YugabyteDB Managed suppor
 
 #### Database user authorization
 
-YugabyteDB uses role-based access control to manage database access. When you create a cluster, YugabyteDB Managed adds a default admin user (the credentials for this user are configurable).
+YugabyteDB uses role-based access control to manage database access. When you create a cluster, YugabyteDB Managed adds a default database admin user (the credentials for this user are configurable).
 
 After the cluster is provisioned, create a new database and [add users](../../cloud-secure-clusters/add-users/). You can create users specific to each connecting application, and restrict their access accordingly.
 
 {{< note title="Note" >}}
-In YSQL, the admin user is not a full superuser. For security reasons, you do not have access to the Yugabyte or Postgres superusers, nor can you create users with superuser privileges.
+In YSQL, the database admin user is not a full superuser. For security reasons, you do not have access to the Yugabyte or Postgres superusers, nor can you create users with superuser privileges.
 {{< /note >}}
 
 For more information on users and roles in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../cloud-secure-clusters/cloud-users/).

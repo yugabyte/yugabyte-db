@@ -119,6 +119,8 @@ if __name__ == '__main__':
     parser.add_argument('--ask_password', action='store_true',
                         help='Specify this flag if a password is required for sudo access. '
                              'It will persist in subsequent runs even without this flag.')
+    parser.add_argument('--skip_preflight_check', action='store_true',
+                        help='Skip preflight-check if specified.')
     if INSTALL_NODE_AGENT:
         # Node agent installation is optional for backward compatibility.
         parser.add_argument('--install_node_agent', action='store_true',
@@ -151,17 +153,20 @@ if __name__ == '__main__':
         execute_command(construct_vault_command(args), password=password)
         print("Password saved.")
 
-
-    print('Performing preflight checks for instance with IP {}...'.format(args.ip))
-    output = execute_command(construct_instance_command(args, True), password=password)
-    if all(json.loads(output).values()):
+    # Running provisioning again on retry can fail preflight checks which passed earlier
+    # due to partially provisioned node.
+    if not args.skip_preflight_check:
+        print('Performing preflight checks for instance with IP {}...'.format(args.ip))
+        output = execute_command(construct_instance_command(args, True), password=password)
+        if not all(json.loads(output).values()):
+            print("Failed preflight checks!")
+            print(output)
+            sys.exit(1)
         print("Preflight checks passed!")
-        if INSTALL_NODE_AGENT and args.install_node_agent:
-            print('Installing node agent on instance with IP {}...'.format(args.ip))
-            execute_command(construct_node_agent_command(args), password=password)
-        print('Executing provision now for instance with IP {}...'.format(args.ip))
-        execute_command(construct_instance_command(args), password=password)
-        print("Provisioning successful!")
-    else:
-        print("Failed preflight checks!")
-        print(output)
+    if INSTALL_NODE_AGENT and args.install_node_agent:
+        print('Installing node agent on instance with IP {}...'.format(args.ip))
+        execute_command(construct_node_agent_command(args), password=password)
+        print("Installation successful!")
+    print('Executing provision now for instance with IP {}...'.format(args.ip))
+    execute_command(construct_instance_command(args), password=password)
+    print("Provisioning successful!")

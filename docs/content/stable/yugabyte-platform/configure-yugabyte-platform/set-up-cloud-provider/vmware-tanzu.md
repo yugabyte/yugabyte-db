@@ -1,8 +1,9 @@
 ---
 title: Configure the VMware Tanzu cloud provider
-headerTitle: Configure the VMware Tanzu cloud provider
-linkTitle: Configure cloud providers
-description: Configure the VMware Tanzu cloud provider
+headerTitle: Create provider configuration
+linkTitle: Create provider configuration
+description: Configure the VMware Tanzu provider configuration
+headContent: Configure a VMWare Tanzu provider configuration
 menu:
   stable_yugabyte-platform:
     identifier: set-up-cloud-provider-4-vmware-tanzu

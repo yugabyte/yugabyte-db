@@ -24,7 +24,6 @@ import static junit.framework.TestCase.assertNull;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -48,6 +47,7 @@ import com.amazonaws.services.ec2.model.Subnet;
 import com.amazonaws.services.ec2.model.Vpc;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
@@ -67,6 +67,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -80,6 +81,9 @@ import com.yugabyte.yw.models.RegionDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
@@ -92,6 +96,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -128,6 +133,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
       String kubeFile = createTempFile("test2.conf", "test5678");
       when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
           .thenReturn(kubeFile);
+      when(mockCommissioner.submit(any(), any())).thenReturn(UUID.randomUUID());
     } catch (Exception e) {
       // Do nothing
     }
@@ -780,91 +786,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddRegion() {
-    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(UUID.randomUUID());
-    Provider provider = Provider.create(customer.getUuid(), Common.CloudType.aws, "test");
-    AccessKey.create(
-        provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
-    String jsonString =
-        String.format(
-            "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
-                + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-                + "\"vnetName\":\"vpc-foo\","
-                + "\"securityGroupId\":\"sg-foo\" }}}, "
-                + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
-                + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
-                + "\"version\": %d}",
-            provider.getVersion());
-    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
-        .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, "vpc-foo")));
-    Result result = editProvider(Json.parse(jsonString), provider.getUuid());
-    assertOk(result);
-  }
-
-  @Test
-  public void testAddExistingRegionFail() {
-    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(UUID.randomUUID());
-    ProviderDetails providerDetails = new ProviderDetails();
-    Provider provider =
-        Provider.create(customer.getUuid(), Common.CloudType.aws, "test", providerDetails);
-    AccessKey accessKey =
-        AccessKey.create(
-            provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
-    Region region = Region.create(provider, "us-west-1", "us-west-1", "foo");
-    region.setVnetName("vpc-foo");
-    region.setSecurityGroupId("sg-foo");
-    region.save();
-    AvailabilityZone.createOrThrow(region, "us-west-1a", "us-west-1a", "subnet-foo", "subnet-foo");
-    String jsonString =
-        String.format(
-            "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
-                + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-                + "\"vnetName\":\"vpc-foo\", \"ybImage\":\"foo\", "
-                + "\"securityGroupId\":\"sg-foo\" }}}, "
-                + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
-                + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
-                + "\"version\": %d}",
-            provider.getVersion());
-    JsonNode providerJson = Json.parse(jsonString);
-    ArrayNode allAccessKeys = Json.newArray();
-    allAccessKeys.add(Json.toJson(accessKey));
-    ((ObjectNode) providerJson).set("allAccessKeys", allAccessKeys);
-
-    Image image = new Image();
-    image.setArchitecture("x86_64");
-    image.setRootDeviceType("ebs");
-    image.setPlatformDetails("linux/UNIX");
-    when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), any())).thenReturn(image);
-    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
-        .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, "vpc-foo")));
-    Result result =
-        assertPlatformException(() -> editProvider(providerJson, provider.getUuid(), false));
-    assertBadRequest(result, "No changes to be made for provider type: aws");
-  }
-
-  @Test
-  public void testIncorrectFieldsForAddRegionFail() {
-    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(UUID.randomUUID());
-    Provider provider = Provider.create(customer.getUuid(), Common.CloudType.aws, "test");
-    AccessKey.create(
-        provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
-    String jsonString =
-        "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
-            + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-            + "\"securityGroupId\":\"sg-foo\" }}}, "
-            + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
-            + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}]}";
-
-    Result result =
-        assertPlatformException(
-            () -> editProvider(Json.parse(jsonString), provider.getUuid(), false));
-    assertBadRequest(result, "Required field vnet name (VPC ID) for region: us-west-1");
-  }
-
-  @Test
   public void testCreateAWSProviderWithInvalidAccessParams() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
@@ -1146,313 +1067,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testModifyGCPProviderCredentials() {
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("code", "gcp");
-    bodyJson.put("name", "gcp-Provider");
-    ObjectNode detailsJson = Json.newObject();
-    ObjectNode cloudInfoJson = Json.newObject();
-    ObjectNode gcpCloudInfo = Json.newObject();
-    ObjectNode gcpCredentials = Json.newObject();
-    gcpCredentials.put("GCE_EMAIL", "test@yugabyte.com");
-    gcpCredentials.put("private_key", "Private key");
-
-    gcpCloudInfo.put("useHostCredentials", true);
-    gcpCloudInfo.put("destVpcId", "test");
-    gcpCloudInfo.put("gceProject", "yugabyte");
-    gcpCloudInfo.put("gceApplicationCredentials", gcpCredentials);
-    cloudInfoJson.put("gcp", gcpCloudInfo);
-    detailsJson.set("cloudInfo", cloudInfoJson);
-    bodyJson.set("details", detailsJson);
-
-    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(UUID.randomUUID());
-
-    Result result = createProvider(bodyJson);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    Provider gcpProvider = Provider.getOrBadRequest(ybpTask.resourceUUID);
-
-    gcpCredentials.put("client_id", "Client ID");
-    gcpProvider.getDetails().getCloudInfo().getGcp().setGceApplicationCredentials(gcpCredentials);
-    result = editProvider(Json.toJson(gcpProvider), gcpProvider.getUuid());
-    assertOk(result);
-
-    gcpProvider = Provider.getOrBadRequest(gcpProvider.getUuid());
-    assertEquals(
-        "Client ID",
-        ((ObjectNode)
-                gcpProvider.getDetails().getCloudInfo().getGcp().getGceApplicationCredentials())
-            .get("client_id")
-            .textValue());
-  }
-
-  @Test
-  public void testK8sProviderEditDetails() {
-    JsonNode k8sRequestBody = getK8sRequestBody();
-
-    Result result = createProvider(k8sRequestBody);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertNotNull(ybpTask.resourceUUID);
-
-    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    p.getDetails().getCloudInfo().getKubernetes().setKubernetesProvider("GKE-2");
-
-    result = editProvider(Json.toJson(p), p.getUuid());
-    assertOk(result);
-    p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    assertEquals(p.getDetails().getCloudInfo().getKubernetes().getKubernetesProvider(), "GKE-2");
-  }
-
-  @Test
-  public void testK8sProviderEditAddZone() {
-    JsonNode k8sRequestBody = getK8sRequestBody();
-
-    Result result = createProvider(k8sRequestBody);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertNotNull(ybpTask.resourceUUID);
-
-    Result providerRes = getProvider(ybpTask.resourceUUID);
-    ObjectNode providerJson = (ObjectNode) Json.parse(contentAsString(providerRes));
-    JsonNode region = providerJson.get("regions").get(0);
-    ArrayNode zones = (ArrayNode) region.get("zones");
-
-    ObjectNode zone = Json.newObject();
-    zone.put("name", "Zone 2");
-    zone.put("code", "zone-2");
-    zones.add(zone);
-    ((ObjectNode) region).set("zones", zones);
-    ArrayNode regionsNode = Json.newArray();
-    regionsNode.add(region);
-    providerJson.set("regions", regionsNode);
-    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    assertEquals(1, p.getRegions().get(0).getZones().size());
-
-    result = editProvider(providerJson, ybpTask.resourceUUID);
-    assertOk(result);
-    p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    assertEquals(2, p.getRegions().get(0).getZones().size());
-    assertEquals("zone-2", p.getRegions().get(0).getZones().get(1).getCode());
-  }
-
-  @Test
-  public void testK8sProviderEditModifyZone() {
-    JsonNode k8sRequestBody = getK8sRequestBody();
-
-    Result result = createProvider(k8sRequestBody);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertNotNull(ybpTask.resourceUUID);
-
-    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    assertEquals(1, p.getRegions().get(0).getZones().size());
-    AvailabilityZone az = p.getRegions().get(0).getZones().get(0);
-    az.getDetails().getCloudInfo().getKubernetes().setKubernetesStorageClass("Storage class");
-
-    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
-    assertOk(result);
-    p = Provider.getOrBadRequest(p.getUuid());
-
-    assertEquals(1, p.getRegions().get(0).getZones().size());
-    assertEquals(
-        "Storage class",
-        p.getRegions()
-            .get(0)
-            .getZones()
-            .get(0)
-            .getDetails()
-            .getCloudInfo()
-            .getKubernetes()
-            .getKubernetesStorageClass());
-  }
-
-  @Test
-  public void testK8sProviderDeleteZone() {
-    JsonNode k8sRequestBody = getK8sRequestBody();
-
-    Result result = createProvider(k8sRequestBody);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertNotNull(ybpTask.resourceUUID);
-
-    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    assertEquals(1, p.getRegions().get(0).getZones().size());
-    AvailabilityZone az = p.getRegions().get(0).getZones().get(0);
-    az.setActive(false);
-
-    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
-    assertOk(result);
-    List<AvailabilityZone> azs = AvailabilityZone.getAZsForRegion(p.getRegions().get(0).getUuid());
-
-    assertEquals(0, azs.size());
-  }
-
-  @Test
-  public void testK8sProviderAddRegion() {
-    JsonNode k8sRequestBody = getK8sRequestBody();
-
-    Result result = createProvider(k8sRequestBody);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertNotNull(ybpTask.resourceUUID);
-
-    Result providerRes = getProvider(ybpTask.resourceUUID);
-    ObjectNode providerJson = (ObjectNode) Json.parse(contentAsString(providerRes));
-    ArrayNode regions = (ArrayNode) providerJson.get("regions");
-
-    ObjectNode region = Json.newObject();
-    region.put("name", "Region 2");
-    region.put("code", "region-2");
-
-    ArrayNode zones = Json.newArray();
-    ObjectNode zone = Json.newObject();
-    zone.put("name", "Zone 2");
-    zone.put("code", "zone-2");
-    zones.add(zone);
-    region.set("zones", zones);
-
-    regions.add(region);
-    providerJson.set("regions", regions);
-
-    result = editProvider(providerJson, ybpTask.resourceUUID);
-    assertOk(result);
-    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-
-    assertEquals(2, p.getRegions().size());
-    assertEquals("region-2", p.getRegions().get(1).getCode());
-    assertEquals("zone-2", p.getRegions().get(1).getZones().get(0).getCode());
-  }
-
-  @Test
-  public void testK8sProviderEditModifyRegion() {
-    JsonNode k8sRequestBody = getK8sRequestBody();
-
-    Result result = createProvider(k8sRequestBody);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertNotNull(ybpTask.resourceUUID);
-
-    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    Region region = p.getRegions().get(0);
-    region.setDetails(new RegionDetails());
-    region.getDetails().setCloudInfo(new RegionDetails.RegionCloudInfo());
-    region.getDetails().getCloudInfo().setKubernetes(new KubernetesRegionInfo());
-    region
-        .getDetails()
-        .getCloudInfo()
-        .getKubernetes()
-        .setKubernetesStorageClass("Updating storage class");
-
-    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
-    assertOk(result);
-
-    Result providerRes = getProvider(p.getUuid());
-    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
-    p = Json.fromJson(bodyJson, Provider.class);
-    assertEquals(1, p.getRegions().size());
-    assertEquals(
-        "Updating storage class",
-        p.getRegions()
-            .get(0)
-            .getDetails()
-            .getCloudInfo()
-            .getKubernetes()
-            .getKubernetesStorageClass());
-  }
-
-  @Test
-  public void testK8sProviderConfigAtMultipleLevels() {
-    JsonNode k8sRequestBody = getK8sRequestBody();
-
-    Result result = createProvider(k8sRequestBody);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertNotNull(ybpTask.resourceUUID);
-
-    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    p.getDetails().getCloudInfo().getKubernetes().setKubeConfigName("Test-1");
-    p.getRegions()
-        .get(0)
-        .getZones()
-        .get(0)
-        .getDetails()
-        .getCloudInfo()
-        .getKubernetes()
-        .setKubeConfigName("Test-2");
-
-    result = assertPlatformException(() -> editProvider(Json.toJson(p), ybpTask.resourceUUID));
-    assertBadRequest(result, "Kubeconfig can't be at two levels");
-  }
-
-  @Test
-  public void testK8sProviderConfigEditAtZoneLevel() {
-    JsonNode k8sRequestBody = getK8sRequestBody();
-
-    Result result = createProvider(k8sRequestBody);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertNotNull(ybpTask.resourceUUID);
-
-    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    p.getRegions()
-        .get(0)
-        .getZones()
-        .get(0)
-        .getDetails()
-        .getCloudInfo()
-        .getKubernetes()
-        .setKubeConfigName("Test-2");
-
-    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
-    assertOk(result);
-    Result providerRes = getProvider(p.getUuid());
-    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
-    p = Json.fromJson(bodyJson, Provider.class);
-
-    assertNull(
-        p.getRegions()
-            .get(0)
-            .getZones()
-            .get(0)
-            .getDetails()
-            .getCloudInfo()
-            .getKubernetes()
-            .getKubeConfigName());
-
-    assertNotNull(
-        p.getRegions()
-            .get(0)
-            .getZones()
-            .get(0)
-            .getDetails()
-            .getCloudInfo()
-            .getKubernetes()
-            .getKubeConfig());
-  }
-
-  @Test
-  public void testK8sProviderConfigEditAtProviderLevel() {
-    JsonNode k8sRequestBody = getK8sRequestBody();
-
-    Result result = createProvider(k8sRequestBody);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertNotNull(ybpTask.resourceUUID);
-
-    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    KubernetesRegionInfo azConfig = CloudInfoInterface.get(p.getRegions().get(0).getZones().get(0));
-    assertEquals("", azConfig.getKubeConfig());
-    p.getDetails().getCloudInfo().getKubernetes().setKubernetesStorageClass("Test-2");
-
-    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
-    assertOk(result);
-    p.refresh();
-    assertNotNull(p.getDetails().getCloudInfo().getKubernetes().getKubernetesStorageClass());
-  }
-
-  @Test
   public void testOnPremProviderNameValidation() {
     // create provider body
     ObjectNode bodyJson = Json.newObject();
@@ -1576,70 +1190,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddRegionIgnoreValidationErrorToOK() {
-    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(UUID.randomUUID());
-    Provider provider = Provider.create(customer.getUuid(), Common.CloudType.aws, "test");
-    provider.setLastValidationErrors(Json.newObject().put("error", "something wrong"));
-    provider.setUsabilityState(Provider.UsabilityState.ERROR);
-    provider.save();
-    AccessKey.create(
-        provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
-    String jsonString =
-        String.format(
-            "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
-                + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-                + "\"vnetName\":\"vpc-foo\","
-                + "\"securityGroupId\":\"sg-foo\" }}}, "
-                + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
-                + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
-                + "\"version\": %d}",
-            provider.getVersion());
-    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
-        .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, "vpc-foo")));
-    Result result = editProvider(Json.parse(jsonString), provider.getUuid(), true);
-    assertOk(result);
-    provider = Provider.getOrBadRequest(provider.getUuid());
-    assertNull(provider.getLastValidationErrors());
-    assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
-  }
-
-  @Test
-  public void testAddRegionIgnoreValidationOKToError() {
-    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(UUID.randomUUID());
-    Provider provider = Provider.create(customer.getUuid(), Common.CloudType.aws, "test");
-    assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
-    assertNull(provider.getLastValidationErrors());
-    provider.save();
-    AccessKey.create(
-        provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
-    String jsonString =
-        String.format(
-            "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
-                + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-                + "\"vnetName\":\"vpc-foo\","
-                + "\"securityGroupId\":\"sg-foo\" }}}, "
-                + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
-                + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
-                + "\"version\": %d}",
-            provider.getVersion());
-    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
-        .thenThrow(new PlatformServiceException(BAD_REQUEST, "Something wrong"));
-    Result result = editProvider(Json.parse(jsonString), provider.getUuid(), true, true);
-    assertOk(result);
-    provider = Provider.getOrBadRequest(provider.getUuid());
-    assertNotNull(provider.getLastValidationErrors());
-    assertEquals(
-        Json.parse("[\"Something wrong\"]"),
-        provider
-            .getLastValidationErrors()
-            .get("error")
-            .get("data.REGION.us-west-1.SECURITY_GROUP"));
-    assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
-  }
-
-  @Test
   public void testAddYBAManagedAccessKeysProviderEdit() {
     Provider p = Provider.create(customer.getUuid(), Common.CloudType.aws, "test");
     Region r = Region.create(p, "us-west-2", "us-west-2", "yb-image");
@@ -1723,6 +1273,126 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 fail();
               }
             });
+  }
+
+  @Test
+  public void testProviderEditInUniverse() {
+    Provider p = ModelFactory.awsProvider(customer);
+    ProviderDetails details = new ProviderDetails();
+    details.setSshUser("ec2-user");
+    p.setDetails(details);
+    p.save();
+
+    // Add Region to the provider.
+    Region region = Region.create(p, "us-west-2", "us-west-2", "yb-image");
+    // Add image bundle to the provider.
+    ImageBundleDetails ibDetails = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-2", new ImageBundleDetails.BundleInfo());
+    ibDetails.setRegions(regionImageInfo);
+    ImageBundle ib = ImageBundle.create(p, "ib-1", ibDetails, true);
+    // Add zone to the region.
+    AvailabilityZone az1 =
+        AvailabilityZone.createOrThrow(
+            region, "us-west-2a", "us-west-2a", "subnet-foo", "subnet-foo");
+    // Add access key to the provider.
+    AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
+
+    Universe u = ModelFactory.createUniverse("provider-edit", customer.getUuid());
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails;
+          universeDetails = new UniverseDefinitionTaskParams();
+          UserIntent userIntent = new UserIntent();
+
+          // Add a desired number of nodes.
+          userIntent.numNodes = 5;
+          userIntent.provider = p.getUuid().toString();
+          userIntent.imageBundleUUID = ib.getUuid();
+          universeDetails.nodeDetailsSet = new HashSet<>();
+          for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+            NodeDetails node = new NodeDetails();
+            node.nodeName = "host-n" + idx;
+            node.cloudInfo = new CloudSpecificInfo();
+            node.cloudInfo.cloud = "aws";
+            node.cloudInfo.az = "az-" + idx;
+            node.cloudInfo.region = "test-region";
+            node.cloudInfo.subnet_id = "subnet-1";
+            node.cloudInfo.private_ip = "host-n" + idx;
+            node.azUuid = az1.getUuid();
+            node.state = NodeState.Live;
+            node.isTserver = true;
+            if (idx <= 3) {
+              node.isMaster = true;
+            }
+            node.nodeIdx = idx;
+            universeDetails.nodeDetailsSet.add(node);
+          }
+          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universe.setUniverseDetails(universeDetails);
+        };
+    u = Universe.saveDetails(u.getUniverseUUID(), updater);
+
+    // Modify the provider details
+    p.getDetails().setSshUser("centos");
+    Result result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(result, "Modifying provider details is not allowed for providers in use.");
+
+    p.getDetails().setSshUser("ec2-user");
+    // Delete the region
+    p.setRegions(ImmutableList.of());
+    result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(
+        result, "Cannot delete region us-west-2 as it is associated with running universes.");
+
+    // Modify the existing region details.
+    region.getDetails().getCloudInfo().getAws().setYbImage("Updated");
+    List<Region> regions = new ArrayList<>();
+    regions.add(region);
+    p.setRegions(regions);
+    result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(
+        result, "Modifying region us-west-2 details is not allowed for providers in use.");
+
+    // Delete the in-use availability zone.
+    region.getDetails().getCloudInfo().getAws().setYbImage("yb-image");
+    region.setZones(ImmutableList.of());
+    result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(
+        result, "Cannot delete zone us-west-2a as it is associated with running universes.");
+
+    // Add a new az to the region.
+    List<AvailabilityZone> azs = new ArrayList<>();
+    azs.add(az1);
+    region.setZones(azs);
+
+    // Delete the in-use image bundle.
+    p.setImageBundles(ImmutableList.of());
+    result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(result, "Image Bundle ib-1 is associated with some universes. Cannot delete!");
+
+    ib.setUseAsDefault(false);
+    p.setImageBundles(ImmutableList.of(ib));
+    result = assertPlatformException(() -> editProvider(Json.toJson(p), p.getUuid(), false));
+    assertBadRequest(result, "Image Bundle ib-1 is associated with some universes. Cannot modify!");
+
+    result = getProvider(p.getUuid());
+    Provider provider = Json.fromJson(Json.parse(contentAsString(result)), Provider.class);
+    JsonNode providerJson = Json.toJson(provider);
+    JsonNode regionJson = providerJson.get("regions");
+    ObjectMapper objectMapper = new ObjectMapper();
+    ArrayNode regionArrayNode = objectMapper.valueToTree(regionJson).deepCopy();
+    JsonNode azJson = regionArrayNode.get(0).get("zones");
+    ArrayNode arrayNode = objectMapper.valueToTree(azJson).deepCopy();
+    ObjectNode azNode = Json.newObject();
+    azNode.put("name", "us-west-2b");
+    azNode.put("code", "us-west-2b");
+    arrayNode.add(azNode);
+    ((ObjectNode) regionArrayNode.get(0)).set("zones", arrayNode);
+    ((ObjectNode) providerJson).set("regions", regionArrayNode);
+
+    result = editProvider(providerJson, p.getUuid(), false);
+    assertOk(result);
   }
 
   private SecurityGroup getTestSecurityGroup(int fromPort, int toPort, String vpcId) {

@@ -7,12 +7,12 @@ import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
-import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
+import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
 import java.util.concurrent.ExecutionException;
@@ -37,7 +37,7 @@ public class KubernetesOperator {
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesOperator.class);
 
-  public void init() {
+  public void init(String namespace) {
     LOG.info("Creating KubernetesOperator thread");
     Thread kubernetesOperatorThread =
         new Thread(
@@ -46,29 +46,39 @@ public class KubernetesOperator {
                 long startTime = System.currentTimeMillis();
                 LOG.info("Creating KubernetesOperator");
                 try (KubernetesClient client = new KubernetesClientBuilder().build()) {
-                  // maybe use: try (KubernetesClient client = getClient(config)) {
-                  String namespace = client.getNamespace();
-                  if (namespace == null) {
-                    LOG.info("No namespace found via config, assuming default.");
-                    namespace = "default";
-                  }
-
+                  // maybe use: try (KubernetesClient client = getClient(config))
                   LOG.info("Using namespace : {}", namespace);
 
+                  this.ybUniverseClient = client.resources(YBUniverse.class);
+                  SharedIndexInformer<YBUniverse> ybUniverseSharedIndexInformer;
+                  long resyncPeriodInMillis = 10 * 60 * 1000L;
                   SharedInformerFactory informerFactory = client.informers();
 
-                  LOG.info("Finished setting up informers");
+                  if (!namespace.trim().isEmpty()) {
+                    // Listen to only one namespace.
+                    ybUniverseSharedIndexInformer =
+                        client
+                            .resources(YBUniverse.class)
+                            .inNamespace(namespace)
+                            .inform(
+                                new ResourceEventHandler<>() {
+                                  @Override
+                                  public void onAdd(YBUniverse Ybu) {}
 
-                  this.ybUniverseClient = client.resources(YBUniverse.class);
-                  SharedIndexInformer<Pod> podSharedIndexInformer =
-                      informerFactory.sharedIndexInformerFor(
-                          Pod.class, 10 * 60 * 1000L
-                          /* resyncPeriodInMillis */ );
-                  SharedIndexInformer<YBUniverse> ybUniverseSharedIndexInformer =
-                      informerFactory.sharedIndexInformerFor(
-                          YBUniverse.class, 10 * 60 * 1000L
-                          /* resyncPeriodInMillis */ );
+                                  @Override
+                                  public void onUpdate(YBUniverse Ybu, YBUniverse newYbu) {}
 
+                                  @Override
+                                  public void onDelete(
+                                      YBUniverse Ybu, boolean deletedFinalUnknown) {}
+                                },
+                                resyncPeriodInMillis);
+                  } else {
+                    // Listen to all namespaces, use the factory to build informer.
+                    ybUniverseSharedIndexInformer =
+                        informerFactory.sharedIndexInformerFor(
+                            YBUniverse.class, resyncPeriodInMillis);
+                  }
                   LOG.info("Finished setting up SharedIndexInformers");
 
                   // TODO: Instantiate this - inject this using Module.java
@@ -77,7 +87,6 @@ public class KubernetesOperator {
                           client,
                           ybUniverseClient,
                           ybUniverseSharedIndexInformer,
-                          namespace,
                           universeCRUDHandler,
                           upgradeUniverseHandler,
                           cloudProviderHandler);

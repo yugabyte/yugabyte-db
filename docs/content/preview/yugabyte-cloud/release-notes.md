@@ -16,6 +16,18 @@ On this page:
 
 ## Releases
 
+### June 7, 2023
+
+**New Features**
+
+- Ability to create custom roles using Role-Based Access Control (RBAC) to precisely manage user access and permissions to match your organization's specific needs. This includes a new built-in Viewer role which offers a secure and restricted view of cluster information without the risk of unintended modifications.
+
+### May 30, 2023
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.9](../../releases/release-notes/v2.14/#v2.14.9.0). New clusters use this version by default.
+
 ### April 28, 2023
 
 **New Features**
@@ -141,7 +153,7 @@ On this page:
 
 **New Features**
 
-- Support for role-based API keys. Assign [roles](../cloud-admin/manage-access/#user-roles) to API keys; keys assigned a developer role can't be used to perform admin tasks. In addition, keys are no longer revoked if the user that created the key is deleted from the account.
+- Support for role-based API keys. Assign [roles](../cloud-admin/managed-roles) to API keys; keys assigned a developer role can't be used to perform admin tasks. In addition, keys are no longer revoked if the user that created the key is deleted from the account.
 
 ### October 17, 2022
 

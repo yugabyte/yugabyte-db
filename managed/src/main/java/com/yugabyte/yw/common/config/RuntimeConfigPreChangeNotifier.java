@@ -51,7 +51,7 @@ public class RuntimeConfigPreChangeNotifier {
     if (keyMetaData.containsKey(path)) {
       maybeValidateMetadata(scopeUUID, path, newValue);
     } else {
-      log.warn("No metadata for key %s being set", path);
+      log.warn("No metadata for key {} being set", path);
     }
 
     if (!listenerMap.containsKey(path)) {

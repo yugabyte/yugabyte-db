@@ -105,8 +105,8 @@ public class NodeInstanceController extends AuthenticatedController {
       response = NodeDetailsResp.class,
       nickname = "getNodeDetails")
   public Result getNodeDetails(UUID customerUUID, UUID universeUUID, String nodeName) {
-    Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     NodeDetails detail = universe.getNode(nodeName);
     String helmValues = "";
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
@@ -299,6 +299,14 @@ public class NodeInstanceController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Detached node action", response = YBPTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Node action",
+        value = "Node action data to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.NodeActionFormData",
+        paramType = "body")
+  })
   public Result detachedNodeAction(
       UUID customerUUID, UUID providerUUID, String instanceIP, Http.Request request) {
     // Validate customer UUID and universe UUID and AWS provider.
@@ -374,7 +382,7 @@ public class NodeInstanceController extends AuthenticatedController {
   public Result nodeAction(
       UUID customerUUID, UUID universeUUID, String nodeName, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     universe.getNodeOrBadRequest(nodeName);
     NodeActionFormData nodeActionFormData = parseJsonAndValidate(request, NodeActionFormData.class);
 

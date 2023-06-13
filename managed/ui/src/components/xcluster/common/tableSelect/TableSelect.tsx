@@ -57,6 +57,7 @@ import {
   ReplicationItems,
   XClusterTableCandidate
 } from '../..';
+import { isColocatedParentTable } from '../../../../utils/tableUtils';
 
 import styles from './TableSelect.module.scss';
 
@@ -444,10 +445,9 @@ export const TableSelect = (props: TableSelectProps) => {
                   YBA support for transactional atomicity has the following constraints:
                   <ol>
                     <li>
-                      The minimum YBDB version that supports transactional atomicity is 2.17.3.0-b2.
+                      The minimum YBDB version that supports transactional atomicity is 2.18.1.0-b1.
                     </li>
                     <li>PITR must be enabled on the target universe.</li>
-                    <li>enable_pg_savepoint must be set to false for both tserver and master</li>
                     <li>
                       Neither the source universe nor the target universe universe is a participant
                       in any other xCluster configuration.
@@ -672,13 +672,22 @@ function getReplicationItemsFromTables(
   );
 }
 
+// Colocated parent tables have table.tablename in the following format:
+//   <uuid>.colocation.parent.tablename
+// We return colocation.parent.tablename for colocated parent tables and
+// table.tablename otherwise.
+const getTableNameIdentifier = (table: YBTable) =>
+  isColocatedParentTable(table)
+    ? table.tableName.slice(table.tableName.indexOf('.') + 1)
+    : table.tableName;
+
 // Comma is not a valid identifier:
 // https://www.postgresql.org/docs/9.2/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
 // https://cassandra.apache.org/doc/latest/cassandra/cql/definitions.html
 // Hence, by joining with commas, we avoid issues where the fields are unique individually
 // but result in a string that not unique.
 const getTableIdentifier = (table: YBTable): string =>
-  `${table.keySpace},${table.pgSchemaName},${table.tableName}`;
+  `${table.keySpace},${table.pgSchemaName},${getTableNameIdentifier(table)}`;
 
 /**
  * A table is eligible for replication if all of the following holds true:

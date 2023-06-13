@@ -98,7 +98,7 @@ Even though you could use yb-admin to replicate a subset of tables from a YSQL k
 
 {{< /note >}}
 
-Since replication is a table-level task, selecting a keyspace adds all its current tables to the xCluster configuration. Any tables created later must be manually added to the xCluster configuration if replication is required.
+Because replication is a table-level task, selecting a keyspace adds all its current tables to the xCluster configuration. Any tables created later must be manually added to the xCluster configuration if replication is required.
 
 <!--
 
@@ -116,7 +116,7 @@ This page allows you to do the following:
 
 - View the replication details.
 
-- Pause the replication process (stop the traffic) by clicking **Pause Replication**. This is useful when performing maintenance. Paused replications can be resumed from the last checkpoint.
+- Pause the replication process (stop the traffic) by clicking **Pause Replication**. This is helpful when performing maintenance. Paused replications can be resumed from the last checkpoint.
 
 - Restart the replication by clicking **Actions > Restart Replication** and using the dialog shown in the following illustration to select the tables or database for which to restart the replication:
 
@@ -173,8 +173,6 @@ The current implementation of xCluster replication in YugabyteDB Anywhere has th
 - When using xCluster replication, it is recommended to use the same version of YugabyteDB for both universes. In case of software upgrades, the target universe should be upgraded first.
 - If, after setting up xCluster replication, you add a node to the target universe with TLS enabled, you need to manually copy the source universe's root certificate to the added node.
 - The xCluster replication creation task might clash with scheduled backups. It is recommended to wait for the scheduled backup to finish, and then restart the replication.
-
-
 
 <!--
 

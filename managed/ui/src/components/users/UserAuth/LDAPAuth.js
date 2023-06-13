@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import * as Yup from 'yup';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { trimStart, trimEnd, isString, isEqual } from 'lodash';
+import { trimStart, trimEnd, isString, isEqual, isUndefined } from 'lodash';
 import { toast } from 'react-toastify';
 import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
@@ -50,6 +50,15 @@ const VALIDATION_SCHEMA = Yup.object().shape({
       is: (ldap_group_use_query, ldap_group_use_role_mapping) =>
         ldap_group_use_role_mapping === true && ldap_group_use_query === 'true',
       then: Yup.string().required('Search Filter is Required'),
+      otherwise: Yup.string()
+    }
+  ),
+  ldap_group_search_base_dn: Yup.string().when(
+    ['ldap_group_use_query', 'ldap_group_use_role_mapping'],
+    {
+      is: (ldap_group_use_query, ldap_group_use_role_mapping) =>
+        ldap_group_use_role_mapping === true && ldap_group_use_query === 'true',
+      then: Yup.string().required('Group Search Base DN is Required'),
       otherwise: Yup.string()
     }
   ),
@@ -116,11 +125,11 @@ export const YBA_ROLES = [
     value: 'Admin'
   },
   {
-    label: 'Back up Admin',
+    label: 'BackupAdmin',
     value: 'BackupAdmin'
   },
   {
-    label: 'Read Only',
+    label: 'ReadOnly',
     value: 'ReadOnly',
     showInDefault: true
   }
@@ -242,7 +251,9 @@ export const LDAPAuth = (props) => {
 
   const saveLDAPConfigs = async (values) => {
     if (values.ldap_group_use_role_mapping && !mappingData.length) {
-      setLDAPMapping(true);
+      toast.warn('Map YugabyteDB Anywhere builtin roles to your existing LDAP groups.', {
+        autoClose: 3000
+      });
       return false;
     }
 
@@ -696,6 +707,8 @@ export const LDAPAuth = (props) => {
                                   value: values.ldap_group_use_role_mapping,
                                   onChange: (e) => {
                                     setFieldValue('ldap_group_use_role_mapping', e.target.checked);
+                                    if (isUndefined(values.ldap_group_use_query))
+                                      setFieldValue('ldap_group_use_query', 'false');
                                   }
                                 }}
                               />{' '}
@@ -761,12 +774,38 @@ export const LDAPAuth = (props) => {
                                             component={YBFormInput}
                                             disabled={isDisabled}
                                             className="ua-form-field"
-                                            placeholder="memberOf"
+                                            placeholder="(&(objectClass=group)(member=CN={username},OU=Users,DC=yugabyte,DC=com)"
                                           />
                                         </Row>
                                         <Row className="helper-text helper-text-1">{`Use {username} to refer to the the YBA username`}</Row>
                                         <Row className="helper-text helper-text-2">
                                           {`Example: (&(objectClass=group)(member=CN={username},OU=Users,DC=yugabyte,DC=com)`}
+                                        </Row>
+                                      </Col>
+                                    </Row>
+                                    <br />
+                                    <Row key="ldap_group_search_base_dn" className="filter_query">
+                                      <Col className="ua-field-row-c ">
+                                        <Row className="ua-field-row filter_query">
+                                          <Field
+                                            name="ldap_group_search_base_dn"
+                                            label={
+                                              <>
+                                                Group Search Base DN&nbsp;
+                                                <YBInfoTip
+                                                  customClass="ldap-info-popover"
+                                                  title="Group Search Base DN"
+                                                  content="Base DN used to search for user group membership."
+                                                >
+                                                  <i className="fa fa-info-circle" />
+                                                </YBInfoTip>
+                                              </>
+                                            }
+                                            component={YBFormInput}
+                                            disabled={isDisabled}
+                                            className="ua-form-field"
+                                            placeholder="Example:- OU=Groups,DC=yugabyte,DC=com"
+                                          />
                                         </Row>
                                       </Col>
                                     </Row>

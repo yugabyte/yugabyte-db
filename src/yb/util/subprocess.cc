@@ -123,6 +123,26 @@ void CloseProcFdDir(DIR* dir) {
 
 } // anonymous namespace
 
+namespace util {
+
+void LogWaitCode(int ret_code) {
+  std::ostringstream msg;
+  msg << "PostgreSQL server returned with code " << ret_code;
+  // Status handling based on https://linux.die.net/man/2/waitpid
+  if (WIFEXITED(ret_code)) {
+    msg << ", exited with status " << WEXITSTATUS(ret_code);
+  }
+  if (WIFSIGNALED(ret_code)) {
+    msg << ", terminated with signal " << WTERMSIG(ret_code);
+  }
+  if (WIFSTOPPED(ret_code)) {
+    msg << ", stopped with signal " << WSTOPSIG(ret_code);
+  }
+  LOG(WARNING) << msg.str();
+}
+
+} // namespace util
+
 Subprocess::Subprocess(string program, vector<string> argv)
     : program_(std::move(program)),
       argv_(std::move(argv)),

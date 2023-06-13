@@ -4,7 +4,6 @@ import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Provider;
@@ -83,13 +82,7 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
         }
       }
       cloudAPI.manageNodeGroup(
-          provider,
-          taskParams().regionCode,
-          lbConfig.getLbName(),
-          getNodeIDs(nodes).getFirst(),
-          getNodeIDs(nodes).getSecond(),
-          "TCP",
-          ports);
+          provider, taskParams().regionCode, lbConfig.getLbName(), getNodeIDs(nodes), "TCP", ports);
     } catch (Exception e) {
       String msg =
           "Error "
@@ -102,13 +95,11 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
     }
   }
 
-  public Pair<List<String>, List<NodeID>> getNodeIDs(Set<NodeDetails> nodes) {
-    List<String> nodeNames = new ArrayList<>();
+  public List<NodeID> getNodeIDs(Set<NodeDetails> nodes) {
     List<NodeID> nodeIDs = new ArrayList<>();
     for (NodeDetails n : nodes) {
-      nodeNames.add(n.nodeName);
       nodeIDs.add(new NodeID(n.nodeName, n.nodeUuid.toString()));
     }
-    return new Pair(nodeNames, nodeIDs);
+    return nodeIDs;
   }
 }

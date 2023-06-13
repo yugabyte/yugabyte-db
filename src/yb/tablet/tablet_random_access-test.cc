@@ -39,10 +39,12 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/dockv/partial_row.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema.h"
+
+#include "yb/docdb/read_operation_data.h"
+
+#include "yb/dockv/partial_row.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
@@ -50,18 +52,20 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/qlexpr/ql_rowblock.h"
+
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
-#include "yb/util/flags.h"
 
 DEFINE_NON_RUNTIME_int32(keyspace_size, 300, "number of unique row keys to insert/mutate");
 DEFINE_NON_RUNTIME_int32(runtime_seconds, 1, "number of seconds to run the test");
@@ -226,7 +230,7 @@ class TestRandomAccess : public YBTabletTest {
     QLAddColumns(schema_, {}, &req);
     WriteBuffer rows_data(1024);
     EXPECT_OK(tablet()->HandleQLReadRequest(
-        CoarseTimePoint::max() /* deadline */, read_time, req, transaction, &result, &rows_data));
+        docdb::ReadOperationData::FromReadTime(read_time), req, transaction, &result, &rows_data));
 
     EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
 

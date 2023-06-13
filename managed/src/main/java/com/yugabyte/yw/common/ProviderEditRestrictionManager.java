@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -32,6 +33,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import play.mvc.Http;
 
 @Singleton
@@ -143,8 +145,22 @@ public class ProviderEditRestrictionManager {
     doInProviderLock(
         providerUUID,
         () -> {
-          verifyNotUnderEdit(providerUUID);
-          verifyNotUsed(providerUUID);
+          String probableTaskIdStr = MDC.get(Commissioner.TASK_ID);
+          if (probableTaskIdStr != null && editTaskIdByProvider.get(providerUUID) != null) {
+            UUID currentTaskId = editTaskIdByProvider.get(providerUUID);
+            UUID taskId = UUID.fromString(probableTaskIdStr);
+            if (!taskId.equals(currentTaskId)) {
+              throw new PlatformServiceException(
+                  Http.Status.SERVICE_UNAVAILABLE,
+                  "Provider "
+                      + providerUUID
+                      + " resources are currently in use by task "
+                      + currentTaskId);
+            }
+          } else {
+            verifyNotUnderEdit(providerUUID);
+            verifyNotUsed(providerUUID);
+          }
           result.set(action.get());
         });
     return result.get();

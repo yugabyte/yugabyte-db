@@ -99,6 +99,9 @@ export default class RollingUpgradeForm extends Component {
         payload.taskType = 'VMImage';
         payload.upgradeOption = 'Rolling';
         payload.machineImages = regionAMIs;
+        if (isNonEmptyObject(asyncCluster)) {
+          payload.clusters.push(asyncCluster);
+        }
         break;
       }
       case 'systemdUpgrade': {

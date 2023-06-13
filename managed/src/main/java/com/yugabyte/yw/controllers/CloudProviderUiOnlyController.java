@@ -147,6 +147,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
   @Deprecated
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result initialize(UUID customerUUID, UUID providerUUID) {
+    Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);
     return YBPSuccess.withMessage(provider.getCode().toUpperCase() + " Initialized");

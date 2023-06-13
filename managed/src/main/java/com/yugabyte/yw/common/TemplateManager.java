@@ -83,6 +83,8 @@ public class TemplateManager extends DevopsBase {
 
     commandArgs.add("--custom_ssh_port");
     commandArgs.add(details.sshPort.toString());
+    commandArgs.add("--provider_id");
+    commandArgs.add(provider.getUuid().toString());
 
     if (airGapInstall) {
       commandArgs.add("--air_gap");
@@ -112,8 +114,6 @@ public class TemplateManager extends DevopsBase {
 
     if (nodeAgentClient.isClientEnabled(provider)) {
       commandArgs.add("--install_node_agent");
-      commandArgs.add("--provider_id");
-      commandArgs.add(provider.getUuid().toString());
       commandArgs.add("--node_agent_port");
       commandArgs.add(String.valueOf(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort)));
     }

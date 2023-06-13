@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.operator.KubernetesOperator;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
@@ -241,7 +242,11 @@ public class AppInit {
         ybcUpgrade.start();
 
         if (config.getBoolean("yb.kubernetesOperator.enabled")) {
-          kubernetesOperator.init();
+          if (!HighAvailabilityConfig.isFollower()) {
+            kubernetesOperator.init(config.getString("yb.kubernetesOperatorNamespace"));
+          } else {
+            log.info("Detected follower instance, not initializing kubernetes operator");
+          }
         }
 
         // Add checksums for all certificates that don't have a checksum.

@@ -167,6 +167,8 @@ class MiniCluster : public MiniClusterBase {
   // elected within kMasterLeaderElectionWaitTimeSeconds. May block until a leader Master is ready.
   Result<master::MiniMaster*> GetLeaderMiniMaster();
 
+  Result<TabletServerId> StepDownMasterLeader(const std::string& new_leader_uuid = "");
+
   ssize_t LeaderMasterIdx();
 
   // Returns the Master at index 'idx' for this MiniCluster.
@@ -273,6 +275,7 @@ void StepDownAllTablets(MiniCluster* cluster);
 void StepDownRandomTablet(MiniCluster* cluster);
 
 YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
+YB_STRONGLY_TYPED_BOOL(IncludeTransactionStatusTablets);
 
 using TabletPeerFilter = std::function<bool(const tablet::TabletPeerPtr&)>;
 
@@ -283,7 +286,9 @@ std::unordered_set<std::string> ListActiveTabletIdsForTable(
     MiniCluster* cluster, const std::string& table_id);
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
-    MiniCluster* cluster, ListPeersFilter filter);
+    MiniCluster* cluster, ListPeersFilter filter,
+    IncludeTransactionStatusTablets include_transaction_status_tablets =
+        IncludeTransactionStatusTablets::kTrue);
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     MiniCluster* cluster, TabletPeerFilter filter);
@@ -307,9 +312,10 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
 std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
     MiniCluster* cluster, const TableId& table_id);
 
-tserver::MiniTabletServer* GetLeaderForTablet(MiniCluster* cluster, const std::string& tablet_id);
 Result<tablet::TabletPeerPtr> GetLeaderPeerForTablet(
     MiniCluster* cluster, const std::string& tablet_id);
+tserver::MiniTabletServer* GetLeaderForTablet(
+      MiniCluster* cluster, const std::string& tablet_id, size_t* leader_idx = nullptr);
 
 std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(
     MiniCluster* cluster);
@@ -401,5 +407,7 @@ Status WaitForTableIntentsApplied(
 void ActivateCompactionTimeLogging(MiniCluster* cluster);
 
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
+std::vector<std::string> DumpDocDBToStrings(
+    MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
 
 }  // namespace yb
