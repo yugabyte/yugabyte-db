@@ -1097,8 +1097,16 @@ Status TabletServer::CreateCDCConsumer() {
     return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
   };
 
-  xcluster_consumer_ =
-      VERIFY_RESULT(XClusterConsumer::Create(std::move(is_leader_clbk), proxy_cache_.get(), this));
+  auto get_leader_term = [this](const TabletId& tablet_id) {
+    auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
+    if (!tablet_peer) {
+      return yb::OpId::kUnknownTerm;
+    }
+    return tablet_peer->LeaderTerm();
+  };
+
+  xcluster_consumer_ = VERIFY_RESULT(XClusterConsumer::Create(
+      std::move(is_leader_clbk), std::move(get_leader_term), proxy_cache_.get(), this));
   return Status::OK();
 }
 
