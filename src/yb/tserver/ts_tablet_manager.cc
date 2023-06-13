@@ -1568,8 +1568,13 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   consensus::ConsensusBootstrapInfo bootstrap_info;
   bool bootstrap_retryable_requests = true;
 
+  MemTrackerPtr parent_mem_tracker =
+      MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker());
+
   consensus::RetryableRequestsManager retryable_requests_manager(
-      tablet_id, fs_manager_, meta->wal_dir());
+      tablet_id, fs_manager_, meta->wal_dir(),
+      MemTracker::FindOrCreateTracker(Format("tablet-$0", cmeta->tablet_id()), parent_mem_tracker,
+                                      AddToParent::kTrue, CreateMetrics::kFalse), kLogPrefix);
   s = retryable_requests_manager.Init(server_->Clock());
   if(!s.ok()) {
     LOG(ERROR) << kLogPrefix << "Tablet failed to init retryable requests: " << s;
@@ -1581,7 +1586,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
           cmeta->has_split_parent_tablet_id()) {
     auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
     if (parent_tablet_requests.ok()) {
-      retryable_requests_manager.retryable_requests() = std::move(*parent_tablet_requests);
+      retryable_requests_manager.retryable_requests().CopyFrom(*parent_tablet_requests);
       bootstrap_retryable_requests = false;
     } else {
       LOG(INFO) << kLogPrefix << "Failed to get tablet retryable requests: "
@@ -1621,7 +1626,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .metadata = meta,
         .client_future = server_->client_future(),
         .clock = scoped_refptr<server::Clock>(server_->clock()),
-        .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
+        .parent_mem_tracker = parent_mem_tracker,
         .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
         .metric_registry = metric_registry_,
         .log_anchor_registry = tablet_peer->log_anchor_registry(),
