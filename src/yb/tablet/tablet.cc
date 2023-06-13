@@ -453,7 +453,7 @@ Tablet::Tablet(const TabletInitData& data)
       metadata_(data.metadata),
       table_type_(data.metadata->table_type()),
       log_anchor_registry_(data.log_anchor_registry),
-      mem_tracker_(MemTracker::CreateTracker(
+      mem_tracker_(MemTracker::FindOrCreateTracker(
           Format("tablet-$0", tablet_id()), data.parent_mem_tracker, AddToParent::kTrue,
           CreateMetrics::kFalse)),
       block_based_table_mem_tracker_(data.block_based_table_mem_tracker),
