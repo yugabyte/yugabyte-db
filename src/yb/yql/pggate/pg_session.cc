@@ -901,5 +901,9 @@ void PgSession::PingPggate() {
   LOG(INFO) << "Inside pggate from extension";
 }
 
+Result<bool> PgSession::ActiveUniverseHistory() {
+  return pg_client_.ActiveUniverseHistory();
+}
+
 }  // namespace pggate
 }  // namespace yb

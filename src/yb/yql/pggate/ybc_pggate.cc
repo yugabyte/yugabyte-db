@@ -1565,6 +1565,14 @@ void YBCPingPggate() {
   return pgapi->PingPggate();
 }
 
+YBCStatus YBCActiveUniverseHistory() {
+  auto res = pgapi->ActiveUniverseHistory();
+  if (res.ok()) {
+    return YBCStatusOK();
+  }
+  return ToYBCStatus(res.status());
+}
+
 } // extern "C"
 
 } // namespace yb::pggate

@@ -1940,5 +1940,9 @@ void PgApiImpl::PingPggate() {
   return pg_session_->PingPggate();
 }
 
+Result<bool> PgApiImpl::ActiveUniverseHistory() {
+  return pg_session_->ActiveUniverseHistory();
+}
+
 } // namespace pggate
 } // namespace yb

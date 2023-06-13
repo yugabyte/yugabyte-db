@@ -70,6 +70,7 @@
 #include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/mem_tracker.h"
@@ -831,6 +832,8 @@ class YBClient {
   Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
 
   Result<bool> CheckIfPitrActive();
+
+  std::vector<rpc::RpcCallInProgressPB> ActiveUniverseHistory();
 
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const std::string& partition_key,

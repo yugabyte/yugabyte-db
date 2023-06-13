@@ -643,7 +643,11 @@ class PgApiImpl {
 
   MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
 
+  //------------------------------------------------------------------------------------------------
+  // Active Universe History.
   void PingPggate();
+
+  Result<bool> ActiveUniverseHistory();
 
  private:
   class Interrupter;

@@ -10,6 +10,7 @@
 #include "postgres.h"
 
 #include "catalog/pg_type.h"
+#include "pg_yb_utils.h"
 #if PG_VERSION_NUM >= 130000
 #include "common/hashfn.h"
 #endif
@@ -440,8 +441,10 @@ pgws_collector_main(Datum main_arg)
 
 		ResetLatch(&MyProc->procLatch);
 
-		ereport(LOG, (errmsg("pg_wait_sampling collector sampling")));
-		YBCPingPggate();
+		// ereport(LOG, (errmsg("pg_wait_sampling collector sampling")));
+		// YBCPingPggate();
+		// YBCActiveUniverseHistory();
+		HandleYBStatus(YBCActiveUniverseHistory());
 
 		/* Handle request if any */
 		if (pgws_collector_hdr->request != NO_REQUEST)

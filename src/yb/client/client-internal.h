@@ -49,6 +49,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/server/server_base_options.h"
 
@@ -430,6 +431,8 @@ class YBClient::Data {
       const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline);
 
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
+
+  std::vector<rpc::RpcCallInProgressPB> ActiveUniverseHistory();
 
   template <class ProxyClass, class ReqClass, class RespClass>
   using SyncLeaderMasterFunc = void (ProxyClass::*)(

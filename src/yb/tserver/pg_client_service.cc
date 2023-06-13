@@ -452,6 +452,24 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status ActiveUniverseHistory(
+      const PgActiveUniverseHistoryRequestPB& req, PgActiveUniverseHistoryResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto res = client().ActiveUniverseHistory();
+
+    for (auto calls : res) {
+      auto call = resp->add_calls_in_flight();
+      call->mutable_header()->set_call_id(calls.header().call_id());
+      call->mutable_header()->mutable_remote_method()->set_service_name(calls.header().remote_method().service_name());
+      call->mutable_header()->mutable_remote_method()->set_method_name(calls.header().remote_method().method_name());
+      call->set_elapsed_millis(calls.elapsed_millis());
+      call->set_sending_bytes(calls.sending_bytes());
+      call->set_state(rpc::RpcCallState_descriptor()->FindValueByNumber(calls.state())->name());
+    }
+
+    return Status::OK();
+  }
+
   Status GetTserverCatalogVersionInfo(
       const PgGetTserverCatalogVersionInfoRequestPB& req,
       PgGetTserverCatalogVersionInfoResponsePB* resp,
