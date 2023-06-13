@@ -1022,6 +1022,11 @@ void PgDocReadOp::InitializeHashPermutationStates() {
   auto max_op_count =
       std::min(total_permutation_count_,
                implicit_cast<size_t>(FLAGS_ysql_request_limit));
+
+  if (IsHashBatchingEnabled()) {
+    max_op_count = std::min(max_op_count, table_->GetPartitionListSize());
+  }
+
   ClonePgsqlOps(max_op_count);
 
   // Clear the original partition expressions as it will be replaced with hash permutations.
