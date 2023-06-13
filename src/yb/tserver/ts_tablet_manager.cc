@@ -1624,7 +1624,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         auto peer = peer_weak_ptr.lock();
         if (peer) {
           Status s = peer->SubmitFlushRetryableRequestsTask();
-          LOG_IF(WARNING, !s.ok()) << kLogPrefix
+          LOG_IF(WARNING, !s.ok() && !s.IsNotSupported()) << kLogPrefix
               <<  "Failed to submit retryable requests task: " << s.ToString();
         }
       },
@@ -1661,6 +1661,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       tablet_peer->SetFailed(s);
       return;
     }
+
+    // Enable flush retryable requests after the peer is fully initialized.
+    tablet_peer->EnableFlushRetryableRequests();
 
     TRACE("Starting tablet peer");
     s = tablet_peer->Start(bootstrap_info);

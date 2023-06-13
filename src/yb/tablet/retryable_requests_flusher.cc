@@ -44,9 +44,6 @@ namespace yb {
 namespace tablet {
 
 Status RetryableRequestsFlusher::FlushRetryableRequests() {
-  if (!GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
-    return STATUS(NotSupported, "flush_retryable_requests is not supported");
-  }
   // Should do flush exclusively. Also if there's already an active flush,
   // should be fine to skip this one.
   SCHECK_FORMAT(SetFlushing(),
@@ -69,10 +66,6 @@ Status RetryableRequestsFlusher::SubmitFlushRetryableRequestsTask() {
 }
 
 Status RetryableRequestsFlusher::CopyRetryableRequestsTo(const std::string& dest_path) {
-  if (!GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
-    return STATUS(NotSupported, "flush_retryable_requests is not supported");
-  }
-
   auto se = ScopeExit([this] {
     CHECK(this->UnsetFlushing());
   });
@@ -83,9 +76,6 @@ Status RetryableRequestsFlusher::CopyRetryableRequestsTo(const std::string& dest
 }
 
 bool RetryableRequestsFlusher::TEST_HasRetryableRequestsOnDisk() {
-  if (!GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
-    return false;
-  }
   auto se = ScopeExit([this] {
     CHECK(UnsetFlushing());
   });
