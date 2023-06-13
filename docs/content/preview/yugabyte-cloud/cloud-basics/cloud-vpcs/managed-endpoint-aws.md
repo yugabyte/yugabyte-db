@@ -81,7 +81,7 @@ To create a PSE, do the following:
 
     Note the service name of the endpoint you want to link to your client application VPC in AWS.
 
-### Create the AWS VPC endpoint in AWS
+### Create the private endpoint in AWS
 
 You can create the AWS endpoint using the AWS [VPC console](https://console.aws.amazon.com/vpc/) or from the command line using the [AWS CLI](https://docs.aws.amazon.com/cli/).
 

@@ -79,7 +79,7 @@ To create a PSE, do the following:
 
     Note the service name of the endpoint you want to link to your client application VPC in Azure.
 
-### Create the Azure VPC endpoint in Azure
+### Create the private endpoint in Azure
 
 You can create the Azure endpoint using the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/).
 
@@ -116,10 +116,10 @@ To ensure no change to your application settings and connect using sslmode=verif
         --resource-group <resource_group_name>
     ```
 
-Replace values as follows:
+    Replace values as follows:
 
-- `cluster_id` - the cluster ID of the cluster with the PSE; the cluster ID is displayed on the cluster **Settings** tab in YBM.
-- `resource_group_name` - the resource group in which the private endpoint was created.
+    - `cluster_id` - the cluster ID of the cluster with the PSE; the cluster ID is displayed on the cluster **Settings** tab in YBM.
+    - `resource_group_name` - the resource group in which the private endpoint was created.
 
 1. To obtain the ipv4 address and VNet of the private endpoint, enter the following command:
 
