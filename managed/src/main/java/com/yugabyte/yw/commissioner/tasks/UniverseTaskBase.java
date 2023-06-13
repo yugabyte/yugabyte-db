@@ -2299,6 +2299,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     if (backupRequestParams.backupType.equals(TableType.YQL_TABLE_TYPE)
         && backupRequestParams.tableByTableBackup) {
+      boolean isTableByTableAllowed =
+          confGetter.getConfForScope(universe, UniverseConfKeys.allowTableByTableBackupYCQL);
+      if (!isTableByTableAllowed) {
+        throw new RuntimeException("YCQL Table by table backup not allowed for this universe");
+      }
       backupTableParams.tableByTableBackup = true;
       backupTableParams.backupList = convertToPerTableParams(backupTableParamsList);
     } else {

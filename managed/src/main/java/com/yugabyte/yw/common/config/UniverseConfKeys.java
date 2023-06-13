@@ -231,6 +231,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable SSE during backup/restore",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowTableByTableBackupYCQL =
+      new ConfKeyInfo<>(
+          "yb.backup.allow_table_by_table_backup_ycql",
+          ScopeType.UNIVERSE,
+          "Allow Table by Table backups for YCQL",
+          "Backup tables individually during YCQL backup",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> nfsDirs =
       new ConfKeyInfo<>(
           "yb.ybc_flags.nfs_dirs",
