@@ -12,9 +12,11 @@ menu:
 aliases:
   - /preview/deploy/kubernetes/yugabyte-operator/
   - /preview/deploy/kubernetes/oss/yugabyte-operator/
+  - /preview/deploy/kubernetes/operator-hub/
+  - /preview/deploy/kubernetes/oss/operator-hub/
+  - /preview/deploy/kubernetes/single-zone/oss/operator-hub/
 type: docs
 ---
-
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
@@ -26,7 +28,7 @@ type: docs
   <li >
     <a href="../yugabyte-operator/" class="nav-link active">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-      YugabyteDB operator (legacy)
+      Kubernetes Operator (legacy)
     </a>
   </li>
 </ul>
