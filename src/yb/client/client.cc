@@ -2204,6 +2204,10 @@ Result<bool> YBClient::CheckIfPitrActive() {
   return data_->CheckIfPitrActive(deadline);
 }
 
+std::vector<rpc::RpcCallInProgressPB> YBClient::ActiveUniverseHistory() {
+  return data_->ActiveUniverseHistory();
+}
+
 Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
                                                       bool exclude_ysql) {
   ListTablesRequestPB req;

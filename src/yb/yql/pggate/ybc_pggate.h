@@ -671,6 +671,8 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
 void YBCPingPggate();
 
+YBCStatus YBCActiveUniverseHistory();
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

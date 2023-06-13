@@ -355,6 +355,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   void PingPggate();
 
+  Result<bool> ActiveUniverseHistory();
+
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);

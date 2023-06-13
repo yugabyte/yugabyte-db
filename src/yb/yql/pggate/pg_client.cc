@@ -677,6 +677,23 @@ class PgClient::Impl {
     return resp;
   }
 
+  Result<bool> ActiveUniverseHistory() {
+    tserver::PgActiveUniverseHistoryRequestPB req;
+    tserver::PgActiveUniverseHistoryResponsePB resp;
+    RETURN_NOT_OK(proxy_->ActiveUniverseHistory(req, &resp, PrepareController()));
+    for (auto calls : resp.calls_in_flight()) {
+      LOG(INFO) << "\nheader:"
+                << "\n\tcall_id: " << calls.header().call_id()
+                << "\n\tremote_method:\n"
+                << "\n\t\tservice_name: " << calls.header().remote_method().service_name()
+                << "\n\t\tmethod_name: " << calls.header().remote_method().method_name()
+                << "\nelapsed_millis: " << calls.elapsed_millis()
+                << "\nsending_bytes: " << calls.sending_bytes()
+                << "\nstate: " << calls.state();
+    }
+    return true;
+  }
+
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
   Status method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -906,6 +923,10 @@ Result<bool> PgClient::CheckIfPitrActive() {
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(
     bool size_only, uint32_t db_oid) {
   return impl_->GetTserverCatalogVersionInfo(size_only, db_oid);
+}
+
+Result<bool> PgClient::ActiveUniverseHistory() {
+  return impl_->ActiveUniverseHistory();
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \
