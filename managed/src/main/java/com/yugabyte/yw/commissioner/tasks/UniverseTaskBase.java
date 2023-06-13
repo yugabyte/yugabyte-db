@@ -33,6 +33,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
@@ -3089,6 +3090,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Add it to the task list.
     subTaskGroup.addSubTask(modifyBlackList);
     // Add the task list to the task queue.
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected void createNodePrecheckTasks(
+      NodeDetails node, Set<ServerType> processTypes, SubTaskGroupType subGroupType) {
+
+    createCheckUnderReplicatedTabletsTask().setSubTaskGroupType(subGroupType);
+
+    // TODO: Add follower lag tablet level check.
+  }
+  /**
+   * Checks whether cluster contains any under replicated tablets before proceeding.
+   *
+   * @return the created task group.
+   */
+  protected SubTaskGroup createCheckUnderReplicatedTabletsTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUnderReplicatedTables");
+    Duration maxWaitTime =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.underReplicatedTabletsTimeout);
+    CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.maxWaitTime = maxWaitTime;
+
+    CheckUnderReplicatedTablets checkUnderReplicatedTablets =
+        createTask(CheckUnderReplicatedTablets.class);
+    checkUnderReplicatedTablets.initialize(params);
+    subTaskGroup.addSubTask(checkUnderReplicatedTablets);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

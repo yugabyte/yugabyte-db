@@ -7,9 +7,12 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSE
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -26,6 +29,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class RestartUniverseTest extends UpgradeTaskTest {
@@ -35,6 +39,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.RunHooks,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
@@ -48,6 +53,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE_TSERVER =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.RunHooks,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -68,6 +74,10 @@ public class RestartUniverseTest extends UpgradeTaskTest {
 
     restartUniverse.setUserTaskUUID(UUID.randomUUID());
     attachHooks("RestartUniverse");
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("underreplicated_tablets", Json.newArray());
+    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
   }
 
   private TaskInfo submitTask(RestartTaskParams requestParams) {
@@ -117,7 +127,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, TSERVER, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PostUpgrade hooks
-    assertEquals(72, position);
+    assertEquals(78, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
