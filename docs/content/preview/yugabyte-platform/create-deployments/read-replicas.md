@@ -17,36 +17,33 @@ You can create a universe that includes both a primary cluster and a [read repli
 YugabyteDB Anywhere does not support read replica configuration for Kubernetes and OpenShift cloud providers.
 {{< /note >}}
 
-## Create the universe
+## Create a universe with a read replica
 
-You start by navigating to **Dashboard** and clicking **Create Universe**. Use the **Primary Cluster > Cloud Configuration** page to enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) provider:
+You start by navigating to **Dashboard** and clicking **Create Universe**. Use the **Primary Cluster** tab to enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) provider:
 
 - Enter a universe name as helloworld3.
 - Enter the set of regions as Oregon.
 - Set the replication factor to 3.
 - Set instance type to n1-standard-8
-- Add the configuration flag for YB-Master and YB-TServer as `leader_failure_max_missed_heartbeat_periods` 10. Since the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.<br>
+- Add the configuration flag for YB-Master and YB-TServer as `leader_failure_max_missed_heartbeat_periods` 10. As the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.
 
   ![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
 
-The next step is to click **Configure Read Replica** and then specify the following on the **Read Replica > Cloud Configuration** page to create a read replica cluster on [AWS](../../configure-yugabyte-platform/set-up-cloud-provider/aws/):
+The next step is to click **Configure Read Replica** and then specify the following on the **Read Replica** tab to create a read replica cluster on [AWS](../../configure-yugabyte-platform/set-up-cloud-provider/aws/):
 
 - Enter the set of regions as US East.
 - Set the replication factor to 3.
 - Set the instance type to c4.large.
 
-Since you do not need to a establish a quorum for read replica clusters, the replication factor can be
-either even or odd.
+As you do not need to a establish a quorum for read replica clusters, the replication factor can be either even or odd.
 
 To finish the process, click **Create**.
-
-## Examine the universe
 
 While the universe is being created, **Dashboard** should look similar to the following illustration:
 
 ![Universe Waiting to Create](/images/ee/universe-waiting.png)
 
-Once the universe has been created, **Dashboard** displays the primary and read replica cluster information, as well as shows the distinct clusters on the map.
+After the universe has been created, **Dashboard** displays the primary and read replica cluster information, as well as shows the distinct clusters on the map.
 
 ### Universe nodes
 
@@ -64,24 +61,18 @@ This confirms that you created a hybrid cloud deployment with the primary cluste
 
 ## Add, remove, edit a read replica cluster
 
-YugabyteDB Anywhere allows you to dynamically add, modify, and remove a read replica cluster from an
-existing universe.
+YugabyteDB Anywhere allows you to dynamically add, modify, and remove a read replica cluster from an existing universe.
 
-Create a new universe called helloworld4 with a primary cluster identical to helloworld3 but without any read replica cluster. Click **Create** and wait for the universe to be ready. Once this is done,
-navigate to **Overview** and click **Actions > Edit Read Replica**.
+Create a new universe called helloworld4 with a primary cluster identical to helloworld3 but without any read replica cluster. Click **Create** and wait for the universe to be ready. Once this is done, navigate to **Overview** and click **Actions > Edit Read Replica**.
 
-Use the **Cloud Configuration** page to enter the same information that you entered for the
-read replica cluster in helloworld3 and click **Edit Read Replica**.
+Use the **Configure read replica** page to enter the same information that you entered for the read replica cluster in helloworld3 and click **Save**.
 
 When done, open **Nodes** and verify that you have three new read replica nodes, all in AWS.
-To edit the read replica cluster, once again click **Actions > Edit Read Replica**. Add a
-node to the cluster (availability zones are populated automatically) and click
-**Edit Read Replica**.
 
-When the universe is ready, open **Nodes** to find the new read replica node for a
-total of four new nodes.
+To edit the read replica cluster, once again click **Actions > Edit Read Replica**. Add a node to the cluster (availability zones are populated automatically) and click **Save**.
 
-To delete the read replica cluster, open the **Cloud Configuration** page and click **Delete
-this configuration**.
+When the universe is ready, open **Nodes** to find the new read replica node for a total of four new nodes.
+
+To delete the read replica cluster, click **Actions > Edit Read Replica** and click **Delete this configuration**.
 
 Upon completion, navigate back to **Nodes** and verify that you only see the three primary nodes from the initial universe creation.
