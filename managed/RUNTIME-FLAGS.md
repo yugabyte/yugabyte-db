@@ -92,6 +92,7 @@
 | "Enable SSH Key Expiration" | "yb.security.ssh_keys.enable_ssh_key_expiration" | "UNIVERSE" | "TODO" | "Boolean" |
 | "SSh Key Expiration Threshold" | "yb.security.ssh_keys.ssh_key_expiration_threshold_days" | "UNIVERSE" | "TODO" | "Integer" |
 | "Enable SSE" | "yb.backup.enable_sse" | "UNIVERSE" | "Enable SSE during backup/restore" | "Boolean" |
+| "Allow Table by Table backups for YCQL" | "yb.backup.allow_table_by_table_backup_ycql" | "UNIVERSE" | "Backup tables individually during YCQL backup" | "Boolean" |
 | "NFS Directry Path" | "yb.ybc_flags.nfs_dirs" | "UNIVERSE" | "Authorised NFS directories for backups" | "String" |
 | "Enable Verbose Logging" | "yb.ybc_flags.enable_verbose" | "UNIVERSE" | "Enable verbose ybc logging" | "Boolean" |
 | "Max Thread Count" | "yb.perf_advisor.max_threads" | "UNIVERSE" | "Max number of threads to support parallel querying of nodes" | "Integer" |
