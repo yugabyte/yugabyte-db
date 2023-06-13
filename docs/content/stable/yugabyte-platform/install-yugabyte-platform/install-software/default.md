@@ -122,7 +122,7 @@ The recommended TLS version is 1.2.
 
 ## Set up HTTP/HTTPS proxy
 
-YBA sometimes initiates HTTP or HTTPS connections to other servers. For example, HTTP or HTTPS connections (depending on your setup) can be used to do the following, or more:
+YugabyteDB Anywhere sometimes initiates HTTP or HTTPS connections to other servers. For example, HTTP or HTTPS connections (depending on your setup) can be used to do the following, or more:
 
 - Contact a public cloud provider to create VMs.
 - Deposit backups on a public cloud provider's object storage service.
@@ -151,7 +151,7 @@ When completing the **Enable Proxy** settings, keep in mind the following:
 
 - The Java fields can accept values as Java system properties, including the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
 
-- YBA follows community standards for setting proxy environment variables, where two environment variables are exported with lowercase and uppercase names. For example, if you enter "http://my.Proxy.host:8080" for **HTTP Proxy setting**, then two environment variables are exported as follows:
+- YugabyteDB Anywhere follows community standards for setting proxy environment variables, where two environment variables are exported with lowercase and uppercase names. For example, if you enter "http://my.Proxy.host:8080" for **HTTP Proxy setting**, then two environment variables are exported as follows:
 
     ```sh
     HTTP_PROXY = http://my.Proxy.host:8080
