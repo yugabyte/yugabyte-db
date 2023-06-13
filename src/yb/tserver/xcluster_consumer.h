@@ -73,11 +73,15 @@ class XClusterConsumer {
  public:
   static Result<std::unique_ptr<XClusterConsumer>> Create(
       std::function<bool(const std::string&)> is_leader_for_tablet,
+      std::function<int64_t(const TabletId&)>
+          get_leader_term,
       rpc::ProxyCache* proxy_cache,
-     TabletServer* tserver);
+      TabletServer* tserver);
 
   XClusterConsumer(
       std::function<bool(const std::string&)> is_leader_for_tablet,
+      std::function<int64_t(const TabletId&)>
+          get_leader_term,
       rpc::ProxyCache* proxy_cache,
       const std::string& ts_uuid,
       std::unique_ptr<XClusterClient>
@@ -149,7 +153,7 @@ class XClusterConsumer {
 
   bool ShouldContinuePolling(
       const cdc::ProducerTabletInfo producer_tablet_info,
-      const cdc::ConsumerTabletInfo consumer_tablet_info) REQUIRES_SHARED(master_data_mutex_);
+      const XClusterPoller& poller) REQUIRES_SHARED(master_data_mutex_);
 
   void UpdatePollerSchemaVersionMaps(
       std::shared_ptr<XClusterPoller> xcluster_poller,
@@ -169,6 +173,7 @@ class XClusterConsumer {
   rw_spinlock producer_pollers_map_mutex_ ACQUIRED_AFTER(master_data_mutex_);
 
   std::function<bool(const std::string&)> is_leader_for_tablet_;
+  std::function<int64_t(const TabletId&)> get_leader_term_;
 
   class TabletTag;
   using ProducerConsumerTabletMap = boost::multi_index_container <
