@@ -119,9 +119,9 @@ The following libraries are officially supported by YugabyteDB.
 | [Hibernate](java/hibernate/) | Full | [CRUD](java/hibernate/) |
 | [Spring Data YugabyteDB](../integrations/spring-framework/sdyb/) | Full | [CRUD](../integrations/spring-framework/sdyb/#examples) |
 | [Spring Data JPA](../integrations/spring-framework/sd-jpa/) | Full | [CRUD](../integrations/spring-framework/sd-jpa/#fundamentals) |
+| [MyBatis](java/mybatis/) | Full | [CRUD](java/mybatis/) |
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
-<!-- | MyBatis | Full |  | -->
 
   {{% /tab %}}
 
@@ -213,6 +213,7 @@ The following libraries are officially supported by YugabyteDB.
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
 | [php-pgsql Driver](php/ysql/) | Full | [CRUD](php/ysql/) |
+| [Laravel](php/laravel/) | Full | [CRUD](php/laravel/) |
 
   {{% /tab %}}
 
