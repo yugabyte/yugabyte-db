@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.service.h"
 #include "yb/tserver/stateful_services/stateful_service_base.h"
 
@@ -27,9 +28,13 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
  private:
   void Activate() override;
   void Deactivate() override;
+  virtual uint32 PeriodicTaskIntervalMs() const override;
   virtual Result<bool> RunPeriodicTask() override;
+  Status UpdateMutationsSinceLastAnalyze();
 
   STATEFUL_SERVICE_IMPL_METHODS((IncreaseMutationCounters));
+
+  tserver::PgMutationCounter pg_cluster_level_mutation_counter_;
 };
 
 }  // namespace stateful_service
