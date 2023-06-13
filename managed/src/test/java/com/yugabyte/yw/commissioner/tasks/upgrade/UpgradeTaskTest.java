@@ -132,7 +132,8 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.WaitForMasterLeader,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
-          TaskType.UpdateClusterUserIntent);
+          TaskType.UpdateClusterUserIntent,
+          TaskType.CheckUnderReplicatedTablets);
 
   @Override
   @Before
