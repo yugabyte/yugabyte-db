@@ -99,6 +99,7 @@ class XClusterTestBase : public YBTest {
   void SetUp() override {
     HybridTime::TEST_SetPrettyToString(true);
 
+    google::SetVLOGLevel("xcluster*", 4);
     YBTest::SetUp();
 
     // We normally disable setting up transactional replication for CQL tables because the
