@@ -201,6 +201,9 @@ DEFINE_test_flag(int64, log_fault_after_segment_allocation_min_replicate_index, 
                  "Fault of segment allocation when min replicate index is at least specified. "
                  "0 to disable.");
 
+DEFINE_test_flag(bool, crash_before_wal_header_is_written, false,
+                 "Crash the server before WAL header is written");
+
 DEFINE_UNKNOWN_int64(time_based_wal_gc_clock_delta_usec, 0,
              "A delta in microseconds to add to the clock value used to determine if a WAL "
              "segment is safe to be garbage collected. This is needed for clusters running with a "
@@ -1824,11 +1827,6 @@ Status Log::SwitchToAllocatedSegment() {
   CHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationFinished);
   // Increment "next" log segment seqno.
   active_segment_sequence_number_++;
-  const string new_segment_path =
-      FsManager::GetWalSegmentFilePath(wal_dir_, active_segment_sequence_number_);
-
-  RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
-  RETURN_NOT_OK(get_env()->SyncDir(wal_dir_));
 
   int64_t fault_after_min_replicate_index =
       FLAGS_TEST_log_fault_after_segment_allocation_min_replicate_index;
@@ -1840,7 +1838,7 @@ Status Log::SwitchToAllocatedSegment() {
 
   // Create a new segment.
   std::unique_ptr<WritableLogSegment> new_segment(
-      new WritableLogSegment(new_segment_path, next_segment_file_));
+      new WritableLogSegment(next_segment_path_, next_segment_file_));
 
   // Set up the new header and footer.
   LogSegmentHeaderPB header;
@@ -1860,7 +1858,22 @@ Status Log::SwitchToAllocatedSegment() {
     header.set_deprecated_schema_version(schema_version_);
   }
 
+  if (PREDICT_FALSE(FLAGS_TEST_crash_before_wal_header_is_written)) {
+    LOG_WITH_PREFIX(FATAL) << "Crash before wal header is written";
+  }
   RETURN_NOT_OK(new_segment->WriteHeader(header));
+  // Calling Sync() here is important because it ensures the file has a complete WAL header
+  // on disk before renaming the file.
+  RETURN_NOT_OK(new_segment->Sync());
+
+  const auto new_segment_path =
+      FsManager::GetWalSegmentFilePath(wal_dir_, active_segment_sequence_number_);
+  // Rename should happen after writing the header and sync. Otherwise, if the server crashes
+  // immediately after the rename, an incomplete WAL headers could cause future tablet bootstrap
+  // to fail repeatedly.
+  RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
+  RETURN_NOT_OK(get_env()->SyncDir(wal_dir_));
+  new_segment->set_path(new_segment_path);
   // Transform the currently-active segment into a readable one, since we need to be able to replay
   // the segments for other peers.
   {

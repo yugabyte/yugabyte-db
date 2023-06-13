@@ -16,6 +16,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/status_log.h"
 #include "yb/client/table.h"
 #include "yb/consensus/log-test-base.h"
@@ -24,6 +25,7 @@
 DECLARE_bool(TEST_simulate_fs_create_with_empty_uuid);
 DECLARE_int32(num_replicas);
 DECLARE_int32(num_tablet_servers);
+DECLARE_uint64(initial_log_segment_size_bytes);
 
 using std::string;
 
@@ -36,6 +38,38 @@ class TabletServerITest : public TabletServerIntegrationTestBase {
 // Given a host:port string, return the host part as a string.
 std::string GetHost(const std::string& val) {
   return CHECK_RESULT(HostPort::FromString(val, 0)).host();
+}
+
+TEST_F(TabletServerITest, TestCrashBeforeWritingWALHeader) {
+  FLAGS_num_tablet_servers = 1;
+  FLAGS_num_replicas = 1;
+  BuildAndStart(std::vector<string>{"--log_async_preallocate_segments=false",
+      "--log_preallocate_segments=false"});
+  auto kTimeout = MonoDelta::FromSeconds(10);
+  auto* ts = cluster_->tablet_server(0);
+  auto* ts_details = tablet_servers_[ts->instance_id().permanent_uuid()].get();
+  WaitForTSAndReplicas();
+  ASSERT_OK(StartElection(ts_details, tablet_id_, kTimeout));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1,
+                  ts_details, tablet_id_, kTimeout));
+
+  // Trigger WAL rollover, so TServer can crash in Log::SwitchToAllocatedSegment().
+  ASSERT_OK(cluster_->SetFlag(ts, "TEST_crash_before_wal_header_is_written", "true"));
+  WriteRequestPB req;
+  WriteResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromMilliseconds(10000));
+  req.set_tablet_id(tablet_id_);
+  std::string test_payload(FLAGS_initial_log_segment_size_bytes+1, '0');
+  AddTestRowInsert(0, 0, test_payload, &req);
+  ASSERT_NOK(ts_details->tserver_proxy->Write(req, &resp, &rpc));
+  ASSERT_OK(cluster_->WaitForTSToCrash(ts, kTimeout));
+  // TServer should successfully finish the bootstrap,
+  // even though a tablet's last WAL file doesn't have header.
+  ASSERT_OK(ts->Restart(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      std::vector<std::pair<string, string>>{{"TEST_crash_before_wal_header_is_written",
+                                              "false"}}));
+  ASSERT_OK(WaitUntilTabletRunning(ts_details, tablet_id_, kTimeout));
 }
 
 TEST_F(TabletServerITest, TestNumberOfSegmentInCrashloop) {
