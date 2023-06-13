@@ -454,6 +454,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Status CopyRetryableRequestsTo(const std::string& dest_path);
   Status SubmitFlushRetryableRequestsTask();
 
+  void EnableFlushRetryableRequests();
+
   bool TEST_HasRetryableRequestsOnDisk();
 
  protected:
@@ -561,6 +563,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // Return granular types of on-disk size of this tablet replica, in bytes.
   TabletOnDiskSizeInfo GetOnDiskSizeInfo() const REQUIRES(lock_);
 
+  bool FlushRetryableRequestsEnabled() const;
+
   MetricRegistry* metric_registry_;
 
   bool IsLeader() override {
@@ -574,6 +578,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   rpc::Messenger* messenger_;
 
+  std::atomic<bool> flush_retryable_requests_enabled_{false};
   std::shared_ptr<RetryableRequestsFlusher> retryable_requests_flusher_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);

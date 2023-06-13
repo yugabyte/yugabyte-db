@@ -129,6 +129,8 @@ DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_int64(cdc_intent_retention_ms);
 
+DECLARE_bool(enable_flush_retryable_requests);
+
 namespace yb {
 namespace tablet {
 
@@ -1686,6 +1688,15 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
       Substitute("Unable to find peer $0 in config for tablet $1", requestor_uuid, tablet_id()));
 }
 
+void TabletPeer::EnableFlushRetryableRequests() {
+  flush_retryable_requests_enabled_.store(true, std::memory_order_relaxed);
+}
+
+bool TabletPeer::FlushRetryableRequestsEnabled() const {
+  return GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
+      flush_retryable_requests_enabled_.load(std::memory_order_relaxed);
+}
+
 Result<consensus::RetryableRequests> TabletPeer::GetRetryableRequests() {
   auto raft_consensus = shared_raft_consensus();
   // raft_consensus is nullptr during bootstrap.
@@ -1697,6 +1708,9 @@ Result<consensus::RetryableRequests> TabletPeer::GetRetryableRequests() {
 }
 
 Status TabletPeer::FlushRetryableRequests() {
+  if (!FlushRetryableRequestsEnabled()) {
+    return STATUS(NotSupported, "flush_retryable_requests is not supported");
+  }
   auto retryable_requests_flusher = shared_retryable_requests_flusher();
   SCHECK_FORMAT(retryable_requests_flusher,
                 IllegalState,
@@ -1706,6 +1720,9 @@ Status TabletPeer::FlushRetryableRequests() {
 }
 
 Status TabletPeer::CopyRetryableRequestsTo(const std::string& dest_path) {
+  if (!FlushRetryableRequestsEnabled()) {
+    return STATUS(NotSupported, "flush_retryable_requests is not supported");
+  }
   auto retryable_requests_flusher = shared_retryable_requests_flusher();
   SCHECK_FORMAT(retryable_requests_flusher,
                 IllegalState,
@@ -1715,6 +1732,9 @@ Status TabletPeer::CopyRetryableRequestsTo(const std::string& dest_path) {
 }
 
 Status TabletPeer::SubmitFlushRetryableRequestsTask() {
+  if (!FlushRetryableRequestsEnabled()) {
+    return STATUS(NotSupported, "flush_retryable_requests is not supported");
+  }
   auto retryable_requests_flusher = shared_retryable_requests_flusher();
   SCHECK_FORMAT(retryable_requests_flusher,
                 IllegalState,
@@ -1724,6 +1744,9 @@ Status TabletPeer::SubmitFlushRetryableRequestsTask() {
 }
 
 bool TabletPeer::TEST_HasRetryableRequestsOnDisk() {
+  if (!FlushRetryableRequestsEnabled()) {
+    return false;
+  }
   auto retryable_requests_flusher = shared_retryable_requests_flusher();
   return retryable_requests_flusher
       ? retryable_requests_flusher->TEST_HasRetryableRequestsOnDisk()
