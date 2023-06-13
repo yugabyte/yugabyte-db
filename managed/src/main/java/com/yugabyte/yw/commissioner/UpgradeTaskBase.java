@@ -261,6 +261,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       Set<ServerType> processTypes = typesByNode.get(node);
       List<NodeDetails> singletonNodeList = Collections.singletonList(node);
       createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
+
+      createNodePrecheckTasks(node, processTypes, subGroupType);
+
       // Run pre node upgrade hooks
       createHookTriggerTasks(singletonNodeList, true, true);
       if (context.runBeforeStopping) {
