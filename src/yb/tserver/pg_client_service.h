@@ -68,6 +68,7 @@ class PgMutationCounter;
     (CheckIfPitrActive) \
     (GetTserverCatalogVersionInfo) \
     (WaitForBackendsCatalogVersion) \
+    (CancelTransaction) \
     /**/
 
 class PgClientServiceImpl : public PgClientServiceIf {

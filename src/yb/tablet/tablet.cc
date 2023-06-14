@@ -4290,7 +4290,7 @@ Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
   intent_iter->SeekToFirst();
 
   if (transaction_ids.empty()) {
-    // If transaction_ids is not empty, iterate over all records in intents_db.
+    // If transaction_ids is empty, iterate over all records in intents_db.
     while (intent_iter->Valid()) {
       auto key = intent_iter->key();
 
