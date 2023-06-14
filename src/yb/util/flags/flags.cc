@@ -252,8 +252,7 @@ TAG_FLAG(helpxml, advanced);
 DECLARE_bool(version);
 TAG_FLAG(version, stable);
 
-DEFINE_UNKNOWN_string(
-    dynamically_linked_exe_suffix, "",
+DEFINE_UNKNOWN_string(dynamically_linked_exe_suffix, "",
     "Suffix to appended to executable names, such as yb-master and yb-tserver during the "
     "generation of Link Time Optimized builds.");
 TAG_FLAG(dynamically_linked_exe_suffix, advanced);
