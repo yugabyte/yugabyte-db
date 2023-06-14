@@ -48,11 +48,11 @@ To back up the Yugabyte Platform server, perform the following:
     ./yb_platform_backup.sh create --output <output_path> [--data_dir <data_dir>] [--exclude_prometheus]
     ```
 
-    *create* runs the backup of the Yugabyte Platform server.<br>
+    *create* runs the backup of the Yugabyte Platform server.
 
-    *output_path* specifies the location for the `.tar` output file.<br>
+    *output_path* specifies the location for the `.tar` output file.
 
-    *data_dir* is optional. It specifies the data directory to be backed up. Default is `/opt/yugabyte`.<br>
+    *data_dir* is optional. It specifies the data directory to be backed up. Default is `/opt/yugabyte`.
 
     *--exclude_prometheus* is optional. It excludes Prometheus metrics from the backup.
 
@@ -78,9 +78,9 @@ To restore the Yugabyte Platform content from your saved backup, perform the fol
     ./yb_platform_backup.sh restore --input <input_path> [--destination <destination>]
     ```
 
-    *restore* restores the Yugabyte Platform content.<br>
+    *restore* restores the Yugabyte Platform content.
 
-    *input_path* is the path to the input `.tar` file.<br>
+    *input_path* is the path to the input `.tar` file.
 
     *destination* is optional. It specifies the output location for data. Default is `/opt/yugabyte`.
 

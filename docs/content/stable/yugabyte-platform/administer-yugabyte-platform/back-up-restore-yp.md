@@ -36,21 +36,21 @@ You can use the YugabyteDB Anywhere `yb_platform_backup.sh` script to back up an
 
 To perform backups and restores in a Replicated environment, you must have a permission to run `docker` commands. This means that on systems with the default `docker` configuration, the `yb_platform_backup.sh` backup and restore script must be run using `sudo` or run as the `root` user (or another member of the `docker` group).
 
-You need to download the backup script that corresponds to the version of YugabyteDB Anywhere that you are backing up. Set an environment variable for the version of YugabyteDB Anywhere that you are running as follows:
+## Download the script
+
+Download the version of the backup script that corresponds to the version of YugabyteDB Anywhere that you are backing up and restoring.
+
+For example, you can copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
 
 ```sh
-export YBA_VERSION='{{< yb-version version="stable">}}'
+wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/{{< yb-version version="stable" format="short">}}/managed/devops/bin/yb_platform_backup.sh
 ```
+
+If you are running a different version of YugabyteDB Anywhere, replace the version number in the command with the correct version number; do not include the [revision number](/preview/releases/versioning/#release-versioning-convention).
 
 ## Back up a YugabyteDB Anywhere server
 
 To back up a YugabyteDB Anywhere server, perform the following:
-
-1. Copy the YugabyteDB Anywhere backup script `yb_platform_backup.sh` from the `yugabyte-db` repository using the following `wget` command:
-
-    ```sh
-    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/${YBA_VERSION}/managed/devops/bin/yb_platform_backup.sh
-    ```
 
 1. Run the `yb_platform_backup.sh` script using the `backup` command, as follows:
 
@@ -73,12 +73,6 @@ To back up a YugabyteDB Anywhere server, perform the following:
 ## Restore a YugabyteDB Anywhere server
 
 To restore the YugabyteDB Anywhere content from your saved backup, perform the following:
-
-1. Copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
-
-    ```sh
-    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/${YBA_VERSION}/managed/devops/bin/yb_platform_backup.sh
-    ```
 
 1. Copy the backup `.tar` file from your storage location.
 
