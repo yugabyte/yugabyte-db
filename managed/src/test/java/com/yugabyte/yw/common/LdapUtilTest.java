@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.LdapDnToYbaRole;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
 import org.apache.directory.api.ldap.model.cursor.EntryCursor;
 import org.apache.directory.api.ldap.model.entry.DefaultEntry;
 import org.apache.directory.api.ldap.model.entry.Entry;
@@ -303,6 +304,128 @@ public class LdapUtilTest extends FakeDBApplication {
                 false));
 
     assertEquals(user, oldUser);
+  }
+
+  @Test
+  public void testNewUserInvalidLdapSpecifiedRole() throws Exception {
+    setupTest();
+    Entry entry = new DefaultEntry();
+    entry.add("yugabytePlatformRole", "invalid role");
+    doNothing().when(ldapNetworkConnection).unBind();
+    when(entryCursor.next()).thenReturn(true).thenReturn(false);
+    when(entryCursor.get()).thenReturn(entry);
+
+    Users user =
+        ldapUtil.authViaLDAP(
+            "email",
+            "password",
+            new LdapUtil.LdapConfiguration(
+                "ldapUrl",
+                389,
+                "base-dn",
+                "",
+                "cn=",
+                false,
+                false,
+                false,
+                "service_account",
+                "service_password",
+                "",
+                false,
+                "*",
+                SearchScope.SUBTREE,
+                "base-dn",
+                "",
+                false,
+                false));
+
+    assertEquals(user.isLdapSpecifiedRole(), false);
+  }
+
+  @Test
+  public void testOldUserNonLdapSpecifiedRole() throws Exception {
+    setupTest();
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
+    user.setRole(Role.ReadOnly);
+    user.setLdapSpecifiedRole(false);
+    user.setUserType(Users.UserType.ldap);
+    user.update();
+    Entry entry = new DefaultEntry();
+    entry.add("yugabytePlatformRole", "Admin");
+    doNothing().when(ldapNetworkConnection).unBind();
+    when(entryCursor.next()).thenReturn(true).thenReturn(false);
+    when(entryCursor.get()).thenReturn(entry);
+
+    Users newUser =
+        ldapUtil.authViaLDAP(
+            user.getEmail(),
+            "password",
+            new LdapUtil.LdapConfiguration(
+                "ldapUrl",
+                389,
+                "base-dn",
+                "",
+                "cn=",
+                false,
+                false,
+                false,
+                "service_account",
+                "service_password",
+                "",
+                false,
+                "*",
+                SearchScope.SUBTREE,
+                "base-dn",
+                "",
+                false,
+                false));
+
+    assertEquals(newUser.isLdapSpecifiedRole(), true);
+    assertEquals(newUser.getRole(), Role.Admin);
+  }
+
+  @Test
+  public void testOldUserLdapSpecifiedRole() throws Exception {
+    setupTest();
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
+    user.setRole(Role.Admin);
+    user.setLdapSpecifiedRole(true);
+    user.setUserType(Users.UserType.ldap);
+    user.update();
+    Entry entry = new DefaultEntry();
+    entry.add("yugabytePlatformRole", "invalid role");
+    doNothing().when(ldapNetworkConnection).unBind();
+    when(entryCursor.next()).thenReturn(true).thenReturn(false);
+    when(entryCursor.get()).thenReturn(entry);
+
+    Users newUser =
+        ldapUtil.authViaLDAP(
+            user.getEmail(),
+            "password",
+            new LdapUtil.LdapConfiguration(
+                "ldapUrl",
+                389,
+                "base-dn",
+                "",
+                "cn=",
+                false,
+                false,
+                false,
+                "service_account",
+                "service_password",
+                "",
+                false,
+                "*",
+                SearchScope.SUBTREE,
+                "base-dn",
+                "",
+                false,
+                false));
+
+    assertEquals(newUser.isLdapSpecifiedRole(), false);
+    assertEquals(newUser.getRole(), Role.Admin);
   }
 
   @Test
