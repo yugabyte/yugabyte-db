@@ -138,7 +138,7 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 
 [User-defined data types](ddl_create_type) are also supported.
 
-## Learn More
+## Learn more
 
 - [Advantages of YCQL over Cassandra](../../faq/comparisons/cassandra)
 - [Differences in features over Cassandra](./cassandra-compatibility)
