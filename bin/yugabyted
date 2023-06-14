@@ -1506,7 +1506,11 @@ class ControlScript(object):
                 if self.configs.saved_data.get("ui"):
                     yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
                         [
-                            "-database_host={}".format(bind_ip)
+                            "-database_host={}".format(bind_ip),
+                            "-master_ui_port={}".format(self.configs.saved_data.
+                                                        get("master_webserver_port")),
+                            "-tserver_ui_port={}".format(self.configs.saved_data.
+                                                        get("tserver_webserver_port"))
                         ]
                     if self.configs.saved_data.get("secure"):
                         yugabyted_ui_cmd.extend(["-secure=true",

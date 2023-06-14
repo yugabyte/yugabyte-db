@@ -15,9 +15,9 @@ type MemTrackersFuture struct {
 }
 
 func GetMemTrackersFuture(hostName string, isMaster bool, future chan MemTrackersFuture) {
-    port := "9000"
+    port := TserverUIPort
     if isMaster {
-        port = "7000"
+        port = MasterUIPort
     }
     memTrackers := MemTrackersFuture {
         Consumption: 0,

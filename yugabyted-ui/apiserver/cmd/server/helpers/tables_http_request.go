@@ -72,7 +72,7 @@ func GetTablesFuture(nodeHost string, future chan TablesFuture) {
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:7000/tables", nodeHost)
+    url := fmt.Sprintf("http://%s:%s/tables", nodeHost, MasterUIPort)
     resp, err := httpClient.Get(url)
     if err != nil {
         tables.Error = err
