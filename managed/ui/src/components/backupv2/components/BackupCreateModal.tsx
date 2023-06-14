@@ -50,6 +50,8 @@ import { ParallelThreads } from '../common/BackupUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../actions/universe';
+import { QUERY_KEY, api } from '../../../redesign/features/universe/universe-form/utils/api';
+import { RunTimeConfigEntry } from '../../../redesign/features/universe/universe-form/utils/dto';
 import './BackupCreateModal.scss';
 
 interface BackupCreateModalProps {
@@ -184,6 +186,14 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     }
   );
 
+  const { data: runtimeConfigs } = useQuery(
+    [QUERY_KEY.fetchCustomerRunTimeConfigs],
+    () => api.fetchRunTimeConfigs(true, currentUniverseUUID!),
+    {
+      enabled: visible
+    }
+  );
+
   const universeDetails = useSelector(
     (state: any) => state.universe?.currentUniverse?.data?.universeDetails
   );
@@ -202,6 +212,11 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   if (isDefinedNotNull(currentUniverseUUID)) {
     isYbcEnabledinCurrentUniverse = isYbcEnabledUniverse(universeDetails);
   }
+
+  const allowTableByTableBackup = runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === 'yb.backup.allow_table_by_table_backup_ycql'
+  );
+
 
   const queryClient = useQueryClient();
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
@@ -501,7 +516,8 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
               nodesInRegionsList,
               isYbcEnabledinCurrentUniverse,
               isIncrementalBackup,
-              isEditBackupMode
+              isEditBackupMode,
+              allowTableByTableBackup
             })}
           </>
         )
@@ -522,7 +538,8 @@ function BackupConfigurationForm({
   nodesInRegionsList,
   isYbcEnabledinCurrentUniverse,
   isIncrementalBackup,
-  isEditBackupMode
+  isEditBackupMode,
+  allowTableByTableBackup
 }: {
   kmsConfigList: any;
   setFieldValue: Function;
@@ -542,6 +559,7 @@ function BackupConfigurationForm({
   isYbcEnabledinCurrentUniverse: boolean;
   isIncrementalBackup: boolean;
   isEditBackupMode: boolean;
+  allowTableByTableBackup: RunTimeConfigEntry;
 }) {
   const ALL_DB_OPTION = {
     label: `All ${values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Databases' : 'Keyspaces'}`,
@@ -726,7 +744,7 @@ function BackupConfigurationForm({
           </Col>
         </Row>
       )}
-      {values['api_type'].value === BACKUP_API_TYPES.YCQL && (
+      {allowTableByTableBackup?.value ==='true' && values['api_type'].value === BACKUP_API_TYPES.YCQL && (
         <Row>
           <Col>
             <Field
