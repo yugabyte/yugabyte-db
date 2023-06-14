@@ -14,25 +14,18 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./helm-chart.md" >}}" class="nav-link active">
+    <a href="../helm-chart/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="{{< relref "./yugabyte-operator.md" >}}" class="nav-link">
+    <a href="../yugabyte-operator/" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-      YugabyteDB operator
-    </a>
-  </li>
-  <li >
-    <a href="{{< relref "./operator-hub.md" >}}" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-      Operator Hub
+      Kubernetes Operator (legacy)
     </a>
   </li>
 </ul>
-
 
 [Helm](https://helm.sh/) is an open source packaging tool that helps install applications and services on Kubernetes. It uses a packaging format called `charts`. A Helm chart is a package containing all resource definitions necessary to create an instance of a Kubernetes application, tool, or service in a Kubernetes cluster.
 
