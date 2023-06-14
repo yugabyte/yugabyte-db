@@ -30,6 +30,14 @@
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
+// Import the internal symbol for the Abseil symbolizer (required for pprof endpoints when
+// YB_GOOGLE_TCMALLOC is enabled).
+#if YB_GOOGLE_TCMALLOC
+namespace absl {
+void InitializeSymbolizer(const char* argv0);
+}
+#endif
+
 namespace yb {
 
 Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc, char*** argv) {
@@ -49,6 +57,10 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
     std::cerr << "usage: " << (*argv)[0] << std::endl;
     return STATUS(InvalidArgument, "Error parsing command-line flags");
   }
+
+#if YB_GOOGLE_TCMALLOC
+  absl::InitializeSymbolizer((*argv)[0]);
+#endif
 
   RETURN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
 

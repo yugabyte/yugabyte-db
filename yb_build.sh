@@ -1033,6 +1033,7 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-tcmalloc)
       no_tcmalloc=true
+      use_google_tcmalloc=false
     ;;
     --no-google-tcmalloc|--use-gperftools-tcmalloc|--gperftools-tcmalloc)
       use_google_tcmalloc=false
