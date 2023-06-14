@@ -475,6 +475,10 @@ public class LdapUtil {
           users.setLdapSpecifiedRole(false);
       }
       Users oldUser = Users.find.query().where().eq("email", email).findOne();
+      if (oldUser != null) {
+        oldUser.setLdapSpecifiedRole(users.isLdapSpecifiedRole());
+      }
+
       if (oldUser != null
           && (oldUser.getRole() == roleToAssign || !oldUser.isLdapSpecifiedRole())) {
         return oldUser;
