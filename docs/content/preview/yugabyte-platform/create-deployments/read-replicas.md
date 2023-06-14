@@ -11,7 +11,11 @@ menu:
 type: docs
 ---
 
-You can create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/read-replicas/) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove a read replica cluster. The example presented in this document shows how to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
+You can create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/read-replicas/) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove a read replica cluster.
+
+You can add up to 15 read replicas to a universe. The number of read replicas can't exceed the number of nodes in the read replica cluster.
+
+The following example shows how to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
 
 {{< note title="Note" >}}
 YugabyteDB Anywhere does not support read replica configuration for Kubernetes and OpenShift cloud providers.
@@ -27,21 +31,13 @@ You start by navigating to **Dashboard** and clicking **Create Universe**. Use t
 - Set instance type to n1-standard-8
 - Add the configuration flag for YB-Master and YB-TServer as `leader_failure_max_missed_heartbeat_periods` 10. As the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.
 
-  ![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
-
 The next step is to click **Configure Read Replica** and then specify the following on the **Read Replica** tab to create a read replica cluster on [AWS](../../configure-yugabyte-platform/set-up-cloud-provider/aws/):
 
 - Enter the set of regions as US East.
-- Set the replication factor to 3.
+- Set the number of read replicas to 3.
 - Set the instance type to c4.large.
 
-As you do not need to a establish a quorum for read replica clusters, the replication factor can be either even or odd.
-
 To finish the process, click **Create**.
-
-While the universe is being created, **Dashboard** should look similar to the following illustration:
-
-![Universe Waiting to Create](/images/ee/universe-waiting.png)
 
 After the universe has been created, **Dashboard** displays the primary and read replica cluster information, as well as shows the distinct clusters on the map.
 
@@ -71,7 +67,7 @@ When done, open **Nodes** and verify that you have three new read replica nodes,
 
 To edit the read replica cluster, once again click **Actions > Edit Read Replica**. Add a node to the cluster (availability zones are populated automatically) and click **Save**.
 
-When the universe is ready, open **Nodes** to find the new read replica node for a total of four new nodes.
+When the universe is ready, open **Nodes** to find the new read replica node for a total of four nodes.
 
 To delete the read replica cluster, click **Actions > Edit Read Replica** and click **Delete this configuration**.
 
