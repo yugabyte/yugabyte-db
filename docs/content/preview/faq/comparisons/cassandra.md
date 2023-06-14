@@ -92,3 +92,8 @@ A few blog posts that highlight how YugabyteDB differs from Apache Cassandra are
 - [DynamoDB vs MongoDB vs Cassandra for Fast Growing Geo-Distributed Apps](https://www.yugabyte.com/blog/dynamodb-vs-mongodb-vs-cassandra-for-fast-growing-geo-distributed-apps/)
 - [YugabyteDB 1.1 New Feature: Document Data Modeling with the JSON Data Type](https://www.yugabyte.com/blog/yugabyte-db-1-1-new-feature-document-data-modeling-with-json-data-type/)
 - [YugabyteDB 1.1 New Feature: Speeding Up Queries with Secondary Indexes](https://www.yugabyte.com/blog/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/)
+
+## Learn more
+
+- [YCQL API](../../../api/ycql/)
+- [YCQL - Cassandra 3.4 compatibility](../../../api/ycql/cassandra-compatibility)
