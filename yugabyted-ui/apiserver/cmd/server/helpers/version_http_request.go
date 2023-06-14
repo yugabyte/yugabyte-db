@@ -33,11 +33,10 @@ func GetVersionFuture(hostName string, future chan VersionInfoFuture) {
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:7000/api/v1/version", hostName)
+    url := fmt.Sprintf("http://%s:%s/api/v1/version", hostName, MasterUIPort)
     resp, err := httpClient.Get(url)
     if err != nil {
-        // try port 9000
-        url = fmt.Sprintf("http://%s:9000/api/v1/version", hostName)
+        url = fmt.Sprintf("http://%s:%s/api/v1/version", hostName, TserverUIPort)
         resp, err = httpClient.Get(url)
         if err != nil {
             versionInfo.Error = err

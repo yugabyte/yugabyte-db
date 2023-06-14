@@ -40,18 +40,18 @@ type ClusterConfigStruct struct {
 
 type ClusterConfigFuture struct {
     ClusterConfig ClusterConfigStruct
-    Error error
+    Error         error
 }
 
 func GetClusterConfigFuture(nodeHost string, future chan ClusterConfigFuture) {
     clusterConfig := ClusterConfigFuture{
         ClusterConfig: ClusterConfigStruct{},
-        Error: nil,
+        Error:         nil,
     }
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:7000/api/v1/cluster-config", nodeHost)
+    url := fmt.Sprintf("http://%s:%s/api/v1/cluster-config", nodeHost, MasterUIPort)
     resp, err := httpClient.Get(url)
     if err != nil {
         clusterConfig.Error = err
