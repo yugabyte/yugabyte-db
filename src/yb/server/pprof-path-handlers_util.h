@@ -13,8 +13,8 @@
 #pragma once
 
 #if YB_GOOGLE_TCMALLOC
+
 #include <tcmalloc/malloc_extension.h>
-#endif // YB_GOOGLE_TCMALLOC
 
 #include <cstdint>
 #include <string>
@@ -28,8 +28,6 @@ DECLARE_bool(enable_process_lifetime_heap_profiling);
 
 namespace yb {
 
-#if YB_GOOGLE_TCMALLOC
-
 struct SampleInfo {
   int64_t bytes;
   int64_t count;
@@ -39,14 +37,19 @@ typedef std::pair<std::string, SampleInfo> Sample;
 
 tcmalloc::Profile GetAllocationProfile(int seconds, int64_t sample_freq_bytes);
 
+enum HeapSnapshotType {
+  CURRENT_HEAP,
+  PEAK_HEAP
+};
+
 // If peak_heap is set, gets the snapshot of the heap at peak memory usage.
-tcmalloc::Profile GetHeapSnapshot(bool peak_heap);
+tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type);
 
 std::vector<Sample> AggregateAndSortProfile(const tcmalloc::Profile& profile, bool only_growth);
 
 void GenerateTable(std::stringstream* output, const std::vector<Sample>& samples,
     const std::string& title, size_t max_call_stacks);
 
-#endif // YB_GOOGLE_TCMALLOC
-
 } // namespace yb
+
+#endif // YB_GOOGLE_TCMALLOC
