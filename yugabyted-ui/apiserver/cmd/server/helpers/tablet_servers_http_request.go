@@ -55,7 +55,7 @@ func GetTabletServersFuture(nodeHost string, future chan TabletServersFuture) {
         httpClient := &http.Client{
                 Timeout: time.Second * 10,
         }
-        url := fmt.Sprintf("http://%s:7000/api/v1/tablet-servers", nodeHost)
+        url := fmt.Sprintf("http://%s:%s/api/v1/tablet-servers", nodeHost, MasterUIPort)
         resp, err := httpClient.Get(url)
         if err != nil {
                 tabletServers.Error = err
@@ -107,7 +107,7 @@ func GetHostToUuidMap(nodeHost string) (map[string]string, error) {
         httpClient := &http.Client{
                 Timeout: time.Second * 10,
         }
-        url := fmt.Sprintf("http://%s:7000/tablet-servers", HOST)
+        url := fmt.Sprintf("http://%s:%s/tablet-servers", HOST, MasterUIPort)
         resp, err := httpClient.Get(url)
         if err != nil {
                 return hostToUuidMap, err

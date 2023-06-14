@@ -80,7 +80,7 @@ func GetTabletsFuture(nodeHost string, future chan TabletsFuture) {
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:9000/tablets", nodeHost)
+    url := fmt.Sprintf("http://%s:%s/tablets", nodeHost, TserverUIPort)
     resp, err := httpClient.Get(url)
     if err != nil {
         tablets.Error = err
