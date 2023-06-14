@@ -113,5 +113,5 @@ This page does **not** list all the features supported in YCQL. For all the feat
 
 ## Learn More
 
-- [Advantages of YCQL over Cassandra](../../../faq/comparisons/cassandra)
+- [Comparison with Apache Cassandra](../../../faq/comparisons/cassandra)
 - [YCQL command reference](../)
