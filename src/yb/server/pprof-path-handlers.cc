@@ -176,7 +176,8 @@ static void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
 
   bool peak_heap = ParseLeadingBoolValue(FindWithDefault(req.parsed_args, "peak_heap", ""), false);
   string title = peak_heap ? "Peak heap snapshot" : "Current heap snapshot";
-  auto profile = GetHeapSnapshot(peak_heap);
+  auto profile = peak_heap ? GetHeapSnapshot(HeapSnapshotType::PEAK_HEAP) :
+                             GetHeapSnapshot(HeapSnapshotType::CURRENT_HEAP);
   auto samples = AggregateAndSortProfile(profile, false /* only_growth */);
   GenerateTable(output, samples, title, 1000 /* max_call_stacks */);
 #else
