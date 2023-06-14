@@ -49,19 +49,19 @@ YugabyteDB allows compactions to be externally triggered on a table using the [`
 
 ### Statistics-based full compactions to improve read performance
 
-YugabyteDB tracks the number of key-value pairs that are read at the DocDB level over a sliding period of time (dictated by the [`auto_compact_stat_window_seconds](../../../reference/configuration/yb-tserver#auto_compact_stat_window_seconds) YB-TServer flag). If YugabyteDB detects an overwhelming amount of the DocDB reads in a tablet are skipping over tombstoned and obsolete keys, then a full compaction will be triggered to remove the unnecessary keys.
+YugabyteDB tracks the number of key-value pairs that are read at the DocDB level over a sliding period of time (dictated by the [auto_compact_stat_window_seconds](../../../reference/configuration/yb-tserver#auto-compact-stat-window-seconds) YB-TServer flag). If YugabyteDB detects an overwhelming amount of the DocDB reads in a tablet are skipping over tombstoned and obsolete keys, then a full compaction will be triggered to remove the unnecessary keys.
 
-Once all of the following conditions are met, an full compaction will automatically be triggered on the tablet. Once all of the following conditions are met, a full compaction is automatically triggered on the tablet:
+Once all of the following conditions are met in the sliding window, a full compaction is automatically triggered on the tablet:
 
-- The ratio of obsolete (for example, deleted or removed due to TTL) versus active keys read reaches the threshold [auto_compact_percent_obsolete](../../../reference/configuration/yb-tserver/#auto_compact_percent_obsolete).
+- The ratio of obsolete (for example, deleted or removed due to TTL) versus active keys read reaches the threshold [auto_compact_percent_obsolete](../../../reference/configuration/yb-tserver/#auto-compact-percent-obsolete).
 
-- Enough keys have been read within the window [auto_compact_min_obsolete_keys_found](../../../reference/configuration/yb-tserver/#auto_compact_min_obsolete_keys_found).
+- Enough keys have been read ([auto_compact_min_obsolete_keys_found](../../../reference/configuration/yb-tserver/#auto-compact-min-obsolete-keys-found)).
 
 While this feature is compatible with tables with TTL, YugabyteDB won't schedule compactions on tables with TTL if the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature is active.
 
 ### Scheduled full compactions
 
- YugabyteDB allows full compactions over all data in a tablet to be scheduled automatically using the [scheduled_full_compaction_frequency_hours](../../../reference/configuration/yb-tserver#scheduled_full_compaction_frequency_hours) and [scheduled_full_compaction_jitter_factor_percentage](../../../reference/configuration/yb-tserver#scheduled_full_compaction_jitter_factor_percentage) YB-TServer flags. This can be useful for performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. This can be used with tables with TTL as well, but is not compatible with the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
+ YugabyteDB allows full compactions over all data in a tablet to be scheduled automatically using the [scheduled_full_compaction_frequency_hours](../../../reference/configuration/yb-tserver#scheduled-full-compaction-frequency-hours) and [scheduled_full_compaction_jitter_factor_percentage](../../../reference/configuration/yb-tserver#scheduled-full-compaction-jitter-factor-percentage) YB-TServer flags. This can be useful for performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. This can be used with tables with TTL as well, but is not compatible with the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
 
 ### Server-global memstore limit
 
