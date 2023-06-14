@@ -92,7 +92,7 @@ This page does **not** list all the features supported in YCQL. For all the feat
 | {{<icon/partial>}} | BATCH                             | Only programattically via BatchStatement |
 {.sno-1}
 
-## Unsupported Datatypes
+## Unsupported datatypes
 
 |               | Type  |
 | :-----------: | ----- |
