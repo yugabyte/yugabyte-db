@@ -58,6 +58,7 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.HashMap;
@@ -236,15 +237,53 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
   }
 
   @Test
-  public void testSlowQueryLimit() {
+  public void testSlowQueryLimitWithoutEnableNestloopOff() {
     when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
         .thenReturn("total_time");
     when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
+    Universe universe = createUniverse(customer.getCustomerId());
+    Universe.saveDetails(
+        universe.universeUUID,
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.15.1.0-b10";
+          universe.setUniverseDetails(universeDetails);
+        });
+    when(mockRuntimeConfigFactory.forUniverse(universe)).thenReturn(mockRuntimeConfig);
+    when(mockRuntimeConfig.getBoolean(QueryHelper.SET_ENABLE_NESTLOOP_OFF_KEY)).thenReturn(false);
     ExecutorService executor = Executors.newFixedThreadPool(1);
-    QueryHelper queryHelper = new QueryHelper(null, executor, mockWsClient);
-    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig);
+    QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
+    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe);
     assertEquals(
         "SELECT a.rolname, t.datname, t.queryid, t.query, t.calls, t.total_time, t.rows,"
+            + " t.min_time, t.max_time, t.mean_time, t.stddev_time, t.local_blks_hit,"
+            + " t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM pg_stat_statements s"
+            + " JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid ORDER BY"
+            + " t.total_time DESC LIMIT 200",
+        actualSql);
+  }
+
+  @Test
+  public void testSlowQueryLimitWithEnableNestloopOff() {
+    when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
+        .thenReturn("total_time");
+    when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
+    Universe universe = createUniverse(customer.getCustomerId());
+    Universe.saveDetails(
+        universe.universeUUID,
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.17.1.0-b146";
+          universe.setUniverseDetails(universeDetails);
+        });
+    when(mockRuntimeConfigFactory.forUniverse(universe)).thenReturn(mockRuntimeConfig);
+    when(mockRuntimeConfig.getBoolean(QueryHelper.SET_ENABLE_NESTLOOP_OFF_KEY)).thenReturn(true);
+    ExecutorService executor = Executors.newFixedThreadPool(1);
+    QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
+    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe);
+    assertEquals(
+        "/*+Set(enable_nestloop off)*/SELECT a.rolname, t.datname, t.queryid, t.query, "
+            + "t.calls, t.total_time, t.rows,"
             + " t.min_time, t.max_time, t.mean_time, t.stddev_time, t.local_blks_hit,"
             + " t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM pg_stat_statements s"
             + " JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid ORDER BY"
