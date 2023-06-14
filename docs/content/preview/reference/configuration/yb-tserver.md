@@ -377,15 +377,73 @@ This value must match on all `yb-master` and `yb-tserver` configurations of a Yu
 
 ##### --post_split_trigger_compaction_pool_max_threads
 
-The maximum number of threads allowed for post-split compactions (that is, compactions that remove irrelevant data from new tablets after splits).
-
-Default: `1`
+Deprecated. Use `full_compaction_pool_max_threads`.
 
 ##### --post_split_trigger_compaction_pool_max_queue_size
 
-The maximum number of post-split compaction tasks that can be queued simultaneously (compactions that remove irrelevant data from new tablets after splits).
+Deprecated. Use `full_compaction_pool_max_queue_size`.
 
-Default: `16`
+##### --full_compaction_pool_max_threads
+
+The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+Default: `1`
+
+##### --full_compaction_pool_max_queue_size
+
+The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+Default: `200`
+
+##### --auto_compact_check_interval_sec
+
+The interval at which the full compaction task will check for tablets eligible for compaction (both for the statistics-based full compaction and scheduled full compaction features). `0` indicates that the statistics-based full compactions feature is disabled.
+
+Default: `60`
+
+##### --auto_compact_stat_window_seconds
+
+Window of time in seconds over which DocDB read statistics are analyzed for the purpose of triggering full compactions to improve read performance. Both `auto_compact_percent_obsolete` and `auto_compact_min_obsolete_keys_found` are evaluated over this period of time.
+
+`auto_compact_stat_window_seconds` must be evaluated as a multiple of `auto_compact_check_interval_sec`, and will be rounded up to meet this constraint. For example, if `auto_compact_stat_window_seconds` is set to `100` and `auto_compact_check_interval_sec` is set to `60`, it will be rounded up to `120` at runtime.
+
+Default: `300`
+
+##### --auto_compact_percent_obsolete
+
+The percentage of obsolete keys (over total keys) read over the `auto_compact_stat_window_seconds` window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
+
+For example, if the flag is set to `99` and 100000 keys are read over that window of time, and 99900 of those are obsolete and past their history retention, a full compaction will be triggered (subject to other conditions).
+
+Default: `99`
+
+##### --auto_compact_min_obsolete_keys_found
+
+Minimum number of keys that must be read over the last `auto_compact_stat_window_seconds` to trigger a statistics-based full compaction.
+
+Default: `10000`
+
+##### --auto_compact_min_wait_between_seconds
+
+Minimum wait time between statistics-based and scheduled full compactions. To be used if statistics-based compactions are triggering too frequently.
+
+Default: `0`
+
+##### --scheduled_full_compaction_frequency_hours
+
+The frequency with which full compactions should be scheduled on tablets. `0` indicates that the feature is disabled. Recommended value: `720` hours or greater (that is, 30 days).
+
+Default: `0`
+
+##### --scheduled_full_compaction_jitter_factor_percentage
+
+Percentage of `scheduled_full_compaction_frequency_hours` to be used as jitter when determining full compaction schedule per tablet. Must be a value between `0` and `100`. Jitter is introduced to prevent many tablets from being scheduled for full compactions at the same time.
+
+Jitter is deterministically computed when scheduling a compaction, between 0 and (frequency * jitter factor) hours. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time.
+
+Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is, 30 days), and `scheduled_full_compaction_jitter_factor_percentage` is `33` percent, each tablet will be scheduled for compaction every `482` hours to `720` hours.
+
+Default: `33`
 
 ##### --automatic_compaction_extra_priority
 
