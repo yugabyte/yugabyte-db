@@ -589,14 +589,15 @@ TEST_F(TestCQLServiceWithCassAuth, TestReadSystemTableAuthenticated) {
 }
 
 TEST_F(TestCQLService, TestCQLStatementEndpoint) {
-  EasyCurl curl;
-  faststring buf;
-  Endpoint addr = GetWebServerAddress();
   shared_ptr<CQLServiceImpl> cql_service = server()->TEST_cql_service();
+  faststring buf;
+  EasyCurl curl;
+  Endpoint addr = GetWebServerAddress();
   QLEnv ql_env(cql_service->client(),
                cql_service->metadata_cache(),
                cql_service->clock(),
                std::bind(&CQLServiceImpl::TransactionPool, cql_service));
+
   cql_service->AllocatePreparedStatement("dummyqueryid", "dummyquery", &ql_env);
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addr)), &buf));
   string result = buf.ToString();
