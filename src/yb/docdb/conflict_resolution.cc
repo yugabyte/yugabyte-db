@@ -946,9 +946,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     buffer.Reserve(kKeyBufferInitialSize);
     const auto row_mark = GetRowMarkTypeFromPB(write_batch_);
     IntentTypesContainer container;
-    IntentTypeSet intent_types =
-        GetIntentTypeSet(metadata_.isolation, dockv::OperationKind::kWrite, row_mark);
-
+    auto intent_types = dockv::GetIntentTypesForWrite(metadata_.isolation);
     IntentProcessor intent_processor(&container);
     for (const auto& doc_op : doc_ops()) {
       paths.clear();
@@ -974,7 +972,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     }
 
     const auto& pairs = write_batch_.read_pairs();
-    intent_types = GetIntentTypeSet(metadata_.isolation, dockv::OperationKind::kRead, row_mark);
+    intent_types = dockv::GetIntentTypesForRead(metadata_.isolation, row_mark);
     if (!pairs.empty()) {
       RETURN_NOT_OK(EnumerateIntents(
           pairs,
@@ -1137,8 +1135,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
       IsolationLevel isolation;
       RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &isolation));
 
-      intent_types = GetIntentTypeSet(
-          isolation, dockv::OperationKind::kWrite, RowMarkType::ROW_MARK_ABSENT);
+      intent_types = dockv::GetIntentTypesForWrite(isolation);
 
       for (const auto& doc_path : doc_paths) {
         VLOG_WITH_PREFIX_AND_FUNC(4)
