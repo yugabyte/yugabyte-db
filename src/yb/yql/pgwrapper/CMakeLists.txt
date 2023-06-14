@@ -81,6 +81,17 @@ ADD_YB_LIBRARY(geo_transactions_test_base
 
 target_link_libraries(geo_transactions_test_base pg_wrapper_test_base integration-tests)
 
+set(PG_LOCKS_TEST_BASE_SRCS
+    pg_locks_test_base.cc)
+set(PG_LOCKS_STATUS_TEST_BASE_DEPS
+    geo_transactions_test_base
+    pg_wrapper_test_base)
+ADD_YB_LIBRARY(pg_locks_test_base
+               SRCS ${PG_LOCKS_TEST_BASE_SRCS}
+               DEPS ${PG_LOCKS_STATUS_TEST_BASE_DEPS})
+
+target_link_libraries(pg_locks_test_base geo_transactions_test_base pg_wrapper_test_base integration-tests)
+
 set(YSQL_UPGRADE_SRCS
     ysql_upgrade.cc)
 set(YSQL_UPGRADE_DEPS
@@ -91,7 +102,7 @@ ADD_YB_LIBRARY(ysql_upgrade
                DEPS ${YSQL_UPGRADE_DEPS})
 
 set(YB_TEST_LINK_LIBS yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_test_utils
-    geo_transactions_test_base rocksdb_tools ${YB_MIN_TEST_LIBS})
+    geo_transactions_test_base pg_locks_test_base rocksdb_tools ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
 ADD_YB_TEST(colocation-test)
@@ -100,6 +111,7 @@ ADD_YB_TEST(geo_transactions_promotion-test)
 ADD_YB_TEST(pg_auto_analyze-test)
 ADD_YB_TEST(pg_backends-test)
 ADD_YB_TEST(pg_cache_refresh-test)
+ADD_YB_TEST(pg_cancel_transaction-test)
 ADD_YB_TEST(pg_catalog_perf-test)
 ADD_YB_TEST(pg_catalog_version-test)
 ADD_YB_TEST(pg_clock_skew-test)
@@ -109,6 +121,7 @@ ADD_YB_TEST(pg_ddl_concurrency-test)
 ADD_YB_TEST(pg_explicit_lock-test)
 ADD_YB_TEST(pg_fkey-test)
 ADD_YB_TEST(pg_gin_index-test)
+ADD_YB_TEST(pg_get_lock_status-test)
 ADD_YB_TEST(pg_index_backfill-test)
 ADD_YB_TEST(pg_libpq-test)
 ADD_YB_TEST(pg_libpq_err-test)

@@ -99,6 +99,8 @@ service TabletServerService {
   // a persisted intent. These intents may correspond to explicit or implicit locks.
   rpc GetLockStatus(GetLockStatusRequestPB) returns (GetLockStatusResponsePB);
 
+  rpc CancelTransaction(CancelTransactionRequestPB) returns (CancelTransactionResponsePB);
+
   // Returns the schema version on the XCluster consumer side that is
   // compatible with the schema provided in the request.
   rpc GetCompatibleSchemaVersion(GetCompatibleSchemaVersionRequestPB)
@@ -367,4 +369,17 @@ message GetTserverCatalogVersionInfoResponsePB {
   optional TabletServerErrorPB error = 1;
   repeated TServerDBCatalogVersionInfo entries = 2;
   optional uint32 num_entries = 3;
+}
+
+message CancelTransactionRequestPB {
+  optional bytes transaction_id = 1;
+
+  // When the field is not populated, the cancel request is broadcast to all the status tablets
+  // hosted by the TabletServer.
+  optional bytes status_tablet_id = 2;
+}
+
+message CancelTransactionResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
 }

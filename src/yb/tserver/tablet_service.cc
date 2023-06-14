@@ -93,6 +93,7 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/tserver/xcluster_safe_time_map.h"
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/crc.h"
 #include "yb/util/debug-util.h"
@@ -1191,6 +1192,13 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
 
   UpdateClock(*req, server_->Clock());
 
+  auto id_or_status = FullyDecodeTransactionId(req->transaction_id());
+  if (!id_or_status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
+    return;
+  }
+  const auto& txn_id = *id_or_status;
+
   auto tablet = LookupLeaderTabletOrRespond(
       server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
   if (!tablet) {
@@ -1200,7 +1208,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
   server::ClockPtr clock(server_->Clock());
   auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
   tablet.tablet->transaction_coordinator()->Abort(
-      req->transaction_id(),
+      txn_id,
       tablet.leader_term,
       [resp, context_ptr, clock, peer = tablet.peer](Result<TransactionStatusResult> result) {
         resp->set_propagated_hybrid_time(clock->Now().ToUint64());
@@ -2740,6 +2748,107 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       }
     }
   }
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::CancelTransaction(
+    const CancelTransactionRequestPB* req, CancelTransactionResponsePB* resp,
+    rpc::RpcContext context) {
+  TRACE("CancelTransaction");
+
+  auto id_or_status = FullyDecodeTransactionId(req->transaction_id());
+  if (!id_or_status.ok()) {
+    return SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
+  }
+  const auto& txn_id = *id_or_status;
+
+  TabletPeers status_tablet_peers;
+  if (req->status_tablet_id().empty()) {
+    status_tablet_peers = server_->tablet_manager()->GetStatusTabletPeers();
+  } else {
+    auto peer_or_status = LookupTabletPeerOrRespond(
+        server_->tablet_manager(), req->status_tablet_id(), resp, &context);
+    if (!peer_or_status.ok()) {
+      return;
+    }
+    // Ensure that the given tablet is a status tablet and that the tablet peer is initialized.
+    auto peer = peer_or_status->tablet_peer;
+    const auto& tablet_ptr = peer->shared_tablet();
+    if (!tablet_ptr || !tablet_ptr->transaction_coordinator()) {
+      return SetupErrorAndRespond(resp->mutable_error(),
+                                  STATUS_FORMAT(IllegalState,
+                                                "Transaction Coordinator not found for tablet $0",
+                                                req->status_tablet_id()),
+                                  &context);
+    }
+    status_tablet_peers.push_back(std::move(peer));
+  }
+
+  std::vector<std::future<Result<TransactionStatusResult>>> txn_status_res_futures;
+  for (const auto& tablet_peer : status_tablet_peers) {
+    // If the peer is not the leader for the group,
+    // 1. and the cancel request contains a status tablet, return a NOT_LEADER error.
+    // 2. and the cancel request does not contain a status tablet id, skip the peer.
+    //
+    // We do not return an error in case of 2. as we need to broadcast the cancel request to all
+    // status tablets. If we return an error instead, we might miss looking at the leader peer
+    // of the transaction status tablet, and hence would not cancel the transaction.
+    auto res = LeaderTerm(*tablet_peer);
+    if (!res.ok()) {
+      if (!req->status_tablet_id().empty()) {
+        return SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
+      }
+      continue;
+    }
+
+    auto leader_term = *res;
+    auto txn_found = false;
+    auto tablet_ptr = tablet_peer->shared_tablet();
+    auto future = MakeFuture<Result<TransactionStatusResult>>(
+        [txn_id, tablet_peer, leader_term, tablet_ptr, &txn_found](auto callback) {
+      txn_found = tablet_ptr->transaction_coordinator()->CancelTransactionIfFound(
+          txn_id,
+          leader_term,
+          [callback, tablet_peer] (Result<TransactionStatusResult> res) {
+            // Note: If the txn is successfully canceled, we need not validate the peer's
+            // leadership status as we see TransactionStatus::ABORTED only after the ABORT
+            // operation is replicated across all involved tablets. So we can forward the
+            // result immaterial of the peer's leadership status.
+            callback(res);
+          });
+    });
+
+    if (txn_found) {
+      txn_status_res_futures.push_back(std::move(future));
+    }
+  }
+
+  // Return if the transaction is not hosted on any of the status tablets of this TabletServer.
+  if (txn_status_res_futures.empty()) {
+    return SetupErrorAndRespond(resp->mutable_error(),
+                                STATUS_FORMAT(NotFound,
+                                              "Failed canceling transaction $0", txn_id.ToString()),
+                                &context);
+  }
+
+  // There should be at most 1 status tablet hosting the transaction. In case of transaction
+  // promotion, the transaction can be present at 2 status tablets until commit time.
+  DCHECK_LE(txn_status_res_futures.size(), 2);
+
+  for (auto& future : txn_status_res_futures) {
+    // Errors and txn statuses other than ABORTED take precedence over TransactionStatus::ABORTED.
+    // This needs to be done to correctly handle cancelation requests of promoted transactions.
+    const auto& res = future.get();
+    if (!res.ok() || res->status != TransactionStatus::ABORTED) {
+      auto s = !res.ok() ? res.status() : STATUS_FORMAT(NotSupported,
+                                                        "Cannot cancel transaction $0 in state $1",
+                                                        txn_id.ToString(),
+                                                        res->ToString());
+      return SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    }
+    DCHECK_EQ(res->status, TransactionStatus::ABORTED);
+  }
+
   context.RespondSuccess();
 }
 

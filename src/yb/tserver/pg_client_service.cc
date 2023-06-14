@@ -51,6 +51,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
@@ -156,6 +157,8 @@ class PgClientSessionLocker {
 };
 
 using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
+using RemoteTabletServerPtr = std::shared_ptr<client::internal::RemoteTabletServer>;
+using client::internal::RemoteTabletPtr;
 
 void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB* partition_list) {
   const auto table_partition_list = table->GetVersionedPartitions();
@@ -488,6 +491,116 @@ class PgClientServiceImpl::Impl {
 
   void InvalidateTableCache() {
     table_cache_.InvalidateAll(CoarseMonoClock::Now());
+  }
+
+  // Return the TabletServer hosting the specified status tablet.
+  std::future<Result<RemoteTabletServerPtr>> GetTServerHostingStatusTablet(
+      const TabletId& status_tablet_id, CoarseTimePoint deadline) {
+
+    return MakeFuture<Result<RemoteTabletServerPtr>>([&](auto callback) {
+      client().LookupTabletById(
+          status_tablet_id, /* table =*/ nullptr, master::IncludeInactive::kFalse,
+          master::IncludeDeleted::kFalse, deadline,
+          [&, status_tablet_id, callback] (const auto& lookup_result) {
+            if (!lookup_result.ok()) {
+              return callback(lookup_result.status());
+            }
+
+            auto& remote_tablet = *lookup_result;
+            if (!remote_tablet) {
+              return callback(STATUS_FORMAT(
+                  InvalidArgument,
+                  Format("Status tablet with id: $0 not found", status_tablet_id)));
+            }
+
+            if (!remote_tablet->LeaderTServer()) {
+              return callback(STATUS_FORMAT(
+                  TryAgain, Format("Leader not found for tablet $0", status_tablet_id)));
+            }
+            const auto& permanent_uuid = remote_tablet->LeaderTServer()->permanent_uuid();
+            callback(client().GetRemoteTabletServer(permanent_uuid));
+          },
+          // Force a client cache refresh so as to not hit NOT_LEADER error.
+          client::UseCache::kFalse);
+    });
+  }
+
+  Result<std::vector<RemoteTabletServerPtr>> GetAllLiveTservers() {
+    std::vector<RemoteTabletServerPtr> remote_tservers;
+    std::vector<master::TSInformationPB> live_tservers;
+    RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
+    for (const auto& live_ts : live_tservers) {
+      const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
+      remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid)));
+    }
+    return remote_tservers;
+  }
+
+  Status CancelTransaction(const PgCancelTransactionRequestPB& req,
+                           PgCancelTransactionResponsePB* resp,
+                           rpc::RpcContext* context) {
+    if (req.transaction_id().empty()) {
+      return STATUS_FORMAT(IllegalState,
+                           "Transaction Id not provided in PgCancelTransactionRequestPB");
+    }
+    tserver::CancelTransactionRequestPB node_req;
+    node_req.set_transaction_id(req.transaction_id());
+
+    std::vector<RemoteTabletServerPtr> remote_tservers;
+    if (req.status_tablet_id().empty()) {
+      remote_tservers = VERIFY_RESULT(GetAllLiveTservers());
+    } else {
+      const auto& remote_ts = VERIFY_RESULT(GetTServerHostingStatusTablet(
+          req.status_tablet_id(), context->GetClientDeadline()).get());
+      remote_tservers.push_back(remote_ts);
+      node_req.set_status_tablet_id(req.status_tablet_id());
+    }
+
+    std::vector<std::future<Status>> status_future;
+    std::vector<std::shared_ptr<tserver::CancelTransactionResponsePB>>
+        node_resp(remote_tservers.size(), std::make_shared<tserver::CancelTransactionResponsePB>());
+
+    for (size_t i = 0 ; i < remote_tservers.size() ; i++) {
+      const auto& proxy = remote_tservers[i]->proxy();
+      std::shared_ptr<rpc::RpcController> controller;
+      status_future.push_back(
+          MakeFuture<Status>([&, controller](auto callback) {
+            proxy->CancelTransactionAsync(
+                node_req, node_resp[i].get(), controller.get(), [callback, controller] {
+              callback(controller->status());
+            });
+          }));
+    }
+
+    auto status = STATUS_FORMAT(NotFound, "Unable to cancel transaction");
+    resp->Clear();
+    for (size_t i = 0 ; i < status_future.size() ; i++) {
+      const auto& s = status_future[i].get();
+      if (!s.ok()) {
+        LOG(WARNING) << "CancelTransaction request to TS failed with status: " << s;
+        continue;
+      }
+
+      if (node_resp[i]->has_error()) {
+        // Errors take precedence over TransactionStatus::ABORTED statuses. This needs to be done to
+        // correctly handle cancelation requests of promoted txns. Ignore all NotFound statuses as
+        // we collate them, collect all other error types.
+        const auto& status_from_pb = StatusFromPB(node_resp[i]->error().status());
+        if (status_from_pb.IsNotFound()) {
+          continue;
+        }
+        status = status_from_pb.CloneAndAppend("\n").CloneAndAppend(status.message());
+      }
+
+      // One of the TServers reported successfull cancelation of the transaction. Reset the status
+      // if we haven't seen any errors other than NOT_FOUND from the remaining TServers.
+      if (status.IsNotFound()) {
+        status = Status::OK();
+      }
+    }
+
+    StatusToPB(status, resp->mutable_status());
+    return Status::OK();
   }
 
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \

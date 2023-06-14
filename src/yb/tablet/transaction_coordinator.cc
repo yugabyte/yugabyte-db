@@ -103,6 +103,14 @@ DEFINE_test_flag(bool, disable_cleanup_applied_transactions, false,
 DEFINE_test_flag(bool, disable_apply_committed_transactions, false,
                  "Should we disable the apply of committed transactions.");
 
+DEFINE_test_flag(bool, mock_cancel_unhosted_transactions, false,
+                 "When enabled, the flag alters the behavior of the txn coordinator to falsely "
+                 "claim successful cancelation of transactions it does not actually host.");
+
+DEFINE_test_flag(bool, fail_abort_request_with_try_again, false,
+                 "When enabled, the txn coordinator responds to all abort transaction requests "
+                 "with TryAgain error status, for the set of transactions it hosts.");
+
 DEFINE_RUNTIME_uint32(external_transaction_apply_rpc_limit, 0,
                       "Limit on the number of outstanding APPLY external transaction rpcs sent to "
                       "involved tablets at a given time. If set to 0, the default is half "
@@ -1249,45 +1257,37 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     return TransactionStatusResult{TransactionStatus::PENDING, result.status_time.Decremented()};
   }
 
-  void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback) {
+  void Abort(const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback) {
     AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
 
-    auto id = FullyDecodeTransactionId(transaction_id);
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction_id: " << id << ".";
-    if (!id.ok()) {
-      callback(id.status());
+    std::unique_lock<std::mutex> lock(managed_mutex_);
+    auto it = managed_transactions_.find(transaction_id);
+    if (it == managed_transactions_.end()) {
+      lock.unlock();
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction_id: " << transaction_id << " not found.";
+      callback(TransactionStatusResult::Aborted());
       return;
     }
-    Abort(*id, term, callback);
+
+    DoAbort(it, term, std::move(callback), std::move(lock));
   }
 
-  void Abort(const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback) {
-    PostponedLeaderActions actions;
-    {
-      std::unique_lock<std::mutex> lock(managed_mutex_);
-      auto it = managed_transactions_.find(transaction_id);
-      if (it == managed_transactions_.end()) {
-        lock.unlock();
-        VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction_id: " << transaction_id << " not found.";
+  bool CancelTransactionIfFound(
+      const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback) {
+
+    std::unique_lock<std::mutex> lock(managed_mutex_);
+    auto it = managed_transactions_.find(transaction_id);
+    if (it == managed_transactions_.end()) {
+      lock.unlock();
+      if (PREDICT_FALSE(FLAGS_TEST_mock_cancel_unhosted_transactions)) {
         callback(TransactionStatusResult::Aborted());
-        return;
+        return true;
       }
-      VLOG_WITH_PREFIX_AND_FUNC(4)
-          << "transaction_id: " << transaction_id << " found, aborting now.";
-      postponed_leader_actions_.leader_term = term;
-      boost::optional<TransactionStatusResult> status;
-      managed_transactions_.modify(it, [&status, &callback](TransactionState& state) {
-        status = state.Abort(&callback);
-      });
-      if (callback) {
-        lock.unlock();
-        callback(*status);
-        return;
-      }
-      actions.Swap(&postponed_leader_actions_);
+      return false;
     }
 
-    ExecutePostponedLeaderActions(&actions);
+    DoAbort(it, term, std::move(callback), std::move(lock));
+    return true;
   }
 
   size_t test_count_transactions() {
@@ -1799,6 +1799,36 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     }
   }
 
+  void DoAbort(
+      ManagedTransactions::iterator it, int64_t term, TransactionAbortCallback callback,
+      std::unique_lock<std::mutex> lock) {
+    CHECK(it != managed_transactions_.end());
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction_id: " << it->id() << " found, aborting now.";
+
+    if (PREDICT_FALSE(FLAGS_TEST_fail_abort_request_with_try_again)) {
+      lock.unlock();
+      callback(STATUS_FORMAT(
+          TryAgain, "Test flag fail_abort_request_with_try_again is enabled."));
+      return;
+    }
+
+    PostponedLeaderActions actions;
+    postponed_leader_actions_.leader_term = term;
+    TransactionStatusResult status;
+    managed_transactions_.modify(it, [&status, &callback](TransactionState& state) {
+      status = state.Abort(&callback);
+    });
+    if (callback) {
+      lock.unlock();
+      callback(status);
+      return;
+    }
+    actions.Swap(&postponed_leader_actions_);
+    lock.unlock();
+
+    ExecutePostponedLeaderActions(&actions);
+  }
+
   TransactionCoordinatorContext& context_;
   Counter& expired_metric_;
   const std::string log_prefix_;
@@ -1870,10 +1900,15 @@ Status TransactionCoordinator::GetStatus(
   return impl_->GetStatus(transaction_ids, deadline, response);
 }
 
-void TransactionCoordinator::Abort(const std::string& transaction_id,
+void TransactionCoordinator::Abort(const TransactionId& transaction_id,
                                    int64_t term,
                                    TransactionAbortCallback callback) {
   impl_->Abort(transaction_id, term, std::move(callback));
+}
+
+bool TransactionCoordinator::CancelTransactionIfFound(
+    const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback) {
+  return impl_->CancelTransactionIfFound(transaction_id, term, std::move(callback));
 }
 
 std::string TransactionCoordinator::DumpTransactions() {

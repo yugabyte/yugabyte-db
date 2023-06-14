@@ -178,6 +178,13 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                      GetLockStatusResponsePB* resp,
                      rpc::RpcContext context) override;
 
+  // Method to cancel a given transaction. If the passed in request has a status tablet id, a cancel
+  // transaction request is sent to that status tablet alone. Else, the request is broadcast to all
+  // status tablets hosted at this server.
+  void CancelTransaction(const CancelTransactionRequestPB* req,
+                         CancelTransactionResponsePB* resp,
+                         rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:
