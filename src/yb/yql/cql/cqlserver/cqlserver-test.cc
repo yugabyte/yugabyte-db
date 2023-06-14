@@ -599,7 +599,7 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
                std::bind(&CQLServiceImpl::TransactionPool, cql_service));
   cql_service->AllocatePreparedStatement("dummyqueryid", "dummyquery", &ql_env);
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addr)), &buf));
-  std::string result = buf.ToString();
+  string result = buf.ToString();
   ASSERT_STR_CONTAINS(result, "prepared_statements");
   ASSERT_STR_CONTAINS(result, "dummyquery");
   ASSERT_STR_CONTAINS(result, b2a_hex("dummyqueryid"));
@@ -660,17 +660,15 @@ TEST_F(TestCQLService, TestCQLUpdateStmtCounters) {
     const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
       ql_env.CurrentKeyspace(), query_text);
     // First store the previous values of the counters for that query.
-    counters = cql_service->GetCounters(query_id);
+    counters = cql_service->GetWritableStmtCounters(query_id);
     if (counters) {
       calls = counters->num_calls;
       total_time = counters->total_time_in_msec;
     } else {
       cql_service->AllocatePreparedStatement(query_id, query_text, &ql_env);
-      calls = 0;
-      total_time = 0;
     }
     cql_service->UpdatePrepStmtCounters(query_id, execute_time_in_msec);
-    counters = cql_service->GetCounters(query_id); // Store the updated counters.
+    counters = cql_service->GetWritableStmtCounters(query_id); // Store the updated counters.
     ASSERT_ONLY_NOTNULL(counters.get());
     ASSERT_EQ(calls + 1, counters->num_calls);
     ASSERT_EQ(query_text, counters->query);

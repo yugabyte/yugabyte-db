@@ -116,7 +116,7 @@ class CQLProcessor : public ql::QLProcessor {
 
   const ql::CQLMessage::QueryId GetPrepQueryId() const {
     return request_ && request_->opcode() == ql::CQLMessage::Opcode::EXECUTE
-      ? static_cast<const ql::ExecuteRequest&>(*request_).query_id() : "";
+        ? static_cast<const ql::ExecuteRequest&>(*request_).query_id() : "";
   }
 
   const std::unordered_map<std::string, std::vector<std::string>> kSupportedOptions = {

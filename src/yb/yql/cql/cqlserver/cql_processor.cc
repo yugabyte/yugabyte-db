@@ -312,10 +312,11 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
       response_done.GetDeltaSince(response_begin).ToMicroseconds());
 
   // Query id of a prepared statement if type of request is Execute request.
-  std::string prep_query_id = GetPrepQueryId();
+  const std::string prep_query_id = GetPrepQueryId();
   if (FLAGS_ycql_enable_stat_statements && !prep_query_id.empty()) {
-    service_impl_->UpdatePrepStmtCounters(prep_query_id,
-      response_done.GetDeltaSince(execute_begin_).ToMilliseconds());
+    service_impl_->UpdatePrepStmtCounters(
+        prep_query_id,
+        response_done.GetDeltaSince(execute_begin_).ToMilliseconds());
   }
 
   Release();

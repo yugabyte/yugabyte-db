@@ -461,7 +461,7 @@ void CQLServiceImpl::GetPreparedStatementMetrics(
 }
 
 void CQLServiceImpl::UpdatePrepStmtCounters(const ql::CQLMessage::QueryId& query_id,
-  double execute_time_in_msec) {
+    double execute_time_in_msec) {
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
   auto itr = prepared_stmts_map_.find(query_id);
   if(itr == prepared_stmts_map_.end()) {
@@ -477,7 +477,8 @@ void CQLServiceImpl::UpdatePrepStmtCounters(const ql::CQLMessage::QueryId& query
 }
 
 void CQLServiceImpl::UpdateCountersUnlocked(
-  double execute_time_in_msec, std::shared_ptr<StmtCounters> stmt_counters) {
+    double execute_time_in_msec,
+    std::shared_ptr<StmtCounters> stmt_counters) {
   LOG_IF(DFATAL, stmt_counters == nullptr) << "Null pointer counters received";
   if (stmt_counters->num_calls == 0) {
     stmt_counters->num_calls = 1;
@@ -485,16 +486,15 @@ void CQLServiceImpl::UpdateCountersUnlocked(
     stmt_counters->min_time_in_msec = execute_time_in_msec;
     stmt_counters->max_time_in_msec = execute_time_in_msec;
   } else {
-    const double old_mean = (stmt_counters->num_calls ?
-      stmt_counters->total_time_in_msec/stmt_counters->num_calls : 0);
+    const double old_mean = stmt_counters->total_time_in_msec/stmt_counters->num_calls;
     stmt_counters->num_calls += 1;
     stmt_counters->total_time_in_msec += execute_time_in_msec;
+    const double new_mean = stmt_counters->total_time_in_msec/stmt_counters->num_calls;
 
     // Welford's method for accurately computing variance. See
     // <http://www.johndcook.com/blog/standard_deviation/>
     stmt_counters->sum_var_time_in_msec +=
-      (execute_time_in_msec - old_mean)*(execute_time_in_msec -
-          stmt_counters->total_time_in_msec/stmt_counters->num_calls);
+        (execute_time_in_msec - old_mean)*(execute_time_in_msec - new_mean);
 
     if (stmt_counters->max_time_in_msec < execute_time_in_msec) {
       stmt_counters->max_time_in_msec = execute_time_in_msec;
@@ -505,7 +505,7 @@ void CQLServiceImpl::UpdateCountersUnlocked(
   }
 }
 
-shared_ptr<StmtCounters> CQLServiceImpl::GetCounters(const std::string& query_id) {
+shared_ptr<StmtCounters> CQLServiceImpl::GetWritableStmtCounters(const std::string& query_id) {
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
   auto itr = prepared_stmts_map_.find(query_id);
   return itr == prepared_stmts_map_.end() ? nullptr : itr->second->GetCounters();

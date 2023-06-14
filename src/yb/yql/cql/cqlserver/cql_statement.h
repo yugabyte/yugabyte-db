@@ -39,22 +39,21 @@ using CQLStatementList = std::list<std::shared_ptr<CQLStatement>>;
 using CQLStatementListPos = CQLStatementList::iterator;
 
 struct StmtCounters{
-  explicit StmtCounters(const std::string& text) : num_calls(0), total_time_in_msec(0.),
-      min_time_in_msec(0.), max_time_in_msec(0.), sum_var_time_in_msec(0.), query(text) {}
+  explicit StmtCounters(const std::string& text) : query(text) {}
 
   explicit StmtCounters(const std::shared_ptr<StmtCounters>& other) :
-    num_calls(other->num_calls), total_time_in_msec(other->total_time_in_msec),
-    min_time_in_msec(other->min_time_in_msec), max_time_in_msec(other->max_time_in_msec),
-    sum_var_time_in_msec(other->sum_var_time_in_msec), query(other->query) {}
+      num_calls(other->num_calls), total_time_in_msec(other->total_time_in_msec),
+      min_time_in_msec(other->min_time_in_msec), max_time_in_msec(other->max_time_in_msec),
+      sum_var_time_in_msec(other->sum_var_time_in_msec), query(other->query) {}
 
   void WriteAsJson(JsonWriter* jw, const ql::CQLMessage::QueryId& query_id) const;
 
-  int64 num_calls;             // Number of times executed.
-  double total_time_in_msec;   // Total execution time, in msec.
-  double min_time_in_msec;     // Minimum execution time in msec.
-  double max_time_in_msec;     // Maximum execution time in msec.
-  double sum_var_time_in_msec; // Sum of variances in execution time in msec.
-  std::string query;           // Stores the query text.
+  int64 num_calls = 0;              // Number of times executed.
+  double total_time_in_msec = 0.;   // Total execution time, in msec.
+  double min_time_in_msec = 0.;     // Minimum execution time in msec.
+  double max_time_in_msec = 0.;     // Maximum execution time in msec.
+  double sum_var_time_in_msec = 0.; // Sum of variances in execution time in msec.
+  std::string query;                // Stores the query text.
 };
 
 // A CQL statement that is prepared and cached.

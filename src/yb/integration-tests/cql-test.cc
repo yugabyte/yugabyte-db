@@ -35,6 +35,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/status_log.h"
@@ -782,7 +783,7 @@ TEST_F(CqlTest, AlteredPrepare_MetadataInExecResp) {
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-void CqlTest::TestCQLPreparedStmtStats() {
+TEST_F(CqlTest, TestCQLPreparedStmtStats) {
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   EasyCurl curl;
   faststring buf;
@@ -800,20 +801,37 @@ void CqlTest::TestCQLPreparedStmtStats() {
     ASSERT_OK(session.Execute(ins_prepared.Bind().Bind(0, i).Bind(1, i)));
   }
 
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 9; i += 2) {
     CassandraResult res =  ASSERT_RESULT(
-      session.ExecuteWithResult(sel_prepared.Bind().Bind(0, i*2)));
+        session.ExecuteWithResult(sel_prepared.Bind().Bind(0, i)));
+    ASSERT_EQ(res.RenderToString(), strings::Substitute("$0,$1", i, i));
   }
 
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
-  std::string result = buf.ToString();
-  ASSERT_STR_CONTAINS(result, "prepared_statements");
-  ASSERT_STR_CONTAINS(result, "\"num_calls\": 10");
-  ASSERT_STR_CONTAINS(result, "\"num_calls\": 5");
-}
+  JsonReader r(buf.ToString());
+  ASSERT_OK(r.Init());
+  std::vector<const rapidjson::Value*> stmt_stats;
+  ASSERT_OK(r.ExtractObjectArray(r.root(), "prepared_statements", &stmt_stats));
+  ASSERT_EQ(2, stmt_stats.size());
 
-TEST_F(CqlTest, TestCQLPreparedStmtStats) {
-  TestCQLPreparedStmtStats();
+  const rapidjson::Value* insert_stat = stmt_stats[0];
+  string insert_query;
+  ASSERT_OK(r.ExtractString(insert_stat, "query", &insert_query));
+  ASSERT_EQ("INSERT INTO t1 (i, j) VALUES (?, ?)", insert_query);
+
+  int64 insert_num_calls;
+  ASSERT_OK(r.ExtractInt64(insert_stat, "num_calls", &insert_num_calls));
+  ASSERT_EQ(10, insert_num_calls);
+
+  const rapidjson::Value* select_stat = stmt_stats[1];
+  string select_query;
+  ASSERT_OK(r.ExtractString(select_stat, "query", &select_query));
+  ASSERT_EQ("SELECT * FROM t1 WHERE i = ?", select_query);
+
+  int64 select_num_calls;
+  ASSERT_OK(r.ExtractInt64(select_stat, "num_calls", &select_num_calls));
+  ASSERT_EQ(5, select_num_calls);
+
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

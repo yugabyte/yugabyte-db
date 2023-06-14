@@ -82,7 +82,7 @@ void StmtCounters::WriteAsJson(
   // Bessel's correction is not used, and we don't divide by
   // this->num_calls-1.
   const double stddev_time = this->num_calls == 0 ? 0. :
-    sqrt(this->sum_var_time_in_msec / this->num_calls);
+      sqrt(this->sum_var_time_in_msec / this->num_calls);
 
   jw->String("stddev_time");
   jw->Double(stddev_time);
