@@ -5,7 +5,7 @@ linkTitle: YCQL
 description: YCQL is a semi-relational API that is best fit for internet-scale OLTP & HTAP applications.
 summary: Reference for the YCQL API
 image: /images/section_icons/api/ycql.png
-headcontent: Cassandra compatible API
+headcontent: Cassandra-compatible API
 menu:
   preview:
     parent: api
@@ -141,4 +141,4 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 ## Learn more
 
 - [Advantages of YCQL over Cassandra](../../faq/comparisons/cassandra)
-- [Differences in features over Cassandra](./cassandra-compatibility)
+- [YCQL - Cassandra 3.4 compatibility](./cassandra-compatibility)

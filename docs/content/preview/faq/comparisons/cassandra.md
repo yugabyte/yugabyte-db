@@ -93,7 +93,7 @@ A few blog posts that highlight how YugabyteDB differs from Apache Cassandra are
 - [YugabyteDB 1.1 New Feature: Document Data Modeling with the JSON Data Type](https://www.yugabyte.com/blog/yugabyte-db-1-1-new-feature-document-data-modeling-with-json-data-type/)
 - [YugabyteDB 1.1 New Feature: Speeding Up Queries with Secondary Indexes](https://www.yugabyte.com/blog/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/)
 
-## Learn More
+## Learn more
 
-- [YCQL command reference](../../../api/ycql/)
-- [YCQL - Cassandra 3.4.2 feature parity](../../../api/ycql/cassandra-compatibility)
+- [YCQL API](../../../api/ycql/)
+- [YCQL - Cassandra 3.4 compatibility](../../../api/ycql/cassandra-compatibility)
