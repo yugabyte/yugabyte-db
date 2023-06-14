@@ -123,13 +123,10 @@ DEFINE_test_flag(bool, disallow_lmp_failures, false,
                  "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
 
 DEFINE_RUNTIME_bool(
-    remote_bootstrap_from_leader_only, false,
+    remote_bootstrap_from_leader_only, true,
     "Whether to instruct the peer to attempt bootstrap from the closest peer instead of the "
     "leader. The leader too could be the closest peer depending on the new peer's geographic "
-    "placement. Setting the flag to false will enable remote bootstrap from the closest peer. "
-    "On addition of a new node, it follows that most bootstrap sources would now be from a "
-    "single node and could result in increased load on the node. If bootstrap of a new node is "
-    "slow, it might be worth setting the flag to true and enable bootstrapping from leader only.");
+    "placement. Setting the flag to false will enable remote bootstrap from the closest peer.");
 
 DEFINE_RUNTIME_uint32(
     max_remote_bootstrap_attempts_from_non_leader, 5,
