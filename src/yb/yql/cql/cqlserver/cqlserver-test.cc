@@ -599,6 +599,7 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
                std::bind(&CQLServiceImpl::TransactionPool, cql_service));
 
   cql_service->AllocatePreparedStatement("dummyqueryid", "dummyquery", &ql_env);
+
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addr)), &buf));
   string result = buf.ToString();
   ASSERT_STR_CONTAINS(result, "prepared_statements");
