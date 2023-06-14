@@ -289,6 +289,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const REQUIRES_SHARED(mutex_);
   void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;
 
+  // Get TabletPeers for all status tablets hosted on this server.
+  TabletPeers GetStatusTabletPeers();
+
   // Callback used for state changes outside of the control of TsTabletManager, such as a consensus
   // role change. They are applied asynchronously internally.
   void ApplyChange(const TabletId& tablet_id,

@@ -138,7 +138,13 @@ class TransactionCoordinator {
                    CoarseTimePoint deadline,
                    tserver::GetTransactionStatusResponsePB* response);
 
-  void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback);
+  void Abort(const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback);
+
+  // CancelTransactionIfFound returns true if the transaction is found in the list of managed txns
+  // at the coordinator, and invokes the callback with the cancelation status. If the txn isn't
+  // found, it returns false and the callback is not invoked.
+  bool CancelTransactionIfFound(
+      const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback);
 
   std::string DumpTransactions();
 

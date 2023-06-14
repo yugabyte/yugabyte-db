@@ -80,6 +80,7 @@ service PgClientService {
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
+  rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -648,4 +649,17 @@ message PgWaitForBackendsCatalogVersionResponsePB {
   // Number of YSQL backends (across all tservers) that have not reached the requested catalog
   // version.  If the field is -1, the counting is in-progress.
   int32 num_lagging_backends = 2;
+}
+
+message PgCancelTransactionRequestPB {
+  bytes transaction_id = 1;
+
+  // Populating the field is optional. When populated, the cancel request is sent to the specified
+  // status tablet alone. If not, the request is forwarded to all tablet servers and is thereafter
+  // broadcast to all status tablets hosted by the tablet server.
+  bytes status_tablet_id = 2;
+}
+
+message PgCancelTransactionResponsePB {
+  AppStatusPB status = 1;
 }
