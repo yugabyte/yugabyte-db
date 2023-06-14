@@ -316,7 +316,7 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   if (FLAGS_ycql_enable_stat_statements && !prep_query_id.empty()) {
     service_impl_->UpdatePrepStmtCounters(
         prep_query_id,
-        response_done.GetDeltaSince(execute_begin_).ToMilliseconds());
+        response_done.GetDeltaSince(execute_begin_).ToSeconds()*1000.);
   }
 
   Release();

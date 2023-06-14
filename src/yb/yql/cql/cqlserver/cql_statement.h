@@ -83,7 +83,7 @@ class CQLStatement : public ql::Statement {
   // Return the query id of a statement.
   static ql::CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& query);
 
-  std::shared_ptr<StmtCounters> GetCounters() {
+  std::shared_ptr<StmtCounters> GetWritableCounters() {
     return stmt_counters_;
   }
 

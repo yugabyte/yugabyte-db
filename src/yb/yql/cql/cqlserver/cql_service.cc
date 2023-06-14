@@ -448,7 +448,7 @@ void CQLServiceImpl::GetPreparedStatementMetrics(
   int64_t num_statements = 0;
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
   for (auto stmt : prepared_stmts_map_) {
-    shared_ptr<StmtCounters> stmt_counters = stmt.second->GetCounters();
+    shared_ptr<StmtCounters> stmt_counters = stmt.second->GetWritableCounters();
     if (!stmt_counters) { // To ensure GetCounters does not return null.
       stmt_counters = std::make_shared<StmtCounters>(stmt.second->text());
       stmt.second->SetCounters(stmt_counters);
@@ -467,7 +467,7 @@ void CQLServiceImpl::UpdatePrepStmtCounters(const ql::CQLMessage::QueryId& query
   if(itr == prepared_stmts_map_.end()) {
     return;
   }
-  std::shared_ptr<StmtCounters> stmt_counters = itr->second->GetCounters();
+  std::shared_ptr<StmtCounters> stmt_counters = itr->second->GetWritableCounters();
   if(!stmt_counters) {
     stmt_counters = std::make_shared<StmtCounters>(itr->second->text());
     itr->second->SetCounters(stmt_counters);
@@ -508,7 +508,7 @@ void CQLServiceImpl::UpdateCountersUnlocked(
 shared_ptr<StmtCounters> CQLServiceImpl::GetWritableStmtCounters(const std::string& query_id) {
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
   auto itr = prepared_stmts_map_.find(query_id);
-  return itr == prepared_stmts_map_.end() ? nullptr : itr->second->GetCounters();
+  return itr == prepared_stmts_map_.end() ? nullptr : itr->second->GetWritableCounters();
 }
 
 }  // namespace cqlserver

@@ -819,7 +819,7 @@ TEST_F(CqlTest, TestCQLPreparedStmtStats) {
   ASSERT_OK(r.ExtractString(insert_stat, "query", &insert_query));
   ASSERT_EQ("INSERT INTO t1 (i, j) VALUES (?, ?)", insert_query);
 
-  int64 insert_num_calls;
+  int64 insert_num_calls = 0;
   ASSERT_OK(r.ExtractInt64(insert_stat, "num_calls", &insert_num_calls));
   ASSERT_EQ(10, insert_num_calls);
 
@@ -828,7 +828,7 @@ TEST_F(CqlTest, TestCQLPreparedStmtStats) {
   ASSERT_OK(r.ExtractString(select_stat, "query", &select_query));
   ASSERT_EQ("SELECT * FROM t1 WHERE i = ?", select_query);
 
-  int64 select_num_calls;
+  int64 select_num_calls = 0;
   ASSERT_OK(r.ExtractInt64(select_stat, "num_calls", &select_num_calls));
   ASSERT_EQ(5, select_num_calls);
 

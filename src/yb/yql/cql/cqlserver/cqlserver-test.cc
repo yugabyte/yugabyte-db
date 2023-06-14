@@ -658,7 +658,7 @@ TEST_F(TestCQLService, TestCQLUpdateStmtCounters) {
     int64 calls = 0;
     double total_time = 0.;
     const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
-      ql_env.CurrentKeyspace(), query_text);
+        ql_env.CurrentKeyspace(), query_text);
     // First store the previous values of the counters for that query.
     counters = cql_service->GetWritableStmtCounters(query_id);
     if (counters) {
