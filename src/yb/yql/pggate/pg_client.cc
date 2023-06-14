@@ -677,21 +677,26 @@ class PgClient::Impl {
     return resp;
   }
 
-  Result<bool> ActiveUniverseHistory() {
+  Result<client::RpcsInfo> ActiveUniverseHistory() {
     tserver::PgActiveUniverseHistoryRequestPB req;
     tserver::PgActiveUniverseHistoryResponsePB resp;
     RETURN_NOT_OK(proxy_->ActiveUniverseHistory(req, &resp, PrepareController()));
-    for (auto calls : resp.calls_in_flight()) {
-      LOG(INFO) << "\nheader:"
-                << "\n\tcall_id: " << calls.header().call_id()
-                << "\n\tremote_method:\n"
-                << "\n\t\tservice_name: " << calls.header().remote_method().service_name()
-                << "\n\t\tmethod_name: " << calls.header().remote_method().method_name()
-                << "\nelapsed_millis: " << calls.elapsed_millis()
-                << "\nsending_bytes: " << calls.sending_bytes()
-                << "\nstate: " << calls.state();
+    client::RpcsInfo result;
+    result.reserve(resp.calls_in_flight_size());
+    for (const auto& call : resp.calls_in_flight()) {
+      result.push_back(client::YBActiveUniverseHistoryInfo::FromPB(call));
     }
-    return true;
+    return result;
+    // for (auto calls : resp.calls_in_flight()) {
+    //   LOG(INFO) << "\nheader:"
+    //             << "\n\tcall_id: " << calls.header().call_id()
+    //             << "\n\tremote_method:\n"
+    //             << "\n\t\tservice_name: " << calls.header().remote_method().service_name()
+    //             << "\n\t\tmethod_name: " << calls.header().remote_method().method_name()
+    //             << "\nelapsed_millis: " << calls.elapsed_millis()
+    //             << "\nsending_bytes: " << calls.sending_bytes()
+    //             << "\nstate: " << calls.state();
+    // }
   }
 
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
@@ -925,7 +930,7 @@ Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCa
   return impl_->GetTserverCatalogVersionInfo(size_only, db_oid);
 }
 
-Result<bool> PgClient::ActiveUniverseHistory() {
+Result<client::RpcsInfo> PgClient::ActiveUniverseHistory() {
   return impl_->ActiveUniverseHistory();
 }
 

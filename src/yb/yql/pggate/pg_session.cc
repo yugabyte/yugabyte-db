@@ -901,7 +901,7 @@ void PgSession::PingPggate() {
   LOG(INFO) << "Inside pggate from extension";
 }
 
-Result<bool> PgSession::ActiveUniverseHistory() {
+Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
   return pg_client_.ActiveUniverseHistory();
 }
 

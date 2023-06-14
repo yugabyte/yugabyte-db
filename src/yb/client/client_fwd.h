@@ -102,6 +102,7 @@ struct YBTabletServer;
 struct YBTabletServerPlacementInfo;
 struct YBqlWriteHashKeyComparator;
 struct YBqlWritePrimaryKeyComparator;
+struct YBActiveUniverseHistoryInfo;
 
 using LocalTabletFilter = std::function<void(std::vector<const TabletId*>*)>;
 using VersionedTablePartitionListPtr = std::shared_ptr<const VersionedTablePartitionList>;
@@ -112,6 +113,7 @@ using YBqlReadOpPtr = std::shared_ptr<YBqlReadOp>;
 using YBqlWriteOpPtr = std::shared_ptr<YBqlWriteOp>;
 using YBPgsqlReadOpPtr = std::shared_ptr<YBPgsqlReadOp>;
 using YBPgsqlWriteOpPtr = std::shared_ptr<YBPgsqlWriteOp>;
+using RpcsInfo = std::vector<YBActiveUniverseHistoryInfo>;
 
 enum class YBTableType;
 
