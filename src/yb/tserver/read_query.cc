@@ -357,15 +357,12 @@ Status ReadQuery::DoPerform() {
   host_port_pb_.set_port(remote_address.port());
 
   if (serializable_isolation || has_row_mark) {
-    auto deadline = context_.GetClientDeadline();
     auto query = std::make_unique<tablet::WriteQuery>(
         leader_peer.leader_term,
-        deadline,
+        context_.GetClientDeadline(),
         leader_peer.peer.get(),
         leader_peer.tablet,
-        nullptr /* rpc_context */,
-        nullptr /* response */,
-        dockv::OperationKind::kRead);
+        nullptr /* rpc_context */);
 
     auto& write = *query->operation().AllocateRequest();
     auto& write_batch = *write.mutable_write_batch();

@@ -125,15 +125,13 @@ WriteQuery::WriteQuery(
     WriteQueryContext* context,
     TabletPtr tablet,
     rpc::RpcContext* rpc_context,
-    tserver::WriteResponsePB* response,
-    dockv::OperationKind kind)
+    tserver::WriteResponsePB* response)
     : operation_(std::make_unique<WriteOperation>(std::move(tablet))),
       term_(term),
       deadline_(deadline),
       context_(context),
       rpc_context_(rpc_context),
       response_(response),
-      kind_(kind),
       start_time_(CoarseMonoClock::Now()),
       execute_mode_(ExecuteMode::kSimple) {
 }
@@ -508,7 +506,7 @@ Status WriteQuery::DoExecute() {
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       doc_ops_, write_batch.read_pairs(), tablet->metrics()->write_lock_latency,
-      tablet->metrics()->failed_batch_lock, isolation_level_, kind(), row_mark_type,
+      tablet->metrics()->failed_batch_lock, isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager()));
 

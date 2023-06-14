@@ -105,7 +105,6 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     IsolationLevel isolation_level,
-    dockv::OperationKind operation_kind,
     RowMarkType row_mark_type,
     bool transactional_table,
     dockv::PartialRangeKeyIntents partial_range_key_intents) {
@@ -113,16 +112,15 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   boost::container::small_vector<RefCntPrefix, 8> doc_paths;
   boost::container::small_vector<size_t, 32> key_prefix_lengths;
   result.need_read_snapshot = false;
-  for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
+  for (const auto& doc_op : doc_write_ops) {
     doc_paths.clear();
     IsolationLevel level;
     RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kLock, &doc_paths, &level));
     if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
       level = isolation_level;
     }
-    auto intent_types = GetIntentTypeSet(level, operation_kind, row_mark_type);
+    auto intent_types = dockv::GetIntentTypesForWrite(level);
     if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
-        operation_kind == dockv::OperationKind::kWrite &&
         doc_op->RequireReadSnapshot()) {
       intent_types = dockv::IntentTypeSet(
           {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite});
@@ -162,7 +160,7 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   }
 
   if (!read_pairs.empty()) {
-    const auto read_intent_types = GetIntentTypeSet(isolation_level, operation_kind, row_mark_type);
+    const auto read_intent_types = dockv::GetIntentTypesForRead(isolation_level, row_mark_type);
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
         [&result, &read_intent_types](
@@ -225,9 +223,8 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     const scoped_refptr<Histogram>& write_lock_latency,
     const scoped_refptr<Counter>& failed_batch_lock,
-    const IsolationLevel isolation_level,
-    const dockv::OperationKind operation_kind,
-    const RowMarkType row_mark_type,
+    IsolationLevel isolation_level,
+    RowMarkType row_mark_type,
     bool transactional_table,
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
@@ -236,7 +233,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   PrepareDocWriteOperationResult result;
 
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
-      doc_write_ops, read_pairs, isolation_level, operation_kind, row_mark_type,
+      doc_write_ops, read_pairs, isolation_level, row_mark_type,
       transactional_table, partial_range_key_intents));
   VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
   if (determine_keys_to_lock_result.lock_batch.empty() && !write_transaction_metadata) {
