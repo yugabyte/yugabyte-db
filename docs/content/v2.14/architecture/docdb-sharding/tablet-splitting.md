@@ -181,7 +181,7 @@ Note the tablet UUID for later use.
 
 ### Manually flush the tablet
 
-The tablet should have some data persisted on the disk. In case of small amount of data inserted, the data can still exist in memory buffers only. To make sure SST data files exist on the disk the tablet of this table can be manually flushed by running the following [`yb-ts-cli`](../../../admin/yb-ts-cli/#flush-tablet) command:
+The tablet should have some data persisted on the disk. If you insert small amount of data, it can still exist in memory buffers only. To make sure SST data files exist on the disk, the tablet of this table can be manually flushed by running the following [`yb-ts-cli`](../../../admin/yb-ts-cli/#flush-tablet) command:
 
 ```sh
 ./bin/yb-ts-cli \
