@@ -539,10 +539,7 @@ class AzureCloudAdmin():
         logging.info("[app] Destroying orphaned resources for {}".format(vm_name))
 
         disk_dels = {}
-        # TODO: filter does not work.
-        disk_filter_param = "substringof('{}', name)".format(vm_name)
-        disk_list = self.compute_client.disks.list_by_resource_group(
-            RESOURCE_GROUP, filter=disk_filter_param)
+        disk_list = self.compute_client.disks.list_by_resource_group(RESOURCE_GROUP)
         if disk_list:
             for disk in disk_list:
                 if (disk.name.startswith(vm_name) and disk.tags
@@ -566,6 +563,7 @@ class AzureCloudAdmin():
                                   .begin_delete(NETWORK_RESOURCE_GROUP, nic_name)
                     nic_del.wait()
                     logging.info("[app] Deleted nic {}".format(nic_name))
+                    break
             except CloudError as e:
                 if e.error and e.error.error in ['ResourceNotFound', 'NotFound']:
                     logging.info("[app] Resource nic {} is not found".format(nic_name))
