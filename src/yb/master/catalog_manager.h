@@ -957,6 +957,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id) override;
 
+  Result<ReplicationInfoPB> GetTableReplicationInfo(const TableInfoPtr& table) override;
+
   Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const override;
 
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
@@ -1839,6 +1841,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void CreateXClusterSafeTimeTableAndStartService();
 
+  Status CanAddPartitionsToTable(
+      size_t desired_partitions, const PlacementInfoPB& placement_info) override;
+
  private:
   // Performs the provided action with the sys catalog shared tablet instance, or sets up an error
   // if the tablet is not found.
@@ -1975,6 +1980,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Attempts to remove a colocated table from tablegroup.
   // NOOP if the table does not belong to one.
   Status TryRemoveFromTablegroup(const TableId& table_id);
+
+  Result<int> CalculateNumTabletsForTableCreation(
+      const CreateTableRequestPB& request, const Schema& schema,
+      const PlacementInfoPB& placement_info);
+
+  Result<std::pair<PartitionSchema, std::vector<Partition>>> CreatePartitions(
+      const Schema& schema, int num_tablets, bool colocated,
+      CreateTableRequestPB* request, CreateTableResponsePB* resp);
 
   // Returns an AsyncDeleteReplica task throttler for the given tserver uuid.
   AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(
