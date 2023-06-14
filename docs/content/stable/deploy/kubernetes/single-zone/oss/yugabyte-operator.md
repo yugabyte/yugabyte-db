@@ -27,6 +27,6 @@ type: docs
   </li>
 </ul>
 
-The Kubernetes Operator for YugabyteDB is no longer maintained. It is recommended that you use the actively maintained [helm charts](../helm-chart/) for YugabyteDB to install YugabyteDB on Kubernetes. For documentation on using the Kubernetes Operator for YugabyteDB, refer to the [GitHub repository](https://github.com/yugabyte/yugabyte-operator).
+The Kubernetes Operator for YugabyteDB is no longer maintained. It is recommended that you use the actively maintained [Helm charts](../helm-chart/) for YugabyteDB to install YugabyteDB on Kubernetes. For documentation on using the Kubernetes Operator for YugabyteDB, refer to the [GitHub repository](https://github.com/yugabyte/yugabyte-operator).
 
 A newer version of the Kubernetes Operator for YugabyteDB is in development.
