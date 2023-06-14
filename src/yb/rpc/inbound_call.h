@@ -201,7 +201,11 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   template <class T, class ...Args>
   static std::shared_ptr<T> Create(Args&&... args) {
-    auto result = std::make_shared<T>(std::forward<Args>(args)...);
+    // Not using make_shared here to make sure we can deallocate the object while the control block
+    // is still kept allocated due to weak stored by ServicePool::QueuedCheckDeadline.
+    // See #17726 for this bug and #17759 to track the "proper" fix in ServicePoolImpl.
+    auto* call_ptr = new T(std::forward<Args>(args)...);
+    auto result = std::shared_ptr<T>(call_ptr);
     result->RecordCallReceived();
     return result;
   }
