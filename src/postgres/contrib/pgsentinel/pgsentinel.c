@@ -921,7 +921,6 @@ letswait:
 		}
 		// ereport(LOG, (errmsg("pg sentinel sampling now")));
 		// YBCPingPggate();
-		YBCActiveUniverseHistory();
 
 		SPI_connect();
 

@@ -1565,12 +1565,31 @@ void YBCPingPggate() {
   return pgapi->PingPggate();
 }
 
-YBCStatus YBCActiveUniverseHistory() {
-  auto res = pgapi->ActiveUniverseHistory();
-  if (res.ok()) {
-    return YBCStatusOK();
+YBCStatus YBCActiveUniverseHistory(YBCAuhDescriptor **rpcs, size_t* count) {
+  const auto result = pgapi->ActiveUniverseHistory();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
   }
-  return ToYBCStatus(res.status());
+  const auto &servers_info = result.get();
+  *count = servers_info.size();
+  *rpcs = NULL;
+  if (!servers_info.empty()) {
+    *rpcs = static_cast<YBCAuhDescriptor *>(
+        YBCPAlloc(sizeof(YBCAuhDescriptor) * servers_info.size()));
+    YBCAuhDescriptor *dest = *rpcs;
+    for (const auto &info : servers_info) {
+      new (dest) YBCAuhDescriptor {
+        .call_id = info.call_id,
+        .service_name = YBCPAllocStdString(info.service_name),
+        .method_name = YBCPAllocStdString(info.method_name),
+        .elapsed_millis = info.elapsed_millis,
+        .sending_bytes = info.sending_bytes,
+        .state = YBCPAllocStdString(info.state),
+      };
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
 }
 
 } // extern "C"

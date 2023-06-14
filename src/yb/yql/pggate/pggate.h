@@ -647,7 +647,7 @@ class PgApiImpl {
   // Active Universe History.
   void PingPggate();
 
-  Result<bool> ActiveUniverseHistory();
+  Result<client::RpcsInfo> ActiveUniverseHistory();
 
  private:
   class Interrupter;

@@ -395,6 +395,15 @@ typedef struct PgServerDescriptor {
   const char *uuid;
 } YBCServerDescriptor;
 
+typedef struct AuhDescriptor {
+  int call_id;
+  const char* service_name;
+  const char* method_name;
+  uint64_t elapsed_millis;
+  uint64_t sending_bytes;
+  const char* state;
+} YBCAuhDescriptor;
+
 typedef struct PgColumnInfo {
   bool is_primary;
   bool is_hash;

@@ -1940,7 +1940,7 @@ void PgApiImpl::PingPggate() {
   return pg_session_->PingPggate();
 }
 
-Result<bool> PgApiImpl::ActiveUniverseHistory() {
+Result<client::RpcsInfo> PgApiImpl::ActiveUniverseHistory() {
   return pg_session_->ActiveUniverseHistory();
 }
 
