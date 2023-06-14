@@ -431,7 +431,7 @@ Default: `0`
 
 ##### --scheduled_full_compaction_frequency_hours
 
-The frequency with which full compactions should be scheduled on tablets. `0` indicates that the feature is disabled. Recommended value: `720` hours or greater (i.e. 30 days).
+The frequency with which full compactions should be scheduled on tablets. `0` indicates that the feature is disabled. Recommended value: `720` hours or greater (that is, 30 days).
 
 Default: `0`
 
@@ -439,9 +439,9 @@ Default: `0`
 
 Percentage of `scheduled_full_compaction_frequency_hours` to be used as jitter when determining full compaction schedule per tablet. Must be a value between `0` and `100`. Jitter is introduced to prevent many tablets from being scheduled for full compactions at the same time.
 
-Jitter will be deterministically computed when scheduling a compaction, between 0 and (frequency * jitter factor) hours. Once computed, the jitter will be subtracted from the intended compaction frequency to determined the tablet's next compaction time.
+Jitter is deterministically computed when scheduling a compaction, between 0 and (frequency * jitter factor) hours. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time.
 
-Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (i.e. 30 days), and `scheduled_full_compaction_jitter_factor_percentage` is `33` percent, each tablet will be scheduled for compaction every `482` hours to `720` hours.
+Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is, 30 days), and `scheduled_full_compaction_jitter_factor_percentage` is `33` percent, each tablet will be scheduled for compaction every `482` hours to `720` hours.
 
 Default: `33`
 
