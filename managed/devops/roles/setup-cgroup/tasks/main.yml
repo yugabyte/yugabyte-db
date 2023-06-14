@@ -104,6 +104,10 @@
     ansible.builtin.service:
       name: cgconfig
       state: restarted
+    register: result
+    until: result is succeeded
+    retries: "{{ install_retry_count }}"
+
 
   - name: Enable cgconfig service
     ansible.builtin.service:
