@@ -51,7 +51,7 @@ class TabletSplitManager {
   // Validate whether a candidate table is eligible for a split.
   // Any temporarily disabled tablets are assumed ineligible by default.
   Status ValidateSplitCandidateTable(
-      const TableInfo& table,
+      const TableInfoPtr& table,
       IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse);
 
   // Validate whether a candidate tablet is eligible for a split.

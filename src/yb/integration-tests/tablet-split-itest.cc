@@ -156,6 +156,7 @@ DECLARE_bool(TEST_skip_election_when_fail_detected);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
+DECLARE_int32(max_create_tablets_per_ts);
 
 namespace yb {
 class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
@@ -805,6 +806,20 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
 
   auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
   ASSERT_EQ(table_info->NumPartitions(), FLAGS_tablet_split_limit_per_table);
+}
+
+TEST_F(TabletSplitITest, MaxCreateTabletsPerTs) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
+  SetNumTablets(3);
+  CreateTable();
+  auto catalog_mgr = ASSERT_RESULT(catalog_manager());
+  auto table = catalog_mgr->GetTableInfo(table_->id());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 1;
+  ASSERT_NOK(catalog_mgr->tablet_split_manager()->ValidateSplitCandidateTable(table));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 2;
+  ASSERT_OK(catalog_mgr->tablet_split_manager()->ValidateSplitCandidateTable(table));
 }
 
 TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
@@ -2106,7 +2121,7 @@ TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
 
   auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
   auto* split_manager = catalog_mgr->tablet_split_manager();
-  auto& table_info = *ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_->id()));
+  auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_->id()));
 
   // Candidate table should start as a valid split candidate.
   ASSERT_OK(split_manager->ValidateSplitCandidateTable(table_info));

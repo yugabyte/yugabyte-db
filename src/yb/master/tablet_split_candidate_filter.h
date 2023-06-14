@@ -31,6 +31,11 @@ class TabletSplitCandidateFilterIf {
   // Returns true if we should split a tablet based on the provided drive_info.
   virtual bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const = 0;
+
+  virtual Result<ReplicationInfoPB> GetTableReplicationInfo(const TableInfoPtr& table) = 0;
+
+  virtual Status CanAddPartitionsToTable(
+    size_t desired_partitions, const PlacementInfoPB& placement_info) = 0;
 };
 
 }  // namespace master
