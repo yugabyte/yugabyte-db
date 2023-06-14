@@ -99,7 +99,7 @@ This page does **not** list all the features supported in YCQL. For all the feat
 | {{<icon/no>}} | Tuple |
 {.sno-1}
 
-## Unsupported Commands
+## Unsupported commands
 
 |               |                       Feature                       |                                             |
 | :-----------: | --------------------------------------------------- | ------------------------------------------: |
