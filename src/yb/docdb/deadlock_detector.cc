@@ -121,7 +121,7 @@ class ProbeTracker {
         probe_num, std::move(value), CoarseMonoClock::Now()).first->second.val;
   }
 
-  std::shared_ptr<T> Get(uint32_t probe_num) {
+  std::shared_ptr<T> Get(uint32_t probe_num) const EXCLUDES(mutex_) {
     SharedLock<decltype(mutex_)> l(mutex_);
     DCHECK(IsFirstProbeNumValid());
     if (probe_num < min_probe_num_) {
@@ -134,7 +134,7 @@ class ProbeTracker {
     return it->second.val;
   }
 
-  int64_t GetSmallestProbeNo() {
+  int64_t GetSmallestProbeNo() const EXCLUDES(mutex_) {
     SharedLock<decltype(mutex_)> l(mutex_);
     DCHECK(IsFirstProbeNumValid());
     auto it = probes_.begin();
@@ -144,13 +144,13 @@ class ProbeTracker {
     return it->first;
   }
 
-  uint64_t size() {
+  uint64_t size() const EXCLUDES(mutex_) {
     SharedLock<decltype(mutex_)> l(mutex_);
     DCHECK(IsFirstProbeNumValid());
     return probes_.size();
   }
 
-  int64_t RemoveEntriesOlderThan(CoarseTimePoint threshold) {
+  int64_t RemoveEntriesOlderThan(CoarseTimePoint threshold) EXCLUDES(mutex_) {
     auto num_erased = 0;
     auto probe_num_watermark = 0u;
     UniqueLock<decltype(mutex_)> l(mutex_);
@@ -204,7 +204,9 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
       client::YBClient* client, scoped_refptr<Histogram> probe_latency)
       : detector_log_prefix_(detector_log_prefix), origin_detector_id_(origin_detector_id),
         waiter_(waiter_id), probe_num_(probe_num), min_probe_num_(min_probe_num), rpcs_(rpcs),
-        client_(client), probe_latency_(std::move(probe_latency)) {}
+        client_(client), probe_latency_(std::move(probe_latency)) {
+          DCHECK_GE(probe_num_, min_probe_num_);
+        }
 
   const std::string LogPrefix() const {
     return Format("$0- probe($1, $2) ", detector_log_prefix_, origin_detector_id_, probe_num_);
@@ -597,9 +599,15 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
                                  << waiter_txn_id;
         continue;
       }
+      // We need to call created_probes_.GetSmallestProbeNo() before seq_no_.fetch_add(1) to avoid a
+      // race condition wherein one thread grabs a lower probe_num from seq_no but calls
+      // GetSmallestProbeNo after another thread which grabbed a higher probe_num from seq_no. If we
+      // computed these values in reverse order, we could run into a situation where we end up with
+      // probe_num < min_probe_num, which violates a key invariant of the local ProbeTracker.
+      auto min_probe_num = created_probes_.GetSmallestProbeNo();
       auto probe_num = seq_no_.fetch_add(1);
       auto processor = std::make_shared<LocalProbeProcessor>(
-          log_prefix_, detector_id_, probe_num, created_probes_.GetSmallestProbeNo(),
+          log_prefix_, detector_id_, probe_num, min_probe_num,
           waiter_txn_id, &rpcs_, &client(), probe_latency_);
       for (const auto& blocker : *waiter_data->blockers) {
         AtomicFlagSleepMs(&FLAGS_TEST_sleep_amidst_iterating_blockers_ms);
