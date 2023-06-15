@@ -82,7 +82,8 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
                 .collect(Collectors.toSet()),
             alreadyLockedUniverseUUIDSet,
             xClusterUniverseService,
-            Collections.singleton(xClusterConfig.getUuid()));
+            Collections.singleton(xClusterConfig.getUuid()),
+            taskParams().isForced());
 
         if (targetUniverse != null) {
           createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())

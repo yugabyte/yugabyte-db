@@ -6,10 +6,13 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.services.config.YbClientConfig;
+import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -45,14 +48,18 @@ public class XClusterUniverseService {
   private static final long MAXIMUM_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_IS_BOOTSTRAP_REQUIRED =
       300000; // 5 minutes
 
+  private static final long ADMIN_OPERATION_TIMEOUT_MS_FOR_IS_BOOTSTRAP_REQUIRED_FAST_RESPONSE =
+      60000; // 1 minute
+
   private final GFlagsValidation gFlagsValidation;
   private final RuntimeConfGetter confGetter;
   private final YBClientService ybService;
   private final PlatformExecutorFactory platformExecutorFactory;
+  private final YbClientConfigFactory ybClientConfigFactory;
   private static final String IS_BOOTSTRAP_REQUIRED_POOL_NAME =
       "xcluster.is_bootstrap_required_rpc_pool";
   private final ExecutorService isBootstrapRequiredExecutor;
-  private static final int IS_BOOTSTRAP_REQUIRED_RPC_PARTITION_SIZE = 8;
+  private static final int IS_BOOTSTRAP_REQUIRED_RPC_PARTITION_SIZE = 32;
   private static final int IS_BOOTSTRAP_REQUIRED_RPC_MAX_RETRIES_NUMBER = 4;
 
   @Inject
@@ -60,7 +67,8 @@ public class XClusterUniverseService {
       GFlagsValidation gFlagsValidation,
       RuntimeConfGetter confGetter,
       YBClientService ybService,
-      PlatformExecutorFactory platformExecutorFactory) {
+      PlatformExecutorFactory platformExecutorFactory,
+      YbClientConfigFactory ybClientConfigFactory) {
     this.gFlagsValidation = gFlagsValidation;
     this.confGetter = confGetter;
     this.ybService = ybService;
@@ -69,6 +77,7 @@ public class XClusterUniverseService {
         platformExecutorFactory.createExecutor(
             IS_BOOTSTRAP_REQUIRED_POOL_NAME,
             new ThreadFactoryBuilder().setNameFormat("IsBootstrapRequiredRpc-%d").build());
+    this.ybClientConfigFactory = ybClientConfigFactory;
   }
 
   public Set<UUID> getActiveXClusterSourceAndTargetUniverseSet(UUID universeUUID) {
@@ -277,8 +286,18 @@ public class XClusterUniverseService {
       return isBootstrapRequiredMap;
     }
     String sourceUniverseCertificate = sourceUniverse.getCertificateNodetoNode();
-    try (YBClient client =
-        ybService.getClient(sourceUniverseMasterAddresses, sourceUniverseCertificate)) {
+    // When ignoreErrors is true the request comes from the UI, and it expects a fast response.
+    long ybClientTimeout =
+        ignoreErrors
+            ? ADMIN_OPERATION_TIMEOUT_MS_FOR_IS_BOOTSTRAP_REQUIRED_FAST_RESPONSE
+            : confGetter.getGlobalConf(GlobalConfKeys.ybcAdminOperationTimeoutMs);
+    YbClientConfig clientConfig =
+        ybClientConfigFactory.create(
+            sourceUniverseMasterAddresses,
+            sourceUniverseCertificate,
+            ybClientTimeout,
+            ybClientTimeout);
+    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
       try {
         int partitionSize =
             XClusterConfigTaskBase.supportsMultipleTablesWithIsBootstrapRequired(sourceUniverse)
@@ -343,16 +362,19 @@ public class XClusterUniverseService {
                               "client.isBootstrapRequired RPC hit error : {}", e.getMessage());
                         }
                         resp = null;
-                        iterationNumber++;
-                        // If ignoreErrors is true, a fast response is expected.
-                        if (!ignoreErrors) {
-                          // Busy waiting is unavoidable.
-                          Thread.sleep(
-                              Util.getExponentialBackoffDelayMs(
-                                  INITILA_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_IS_BOOTSTRAP_REQUIRED,
-                                  MAXIMUM_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_IS_BOOTSTRAP_REQUIRED,
-                                  iterationNumber));
+                        // If ignoreErrors is true, a fast response is expected so do not retry.
+                        if (ignoreErrors) {
+                          log.debug(
+                              "Not retrying isBootstrapRequired RPC because ignoreErrors is true");
+                          break;
                         }
+                        // Busy waiting is unavoidable.
+                        Thread.sleep(
+                            Util.getExponentialBackoffDelayMs(
+                                INITILA_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_IS_BOOTSTRAP_REQUIRED,
+                                MAXIMUM_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_IS_BOOTSTRAP_REQUIRED,
+                                iterationNumber));
+                        iterationNumber++;
                       }
                     }
                     return Objects.nonNull(resp) ? resp.getResults() : null;
