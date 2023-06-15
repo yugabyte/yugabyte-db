@@ -155,7 +155,7 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
 
   std::shared_ptr<BackendsCatalogVersionJob> job;
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
 
     // If it is already known that backends catalog version is sufficient, we're done.
     auto iter = latest_known_versions_.find(db_oid);
@@ -268,7 +268,7 @@ Status YsqlBackendsManager::HandleSwapToRunning(
 }
 
 void YsqlBackendsManager::ClearJobIfCached(std::shared_ptr<BackendsCatalogVersionJob> job) {
-  std::lock_guard<decltype(mutex_)> l(mutex_);
+  std::lock_guard l(mutex_);
   ClearJobIfCachedUnlocked(job);
 }
 
@@ -312,7 +312,7 @@ void YsqlBackendsManager::TerminateJob(
   switch (target_state) {
     case MonitoredTaskState::kComplete:
       if (did_swap) {
-        std::lock_guard<decltype(mutex_)> l(mutex_);
+        std::lock_guard l(mutex_);
 
         // Erase job from jobs_ cache.
         ClearJobIfCachedUnlocked(job);
@@ -334,7 +334,7 @@ void YsqlBackendsManager::TerminateJob(
       return;
     case MonitoredTaskState::kAborted:
       if (did_swap) {
-        std::lock_guard<decltype(mutex_)> l(mutex_);
+        std::lock_guard l(mutex_);
 
         // Erase job from jobs_ cache.
         ClearJobIfCachedUnlocked(job);
@@ -351,7 +351,7 @@ void YsqlBackendsManager::TerminateJob(
 void YsqlBackendsManager::AbortAllJobs() {
   std::vector<std::shared_ptr<BackendsCatalogVersionJob>> jobs;
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     // Make a copy of jobs.
     std::transform(
         jobs_.begin(),
@@ -367,7 +367,7 @@ void YsqlBackendsManager::AbortAllJobs() {
 void YsqlBackendsManager::AbortInactiveJobs() {
   std::vector<std::shared_ptr<BackendsCatalogVersionJob>> inactive_jobs;
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     for (const auto& entry : jobs_) {
       const auto& job = entry.second;
       if (job->IsInactive()) {
@@ -463,7 +463,7 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
   {
     // Lock throughout the whole map initialization to prevent readers from viewing a map without
     // all tservers.
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
 
     // Commit term now.
     term_ = term;
@@ -522,7 +522,7 @@ bool BackendsCatalogVersionJob::IsInactive() const {
 
 bool BackendsCatalogVersionJob::IsSameTerm() const {
   const int64_t term = master_->catalog_manager()->leader_ready_term();
-  std::lock_guard<decltype(mutex_)> l(mutex_);
+  std::lock_guard l(mutex_);
   if (term_ == term) {
     VLOG_WITH_PREFIX(3) << "Sys catalog term is " << term;
     return true;
@@ -534,7 +534,7 @@ bool BackendsCatalogVersionJob::IsSameTerm() const {
 Result<int> BackendsCatalogVersionJob::WaitAndGetNumLaggingBackends(
     const CoarseTimePoint& deadline) {
   {
-    std::lock_guard<decltype(state_mutex_)> l(state_mutex_);
+    std::lock_guard l(state_mutex_);
     if (!MonitoredTask::IsStateTerminal(state())) {
       if (state_cv_.WaitUntil(ToSteady(deadline))) {
         return HandleTerminalState();
@@ -603,7 +603,7 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
     if (s.IsTryAgain()) {
       int last_known_num_lagging_backends;
       {
-        std::lock_guard<decltype(mutex_)> l(mutex_);
+        std::lock_guard l(mutex_);
         last_known_num_lagging_backends = ts_map_[ts_uuid];
       }
       // Ignore returned status since it is already logged/handled.
@@ -619,7 +619,7 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
 
   // Update num_lagging_backends.
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
 
 #ifndef NDEBUG
     if (ts_map_[ts_uuid] != -1) {
@@ -658,7 +658,7 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
 //   it could return zero result is if kAborted right after job Update to zero count but before
 //   manager Update of job to kComplete state, but in that case, the zero result is accurate.
 int BackendsCatalogVersionJob::GetNumLaggingBackends() const {
-  std::lock_guard<decltype(mutex_)> l(mutex_);
+  std::lock_guard l(mutex_);
 
   if (ts_map_.size() == 0) {
     // This can happen if the job just got swapped from waiting to running and did not yet populate
@@ -684,7 +684,7 @@ int BackendsCatalogVersionJob::GetNumLaggingBackends() const {
 bool BackendsCatalogVersionJob::CompareAndSwapState(
     server::MonitoredTaskState old_state,
     server::MonitoredTaskState new_state) {
-  std::lock_guard<decltype(state_mutex_)> l(state_mutex_);
+  std::lock_guard l(state_mutex_);
   if (state_.compare_exchange_strong(old_state, new_state)) {
     if (IsStateTerminal(new_state)) {
       completion_timestamp_ = MonoTime::Now();

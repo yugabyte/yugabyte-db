@@ -105,7 +105,7 @@ PhysicalClockPtr GetClock(const std::string& options) {
   auto pos = options.find(',');
   auto name = pos == std::string::npos ? options : options.substr(0, pos);
   auto arg = pos == std::string::npos ? std::string() : options.substr(pos + 1);
-  std::lock_guard<std::mutex> lock(providers_mutex);
+  std::lock_guard lock(providers_mutex);
   auto it = providers.find(name);
   if (it == providers.end()) {
     LOG(DFATAL) << "Unknown time source: " << name;
@@ -117,7 +117,7 @@ PhysicalClockPtr GetClock(const std::string& options) {
 } // namespace
 
 void HybridClock::RegisterProvider(std::string name, PhysicalClockProvider provider) {
-  std::lock_guard<std::mutex> lock(providers_mutex);
+  std::lock_guard lock(providers_mutex);
   providers.emplace(std::move(name), std::move(provider));
 }
 

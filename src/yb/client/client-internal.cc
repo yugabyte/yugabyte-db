@@ -2279,7 +2279,7 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
           << host_port.ToString();
   std::vector<StdStatusCallback> callbacks;
   {
-    std::lock_guard<simple_spinlock> l(leader_master_lock_);
+    std::lock_guard l(leader_master_lock_);
     callbacks.swap(leader_master_callbacks_);
 
     if (status.ok()) {
@@ -2326,7 +2326,7 @@ void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
 
   bool was_empty;
   {
-    std::lock_guard<simple_spinlock> l(leader_master_lock_);
+    std::lock_guard l(leader_master_lock_);
     was_empty = leader_master_callbacks_.empty();
     leader_master_callbacks_.push_back(callback);
   }
@@ -2345,7 +2345,7 @@ void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
 Result<server::MasterAddresses> YBClient::Data::ParseMasterAddresses(
     const Status& reinit_status) EXCLUDES(master_server_addrs_lock_) {
   server::MasterAddresses result;
-  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+  std::lock_guard l(master_server_addrs_lock_);
   if (!reinit_status.ok() && full_master_server_addrs_.empty()) {
     return reinit_status;
   }
@@ -2404,7 +2404,7 @@ void YBClient::Data::DoSetMasterServerProxy(CoarseTimePoint deadline,
 
 // API to clear and reset master addresses, used during master config change.
 Status YBClient::Data::SetMasterAddresses(const string& addrs) {
-  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+  std::lock_guard l(master_server_addrs_lock_);
   if (addrs.empty()) {
     std::ostringstream out;
     out.str("Invalid empty master address cannot be set. Current list is: ");
@@ -2424,7 +2424,7 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
 
 // Add a given master to the master address list.
 Status YBClient::Data::AddMasterAddress(const HostPort& addr) {
-  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+  std::lock_guard l(master_server_addrs_lock_);
   master_server_addrs_.push_back(addr.ToString());
   return Status::OK();
 }
@@ -2462,7 +2462,7 @@ Result<std::string> ReadMasterAddressesFromFlagFile(
 // re-initialize the 'master_server_addrs_' variable.
 Status YBClient::Data::ReinitializeMasterAddresses() {
   Status result;
-  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+  std::lock_guard l(master_server_addrs_lock_);
   if (!FLAGS_flagfile.empty() && !skip_master_flagfile_) {
     LOG(INFO) << "Reinitialize master addresses from file: " << FLAGS_flagfile;
     auto master_addrs = ReadMasterAddressesFromFlagFile(
@@ -2506,7 +2506,7 @@ Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
 
   {
     auto str = addr.ToString();
-    std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+    std::lock_guard l(master_server_addrs_lock_);
     auto it = std::find(master_server_addrs_.begin(), master_server_addrs_.end(), str);
     if (it != master_server_addrs_.end()) {
       master_server_addrs_.erase(it, it + str.size());
@@ -2622,42 +2622,42 @@ Result<bool> YBClient::Data::CheckIfPitrActive(CoarseTimePoint deadline) {
 }
 
 HostPort YBClient::Data::leader_master_hostport() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return leader_master_hostport_;
 }
 
 shared_ptr<master::MasterAdminProxy> YBClient::Data::master_admin_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_admin_proxy_;
 }
 
 shared_ptr<master::MasterClientProxy> YBClient::Data::master_client_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_client_proxy_;
 }
 
 shared_ptr<master::MasterClusterProxy> YBClient::Data::master_cluster_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_cluster_proxy_;
 }
 
 shared_ptr<master::MasterDclProxy> YBClient::Data::master_dcl_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_dcl_proxy_;
 }
 
 shared_ptr<master::MasterDdlProxy> YBClient::Data::master_ddl_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_ddl_proxy_;
 }
 
 shared_ptr<master::MasterReplicationProxy> YBClient::Data::master_replication_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_replication_proxy_;
 }
 
 shared_ptr<master::MasterEncryptionProxy> YBClient::Data::master_encryption_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_encryption_proxy_;
 }
 
@@ -2675,7 +2675,7 @@ void YBClient::Data::StartShutdown() {
 }
 
 bool YBClient::Data::IsMultiMaster() {
-  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+  std::lock_guard l(master_server_addrs_lock_);
   if (full_master_server_addrs_.size() > 1) {
     return true;
   }

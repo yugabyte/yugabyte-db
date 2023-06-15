@@ -182,17 +182,17 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   void SetAttribute(const std::string& key, const std::string& val);
 
   size_t num_metrics() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     return metric_map_.size();
   }
 
   void AddExternalJsonMetricsCb(const ExternalJsonMetricsCb &external_metrics_cb) {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     external_json_metrics_cbs_.push_back(external_metrics_cb);
   }
 
   void AddExternalPrometheusMetricsCb(const ExternalPrometheusMetricsCb&external_metrics_cb) {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     external_prometheus_metrics_cbs_.push_back(external_metrics_cb);
   }
 

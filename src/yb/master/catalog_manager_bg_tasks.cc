@@ -228,7 +228,7 @@ void CatalogManagerBgTasks::Run() {
       // Trigger pending backfills.
       std::unordered_set<TableId> table_map;
       {
-        std::lock_guard<rw_spinlock> lock(catalog_manager_->backfill_mutex_);
+        std::lock_guard lock(catalog_manager_->backfill_mutex_);
         table_map.swap(catalog_manager_->pending_backfill_tables_);
       }
       TryResumeBackfillForTables(&table_map);

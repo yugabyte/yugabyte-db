@@ -193,7 +193,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const override {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     if (current_version) {
       *current_version = ysql_catalog_version_;
     }
@@ -205,7 +205,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void get_ysql_db_catalog_version(uint32_t db_oid,
                                    uint64_t* current_version,
                                    uint64_t* last_breaking_version) const override {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     auto it = ysql_db_catalog_version_map_.find(db_oid);
     bool not_found = it == ysql_db_catalog_version_map_.end();
     // If db_oid represents a newly created database, it may not yet exist in

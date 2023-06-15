@@ -117,7 +117,7 @@ class OnConflictHelper {
 
   std::pair<int, char> RandomPair() {
     size_t i = RandomUniformInt<size_t>(0, concurrent_keys_ - 1);
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto& key = active_keys_[i];
     char append_char;
     if (RandomUniformBool()) {
@@ -133,7 +133,7 @@ class OnConflictHelper {
   }
 
   void Committed(TransactionInfo&& info) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     committed_.push_back(std::move(info));
   }
 

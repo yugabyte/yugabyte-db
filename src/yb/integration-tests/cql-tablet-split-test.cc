@@ -581,7 +581,7 @@ Status RunBatchTimeSeriesTest(
 
   std::mutex random_mutex;
   auto get_random_source = [&rng, &random_mutex, &data_sources]() -> BatchTimeseriesDataSource* {
-    std::lock_guard<decltype(random_mutex)> lock(random_mutex);
+    std::lock_guard lock(random_mutex);
     return RandomElement(data_sources, &rng).get();
   };
 

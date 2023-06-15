@@ -49,7 +49,7 @@ size_t Sidecars::Transfer(Sidecars* dest) {
 
 size_t Sidecars::Take(
     WriteBuffer* buffer, google::protobuf::RepeatedField<uint32_t>* offsets) {
-  std::lock_guard<simple_spinlock> lock(take_mutex_);
+  std::lock_guard lock(take_mutex_);
   uint32_t base_offset = narrow_cast<uint32_t>(buffer_.size());
   buffer_.Take(buffer);
   auto result = offsets_.size();
@@ -68,7 +68,7 @@ size_t Sidecars::Take(
 size_t Sidecars::Take(
     const RefCntBuffer& buffer,
     const boost::container::small_vector_base<const uint8_t*>& bounds) {
-  std::lock_guard<simple_spinlock> lock(take_mutex_);
+  std::lock_guard lock(take_mutex_);
   auto result = offsets_.size();
   if (bounds.empty()) {
     return result;

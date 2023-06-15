@@ -259,12 +259,12 @@ Status OutboundCall::SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr
 }
 
 Status OutboundCall::status() const {
-  std::lock_guard<simple_spinlock> l(mtx_);
+  std::lock_guard l(mtx_);
   return status_;
 }
 
 const ErrorStatusPB* OutboundCall::error_pb() const {
-  std::lock_guard<simple_spinlock> l(mtx_);
+  std::lock_guard l(mtx_);
   return error_pb_.get();
 }
 
@@ -456,7 +456,7 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
   TRACE_TO(trace_, "Call Failed.");
   bool invoke_callback;
   {
-    std::lock_guard<simple_spinlock> l(mtx_);
+    std::lock_guard l(mtx_);
     status_ = status;
     if (status_.IsRemoteError()) {
       CHECK(err_pb);
@@ -487,7 +487,7 @@ void OutboundCall::SetTimedOut() {
         conn_id_.remote(),
         controller_->timeout(),
         call_id_);
-    std::lock_guard<simple_spinlock> l(mtx_);
+    std::lock_guard l(mtx_);
     status_ = std::move(status);
     invoke_callback = SetState(RpcCallState::TIMED_OUT);
   }
@@ -520,7 +520,7 @@ string OutboundCall::ToString() const {
 
 bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcCallInProgressPB* resp) {
-  std::lock_guard<simple_spinlock> l(mtx_);
+  std::lock_guard l(mtx_);
   auto state_value = state();
   if (!req.dump_timed_out() && state_value == RpcCallState::TIMED_OUT) {
     return false;

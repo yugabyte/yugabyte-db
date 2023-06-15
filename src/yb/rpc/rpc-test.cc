@@ -855,7 +855,7 @@ class DisconnectTask {
   void Done() {
     bool notify;
     {
-      std::lock_guard<std::mutex> lock(share_->mutex);
+      std::lock_guard lock(share_->mutex);
       ++share_->counts[controller_.status().ToString()];
       notify = 0 == --share_->left;
     }

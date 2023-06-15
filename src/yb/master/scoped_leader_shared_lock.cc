@@ -86,7 +86,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
   bool catalog_loaded;
   {
     // Check if the catalog manager is running.
-    std::lock_guard<simple_spinlock> l(catalog_->state_lock_);
+    std::lock_guard l(catalog_->state_lock_);
     if (PREDICT_FALSE(catalog_->state_ != CatalogManager::kRunning)) {
       catalog_status_ = STATUS_SUBSTITUTE(ServiceUnavailable,
           "Catalog manager is not initialized. State: $0", catalog_->state_);

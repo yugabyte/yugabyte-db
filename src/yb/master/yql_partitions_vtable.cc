@@ -92,7 +92,7 @@ Result<VTableDataPtr> YQLPartitionsVTable::RetrieveData(
                                   cached_tablet_locations_version_ == kInvalidCache;
     }
     if (!require_full_vtable_reset) {
-      std::lock_guard<std::shared_timed_mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       // If we don't need to regenerate the entire vtable, then we can just update it using the map.
       return GetTableFromMap();
     }
@@ -114,7 +114,7 @@ Result<VTableDataPtr> YQLPartitionsVTable::GenerateAndCacheData() const {
     }
   }
 
-  std::lock_guard<std::shared_timed_mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   auto new_tablets_version = catalog_manager->tablets_version();
   auto new_tablet_locations_version = catalog_manager->tablet_locations_version();
   {
@@ -273,7 +273,7 @@ void YQLPartitionsVTable::RemoveFromCache(const std::vector<TableId>& table_ids)
     return;
   }
 
-  std::lock_guard<std::shared_timed_mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   for (const auto& table_id : table_ids) {
     table_to_partition_start_to_row_map_.erase(table_id);
   }
@@ -321,7 +321,7 @@ Status YQLPartitionsVTable::ProcessMutatedTablets(
     const std::vector<TabletInfoPtr>& mutated_tablets,
     const std::map<TabletId, TabletInfo::WriteLock>& tablet_write_locks) const {
   if (GeneratePartitionsVTableOnChanges() && !mutated_tablets.empty()) {
-    std::lock_guard<std::shared_timed_mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     RETURN_NOT_OK(ProcessTablets(mutated_tablets));
   }
 
@@ -355,7 +355,7 @@ bool YQLPartitionsVTable::CheckTableIsPresent(
 
 void YQLPartitionsVTable::ResetAndRegenerateCache() const {
   {
-    std::lock_guard<std::shared_timed_mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     cached_tablets_version_ = kInvalidCache;
     cached_tablet_locations_version_ = kInvalidCache;
     update_cache_ = true;
@@ -371,7 +371,7 @@ Status YQLPartitionsVTable::UpdateCache() const {
       return Status::OK();
     }
   }
-  std::lock_guard<std::shared_timed_mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return ResultToStatus(GetTableFromMap());
 }
 

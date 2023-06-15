@@ -2244,7 +2244,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
   while (!thread_holder.stop_flag().load()) {
     CountDownLatch* latch;
     {
-      std::lock_guard<std::mutex> lock(idle_threads_mutex);
+      std::lock_guard lock(idle_threads_mutex);
       if (!idle_threads.empty()) {
         latch = idle_threads.back();
         idle_threads.pop_back();
@@ -2264,7 +2264,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
           CheckRowCount(client_table_);
           latch.Reset(1);
           {
-            std::lock_guard<std::mutex> lock(idle_threads_mutex);
+            std::lock_guard lock(idle_threads_mutex);
             idle_threads.push_back(&latch);
           }
           latch.Wait();
@@ -2287,7 +2287,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
   while (running_threads.load() > 0) {
     LOG(INFO) << "Left to stop " << running_threads.load() << " threads";
     {
-      std::lock_guard<std::mutex> lock(idle_threads_mutex);
+      std::lock_guard lock(idle_threads_mutex);
       while (!idle_threads.empty()) {
         idle_threads.back()->CountDown(1);
         idle_threads.pop_back();

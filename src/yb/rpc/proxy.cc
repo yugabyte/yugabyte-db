@@ -372,7 +372,7 @@ scoped_refptr<MetricEntity> Proxy::metric_entity() const {
 ProxyPtr ProxyCache::GetProxy(
     const HostPort& remote, const Protocol* protocol, const MonoDelta& resolve_cache_timeout) {
   ProxyKey key(remote, protocol);
-  std::lock_guard<std::mutex> lock(proxy_mutex_);
+  std::lock_guard lock(proxy_mutex_);
   auto it = proxies_.find(key);
   if (it == proxies_.end()) {
     it = proxies_.emplace(
@@ -383,7 +383,7 @@ ProxyPtr ProxyCache::GetProxy(
 
 ProxyMetricsPtr ProxyCache::GetMetrics(
     const std::string& service_name, ProxyMetricsFactory factory) {
-  std::lock_guard<std::mutex> lock(metrics_mutex_);
+  std::lock_guard lock(metrics_mutex_);
   auto it = metrics_.find(service_name);
   if (it != metrics_.end()) {
     return it->second;

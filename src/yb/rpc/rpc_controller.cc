@@ -75,7 +75,7 @@ void RpcController::Swap(RpcController* other) {
 }
 
 void RpcController::Reset() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   if (call_) {
     CHECK(finished());
   }
@@ -119,7 +119,7 @@ size_t RpcController::TransferSidecars(Sidecars* dest) {
 }
 
 void RpcController::set_timeout(const MonoDelta& timeout) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   DCHECK(!call_ || call_->state() == RpcCallState::READY);
   timeout_ = timeout;
 }
@@ -133,7 +133,7 @@ void RpcController::set_deadline(CoarseTimePoint deadline) {
 }
 
 MonoDelta RpcController::timeout() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return timeout_;
 }
 

@@ -59,7 +59,7 @@ class TransactionEntTest : public client::KeyValueTableTest<MiniCluster> {
     server::ClockPtr clock(new server::HybridClock(random_error_clock));
     EXPECT_OK(clock->Init());
 
-    std::lock_guard<std::mutex> lock(transaction_managers_mutex_);
+    std::lock_guard lock(transaction_managers_mutex_);
     transaction_managers_.emplace_back(client_.get(), clock, client::LocalTabletFilter());
     return transaction_managers_.back();
   }

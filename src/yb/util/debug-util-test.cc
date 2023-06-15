@@ -336,17 +336,17 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
               const char* base_filename, int line,
               const struct ::tm* tm_time,
               const char* message, size_t message_len) override {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       log_messages_.emplace_back(message, message_len);
     }
 
     size_t MessagesSize() {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       return log_messages_.size();
     }
 
     std::string MessageAt(size_t idx) {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       return log_messages_[idx];
     }
 

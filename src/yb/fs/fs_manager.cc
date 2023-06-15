@@ -262,7 +262,7 @@ Status FsManager::Init() {
 Status FsManager::ReadAutoFlagsConfig(Message* msg) {
   RETURN_NOT_OK(Init());
 
-  std::lock_guard<std::mutex> lock(auto_flag_mutex_);
+  std::lock_guard lock(auto_flag_mutex_);
 
   // First call after process startup: Iterate over all data roots to see if a config file was
   // previously created.
@@ -305,7 +305,7 @@ Status FsManager::ReadAutoFlagsConfig(Message* msg) {
 Status FsManager::WriteAutoFlagsConfig(const Message* msg) {
   RETURN_NOT_OK(Init());
 
-  std::lock_guard<std::mutex> lock(auto_flag_mutex_);
+  std::lock_guard lock(auto_flag_mutex_);
 
   // auto_flags_config_path_ is set when we attempt to read the file.
   // We expect at least one read of the file to happen before the write.
@@ -323,7 +323,7 @@ Status FsManager::WriteAutoFlagsConfig(const Message* msg) {
 }
 
 std::string FsManager::GetAutoFlagsConfigPath() const {
-  std::lock_guard<std::mutex> lock(auto_flag_mutex_);
+  std::lock_guard lock(auto_flag_mutex_);
   return auto_flags_config_path_;
 }
 
@@ -721,12 +721,12 @@ Result<std::string> FsManager::GetRaftGroupMetadataPath(const string& tablet_id)
 
 void FsManager::SetTabletPathByDataPath(const string& tablet_id, const string& path) {
   string tablet_path = path.empty() ? GetDefaultRootDir() : DirName(path);
-  std::lock_guard<std::mutex> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   InsertOrUpdate(&tablet_id_to_path_, tablet_id, tablet_path);
 }
 
 Result<std::string> FsManager::GetTabletPath(const std::string &tablet_id) const {
-  std::lock_guard<std::mutex> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   auto tabet_path_it = tablet_id_to_path_.find(tablet_id);
   if (tabet_path_it == tablet_id_to_path_.end()) {
     return STATUS(NotFound, Format("Metadata dir not found for tablet $0", tablet_id));
@@ -737,7 +737,7 @@ Result<std::string> FsManager::GetTabletPath(const std::string &tablet_id) const
 bool FsManager::LookupTablet(const std::string &tablet_id) {
   for (const auto& dir : GetRaftGroupMetadataDirs()) {
     if (env_->FileExists(JoinPathSegments(dir, tablet_id))) {
-      std::lock_guard<std::mutex> lock(data_mutex_);
+      std::lock_guard lock(data_mutex_);
       tablet_id_to_path_.insert({tablet_id, DirName(dir)});
       return true;
     }
@@ -764,7 +764,7 @@ bool IsValidTabletId(const std::string& fname) {
 } // anonymous namespace
 
 Result<std::vector<std::string>> FsManager::ListTabletIds() {
-  std::lock_guard<std::mutex> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   std::vector<std::string> tablet_ids;
   for (const auto& dir : GetRaftGroupMetadataDirs()) {
     vector<string> children;

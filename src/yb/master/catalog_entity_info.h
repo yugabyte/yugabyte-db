@@ -60,6 +60,7 @@
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/shared_lock.h"
 
 DECLARE_bool(use_parent_table_id_field);
 
@@ -667,14 +668,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
-    std::shared_lock<decltype(lock_)> l(lock_);
+    SharedLock l(lock_);
     return is_backfilling_;
   }
 
   Status SetIsBackfilling();
 
   void ClearIsBackfilling() {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     is_backfilling_ = false;
   }
 

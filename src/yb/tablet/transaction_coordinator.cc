@@ -1040,7 +1040,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   void RemoveInactiveTransactions(Waiters* waiters) override {
-    std::lock_guard<std::mutex> lock(managed_mutex_);
+    std::lock_guard lock(managed_mutex_);
     auto& sorted_txn_map = waiters->get<TransactionIdTag>();
     for (auto it = sorted_txn_map.begin(); it != sorted_txn_map.end();) {
       auto next_it = sorted_txn_map.upper_bound(it->txn_id());
@@ -1291,7 +1291,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   size_t test_count_transactions() {
-    std::lock_guard<std::mutex> lock(managed_mutex_);
+    std::lock_guard lock(managed_mutex_);
     return managed_transactions_.size();
   }
 
@@ -1305,7 +1305,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     PostponedLeaderActions actions;
     Status result;
     {
-      std::lock_guard<std::mutex> lock(managed_mutex_);
+      std::lock_guard lock(managed_mutex_);
       postponed_leader_actions_.leader_term = data.leader_term;
       auto it = GetTransaction(*id, data.state.status(), data.hybrid_time);
       if (it == managed_transactions_.end()) {
@@ -1338,7 +1338,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     bool last_transaction = false;
     PostponedLeaderActions actions;
     {
-      std::lock_guard<std::mutex> lock(managed_mutex_);
+      std::lock_guard lock(managed_mutex_);
       postponed_leader_actions_.leader_term = OpId::kUnknownTerm;
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
@@ -1446,7 +1446,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   int64_t PrepareGC(std::string* details) {
-    std::lock_guard<std::mutex> lock(managed_mutex_);
+    std::lock_guard lock(managed_mutex_);
     if (!managed_transactions_.empty()) {
       auto& txn = *managed_transactions_.get<FirstEntryIndexTag>().begin();
       if (details) {
@@ -1464,7 +1464,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
   std::string DumpTransactions() {
     std::string result;
-    std::lock_guard<std::mutex> lock(managed_mutex_);
+    std::lock_guard lock(managed_mutex_);
     for (const auto& txn : managed_transactions_) {
       result += txn.ToString();
       result += "\n";
@@ -1592,7 +1592,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
             const auto split_child_tablet_ids = SplitChildTabletIdsData(status).value();
             const bool tablet_has_been_split = !split_child_tablet_ids.empty();
             if (status.IsNotFound() || tablet_has_been_split) {
-              std::lock_guard<std::mutex> lock(managed_mutex_);
+              std::lock_guard lock(managed_mutex_);
               auto it = managed_transactions_.find(action.transaction);
               if (it == managed_transactions_.end()) {
                 return;
@@ -1746,7 +1746,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     bool leader = leader_term != OpId::kUnknownTerm;
     PostponedLeaderActions actions;
     {
-      std::lock_guard<std::mutex> lock(managed_mutex_);
+      std::lock_guard lock(managed_mutex_);
       postponed_leader_actions_.leader_term = leader_term;
 
       auto& index = managed_transactions_.get<LastTouchTag>();

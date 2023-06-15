@@ -139,13 +139,13 @@ class Heartbeater::Thread {
   void TriggerASAP();
 
   void set_master_addresses(server::MasterAddressesPtr master_addresses) {
-    std::lock_guard<std::mutex> l(master_meta_mtx_);
+    std::lock_guard l(master_meta_mtx_);
     master_addresses_ = std::move(master_addresses);
     VLOG_WITH_PREFIX(1) << "Setting master addresses to " << yb::ToString(master_addresses_);
   }
 
   std::string get_leader_master_hostport() {
-    std::lock_guard<std::mutex> l(master_meta_mtx_);
+    std::lock_guard l(master_meta_mtx_);
     return leader_master_hostport_.ToString();
   }
 
@@ -171,7 +171,7 @@ class Heartbeater::Thread {
   }
 
   server::MasterAddressesPtr get_master_addresses() {
-    std::lock_guard<std::mutex> l(master_meta_mtx_);
+    std::lock_guard l(master_meta_mtx_);
     return get_master_addresses_unlocked();
   }
 
@@ -320,7 +320,7 @@ Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline,
 }
 
 Status Heartbeater::Thread::ConnectToMaster() {
-  std::lock_guard<std::mutex> l(master_meta_mtx_);
+  std::lock_guard l(master_meta_mtx_);
   auto deadline = CoarseMonoClock::Now() + FLAGS_heartbeat_rpc_timeout_ms * 1ms;
   // TODO send heartbeats without tablet reports to non-leader masters.
   Status s = FindLeaderMaster(deadline, &leader_master_hostport_);

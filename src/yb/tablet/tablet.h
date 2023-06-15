@@ -644,7 +644,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   }
 
   void SetMemTableFlushFilterFactory(std::function<rocksdb::MemTableFilter()> factory) {
-    std::lock_guard<std::mutex> lock(flush_filter_mutex_);
+    std::lock_guard lock(flush_filter_mutex_);
     mem_table_flush_filter_factory_ = std::move(factory);
   }
 
@@ -719,18 +719,18 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Allows us to add tablet-specific information that will get deref'd when the tablet does.
   void AddAdditionalMetadata(const std::string& key, std::shared_ptr<void> additional_metadata) {
-    std::lock_guard<std::mutex> lock(control_path_mutex_);
+    std::lock_guard lock(control_path_mutex_);
     additional_metadata_.emplace(key, std::move(additional_metadata));
   }
 
   std::shared_ptr<void> GetAdditionalMetadata(const std::string& key) {
-    std::lock_guard<std::mutex> lock(control_path_mutex_);
+    std::lock_guard lock(control_path_mutex_);
     auto val = additional_metadata_.find(key);
     return (val != additional_metadata_.end()) ? val->second : nullptr;
   }
 
   size_t RemoveAdditionalMetadata(const std::string& key) {
-    std::lock_guard<std::mutex> lock(control_path_mutex_);
+    std::lock_guard lock(control_path_mutex_);
     return additional_metadata_.erase(key);
   }
 

@@ -178,7 +178,7 @@ XClusterConsumer::~XClusterConsumer() {
 void XClusterConsumer::Shutdown() {
   LOG_WITH_PREFIX(INFO) << "Shutting down CDC Consumer";
   {
-    std::lock_guard<std::mutex> l(should_run_mutex_);
+    std::lock_guard l(should_run_mutex_);
     should_run_ = false;
   }
   cond_.notify_all();
@@ -190,11 +190,11 @@ void XClusterConsumer::Shutdown() {
   // Shutdown the pollers outside of the master_data_mutex lock to keep lock ordering the same.
   std::vector<std::shared_ptr<XClusterPoller>> pollers_to_shutdown;
   {
-    std::lock_guard<rw_spinlock> write_lock(master_data_mutex_);
+    std::lock_guard write_lock(master_data_mutex_);
     producer_consumer_tablet_map_from_master_.clear();
     uuid_master_addrs_.clear();
     {
-      std::lock_guard<rw_spinlock> producer_pollers_map_write_lock(producer_pollers_map_mutex_);
+      std::lock_guard producer_pollers_map_write_lock(producer_pollers_map_mutex_);
       // Shutdown the remote and local clients, and abort any of their ongoing rpcs.
       for (auto& uuid_and_client : remote_clients_) {
         uuid_and_client.second->Shutdown();
@@ -274,12 +274,12 @@ std::vector<std::shared_ptr<XClusterPoller>> XClusterConsumer::TEST_ListPollers(
 void XClusterConsumer::UpdateInMemoryState(
     const cdc::ConsumerRegistryPB* consumer_registry, int32_t cluster_config_version) {
   {
-    std::lock_guard<std::mutex> l(should_run_mutex_);
+    std::lock_guard l(should_run_mutex_);
     if (!should_run_) {
       return;
     }
   }
-  std::lock_guard<rw_spinlock> write_lock_master(master_data_mutex_);
+  std::lock_guard write_lock_master(master_data_mutex_);
 
   // Only update it if the version is newer.
   if (cluster_config_version <= cluster_config_version_.load(std::memory_order_acquire)) {
@@ -473,7 +473,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
       }
     }
     if (start_polling) {
-      std::lock_guard<rw_spinlock> write_lock_pollers(producer_pollers_map_mutex_);
+      std::lock_guard write_lock_pollers(producer_pollers_map_mutex_);
 
       // Check again, since we unlocked.
       start_polling =
@@ -595,7 +595,7 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
   std::vector<std::shared_ptr<XClusterPoller>> pollers_to_shutdown;
   {
     SharedLock<rw_spinlock> read_lock_master(master_data_mutex_);
-    std::lock_guard<rw_spinlock> write_lock_pollers(producer_pollers_map_mutex_);
+    std::lock_guard write_lock_pollers(producer_pollers_map_mutex_);
     for (auto it = producer_pollers_map_.cbegin(); it != producer_pollers_map_.cend();) {
       const ProducerTabletInfo producer_info = it->first;
       const cdc::ConsumerTabletInfo& consumer_info = it->second->GetConsumerTabletInfo();
@@ -685,7 +685,7 @@ Status XClusterConsumer::PublishXClusterSafeTime() {
   const client::YBTableName safe_time_table_name(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kXClusterSafeTimeTableName);
 
-  std::lock_guard<std::mutex> l(safe_time_update_mutex_);
+  std::lock_guard l(safe_time_update_mutex_);
 
   int wait_time = GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs);
   if (wait_time <= 0 || MonoTime::Now() - last_safe_time_published_at_ < wait_time * 1s) {
@@ -752,7 +752,7 @@ void XClusterConsumer::StoreReplicationError(
     const CDCStreamId& stream_id,
     const ReplicationErrorPb error,
     const std::string& detail) {
-  std::lock_guard<simple_spinlock> lock(tablet_replication_error_map_lock_);
+  std::lock_guard lock(tablet_replication_error_map_lock_);
   tablet_replication_error_map_[tablet_id][stream_id][error] = detail;
 }
 
@@ -769,7 +769,7 @@ void XClusterConsumer::ClearReplicationError(
 }
 
 cdc::TabletReplicationErrorMap XClusterConsumer::GetReplicationErrors() const {
-  std::lock_guard<simple_spinlock> lock(tablet_replication_error_map_lock_);
+  std::lock_guard lock(tablet_replication_error_map_lock_);
   return tablet_replication_error_map_;
 }
 

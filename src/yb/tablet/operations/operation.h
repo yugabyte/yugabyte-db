@@ -195,7 +195,7 @@ class Operation {
   // The setter acquires the mutex for historical reasons, even though the corresponding getter does
   // not.
   void set_op_id(const OpId& op_id) EXCLUDES(mutex_) {
-    std::lock_guard<simple_spinlock> l(mutex_);
+    std::lock_guard l(mutex_);
     op_id_.store(op_id, std::memory_order_release);
   }
 

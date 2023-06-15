@@ -71,6 +71,7 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/tostring.h"
 #include "yb/util/url-coding.h"
+#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;
@@ -918,13 +919,13 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
 }
 
 void PeerMessageQueue::UpdateCDCConsumerOpId(const yb::OpId& op_id) {
-  std::lock_guard<rw_spinlock> l(cdc_consumer_lock_);
+  std::lock_guard l(cdc_consumer_lock_);
   cdc_consumer_op_id_ = op_id;
   cdc_consumer_op_id_last_updated_ = CoarseMonoClock::Now();
 }
 
 yb::OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
-  std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
+  SharedLock l(cdc_consumer_lock_);
   // For log cache eviction, we only want to include CDC consumers that are actively polling.
   // If CDC consumer checkpoint has not been updated recently, we exclude it.
   if (CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerCheckpointInterval) {
@@ -1652,7 +1653,7 @@ void PeerMessageQueue::NotifyObserversOfFailedFollower(const string& uuid,
 }
 
 bool PeerMessageQueue::PeerAcceptedOurLease(const std::string& uuid) const {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  std::lock_guard lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
   if (peer == nullptr) {
     return false;
@@ -1662,7 +1663,7 @@ bool PeerMessageQueue::PeerAcceptedOurLease(const std::string& uuid) const {
 }
 
 bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  std::lock_guard lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
   if (peer == nullptr) {
     LOG(ERROR) << "Invalid peer UUID: " << peer_uuid;
@@ -1678,7 +1679,7 @@ bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
 }
 
 OpId PeerMessageQueue::PeerLastReceivedOpId(const TabletServerId& uuid) const {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  std::lock_guard lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
   if (peer == nullptr) {
     LOG(ERROR) << "Invalid peer UUID: " << uuid;
@@ -1692,7 +1693,7 @@ string PeerMessageQueue::GetUpToDatePeer() const {
   std::vector<std::string> candidates;
 
   {
-    std::lock_guard<simple_spinlock> lock(queue_lock_);
+    std::lock_guard lock(queue_lock_);
     for (const PeersMap::value_type& entry : peers_map_) {
       if (local_peer_uuid_ == entry.first) {
         continue;
