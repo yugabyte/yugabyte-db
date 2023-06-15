@@ -1,6 +1,7 @@
 package com.yugabyte.yw.cloud;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
@@ -66,7 +67,7 @@ public interface CloudAPI {
       Provider provider,
       String regionCode,
       String lbName,
-      List<NodeID> nodeIDs,
+      Map<AvailabilityZone, Set<NodeID>> azToNodesMap,
       String protocol,
       List<Integer> ports);
 

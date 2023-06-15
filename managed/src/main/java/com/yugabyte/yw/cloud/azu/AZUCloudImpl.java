@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
@@ -55,7 +56,7 @@ public class AZUCloudImpl implements CloudAPI {
       Provider provider,
       String regionCode,
       String lbName,
-      List<NodeID> nodeIDs,
+      Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
       String protocol,
       List<Integer> ports) {}
 

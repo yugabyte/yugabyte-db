@@ -85,12 +85,14 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -421,7 +423,7 @@ public class AWSCloudImpl implements CloudAPI {
       Provider provider,
       String regionCode,
       String lbName,
-      List<NodeID> nodeIDs,
+      Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
       String protocol,
       List<Integer> ports) {
     try {
@@ -429,6 +431,8 @@ public class AWSCloudImpl implements CloudAPI {
       AmazonElasticLoadBalancing lbClient = getELBClient(provider, regionCode);
       AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
       // Get EC2 node instances
+      List<NodeID> nodeIDs =
+          azToNodeIDs.values().stream().flatMap(Collection::stream).collect(Collectors.toList());
       List<String> instanceIDs = getInstanceIDs(ec2Client, nodeIDs);
       // Check for listeners on each enabled port
       for (int port : ports) {
