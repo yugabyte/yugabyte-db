@@ -175,7 +175,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
   }
 
   uint64_t failed_attempts() {
-    std::lock_guard<simple_spinlock> l(peer_lock_);
+    std::lock_guard l(peer_lock_);
     return failed_attempts_;
   }
 

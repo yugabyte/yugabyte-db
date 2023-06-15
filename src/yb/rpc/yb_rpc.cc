@@ -302,7 +302,7 @@ Status YBInboundCall::SerializeResponseBuffer(AnyMessageConstPtr response, bool 
 }
 
 string YBInboundCall::ToString() const {
-  std::lock_guard<simple_spinlock> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (!cached_to_string_.empty()) {
     return cached_to_string_;
   }

@@ -1359,7 +1359,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<scoped_refptr<TableInfo>> GetTableById(const TableId& table_id) const override;
 
   void AddPendingBackFill(const TableId& id) override {
-    std::lock_guard<MutexType> lock(backfill_mutex_);
+    std::lock_guard lock(backfill_mutex_);
     pending_backfill_tables_.emplace(id);
   }
   void WriteTabletToSysCatalog(const TabletId& tablet_id);
@@ -1847,7 +1847,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   int64_t GetNumRelevantReplicas(const BlacklistPB& state, bool leaders_only);
 
   int64_t leader_ready_term() override EXCLUDES(state_lock_) {
-    std::lock_guard<simple_spinlock> l(state_lock_);
+    std::lock_guard l(state_lock_);
     return leader_ready_term_;
   }
 

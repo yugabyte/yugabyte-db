@@ -349,7 +349,7 @@ Status TabletSnapshots::RestoreCheckpoint(
   // op_pause has to stay in scope until the end of the function.
   auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(!dir.empty()), AbortOps::kTrue);
 
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock());
+  std::lock_guard lock(create_checkpoint_lock());
 
   const string db_dir = regular_db().GetName();
   const std::string intents_db_dir = has_intents_db() ? intents_db().GetName() : std::string();
@@ -487,7 +487,7 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
   const std::string snapshot_dir = JoinPathSegments(
       top_snapshots_dir, !txn_snapshot_id ? snapshot_id.ToBuffer() : txn_snapshot_id.ToString());
 
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock());
+  std::lock_guard lock(create_checkpoint_lock());
   Env* const env = metadata().fs_manager()->env();
 
   if (env->FileExists(snapshot_dir)) {
@@ -526,7 +526,7 @@ Status TabletSnapshots::CreateCheckpoint(
   auto temp_intents_dir = dir + kIntentsDBSuffix;
   auto final_intents_dir = JoinPathSegments(dir, kIntentsSubdir);
 
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock());
+  std::lock_guard lock(create_checkpoint_lock());
 
   if (!has_regular_db()) {
     LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;

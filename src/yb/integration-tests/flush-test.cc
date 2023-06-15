@@ -86,12 +86,12 @@ Result<TabletId> GetTabletIdFromSstFilename(const std::string& filename) {
 class TabletManagerListener : public tserver::TabletMemoryManagerListenerIf {
  public:
   void StartedFlush(const TabletId& tablet_id) override {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     flushed_tablets_.push_back(tablet_id);
   }
 
   std::vector<TabletId> GetFlushedTablets() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return flushed_tablets_;
   }
 

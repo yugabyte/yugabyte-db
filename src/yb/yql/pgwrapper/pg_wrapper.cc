@@ -836,12 +836,12 @@ PgSupervisor::PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver)
 }
 
 PgSupervisor::~PgSupervisor() {
-  std::lock_guard<std::mutex> lock(mtx_);
+  std::lock_guard lock(mtx_);
   DeregisterPgFlagChangeNotifications();
 }
 
 Status PgSupervisor::Start() {
-  std::lock_guard<std::mutex> lock(mtx_);
+  std::lock_guard lock(mtx_);
   RETURN_NOT_OK(ExpectStateUnlocked(PgProcessState::kNotStarted));
   RETURN_NOT_OK(CleanupOldServerUnlocked());
   RETURN_NOT_OK(RegisterPgFlagChangeNotifications());
@@ -906,7 +906,7 @@ Status PgSupervisor::CleanupOldServerUnlocked() {
 }
 
 PgProcessState PgSupervisor::GetState() {
-  std::lock_guard<std::mutex> lock(mtx_);
+  std::lock_guard lock(mtx_);
   return state_;
 }
 
@@ -951,7 +951,7 @@ void PgSupervisor::RunThread() {
     }
 
     {
-      std::lock_guard<std::mutex> lock(mtx_);
+      std::lock_guard lock(mtx_);
       if (state_ == PgProcessState::kStopping) {
         break;
       }
@@ -969,7 +969,7 @@ void PgSupervisor::RunThread() {
 
 void PgSupervisor::Stop() {
   {
-    std::lock_guard<std::mutex> lock(mtx_);
+    std::lock_guard lock(mtx_);
     state_ = PgProcessState::kStopping;
     DeregisterPgFlagChangeNotifications();
 
@@ -981,7 +981,7 @@ void PgSupervisor::Stop() {
 }
 
 Status PgSupervisor::ReloadConfig() {
-  std::lock_guard<std::mutex> lock(mtx_);
+  std::lock_guard lock(mtx_);
   if (pg_wrapper_) {
     return pg_wrapper_->ReloadConfig();
   }
@@ -996,7 +996,7 @@ Status PgSupervisor::UpdateAndReloadConfig() {
   // from this function to prevent spurious failures.
   debug::ScopedTSANIgnoreSync ignore_sync;
   debug::ScopedTSANIgnoreReadsAndWrites ignore_reads_and_writes;
-  std::lock_guard<std::mutex> lock(mtx_);
+  std::lock_guard lock(mtx_);
   if (pg_wrapper_) {
     return pg_wrapper_->UpdateAndReloadConfig();
   }

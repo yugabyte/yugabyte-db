@@ -584,7 +584,7 @@ Tablet::~Tablet() {
 
 Status Tablet::Open() {
   TRACE_EVENT0("tablet", "Tablet::Open");
-  std::lock_guard<rw_spinlock> lock(component_lock_);
+  std::lock_guard lock(component_lock_);
   CHECK_EQ(state_, kInitialized) << "already open";
   CHECK(schema()->has_column_ids());
 
@@ -773,7 +773,7 @@ Status Tablet::OpenKeyValueTablet() {
 
   rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
     {
-      std::lock_guard<std::mutex> lock(flush_filter_mutex_);
+      std::lock_guard lock(flush_filter_mutex_);
       if (mem_table_flush_filter_factory_) {
         return mem_table_flush_filter_factory_();
       }
@@ -878,7 +878,7 @@ Status Tablet::OpenKeyValueTablet() {
 }
 
 void Tablet::RegularDbFilesChanged() {
-  std::lock_guard<std::mutex> lock(num_sst_files_changed_listener_mutex_);
+  std::lock_guard lock(num_sst_files_changed_listener_mutex_);
   if (num_sst_files_changed_listener_) {
     num_sst_files_changed_listener_();
   }
@@ -1077,7 +1077,7 @@ void Tablet::CompleteShutdown(
   }
 
   {
-    std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
+    std::lock_guard lock(operation_filters_mutex_);
 
     if (completed_split_log_anchor_) {
       WARN_NOT_OK(log_anchor_registry_->Unregister(completed_split_log_anchor_.get()),
@@ -1093,7 +1093,7 @@ void Tablet::CompleteShutdown(
     }
   }
 
-  std::lock_guard<rw_spinlock> lock(component_lock_);
+  std::lock_guard lock(component_lock_);
 
   // Shutdown the RocksDB instance for this tablet, if present.
   // Destruct intents DB and regular DB in-memory objects in reverse order to their creation.
@@ -1101,7 +1101,7 @@ void Tablet::CompleteShutdown(
   CompleteShutdownRocksDBs(op_pauses);
 
   {
-    std::lock_guard<std::mutex> lock(full_compaction_token_mutex_);
+    std::lock_guard lock(full_compaction_token_mutex_);
     if (full_compaction_task_pool_token_) {
       full_compaction_task_pool_token_->Shutdown();
     }
@@ -3506,7 +3506,7 @@ Result<size_t> Tablet::TEST_CountRegularDBRecords() {
 template <class F>
 auto Tablet::GetRegularDbStat(const F& func, const decltype(func())& default_value) const {
   auto scoped_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
-  std::lock_guard<rw_spinlock> lock(component_lock_);
+  std::lock_guard lock(component_lock_);
 
   // In order to get actual stats we would have to wait.
   // This would give us correct stats but would make this request slower.
@@ -3549,7 +3549,7 @@ std::pair<int, int> Tablet::GetNumMemtables() const {
     if (!scoped_operation.ok()) {
       return std::make_pair(0, 0);
     }
-    std::lock_guard<rw_spinlock> lock(component_lock_);
+    std::lock_guard lock(component_lock_);
     if (intents_db_) {
       // NOTE: 1 is added on behalf of cfd->mem().
       intents_num_memtables = 1 + intents_db_->GetCfdImmNumNotFlushed();
@@ -3764,7 +3764,7 @@ Status Tablet::ReadIntents(std::vector<std::string>* intents) {
 }
 
 void Tablet::ListenNumSSTFilesChanged(std::function<void()> listener) {
-  std::lock_guard<std::mutex> lock(num_sst_files_changed_listener_mutex_);
+  std::lock_guard lock(num_sst_files_changed_listener_mutex_);
   bool has_new_listener = listener != nullptr;
   bool has_old_listener = num_sst_files_changed_listener_ != nullptr;
   LOG_IF_WITH_PREFIX(DFATAL, has_new_listener == has_old_listener)
@@ -3871,7 +3871,7 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
 }
 
 bool Tablet::HasActiveFullCompaction() {
-  std::lock_guard<std::mutex> lock(full_compaction_token_mutex_);
+  std::lock_guard lock(full_compaction_token_mutex_);
   return HasActiveFullCompactionUnlocked();
 }
 
@@ -3897,7 +3897,7 @@ Status Tablet::TriggerFullCompactionIfNeeded(rocksdb::CompactionReason compactio
     return STATUS(ServiceUnavailable, "Full compaction thread pool unavailable.");
   }
 
-  std::lock_guard<std::mutex> lock(full_compaction_token_mutex_);
+  std::lock_guard lock(full_compaction_token_mutex_);
   if (HasActiveFullCompactionUnlocked()) {
     return STATUS(
         ServiceUnavailable, "Full compaction already running on this tablet.");
@@ -3918,7 +3918,7 @@ Status Tablet::TriggerAdminFullCompactionIfNeededHelper(
     return STATUS(ServiceUnavailable, "Admin triggered compaction thread pool unavailable.");
   }
 
-  std::lock_guard<std::mutex> lock(full_compaction_token_mutex_);
+  std::lock_guard lock(full_compaction_token_mutex_);
   if (!admin_full_compaction_task_pool_token_) {
     admin_full_compaction_task_pool_token_ =
         admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
@@ -4009,7 +4009,7 @@ Status Tablet::OpenDbAndCheckIntegrity(const std::string& db_dir) {
 
 void Tablet::SplitDone() {
   {
-    std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
+    std::lock_guard lock(operation_filters_mutex_);
     if (completed_split_operation_filter_) {
       LOG_WITH_PREFIX(DFATAL) << "Already have split operation filter";
       return;
@@ -4034,7 +4034,7 @@ void Tablet::SplitDone() {
 }
 
 void Tablet::SyncRestoringOperationFilter(ResetSplit reset_split) {
-  std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
+  std::lock_guard lock(operation_filters_mutex_);
 
   if (reset_split) {
     if (completed_split_log_anchor_) {
@@ -4118,7 +4118,7 @@ Status Tablet::CheckRestorations(const RestorationCompleteTimeMap& restoration_c
 }
 
 Status Tablet::CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type) {
-  std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
+  std::lock_guard lock(operation_filters_mutex_);
   for (const auto& filter : operation_filters_) {
     RETURN_NOT_OK(filter.CheckOperationAllowed(op_id, op_type));
   }
@@ -4127,7 +4127,7 @@ Status Tablet::CheckOperationAllowed(const OpId& op_id, consensus::OperationType
 }
 
 void Tablet::RegisterOperationFilter(OperationFilter* filter) {
-  std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
+  std::lock_guard lock(operation_filters_mutex_);
   operation_filters_.push_back(*filter);
 }
 
@@ -4142,7 +4142,7 @@ std::shared_ptr<dockv::SchemaPackingStorage> Tablet::PrimarySchemaPackingStorage
 }
 
 void Tablet::UnregisterOperationFilter(OperationFilter* filter) {
-  std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
+  std::lock_guard lock(operation_filters_mutex_);
   UnregisterOperationFilterUnlocked(filter);
 }
 

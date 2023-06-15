@@ -78,17 +78,17 @@ class SingleThreadedAtomic {
   explicit SingleThreadedAtomic(const T& t) : value_(t) {}
 
   T load(std::memory_order) const {
-    std::lock_guard<SingleThreadedMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return value_;
   }
 
   void store(const T& value, std::memory_order) {
-    std::lock_guard<SingleThreadedMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     value_ = value;
   }
 
   bool compare_exchange_strong(T& old_value, const T& new_value) { // NOLINT
-    std::lock_guard<SingleThreadedMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (value_ == old_value) {
       value_ = new_value;
       return true;

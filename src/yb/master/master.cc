@@ -569,7 +569,7 @@ scoped_refptr<Histogram> Master::GetMetric(
       (type == TaskMetric ? "Task" : "Attempt"));
   EscapeMetricNameForPrometheus(&temp_metric_identifier);
   {
-    std::lock_guard<std::mutex> lock(master_metrics_mutex_);
+    std::lock_guard lock(master_metrics_mutex_);
     std::map<std::string, scoped_refptr<Histogram>>* master_metrics_ptr = master_metrics();
     auto it = master_metrics_ptr->find(temp_metric_identifier);
     if (it == master_metrics_ptr->end()) {

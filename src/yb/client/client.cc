@@ -2044,7 +2044,7 @@ const CloudInfoPB& YBClient::cloud_info() const {
 }
 
 std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId() {
-  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
+  std::lock_guard lock(data_->tablet_requests_mutex_);
   auto& requests = data_->requests_;
   auto id = requests.request_id_seq++;
   requests.running_requests.insert(id);
@@ -2062,7 +2062,7 @@ void YBClient::RequestsFinished(const std::set<RetryableRequestId>& request_ids)
   if (request_ids.empty()) {
     return;
   }
-  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
+  std::lock_guard lock(data_->tablet_requests_mutex_);
   for (RetryableRequestId id : request_ids) {
     auto& requests = data_->requests_.running_requests;
     auto it = requests.find(id);

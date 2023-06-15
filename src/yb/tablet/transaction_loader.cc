@@ -93,7 +93,7 @@ class TransactionLoader::Executor {
         return;
       }
 
-      std::lock_guard<std::mutex> lock(loader_.mutex_);
+      std::lock_guard lock(loader_.mutex_);
       loader_.load_status_ = status;
       loader_.state_.store(TransactionLoaderState::kLoadFailed, std::memory_order_release);
     });
@@ -159,7 +159,7 @@ class TransactionLoader::Executor {
       // because if we set all_loaded_ to true between lines 1 and 2, the only time we would be able
       // to send a notification at line 2 as wait(...) releases the mutex, but then we would check
       // all_loaded_ and exit the loop at line 1.
-      std::lock_guard<std::mutex> lock(loader_.mutex_);
+      std::lock_guard lock(loader_.mutex_);
     }
     loader_.load_cond_.notify_all();
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
@@ -257,7 +257,7 @@ class TransactionLoader::Executor {
         std::move(*metadata), std::move(last_batch_data), std::move(replicated_batches),
         pending_apply_it != pending_applies_.end() ? &pending_apply_it->second : nullptr);
     {
-      std::lock_guard<std::mutex> lock(loader_.mutex_);
+      std::lock_guard lock(loader_.mutex_);
       loader_.last_loaded_ = id;
     }
     loader_.load_cond_.notify_all();

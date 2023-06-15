@@ -655,7 +655,7 @@ void TabletServer::Shutdown() {
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   // We reset the list each time, since we want to keep the tservers that are live from the
   // master's perspective.
   // TODO: In the future, we should enhance the logic here to keep track information retrieved
@@ -667,7 +667,7 @@ Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& h
 
 Status TabletServer::GetLiveTServers(
     std::vector<master::TSInformationPB> *live_tservers) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   *live_tservers = live_tservers_;
   return Status::OK();
 }
@@ -689,12 +689,12 @@ bool TabletServer::LeaderAndReady(const TabletId& tablet_id, bool allow_stale) c
 }
 
 void TabletServer::set_cluster_uuid(const std::string& cluster_uuid) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   cluster_uuid_ = cluster_uuid;
 }
 
 std::string TabletServer::cluster_uuid() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return cluster_uuid_;
 }
 
@@ -767,7 +767,7 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
 Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
     const GetTserverCatalogVersionInfoRequestPB& req,
     GetTserverCatalogVersionInfoResponsePB *resp) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(ysql_db_catalog_version_map_.size()));
   } else {
@@ -788,7 +788,7 @@ Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
 
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
 
     if (new_version == ysql_catalog_version_) {
       return;
@@ -810,7 +810,7 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
 
 void TabletServer::SetYsqlDBCatalogVersions(
   const master::DBCatalogVersionDataPB& db_catalog_version_data) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
 
   bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
@@ -1073,7 +1073,7 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
 }
 
 XClusterConsumer* TabletServer::GetXClusterConsumer() const {
-  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
+  std::lock_guard l(cdc_consumer_mutex_);
   return xcluster_consumer_.get();
 }
 
@@ -1104,7 +1104,7 @@ Status TabletServer::CreateCDCConsumer() {
 
 Status TabletServer::SetConfigVersionAndConsumerRegistry(
     int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry) {
-  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
+  std::lock_guard l(cdc_consumer_mutex_);
 
   // Only create a cdc consumer if consumer_registry is not null.
   if (!xcluster_consumer_ && consumer_registry) {
@@ -1117,7 +1117,7 @@ Status TabletServer::SetConfigVersionAndConsumerRegistry(
 }
 
 int32_t TabletServer::cluster_config_version() const {
-  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
+  std::lock_guard l(cdc_consumer_mutex_);
   // If no CDC consumer, we will return -1, which will force the master to send the consumer
   // registry if one exists. If we receive one, we will create a new CDC consumer in
   // SetConsumerRegistry.
@@ -1154,7 +1154,7 @@ Status TabletServer::ReloadKeysAndCertificates() {
       server::SecureContextType::kInternal,
       options_.HostsString()));
 
-  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
+  std::lock_guard l(cdc_consumer_mutex_);
   if (xcluster_consumer_) {
     RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
   }

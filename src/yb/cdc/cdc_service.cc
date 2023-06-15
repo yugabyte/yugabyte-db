@@ -280,7 +280,7 @@ class CDCServiceImpl::Impl {
       const uint64_t& timestamp,
       const SchemaDetailsMap& schema_details,
       const OpId& op_id) {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     auto it = cdc_state_metadata_.find(producer_tablet);
     if (it == cdc_state_metadata_.end()) {
       LOG(DFATAL) << "Failed to update the cdc state metadata for tablet id: "
@@ -294,7 +294,7 @@ class CDCServiceImpl::Impl {
 
   SchemaDetailsMap& GetOrAddSchema(
       const ProducerTabletInfo& producer_tablet, const bool need_schema_info) {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     auto it = cdc_state_metadata_.find(producer_tablet);
 
     if (it != cdc_state_metadata_.end()) {
@@ -341,7 +341,7 @@ class CDCServiceImpl::Impl {
       time = CoarseTimePoint::min();
       active_time = 0;
     }
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     if (!producer_entries_modified && tablet_checkpoints_.count(producer_tablet)) {
       return;
     }
@@ -393,7 +393,7 @@ class CDCServiceImpl::Impl {
   }
 
   Status EraseTabletAndStreamEntry(const ProducerTabletInfo& info) {
-    std::lock_guard<rw_spinlock> l(mutex_);
+    std::lock_guard l(mutex_);
     // Here we just remove the entries of the tablet from the in-memory caches. The deletion from
     // the 'cdc_state' table will happen when the hidden parent tablet will be deleted
     // asynchronously.
@@ -434,7 +434,7 @@ class CDCServiceImpl::Impl {
         .last_active_time = active_time,
     };
 
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
     if (it != tablet_checkpoints_.end()) {
       it->sent_checkpoint = sent_checkpoint;
@@ -498,7 +498,7 @@ class CDCServiceImpl::Impl {
         return it->mem_tracker;
       }
     }
-    std::lock_guard<rw_spinlock> l(mutex_);
+    std::lock_guard l(mutex_);
     auto it = tablet_checkpoints_.find(producer_info);
     if (it == tablet_checkpoints_.end()) {
       return nullptr;
@@ -534,7 +534,7 @@ class CDCServiceImpl::Impl {
       const ProducerTabletInfo& info,
       const std::array<const master::TabletLocationsPB*, 2>& tablets,
       const OpId& split_op_id) {
-    std::lock_guard<rw_spinlock> l(mutex_);
+    std::lock_guard l(mutex_);
     for (const auto& tablet : tablets) {
       ProducerTabletInfo producer_info{
           info.replication_group_id, info.stream_id, tablet->tablet_id()};
@@ -565,7 +565,7 @@ class CDCServiceImpl::Impl {
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
     bool found = false;
     {
-      std::lock_guard<rw_spinlock> l(mutex_);
+      std::lock_guard l(mutex_);
       for (const auto& tablet : tablets) {
         // Add every tablet in the stream.
         ProducerTabletInfo producer_info{
@@ -645,7 +645,7 @@ class CDCServiceImpl::Impl {
   }
 
   void ForceCdcStateUpdate(const ProducerTabletInfo& producer_tablet) {
-    std::lock_guard<rw_spinlock> l(mutex_);
+    std::lock_guard l(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
     if (it != tablet_checkpoints_.end()) {
       // Setting the timestamp to min will result in ExpiredAt saying it is expired.
@@ -654,7 +654,7 @@ class CDCServiceImpl::Impl {
   }
 
   void ClearCaches() {
-    std::lock_guard<rw_spinlock> l(mutex_);
+    std::lock_guard l(mutex_);
     tablet_checkpoints_.clear();
     cdc_state_metadata_.clear();
   }
@@ -942,7 +942,7 @@ Result<EnumOidLabelMap> CDCServiceImpl::GetEnumMapFromCache(
 
 Result<EnumOidLabelMap> CDCServiceImpl::UpdateEnumCacheAndGetMap(
     const NamespaceName& ns_name, bool cql_namespace) {
-  std::lock_guard<decltype(mutex_)> l(mutex_);
+  std::lock_guard l(mutex_);
   if (enumlabel_cache_.find(ns_name) == enumlabel_cache_.end()) {
     if (cql_namespace) {
       EnumOidLabelMap empty_map;
@@ -973,7 +973,7 @@ Result<CompositeAttsMap> CDCServiceImpl::GetCompositeAttsMapFromCache(
 
 Result<CompositeAttsMap> CDCServiceImpl::UpdateCompositeCacheAndGetMap(
     const NamespaceName& ns_name, bool cql_namespace) {
-  std::lock_guard<decltype(mutex_)> l(mutex_);
+  std::lock_guard l(mutex_);
   if (composite_type_cache_.find(ns_name) == composite_type_cache_.end()) {
     if (cql_namespace) {
       CompositeAttsMap empty_map;
@@ -1747,13 +1747,13 @@ void CDCServiceImpl::GetChanges(
         string message = status.ToUserMessage(false);
         if (message == "enum") {
           // Recreate the enum cache entry for the corresponding namespace.
-          std::lock_guard<decltype(mutex_)> l(mutex_);
+          std::lock_guard l(mutex_);
           enum_map_result = UpdateEnumMapInCacheUnlocked(namespace_name);
           RPC_CHECK_AND_RETURN_ERROR(
               enum_map_result.ok(), enum_map_result.status(), resp->mutable_error(),
               CDCErrorPB::INTERNAL_ERROR, context);
         } else if (message == "composite") {
-          std::lock_guard<decltype(mutex_)> l(mutex_);
+          std::lock_guard l(mutex_);
           composite_atts_map = UpdateCompositeMapInCacheUnlocked(namespace_name);
           RPC_CHECK_AND_RETURN_ERROR(
               composite_atts_map.ok(), composite_atts_map.status(), resp->mutable_error(),
@@ -2191,7 +2191,7 @@ void CDCServiceImpl::SetCDCServiceEnabled() { cdc_enabled_.store(true, std::memo
 void CDCServiceImpl::SetPausedXClusterProducerStreams(
     const ::google::protobuf::Map<std::string, bool>& paused_producer_stream_ids,
     uint32_t xcluster_config_version) {
-  std::lock_guard<rw_spinlock> l(mutex_);
+  std::lock_guard l(mutex_);
   if (xcluster_config_version_ < xcluster_config_version) {
     paused_xcluster_producer_streams_.clear();
     for (const auto& stream_id : paused_producer_stream_ids) {
@@ -2227,7 +2227,7 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
   RETURN_NOT_OK(s);
 
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     if (cdc_state_table_ && use_cache) {
       return cdc_state_table_;
     }
@@ -2241,7 +2241,7 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
 
 void CDCServiceImpl::RefreshCdcStateTable() {
   // Set cached value to null so we regenerate it on the next call.
-  std::lock_guard<decltype(mutex_)> l(mutex_);
+  std::lock_guard l(mutex_);
   cdc_state_table_ = nullptr;
 }
 
@@ -2937,7 +2937,7 @@ std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTablet
   auto cdc_service = std::make_shared<CDCServiceProxy>(&client()->proxy_cache(), hostport);
 
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     auto it = cdc_service_map_.find(hostport);
     if (it != cdc_service_map_.end()) {
       return it->second;
@@ -3364,7 +3364,7 @@ void CDCServiceImpl::RollbackPartialCreate(const CDCCreationState& creation_stat
     return;
   }
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     impl_->EraseTablets(creation_state.producer_entries_modified, false);
   }
   for (const auto& entry : creation_state.producer_entries_modified) {
@@ -3824,7 +3824,7 @@ void CDCServiceImpl::Shutdown() {
     impl_->async_client_init_->Shutdown();
     rpcs_.Shutdown();
     {
-      std::lock_guard<decltype(mutex_)> l(mutex_);
+      std::lock_guard l(mutex_);
       cdc_service_stopped_ = true;
       cdc_state_table_ = nullptr;
     }
@@ -4399,7 +4399,7 @@ Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(
 }
 
 void CDCServiceImpl::RemoveStreamFromCache(const CDCStreamId& stream_id) {
-  std::lock_guard<decltype(mutex_)> l(mutex_);
+  std::lock_guard l(mutex_);
   stream_metadata_.erase(stream_id);
 }
 

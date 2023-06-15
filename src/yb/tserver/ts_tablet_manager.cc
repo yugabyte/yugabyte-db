@@ -607,7 +607,7 @@ Status TSTabletManager::Init() {
   }
 
   {
-    std::lock_guard<RWMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     state_ = MANAGER_RUNNING;
   }
 
@@ -1175,7 +1175,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   auto private_addr = req.bootstrap_source_private_addr()[0].host();
   auto decrement_num_rbs_se = ScopeExit([this, &private_addr](){
     {
-      std::lock_guard<RWMutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       auto iter = bootstrap_source_addresses_.find(private_addr);
       if (iter != bootstrap_source_addresses_.end()) {
         bootstrap_source_addresses_.erase(iter);
@@ -1210,7 +1210,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   bool replacing_tablet = false;
   scoped_refptr<TransitionInProgressDeleter> deleter;
   {
-    std::lock_guard<RWMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     bootstrap_source_addresses_.emplace(private_addr);
     if (ClosingUnlocked()) {
       auto result = STATUS_FORMAT(
@@ -1374,7 +1374,7 @@ Status TSTabletManager::DeleteTablet(
   {
     // Acquire the lock in exclusive mode as we'll add a entry to the
     // transition_in_progress_ map.
-    std::lock_guard<RWMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     TRACE("Acquired tablet manager lock");
     RETURN_NOT_OK(CheckRunningUnlocked(error_code));
 
@@ -1452,7 +1452,7 @@ Status TSTabletManager::DeleteTablet(
 
   // We only remove DELETED tablets from the tablet map.
   if (delete_type == TABLET_DATA_DELETED) {
-    std::lock_guard<RWMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     RETURN_NOT_OK(CheckRunningUnlocked(error_code));
     CHECK_EQ(1, tablet_map_.erase(tablet_id)) << tablet_id;
     dirty_tablets_.erase(tablet_id);
@@ -1689,7 +1689,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   tablet->TriggerPostSplitCompactionIfNeeded();
 
   if (tablet->ShouldDisableLbMove()) {
-    std::lock_guard<RWMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     tablets_blocked_from_lb_.insert(tablet->tablet_id());
     VLOG(2) << TabletLogPrefix(tablet->tablet_id())
             << " marking as maybe being compacted after split.";
@@ -1726,7 +1726,7 @@ Status TSTabletManager::TriggerAdminCompaction(const TabletPtrs& tablets, bool s
 
 void TSTabletManager::StartShutdown() {
   {
-    std::lock_guard<RWMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     switch (state_) {
       case MANAGER_QUIESCING: {
         VLOG(1) << "Tablet manager shut down already in progress..";
@@ -1854,11 +1854,11 @@ void TSTabletManager::CompleteShutdown() {
   }
 
   {
-    std::lock_guard<RWMutex> l(mutex_);
+    std::lock_guard l(mutex_);
     tablet_map_.clear();
     dirty_tablets_.clear();
 
-    std::lock_guard<std::mutex> dir_assignment_lock(dir_assignment_mutex_);
+    std::lock_guard dir_assignment_lock(dir_assignment_mutex_);
     table_data_assignment_map_.clear();
     table_wal_assignment_map_.clear();
 
@@ -1887,7 +1887,7 @@ bool TSTabletManager::ClosingUnlocked() const {
 Status TSTabletManager::RegisterTablet(const TabletId& tablet_id,
                                        const TabletPeerPtr& tablet_peer,
                                        RegisterTabletPeerMode mode) {
-  std::lock_guard<RWMutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (ClosingUnlocked()) {
     auto result = STATUS_FORMAT(
         ShutdownInProgress, "Unable to register tablet peer: $0: closing", tablet_id);
@@ -2060,7 +2060,7 @@ void TSTabletManager::ApplyChange(const string& tablet_id,
 void TSTabletManager::MarkTabletDirty(const TabletId& tablet_id,
                                       std::shared_ptr<consensus::StateChangeContext> context) {
   {
-    std::lock_guard<RWMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     MarkDirtyUnlocked(tablet_id, context);
   }
   NotifyConfigChangeToStatefulServices(tablet_id);
@@ -2077,7 +2077,7 @@ void TSTabletManager::NotifyConfigChangeToStatefulServices(const TabletId& table
 
   const auto service_list = tablet_peer.get()->tablet_metadata()->GetHostedServiceList();
   for (auto& service_kind : service_list) {
-    std::shared_lock lock(service_registration_mutex_);
+    SharedLock lock(service_registration_mutex_);
     if (service_consensus_change_cb_.contains(service_kind)) {
       service_consensus_change_cb_[service_kind].Run(tablet_peer.get());
     }
@@ -2086,7 +2086,7 @@ void TSTabletManager::NotifyConfigChangeToStatefulServices(const TabletId& table
 
 void TSTabletManager::MarkTabletBeingRemoteBootstrapped(
     const TabletId& tablet_id, const TableId& table_id) {
-  std::lock_guard<RWMutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   tablets_being_remote_bootstrapped_.insert(tablet_id);
   tablets_being_remote_bootstrapped_per_table_[table_id].insert(tablet_id);
   MaybeDoChecksForTests(table_id);
@@ -2098,7 +2098,7 @@ void TSTabletManager::MarkTabletBeingRemoteBootstrapped(
 
 void TSTabletManager::UnmarkTabletBeingRemoteBootstrapped(
     const TabletId& tablet_id, const TableId& table_id) {
-  std::lock_guard<RWMutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   tablets_being_remote_bootstrapped_.erase(tablet_id);
   tablets_being_remote_bootstrapped_per_table_[table_id].erase(tablet_id);
 }
@@ -2242,7 +2242,7 @@ void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_
   TabletIdSet tablet_ids;
   size_t dirty_count, report_limit;
   {
-    std::lock_guard<RWMutex> write_lock(mutex_);
+    std::lock_guard write_lock(mutex_);
     uint32_t cur_report_seq = next_report_seq_++;
     report->set_sequence_number(cur_report_seq);
 
@@ -2324,7 +2324,7 @@ void TSTabletManager::StartFullTabletReport(TabletReportPB* report) {
   vector<std::shared_ptr<TabletPeer>> to_report;
   size_t dirty_count, report_limit;
   {
-    std::lock_guard<RWMutex> write_lock(mutex_);
+    std::lock_guard write_lock(mutex_);
     uint32_t cur_report_seq = next_report_seq_++;
     report->set_sequence_number(cur_report_seq);
     GetTabletPeersUnlocked(&to_report);
@@ -2347,7 +2347,7 @@ void TSTabletManager::StartFullTabletReport(TabletReportPB* report) {
 void TSTabletManager::MarkTabletReportAcknowledged(uint32_t acked_seq,
                                                    const TabletReportUpdatesPB& updates,
                                                    bool dirty_check) {
-  std::lock_guard<RWMutex> l(mutex_);
+  std::lock_guard l(mutex_);
 
   CHECK_LT(acked_seq, next_report_seq_);
 
@@ -2442,7 +2442,7 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
   }
   LOG(INFO) << "Get and update data/wal directory assignment map for table: " \
             << table_id << " and tablet " << tablet_id;
-  std::lock_guard<std::mutex> dir_assignment_lock(dir_assignment_mutex_);
+  std::lock_guard dir_assignment_lock(dir_assignment_mutex_);
   // Initialize the map if the directory mapping does not exist.
   auto data_root_dirs = fs_manager->GetDataRootDirs();
   CHECK(!data_root_dirs.empty()) << "No data root directories found";
@@ -2505,7 +2505,7 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
   }
   LOG(INFO) << "Update data/wal directory assignment map for table: "
             << table_id << " and tablet " << tablet_id;
-  std::lock_guard<std::mutex> dir_assignment_lock(dir_assignment_mutex_);
+  std::lock_guard dir_assignment_lock(dir_assignment_mutex_);
   // Initialize the map if the directory mapping does not exist.
   auto data_root_dirs = fs_manager->GetDataRootDirs();
   CHECK(!data_root_dirs.empty()) << "No data root directories found";
@@ -2566,7 +2566,7 @@ TSTabletManager::TableDiskAssignmentMap* TSTabletManager::GetTableDiskAssignment
 
 Result<const std::string&> TSTabletManager::GetAssignedRootDirForTablet(
     TabletDirType dir_type, const TableId& table_id, const TabletId& tablet_id) {
-  std::lock_guard<std::mutex> dir_assignment_lock(dir_assignment_mutex_);
+  std::lock_guard dir_assignment_lock(dir_assignment_mutex_);
 
   TableDiskAssignmentMap* table_assignment_map = GetTableDiskAssignmentMapUnlocked(dir_type);
   auto tablets_by_root_dir = table_assignment_map->find(table_id);
@@ -2594,7 +2594,7 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
   }
   LOG(INFO) << "Unregister data/wal directory assignment map for table: "
             << table_id << " and tablet " << tablet_id;
-  std::lock_guard<std::mutex> lock(dir_assignment_mutex_);
+  std::lock_guard lock(dir_assignment_mutex_);
   auto table_data_assignment_iter = table_data_assignment_map_.find(table_id);
   if (table_data_assignment_iter == table_data_assignment_map_.end()) {
     // It is possible that we can't find an assignment for the table if the operations followed in
@@ -2708,7 +2708,7 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
   bool restorations_updated;
   RestorationCompleteTimeMap restoration_complete_time;
   {
-    std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+    std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
     ++snapshot_schedules_version_;
     snapshot_schedule_allowed_history_cutoff_.clear();
     for (const auto& schedule : info.schedules()) {
@@ -2789,7 +2789,7 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
         WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
       }
     });
-    std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+    std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
     for (const auto& schedule_id : schedules) {
       auto it = snapshot_schedule_allowed_history_cutoff_.find(schedule_id);
       if (it == snapshot_schedule_allowed_history_cutoff_.end()) {

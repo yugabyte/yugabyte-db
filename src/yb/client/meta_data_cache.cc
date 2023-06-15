@@ -135,7 +135,7 @@ struct YBMetaDataCacheEntry {
       }
 
       if (open_result.ok()) {
-        std::lock_guard<std::mutex> lock(cache->cached_tables_mutex_);
+        std::lock_guard lock(cache->cached_tables_mutex_);
         const auto& table = **open_result;
         cache->cached_tables_by_name_[table.name()] = self;
         cache->cached_tables_by_id_[table.id()] = self;
@@ -176,7 +176,7 @@ void YBMetaDataCache::DoGetTableAsync(
   std::shared_ptr<YBMetaDataCacheEntry> entry;
   YBTablePtr table;
   {
-    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
+    std::lock_guard lock(cached_tables_mutex_);
     entry = cache->try_emplace(id, LazySharedPtrFactory()).first->second;
     table = entry->GetFetched();
   }
@@ -219,7 +219,7 @@ void YBMetaDataCache::RemoveFromCache(
     std::unordered_map<V, std::shared_ptr<YBMetaDataCacheEntry>, boost::hash<V>>* indirect_cache,
     const T& direct_key,
     const F& get_indirect_key) {
-  std::lock_guard<std::mutex> lock(cached_tables_mutex_);
+  std::lock_guard lock(cached_tables_mutex_);
   const auto itr = direct_cache->find(direct_key);
   if (itr != direct_cache->end()) {
     // It could happen that the entry is present in direct_cache but the data is being
@@ -242,7 +242,7 @@ Result<std::pair<std::shared_ptr<QLType>, bool>> YBMetaDataCache::GetUDType(
     const string& keyspace_name, const string& type_name) {
   auto type_path = std::make_pair(keyspace_name, type_name);
   {
-    std::lock_guard<std::mutex> lock(cached_types_mutex_);
+    std::lock_guard lock(cached_types_mutex_);
     auto itr = cached_types_.find(type_path);
     if (itr != cached_types_.end()) {
       return std::make_pair(itr->second, true);
@@ -251,7 +251,7 @@ Result<std::pair<std::shared_ptr<QLType>, bool>> YBMetaDataCache::GetUDType(
 
   auto type = VERIFY_RESULT(client_->GetUDType(keyspace_name, type_name));
   {
-    std::lock_guard<std::mutex> lock(cached_types_mutex_);
+    std::lock_guard lock(cached_types_mutex_);
     cached_types_[type_path] = type;
   }
   return std::make_pair(std::move(type), false);
@@ -259,7 +259,7 @@ Result<std::pair<std::shared_ptr<QLType>, bool>> YBMetaDataCache::GetUDType(
 
 void YBMetaDataCache::RemoveCachedUDType(const string& keyspace_name,
                                          const string& type_name) {
-  std::lock_guard<std::mutex> lock(cached_types_mutex_);
+  std::lock_guard lock(cached_types_mutex_);
   cached_types_.erase(std::make_pair(keyspace_name, type_name));
 }
 

@@ -38,6 +38,7 @@
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/shared_lock.h"
 
 using std::vector;
 
@@ -778,7 +779,7 @@ void TabletSplitManager::DoSplitting(
 }
 
 Status TabletSplitManager::WaitUntilIdle(CoarseTimePoint deadline) {
-  std::shared_lock<decltype(is_running_mutex_)> l(is_running_mutex_, deadline);
+  std::shared_lock l(is_running_mutex_, deadline);
   if (!l.owns_lock()) {
     return STATUS_FORMAT(TimedOut,
         "Tablet split manager iteration did not complete before deadline: $0", deadline);

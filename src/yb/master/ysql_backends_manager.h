@@ -324,7 +324,7 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   }
 
   void AddFailureStatus(Status s) EXCLUDES(mutex_) {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     failure_statuses_.push_back(s);
   }
 

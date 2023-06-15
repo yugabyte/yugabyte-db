@@ -265,7 +265,7 @@ void MvccManager::Replicated(HybridTime ht, const OpId& op_id) {
   CHECK(!op_id.empty());
 
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (op_trace_) {
       op_trace_->Add(ReplicatedTraceItem { .ht = ht, .op_id = op_id });
     }
@@ -282,7 +282,7 @@ void MvccManager::Aborted(HybridTime ht, const OpId& op_id) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ", " << op_id << ")";
 
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (op_trace_) {
       op_trace_->Add(AbortedTraceItem { .ht = ht, .op_id = op_id });
     }
@@ -306,7 +306,7 @@ bool BadNextOpId(const OpId& prev, const OpId& next) {
 }
 
 HybridTime MvccManager::AddLeaderPending(const OpId& op_id) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   auto ht = clock_->Now();
   AtomicFlagSleepMs(&FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms);
   VLOG_WITH_PREFIX(1) << __func__ << "(" << op_id << "), time: " << ht;
@@ -323,7 +323,7 @@ HybridTime MvccManager::AddLeaderPending(const OpId& op_id) {
 }
 
 void MvccManager::AddFollowerPending(HybridTime ht, const OpId& op_id) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ", " << op_id << ")";
 
   AddPending(ht, op_id, /* is_follower_side= */ true);
@@ -412,7 +412,7 @@ void MvccManager::SetLastReplicated(HybridTime ht) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ")";
 
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (op_trace_) {
       op_trace_->Add(SetLastReplicatedTraceItem { .ht = ht });
     }
@@ -425,7 +425,7 @@ void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ")";
 
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (op_trace_) {
       op_trace_->Add(SetPropagatedSafeTimeOnFollowerTraceItem { .ht = ht });
     }
@@ -481,7 +481,7 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& h
 }
 
 void MvccManager::SetLeaderOnlyMode(bool leader_only) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (op_trace_) {
     op_trace_->Add(SetLeaderOnlyModeTraceItem {
       .leader_only = leader_only
@@ -647,7 +647,7 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
 }
 
 HybridTime MvccManager::LastReplicatedHybridTime() const {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   VLOG_WITH_PREFIX(1) << __func__ << "(), result = " << last_replicated_;
   if (op_trace_) {
     op_trace_->Add(LastReplicatedHybridTimeTraceItem {

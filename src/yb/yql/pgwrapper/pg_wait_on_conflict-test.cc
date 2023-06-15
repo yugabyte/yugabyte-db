@@ -263,7 +263,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockTwoTransactions)) {
   Random r(2912039);
 
   auto get_sleep_time_us = [&mutex, &r]() {
-    std::lock_guard<decltype(mutex)> l(mutex);
+    std::lock_guard l(mutex);
     return r.Next32() % 5000;
   };
 

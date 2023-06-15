@@ -156,7 +156,7 @@ void PermissionsCache::UpdateRolesPermissions(const GetPermissionsResponsePB& re
   }
   {
     // We need to hold the mutex before modifying ready_ to avoid a race condition with cond_.
-    std::lock_guard<std::mutex> l(mtx_);
+    std::lock_guard l(mtx_);
     ready_.store(true, std::memory_order_release);
   }
   cond_.notify_all();

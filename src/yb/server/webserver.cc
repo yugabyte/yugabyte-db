@@ -417,7 +417,7 @@ Status Webserver::Impl::Start() {
 }
 
 void Webserver::Impl::Stop() {
-  std::lock_guard<std::mutex> lock_(stop_mutex_);
+  std::lock_guard lock_(stop_mutex_);
   if (context_ != nullptr) {
     sq_stop(context_);
     context_ = nullptr;
@@ -663,7 +663,7 @@ void Webserver::Impl::RegisterPathHandler(const string& path,
                                           bool is_styled,
                                           bool is_on_nav_bar,
                                           const std::string icon) {
-  std::lock_guard<std::shared_timed_mutex> lock(lock_);
+  std::lock_guard lock(lock_);
   auto it = path_handlers_.find(path);
   if (it == path_handlers_.end()) {
     it = path_handlers_.insert(
@@ -724,7 +724,7 @@ bool Webserver::Impl::static_pages_available() const {
 }
 
 void Webserver::Impl::set_footer_html(const std::string& html) {
-  std::lock_guard<std::shared_timed_mutex> l(lock_);
+  std::lock_guard l(lock_);
   footer_html_ = html;
 }
 

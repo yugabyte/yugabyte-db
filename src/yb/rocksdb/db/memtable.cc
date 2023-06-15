@@ -968,7 +968,7 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
 }
 
 UserFrontierPtr MemTable::GetFrontier(UpdateUserValueType type) const {
-  std::lock_guard<SpinMutex> l(frontiers_mutex_);
+  std::lock_guard l(frontiers_mutex_);
   if (!frontiers_) {
     return nullptr;
   }

@@ -244,7 +244,7 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(ReadRecentSet)) {
         for (int j = 0, count = PQntuples(res->get()); j != count; ++j) {
           mask |= 1ULL << (ASSERT_RESULT(GetInt32(res->get(), j, 0)) - read_min);
         }
-        std::lock_guard<std::mutex> lock(reads_mutex);
+        std::lock_guard lock(reads_mutex);
         Read new_read{read_min, mask};
         reads.erase(std::remove_if(reads.begin(), reads.end(),
             [&new_read, &stop](const auto& old_read) {

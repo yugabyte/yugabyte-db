@@ -181,7 +181,7 @@ const std::string RemoteBootstrapSession::kCheckpointsDir = "checkpoints";
 
 Status RemoteBootstrapSession::Init() {
   // Take locks to support re-initialization of the same session.
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   RETURN_NOT_OK(UnregisterAnchorIfNeededUnlocked());
 
   const string& tablet_id = tablet_peer_->tablet_id();
@@ -469,7 +469,7 @@ Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPiec
 Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno, GetDataPieceInfo* info) {
   std::shared_ptr<RandomAccessFile> file;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (opened_log_segment_seqno_ != segment_seqno) {
       RETURN_NOT_OK(OpenLogSegment(segment_seqno, &info->error_code));
     }
@@ -588,12 +588,12 @@ Status RemoteBootstrapSession::UnregisterAnchorIfNeededUnlocked() {
 }
 
 void RemoteBootstrapSession::SetSuccess() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   succeeded_ = true;
 }
 
 bool RemoteBootstrapSession::Succeeded() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return succeeded_;
 }
 

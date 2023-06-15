@@ -329,7 +329,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     auto transaction = transaction_->shared_from_this();
     TRACE_TO(trace_, __func__);
     {
-      std::lock_guard<std::shared_mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       auto state = state_.load(std::memory_order_acquire);
       if (state != TransactionState::kRunning) {
         return STATUS_FORMAT(
@@ -430,7 +430,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void ExpectOperations(size_t count) EXCLUDES(mutex_) override {
-    std::lock_guard<std::shared_mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     running_requests_ += count;
   }
 
@@ -451,7 +451,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     CommitCallback commit_callback;
     {
-      std::lock_guard<std::shared_mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       running_requests_ -= ops.size();
 
       if (status.ok()) {
@@ -1312,7 +1312,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     std::vector<std::string> tablet_ids;
     {
-      std::lock_guard<std::shared_mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       tablet_ids.reserve(tablets_.size());
       for (const auto& tablet : tablets_) {
         // We don't check has_metadata here, because intents could be written even in case of
@@ -1334,7 +1334,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
     if (old_status_tablet_state == OldTransactionState::kAborting) {
-      std::lock_guard<std::shared_mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       VLOG_WITH_PREFIX(1) << "Commit done, but waiting for abort on old status tablet";
       cleanup_waiter_ = Waiter(std::bind(&Impl::CommitDone, this, status, response, transaction));
       return;
@@ -1349,14 +1349,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     CommitCallback commit_callback;
     if (state_.load(std::memory_order_acquire) != TransactionState::kCommitted &&
         actual_status.ok()) {
-      std::lock_guard<std::shared_mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       commit_replicated_ = true;
       if (running_requests_ != 0) {
         return;
       }
       commit_callback = std::move(commit_callback_);
     } else {
-      std::lock_guard<std::shared_mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       commit_callback = std::move(commit_callback_);
     }
     VLOG_WITH_PREFIX(4) << "Commit done: " << actual_status;
@@ -1377,7 +1377,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
     if (old_status_tablet_state == OldTransactionState::kAborting) {
-      std::lock_guard<std::shared_mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       VLOG_WITH_PREFIX(1) << "Abort done, but waiting for abort on old status tablet";
       cleanup_waiter_ = Waiter(std::bind(&Impl::AbortDone, this, status, response, transaction));
       return;
@@ -1404,7 +1404,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     Waiter waiter;
     {
-      std::lock_guard<std::shared_mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       cleanup_waiter_.swap(waiter);
       old_status_tablet_state_.store(OldTransactionState::kAborted, std::memory_order_release);
     }
@@ -1509,7 +1509,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   TransactionStatus HandleLookupTabletCases(const Result<client::internal::RemoteTabletPtr>& result,
                                             std::vector<Waiter>* waiters,
                                             TransactionPromoting promoting) EXCLUDES(mutex_) {
-    std::lock_guard<std::shared_mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     TransactionStatus status;
     bool notify_waiters;
     if (promoting) {
@@ -2016,7 +2016,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void SetError(const Status& status, const char* operation) EXCLUDES(mutex_) {
-    std::lock_guard<std::shared_mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     SetErrorUnlocked(status, operation);
   }
 
@@ -2055,7 +2055,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     ChildTransactionDataPB child_txn_data_pb;
     {
-      std::lock_guard<std::shared_mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       child_txn_data_pb = PrepareChildTransactionDataUnlocked(transaction);
     }
 

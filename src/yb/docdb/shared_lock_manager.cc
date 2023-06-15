@@ -152,7 +152,7 @@ struct LockedBatchEntry {
   void Unlock(IntentTypeSet lock);
 
   std::string ToString() const {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard lock(mutex);
     return Format("{ ref_count: $0 num_holding: $1 num_waiters: $2 }",
                   ref_count, num_holding.load(std::memory_order_acquire),
                   num_waiters.load(std::memory_order_acquire));
@@ -165,7 +165,7 @@ class SharedLockManager::Impl {
   void Unlock(const LockBatchEntries& key_to_intent_type);
 
   ~Impl() {
-    std::lock_guard<std::mutex> lock(global_mutex_);
+    std::lock_guard lock(global_mutex_);
     LOG_IF(DFATAL, !locks_.empty()) << "Locks not empty in dtor: " << yb::ToString(locks_);
   }
 
@@ -277,7 +277,7 @@ void LockedBatchEntry::Unlock(IntentTypeSet lock_types) {
   {
     // Lock/unlock mutex as a barrier for Lock.
     // So we don't unlock and notify between check and wait in Lock.
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard lock(mutex);
   }
 
   cond_var.notify_all();
@@ -306,7 +306,7 @@ bool SharedLockManager::Impl::Lock(LockBatchEntries* key_to_intent_type, CoarseT
 }
 
 void SharedLockManager::Impl::Reserve(LockBatchEntries* key_to_intent_type) {
-  std::lock_guard<std::mutex> lock(global_mutex_);
+  std::lock_guard lock(global_mutex_);
   for (auto& key_and_intent_type : *key_to_intent_type) {
     auto& value = locks_[key_and_intent_type.key];
     if (!value) {
@@ -334,7 +334,7 @@ void SharedLockManager::Impl::Unlock(const LockBatchEntries& key_to_intent_type)
 }
 
 void SharedLockManager::Impl::Cleanup(const LockBatchEntries& key_to_intent_type) {
-  std::lock_guard<std::mutex> lock(global_mutex_);
+  std::lock_guard lock(global_mutex_);
   for (const auto& item : key_to_intent_type) {
     if (--(item.locked->ref_count) == 0) {
       locks_.erase(item.key);

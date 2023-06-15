@@ -976,7 +976,7 @@ CatalogManager::~CatalogManager() {
 
 Status CatalogManager::Init() {
   {
-    std::lock_guard<simple_spinlock> l(state_lock_);
+    std::lock_guard l(state_lock_);
     CHECK_EQ(kConstructed, state_);
     state_ = kStarting;
   }
@@ -1035,7 +1035,7 @@ Status CatalogManager::Init() {
   RETURN_NOT_OK(GetRegistration(&server_registration_));
 
   {
-    std::lock_guard<simple_spinlock> l(state_lock_);
+    std::lock_guard l(state_lock_);
     CHECK_EQ(kStarting, state_);
     state_ = kRunning;
   }
@@ -1120,7 +1120,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
     Status status = VisitSysCatalog(term, &state);
     if (!status.ok()) {
       {
-        std::lock_guard<simple_spinlock> l(state_lock_);
+        std::lock_guard l(state_lock_);
         if (state_ == kClosing) {
           LOG_WITH_PREFIX(INFO)
               << "Error loading sys catalog; because shutdown is in progress. term " << term
@@ -1140,7 +1140,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
   }
 
   {
-    std::lock_guard<simple_spinlock> l(state_lock_);
+    std::lock_guard l(state_lock_);
     leader_ready_term_ = term;
     is_catalog_loaded_ = true;
     LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
@@ -1208,7 +1208,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term, SysCatalogLoadingState* sta
   LOG_WITH_PREFIX_AND_FUNC(INFO)
       << "Wait on leader_lock_ for any existing operations to finish. Term: " << term;
   auto start = std::chrono::steady_clock::now();
-  std::lock_guard<RWMutex> leader_lock_guard(leader_lock_);
+  std::lock_guard leader_lock_guard(leader_lock_);
   auto finish = std::chrono::steady_clock::now();
 
   static const auto kLongLockAcquisitionLimit = RegularBuildVsSanitizers(100ms, 750ms);
@@ -2022,13 +2022,13 @@ Status CatalogManager::InitSysCatalogAsync() {
 }
 
 bool CatalogManager::IsInitialized() const {
-  std::lock_guard<simple_spinlock> l(state_lock_);
+  std::lock_guard l(state_lock_);
   return state_ == kRunning;
 }
 
 Status CatalogManager::CheckIsLeaderAndReady() const {
   {
-    std::lock_guard<simple_spinlock> l(state_lock_);
+    std::lock_guard l(state_lock_);
     if (PREDICT_FALSE(state_ != kRunning)) {
       return STATUS_SUBSTITUTE(ServiceUnavailable,
           "Catalog manager is shutting down. State: $0", state_);
@@ -2052,7 +2052,7 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
   }
 
   {
-    std::lock_guard<simple_spinlock> l(state_lock_);
+    std::lock_guard l(state_lock_);
     if (PREDICT_FALSE(leader_ready_term_ != cstate.current_term())) {
       return STATUS_SUBSTITUTE(ServiceUnavailable,
           "Leader not yet ready to serve requests: ready term $0 vs cstate term $1",
@@ -2077,7 +2077,7 @@ PeerRole CatalogManager::Role() const {
 
 bool CatalogManager::StartShutdown() {
   {
-    std::lock_guard<simple_spinlock> l(state_lock_);
+    std::lock_guard l(state_lock_);
     if (state_ == kClosing) {
       VLOG(2) << "CatalogManager already shut down";
       return false;
@@ -4592,7 +4592,7 @@ bool CatalogManager::DoesTransactionTableExistForTablespace(const TablespaceId& 
 
 Status CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
     rpc::RpcContext *rpc, const TablespaceId& tablespace_id) {
-  std::lock_guard<std::mutex> lock(tablespace_transaction_table_creation_mutex_);
+  std::lock_guard lock(tablespace_transaction_table_creation_mutex_);
 
   if (DoesTransactionTableExistForTablespace(tablespace_id)) {
     VLOG(1) << "Transaction status table already exists, not creating.";
@@ -12065,7 +12065,7 @@ Status CatalogManager::GoIntoShellMode() {
     background_tasks_.reset();
   }
   {
-    std::lock_guard<std::mutex> l(remote_bootstrap_mtx_);
+    std::lock_guard l(remote_bootstrap_mtx_);
     tablet_exists_ = false;
   }
 

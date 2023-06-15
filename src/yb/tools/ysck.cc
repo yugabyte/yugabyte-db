@@ -208,7 +208,7 @@ class ChecksumResultReporter : public RefCountedThreadSafe<ChecksumResultReporte
                     const std::string& replica_uuid,
                     const Status& status,
                     uint64_t checksum) {
-    std::lock_guard<simple_spinlock> guard(lock_);
+    std::lock_guard guard(lock_);
     unordered_map<string, TableResults>& replica_results =
         LookupOrInsert(&checksums_, tablet_id, unordered_map<string, TableResults>());
     if (replica_results.find(replica_uuid) == replica_results.end()) {
@@ -232,7 +232,7 @@ class ChecksumResultReporter : public RefCountedThreadSafe<ChecksumResultReporte
 
   // Get reported results.
   TabletResultMap checksums() const {
-    std::lock_guard<simple_spinlock> guard(lock_);
+    std::lock_guard guard(lock_);
     return checksums_;
   }
 

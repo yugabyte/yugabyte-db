@@ -180,7 +180,7 @@ Status TSManager::RegisterTS(
     RegisteredThroughHeartbeat registered_through_heartbeat) {
   TSCountCallback callback_to_call;
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     const string& uuid = instance.permanent_uuid();
     auto duplicate_hostport_ts_descriptors =
         FindHostPortMatches(instance, registration, local_cloud_info);
@@ -331,7 +331,7 @@ size_t TSManager::GetCountUnlocked() const {
 
 // Register a callback to be called when the number of tablet servers reaches a certain number.
 void TSManager::SetTSCountCallback(int min_count, TSCountCallback callback) {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   ts_count_callback_ = std::move(callback);
   ts_count_callback_min_count_ = min_count;
 }

@@ -356,7 +356,7 @@ TraceEntry* Trace::NewEntry(
 }
 
 void Trace::AddEntry(TraceEntry* entry) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   entry->next = nullptr;
 
   if (entries_tail_ != nullptr) {
@@ -382,7 +382,7 @@ void Trace::Dump(std::ostream* out, int32_t tracing_depth, bool include_time_del
   vector<scoped_refptr<Trace> > child_traces;
   decltype(trace_start_time_usec_) trace_start_time_usec;
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     for (TraceEntry* cur = entries_head_;
         cur != nullptr;
         cur = cur->next) {
@@ -416,7 +416,7 @@ void Trace::DumpCurrentTrace() {
 void Trace::AddChildTrace(Trace* child_trace) {
   CHECK_NOTNULL(child_trace);
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     scoped_refptr<Trace> ptr(child_trace);
     child_traces_.push_back(ptr);
   }
@@ -434,7 +434,7 @@ PlainTrace::PlainTrace() {
 void PlainTrace::Trace(const char *file_path, int line_number, const char *message) {
   auto timestamp = CoarseMonoClock::Now();
   {
-    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (size_ < kMaxEntries) {
       if (size_ == 0) {
         trace_start_time_usec_ = GetCurrentMicrosFast(timestamp);
@@ -453,7 +453,7 @@ void PlainTrace::Dump(std::ostream* out, int32_t tracing_depth, bool include_tim
   size_t size;
   decltype(trace_start_time_usec_) trace_start_time_usec;
   {
-    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    std::lock_guard lock(mutex_);
     size = size_;
     trace_start_time_usec = trace_start_time_usec_;
   }

@@ -391,7 +391,7 @@ std::string GetStackTrace(StackTraceLineFormat stack_trace_line_format,
     struct backtrace_state* const backtrace_state = global_backtrace_state->GetState();
 
     // Avoid multi-threaded access to libbacktrace which causes high memory consumption.
-    std::lock_guard<std::mutex> l(*global_backtrace_state->mutex());
+    std::lock_guard l(*global_backtrace_state->mutex());
 
     // TODO: https://yugabyte.atlassian.net/browse/ENG-4729
 
@@ -516,7 +516,7 @@ void SymbolizeAddress(
     struct backtrace_state* const backtrace_state = global_backtrace_state->GetState();
 
     // Avoid multi-threaded access to libbacktrace which causes high memory consumption.
-    std::lock_guard<std::mutex> l(*global_backtrace_state->mutex());
+    std::lock_guard l(*global_backtrace_state->mutex());
 
     SymbolizationContext context;
     context.stack_trace_line_format = stack_trace_line_format;

@@ -1806,7 +1806,7 @@ void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* ex
     if (exec_context != nullptr) {
       s = ProcessAsyncStatus(op_errors, exec_context);
       if (!s.ok()) {
-        std::lock_guard<std::mutex> lock(status_mutex_);
+        std::lock_guard lock(status_mutex_);
         async_status_ = s;
       }
     } else {
@@ -1814,14 +1814,14 @@ void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* ex
         if (!exec_context.HasTransaction()) {
           s = ProcessAsyncStatus(op_errors, &exec_context);
           if (!s.ok()) {
-            std::lock_guard<std::mutex> lock(status_mutex_);
+            std::lock_guard lock(status_mutex_);
             async_status_ = s;
           }
         }
       }
     }
   } else {
-    std::lock_guard<std::mutex> lock(status_mutex_);
+    std::lock_guard lock(status_mutex_);
     async_status_ = s;
   }
 
@@ -1846,7 +1846,7 @@ void Executor::CommitDone(Status s, ExecContext* exec_context) {
     if (ShouldRestart(s, rescheduler_)) {
       exec_context->Reset(client::Restart::kTrue, rescheduler_);
     } else {
-      std::lock_guard<std::mutex> lock(status_mutex_);
+      std::lock_guard lock(status_mutex_);
       async_status_ = s;
     }
   }
