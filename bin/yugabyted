@@ -1056,7 +1056,7 @@ class ControlScript(object):
     # Check that `openssl` binary is in our PATH
     # This actually returns true when it is _not_ present!
     def check_openssl(self):
-        return shutil.which('openssl') == None
+        return find_executable('openssl') == None
 
     # Transparent Hugepage check.  Not all distros have this enabled so we need to check for
     # /sys/kernel/mm/transparent_hugepage before checking enabled
