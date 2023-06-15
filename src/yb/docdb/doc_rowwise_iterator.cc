@@ -134,7 +134,22 @@ void DocRowwiseIterator::InitResult() {
 
 inline void DocRowwiseIterator::Seek(Slice key) {
   VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
-  db_iter_->Seek(key);
+
+  prev_doc_found_ = DocReaderResult::kNotFound;
+  current_entry_.valid = false;
+  if (!key.empty()) {
+    db_iter_->Seek(key, Full::kTrue);
+    return;
+  }
+
+  auto shared_prefix = shared_key_prefix();
+  if (!shared_prefix.empty()) {
+    db_iter_->Seek(shared_prefix, Full::kFalse);
+    return;
+  }
+
+  const auto null_low = dockv::KeyEntryTypeAsChar::kNullLow;
+  db_iter_->Seek(Slice(&null_low, 1), Full::kFalse);
 }
 
 inline void DocRowwiseIterator::PrevDocKey(Slice key) {
@@ -146,19 +161,19 @@ inline void DocRowwiseIterator::PrevDocKey(Slice key) {
   }
 }
 
-Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) const {
-  if (scan_choices_ && !IsFetchedRowStatic()) {
-    if (VERIFY_RESULT(scan_choices_->DoneWithCurrentTarget()) &&
-        !scan_choices_->CurrentTargetMatchesKey(row_key_)) {
-      scan_choices_->SeekToCurrentTarget(db_iter_.get());
-      return Status::OK();
-    }
+Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) {
+  if (!IsFetchedRowStatic() &&
+      VERIFY_RESULT(scan_choices_->AdvanceToNextRow(&row_key_, db_iter_.get()))) {
+    current_entry_.valid = false;
+    return Status::OK();
   }
   if (!is_forward_scan_) {
     VLOG(4) << __PRETTY_FUNCTION__ << " setting as PrevDocKey";
+    current_entry_.valid = false;
     db_iter_->PrevDocKey(row_key_);
   } else if (!row_finished) {
-    db_iter_->SeekOutOfSubDoc(row_key_);
+    current_entry_.valid = false;
+    db_iter_->SeekOutOfSubDoc(&row_key_);
   }
 
   return Status::OK();
@@ -181,10 +196,16 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
 
 template <class TableRow>
 Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
-  VLOG_WITH_FUNC(4) << "done_: " << done_ << ", db_iter finished: " << db_iter_->IsOutOfRecords();
+  VLOG_WITH_FUNC(4) << "done_: " << done_;
 
   if (done_) {
     return false;
+  }
+
+  if (prev_doc_found_ != DocReaderResult::kNotFound) {
+    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow(
+        prev_doc_found_ == DocReaderResult::kFoundAndFinished));
+    prev_doc_found_ = DocReaderResult::kNotFound;
   }
 
   RETURN_NOT_OK(pending_op_ref_.GetAbortedStatus());
@@ -201,19 +222,21 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
   }
 
+  auto& key_data = current_entry_;
   bool first_iteration = true;
   for (;;) {
-    if (db_iter_->IsOutOfRecords() || (scan_choices_ && scan_choices_->FinishedWithScanChoices())) {
+    if (scan_choices_->Finished()) {
       done_ = true;
       return false;
     }
 
-    const auto key_data_result = db_iter_->FetchKey();
-    if (!key_data_result.ok()) {
-      VLOG_WITH_FUNC(4) << __func__ << ", key data: " << key_data_result.status();
-      return key_data_result.status();
+    if (!key_data) {
+      key_data = VERIFY_RESULT(db_iter_->Fetch());
+      if (!key_data) {
+        done_ = true;
+        return false;
+      }
     }
-    const auto& key_data = *key_data_result;
 
     VLOG(4) << "*fetched_key is " << dockv::SubDocKey::DebugSliceToString(key_data.key);
     if (debug_dump_) {
@@ -239,7 +262,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
     first_iteration = false;
 
-    RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(db_iter_->value())));
+    RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(key_data.value)));
     row_key = row_key_.AsSlice();
 
     if (has_bound_key_ && is_forward_scan_ == (row_key.compare(bound_key_) >= 0)) {
@@ -250,34 +273,10 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     VLOG(4) << " sub_doc_key part of iter_key_ is " << dockv::DocKey::DebugSliceToString(row_key);
 
     bool is_static_column = IsFetchedRowStatic();
-    if (scan_choices_ && !is_static_column) {
-      if (!scan_choices_->CurrentTargetMatchesKey(row_key)) {
-        // We must have seeked past the target key we are looking for (no result) so we can safely
-        // skip all scan targets between the current target and row key (excluding row_key_ itself).
-        // Update the target key and iterator and call HasNext again to try the next target.
-        if (!VERIFY_RESULT(scan_choices_->SkipTargetsUpTo(row_key))) {
-          // SkipTargetsUpTo returns false when it fails to decode the key.
-          if (!VERIFY_RESULT(dockv::IsColocatedTableTombstoneKey(row_key))) {
-            return STATUS_FORMAT(
-                Corruption, "Key $0 is not table tombstone key.", row_key.ToDebugHexString());
-          }
-          if (is_forward_scan_) {
-            db_iter_->SeekOutOfSubDoc(&row_key_);
-          } else {
-            db_iter_->PrevDocKey(row_key);
-          }
-          continue;
-        }
-
-        // We updated scan target above, if it goes past the row_key_ we will seek again, and
-        // process the found key in the next loop.
-        if (!scan_choices_->CurrentTargetMatchesKey(row_key)) {
-          scan_choices_->SeekToCurrentTarget(db_iter_.get());
-          continue;
-        }
-      }
-      // We found a match for the target key or a static column, so we move on to getting the
-      // SubDocument.
+    if (!is_static_column &&
+        !VERIFY_RESULT(scan_choices_->InterestedInRow(&row_key_, db_iter_.get()))) {
+      current_entry_.valid = false;
+      continue;
     }
 
     if (doc_reader_ == nullptr) {
@@ -296,31 +295,34 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       row_->object_container().clear();
     }
 
-    auto doc_found = VERIFY_RESULT(FetchRow(table_row));
+    const auto write_time = key_data.write_time;
+    const auto doc_found = VERIFY_RESULT(FetchRow(&key_data, table_row));
     // Use the write_time of the entire row.
     // May lose some precision by not examining write time of every column.
-    IncrementKeyFoundStats(doc_found == DocReaderResult::kNotFound, key_data.write_time);
-
-    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow(
-        /* row_finished= */ doc_found == DocReaderResult::kFoundAndFinished));
-    VLOG(4) << __func__ << ", iter: " << !db_iter_->IsOutOfRecords();
+    IncrementKeyFoundStats(doc_found == DocReaderResult::kNotFound, write_time);
 
     if (doc_found != DocReaderResult::kNotFound) {
       RETURN_NOT_OK(FillRow(table_row));
+      prev_doc_found_ = doc_found;
       break;
     }
+
+    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow(/* row_finished= */ false));
   }
   return true;
 }
 
-Result<DocReaderResult> DocRowwiseIterator::FetchRow(dockv::PgTableRow* table_row) {
+Result<DocReaderResult> DocRowwiseIterator::FetchRow(
+    FetchedEntry* fetched_entry, dockv::PgTableRow* table_row) {
   CHECK_NE(doc_mode_, DocMode::kGeneric) << "Table type: " << table_type_;
-  return doc_reader_->GetFlat(row_key_, table_row);
+  return doc_reader_->GetFlat(row_key_, fetched_entry, table_row);
 }
 
-Result<DocReaderResult> DocRowwiseIterator::FetchRow(QLTableRowPair table_row) {
-  return doc_mode_ == DocMode::kFlat ? doc_reader_->GetFlat(row_key_, table_row.table_row)
-                                     : doc_reader_->Get(row_key_, &*row_);
+Result<DocReaderResult> DocRowwiseIterator::FetchRow(
+    FetchedEntry* fetched_entry, QLTableRowPair table_row) {
+  return doc_mode_ == DocMode::kFlat
+      ? doc_reader_->GetFlat(row_key_, fetched_entry, table_row.table_row)
+      : doc_reader_->Get(row_key_, fetched_entry, &*row_);
 }
 
 Status DocRowwiseIterator::FillRow(dockv::PgTableRow* out) {

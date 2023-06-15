@@ -20,13 +20,15 @@
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/intent_aware_iterator_interface.h"
-#include "yb/dockv/key_bytes.h"
 #include "yb/docdb/transaction_status_cache.h"
+
+#include "yb/dockv/key_bytes.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 
 #include "yb/util/status_fwd.h"
+#include "yb/util/stack_trace.h"
 
 namespace yb {
 namespace docdb {
@@ -65,9 +67,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // Seek to the smallest key which is greater or equal than doc_key.
   void Seek(const dockv::DocKey& doc_key);
 
-  // Seek to specified encoded key (it is responsibility of caller to make sure it doesn't have
-  // hybrid time).
-  void Seek(Slice key) override;
+  void Seek(Slice key, Full full = Full::kTrue) override;
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
   // doesn't have hybrid time).
@@ -79,9 +79,6 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // hybrid time).
   void SeekPastSubKey(Slice key);
 
-  // Seek out of subdoc key (it is responsibility of caller to make sure it doesn't have hybrid
-  // time).
-  void SeekOutOfSubDoc(Slice key) override;
   // For efficiency, this overload takes a non-const KeyBytes pointer avoids memory allocation by
   // using the KeyBytes buffer to prepare the key to seek to by appending an extra byte. The
   // appended byte is removed when the method returns.
@@ -100,10 +97,8 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
-  Result<FetchKeyResult> FetchKey() override;
+  Result<FetchedEntry> Fetch() override;
 
-  bool IsOutOfRecords() override;
-  Slice value() override;
   const ReadHybridTime& read_time() const override { return read_time_; }
   Result<HybridTime> RestartReadHt() const override;
 
@@ -117,10 +112,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   //
   // If the key changes, latest_record_ht is set to the write time of the last merge record seen,
   // result_value is set to its value, and final_key is set to the key.
-  Status NextFullValue(
-      EncodedDocHybridTime* latest_record_ht,
-      Slice* result_value,
-      Slice* final_key = nullptr);
+  Result<FetchedEntry> NextFullValue();
 
   // Finds the latest record for a particular key after the provided max_overwrite_time, returns the
   // write time of the found record, and optionally also the result value. This latest record may
@@ -273,6 +265,12 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
 
   void HandleStatus(const Status& status);
 
+  void SeekTriggered() {
+#ifndef NDEBUG
+    DebugSeekTriggered();
+#endif
+  }
+
   const ReadHybridTime read_time_;
   const EncodedReadHybridTime encoded_read_time_;
 
@@ -318,6 +316,15 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
   KeyBuffer planned_intent_seek_buffer_;
   Slice planned_intent_seek_prefix_;
+
+#ifndef NDEBUG
+  void DebugSeekTriggered();
+
+  bool need_fetch_ = false;
+#if YB_INTENT_AWARE_ITERATOR_COLLECT_SEEK_STACK_TRACE
+  StackTrace last_seek_stack_trace_;
+#endif
+#endif
 };
 
 class NODISCARD_CLASS IntentAwareIteratorPrefixScope {

@@ -187,8 +187,8 @@ void ScanChoicesTest::InitializeScanChoicesInstance(
 }
 
 bool ScanChoicesTest::IsScanChoicesFinished() {
-  return choices_->FinishedWithScanChoices() ||
-      choices_->current_scan_target_ >= choices_->upper_doc_key_;
+  return choices_->Finished() ||
+         choices_->current_scan_target_ >= choices_->upper_doc_key_;
 }
 
 // Utility function to help the test iterate past a range option that originate from a
@@ -210,7 +210,7 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
     return;
   }
 
-  EXPECT_FALSE(choices_->FinishedWithScanChoices());
+  EXPECT_FALSE(choices_->Finished());
   const auto &cur_target = choices_->current_scan_target_;
   dockv::DocKeyDecoder decoder(cur_target);
   EXPECT_OK(decoder.DecodeToKeys());
