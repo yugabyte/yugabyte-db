@@ -860,10 +860,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /** Create a task to promote auto flag on the universe. */
-  public SubTaskGroup createPromoteAutoFlagTask(UUID universeUUID) {
+  public SubTaskGroup createPromoteAutoFlagTask(UUID universeUUID, boolean ignoreErrors) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PromoteAutoFlag");
     PromoteAutoFlags task = createTask(PromoteAutoFlags.class);
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
+    params.ignoreErrors = ignoreErrors;
     params.setUniverseUUID(universeUUID);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -4016,7 +4017,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void createPromoteAutoFlagsAndLockOtherUniverse(
-      Universe universe, Set<UUID> alreadyLockedUniverseUUIDSet) {
+      Universe universe, Set<UUID> alreadyLockedUniverseUUIDSet, boolean ignoreErrors) {
     if (lockedXClusterUniversesUuidSet == null) {
       lockedXClusterUniversesUuidSet = new HashSet<>();
     }
@@ -4033,8 +4034,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
     }
     // Create subtask to promote autoFlags on the universe.
-    createPromoteAutoFlagTask(universe.getUniverseUUID())
+    createPromoteAutoFlagTask(universe.getUniverseUUID(), ignoreErrors)
         .setSubTaskGroupType(SubTaskGroupType.PromoteAutoFlags);
+  }
+
+  protected void createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+      Set<UUID> xClusterConnectedUniverseSet,
+      Set<UUID> alreadyLockedUniverseUUIDSet,
+      XClusterUniverseService xClusterUniverseService,
+      Set<UUID> excludeXClusterConfigSet,
+      boolean ignoreErrors) {
+    createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+        xClusterConnectedUniverseSet,
+        alreadyLockedUniverseUUIDSet,
+        xClusterUniverseService,
+        excludeXClusterConfigSet,
+        null /* univUpgradeInProgress */,
+        null /* upgradeUniverseSoftwareVersion */,
+        ignoreErrors);
   }
 
   protected void createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
@@ -4048,7 +4065,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         xClusterUniverseService,
         excludeXClusterConfigSet,
         null /* univUpgradeInProgress */,
-        null /* upgradeUniverseSoftwareVersion */);
+        null /* upgradeUniverseSoftwareVersion */,
+        false /* ignoreErrors */);
   }
 
   protected void createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
@@ -4058,6 +4076,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Set<UUID> excludeXClusterConfigSet,
       @Nullable Universe univUpgradeInProgress,
       @Nullable String upgradeUniverseSoftwareVersion) {
+    createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+        xClusterConnectedUniverseSet,
+        alreadyLockedUniverseUUIDSet,
+        xClusterUniverseService,
+        excludeXClusterConfigSet,
+        univUpgradeInProgress,
+        upgradeUniverseSoftwareVersion,
+        false /* ignoreErrors */);
+  }
+
+  protected void createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+      Set<UUID> xClusterConnectedUniverseSet,
+      Set<UUID> alreadyLockedUniverseUUIDSet,
+      XClusterUniverseService xClusterUniverseService,
+      Set<UUID> excludeXClusterConfigSet,
+      @Nullable Universe univUpgradeInProgress,
+      @Nullable String upgradeUniverseSoftwareVersion,
+      boolean ignoreErrors) {
     // Fetch all separate xCluster connected universe group and promote auto flags
     // if possible.
     xClusterUniverseService
@@ -4088,7 +4124,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                     universeSet.forEach(
                         univ ->
                             createPromoteAutoFlagsAndLockOtherUniverse(
-                                univ, alreadyLockedUniverseUUIDSet));
+                                univ, alreadyLockedUniverseUUIDSet, ignoreErrors));
                   }
                 } catch (IOException e) {
                   throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());

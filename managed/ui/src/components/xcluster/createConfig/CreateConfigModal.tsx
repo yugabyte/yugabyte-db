@@ -333,7 +333,7 @@ export const CreateConfigModal = ({
           closeModal();
         }}
       >
-        <YBErrorIndicator />
+        <YBErrorIndicator customErrorMessage="Encounter an error fetching information for tables from the source universe." />
       </YBModal>
     );
   }

@@ -5,11 +5,7 @@ import _ from 'lodash';
 import clsx from 'clsx';
 
 import { fetchUniversesList } from '../../actions/xClusterReplication';
-import {
-  findUniverseName,
-  MaxAcceptableLag,
-  CurrentReplicationLag
-} from './ReplicationUtils';
+import { findUniverseName, MaxAcceptableLag, CurrentReplicationLag } from './ReplicationUtils';
 import { XClusterConfigStatusLabel } from './XClusterConfigStatusLabel';
 import { XClusterConfig } from './XClusterTypes';
 import RightArrow from './ArrowIcon';
@@ -22,13 +18,11 @@ import styles from './XClusterConfigCard.module.scss';
 interface XClusterConfigCardProps {
   xClusterConfig: XClusterConfig;
   currentUniverseUUID: string;
-  currentUserTimezone: string | undefined;
 }
 
 export const XClusterConfigCard = ({
   xClusterConfig,
-  currentUniverseUUID,
-  currentUserTimezone
+  currentUniverseUUID
 }: XClusterConfigCardProps) => {
   const universeListQuery = useQuery(['universeList'], () =>
     fetchUniversesList().then((res) => res.data)

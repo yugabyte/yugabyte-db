@@ -9,6 +9,7 @@ import {
   XClusterConfigState,
   XClusterConfigType
 } from '../components/xcluster/constants';
+import { ApiTimeout } from '../redesign/helpers/api';
 
 // TODO: Move this out of the /actions folder since these functions aren't Redux actions.
 
@@ -33,7 +34,8 @@ export function fetchTablesInUniverse(
   if (universeUUID) {
     const customerId = localStorage.getItem('customerId');
     return axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`, {
-      params: filters
+      params: filters,
+      timeout: ApiTimeout.FETCH_TABLE_INFO
     });
   }
   return Promise.reject('Querying universe tables failed: No universe UUID provided.');
@@ -85,7 +87,7 @@ export function isBootstrapRequired(
       `${ROOT_URL}/customers/${customerId}/universes/${sourceUniverseUUID}/need_bootstrap`,
       {
         tables: tableUUIDs,
-        targetUniverseUUID,
+        targetUniverseUUID
       },
       { params: { configType } }
     )
@@ -109,16 +111,18 @@ export function isCatchUpBootstrapRequired(
   return Promise.reject(`Querying bootstrap requirement failed: ${errorMsg}.`);
 }
 
-export function fetchXClusterConfig(uuid: string) {
+export function fetchXClusterConfig(xClusterConfigUUID: string) {
   const customerId = localStorage.getItem('customerId');
   return axios
-    .get<XClusterConfig>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`)
+    .get<XClusterConfig>(
+      `${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}`
+    )
     .then((response) => response.data);
 }
 
-export function editXClusterState(replication: XClusterConfig, state: XClusterConfigState) {
+export function editXClusterState(xClusterConfigUUID: string, state: XClusterConfigState) {
   const customerId = localStorage.getItem('customerId');
-  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
+  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}`, {
     status: state
   });
 }

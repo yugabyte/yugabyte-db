@@ -94,6 +94,11 @@ export const suggestedKubernetesConfigQueryKey = {
   ALL: ['suggestedKubernetesConfig']
 };
 
+export const ApiTimeout = {
+  FETCH_TABLE_INFO: 20_000,
+  FETCH_XCLUSTER_CONFIG: 120_000
+} as const;
+
 class ApiService {
   private cancellers: Record<string, Canceler> = {};
 
