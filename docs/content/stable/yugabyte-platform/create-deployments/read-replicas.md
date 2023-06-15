@@ -34,12 +34,10 @@ You start by navigating to **Dashboard** and clicking **Create Universe**. Use t
 The next step is to click **Configure Read Replica** and then specify the following on the **Read Replica** tab to create a read replica cluster on [AWS](../../configure-yugabyte-platform/set-up-cloud-provider/aws/):
 
 - Enter the set of regions as US East.
-- Set the replication factor to 3.
+- Set the number of read replicas to 3.
 - Set the instance type to c4.large.
 
 To finish the process, click **Create**.
-
-After the universe has been created, **Dashboard** displays the primary and read replica cluster information, as well as shows the distinct clusters on the map.
 
 ### Universe nodes
 
@@ -59,13 +57,15 @@ This confirms that you created a hybrid cloud deployment with the primary cluste
 
 YugabyteDB Anywhere allows you to dynamically add, modify, and remove a read replica cluster from an existing universe.
 
-Create a new universe called helloworld4 with a primary cluster identical to helloworld3 but without any read replica cluster. Click **Create** and wait for the universe to be ready. Once this is done, navigate to **Overview** and click **Actions > Edit Read Replica**.
+Create a new universe called helloworld4 with a primary cluster identical to helloworld3 but without any read replica cluster. Click **Create** and wait for the universe to be ready.
 
-Use the **Configure read replica** page to enter the same information that you entered for the read replica cluster in helloworld3 and click **Save**.
+To add a read replica to the universe, click **Actions > Add Read Replica**.
+
+Use the **Configure read replica** page to enter the same information that you entered for the read replica cluster in helloworld3 and click **Add Read Replica**.
 
 When done, open **Nodes** and verify that you have three new read replica nodes, all in AWS.
 
-To edit the read replica cluster, once again click **Actions > Edit Read Replica**. Add a node to the cluster (availability zones are populated automatically) and click **Save**.
+To edit the read replica cluster, click **Actions > Edit Read Replica**. Add a node to the cluster (availability zones are populated automatically) and click **Save**.
 
 When the universe is ready, open **Nodes** to find the new read replica node for a total of four nodes.
 
