@@ -134,7 +134,7 @@ Status QLRocksDBStorage::InitIterator(DocRowwiseIterator* iter,
   return iter->Init(DocPgsqlScanSpec(schema, request.stmt_id(), range_doc_key));
 }
 
-Status QLRocksDBStorage::GetIterator(
+Status QLRocksDBStorage::GetIteratorForYbctid(
     uint64 stmt_id,
     const dockv::ReaderProjection& projection,
     std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -144,7 +144,8 @@ Status QLRocksDBStorage::GetIterator(
     const QLValuePB& max_ybctid,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     YQLRowwiseIteratorIf::UniPtr* iter,
-    const docdb::DocDBStatistics* statistics) const {
+    const docdb::DocDBStatistics* statistics,
+    SkipSeek skip_seek) const {
   DocKey lower_doc_key(doc_read_context.get().schema());
   RETURN_NOT_OK(lower_doc_key.DecodeFrom(min_ybctid.binary_value()));
 
@@ -166,7 +167,8 @@ Status QLRocksDBStorage::GetIterator(
         lower_doc_key,
         true /* is_forward_scan */,
         lower_doc_key,
-        upper_doc_key)));
+        upper_doc_key),
+      skip_seek));
   *iter = std::move(doc_iter);
   return Status::OK();
 }
@@ -196,23 +198,25 @@ Status QLRocksDBStorage::GetIterator(
   if (range_components.size() == schema.num_range_key_columns() &&
       hashed_components.size() == schema.num_hash_key_columns()) {
     // Construct the scan spec basing on the RANGE condition as all range columns are specified.
-    RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(
-        schema,
-        request.stmt_id(),
-        hashed_components.empty()
-          ? DocKey(schema, std::move(range_components))
-          : DocKey(schema,
-                   request.hash_code(),
-                   std::move(hashed_components),
-                   std::move(range_components)),
-        request.has_hash_code() ? boost::make_optional<int32_t>(request.hash_code())
-                                    : boost::none,
-        request.has_max_hash_code() ? boost::make_optional<int32_t>(
-                                        request.max_hash_code())
-                                    : boost::none,
-        start_doc_key,
-        request.is_forward_scan(),
-        request.prefix_length())));
+    RETURN_NOT_OK(doc_iter->Init(
+        DocPgsqlScanSpec(
+            schema,
+            request.stmt_id(),
+            hashed_components.empty()
+              ? DocKey(schema, std::move(range_components))
+              : DocKey(schema,
+                       request.hash_code(),
+                       std::move(hashed_components),
+                       std::move(range_components)),
+            request.has_hash_code() ? boost::make_optional<int32_t>(request.hash_code())
+                                        : boost::none,
+            request.has_max_hash_code() ? boost::make_optional<int32_t>(
+                                            request.max_hash_code())
+                                        : boost::none,
+            start_doc_key,
+            request.is_forward_scan(),
+            request.prefix_length()),
+        SkipSeek(request.has_index_request())));
   } else {
     // Construct the scan spec basing on the HASH condition.
 
@@ -242,20 +246,22 @@ Status QLRocksDBStorage::GetIterator(
     SCHECK(!request.has_where_expr(),
            InternalError,
            "WHERE clause is not yet supported in docdb::pgsql");
-    RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(
-        schema,
-        request.stmt_id(),
-        hashed_components,
-        range_components,
-        request.has_condition_expr() ? &request.condition_expr().condition() : nullptr,
-        request.hash_code(),
-        request.has_max_hash_code() ? boost::make_optional<int32_t>(request.max_hash_code())
-                                    : boost::none,
-        start_doc_key,
-        request.is_forward_scan(),
-        lower_doc_key,
-        upper_doc_key,
-        request.prefix_length())));
+    RETURN_NOT_OK(doc_iter->Init(
+        DocPgsqlScanSpec(
+            schema,
+            request.stmt_id(),
+            hashed_components,
+            range_components,
+            request.has_condition_expr() ? &request.condition_expr().condition() : nullptr,
+            request.hash_code(),
+            request.has_max_hash_code() ? boost::make_optional<int32_t>(request.max_hash_code())
+                                        : boost::none,
+            start_doc_key,
+            request.is_forward_scan(),
+            lower_doc_key,
+            upper_doc_key,
+            request.prefix_length()),
+        SkipSeek(request.has_index_request())));
   }
 
   *iter = std::move(doc_iter);

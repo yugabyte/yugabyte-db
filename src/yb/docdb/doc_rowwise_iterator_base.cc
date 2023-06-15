@@ -145,7 +145,8 @@ void DocRowwiseIteratorBase::SetSchema(const Schema& schema) {
   schema_ = &schema;
 }
 
-void DocRowwiseIteratorBase::Init(TableType table_type, Slice sub_doc_key) {
+void DocRowwiseIteratorBase::InitForTableType(
+    TableType table_type, Slice sub_doc_key, SkipSeek skip_seek) {
   CheckInitOnce();
   table_type_ = table_type;
   ignore_ttl_ = (table_type_ == TableType::PGSQL_TABLE_TYPE);
@@ -156,12 +157,19 @@ void DocRowwiseIteratorBase::Init(TableType table_type, Slice sub_doc_key) {
   } else {
     dockv::DocKeyEncoder(&row_key_).Schema(*schema_);
   }
-  Seek(row_key_);
+  if (!skip_seek) {
+    Seek(row_key_);
+  }
   has_bound_key_ = false;
+
+  scan_choices_ = ScanChoices::CreateEmpty();
 }
 
-template <class T>
-Status DocRowwiseIteratorBase::DoInit(const T& doc_spec) {
+Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSeek skip_seek) {
+  table_type_ = doc_spec.client_type() == YQL_CLIENT_CQL ? TableType::YQL_TABLE_TYPE
+                                                         : TableType::PGSQL_TABLE_TYPE;
+  ignore_ttl_ = table_type_ == TableType::PGSQL_TABLE_TYPE;
+
   CheckInitOnce();
   is_forward_scan_ = doc_spec.is_forward_scan();
 
@@ -197,20 +205,15 @@ Status DocRowwiseIteratorBase::DoInit(const T& doc_spec) {
       *schema_, doc_spec,
       !is_forward_scan_ && has_bound_key_ ? bound_key_ : lower_doc_key,
       is_forward_scan_ && has_bound_key_ ? bound_key_ : upper_doc_key);
-  if (is_forward_scan_) {
-    Seek(lower_doc_key);
-  } else {
-    PrevDocKey(upper_doc_key);
+  if (!skip_seek) {
+    if (is_forward_scan_) {
+      Seek(lower_doc_key);
+    } else {
+      PrevDocKey(upper_doc_key);
+    }
   }
 
   return Status::OK();
-}
-
-Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& spec) {
-  table_type_ = spec.client_type() == YQL_CLIENT_CQL ? TableType::YQL_TABLE_TYPE
-                                                     : TableType::PGSQL_TABLE_TYPE;
-  ignore_ttl_ = (table_type_ == TableType::PGSQL_TABLE_TYPE);
-  return DoInit(spec);
 }
 
 void DocRowwiseIteratorBase::IncrementKeyFoundStats(
@@ -328,10 +331,10 @@ Status DocRowwiseIteratorBase::InitIterKey(Slice key, bool full_row) {
 
   size_t hash_part_size = kUninitializedHashPartSize;
   if (!full_row) {
-    const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(row_key_.AsSlice());
-    RETURN_NOT_OK(dockey_sizes);
-    row_key_.mutable_data()->Truncate(dockey_sizes->doc_key_size);
-    hash_part_size = dockey_sizes->hash_part_size;
+    const auto dockey_sizes = VERIFY_RESULT(DocKey::EncodedHashPartAndDocKeySizes(
+        row_key_.AsSlice()));
+    row_key_.mutable_data()->Truncate(dockey_sizes.doc_key_size);
+    hash_part_size = dockey_sizes.hash_part_size;
     key = row_key_;
   }
 
@@ -352,9 +355,7 @@ Status DocRowwiseIteratorBase::InitIterKey(Slice key, bool full_row) {
       // just the last part of the range column value. So have to decode key from the start to be
       // sure that we have empty range part.
       if (hash_part_size == kUninitializedHashPartSize) {
-        auto sizes = DocKey::EncodedHashPartAndDocKeySizes(key);
-        RETURN_NOT_OK(sizes);
-        hash_part_size = sizes->hash_part_size;
+        hash_part_size = VERIFY_RESULT(DocKey::EncodedHashPartAndDocKeySizes(key)).hash_part_size;
       }
 
       // If range group is empty, then it contains just kGroupEnd.

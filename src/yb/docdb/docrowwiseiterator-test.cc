@@ -136,7 +136,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       bool liveness_column_expected = false) {
     auto iter = MakeIterator(
         projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op);
-    iter->Init(YQL_TABLE_TYPE);
+    iter->InitForTableType(YQL_TABLE_TYPE);
     return iter;
   }
 
@@ -1610,8 +1610,8 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
       ReadOperationData::TEST_FromReadTimeMicros(1000),
       TransactionOperationContext());
   iter.Seek(DocKey());
-  ASSERT_FALSE(iter.IsOutOfRecords());
-  auto key_data = ASSERT_RESULT(iter.FetchKey());
+  auto key_data = ASSERT_RESULT(iter.Fetch());
+  ASSERT_TRUE(key_data);
   SubDocKey subdoc_key;
   ASSERT_OK(subdoc_key.FullyDecodeFrom(key_data.key, dockv::HybridTimeRequired::kFalse));
   ASSERT_EQ(subdoc_key.ToString(), R"#(SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]))#");
@@ -1659,7 +1659,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
       TransactionOperationContext(*txn, &txn_status_manager));
   for (int i = 1; i <= 2; ++i) {
     iter.Seek(DocKey());
-    ASSERT_FALSE(iter.IsOutOfRecords()) << "Seek #" << i << " failed";
+    ASSERT_TRUE(ASSERT_RESULT(iter.Fetch())) << "Seek #" << i << " failed";
   }
 }
 

@@ -193,7 +193,7 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
            InternalError,
            "Each ybctid value identifies one row in the table while paging state "
            "is only used for multi-row queries.");
-    RETURN_NOT_OK(ql_storage.GetIterator(
+    RETURN_NOT_OK(ql_storage.GetIteratorForYbctid(
         request.stmt_id(), projection, doc_read_context, txn_op_context, read_operation_data,
         request.ybctid_column_value().value(), request.ybctid_column_value().value(), pending_op,
         &result, statistics));
@@ -273,7 +273,7 @@ class FilteringIterator {
     return Status::OK();
   }
 
-  Status Init(
+  Status InitForYbctid(
       const YQLStorageIf& ql_storage,
       const PgsqlReadRequestPB& request,
       const dockv::ReaderProjection& projection,
@@ -283,11 +283,12 @@ class FilteringIterator {
       const QLValuePB& min_ybctid,
       const QLValuePB& max_ybctid,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      const docdb::DocDBStatistics* statistics) {
+      const docdb::DocDBStatistics* statistics,
+      SkipSeek skip_seek) {
     RETURN_NOT_OK(InitCommon(request, read_context.get().schema(), projection));
-    return ql_storage.GetIterator(
+    return ql_storage.GetIteratorForYbctid(
         request.stmt_id(), projection, read_context, txn_op_context, read_operation_data,
-        min_ybctid, max_ybctid, pending_op, &iterator_holder_, statistics);
+        min_ybctid, max_ybctid, pending_op, &iterator_holder_, statistics, skip_seek);
   }
 
   Result<FetchResult> FetchNext(dockv::PgTableRow* table_row) {
@@ -509,25 +510,21 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
   VLOG(3) << "Looking for collisions in\n" << docdb::DocDBDebugDumpToStr(
-      data.doc_write_batch->doc_db(), dockv::SchemaPackingStorage(TableType::PGSQL_TABLE_TYPE));
+      data.doc_write_batch->doc_db(), doc_read_context_->schema_packing_storage);
   // We need to check backwards only for backfilled entries.
   bool ret =
-      VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
+      VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, data.read_time())) ||
       (request_.is_backfill() &&
-       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kBackward)));
+       VERIFY_RESULT(HasDuplicateUniqueIndexValueBackward(data)));
   if (!ret) {
     VLOG(3) << "No collisions found";
   }
   return ret;
 }
 
-Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
-    const DocOperationApplyData& data, Direction direction) {
-  VLOG(2) << "Looking for collision while going " << yb::ToString(direction)
-          << ". Trying to insert " << *doc_key_;
-  if (direction == Direction::kForward) {
-    return HasDuplicateUniqueIndexValue(data, data.read_time());
-  }
+Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
+    const DocOperationApplyData& data) {
+  VLOG(2) << "Looking for collision while going backward. Trying to insert " << *doc_key_;
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
@@ -611,7 +608,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
               << " vs New: " << AsString(new_value_buffer)
               << "\nUsed read time as " << AsString(data.read_time());
       DVLOG(3) << "DocDB is now:\n" << docdb::DocDBDebugDumpToStr(
-          data.doc_write_batch->doc_db(), dockv::SchemaPackingStorage(TableType::PGSQL_TABLE_TYPE));
+          data.doc_write_batch->doc_db(), doc_read_context_->schema_packing_storage);
       return true;
     }
   }
@@ -627,7 +624,7 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
   HybridTime result;
   VLOG(3) << "Doing iter->Seek " << *doc_key_;
   iter->Seek(*doc_key_);
-  if (!iter->IsOutOfRecords()) {
+  if (VERIFY_RESULT(iter->Fetch())) {
     const auto bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
     result = VERIFY_RESULT(
@@ -1527,9 +1524,10 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
       // TODO (dmitry): In case of iterator recreation info from RestartReadHt field will be lost.
       //                The #17159 issue is created for this problem.
       iter.emplace(&table_iter_);
-      RETURN_NOT_OK(iter->Init(
+      RETURN_NOT_OK(iter->InitForYbctid(
           ql_storage, request_, projection, doc_read_context, txn_op_context_, read_operation_data,
-          min_arg->ybctid().value(), max_arg->ybctid().value(), pending_op, statistics));
+          min_arg->ybctid().value(), max_arg->ybctid().value(), pending_op, statistics,
+          SkipSeek::kTrue));
     }
 
     switch (VERIFY_RESULT(

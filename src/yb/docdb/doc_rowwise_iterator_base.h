@@ -70,9 +70,10 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   void SetSchema(const Schema& schema);
 
   // Init scan iterator.
-  void Init(TableType table_type, Slice sub_doc_key = Slice());
+  void InitForTableType(
+      TableType table_type, Slice sub_doc_key = Slice(), SkipSeek skip_seek = SkipSeek::kFalse);
   // Init QL read scan.
-  Status Init(const qlexpr::YQLScanSpec& spec);
+  Status Init(const qlexpr::YQLScanSpec& spec, SkipSeek skip_seek = SkipSeek::kFalse);
 
   bool IsFetchedRowStatic() const override;
 
@@ -111,8 +112,6 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   virtual void PrevDocKey(Slice key) = 0;
 
   void CheckInitOnce();
-  template <class T>
-  Status DoInit(const T& spec);
 
  protected:
   // Initialize iter_key_ and update the row_key_.

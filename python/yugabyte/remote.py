@@ -387,7 +387,8 @@ def exec_command(
         script_name: str,
         script_args: List[str],
         should_quote_args: bool,
-        extra_ssh_args: List[str]) -> None:
+        extra_ssh_args: List[str],
+        **kwargs: bool) -> None:
     remote_command = "cd {0} && ./{1}".format(escaped_remote_path, script_name)
     for arg in script_args:
         remote_command += " {0}".format(shlex.quote(arg) if should_quote_args else arg)
@@ -402,7 +403,20 @@ def exec_command(
     )
     assert ssh_args[0] == 'ssh'
     logging.info("Full command line for SSH exec: %s", shlex_join([ssh_path] + ssh_args[1:]))
-    os.execv(ssh_path, ssh_args)
+    if kwargs.get('patch_path', False):
+        proc = subprocess.Popen(
+            [ssh_path] + ssh_args[1:], stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+        assert proc.stdout is not None
+        prefix = '../../src/yb'
+        new_prefix = os.path.join(os.getcwd(), 'src/yb')
+        for binary_line in proc.stdout:
+            line = binary_line.decode('utf-8')
+            if line.startswith(prefix):
+                print(new_prefix + line[len(prefix):], end='')
+            else:
+                print(line, end='')
+    else:
+        os.execv(ssh_path, ssh_args)
 
 
 def get_default_remote_path() -> str:

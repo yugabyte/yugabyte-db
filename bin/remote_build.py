@@ -54,6 +54,8 @@ def main() -> None:
                         help='arguments for yb_build.sh')
 
     remote.add_common_args(parser)
+    parser.add_argument('--patch-path', action='store_true',
+                        help='Patch file path to get CLion friendly navigation.')
     remote.handle_yb_build_cmd_line()
     args = parser.parse_args()
     init_logging(verbose=args.verbose)
@@ -89,7 +91,8 @@ def main() -> None:
         script_name='yb_build.sh',
         script_args=remote_args,
         should_quote_args=True,
-        extra_ssh_args=remote.process_extra_ssh_args(args.extra_ssh_args))
+        extra_ssh_args=remote.process_extra_ssh_args(args.extra_ssh_args),
+        patch_path=args.patch_path)
 
 
 if __name__ == '__main__':

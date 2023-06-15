@@ -19,11 +19,24 @@ namespace yb {
 namespace docdb {
 
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
+YB_STRONGLY_TYPED_BOOL(Full);
 
-struct FetchKeyResult {
+struct FetchedEntry {
   Slice key;
+  Slice value;
   EncodedDocHybridTime write_time;
   bool same_transaction;
+  bool valid = false;
+
+  explicit operator bool() const {
+    return valid;
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        (key, key.ToDebugString()), (value, value.ToDebugString()), write_time, same_transaction,
+        valid);
+  }
 };
 
 struct EncodedReadHybridTime {
@@ -47,14 +60,16 @@ struct EncodedReadHybridTime {
 // are needed by ScanChoices.
 class IntentAwareIteratorIf {
  public:
-  virtual ~IntentAwareIteratorIf() {}
+  virtual ~IntentAwareIteratorIf() = default;
 
   //------------------------------------------------------------------------------------------------
   // Pure virtual API methods.
   //------------------------------------------------------------------------------------------------
   // Seek to specified encoded key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
-  virtual void Seek(Slice key) = 0;
+  // full means that key was fully specified, and we could add intent type at the end of the key,
+  // to skip read only intents.
+  virtual void Seek(Slice key, Full full = Full::kTrue) = 0;
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
   // doesn't have hybrid time). For efficiency, the method that takes a non-const KeyBytes pointer
@@ -67,7 +82,6 @@ class IntentAwareIteratorIf {
   // time). For efficiency, the method takes a non-const KeyBytes pointer avoids memory allocation
   // by using the KeyBytes buffer to prepare the key to seek to by appending an extra byte. The
   // appended byte is removed when the method returns.
-  virtual void SeekOutOfSubDoc(Slice key) = 0;
   virtual void SeekOutOfSubDoc(dockv::KeyBytes* key_bytes) = 0;
 
   // Position the iterator at the beginning of the DocKey found before the doc_key
@@ -79,12 +93,7 @@ class IntentAwareIteratorIf {
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
-  virtual Result<FetchKeyResult> FetchKey() = 0;
-
-  // Returns whether we out of records (reached end of data or upper bound).
-  // Returns false in case of error, caller will get specific error on subsequent FetchKey call.
-  virtual bool IsOutOfRecords() = 0;
-  virtual Slice value() = 0;
+  virtual Result<FetchedEntry> Fetch() = 0;
 
   virtual void SetUpperbound(Slice upperbound) = 0;
 

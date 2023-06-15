@@ -122,8 +122,8 @@ class QLWriteOperation :
                            std::unique_ptr<qlexpr::QLRowBlock>* rowblock);
 
   Result<bool> HasDuplicateUniqueIndexValue(const DocOperationApplyData& data);
-  Result<bool> HasDuplicateUniqueIndexValue(
-      const DocOperationApplyData& data, yb::docdb::Direction direction);
+  Result<bool> HasDuplicateUniqueIndexValueBackward(
+      const DocOperationApplyData& data);
   Result<bool> HasDuplicateUniqueIndexValue(
       const DocOperationApplyData& data, const ReadHybridTime& read_time);
   Result<HybridTime> FindOldestOverwrittenTimestamp(

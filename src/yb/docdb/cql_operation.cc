@@ -617,23 +617,19 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationAp
       data.doc_write_batch->doc_db(), doc_read_context_->schema_packing_storage);
   // We need to check backwards only for backfilled entries.
   bool ret =
-      VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
+      VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, data.read_time())) ||
       (request_.is_backfill() &&
-       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kBackward)));
+       VERIFY_RESULT(HasDuplicateUniqueIndexValueBackward(data)));
   if (!ret) {
     VLOG(3) << "No collisions found";
   }
   return ret;
 }
 
-Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
-    const DocOperationApplyData& data, Direction direction) {
-  VLOG(2) << "Looking for collision while going " << yb::ToString(direction)
-          << ". Trying to insert " << *pk_doc_key_;
+Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValueBackward(
+    const DocOperationApplyData& data) {
+  VLOG(2) << "Looking for collision while going backward. Trying to insert " << *pk_doc_key_;
   auto requested_read_time = data.read_time();
-  if (direction == Direction::kForward) {
-    return HasDuplicateUniqueIndexValue(data, requested_read_time);
-  }
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
@@ -710,7 +706,7 @@ Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
   HybridTime result;
   VLOG(3) << "Doing iter->Seek " << *pk_doc_key_;
   iter->Seek(*pk_doc_key_);
-  if (!iter->IsOutOfRecords()) {
+  if (VERIFY_RESULT(iter->Fetch())) {
     const auto bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
     result = VERIFY_RESULT(

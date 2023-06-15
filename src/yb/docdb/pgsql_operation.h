@@ -65,9 +65,7 @@ class PgsqlWriteOperation :
   PgsqlResponsePB* response() const { return response_; }
 
   Result<bool> HasDuplicateUniqueIndexValue(const DocOperationApplyData& data);
-  Result<bool> HasDuplicateUniqueIndexValue(
-      const DocOperationApplyData& data,
-      yb::docdb::Direction direction);
+  Result<bool> HasDuplicateUniqueIndexValueBackward(const DocOperationApplyData& data);
   Result<bool> HasDuplicateUniqueIndexValue(
       const DocOperationApplyData& data,
       const ReadHybridTime& read_time);

@@ -1247,10 +1247,11 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const dockv::ReaderProjection& projection,
     const ReadHybridTime& read_hybrid_time,
     const TableId& table_id,
-    CoarseTimePoint deadline) const {
+    CoarseTimePoint deadline,
+    docdb::SkipSeek skip_seek) const {
   auto iter = VERIFY_RESULT(NewUninitializedDocRowIterator(
       projection, read_hybrid_time, table_id, deadline, AllowBootstrappingState::kFalse));
-  iter->Init(table_type_);
+  iter->InitForTableType(table_type_, Slice(), skip_seek);
   return std::move(iter);
 }
 
@@ -2037,7 +2038,7 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
   }
   auto iter = VERIFY_RESULT(NewUninitializedDocRowIterator(
       projection, time, table_id, CoarseTimePoint::max(), AllowBootstrappingState::kFalse));
-  iter->Init(table_type_, encoded_next_key);
+  iter->InitForTableType(table_type_, encoded_next_key);
   return std::move(iter);
 }
 
@@ -2530,7 +2531,8 @@ Status Tablet::BackfillIndexes(
   // consistent snapshot of the tablet w.r.t. transaction state.
   RequestScope scope = VERIFY_RESULT(CreateRequestScope());
   auto iter = VERIFY_RESULT(NewRowIterator(
-      projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline));
+      projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline,
+      docdb::SkipSeek(!backfill_from.empty())));
   QLTableRow row;
   docdb::IndexRequests index_requests;
 

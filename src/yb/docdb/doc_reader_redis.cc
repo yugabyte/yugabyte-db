@@ -101,13 +101,16 @@ Status BuildSubDocument(
     int64* num_values_observed) {
   VLOG(3) << "BuildSubDocument data: " << data << " read_time: " << iter->read_time()
           << " low_ts: " << low_ts;
-  while (!iter->IsOutOfRecords()) {
+  for (;;) {
+    auto key_data = VERIFY_RESULT(iter->Fetch());
+    if (!key_data) {
+      break;
+    }
     if (data.deadline_info && data.deadline_info->CheckAndSetDeadlinePassed()) {
       return STATUS(Expired, "Deadline for query passed.");
     }
     // Since we modify num_values_observed on recursive calls, we keep a local copy of the value.
     int64 current_values_observed = *num_values_observed;
-    auto key_data = VERIFY_RESULT(iter->FetchKey());
     auto key = key_data.key;
     const auto write_time = VERIFY_RESULT(key_data.write_time.Decode());
     VLOG(4) << "iter: " << SubDocKey::DebugSliceToString(key)
@@ -119,7 +122,7 @@ Status BuildSubDocument(
     // Key could be invalidated because we could move iterator, so back it up.
     dockv::KeyBytes key_copy(key);
     key = key_copy.AsSlice();
-    rocksdb::Slice value = iter->value();
+    Slice value = key_data.value;
     // Checking that IntentAwareIterator returns an entry with correct time.
     DCHECK(key_data.same_transaction ||
            iter->read_time().global_limit >= write_time.hybrid_time())
@@ -192,6 +195,7 @@ Status BuildSubDocument(
                 : write_time.hybrid_time().GetPhysicalValueMicros());
         if (!data.high_index->CanInclude(current_values_observed)) {
           iter->SeekOutOfSubDoc(&key_copy);
+          DCHECK(iter->Fetch().ok()); // Enforce call to Fetch in debug mode
           return Status::OK();
         }
         if (data.low_index->CanInclude(*num_values_observed)) {
@@ -200,6 +204,7 @@ Status BuildSubDocument(
         (*num_values_observed)++;
         VLOG(3) << "SeekOutOfSubDoc: " << SubDocKey::DebugSliceToString(key);
         iter->SeekOutOfSubDoc(&key_copy);
+        DCHECK(iter->Fetch().ok()); // Enforce call to Fetch in debug mode
         return Status::OK();
       } else {
         return STATUS_FORMAT(Corruption, "Expected primitive value type, got $0", value_type);
@@ -302,7 +307,7 @@ Status FindLastWriteTime(
   Slice value;
   EncodedDocHybridTime pre_doc_ht(*max_overwrite_time);
   RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &pre_doc_ht, &value));
-  if (iter->IsOutOfRecords()) {
+  if (!VERIFY_RESULT(iter->Fetch())) {
     return Status::OK();
   }
 
@@ -335,19 +340,19 @@ Status FindLastWriteTime(
   // If we encounter a TTL row, we assign max_overwrite_time to be the write time of the
   // original value/init marker.
   if (control_fields.merge_flags == ValueControlFields::kTtlFlag) {
-    EncodedDocHybridTime new_ht;
-    RETURN_NOT_OK(iter->NextFullValue(&new_ht, &value));
+    auto key_data = VERIFY_RESULT(iter->NextFullValue());
+    value = key_data.value;
 
     // There could be a case where the TTL row exists, but the value has been
     // compacted away. Then, it is treated as a Tombstone written at the time
     // of the TTL row.
-    if (iter->IsOutOfRecords() && !new_exp.ttl.IsNegative()) {
+    if (!key_data && !new_exp.ttl.IsNegative()) {
       new_exp.ttl = -new_exp.ttl;
     } else {
       RETURN_NOT_OK(dockv::Value::DecodePrimitiveValueType(value));
       // Because we still do not know whether we are seeking something expired,
       // we must take the max_overwrite_time as if the value were not expired.
-      doc_ht = VERIFY_RESULT(new_ht.Decode());
+      doc_ht = VERIFY_RESULT(key_data.write_time.Decode());
     }
   }
 

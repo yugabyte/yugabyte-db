@@ -77,7 +77,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       YQLRowwiseIteratorIf::UniPtr* iter,
       const docdb::DocDBStatistics* statistics = nullptr) const override;
 
-  Status GetIterator(
+  Status GetIteratorForYbctid(
       uint64 stmt_id,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -87,7 +87,8 @@ class QLRocksDBStorage : public YQLStorageIf {
       const QLValuePB& max_ybctid,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       YQLRowwiseIteratorIf::UniPtr* iter,
-      const docdb::DocDBStatistics* statistics = nullptr) const override;
+      const docdb::DocDBStatistics* statistics = nullptr,
+      SkipSeek skip_seek = SkipSeek::kFalse) const override;
 
  private:
   const DocDB doc_db_;
