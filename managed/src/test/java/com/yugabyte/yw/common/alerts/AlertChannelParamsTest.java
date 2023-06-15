@@ -17,7 +17,7 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
-public class AlertUtilsTest extends FakeDBApplication {
+public class AlertChannelParamsTest extends FakeDBApplication {
 
   private static final String TITLE_TEMPLATE = "<b>Title template</b>";
 
