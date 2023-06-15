@@ -32,15 +32,21 @@ Yugabyte Platform installations include configuration settings, certificates and
 
 You can use the Yugabyte Platform backup script to back up an existing Yugabyte Platform server and restore it, when needed, for disaster recovery or migrating to a new server.
 
+## Download the script
+
+Download the version of the backup script that corresponds to the version of Yugabyte Platform that you are backing up and restoring.
+
+For example, you can copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
+
+```sh
+wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/v{{< yb-version version="v2.8">}}/managed/devops/bin/yb_platform_backup.sh
+```
+
+If you are running a different version of Yugabyte Platform, replace the version number in the command with the correct version number.
+
 ## Back Up a Yugabyte Platform Server
 
 To back up the Yugabyte Platform server, perform the following:
-
-- Copy the Yugabyte Platform backup script `yb_platform_backup.sh` from the yugabyte-db repository using the following `wget` command:
-
-    ```sh
-    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/{{<yb-version version="v2.8">}}/managed/devops/bin/yb_platform_backup.sh
-    ```
 
 - Run the `yb_platform_backup.sh` script using the `backup` command, as follows:
 
@@ -63,12 +69,6 @@ To back up the Yugabyte Platform server, perform the following:
 ## Restore a Yugabyte Platform Server
 
 To restore the Yugabyte Platform content from your saved backup, perform the following:
-
-- Copy the `yb_platform_backup.sh` script from the yugabyte-db repository using the following `wget` command:
-
-    ```sh
-    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/{{<yb-version version="v2.8">}}/managed/devops/bin/yb_platform_backup.sh
-    ```
 
 - Copy the backup `.tar` file from your storage location.
 

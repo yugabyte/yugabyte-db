@@ -43,10 +43,10 @@ Download the version of the backup script that corresponds to the version of Yug
 For example, you can copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
 
 ```sh
-wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/{{< yb-version version="stable" format="short">}}/managed/devops/bin/yb_platform_backup.sh
+wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/v{{< yb-version version="stable">}}/managed/devops/bin/yb_platform_backup.sh
 ```
 
-If you are running a different version of YugabyteDB Anywhere, replace the version number in the command with the correct version number; do not include the [revision number](/preview/releases/versioning/#release-versioning-convention).
+If you are running a different version of YugabyteDB Anywhere, replace the version number in the command with the correct version number.
 
 ## Back up a YugabyteDB Anywhere server
 
