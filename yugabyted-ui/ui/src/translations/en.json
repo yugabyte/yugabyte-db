@@ -788,6 +788,7 @@
         "tabletRange": "Tablet range",
         "leaderNode": "Leader node",
         "followerNodes": "Follower nodes",
+        "readReplicaNodes": "Read replica nodes",
         "database": "Database",
         "keyspace": "Keyspace",
         "table": "Table",

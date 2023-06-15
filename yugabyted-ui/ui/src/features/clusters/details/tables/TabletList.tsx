@@ -127,12 +127,14 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
                 const tabletID = Array.from(row[1].matchAll(/<th>(.*)<\/th>/g))[0][1]
                 const tabletRange = Array.from(row[1].matchAll(/<td>hash_split: \[(.*)\]<\/td>/g))[0][1]
                 const tabletLeader = Array.from(row[1].matchAll(/LEADER: <a href=".*">(.*)<\/a>/g))[0][1]
-                const tabletFollowers = Array.from(row[1].matchAll(/FOLLOWER: <a href=".*">(.*)<\/a>/g)).map(r => r[1]).join(', ')
+                const tabletFollowers = Array.from(row[1].matchAll(/FOLLOWER: <a href=".*">(.*)<\/a>/g)).map(r => r[1]).join(', ') || '-'
+                const tabletReadReplicas = Array.from(row[1].matchAll(/READ_REPLICA: <a href=".*">(.*)<\/a>/g)).map(r => r[1]).join(', ') || '-'
                 return {
                   id: tabletID,
                   range: tabletRange,
                   leaderNode: tabletLeader,
                   followerNodes: tabletFollowers,
+                  readReplicaNodes: tabletReadReplicas,
                   status: healthCheckData?.data?.under_replicated_tablets?.includes(tabletID) ? "Under-replicated" : 
                     (healthCheckData?.data?.leaderless_tablets?.includes(tabletID) ? "Unavailable" : ""),
                 }
@@ -205,6 +207,14 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
     {
       name: 'followerNodes',
       label: t('clusterDetail.databases.followerNodes'),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+        setCellProps: () => ({ style: { padding: '8px 16px' }}),
+      }
+    },
+    {
+      name: 'readReplicaNodes',
+      label: t('clusterDetail.databases.readReplicaNodes'),
       options: {
         setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
         setCellProps: () => ({ style: { padding: '8px 16px' }}),
