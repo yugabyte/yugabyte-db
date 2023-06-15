@@ -15,8 +15,9 @@
 
 import unittest
 from decimal import Decimal
-import math 
-import age 
+import math
+import age
+
 
 class TestAgtype(unittest.TestCase):
     resultHandler = None
@@ -24,21 +25,23 @@ class TestAgtype(unittest.TestCase):
     def __init__(self, methodName: str) -> None:
         super().__init__(methodName=methodName)
         self.resultHandler = age.newResultHandler()
-    
+
     def parse(self, exp):
-        return self.resultHandler.parse(exp) 
+        return self.resultHandler.parse(exp)
 
     def test_scalar(self):
-        mapStr = '{"name": "Smith", "num":123, "yn":true, "bigInt":123456789123456789123456789123456789::numeric}' 
-        arrStr =  '["name", "Smith", "num", 123, "yn", true, 123456789123456789123456789123456789.8888::numeric]' 
-        strStr =  '"abcd"' 
-        intStr =  '1234' 
-        floatStr =  '1234.56789' 
-        floatStr2 =  '6.45161290322581e+46' 
-        numericStr1 =  '12345678901234567890123456789123456789.789::numeric' 
-        numericStr2 =  '12345678901234567890123456789123456789::numeric' 
-        boolStr = 'true' 
-        nullStr = '' 
+        print("\nTesting Scalar Value Parsing. Result : ",  end='')
+
+        mapStr = '{"name": "Smith", "num":123, "yn":true, "bigInt":123456789123456789123456789123456789::numeric}'
+        arrStr = '["name", "Smith", "num", 123, "yn", true, 123456789123456789123456789123456789.8888::numeric]'
+        strStr = '"abcd"'
+        intStr = '1234'
+        floatStr = '1234.56789'
+        floatStr2 = '6.45161290322581e+46'
+        numericStr1 = '12345678901234567890123456789123456789.789::numeric'
+        numericStr2 = '12345678901234567890123456789123456789::numeric'
+        boolStr = 'true'
+        nullStr = ''
         nanStr = "NaN"
         infpStr = "Infinity"
         infnStr = "-Infinity"
@@ -57,34 +60,27 @@ class TestAgtype(unittest.TestCase):
         infpVal = self.parse(infpStr)
         infnVal = self.parse(infnStr)
 
-        print("map", type(mapVal), mapVal)
-        print("arr", type(arrVal), arrVal)
-        print("str", type(str), str)
-        print("intVal", type(intVal), intVal)
-        print("floatVal", type(floatVal), floatVal)
-        print("floatVal", type(floatVal2), floatVal2)
-        print("bigFloat", type(bigFloat), bigFloat)
-        print("bigInt", type(bigInt), bigInt)
-        print("bool", type(boolVal), boolVal)
-        print("null", type(nullVal), nullVal)
-        print("nanVal", type(nanVal), nanVal)
-        print("infpVal", type(infpVal), infpVal)
-        print("infnVal", type(infnVal), infnVal)
-        
-        self.assertEqual(mapVal, {'name': 'Smith', 'num': 123, 'yn': True, 'bigInt': Decimal('123456789123456789123456789123456789')})
-        self.assertEqual(arrVal, ["name", "Smith", "num", 123, "yn", True, Decimal("123456789123456789123456789123456789.8888")] )
+        self.assertEqual(mapVal, {'name': 'Smith', 'num': 123, 'yn': True, 'bigInt': Decimal(
+            '123456789123456789123456789123456789')})
+        self.assertEqual(arrVal, ["name", "Smith", "num", 123, "yn", True, Decimal(
+            "123456789123456789123456789123456789.8888")])
         self.assertEqual(str,  "abcd")
         self.assertEqual(intVal, 1234)
         self.assertEqual(floatVal, 1234.56789)
         self.assertEqual(floatVal2, 6.45161290322581e+46)
-        self.assertEqual(bigFloat, Decimal("12345678901234567890123456789123456789.789"))
-        self.assertEqual(bigInt, Decimal("12345678901234567890123456789123456789"))
+        self.assertEqual(bigFloat, Decimal(
+            "12345678901234567890123456789123456789.789"))
+        self.assertEqual(bigInt, Decimal(
+            "12345678901234567890123456789123456789"))
         self.assertEqual(boolVal, True)
         self.assertTrue(math.isnan(nanVal))
         self.assertTrue(math.isinf(infpVal))
         self.assertTrue(math.isinf(infnVal))
 
     def test_vertex(self):
+
+        print("\nTesting vertex Parsing. Result : ",  end='')
+
         vertexExp = '''{"id": 2251799813685425, "label": "Person", 
             "properties": {"name": "Smith", "numInt":123, "numFloat": 384.23424, 
             "bigInt":123456789123456789123456789123456789123456789123456789123456789123456789123456789123456789123456789123456789::numeric, 
@@ -97,12 +93,17 @@ class TestAgtype(unittest.TestCase):
         self.assertEqual(vertex["name"],  "Smith")
         self.assertEqual(vertex["numInt"],  123)
         self.assertEqual(vertex["numFloat"],  384.23424)
-        self.assertEqual(vertex["bigInt"],  Decimal("123456789123456789123456789123456789123456789123456789123456789123456789123456789123456789123456789123456789"))
-        self.assertEqual(vertex["bigFloat"],  Decimal("123456789123456789123456789123456789.12345"))
+        self.assertEqual(vertex["bigInt"],  Decimal(
+            "123456789123456789123456789123456789123456789123456789123456789123456789123456789123456789123456789123456789"))
+        self.assertEqual(vertex["bigFloat"],  Decimal(
+            "123456789123456789123456789123456789.12345"))
         self.assertEqual(vertex["yn"],  True)
         self.assertEqual(vertex["nullVal"],  None)
 
     def test_path(self):
+
+        print("\nTesting Path Parsing. Result : ",  end='')
+
         pathExp = '''[{"id": 2251799813685425, "label": "Person", "properties": {"name": "Smith"}}::vertex, 
             {"id": 2533274790396576, "label": "workWith", "end_id": 2251799813685425, "start_id": 2251799813685424, 
                 "properties": {"weight": 3, "bigFloat":123456789123456789123456789.12345::numeric}}::edge, 
@@ -119,7 +120,8 @@ class TestAgtype(unittest.TestCase):
         self.assertEqual(edge.id,  2533274790396576)
         self.assertEqual(edge.label,  "workWith")
         self.assertEqual(edge["weight"],  3)
-        self.assertEqual(edge["bigFloat"],  Decimal("123456789123456789123456789.12345"))
+        self.assertEqual(edge["bigFloat"],  Decimal(
+            "123456789123456789123456789.12345"))
 
         self.assertEqual(vertexEnd.id,  2251799813685424)
         self.assertEqual(vertexEnd.label,  "Person")
