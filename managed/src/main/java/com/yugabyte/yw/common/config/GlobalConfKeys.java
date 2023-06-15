@@ -305,6 +305,30 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable YBA's custom CA trust-store",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> javaxNetSslTrustStore =
+      new ConfKeyInfo<>(
+          "yb.wellKnownCA.trustStore.path",
+          ScopeType.GLOBAL,
+          "Javax Net SSL TrustStore",
+          "Java property javax.net.ssl.trustStore",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> javaxNetSslTrustStoreType =
+      new ConfKeyInfo<>(
+          "yb.wellKnownCA.trustStore.type",
+          ScopeType.GLOBAL,
+          "Javax Net SSL TrustStore Type",
+          "Java property javax.net.ssl.trustStoreType",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> javaxNetSslTrustStorePassword =
+      new ConfKeyInfo<>(
+          "yb.wellKnownCA.trustStore.password",
+          ScopeType.GLOBAL,
+          "Javax Net SSL TrustStore Password",
+          "Java property javax.net.ssl.trustStorePassword",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableCertReload =
       new ConfKeyInfo<>(
           "yb.features.cert_reload.enabled",

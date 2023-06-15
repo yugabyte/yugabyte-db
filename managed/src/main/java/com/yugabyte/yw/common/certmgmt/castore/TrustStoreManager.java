@@ -47,4 +47,10 @@ public interface TrustStoreManager {
       char[] truststorePassword,
       boolean suppressErrors)
       throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException;
+
+  String getYbaTrustStorePath(String trustStoreHome);
+
+  String getYbaTrustStoreType();
+
+  boolean isTrustStoreEmpty(String caStorePathStr, char[] trustStorePassword);
 }

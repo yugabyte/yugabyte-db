@@ -7,6 +7,8 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.CustomTrustStoreListener;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -16,13 +18,18 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.FileData;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -36,14 +43,20 @@ public class CustomCAStoreManager {
 
   private final RuntimeConfigFactory runtimeConfigFactory;
 
+  // Reference to the listeners who want to get notified about updates in this custom trust-store.
+  private final List<CustomTrustStoreListener> trustStoreListeners = new ArrayList<>();
+
+  private final PemTrustStoreManager pemTrustStoreManager;
+
   @Inject
   public CustomCAStoreManager(
-      JksTrustStoreManager jksTrustStoreManager,
+      Pkcs12TrustStoreManager pkcs12TrustStoreManager,
       PemTrustStoreManager pemTrustStoreManager,
       RuntimeConfigFactory runtimeConfigFactory) {
     this.runtimeConfigFactory = runtimeConfigFactory;
-    trustStoreManagers.add(jksTrustStoreManager);
+    trustStoreManagers.add(pkcs12TrustStoreManager);
     trustStoreManagers.add(pemTrustStoreManager);
+    this.pemTrustStoreManager = pemTrustStoreManager;
   }
 
   public UUID addCACert(UUID customerId, String name, String contents, String storagePath) {
@@ -102,6 +115,10 @@ public class CustomCAStoreManager {
       }
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getLocalizedMessage());
     }
+
+    notifyListeners();
+    log.debug("All trust-store listeners notified");
+
     return certId;
   }
 
@@ -223,6 +240,10 @@ public class CustomCAStoreManager {
       log.error("Failed to cleanup file remnants. Error: {}", e.getMessage());
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getLocalizedMessage());
     }
+
+    notifyListeners();
+    log.debug("All trust-store listeners notified");
+
     return newCertId;
   }
 
@@ -274,6 +295,9 @@ public class CustomCAStoreManager {
     deleted = cert.delete();
     log.info("Deleted CA certificate {}", certId);
 
+    notifyListeners();
+    log.debug("All trust-store listeners notified");
+
     return deleted;
   }
 
@@ -285,6 +309,28 @@ public class CustomCAStoreManager {
   public CustomCaCertificateInfo get(UUID customerId, UUID certId) {
     Customer.getOrBadRequest(customerId);
     return CustomCaCertificateInfo.getOrGrunt(customerId, certId);
+  }
+
+  public List<Map<String, String>> getPemStoreConfig() {
+    String storagePath = AppConfigHelper.getStoragePath();
+    String trustStoreHome = getTruststoreHome(storagePath);
+    List ybaTrustStoreConfig = new ArrayList<>();
+
+    if (Files.exists(Paths.get(trustStoreHome))) {
+      String pemStorePathStr = pemTrustStoreManager.getYbaTrustStorePath(trustStoreHome);
+      Path pemStorePath = Paths.get(pemStorePathStr);
+      if (Files.exists(pemStorePath)) {
+        if (!pemTrustStoreManager.isTrustStoreEmpty(pemStorePathStr, getTruststorePassword())) {
+          Map<String, String> trustStoreMap = new HashMap<>();
+          trustStoreMap.put("path", pemStorePathStr);
+          trustStoreMap.put("type", pemTrustStoreManager.getYbaTrustStoreType());
+          ybaTrustStoreConfig.add(trustStoreMap);
+        }
+      }
+    }
+
+    log.debug("YBA's custom trust store config is {}", ybaTrustStoreConfig);
+    return ybaTrustStoreConfig;
   }
 
   // ---------------- helper methods ------------------
@@ -347,5 +393,15 @@ public class CustomCAStoreManager {
 
   public boolean isEnabled() {
     return runtimeConfigFactory.globalRuntimeConf().getBoolean(CUSTOM_CA_STORE_ENABLED);
+  }
+
+  public void addListener(CustomTrustStoreListener listener) {
+    trustStoreListeners.add(listener);
+  }
+
+  private void notifyListeners() {
+    for (CustomTrustStoreListener listener : trustStoreListeners) {
+      listener.truststoreUpdated();
+    }
   }
 }
