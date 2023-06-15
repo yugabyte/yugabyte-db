@@ -27,8 +27,8 @@ You must create a VPC and deploy your cluster before you can configure a PSE.
 
 Before you can create a PSE, you need to do the following:
 
-- Create a VPC. Refer to [Create a VPC](../cloud-add-vpc/#create-a-vpc). Make sure your VPC is in the same region as the application VPC to which you will connect your endpoint.
-- Deploy a YugabyteDB cluster in the VPC. Refer to [Create a cluster](../../create-clusters/).
+1. Create a VPC. Refer to [Create a VPC](../cloud-add-vpc/#create-a-vpc). Make sure your VPC is in the same region as the application VPC to which you will connect your endpoint.
+1. Deploy a YugabyteDB cluster in the VPC. Refer to [Create a cluster](../../create-clusters/).
 
 To use ybm CLI, you need to do the following:
 
