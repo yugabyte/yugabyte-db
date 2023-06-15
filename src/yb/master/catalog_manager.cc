@@ -9976,10 +9976,16 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
     // heartbeat response message. A tserver will not change its private
     // catalog version map when it finds no catalog versions in the heartbeat
     // response message.
-    *versions = heartbeat_pg_catalog_versions_cache_;
-    return Status::OK();
+    // Some unit tests check tserver private map before the background task has
+    // a chance to populate the cache, read from pg_yb_catalog_version below to
+    // make such unit tests happy.
+    if (heartbeat_pg_catalog_versions_cache_) {
+      *versions = *heartbeat_pg_catalog_versions_cache_;
+      return Status::OK();
+    }
   }
-  // Cannot use cached data, read from pg_yb_catalog_version table.
+  // Cannot use cached data, or the cache has never been initialized yet, read
+  // from pg_yb_catalog_version table.
   return GetYsqlAllDBCatalogVersionsImpl(versions);
 }
 
@@ -13471,7 +13477,9 @@ void CatalogManager::ScheduleRefreshPgCatalogVersionsTask(bool schedule_now) {
 
 void CatalogManager::ResetCachedCatalogVersions() {
   LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
-  heartbeat_pg_catalog_versions_cache_.clear();
+  if (heartbeat_pg_catalog_versions_cache_) {
+    heartbeat_pg_catalog_versions_cache_->clear();
+  }
 }
 
 void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
@@ -13498,7 +13506,11 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
   } else {
     VLOG(2) << "Refreshed catalog versions in memory: " << yb::ToString(versions);
     LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
-    heartbeat_pg_catalog_versions_cache_.swap(versions);
+    if (heartbeat_pg_catalog_versions_cache_) {
+      heartbeat_pg_catalog_versions_cache_->swap(versions);
+    } else {
+      heartbeat_pg_catalog_versions_cache_ = std::move(versions);
+    }
   }
   ScheduleRefreshPgCatalogVersionsTask();
 }
