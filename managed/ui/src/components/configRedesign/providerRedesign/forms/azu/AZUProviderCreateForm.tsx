@@ -50,7 +50,9 @@ export interface AZUProviderCreateFormFieldValues {
   azuClientSecret: string;
   azuHostedZoneId: string;
   azuRG: string;
+  azuNetworkRG: string;
   azuSubscriptionId: string;
+  azuNetworkSubscriptionId: string;
   azuTenantId: string;
   dbNodePublicInternetAccess: boolean;
   ntpServers: string[];
@@ -221,10 +223,28 @@ export const AZUProviderCreateForm = ({
                 />
               </FormField>
               <FormField>
+                <FieldLabel>Network Resource Group</FieldLabel>
+                <YBInputField
+                  control={formMethods.control}
+                  name="azuNetworkRG"
+                  disabled={isFormDisabled}
+                  fullWidth
+                />
+              </FormField>
+              <FormField>
                 <FieldLabel>Subscription ID</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="azuSubscriptionId"
+                  disabled={isFormDisabled}
+                  fullWidth
+                />
+              </FormField>
+              <FormField>
+                <FieldLabel>Network Subscription ID</FieldLabel>
+                <YBInputField
+                  control={formMethods.control}
+                  name="azuNetworkSubscriptionId"
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -437,7 +457,9 @@ const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldVa
           azuClientSecret: formValues.azuClientSecret,
           ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
           azuRG: formValues.azuRG,
+          ...(formValues.azuNetworkRG && { azuNetworkRG: formValues.azuNetworkRG }),
           azuSubscriptionId: formValues.azuSubscriptionId,
+          ...(formValues.azuNetworkSubscriptionId && { azuNetworkSubscriptionId: formValues.azuNetworkSubscriptionId }),
           azuTenantId: formValues.azuTenantId
         }
       },
