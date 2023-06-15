@@ -81,7 +81,7 @@ For best performance as well as lower data transfer costs, you want to minimize 
 
 For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC and connect it to the application VPC via peering (AWS or GCP) or using a private link (AWS or Azure). This configuration also provides the best security. To connect using a private link (AWS and Azure only), the link endpoints (your cluster and the application) must be in the same region.
 
-For a list of supported regions, refer to [Cloud provider regions](../../release-notes/#cloud-provider-regions).
+For a list of supported regions, refer to [Cloud provider regions](#cloud-provider-regions).
 
 #### Instance types
 
@@ -210,6 +210,107 @@ The biggest factor in the price of a cluster is the number vCPUs.
 Cluster charges are based on the total number of vCPUs used and how long they have been running. Cluster per-hour charges include [free allowances](../../cloud-admin/cloud-billing-costs/) for disk storage, backup storage, and data transfer. If you use more than the free allowance, you incur overages on top of the base vCPU capacity cost.
 
 Before creating a cluster, you need to create your billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
+
+## Cloud provider regions
+
+{{< tabpane text=true >}}
+
+  {{% tab header="AWS" lang="aws" %}}
+
+The following **AWS regions** are available:
+
+- Cape Town (af-south-1)
+- Hong Kong (ap-east-1)
+- Tokyo (ap-northeast-1)
+- Seoul (ap-northeast-2)
+- Osaka (ap-northeast-3)
+- Mumbai (ap-south-1)
+- Singapore (ap-southeast-1)
+- Sydney (ap-southeast-2)
+- Central (ca-central-1)
+- Frankfurt (eu-central-1)
+- Stockholm (eu-north-1)
+- Milan (eu-south-1)
+- Ireland (eu-west-1)
+- London (eu-west-2)
+- Paris (eu-west-3)
+- Bahrain (me-south-1)
+- Sao Paulo (sa-east-1)
+- N. Virginia (us-east-1)
+- Ohio (us-east-2)
+- N. California (us-west-1)*
+- Oregon (us-west-2)
+
+\* Region has 2 availability zones only
+
+  {{% /tab %}}
+
+  {{% tab header="Azure" lang="azure" %}}
+
+The following **Azure regions** are available:
+
+- New South Wales (australiaeast)
+- Sao Paulo State (brazilsouth)
+- Toronto (canadacentral)
+- Pune (centralindia)
+- Iowa (centralus)
+- Hong Kong (eastasia)
+- Virginia (eastus)
+- Virginia (eastus2)
+- Paris (francecentral)
+- Frankfurt (germanywestcentral)
+- Tokyo, Saitama (japaneast)
+- Seoul (koreacentral)
+- Ireland (northeurope)
+- Norway (norwayeast)
+- Johannesburg (southafricanorth)
+- Texas (southcentralus)
+- Singapore (southeastasia)
+- Zurich (switzerlandnorth)
+- Dubai (uaenorth)
+- London (uksouth)
+- Netherlands (westeurope)
+- Washington (westus2)
+- Phoenix (westus3)
+
+  {{% /tab %}}
+
+  {{% tab header="GCP" lang="gcp" %}}
+
+The following **GCP regions** are available:
+
+- Taiwan (asia-east1)
+- Honk Kong (asia-east2)
+- Tokyo (asia-northeast1)
+- Osaka (asia-northeast2)
+- Seoul (asia-northeast3)
+- Mumbai (asia-south1)
+- Delhi (asia-south2)
+- Singapore (asia-southeast1)
+- Jakarta (asia-southeast2)
+- Sydney (australia-southeast1)
+- Melbourne (australia-southeast2)
+- Warsaw (europe-central2)
+- Finland (europe-north1)
+- Belgium (europe-west1)
+- London (europe-west2)
+- Frankfurt (europe-west3)
+- Netherlands (europe-west4)
+- Zurich (europe-west6)
+- Montreal (northamerica-northeast1)
+- Toronto (northamerica-northeast2)
+- Sao Paulo (southamerica-east1)
+- Iowa (us-central1)
+- South Carolina (us-east1)
+- N. Virginia (us-east4)
+- Oregon (us-west1)
+- Los Angeles (us-west2)
+- Salt Lake City (us-west3)
+- Las Vegas (us-west4)
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 ## Next steps
 

@@ -83,7 +83,7 @@ For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed 
 
 ### What regions are available?
 
-Refer to [Cloud provider regions](../../yugabyte-cloud/release-notes/#cloud-provider-regions) for a list currently supported regions.
+Refer to [Cloud provider regions](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#cloud-provider-regions) for a list currently supported regions.
 
 YugabyteDB Managed supports all the regions that have robust infrastructure and sufficient demand from customers. If there are regions you would like added, reach out to {{% support-cloud %}}.
 
@@ -101,7 +101,7 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 | :------ | :------ | :-------- |
 | Cluster | Single Node | Any |
 | vCPU/Storage | Up to 2 vCPU / 4 GB Memory / 10 GB storage | Any |
-| [Regions](../../yugabyte-cloud/release-notes/#cloud-provider-regions) | All | All |
+| [Regions](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#cloud-provider-regions) | All | All |
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/) |
 | [VPC networking](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) | No | Yes |
 | [Fault tolerance](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#fault-tolerance) | None (Single node, RF-1) | Multi node RF-3 clusters with region, availability zone, and node level |

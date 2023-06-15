@@ -52,7 +52,7 @@ To add or edit read-replicas:
 
 1. For each replica, set the following options:
 
-    **Region** - Choose the [region](../../release-notes#cloud-provider-regions) where you want to deploy the replica.
+    **Region** - Choose the [region](../../cloud-basics/create-clusters-overview/#cloud-provider-regions) where you want to deploy the replica.
 
     **VPC** - Choose the VPC in which to deploy the nodes. You need to create VPCs before deploying a replica. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 

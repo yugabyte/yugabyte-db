@@ -38,7 +38,7 @@ Multi-region replicated clusters include the following features:
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking required.
 - Automated and on-demand backups.
-- Available in all [regions](../../../release-notes#cloud-provider-regions).
+- Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
 - Enterprise support.
 
 ## Prerequisites
@@ -77,7 +77,7 @@ Set **Data Distribution** to **Replicate across regions**.
 
 **Regions**: For each region, choose the following:
 
-- the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located.
+- the [region](../../create-clusters-overview/#cloud-provider-regions) where the nodes will be located.
 - the VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For AWS clusters, choose a separate VPC for each region. For GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 - The number of nodes to deploy in the regions. Each region has the same number of nodes.
 
