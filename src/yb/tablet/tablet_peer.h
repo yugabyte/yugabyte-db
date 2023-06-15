@@ -451,7 +451,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   Result<consensus::RetryableRequests> GetRetryableRequests();
   Status FlushRetryableRequests();
-  Status CopyRetryableRequestsTo(const std::string& dest_path);
+  Result<OpId> CopyRetryableRequestsTo(const std::string& dest_path);
   Status SubmitFlushRetryableRequestsTask();
 
   void EnableFlushRetryableRequests();

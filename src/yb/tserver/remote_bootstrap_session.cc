@@ -226,15 +226,18 @@ Status RemoteBootstrapSession::Init() {
     RETURN_NOT_OK(status);
   }
 
+  std::optional<OpId> min_synced_op_id;
   // Copy the retryable requests if it exists.
   if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
     Status s = tablet_peer_->FlushRetryableRequests();
     if (s.ok() || s.IsAlreadyPresent()) {
       retryable_requests_filepath_ = JoinPathSegments(checkpoint_dir_, kRetryableRequestsFileName);
-      s = tablet_peer_->CopyRetryableRequestsTo(*retryable_requests_filepath_);
-      if (!s.ok()) {
+      auto copy_result = tablet_peer_->CopyRetryableRequestsTo(*retryable_requests_filepath_);
+      if (!copy_result.ok()) {
         LOG(WARNING) << "Copy retryable requests failed: " << s;
         retryable_requests_filepath_.reset();
+      } else {
+        min_synced_op_id = *copy_result;
       }
     } else {
       LOG(WARNING) << "Remote bootstrap session: flush retryable requests failed: " << s;
@@ -244,6 +247,19 @@ Status RemoteBootstrapSession::Init() {
   for (const auto& source : sources_) {
     if (source) {
       RETURN_NOT_OK(source->Init());
+    }
+  }
+
+  // It's possible that the wal segment is not synced and the retryable requests file
+  // is newer than the data of wal file downloaded by remote peer. The remote peer will
+  // reject newer ops that covered by retryable requests but not in the wal segment by
+  // incorrectly detect them as duplicate.
+  if (min_synced_op_id) {
+    auto log_msg = Format("wait for OP($0) to be synced", *min_synced_op_id);
+    LOG(INFO) << "Start to " << log_msg;
+    auto wait_result = tablet_peer_->log()->WaitForSafeOpIdToApply(*min_synced_op_id);
+    if (wait_result.empty()) {
+      return STATUS_FORMAT(TimedOut, "Failed to $0", log_msg);
     }
   }
 

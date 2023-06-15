@@ -65,14 +65,16 @@ Status RetryableRequestsFlusher::SubmitFlushRetryableRequestsTask() {
       std::bind(&RetryableRequestsFlusher::FlushRetryableRequests, shared_from_this()));
 }
 
-Status RetryableRequestsFlusher::CopyRetryableRequestsTo(const std::string& dest_path) {
+// Copy retryable requests file to dest_path and return the last flushed op_id.
+Result<OpId> RetryableRequestsFlusher::CopyRetryableRequestsTo(const std::string& dest_path) {
   auto se = ScopeExit([this] {
     CHECK(this->UnsetFlushing());
   });
   while(!SetFlushing()) {
     SleepFor(1ms);
   }
-  return raft_consensus_->CopyRetryableRequestsTo(dest_path);
+  RETURN_NOT_OK(raft_consensus_->CopyRetryableRequestsTo(dest_path));
+  return raft_consensus_->GetLastFlushedOpIdInRetryableRequests();
 }
 
 bool RetryableRequestsFlusher::TEST_HasRetryableRequestsOnDisk() {
