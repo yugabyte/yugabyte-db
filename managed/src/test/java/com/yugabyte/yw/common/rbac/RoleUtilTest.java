@@ -10,13 +10,12 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Role;
-import com.yugabyte.yw.models.Role.RoleType;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
 import java.io.File;
 import java.util.Arrays;
 import java.util.HashSet;
 import junitparams.JUnitParamsRunner;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -24,7 +23,6 @@ import org.mockito.Spy;
 import play.Environment;
 import play.Mode;
 
-@Slf4j
 @RunWith(JUnitParamsRunner.class)
 public class RoleUtilTest extends FakeDBApplication {
   @Spy Environment environment;

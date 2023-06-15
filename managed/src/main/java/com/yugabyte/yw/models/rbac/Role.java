@@ -1,5 +1,7 @@
-package com.yugabyte.yw.models;
+package com.yugabyte.yw.models.rbac;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -10,7 +12,6 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
-import io.ebean.annotation.WhenCreated;
 import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -39,20 +40,19 @@ public class Role extends Model {
 
   @Id
   @Column(name = "role_uuid", nullable = false)
-  @ApiModelProperty(value = "Role UUID")
+  @ApiModelProperty(value = "Role UUID", accessMode = READ_ONLY)
   private UUID roleUUID;
 
   @Column(name = "customer_uuid", nullable = false)
   @ApiModelProperty(value = "Customer UUID")
   private UUID customerUUID;
 
-  @Column(name = "name", nullable = false, unique = true)
-  @ApiModelProperty(value = "Role name")
+  @Column(name = "name", nullable = false)
+  @ApiModelProperty(value = "Role name", accessMode = READ_WRITE)
   private String name;
 
   @Column(name = "created_on", nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
-  @WhenCreated
   @ApiModelProperty(value = "Role create time", example = "2022-12-12T13:07:18Z")
   private Date createdOn;
 
@@ -79,7 +79,7 @@ public class Role extends Model {
   @Setter
   @DbJson
   @Column(name = "permission_details")
-  @ApiModelProperty(value = "Set of permissions given to the role")
+  @ApiModelProperty(value = "Permission details of the role")
   private PermissionDetails permissionDetails;
 
   public static final Finder<UUID, Role> find = new Finder<UUID, Role>(Role.class) {};
