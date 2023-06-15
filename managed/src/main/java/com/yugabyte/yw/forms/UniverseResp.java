@@ -217,10 +217,7 @@ public class UniverseResp {
     // If node to client TLS is enabled.
     if (cluster.userIntent.enableClientToNodeEncrypt) {
       String randomFileName = UUID.randomUUID().toString();
-      UUID certUUID =
-          universe.getUniverseDetails().rootAndClientRootCASame
-              ? universe.getUniverseDetails().rootCA
-              : universe.getUniverseDetails().getClientRootCA();
+      UUID certUUID = universe.getUniverseDetails().getClientRootCA();
       if (certUUID == null) {
         log.warn("CertUUID cannot be null when TLS is enabled");
       }
