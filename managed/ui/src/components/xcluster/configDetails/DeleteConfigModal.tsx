@@ -13,31 +13,31 @@ import { YBModalForm } from '../../common/forms';
 import { YBCheckBox } from '../../common/forms/fields';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
 
-import { XClusterConfig } from '../XClusterTypes';
-
 import styles from './DeleteConfigModal.module.scss';
 
 interface DeleteConfigModalProps {
-  sourceUniverseUUID: string | undefined;
-  targetUniverseUUID: string | undefined;
-  xClusterConfig: XClusterConfig;
   onHide: () => void;
   visible: boolean;
+  xClusterConfigUUID: string;
 
   redirectUrl?: string;
+  sourceUniverseUUID?: string;
+  targetUniverseUUID?: string;
+  xClusterConfigName?: string;
 }
 
 export const DeleteConfigModal = ({
+  onHide,
+  redirectUrl,
   sourceUniverseUUID,
   targetUniverseUUID,
-  redirectUrl,
-  xClusterConfig,
-  onHide,
-  visible
+  visible,
+  xClusterConfigName,
+  xClusterConfigUUID
 }: DeleteConfigModalProps) => {
   const [forceDelete, setForceDelete] = useState(false);
   const queryClient = useQueryClient();
-
+  const xClusterConfigLabel = xClusterConfigName ?? xClusterConfigUUID;
   const deleteConfig = useMutation(
     (xClusterConfigUUID: string) => {
       return deleteXclusterConfig(xClusterConfigUUID, forceDelete);
@@ -56,7 +56,7 @@ export const DeleteConfigModal = ({
               toast.error(
                 <span className={styles.alertMsg}>
                   <i className="fa fa-exclamation-circle" />
-                  <span>{`Failed to delete xCluster configuration: ${xClusterConfig.name}`}</span>
+                  <span>{`Failed to delete xCluster configuration: ${xClusterConfigLabel}`}</span>
                   <a
                     href={`/tasks/${response.data.taskUUID}`}
                     rel="noopener noreferrer"
@@ -67,7 +67,7 @@ export const DeleteConfigModal = ({
                 </span>
               );
               // Invalidate the cached data for current xCluster config.
-              queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+              queryClient.invalidateQueries(['Xcluster', xClusterConfigUUID]);
             }
 
             // This xCluster config will be removed from the sourceXClusterConfigs for the source universe and
@@ -83,7 +83,7 @@ export const DeleteConfigModal = ({
           () => {
             // Invalidate the cached data for current xCluster config. The xCluster config status should change to
             // 'in progress' once the restart config task starts.
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(['Xcluster', xClusterConfigUUID]);
           }
         );
       },
@@ -95,7 +95,7 @@ export const DeleteConfigModal = ({
   const toggleForceDelete = () => setForceDelete(!forceDelete);
 
   const handleFormSubmit = (_: any, actions: FormikActions<any>) => {
-    deleteConfig.mutate(xClusterConfig.uuid, { onSettled: () => actions.setSubmitting(false) });
+    deleteConfig.mutate(xClusterConfigUUID, { onSettled: () => actions.setSubmitting(false) });
     onHide();
   };
 
@@ -106,7 +106,7 @@ export const DeleteConfigModal = ({
       onHide={onHide}
       onFormSubmit={handleFormSubmit}
       submitLabel="Delete Replication"
-      title={`Delete Replication: ${xClusterConfig.name}`}
+      title={`Delete Replication: ${xClusterConfigLabel}`}
       footerAccessory={
         <div className="force-delete">
           <YBCheckBox
