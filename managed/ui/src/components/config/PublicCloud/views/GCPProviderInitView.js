@@ -14,7 +14,12 @@ import {
 import { change, Field } from 'redux-form';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { YBLoading } from '../../../common/indicators';
-import { isNonEmptyObject, isNonEmptyString, trimString } from '../../../../utils/ObjectUtils';
+import {
+  isNonEmptyArray,
+  isNonEmptyObject,
+  isNonEmptyString,
+  trimString
+} from '../../../../utils/ObjectUtils';
 import { reduxForm, FieldArray } from 'redux-form';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 import { NTPConfig, NTP_TYPES } from './NTPConfig';
@@ -36,7 +41,7 @@ class renderRegionInput extends Component {
           <Row>
             <Col lg={6}>
               <Field
-                name={`${item}.region`}
+                name={`${item}.code`}
                 validate={validationIsRequired}
                 component={YBInputField}
                 placeHolder="Region Name"
@@ -104,7 +109,7 @@ class GCPProviderInitView extends Component {
       setUpChrony: vals['setUpChrony'],
       showSetUpChrony: vals['setUpChrony'],
       ntpServers: vals['ntpServers']
-    }
+    };
     if (isNonEmptyString(vals.destVpcId)) {
       gcpCreateConfig['network'] = vals.destVpcId;
       gcpCreateConfig['use_host_vpc'] = true;
@@ -116,7 +121,11 @@ class GCPProviderInitView extends Component {
     }
     if (vals.network_setup !== 'new_vpc') {
       vals.regionMapping.forEach(
-        (item) => (perRegionMetadata[item.region] = { subnetId: item.subnet , customImageId: item.customImageId})
+        (item) =>
+          (perRegionMetadata[item.code] = {
+            subnetId: item.subnet,
+            customImageId: item.customImageId
+          })
       );
     }
     if (isNonEmptyString(vals.firewall_tags)) {
@@ -128,7 +137,12 @@ class GCPProviderInitView extends Component {
     const configText = vals.gcpConfig;
     if (vals.credential_input === 'local_service_account') {
       gcpCreateConfig['use_host_credentials'] = true;
-      return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata, ntpConfig);
+      return self.props.createGCPProvider(
+        providerName,
+        gcpCreateConfig,
+        perRegionMetadata,
+        ntpConfig
+      );
     } else if (
       vals.credential_input === 'upload_service_account_json' &&
       isNonEmptyObject(configText)
@@ -140,7 +154,12 @@ class GCPProviderInitView extends Component {
       reader.onloadend = function () {
         try {
           gcpCreateConfig['config_file_contents'] = JSON.parse(reader.result);
-          return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata, ntpConfig);
+          return self.props.createGCPProvider(
+            providerName,
+            gcpCreateConfig,
+            perRegionMetadata,
+            ntpConfig
+          );
         } catch (e) {
           toast.error('Invalid GCP config JSON file');
         }
@@ -361,17 +380,16 @@ class GCPProviderInitView extends Component {
                 {gcpProjectField}
                 {destVpcField}
                 {regionInput}
-              <Row>
-                <Col lg={3}>
-                  <div className="form-item-custom-label">NTP Setup</div>
-                </Col>
-                <Col lg={7}>
-                  <NTPConfig onChange={this.updateFormField} hideHelp={true}/>
-                </Col>
-              </Row>
+                <Row>
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">NTP Setup</div>
+                  </Col>
+                  <Col lg={7}>
+                    <NTPConfig onChange={this.updateFormField} hideHelp={true} />
+                  </Col>
+                </Row>
               </Col>
             </Row>
-
           </div>
           <div className="form-action-button-container">
             <YBButton
@@ -396,16 +414,15 @@ class GCPProviderInitView extends Component {
 }
 
 const validate = (values) => {
-  const errors = {};
+  const errors = { regionMapping: [] };
   if (!isNonEmptyString(values.accountName)) {
     errors.accountName = 'Account Name is Required';
-  }
-  else {
-    if(!specialChars.test(values.accountName)){
+  } else {
+    if (!specialChars.test(values.accountName)) {
       errors.accountName = 'Account Name cannot have special characters except - and _';
     }
   }
-  
+
   if (!isNonEmptyObject(values.gcpConfig)) {
     errors.gcpConfig = 'Provider Config is Required';
   }
@@ -417,8 +434,19 @@ const validate = (values) => {
       errors.destVpcId = 'VPC Network Name is Required';
     }
   }
-  if(values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0){
-    errors.ntpServers = 'NTP servers cannot be empty'
+  if (values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0) {
+    errors.ntpServers = 'NTP servers cannot be empty';
+  }
+
+  if (values.regionMapping && isNonEmptyArray(values.regionMapping)) {
+    const requestedRegions = new Set();
+    values.regionMapping.forEach((region, idx) => {
+      if (requestedRegions.has(region.code)) {
+        errors.regionMapping[idx] = { code: 'Duplicate region code is not allowed.' };
+      } else {
+        requestedRegions.add(region.code);
+      }
+    });
   }
   return errors;
 };
