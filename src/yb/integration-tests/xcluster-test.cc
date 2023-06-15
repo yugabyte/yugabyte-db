@@ -1300,12 +1300,12 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
             CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
             [&ts_uuid, &data_mutex](const Result<client::internal::RemoteTabletPtr>& result) {
               if (result.ok()) {
-                std::lock_guard<std::mutex> l(data_mutex);
+                std::lock_guard l(data_mutex);
                 ts_uuid = (*result)->LeaderTServer()->permanent_uuid();
               }
             },
             client::UseCache::kFalse);
-        std::lock_guard<std::mutex> l(data_mutex);
+        std::lock_guard l(data_mutex);
         return !ts_uuid.empty();
       }, MonoDelta::FromSeconds(10), "Get TS for Tablet"));
 

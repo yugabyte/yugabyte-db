@@ -491,7 +491,7 @@ void RunningTransaction::AbortReceived(const Status& status,
 
   {
     MinRunningNotifier min_running_notifier(&context_.applier_);
-    std::lock_guard<std::mutex> lock(context_.mutex_);
+    std::lock_guard lock(context_.mutex_);
     context_.rpcs_.Unregister(&abort_handle_);
     abort_waiters_.swap(abort_waiters);
     // kMax status_time means that this status is not yet replicated and could be rejected.
@@ -559,7 +559,7 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
     VLOG_WITH_PREFIX(3) << "Finished applying intents";
 
     MinRunningNotifier min_running_notifier(&context_.applier_);
-    std::lock_guard<std::mutex> lock(context_.mutex_);
+    std::lock_guard lock(context_.mutex_);
     context_.RemoveUnlocked(id(), RemoveReason::kLargeApplied, &min_running_notifier);
   }
 }

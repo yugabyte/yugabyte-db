@@ -274,7 +274,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Adjust the max number of tablets that will be included in a single report.
   // This is normally controlled by a master-configured GFLAG.
   void SetReportLimit(int32_t limit) {
-    std::lock_guard<RWMutex> write_lock(mutex_);
+    std::lock_guard write_lock(mutex_);
     report_limit_ = limit;
   }
   int32_t GetReportLimit() {

@@ -1130,7 +1130,7 @@ yb::Result<BlockBasedTable::CachableEntry<IndexReader>> BlockBasedTable::GetInde
       return ReturnNoIOError();
     }
     // Note that we've already performed first check at the beginning of method.
-    std::lock_guard<std::mutex> lock(rep_->data_index_reader_mutex);
+    std::lock_guard lock(rep_->data_index_reader_mutex);
     index_reader = rep_->data_index_reader.get(std::memory_order_relaxed);
     if (!index_reader) {
       // preloaded_meta_index_iter is not needed for kBinarySearch data index which DocDB uses,

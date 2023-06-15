@@ -85,7 +85,7 @@ void MultiRaftHeartbeatBatcher::Start() {
 }
 
 MultiRaftHeartbeatBatcher::~MultiRaftHeartbeatBatcher() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   LOG_IF(DFATAL, current_batch_ && !current_batch_->response_callback_data.empty())
       << "Not empty batch in ~MultiRaftHeartbeatBatcher";
 }
@@ -95,7 +95,7 @@ void MultiRaftHeartbeatBatcher::AddRequestToBatch(ConsensusRequestPB* request,
                                                   HeartbeatResponseCallback callback) {
   std::shared_ptr<MultiRaftConsensusData> data = nullptr;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     current_batch_->response_callback_data.push_back({
       .resp = response,
       .callback = std::move(callback)
@@ -113,7 +113,7 @@ void MultiRaftHeartbeatBatcher::AddRequestToBatch(ConsensusRequestPB* request,
 void MultiRaftHeartbeatBatcher::PrepareAndSendBatchRequest() {
   std::shared_ptr<MultiRaftConsensusData> data;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     data = PrepareNextBatchRequest();
   }
   SendBatchRequest(data);
@@ -159,7 +159,7 @@ void MultiRaftHeartbeatBatcher::Shutdown() {
   decltype(current_batch_) batch;
   batch_sender_->Stop();
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     batch.swap(current_batch_);
   }
   static const Status status = STATUS(Aborted, "MultiRaft shutdown");
@@ -180,7 +180,7 @@ MultiRaftHeartbeatBatcherPtr MultiRaftManager::AddOrGetBatcher(const RaftPeerPB&
   }
 
   auto hostport = HostPortFromPB(DesiredHostPort(remote_peer_pb, local_peer_cloud_info_pb_));
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (shutdown_) {
     LOG(DFATAL) << __func__ << " after shutdown";
     return nullptr;
@@ -207,7 +207,7 @@ MultiRaftManager::~MultiRaftManager() {
 void MultiRaftManager::StartShutdown() {
   std::vector<MultiRaftHeartbeatBatcherPtr> batchers;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     shutdown_ = true;
     batchers.reserve(batchers_.size());
     for (const auto& [hostport, weak_batcher] : batchers_) {

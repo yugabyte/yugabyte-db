@@ -175,7 +175,7 @@ class TSDescriptor {
   // Set the number of live replicas (i.e. running or bootstrapping).
   void set_num_live_replicas(int num_live_replicas) {
     DCHECK_GE(num_live_replicas, 0);
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     num_live_replicas_ = num_live_replicas;
   }
 
@@ -187,7 +187,7 @@ class TSDescriptor {
 
   void set_leader_count(int leader_count) {
     DCHECK_GE(leader_count, 0);
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     leader_count_ = leader_count;
   }
 
@@ -202,7 +202,7 @@ class TSDescriptor {
   }
 
   void set_hybrid_time(HybridTime hybrid_time) {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     hybrid_time_ = hybrid_time;
   }
 
@@ -271,7 +271,7 @@ class TSDescriptor {
   void GetMetrics(TServerMetricsPB* metrics);
 
   void ClearMetrics() {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     ts_metrics_.ClearMetrics();
   }
 
@@ -429,7 +429,7 @@ template <class TProxy>
 Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
                                       std::shared_ptr<TProxy>* result_cache) {
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     if (*result_cache) {
       *result = *result_cache;
       return Status::OK();

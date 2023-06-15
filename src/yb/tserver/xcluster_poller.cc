@@ -124,7 +124,7 @@ void XClusterPoller::Shutdown() {
 
   rpc::RpcCommandPtr rpc_to_abort;
   {
-    std::lock_guard<std::mutex> l(data_mutex_);
+    std::lock_guard l(data_mutex_);
     output_client_->Shutdown();
     if (poll_handle_ != rpcs_->InvalidHandle()) {
       rpc_to_abort = *poll_handle_;
@@ -153,7 +153,7 @@ bool XClusterPoller::CheckOffline() { return shutdown_.load(); }
 
 #define ACQUIRE_MUTEX_IF_ONLINE() \
   RETURN_WHEN_OFFLINE(); \
-  std::lock_guard<std::mutex> l(data_mutex_);
+  std::lock_guard l(data_mutex_);
 
 void XClusterPoller::UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& schema_versions) {
   RETURN_WHEN_OFFLINE();
@@ -333,7 +333,7 @@ void XClusterPoller::UpdateSchemaVersionsForApply() {
 void XClusterPoller::HandlePoll(const Status& status, cdc::GetChangesResponsePB&& resp) {
   rpc::RpcCommandPtr retained;
   {
-    std::lock_guard<std::mutex> l(data_mutex_);
+    std::lock_guard l(data_mutex_);
     retained = rpcs_->Unregister(&poll_handle_);
   }
   RETURN_WHEN_OFFLINE();

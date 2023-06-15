@@ -297,7 +297,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns the partition of the Raft group.
   std::shared_ptr<dockv::Partition> partition() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     return partition_;
   }
 
@@ -305,7 +305,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // group was first created for. For single-tenant table, it is the primary table.
   TableId table_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     return primary_table_id_;
   }
 
@@ -387,37 +387,37 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   bool IsUnderXClusterReplication() const;
 
   bool has_been_fully_compacted() const {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     return kv_store_.has_been_fully_compacted;
   }
 
   void set_has_been_fully_compacted(const bool& value) {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     kv_store_.has_been_fully_compacted = value;
   }
 
   uint64_t last_full_compaction_time() {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     return kv_store_.last_full_compaction_time;
   }
 
   void set_last_full_compaction_time(const uint64& value) {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     kv_store_.last_full_compaction_time = value;
   }
 
   bool AddSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     return kv_store_.snapshot_schedules.insert(schedule_id).second;
   }
 
   bool RemoveSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     return kv_store_.snapshot_schedules.erase(schedule_id) != 0;
   }
 
   std::vector<SnapshotScheduleId> SnapshotSchedules() const {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     return std::vector<SnapshotScheduleId>(
         kv_store_.snapshot_schedules.begin(), kv_store_.snapshot_schedules.end());
   }
@@ -563,7 +563,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const std::string& lower_bound_key, const std::string& upper_bound_key) const;
 
   TableInfoPtr primary_table_info() const {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     return primary_table_info_unlocked();
   }
 

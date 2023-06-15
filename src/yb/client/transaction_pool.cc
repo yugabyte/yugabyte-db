@@ -105,7 +105,7 @@ class SingleLocalityPool {
     uint64_t old_taken;
     IncrementCounter(cache_queries_);
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       old_taken = taken_transactions_;
       ++taken_transactions_;
       // We create new transaction on each take request, does not matter whether is was
@@ -144,7 +144,7 @@ class SingleLocalityPool {
     }
     DecrementGauge(gauge_preparing_);
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (status.ok()) {
       uint64_t taken_during_preparation = taken_transactions_ - taken_before_creation;
       taken_during_preparation_sum_ += taken_during_preparation;
@@ -166,7 +166,7 @@ class SingleLocalityPool {
   }
 
   void Cleanup(const Status& status) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     scheduled_task_ = rpc::kUninitializedScheduledTaskId;
     if (CheckClosing()) {
       return;
@@ -280,7 +280,7 @@ class TransactionPool::Impl {
                            !manager_->PlacementLocalTransactionsPossible();
     auto transaction = (is_global ? &global_pool_ : &local_pool_)->Take(deadline);
     if (FLAGS_TEST_track_last_transaction) {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       last_transaction_ = transaction;
     }
     TRACE_TO(transaction->trace(), "Take");
@@ -288,7 +288,7 @@ class TransactionPool::Impl {
   }
 
   YBTransactionPtr TEST_GetLastTransaction() EXCLUDES(mutex_) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return last_transaction_;
   }
  private:

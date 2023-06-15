@@ -104,7 +104,7 @@ client::TransactionPool& DbServerBase::TransactionPool() {
 }
 
 void DbServerBase::EnsureTransactionPoolCreated() {
-  std::lock_guard<decltype(transaction_pool_mutex_)> lock(transaction_pool_mutex_);
+  std::lock_guard lock(transaction_pool_mutex_);
   if (transaction_pool_holder_) {
     return;
   }

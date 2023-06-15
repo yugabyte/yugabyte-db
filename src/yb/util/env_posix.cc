@@ -944,7 +944,7 @@ static int LockOrUnlock(const std::string& fname,
                         int fd,
                         bool lock,
                         bool recursive_lock_ok) {
-  std::lock_guard<std::mutex> guard(mutex_locked_files);
+  std::lock_guard guard(mutex_locked_files);
   if (lock) {
     // If recursive locks on the same file must be disallowed, but the specified file name already
     // exists in the locked_files set, then it is already locked, so we fail this lock attempt.

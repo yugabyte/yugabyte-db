@@ -615,7 +615,7 @@ void ClusterLoadBalancer::RecordActivity(bool tasks_added_in_this_run, uint32_t 
   // Update the list of tables for whom load-balancing has been
   // skipped in this run.
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     skipped_tables_ = skipped_tables_per_run_;
   }
 

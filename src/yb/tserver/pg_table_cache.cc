@@ -62,12 +62,12 @@ class PgTableCache::Impl {
   }
 
   void Invalidate(const TableId& table_id) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     cache_.erase(table_id);
   }
 
   void InvalidateAll(CoarseTimePoint invalidation_time) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (last_cache_invalidation_ > invalidation_time) {
       return;
     }
@@ -89,7 +89,7 @@ class PgTableCache::Impl {
   }
 
   std::pair<std::shared_ptr<CacheEntry>, bool> DoGetEntry(const TableId& table_id) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto it = cache_.find(table_id);
     if (it != cache_.end()) {
       return std::make_pair(it->second, false);

@@ -231,7 +231,7 @@ class MasterSnapshotCoordinator::Impl {
       const SnapshotScheduleId& schedule_id, int64_t leader_term, CoarseTimePoint deadline) {
     boost::optional<SnapshotScheduleOperation> operation;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       auto it = schedules_.find(schedule_id);
       if (it == schedules_.end()) {
         return STATUS_FORMAT(NotFound, "Unknown snapshot schedule: $0", schedule_id);
@@ -285,7 +285,7 @@ class MasterSnapshotCoordinator::Impl {
     boost::optional<tablet::CreateSnapshotData> sys_catalog_snapshot_data;
     bool snapshot_empty = false;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       auto emplace_result = snapshots_.emplace(std::move(snapshot));
       if (!emplace_result.second) {
         LOG(INFO) << "Received a duplicate create snapshot request for id: " << id;
@@ -346,7 +346,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Status Load(tablet::Tablet* tablet) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     RETURN_NOT_OK(LoadEntryOfType<SysSnapshotEntryPB>(
         tablet, SysRowEntryType::SNAPSHOT, &snapshots_));
     RETURN_NOT_OK(LoadEntryOfType<SnapshotScheduleOptionsPB>(
@@ -403,7 +403,7 @@ class MasterSnapshotCoordinator::Impl {
     auto value_type = decoded_value.primitive_value().value_type();
 
     if (value_type == dockv::ValueEntryType::kTombstone) {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       auto id = Uuid::TryFullyDecode(id_str);
       if (id.IsNil()) {
         LOG(WARNING) << "Unable to decode id: " << id_str;
@@ -421,14 +421,14 @@ class MasterSnapshotCoordinator::Impl {
           decoded_value.primitive_value().value_type());
     }
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return LoadEntry<Pb>(id_str, decoded_value.primitive_value().GetString(), map);
   }
 
   Status ListSnapshots(
       const TxnSnapshotId& snapshot_id, bool list_deleted,
       ListSnapshotsDetailOptionsPB options, ListSnapshotsResponsePB* resp) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (snapshot_id.IsNil()) {
       for (const auto& p : snapshots_.get<ScheduleTag>()) {
         if (!list_deleted) {
@@ -451,7 +451,7 @@ class MasterSnapshotCoordinator::Impl {
     VLOG_WITH_FUNC(4) << snapshot_id << ", " << leader_term;
 
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
       RETURN_NOT_OK(snapshot.TryStartDelete());
     }
@@ -470,7 +470,7 @@ class MasterSnapshotCoordinator::Impl {
     TabletSnapshotOperations operations;
     bool delete_sys_catalog_snapshot;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
       if (snapshot.schedule_id()) {
         delete_sys_catalog_snapshot = true;
@@ -516,7 +516,7 @@ class MasterSnapshotCoordinator::Impl {
       .non_system_tablets_to_restore = {},
     });
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(restoration->snapshot_id));
       SnapshotScheduleState& schedule_state = VERIFY_RESULT(
           FindSnapshotSchedule(snapshot.schedule_id()));
@@ -557,7 +557,7 @@ class MasterSnapshotCoordinator::Impl {
   Status ListRestorations(
       const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
       ListSnapshotRestorationsResponsePB* resp) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!restoration_id) {
       for (const auto& p : restorations_) {
         if (!snapshot_id || p->snapshot_id() == snapshot_id) {
@@ -588,7 +588,7 @@ class MasterSnapshotCoordinator::Impl {
     const std::string& namespace_name = table.get().namespace_().name();
     const YQLDatabase namespace_type = table.get().namespace_().database_type();
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       const auto& existing_schedule = FindSnapshotSchedule(namespace_name, namespace_type);
       if (existing_schedule.ok()) {
         return STATUS(AlreadyPresent,
@@ -641,7 +641,7 @@ class MasterSnapshotCoordinator::Impl {
 
   Status ListSnapshotSchedules(
       const SnapshotScheduleId& snapshot_schedule_id, ListSnapshotSchedulesResponsePB* resp) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (snapshot_schedule_id.IsNil()) {
       for (const auto& p : schedules_) {
         RETURN_NOT_OK(FillSchedule(*p, resp->add_schedules()));
@@ -658,7 +658,7 @@ class MasterSnapshotCoordinator::Impl {
       CoarseTimePoint deadline) {
     docdb::KeyValueWriteBatchPB write_batch;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       SnapshotScheduleState& schedule = VERIFY_RESULT(FindSnapshotSchedule(snapshot_schedule_id));
       SnapshotScheduleOptionsPB updated_options = schedule.options();
       updated_options.set_delete_time(context_.Clock()->Now().ToUint64());
@@ -672,13 +672,13 @@ class MasterSnapshotCoordinator::Impl {
       CoarseTimePoint deadline) {
     docdb::KeyValueWriteBatchPB write_batch;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       SnapshotScheduleState& schedule = VERIFY_RESULT(FindSnapshotSchedule(id));
       auto updated_options = VERIFY_RESULT(schedule.GetUpdatedOptions(req));
       RETURN_NOT_OK(schedule.StoreToWriteBatch(updated_options, &write_batch));
     }
     auto status = SynchronizedWrite(std::move(write_batch), leader_term, deadline, &context_);
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     SnapshotScheduleState& schedule = VERIFY_RESULT(FindSnapshotSchedule(id));
     SnapshotScheduleInfoPB result;
     RETURN_NOT_OK(FillSchedule(schedule, &result));
@@ -756,7 +756,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Status FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto* out = resp->mutable_snapshots_info();
     for (const auto& schedule : schedules_) {
       // Don't send deleted schedules.
@@ -786,7 +786,7 @@ class MasterSnapshotCoordinator::Impl {
 
   HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
     HybridTime min_last_snapshot_ht = HybridTime::kMax;
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     for (const auto& schedule : schedules_) {
       if (schedule->deleted()) {
         continue;
@@ -883,7 +883,7 @@ class MasterSnapshotCoordinator::Impl {
     // Issue pending restoration rpcs.
     vector<RestorationData> postponed_restores;
     {
-      std::lock_guard<decltype(mutex_)> lock(mutex_);
+      std::lock_guard lock(mutex_);
       // TODO(pitr) cancel restorations.
       for (const auto& restoration : restorations_) {
         auto snapshot = ValidateRestoreAndGetSnapshot(restoration.get());
@@ -933,7 +933,7 @@ class MasterSnapshotCoordinator::Impl {
       SysRowEntryType type) {
     std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       for (const auto& schedule : schedules_) {
         if (!schedule->deleted()) {
           schedules.emplace_back(schedule->id(), schedule->options().filter());
@@ -967,7 +967,7 @@ class MasterSnapshotCoordinator::Impl {
   Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) {
     auto lock = table_info.LockForRead();
     {
-      std::lock_guard<decltype(mutex_)> l(mutex_);
+      std::lock_guard l(mutex_);
       for (const auto& schedule : schedules_) {
         if (VERIFY_RESULT(TableMatchesSchedule(
                 schedule->options().filter().tables(), lock->pb, table_info.id()))) {
@@ -980,7 +980,7 @@ class MasterSnapshotCoordinator::Impl {
 
   Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info) {
     {
-      std::lock_guard<decltype(mutex_)> l(mutex_);
+      std::lock_guard l(mutex_);
       for (const auto& restoration : restorations_) {
         // If restore does not have a snapshot schedule then it
         // is not a PITR restore.
@@ -1007,7 +1007,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   bool IsPitrActive() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     for (const auto& schedule : schedules_) {
       if (!schedule->deleted()) {
         return true;
@@ -1018,7 +1018,7 @@ class MasterSnapshotCoordinator::Impl {
 
   Result<docdb::KeyValuePairPB> UpdateRestorationAndGetWritePair(
       SnapshotScheduleRestoration* restoration) {
-    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    std::lock_guard lock(mutex_);
     RestorationState* restoration_ptr =
         VERIFY_RESULT(GetRestorationPtrOrNull(restoration->restoration_id));
     // Won't be found on followers.
@@ -1061,7 +1061,7 @@ class MasterSnapshotCoordinator::Impl {
 
   void Start() {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       last_restorations_update_ht_ = context_.Clock()->Now();
     }
     poller_.Start(&context_.Scheduler(), FLAGS_snapshot_coordinator_poll_interval_ms * 1ms);
@@ -1323,7 +1323,7 @@ class MasterSnapshotCoordinator::Impl {
     TabletRestoreOperations restore_operations;
     PollSchedulesData schedules_data;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       for (const auto& p : snapshots_) {
         if (p->NeedCleanup()) {
           LOG(INFO) << "Cleanup of snapshot " << p->id() << " started.";
@@ -1470,7 +1470,7 @@ class MasterSnapshotCoordinator::Impl {
   template <typename Id, typename Map>
   void CleanupObjectAborted(Id id, const Map& map) {
     LOG(INFO) << "Aborting cleanup of object " << id;
-    std::lock_guard<std::mutex> l(mutex_);
+    std::lock_guard l(mutex_);
     auto it = map.find(id);
     if (it == map.end()) {
       return;
@@ -1540,7 +1540,7 @@ class MasterSnapshotCoordinator::Impl {
       const TxnSnapshotId& snapshot_id) {
     LOG(INFO) << __func__ << " for " << schedule_id << ", snapshot: " << snapshot_id
               << ", status: " << status;
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto it = schedules_.find(schedule_id);
     if (it == schedules_.end()) {
       return;
@@ -1640,7 +1640,7 @@ class MasterSnapshotCoordinator::Impl {
   void DeleteSnapshotAborted(
       const Status& status, const TxnSnapshotId& snapshot_id) {
     LOG(INFO) << __func__ << ", snapshot: " << snapshot_id << ", status: " << status;
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto it = snapshots_.find(snapshot_id);
     if (it == snapshots_.end()) {
       return;
@@ -1872,7 +1872,7 @@ class MasterSnapshotCoordinator::Impl {
     std::unordered_set<TabletId> snapshot_tablets;
     bool tablet_list_empty = false;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
       if (!VERIFY_RESULT(snapshot.Complete())) {
         return STATUS(IllegalState, "The snapshot state is not complete", snapshot_id.ToString(),
@@ -1926,7 +1926,7 @@ class MasterSnapshotCoordinator::Impl {
 
     // For empty tablet list, finish the restore.
     if (tablet_list_empty) {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       RestorationState* restoration_ptr = &VERIFY_RESULT(FindRestoration(restoration_id)).get();
       if (restoration_ptr) {
         FinishRestoration(restoration_ptr, leader_term);

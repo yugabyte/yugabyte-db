@@ -14,6 +14,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/client/session.h"
 #include "yb/gutil/map-util.h"
+#include "yb/util/shared_lock.h"
 
 // If this is the initial load, assign the variable to class local variable of the same name and _
 // suffix. If this is a refresh, validate that the value has not changed.
@@ -43,7 +44,7 @@ std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletM
     const TabletId& tablet_id) {
   DCHECK(loaded_);
   {
-    std::shared_lock l(tablet_metadata_map_mutex_);
+    SharedLock l(tablet_metadata_map_mutex_);
     auto metadata = FindPtrOrNull(tablet_metadata_map_, tablet_id);
     if (metadata) {
       return metadata;

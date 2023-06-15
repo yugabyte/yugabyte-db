@@ -236,7 +236,7 @@ class PgClientServiceImpl::Impl {
       session->StartExchange(instance_id_);
     }
 
-    std::lock_guard<rw_spinlock> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto it = sessions_.insert(std::move(session)).first;
     session_expiration_queue_.push({(**it).expiration(), session_id});
     return Status::OK();
@@ -655,7 +655,7 @@ class PgClientServiceImpl::Impl {
 
   void CheckExpiredSessions() {
     auto now = CoarseMonoClock::now();
-    std::lock_guard<rw_spinlock> lock(mutex_);
+    std::lock_guard lock(mutex_);
     while (!session_expiration_queue_.empty()) {
       auto& top = session_expiration_queue_.top();
       if (top.first > now) {

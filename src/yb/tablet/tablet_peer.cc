@@ -198,7 +198,7 @@ TabletPeer::TabletPeer(
       client_future_(client_future) {}
 
 TabletPeer::~TabletPeer() {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   // We should either have called Shutdown(), or we should have never called
   // Init().
   LOG_IF_WITH_PREFIX(DFATAL, tablet_) << "TabletPeer not fully shut down.";
@@ -226,7 +226,7 @@ Status TabletPeer::InitTabletPeer(
   }
 
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     auto state = state_.load(std::memory_order_acquire);
     if (state != RaftGroupStatePB::BOOTSTRAPPING) {
       return STATUS_FORMAT(
@@ -424,7 +424,7 @@ Status TabletPeer::CheckOperationAllowed(const OpId& op_id, consensus::Operation
 
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   {
-    std::lock_guard<simple_spinlock> l(state_change_lock_);
+    std::lock_guard l(state_change_lock_);
     TRACE("Starting consensus");
 
     VLOG_WITH_PREFIX(2) << "Peer starting";
@@ -461,7 +461,7 @@ bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
   {
-    std::lock_guard<decltype(lock_)> lock(lock_);
+    std::lock_guard lock(lock_);
     if (tablet_) {
       tablet_->StartShutdown();
     }
@@ -481,7 +481,7 @@ bool TabletPeer::StartShutdown() {
     }
   }
 
-  std::lock_guard<simple_spinlock> l(state_change_lock_);
+  std::lock_guard l(state_change_lock_);
   // Even though Tablet::Shutdown() also unregisters its ops, we have to do it here
   // to ensure that any currently running operation finishes before we proceed with
   // the rest of the shutdown sequence. In particular, a maintenance operation could
@@ -490,7 +490,7 @@ bool TabletPeer::StartShutdown() {
 
   std::shared_ptr<consensus::RaftConsensus> consensus;
   {
-    std::lock_guard<decltype(lock_)> lock(lock_);
+    std::lock_guard lock(lock_);
     consensus = consensus_;
   }
   if (consensus) {
@@ -537,7 +537,7 @@ void TabletPeer::CompleteShutdown(
 
   // Only mark the peer as SHUTDOWN when all other components have shut down.
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     strand_.reset();
     // Release mem tracker resources.
     has_consensus_.store(false, std::memory_order_release);
@@ -739,7 +739,7 @@ Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   std::shared_ptr<consensus::RaftConsensus> consensus;
   TabletPtr tablet;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     consensus = consensus_;
     tablet = tablet_;
   }
@@ -767,7 +767,7 @@ std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
 }
 
 void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   DCHECK(status_pb_out != nullptr);
   DCHECK(status_listener_.get() != nullptr);
   const auto disk_size_info = GetOnDiskSizeInfo();
@@ -832,12 +832,12 @@ Result<TabletPtr> TabletPeer::shared_tablet_safe() const {
 }
 
 TabletDataState TabletPeer::data_state() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return meta_->tablet_data_state();
 }
 
 string TabletPeer::HumanReadableState() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   TabletDataState data_state = meta_->tablet_data_state();
   RaftGroupStatePB state = this->state();
   // If failed, any number of things could have gone wrong.
@@ -1118,12 +1118,12 @@ Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replica
 }
 
 Status TabletPeer::set_cdc_min_replicated_index(int64_t cdc_min_replicated_index) {
-  std::lock_guard<decltype(cdc_min_replicated_index_lock_)> l(cdc_min_replicated_index_lock_);
+  std::lock_guard l(cdc_min_replicated_index_lock_);
   return set_cdc_min_replicated_index_unlocked(cdc_min_replicated_index);
 }
 
 Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
-  std::lock_guard<decltype(cdc_min_replicated_index_lock_)> l(cdc_min_replicated_index_lock_);
+  std::lock_guard l(cdc_min_replicated_index_lock_);
   auto seconds_since_last_refresh =
       MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
   if (seconds_since_last_refresh >
@@ -1227,7 +1227,7 @@ Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
   RETURN_NOT_OK(set_cdc_sdk_safe_time(cdc_sdk_safe_time));
 
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     RETURN_NOT_OK(CheckRunning());
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
@@ -1372,22 +1372,22 @@ consensus::Consensus* TabletPeer::consensus() const {
 }
 
 consensus::RaftConsensus* TabletPeer::raft_consensus() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return consensus_.get();
 }
 
 shared_ptr<consensus::Consensus> TabletPeer::shared_consensus() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return consensus_;
 }
 
 shared_ptr<consensus::RaftConsensus> TabletPeer::shared_raft_consensus() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return consensus_;
 }
 
 std::shared_ptr<RetryableRequestsFlusher> TabletPeer::shared_retryable_requests_flusher() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return retryable_requests_flusher_;
 }
 
@@ -1417,7 +1417,7 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
   // Note that the state_change_lock_ is taken in Shutdown(),
   // prior to calling UnregisterMaintenanceOps().
 
-  std::lock_guard<simple_spinlock> l(state_change_lock_);
+  std::lock_guard l(state_change_lock_);
 
   if (state() != RaftGroupStatePB::RUNNING) {
     LOG_WITH_PREFIX(WARNING) << "Not registering maintenance operations: tablet not RUNNING";
@@ -1504,7 +1504,7 @@ Result<client::YBClient*> TabletPeer::client() const {
 int64_t TabletPeer::LeaderTerm() const {
   shared_ptr<consensus::Consensus> consensus;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     consensus = consensus_;
   }
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
@@ -1517,7 +1517,7 @@ Result<HybridTime> TabletPeer::LeaderSafeTime() const {
 consensus::LeaderStatus TabletPeer::LeaderStatus(bool allow_stale) const {
   shared_ptr<consensus::Consensus> consensus;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     consensus = consensus_;
   }
   return consensus ? consensus->GetLeaderStatus(allow_stale) : consensus::LeaderStatus::NOT_LEADER;

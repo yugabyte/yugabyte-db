@@ -75,7 +75,7 @@ Result<std::shared_ptr<PgSequenceCache::Entry>> PgSequenceCache::GetWhenAvailabl
 
   std::shared_ptr<Entry> entry;
   {
-    std::lock_guard<simple_spinlock> cache_lock_guard(lock_);
+    std::lock_guard cache_lock_guard(lock_);
     if (!cache_.contains(sequence_id)) {
       cache_[sequence_id] = std::make_shared<Entry>();
     }

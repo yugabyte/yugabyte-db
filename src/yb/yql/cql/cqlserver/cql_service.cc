@@ -159,7 +159,7 @@ CQLServiceImpl::~CQLServiceImpl() {
 client::YBClient* CQLServiceImpl::client() const {
   auto client = server_->tserver()->client();
   if (client && !is_metadata_initialized_.load(std::memory_order_acquire)) {
-    std::lock_guard<std::mutex> l(metadata_init_mutex_);
+    std::lock_guard l(metadata_init_mutex_);
     if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
       auto meta_data_cache_mem_tracker =
           MemTracker::FindOrCreateTracker(0, "CQL Metadata cache", server_->mem_tracker());
@@ -185,7 +185,7 @@ void CQLServiceImpl::CompleteInit() {
 void CQLServiceImpl::Shutdown() {
   decltype(processors_) processors;
   {
-    std::lock_guard<std::mutex> guard(processors_mutex_);
+    std::lock_guard guard(processors_mutex_);
     processors.swap(processors_);
   }
   for (const auto& processor : processors) {
@@ -218,7 +218,7 @@ Result<CQLProcessor*> CQLServiceImpl::GetProcessor() {
   {
     // Retrieve the next available processor. If none is available, allocate a new slot in the list.
     // Then create the processor outside the mutex below.
-    std::lock_guard<std::mutex> guard(processors_mutex_);
+    std::lock_guard guard(processors_mutex_);
     if (next_available_processor_ != processors_.end()) {
       return (next_available_processor_++)->get();
     }
@@ -239,7 +239,7 @@ Result<CQLProcessor*> CQLServiceImpl::GetProcessor() {
 
 void CQLServiceImpl::ReturnProcessor(const CQLProcessorListPos& pos) {
   // Put the processor back before the next available one.
-  std::lock_guard<std::mutex> guard(processors_mutex_);
+  std::lock_guard guard(processors_mutex_);
   processors_.splice(next_available_processor_, processors_, pos);
   next_available_processor_ = pos;
 }
@@ -247,7 +247,7 @@ void CQLServiceImpl::ReturnProcessor(const CQLProcessorListPos& pos) {
 shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
     const ql::CQLMessage::QueryId& query_id, const string& query, ql::QLEnv* ql_env) {
   // Get exclusive lock before allocating a prepared statement and updating the LRU list.
-  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  std::lock_guard guard(prepared_stmts_mutex_);
 
   shared_ptr<CQLStatement> stmt;
   const auto itr = prepared_stmts_map_.find(query_id);
@@ -290,7 +290,7 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
 Result<std::shared_ptr<const CQLStatement>> CQLServiceImpl::GetPreparedStatement(
     const ql::CQLMessage::QueryId& query_id, SchemaVersion version) {
   // Get exclusive lock before looking up a prepared statement and updating the LRU list.
-  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  std::lock_guard guard(prepared_stmts_mutex_);
 
   const auto itr = prepared_stmts_map_.find(query_id);
   if (itr == prepared_stmts_map_.end()) {
@@ -328,7 +328,7 @@ Result<std::shared_ptr<const CQLStatement>> CQLServiceImpl::GetPreparedStatement
 
 void CQLServiceImpl::DeletePreparedStatement(const shared_ptr<const CQLStatement>& stmt) {
   // Get exclusive lock before deleting the prepared statement.
-  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  std::lock_guard guard(prepared_stmts_mutex_);
 
   DeletePreparedStatementUnlocked(stmt);
 
@@ -357,7 +357,7 @@ bool CQLServiceImpl::CheckPassword(
   std::string key = sha_hash + ":" + expected_bcrypt_hash;
 
   {
-    std::lock_guard<std::mutex> guard(password_cache_mutex_);
+    std::lock_guard guard(password_cache_mutex_);
     auto entry = password_cache_.get(key);
     if (entry) {
       return true;
@@ -367,7 +367,7 @@ bool CQLServiceImpl::CheckPassword(
   // bcrypt_checkpw has stringcmp semantics.
   bool correct = util::bcrypt_checkpw(plain.c_str(), expected_bcrypt_hash.c_str()) == 0;
   if (correct) {
-    std::lock_guard<std::mutex> guard(password_cache_mutex_);
+    std::lock_guard guard(password_cache_mutex_);
     // Boost's LRU cache interprets insertion of a duplicate key as a no-op, so
     // even if two threads successfully log in to the same account, there should
     // not be a race condition here.
@@ -406,7 +406,7 @@ void CQLServiceImpl::DeletePreparedStatementUnlocked(
 void CQLServiceImpl::CollectGarbage(size_t required) {
   // Get exclusive lock before deleting the least recently used statement at the end of the LRU
   // list from the cache.
-  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  std::lock_guard guard(prepared_stmts_mutex_);
 
   if (!prepared_stmts_list_.empty()) {
     DeletePreparedStatementUnlocked(prepared_stmts_list_.back());
@@ -446,7 +446,7 @@ void CQLServiceImpl::GetPreparedStatementMetrics(
     std::vector<std::shared_ptr<StatementMetrics>>* metrics) {
   auto const statement_limit = FLAGS_cql_dump_statement_metrics_limit;
   int64_t num_statements = 0;
-  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  std::lock_guard guard(prepared_stmts_mutex_);
   for (auto stmt : prepared_stmts_map_) {
     shared_ptr<StmtCounters> stmt_counters = stmt.second->GetWritableCounters();
     if (!stmt_counters) { // To ensure GetCounters does not return null.

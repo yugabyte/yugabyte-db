@@ -1875,7 +1875,7 @@ Status CatalogManager::IsBootstrapRequired(
           bool bootstrap_required = false;
           auto status =
               IsTableBootstrapRequired(table_id, stream_id, deadline, &bootstrap_required);
-          std::lock_guard<std::mutex> lock(*data_lock);
+          std::lock_guard lock(*data_lock);
           if (*task_completed) {
             return;  // Prevent calling set_value below twice.
           }
@@ -2744,7 +2744,7 @@ void CatalogManager::GetCDCStreamCallback(
 
   // todo check options
   {
-    std::lock_guard<std::mutex> lock(*update_infos_lock);
+    std::lock_guard lock(*update_infos_lock);
     stream_update_infos->push_back({bootstrap_id, *table_id, *options});
   }
 
@@ -2752,7 +2752,7 @@ void CatalogManager::GetCDCStreamCallback(
     // Extra callback on universe setup success - update the producer to let it know that
     // the bootstrapping is complete. This callback will only be called once among all
     // the GetCDCStreamCallback calls, and we update all streams in batch at once.
-    std::lock_guard<std::mutex> lock(*update_infos_lock);
+    std::lock_guard lock(*update_infos_lock);
 
     std::vector<CDCStreamId> update_bootstrap_ids;
     std::vector<SysCDCStreamEntryPB> update_entries;

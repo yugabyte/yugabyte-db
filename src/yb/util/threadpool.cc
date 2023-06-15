@@ -712,7 +712,7 @@ void TaskRunner::CompleteTask(const Status& status) {
     }
   }
   if (--running_tasks_ == 0) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     cond_.notify_one();
   }
 }

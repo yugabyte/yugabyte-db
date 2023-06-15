@@ -120,7 +120,7 @@ class XClusterOutputClient : public XClusterOutputClientIf {
 
     rpc::RpcCommandPtr rpc_to_abort;
     {
-      std::lock_guard<decltype(lock_)> l(lock_);
+      std::lock_guard l(lock_);
       if (write_handle_ != rpcs_->InvalidHandle()) {
         rpc_to_abort = *write_handle_;
       }
@@ -296,7 +296,7 @@ void XClusterOutputClient::SetLastCompatibleConsumerSchemaVersionUnlocked(
 }
 
 void XClusterOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version) {
-  std::lock_guard<decltype(lock_)> lock(lock_);
+  std::lock_guard lock(lock_);
   SetLastCompatibleConsumerSchemaVersionUnlocked(schema_version);
 }
 
@@ -329,7 +329,7 @@ Status XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesRespons
 
   // Init class variables that threads will use.
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     DCHECK(consensus::OpIdEquals(op_id_, consensus::MinimumOpId()));
     op_id_ = poller_resp->checkpoint().op_id();
     error_status_ = Status::OK();
@@ -453,7 +453,7 @@ Result<std::vector<TabletId>> XClusterOutputClient::GetInvolvedTargetTabletsFrom
 Status XClusterOutputClient::SendTransactionUpdates() {
   std::vector<client::ExternalTransactionMetadata> transaction_metadatas;
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     transaction_metadatas = std::move(write_strategy_->GetTransactionMetadatas());
   }
   std::vector<std::future<Status>> transaction_update_futures;
@@ -502,7 +502,7 @@ Status XClusterOutputClient::SendTransactionUpdates() {
 
   int next_record = 0;
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     if (processed_record_count_ < record_count_) {
       // processed_record_count_ is 1-based, so no need to add 1 to get next record.
       next_record = processed_record_count_;
@@ -527,7 +527,7 @@ Status XClusterOutputClient::SendUserTableWrites() {
   // Send out the buffered writes.
   std::unique_ptr<WriteRequestPB> write_request;
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     write_request = write_strategy_->FetchNextRequest();
   }
   if (!write_request) {
@@ -544,7 +544,7 @@ bool XClusterOutputClient::UseLocalTserver() {
 
 Status XClusterOutputClient::ProcessCreateRecord(
     const std::string& status_tablet, const cdc::CDCRecordPB& record) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   return write_strategy_->ProcessCreateRecord(status_tablet, record);
 }
 
@@ -552,7 +552,7 @@ Status XClusterOutputClient::ProcessCommitRecord(
     const std::string& status_tablet,
     const std::vector<std::string>& involved_target_tablet_ids,
     const cdc::CDCRecordPB& record) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   return write_strategy_->ProcessCommitRecord(status_tablet, involved_target_tablet_ids, record);
 }
 
@@ -584,7 +584,7 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
 
 Status XClusterOutputClient::ProcessRecord(
     const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   for (const auto& tablet_id : tablet_ids) {
     std::string status_tablet_id;
     if (enable_replicate_transaction_status_table_ && record.has_transaction_state()) {
@@ -789,7 +789,7 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequest
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
 
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   write_handle_ = rpcs_->Prepare();
   if (write_handle_ != rpcs_->InvalidHandle()) {
     // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
@@ -812,7 +812,7 @@ void XClusterOutputClient::UpdateSchemaVersionMapping(
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms);
 
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   write_handle_ = rpcs_->Prepare();
   if (write_handle_ != rpcs_->InvalidHandle()) {
     // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
@@ -946,7 +946,7 @@ void XClusterOutputClient::WriteCDCRecordDone(
     const Status& status, const WriteResponsePB& response) {
   rpc::RpcCommandPtr retained;
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     retained = rpcs_->Unregister(&write_handle_);
   }
   RETURN_WHEN_OFFLINE();
@@ -974,7 +974,7 @@ void XClusterOutputClient::DoWriteCDCRecordDone(
   // See if we need to handle any more writes.
   std::unique_ptr<WriteRequestPB> write_request;
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     write_request = write_strategy_->FetchNextRequest();
   }
 
@@ -1012,7 +1012,7 @@ void XClusterOutputClient::HandleError(const Status& s) {
                << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
   }
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     error_status_ = s;
     // In case of a consumer side tablet split, need to refresh the partitions.
     if (client::ClientError(error_status_) == client::ClientErrorCode::kTablePartitionListIsStale) {
@@ -1046,7 +1046,7 @@ void XClusterOutputClient::SendResponse(const XClusterOutputClientResponse& resp
 void XClusterOutputClient::HandleResponse() {
   XClusterOutputClientResponse response;
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     response = PrepareResponse();
   }
   SendResponse(response);

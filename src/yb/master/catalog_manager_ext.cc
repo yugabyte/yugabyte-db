@@ -1228,7 +1228,7 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
       "updating cluster config in sys-catalog"));
   l.Commit();
 
-  std::lock_guard<simple_spinlock> lock(should_send_universe_key_registry_mutex_);
+  std::lock_guard lock(should_send_universe_key_registry_mutex_);
   for (auto& entry : should_send_universe_key_registry_) {
     entry.second = true;
   }
@@ -2344,7 +2344,7 @@ Status CatalogManager::RestoreSysCatalog(
   auto scope_exit = ScopeExit([this, &restore_successful] {
     if (!restore_successful) {
       LOG(INFO) << "PITR: Accepting RPCs to the master leader";
-      std::lock_guard<simple_spinlock> l(state_lock_);
+      std::lock_guard l(state_lock_);
       is_catalog_loaded_ = true;
     }
   });
@@ -2926,7 +2926,7 @@ bool ShouldResendRegistry(
     const std::string& ts_uuid, bool has_registration, Registry* registry, Mutex* mutex) {
   bool should_resend_registry;
   {
-    std::lock_guard<Mutex> lock(*mutex);
+    std::lock_guard lock(*mutex);
     auto it = registry->find(ts_uuid);
     should_resend_registry = (it == registry->end() || it->second || has_registration);
     if (it == registry->end()) {
@@ -3214,7 +3214,7 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
 
 void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
-  std::lock_guard<simple_spinlock> l(state_lock_);
+  std::lock_guard l(state_lock_);
   is_catalog_loaded_ = false;
 }
 

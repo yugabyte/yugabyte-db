@@ -157,14 +157,17 @@ void Connection::OutboundQueued() {
   auto status = stream_->TryWrite();
   if (!status.ok()) {
     VLOG_WITH_PREFIX(1) << "Write failed: " << status;
-    // TODO(mbautin): we are already on the reactor thread. Can we skip scheduling a task here and
-    // destroy this connection immediately?
+    // Even though we are already on the reactor thread, try to schedule a task so that it would run
+    // later than all other already scheduled tasks, to preserve historical behavior.
     auto scheduling_status = reactor_->ScheduleReactorTask(
         MakeFunctorReactorTask(
             std::bind(&Reactor::DestroyConnection, reactor_, this, status),
             shared_from_this(), SOURCE_LOCATION()));
-    LOG_IF_WITH_PREFIX(DFATAL, !scheduling_status.ok())
-        << "Failed to schedule DestroyConnection: " << scheduling_status;
+    if (!scheduling_status.ok()) {
+      LOG(WARNING) << "Failed to schedule DestroyConnection: " << scheduling_status
+                   << "on reactor, destroying connection immediately";
+      reactor_->DestroyConnection(this, status);
+    }
   }
 }
 

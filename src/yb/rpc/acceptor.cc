@@ -101,7 +101,7 @@ Status Acceptor::Listen(const Endpoint& endpoint, Endpoint* bound_endpoint) {
 
   bool was_empty;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (closing_) {
       return STATUS_SUBSTITUTE(ServiceUnavailable, "Acceptor closing");
     }
@@ -126,7 +126,7 @@ Status Acceptor::Start() {
 
 void Acceptor::Shutdown() {
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (closing_) {
       CHECK(sockets_to_add_.empty());
       VLOG(2) << "Acceptor already shut down";
@@ -185,7 +185,7 @@ void Acceptor::IoHandler(ev::io& io, int events) {
 void Acceptor::AsyncHandler(ev::async& async, int events) {
   bool closing;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     closing = closing_;
     sockets_to_add_.swap(processing_sockets_to_add_);
   }

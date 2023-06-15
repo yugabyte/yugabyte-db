@@ -244,12 +244,12 @@ YBClient* YBSession::client() const {
 }
 
 void YBSession::FlushStarted(internal::BatcherPtr batcher) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   flushed_batchers_.insert(batcher);
 }
 
 void YBSession::FlushFinished(internal::BatcherPtr batcher) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   CHECK_EQ(flushed_batchers_.erase(batcher), 1);
 }
 
@@ -310,7 +310,7 @@ bool YBSession::IsInProgress(YBOperationPtr yb_op) const {
   if (batcher_ && batcher_->Has(yb_op)) {
     return true;
   }
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   for (const auto& b : flushed_batchers_) {
     if (b->Has(yb_op)) {
       return true;
@@ -393,7 +393,7 @@ bool YBSession::TEST_HasPendingOperations() const {
   if (batcher_ && batcher_->HasPendingOperations()) {
     return true;
   }
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   for (const auto& b : flushed_batchers_) {
     if (b->HasPendingOperations()) {
       return true;

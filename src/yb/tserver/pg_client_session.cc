@@ -238,7 +238,7 @@ Status ProcessUsedReadTime(uint64_t session_id,
   if (used_read_time_ptr) {
     auto& used_read_time = *used_read_time_ptr;
     {
-      std::lock_guard<simple_spinlock> guard(used_read_time.lock);
+      std::lock_guard guard(used_read_time.lock);
       if (PREDICT_FALSE(static_cast<bool>(used_read_time.value))) {
         return STATUS_FORMAT(IllegalState,
                              "Session read time already set $0 used read time is $1",
@@ -1109,7 +1109,7 @@ PgClientSession::SetupSession(
       if (kind == PgClientSessionKind::kPlain) {
         used_read_time = std::weak_ptr<UsedReadTime>(
             std::shared_ptr<UsedReadTime>(shared_from_this(), &plain_session_used_read_time_));
-        std::lock_guard<simple_spinlock>  guard(plain_session_used_read_time_.lock);
+        std::lock_guard  guard(plain_session_used_read_time_.lock);
         plain_session_used_read_time_.value = ReadHybridTime();
       }
       VLOG_WITH_PREFIX(3) << "Reset read time: " << session->read_point()->GetReadTime();
@@ -1594,7 +1594,7 @@ Status PgClientSession::CheckPlainSessionReadTime() {
   if (!session->read_point()->GetReadTime()) {
     ReadHybridTime used_read_time;
     {
-      std::lock_guard<simple_spinlock> guard(plain_session_used_read_time_.lock);
+      std::lock_guard guard(plain_session_used_read_time_.lock);
       used_read_time = plain_session_used_read_time_.value;
     }
     RSTATUS_DCHECK(used_read_time, IllegalState, "Used read time is not set");

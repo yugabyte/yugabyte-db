@@ -41,7 +41,7 @@ EncryptionManager::EncryptionManager()
 Status EncryptionManager::AddUniverseKeys(
     const AddUniverseKeysRequestPB* req, AddUniverseKeysResponsePB* resp) {
   {
-    std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+    std::lock_guard l(universe_key_mutex_);
     for (const auto& entry : req->universe_keys().map()) {
       (*universe_keys_->mutable_map())[entry.first] = entry.second;
     }
@@ -54,7 +54,7 @@ Status EncryptionManager::AddUniverseKeys(
 Status EncryptionManager::GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
                                                  GetUniverseKeyRegistryResponsePB* resp) {
   {
-    std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+    std::lock_guard l(universe_key_mutex_);
     *resp->mutable_universe_keys() = *universe_keys_;
   }
   LOG(INFO) << "Responding to GetUniverseKeyRegistry request with key ids: "
@@ -82,7 +82,7 @@ Status EncryptionManager::HasUniverseKeyInMemory(
     const HasUniverseKeyInMemoryRequestPB* req, HasUniverseKeyInMemoryResponsePB* resp) {
   bool has_key;
   {
-    std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+    std::lock_guard l(universe_key_mutex_);
     has_key = universe_keys_->map().count(req->version_id()) != 0;
   }
   resp->set_has_key(has_key);
@@ -204,7 +204,7 @@ Status EncryptionManager::FillHeartbeatResponseEncryption(
 
 void EncryptionManager::PopulateUniverseKeys(
       const encryption::UniverseKeysPB& universe_key_registry) {
-  std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+  std::lock_guard l(universe_key_mutex_);
   for (const auto& entry : universe_key_registry.map()) {
     (*universe_keys_->mutable_map())[entry.first] = entry.second;
   }
@@ -225,7 +225,7 @@ Result<std::string> EncryptionManager::GetUniverseKeyFromRotateRequest(
 std::string EncryptionManager::UniverseKeyIdsString() {
   std::string key_ids;
   bool first = true;
-  std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+  std::lock_guard l(universe_key_mutex_);
   for (const auto& p : universe_keys_->map()) {
     if (first) {
       first = false;
@@ -240,7 +240,7 @@ std::string EncryptionManager::UniverseKeyIdsString() {
 Result<std::string> EncryptionManager::GetKeyFromParams(
     bool in_memory, const std::string& key_path, const std::string& version_id) {
   if (in_memory) {
-    std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+    std::lock_guard l(universe_key_mutex_);
     const auto& it = universe_keys_->map().find(version_id);
     if (it == universe_keys_->map().end()) {
       return STATUS_SUBSTITUTE(NotFound, "Could not find key with version $0", version_id);

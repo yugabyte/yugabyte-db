@@ -250,7 +250,7 @@ std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>
       RuntimeError, "Thread did not respond: maybe it is blocking signals");
 
   std::vector<Result<StackTrace>> result(tids.size(), status);
-  std::lock_guard<std::mutex> execution_lock(thread_stack_helper.mutex);
+  std::lock_guard execution_lock(thread_stack_helper.mutex);
 
   // Ensure that our signal handler is installed. We don't need any fancy GoogleOnce here
   // because of the mutex above.
@@ -296,7 +296,7 @@ std::string DumpThreadStack(ThreadIdForStack tid) {
 }
 
 Status SetStackTraceSignal(int signum) {
-  std::lock_guard<decltype(thread_stack_helper.mutex)> lock(thread_stack_helper.mutex);
+  std::lock_guard lock(thread_stack_helper.mutex);
   if (!InitSignalHandlerUnlocked(signum)) {
     return STATUS(InvalidArgument, "Unable to install signal handler");
   }

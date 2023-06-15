@@ -779,13 +779,13 @@ class TestUserFrontiers : public rocksdb::UserFrontiersBase<TestUserFrontier> {
 class FlushedFileCollector : public EventListener {
  public:
   virtual void OnFlushCompleted(DB* db, const FlushJobInfo& info) override {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     flushed_file_infos_.push_back(info);
   }
 
   std::vector<std::string> GetFlushedFiles() {
     std::vector<std::string> flushed_files;
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     for (const auto& info : flushed_file_infos_) {
       flushed_files.push_back(info.file_path);
     }
@@ -794,7 +794,7 @@ class FlushedFileCollector : public EventListener {
 
   std::vector<std::string> GetAndClearFlushedFiles() {
     std::vector<std::string> flushed_files;
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     for (const auto& info : flushed_file_infos_) {
       flushed_files.push_back(info.file_path);
     }
@@ -803,12 +803,12 @@ class FlushedFileCollector : public EventListener {
   }
 
   std::vector<FlushJobInfo> GetFlushedFileInfos() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return flushed_file_infos_;
   }
 
   void Clear() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     flushed_file_infos_.clear();
   }
 
