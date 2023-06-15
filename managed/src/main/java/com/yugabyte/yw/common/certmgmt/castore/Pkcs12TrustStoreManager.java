@@ -22,11 +22,11 @@ import lombok.extern.slf4j.Slf4j;
 
 @Singleton
 @Slf4j
-public class JksTrustStoreManager implements TrustStoreManager {
+public class Pkcs12TrustStoreManager implements TrustStoreManager {
 
-  public static final String TRUSTSTORE_FILE_NAME = "ybJksCaCerts";
+  public static final String TRUSTSTORE_FILE_NAME = "ybPkcs12CaCerts";
 
-  /** Creates a trust-store with only custom CA certificates in JKS format. */
+  /** Creates a trust-store with only custom CA certificates in pkcs12 format. */
   public boolean addCertificate(
       String certPath,
       String certAlias,
@@ -35,7 +35,7 @@ public class JksTrustStoreManager implements TrustStoreManager {
       boolean suppressErrors)
       throws KeyStoreException, CertificateException, IOException, PlatformServiceException {
 
-    log.debug("Trying to update YBA's JKS truststore ...");
+    log.debug("Trying to update YBA's pkcs12 truststore ...");
     // Get the existing trust bundle.
     String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
     log.debug("Updating truststore {}", trustStorePath);
@@ -45,7 +45,7 @@ public class JksTrustStoreManager implements TrustStoreManager {
     if (!doesTrustStoreExist) {
       File trustStoreFile = new File(trustStorePath);
       trustStoreFile.createNewFile();
-      log.debug("Created an empty YBA JKS trust-store");
+      log.debug("Created an empty YBA pkcs12 trust-store");
     }
 
     trustStore = getTrustStore(trustStorePath, trustStorePassword, !doesTrustStoreExist);
@@ -68,10 +68,10 @@ public class JksTrustStoreManager implements TrustStoreManager {
     saveTrustStore(trustStorePath, trustStore, trustStorePassword);
     log.debug("Truststore '{}' now has a certificate with alias '{}'", trustStorePath, certAlias);
 
-    // Backup up YBA's JKS trust store in DB.
+    // Backup up YBA's pkcs12 trust store in DB.
     FileData.addToBackup(Collections.singletonList(trustStorePath));
 
-    log.info("Custom CA certificate added in YBA's JKS trust-store");
+    log.info("Custom CA certificate added in YBA's pkcs12 trust-store");
     return !doesTrustStoreExist;
   }
 
@@ -86,7 +86,7 @@ public class JksTrustStoreManager implements TrustStoreManager {
 
     // Get the existing trust bundle.
     String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
-    log.debug("Trying to replace cert {} in YBA's JKS truststore {}", certAlias, trustStorePath);
+    log.debug("Trying to replace cert {} in YBA's pkcs12 truststore {}", certAlias, trustStorePath);
     KeyStore trustStore = getTrustStore(trustStorePath, trustStorePassword, false);
     if (trustStore == null) {
       String errMsg = "Truststore cannot be null";
@@ -107,7 +107,7 @@ public class JksTrustStoreManager implements TrustStoreManager {
     trustStore.setCertificateEntry(certAlias, newCertificate);
     saveTrustStore(trustStorePath, trustStore, trustStorePassword);
 
-    // Backup up YBA's JKS trust store in DB.
+    // Backup up YBA's pkcs12 trust store in DB.
     FileData.addToBackup(Collections.singletonList(trustStorePath));
 
     log.info("Truststore '{}' updated with new cert at alias '{}'", trustStorePath, certAlias);
@@ -141,10 +141,21 @@ public class JksTrustStoreManager implements TrustStoreManager {
       return trustStore;
     } catch (IOException | KeyStoreException | NoSuchAlgorithmException | CertificateException e) {
       String msg =
-          String.format("Failed to get JKS trust store. Error %s", e.getLocalizedMessage());
+          String.format("Failed to get pkcs12 trust store. Error %s", e.getLocalizedMessage());
       log.error(msg, e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
     }
+  }
+
+  protected KeyStore maybeGetTrustStore(String trustStorePath, char[] trustStorePassword) {
+    KeyStore trustStore = null;
+    try (FileInputStream storeInputStream = new FileInputStream(trustStorePath)) {
+      trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+      trustStore.load(storeInputStream, trustStorePassword);
+    } catch (Exception e) {
+      log.warn(String.format("Couldn't get pkcs12 trust store: %s", e.getLocalizedMessage()));
+    }
+    return trustStore;
   }
 
   public void remove(
@@ -154,7 +165,7 @@ public class JksTrustStoreManager implements TrustStoreManager {
       char[] trustStorePassword,
       boolean suppressErrors)
       throws KeyStoreException {
-    log.info("Removing cert {} from YBA's JKS truststore ...", certAlias);
+    log.info("Removing cert {} from YBA's pkcs12 truststore ...", certAlias);
 
     String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
     KeyStore trustStore = getTrustStore(trustStorePath, trustStorePassword, false);
@@ -173,6 +184,36 @@ public class JksTrustStoreManager implements TrustStoreManager {
     saveTrustStore(trustStorePath, trustStore, trustStorePassword);
     log.debug("Truststore '{}' now does not have a CA certificate '{}'", trustStorePath, certAlias);
 
-    log.info("Custom CA certs deleted in YBA's JKS truststore");
+    log.info("Custom CA certs deleted in YBA's pkcs12 truststore");
+  }
+
+  public String getYbaTrustStorePath(String trustStoreHome) {
+    // Get the existing trust bundle.
+    return getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
+  }
+
+  public String getYbaTrustStoreType() {
+    String storeType = KeyStore.getDefaultType();
+    log.debug("The trust-store type is {}", storeType); // pkcs12
+    return storeType;
+  }
+
+  public boolean isTrustStoreEmpty(String caStorePathStr, char[] trustStorePassword) {
+    KeyStore trustStore = maybeGetTrustStore(caStorePathStr, trustStorePassword);
+    if (trustStore == null) {
+      return true;
+    } else {
+      try {
+        log.debug("There are {} entries in pkcs12 trust-store", trustStore.size());
+        if (trustStore.size() == 0) {
+          return true;
+        }
+      } catch (KeyStoreException e) {
+        String msg = "Failed to get size of pkcs12 trust-store";
+        log.error(msg, e.getLocalizedMessage());
+        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getLocalizedMessage());
+      }
+    }
+    return false;
   }
 }

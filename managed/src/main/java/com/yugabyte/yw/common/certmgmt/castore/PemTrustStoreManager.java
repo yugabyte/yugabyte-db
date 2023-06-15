@@ -14,6 +14,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.KeyStoreException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
@@ -54,7 +57,7 @@ public class PemTrustStoreManager implements TrustStoreManager {
     if (!doesTrustStoreExist) {
       File sysTrustStoreFile = new File(trustStorePath);
       sysTrustStoreFile.createNewFile();
-      log.debug("Create an empty YBA PEM trust-store");
+      log.debug("Created an empty YBA PEM trust-store");
     } else {
       List<Certificate> trustCerts = getCertsInTrustStore(trustStorePath, trustStorePassword);
       if (trustCerts != null) {
@@ -196,5 +199,28 @@ public class PemTrustStoreManager implements TrustStoreManager {
       }
     }
     return certs;
+  }
+
+  public String getYbaTrustStorePath(String trustStoreHome) {
+    // Get the existing trust bundle.
+    return getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
+  }
+
+  public String getYbaTrustStoreType() {
+    return "PEM";
+  }
+
+  public boolean isTrustStoreEmpty(String storePathStr, char[] trustStorePassword) {
+    Path storePath = Paths.get(storePathStr);
+    byte[] caBundleContent = new byte[0];
+    try {
+      caBundleContent = Files.readAllBytes(storePath);
+      if (caBundleContent.length == 0) return true;
+      else return false;
+    } catch (IOException e) {
+      String msg = String.format("Failed to read custom trust-store %s", storePathStr);
+      log.error(msg);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
+    }
   }
 }
