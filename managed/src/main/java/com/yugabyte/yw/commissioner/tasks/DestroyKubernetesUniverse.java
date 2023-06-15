@@ -73,7 +73,8 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           lockedXClusterUniversesUuidSet,
           Stream.of(universe.getUniverseUUID()).collect(Collectors.toSet()),
           xClusterUniverseService,
-          new HashSet<>() /* excludeXClusterConfigSet */);
+          new HashSet<>() /* excludeXClusterConfigSet */,
+          params().isForceDelete);
 
       preTaskActions();
 

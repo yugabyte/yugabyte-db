@@ -79,7 +79,8 @@ public class DestroyUniverse extends UniverseTaskBase {
           lockedXClusterUniversesUuidSet,
           Stream.of(universe.getUniverseUUID()).collect(Collectors.toSet()),
           xClusterUniverseService,
-          new HashSet<>() /* excludeXClusterConfigSet */);
+          new HashSet<>() /* excludeXClusterConfigSet */,
+          params().isForceDelete);
 
       if (params().isDeleteBackups) {
         List<Backup> backupList =
