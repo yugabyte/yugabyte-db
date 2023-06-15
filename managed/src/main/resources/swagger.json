@@ -453,6 +453,11 @@
       "description" : "Supertype for channel params for different channel types.",
       "discriminator" : "channelType",
       "properties" : {
+        "channelType" : {
+          "description" : "Channel type",
+          "enum" : [ "Email", "Slack", "PagerDuty", "WebHook" ],
+          "type" : "string"
+        },
         "textTemplate" : {
           "description" : "Notification text template",
           "type" : "string"

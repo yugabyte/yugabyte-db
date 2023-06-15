@@ -24,7 +24,6 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertNotificationContext;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
@@ -298,7 +297,7 @@ public class AlertManager {
     List<AlertChannel> channels = new ArrayList<>(strategy.getDestination().getChannelsList());
 
     if ((channels.size() == 1)
-        && ("Email".equals(AlertUtils.getJsonTypeName(channels.get(0).getParams())))
+        && (channels.get(0).getParams().getChannelType().equals(ChannelType.Email))
         && ((AlertChannelEmailParams) channels.get(0).getParams()).isDefaultRecipients()
         && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
 
@@ -340,8 +339,7 @@ public class AlertManager {
       }
 
       try {
-        ChannelType channelType =
-            ChannelType.valueOf(AlertUtils.getJsonTypeName(channel.getParams()));
+        ChannelType channelType = channel.getParams().getChannelType();
         AlertChannelTemplatesExt channelTemplates =
             alertChannelTemplateService.getWithDefaults(channel.getCustomerUUID(), channelType);
 
