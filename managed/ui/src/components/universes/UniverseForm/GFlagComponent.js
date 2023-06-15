@@ -384,7 +384,12 @@ export default function GFlagComponent(props) {
       }
 
       case ADD_GFLAG:
-        return <AddGFlag formProps={formProps} gFlagProps={{ ...selectedProps, dbVersion }} />;
+        return (
+          <AddGFlag
+            formProps={formProps}
+            gFlagProps={{ ...selectedProps, dbVersion, existingFlags: fields.getAll() }}
+          />
+        );
 
       default:
         return null;
