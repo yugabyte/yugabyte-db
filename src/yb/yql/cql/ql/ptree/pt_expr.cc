@@ -144,7 +144,7 @@ bool PTExpr::CheckIndexColumn(SemContext *sem_context) {
 }
 
 Status PTExpr::CheckOperator(SemContext *sem_context) {
-  // Where clause only allow AND, EQ, LT, LE, GT, and GE operators.
+  // Where clause only allow AND, EQ, LT, LE, GT, GE and CONTAINS operators.
   if (sem_context->where_state() != nullptr) {
     switch (ql_op_) {
       case QL_OP_AND:
@@ -156,6 +156,7 @@ Status PTExpr::CheckOperator(SemContext *sem_context) {
       case QL_OP_IN:
       case QL_OP_NOT_IN:
       case QL_OP_NOT_EQUAL:
+      case QL_OP_CONTAINS:
       case QL_OP_NOOP:
         break;
       default:
@@ -838,6 +839,18 @@ Status PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
       break;
     }
 
+    case QL_OP_CONTAINS: {
+      // We will check for data type mismatch errors in AnalyzeOperator.
+      if (operand1->expr_op() == ExprOperator::kRef && operand1->ql_type()->IsCollection()) {
+        const PTRef *ref = static_cast<const PTRef *>(operand1.get());
+        auto ql_type = operand1->ql_type()->values_type();
+        sem_state->SetExprState(ql_type,
+                                client::YBColumnSchema::ToInternalDataType(ql_type),
+                                ref->bindvar_name(),
+                                ref->desc());
+      }
+      break;
+    }
     case QL_OP_IN: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_IN: {
       auto ql_type = QLType::CreateTypeList(operand1->ql_type());
@@ -933,7 +946,29 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
                                   ErrorCode::INCOMPARABLE_DATATYPES);
       }
       break;
+    case QL_OP_CONTAINS: {
+      RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
+      RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
+      // We must check if LHS is collection.
+      if (!op1->ql_type()->IsCollection()) {
+        return sem_context->Error(this,
+            "CONTAINS is only supported for Collections that are not frozen.",
+            ErrorCode::DATATYPE_MISMATCH);
+      }
 
+      if (op2->is_null()) {
+        return sem_context->Error(
+            this, "CONTAINS does not support NULL", ErrorCode::INVALID_ARGUMENTS);
+      }
+
+      // For CONTAINS operator, we check compatibility between op1's value_type and op2's type.
+      auto value_type_lhs = op1->ql_type()->values_type();
+      if (!sem_context->IsComparable(value_type_lhs->main(), op2->ql_type_id())) {
+        return sem_context->Error(this, "Cannot compare values of these datatypes",
+                                  ErrorCode::INCOMPARABLE_DATATYPES);
+      }
+      break;
+    }
     default:
       return sem_context->Error(this, "Operator not supported yet",
                                 ErrorCode::CQL_STATEMENT_INVALID);
@@ -1134,6 +1169,8 @@ string PTRelationExpr::QLName(QLNameOption option) const {
       return op1()->QLName(option) + " IN " + op2()->QLName(option);
     case QL_OP_NOT_IN:
       return op1()->QLName(option) + " NOT IN " + op2()->QLName(option);
+    case QL_OP_CONTAINS:
+      return op1()->QLName(option) + " CONTAINS " + op2()->QLName(option);
 
     // Relation operators that take three operands.
     case QL_OP_BETWEEN:

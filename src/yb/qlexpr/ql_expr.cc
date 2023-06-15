@@ -6,6 +6,7 @@
 
 #include "yb/common/jsonb.h"
 #include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/ql_datatype.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -234,6 +235,41 @@ Status QLExprExecutor::EvalCondition(const QLConditionPB& condition,
 }
 
 template <class Operands, class Row, class Res>
+Result<bool> Contains(
+    QLExprExecutor* executor, const Operands& operands, const Row& table_row, Res* lhs) {
+  Res rhs(lhs);
+  RETURN_NOT_OK(EvalOperands(executor, operands, table_row, lhs->Writer(), rhs.Writer()));
+  ::google::protobuf::RepeatedPtrField<::yb::QLValuePB> elems;
+
+  if (lhs->Value().has_set_value()) {
+    elems = lhs->Value().set_value().elems();
+  } else if (lhs->Value().has_map_value()) {
+    elems = lhs->Value().map_value().values();
+  } else if (lhs->Value().has_list_value()) {
+    elems = lhs->Value().list_value().elems();
+  } else if (!IsNull(lhs->Value())) {
+    return STATUS_FORMAT(
+        RuntimeError, "value of LHS is not a collection. Received:%s",
+        InternalTypeToCQLString(lhs->Value().value_case()));
+  }
+  // In case LHS is empty (lhs->Value().type() is QLValuePB::VALUE_NOT_SET)
+  // we fallthrough and return false.
+
+  for(const auto& lhs_element : elems) {
+    if(!Comparable(lhs_element, rhs.Value())) {
+      return STATUS_FORMAT(
+          RuntimeError, "values not comparable LHS:%s and RHS:%s",
+          InternalTypeToCQLString(lhs_element.value_case()),
+          InternalTypeToCQLString(rhs.Value().value_case()));
+    }
+    if (lhs_element == rhs.Value()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+template <class Operands, class Row, class Res>
 Result<bool> In(
     QLExprExecutor* executor, const Operands& operands, const Row& table_row, Res* lhs) {
   Res rhs(lhs);
@@ -414,6 +450,11 @@ Status QLExprExecutor::EvalCondition(const QLConditionPB& condition,
     case QL_OP_NOT_IN:
       CHECK_EQ(operands.size(), 2);
       result->set_bool_value(!VERIFY_RESULT(In(this, operands, table_row, &temp)));
+      return Status::OK();
+
+    case QL_OP_CONTAINS:
+      CHECK_EQ(operands.size(), 2);
+      result->set_bool_value(VERIFY_RESULT(Contains(this, operands, table_row, &temp)));
       return Status::OK();
 
     case QL_OP_LIKE: FALLTHROUGH_INTENDED;
@@ -637,6 +678,11 @@ Status QLExprExecutor::EvalCondition(
 
     case QL_OP_NOT_EXISTS:
       result->set_bool_value(!table_row.Exists());
+      return Status::OK();
+
+    case QL_OP_CONTAINS:
+      CHECK_EQ(operands.size(), 2);
+      result->set_bool_value(VERIFY_RESULT(Contains(this, operands, table_row, &temp)));
       return Status::OK();
 
     case QL_OP_IN:
