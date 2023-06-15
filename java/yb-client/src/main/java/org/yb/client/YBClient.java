@@ -1673,6 +1673,16 @@ public class YBClient implements AutoCloseable {
     return d.join(2*getDefaultAdminOperationTimeoutMs());
   }
 
+  public GetChangesResponse getChangesCDCSDK(YBTable table, String streamId, String tabletId,
+      long term, long index, byte[] key, int write_id, long time, boolean needSchemaInfo,
+      CdcSdkCheckpoint explicitCheckpoint, long safeHybridTime, int walSegmentIndex)
+      throws Exception {
+    Deferred<GetChangesResponse> d =
+        asyncClient.getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
+            needSchemaInfo, explicitCheckpoint, safeHybridTime, walSegmentIndex);
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
   public GetCheckpointResponse getCheckpoint(YBTable table, String streamId,
                                              String tabletId) throws Exception {
     Deferred<GetCheckpointResponse> d = asyncClient
