@@ -1204,6 +1204,11 @@ Status ReplicaState::CopyRetryableRequestsTo(const std::string &dest_path) {
   return retryable_requests_manager_.CopyTo(dest_path);
 }
 
+OpId ReplicaState::GetLastFlushedOpIdInRetryableRequests() {
+  auto lock = LockForRead();
+  return retryable_requests_manager_.retryable_requests().GetLastFlushedOpId();
+}
+
 template <class Policy>
 LeaderLeaseStatus ReplicaState::GetLeaseStatusUnlocked(Policy policy) const {
   DCHECK_EQ(GetActiveRoleUnlocked(), PeerRole::LEADER);

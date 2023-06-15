@@ -48,6 +48,7 @@ class RetryableRequests {
 
   OpId GetMaxReplicatedOpId() const;
   void SetLastFlushedOpId(const OpId& op_id);
+  OpId GetLastFlushedOpId() const;
   void ToPB(RetryableRequestsPB* pb) const;
   void FromPB(const RetryableRequestsPB& pb);
   bool HasUnflushedData() const;

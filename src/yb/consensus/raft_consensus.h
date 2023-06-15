@@ -297,6 +297,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   Result<RetryableRequests> GetRetryableRequests() const;
   Status FlushRetryableRequests();
   Status CopyRetryableRequestsTo(const std::string& dest_path);
+  OpId GetLastFlushedOpIdInRetryableRequests();
 
   bool TEST_HasRetryableRequestsOnDisk() const;
 

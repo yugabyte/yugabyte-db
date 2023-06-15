@@ -3552,6 +3552,10 @@ Result<RetryableRequests> RaftConsensus::GetRetryableRequests() const {
   return state_->retryable_requests();
 }
 
+OpId RaftConsensus::GetLastFlushedOpIdInRetryableRequests() {
+  return state_->GetLastFlushedOpIdInRetryableRequests();
+}
+
 Status RaftConsensus::FlushRetryableRequests() {
   return state_->FlushRetryableRequests();
 }
