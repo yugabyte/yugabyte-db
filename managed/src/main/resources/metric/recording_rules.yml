@@ -107,37 +107,43 @@ groups:
           saved_name: glog_error_messages_irate
 
       - record: compaction_tasks
-        expr: "active_background_compaction_tasks_added - ignoring(saved_name) - active_background_compaction_tasks_removed"
+        expr: "active_background_compaction_tasks_added - ignoring(saved_name)
+          active_background_compaction_tasks_removed"
         labels:
           saved_name: compaction_tasks
           state_type: "Active Background"
 
       - record: compaction_tasks
-        expr: "active_full_compaction_tasks_added - ignoring(saved_name) - active_full_compaction_tasks_removed"
+        expr: "active_full_compaction_tasks_added - ignoring(saved_name)
+          active_full_compaction_tasks_removed"
         labels:
           saved_name: compaction_tasks
           state_type: "Active Full"
 
       - record: compaction_tasks
-        expr: "active_post_split_compaction_tasks_added - ignoring(saved_name) - active_post_split_compaction_tasks_removed"
+        expr: "active_post_split_compaction_tasks_added - ignoring(saved_name)
+          active_post_split_compaction_tasks_removed"
         labels:
           saved_name: compaction_tasks
           state_type: "Active Post Split"
 
       - record: compaction_tasks
-        expr: "nonactive_background_compaction_tasks_added - ignoring(saved_name) - nonactive_background_compaction_tasks_removed"
+        expr: "nonactive_background_compaction_tasks_added - ignoring(saved_name)
+          nonactive_background_compaction_tasks_removed"
         labels:
           saved_name: compaction_tasks
           state_type: "Non-Active Background"
 
       - record: compaction_tasks
-        expr: "nonactive_full_compaction_tasks_added - ignoring(saved_name) - nonactive_full_compaction_tasks_removed"
+        expr: "nonactive_full_compaction_tasks_added - ignoring(saved_name)
+          nonactive_full_compaction_tasks_removed"
         labels:
           saved_name: compaction_tasks
           state_type: "Non-Active Full"
 
       - record: compaction_tasks
-        expr: "nonactive_post_split_compaction_tasks_added - ignoring(saved_name) - nonactive_post_split_compaction_tasks_removed"
+        expr: "nonactive_post_split_compaction_tasks_added - ignoring(saved_name)
+          nonactive_post_split_compaction_tasks_removed"
         labels:
           saved_name: compaction_tasks
           state_type: "Non-Active Post Split"
