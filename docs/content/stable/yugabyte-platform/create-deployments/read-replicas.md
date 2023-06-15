@@ -64,5 +64,4 @@ To edit a read replica, do the following:
 To delete a read replica cluster, do the following:
 
 1. Navigate to the universe and click **Actions > Edit Read Replica**.
-1. Click **Actions > Edit Read Replica**.
-1. Click **Delete this configuration**.
+2. Click **Delete this configuration**.
