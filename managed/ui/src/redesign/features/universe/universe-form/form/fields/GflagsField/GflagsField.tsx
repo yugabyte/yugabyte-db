@@ -468,7 +468,12 @@ export const GFlagsField = ({
       }
 
       case ADD_GFLAG:
-        return <AddGFlag formProps={formProps} gFlagProps={{ ...selectedProps, dbVersion }} />;
+        return (
+          <AddGFlag
+            formProps={formProps}
+            gFlagProps={{ ...selectedProps, dbVersion, existingFlags: fields }}
+          />
+        );
 
       default:
         return null;

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { Field } from 'formik';
 import clsx from 'clsx';
@@ -10,6 +11,7 @@ import { FlexShrink, FlexContainer } from '../../common/flexbox/YBFlexBox';
 import { fetchGFlags, fetchParticularFlag } from '../../../actions/universe';
 import { GFlagsConf } from './GFlagsConf';
 import { GFLAG_EDIT } from '../../../utils/UniverseUtils';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 //Icons
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
@@ -20,7 +22,7 @@ const ConfKeys = {
 
 const AddGFlag = ({ formProps, gFlagProps }) => {
   const featureFlags = useSelector((state) => state.featureFlags);
-  const { mode, server, dbVersion } = gFlagProps;
+  const { mode, server, dbVersion, existingFlags } = gFlagProps;
   const [searchVal, setSearchVal] = useState('');
   const [isLoading, setLoader] = useState(true);
   const [toggleMostUsed, setToggleMostUsed] = useState(true);
@@ -40,6 +42,10 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   const handleFlagSelect = (flag) => {
     let flagvalue = null;
+    const existingFlagValue = _.get(
+      existingFlags.find((f) => f.Name === flag?.name),
+      server
+    );
     // eslint-disable-next-line no-prototype-builtins
     const defaultKey = flag?.hasOwnProperty('current') ? 'current' : 'default'; // Guard condition to handle inconstintency in gflag metadata
     if (flag?.type === 'bool')
@@ -51,7 +57,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
     formProps.setValues({
       ...gFlagProps,
       flagname: flag?.name,
-      flagvalue,
+      flagvalue: isDefinedNotNull(existingFlagValue) ? existingFlagValue : flagvalue,
       tags: flag?.tags
     });
   };
