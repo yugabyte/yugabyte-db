@@ -605,9 +605,10 @@ using namespace yb::ql;
                           CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE CLUSTER CLUSTERING
                           COALESCE COLLATE COLLATION COLUMN COMMENT COMMENTS COMMIT COMMITTED
                           COMPACT CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT
-                          CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY COST COUNTER COVERING
-                          CREATE CROSS CSV CUBE CURRENT_P CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE
-                          CURRENT_SCHEMA CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
+                          CONSTRAINTS CONTAINS CONTENT_P CONTINUE_P CONVERSION_P COPY COST COUNTER
+                          COVERING CREATE CROSS CSV CUBE CURRENT_P CURRENT_CATALOG CURRENT_DATE
+                          CURRENT_ROLE CURRENT_SCHEMA CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER
+                          CURSOR CYCLE
 
                           DATA_P DATE DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT
                           DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE_P
@@ -737,6 +738,7 @@ using namespace yb::ql;
 %nonassoc   BETWEEN IN_P LIKE ILIKE SIMILAR NOT_LA
 %nonassoc   ESCAPE                                  // ESCAPE must be just above LIKE/ILIKE/SIMILAR.
 %left       POSTFIXOP                                                 // dummy for postfix Op rules.
+%nonassoc   CONTAINS
 
 // To support target_el without AS, we must give IDENT an explicit priority
 // between POSTFIXOP and Op.  We can safely assign the same priority to
@@ -3353,6 +3355,9 @@ a_expr:
   | a_expr NOT_EQUALS a_expr {
     $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, QL_OP_NOT_EQUAL, $1, $3);
   }
+  | a_expr CONTAINS a_expr {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, QL_OP_CONTAINS, $1, $3);
+  }
   | a_expr LIKE a_expr {
     PARSER_CQL_INVALID(@2);
   }
@@ -5052,6 +5057,7 @@ unreserved_keyword:
   | CONFLICT { $$ = $1; }
   | CONNECTION { $$ = $1; }
   | CONSTRAINTS { $$ = $1; }
+  | CONTAINS { $$ = $1; }
   | CONTENT_P { $$ = $1; }
   | CONTINUE_P { $$ = $1; }
   | CONVERSION_P { $$ = $1; }
