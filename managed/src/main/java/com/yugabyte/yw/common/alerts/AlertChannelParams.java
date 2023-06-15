@@ -6,11 +6,12 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -22,7 +23,7 @@ import org.apache.commons.lang3.StringUtils;
 
 @Data
 @EqualsAndHashCode
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = As.PROPERTY, property = "channelType")
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "channelType")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = AlertChannelEmailParams.class, name = "Email"),
   @JsonSubTypes.Type(value = AlertChannelSlackParams.class, name = "Slack"),
@@ -48,6 +49,9 @@ public class AlertChannelParams {
       Arrays.stream(AlertTemplateSystemVariable.values())
           .map(AlertTemplateSystemVariable::getName)
           .collect(Collectors.toSet());
+
+  @ApiModelProperty(value = "Channel type", accessMode = AccessMode.READ_WRITE)
+  private ChannelType channelType;
 
   // Specifies template string for the notification title.
   @ApiModelProperty(value = "Notification title template", accessMode = READ_WRITE)

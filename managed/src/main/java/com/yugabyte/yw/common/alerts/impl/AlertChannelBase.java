@@ -15,7 +15,6 @@ import static com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor.LABELS_PREF
 import com.yugabyte.yw.common.alerts.AlertChannelInterface;
 import com.yugabyte.yw.common.alerts.AlertNotificationTemplateSubstitutor;
 import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
-import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.templates.PlaceholderSubstitutor;
 import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
@@ -106,7 +105,7 @@ public abstract class AlertChannelBase implements AlertChannelInterface {
     AlertChannel channel = context.getChannel();
     ChannelType channelType;
     if (channel.getParams() != null) {
-      channelType = ChannelType.valueOf(AlertUtils.getJsonTypeName(channel.getParams()));
+      channelType = channel.getParams().getChannelType();
     } else {
       // Required for notification preview, as we don't have actual channel.
       channelType = context.getTemplates().getChannelTemplates().getType();
