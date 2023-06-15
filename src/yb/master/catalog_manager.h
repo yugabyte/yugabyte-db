@@ -2936,7 +2936,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // mutex on heartbeat_pg_catalog_versions_cache_
   mutable MutexType heartbeat_pg_catalog_versions_cache_mutex_;
-  DbOidToCatalogVersionMap heartbeat_pg_catalog_versions_cache_
+  std::optional<DbOidToCatalogVersionMap> heartbeat_pg_catalog_versions_cache_
     GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
