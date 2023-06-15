@@ -1524,20 +1524,20 @@ lsm_rocksdb_latencies_seek:
       ticksuffix: "&nbsp;\u00B5s"
 
 lsm_rocksdb_latencies_mutex:
-  metric: "rocksdb_db_mutex_wait_micros.avg"
+  metric: "rocksdb_db_mutex_wait_micros"
   function: "rate|sum by (exported_instance)|avg"
   range: true
   filters:
     export_type: "tserver_export"
   panel_group: "RocksDB"
   layout:
-    title: "LSM-DB Mutex Wait Latencies"
+    title: "LSM-DB Mutex Wait / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
-      alias:
-        "rocksdb_db_mutex_wait_micros.avg": "Mutex"
       ticksuffix: "&nbsp;\u00B5s"
+      alias:
+        "rocksdb_db_mutex_wait_micros": "Mutex"
 
 lsm_rocksdb_block_cache_hit_miss:
   metric: ""
