@@ -1719,7 +1719,7 @@ Status TabletPeer::FlushRetryableRequests() {
   return retryable_requests_flusher->FlushRetryableRequests();
 }
 
-Status TabletPeer::CopyRetryableRequestsTo(const std::string& dest_path) {
+Result<OpId> TabletPeer::CopyRetryableRequestsTo(const std::string& dest_path) {
   if (!FlushRetryableRequestsEnabled()) {
     return STATUS(NotSupported, "flush_retryable_requests is not supported");
   }

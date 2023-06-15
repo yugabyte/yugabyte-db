@@ -347,6 +347,10 @@ class RetryableRequests::Impl {
     last_flushed_op_id_ = op_id;
   }
 
+  OpId GetLastFlushedOpId() const {
+    return last_flushed_op_id_;
+  }
+
   void ToPB(RetryableRequestsPB* pb) const {
     max_replicated_op_id_.ToPB(pb->mutable_last_op_id());
     for (const auto& client_requests : clients_) {
@@ -753,6 +757,10 @@ OpId RetryableRequests::GetMaxReplicatedOpId() const {
 
 void RetryableRequests::SetLastFlushedOpId(const OpId& op_id) {
   impl_->SetLastFlushedOpId(op_id);
+}
+
+OpId RetryableRequests::GetLastFlushedOpId() const {
+  return impl_->GetLastFlushedOpId();
 }
 
 void RetryableRequests::ToPB(RetryableRequestsPB *pb) const {

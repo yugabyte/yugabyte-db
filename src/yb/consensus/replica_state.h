@@ -440,6 +440,8 @@ class ReplicaState {
 
   Status CopyRetryableRequestsTo(const std::string& dest_path);
 
+  OpId GetLastFlushedOpIdInRetryableRequests();
+
  private:
   typedef std::deque<ConsensusRoundPtr> PendingOperations;
 

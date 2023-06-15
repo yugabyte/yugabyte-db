@@ -33,7 +33,8 @@ class RetryableRequestsFlusher : public std::enable_shared_from_this<RetryableRe
 
   Status FlushRetryableRequests();
   Status SubmitFlushRetryableRequestsTask();
-  Status CopyRetryableRequestsTo(const std::string& dest_path);
+  Result<OpId> CopyRetryableRequestsTo(const std::string& dest_path);
+  OpId GetMaxReplicatedOpId();
 
   bool TEST_HasRetryableRequestsOnDisk();
 
