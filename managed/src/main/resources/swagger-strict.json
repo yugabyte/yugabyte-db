@@ -9128,7 +9128,7 @@
         },
         "permissionDetails" : {
           "$ref" : "#/definitions/PermissionDetails",
-          "description" : "Set of permissions given to the role"
+          "description" : "Permission details of the role"
         },
         "roleType" : {
           "description" : "Type of the role",
@@ -9138,6 +9138,7 @@
         "roleUUID" : {
           "description" : "Role UUID",
           "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         },
         "updatedOn" : {
