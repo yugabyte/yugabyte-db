@@ -8318,12 +8318,12 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "LSM-DB Mutex Wait Latencies",
+    "title" : "LSM-DB Mutex Wait / Sec / Node",
     "id" : 39,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Mutex",
-      "expr" : "(avg(sum by (exported_instance)(rate(rocksdb_db_mutex_wait_micros_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))) / (avg(sum by (exported_instance)(rate(rocksdb_db_mutex_wait_micros_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))))",
+      "expr" : "avg(sum by (exported_instance)(rate(rocksdb_db_mutex_wait_micros{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
       "refId" : "A"
     } ],
     "gridPos" : {
