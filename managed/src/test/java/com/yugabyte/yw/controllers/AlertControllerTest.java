@@ -72,7 +72,6 @@ import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -379,8 +378,7 @@ public class AlertControllerTest extends FakeDBApplication {
     AlertChannel createdChannel = createAlertChannel();
     assertThat(createdChannel.getUuid(), notNullValue());
 
-    assertThat(
-        AlertUtils.getJsonTypeName(createdChannel.getParams()), equalTo(ChannelType.Email.name()));
+    assertThat(createdChannel.getParams().getChannelType(), equalTo(ChannelType.Email));
     assertThat(createdChannel.getParams(), equalTo(getAlertChannelParamsForTests()));
 
     Result result =

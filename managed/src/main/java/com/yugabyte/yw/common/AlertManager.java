@@ -23,18 +23,18 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertNotificationContext;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
@@ -293,7 +293,7 @@ public class AlertManager {
     List<AlertChannel> channels = new ArrayList<>(strategy.getDestination().getChannelsList());
 
     if ((channels.size() == 1)
-        && ("Email".equals(AlertUtils.getJsonTypeName(channels.get(0).getParams())))
+        && (channels.get(0).getParams().getChannelType().equals(ChannelType.Email))
         && ((AlertChannelEmailParams) channels.get(0).getParams()).isDefaultRecipients()
         && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
 
@@ -335,8 +335,7 @@ public class AlertManager {
       }
 
       try {
-        AlertChannelInterface handler =
-            channelsManager.get(AlertUtils.getJsonTypeName(channel.getParams()));
+        AlertChannelInterface handler = channelsManager.get(channel.getParams().getChannelType());
         handler.sendNotification(customer, tempAlert, channel);
         atLeastOneSucceeded = true;
         perChannelStatus.put(channel.getName(), "Alert sent successfully");

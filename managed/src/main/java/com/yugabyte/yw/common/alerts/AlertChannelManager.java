@@ -34,13 +34,13 @@ public class AlertChannelManager {
   /**
    * Returns correct channel handler using the passed channel type name.
    *
-   * @param typeName
+   * @param channelType
    * @return
    * @throws IllegalArgumentException if we don't have a correct handler for the passed type of
    *     channels.
    */
-  public AlertChannelInterface get(String typeName) {
-    return Optional.ofNullable(channelsMap.get(ChannelType.valueOf(typeName)))
+  public AlertChannelInterface get(ChannelType channelType) {
+    return Optional.ofNullable(channelsMap.get(channelType))
         .orElseThrow(IllegalArgumentException::new);
   }
 }

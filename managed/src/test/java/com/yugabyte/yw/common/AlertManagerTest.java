@@ -27,7 +27,6 @@ import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertNotificationContext;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
-import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelEmail;
 import com.yugabyte.yw.forms.AlertingData;
@@ -100,7 +99,7 @@ public class AlertManagerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    when(channelsManager.get(ChannelType.Email.name())).thenReturn(emailChannel);
+    when(channelsManager.get(ChannelType.Email)).thenReturn(emailChannel);
 
     universe = ModelFactory.createUniverse();
     configuration = ModelFactory.createAlertConfiguration(defaultCustomer, universe);
@@ -242,7 +241,7 @@ public class AlertManagerTest extends FakeDBApplication {
     ArgumentCaptor<AlertChannel> channelCaptor = ArgumentCaptor.forClass(AlertChannel.class);
     verify(emailChannel, times(1)).sendNotification(any(), any(), channelCaptor.capture());
 
-    assertThat(AlertUtils.getJsonTypeName(channelCaptor.getValue().getParams()), is("Email"));
+    assertThat(channelCaptor.getValue().getParams().getChannelType(), equalTo(ChannelType.Email));
     AlertChannelEmailParams params = (AlertChannelEmailParams) channelCaptor.getValue().getParams();
     assertThat(params.getRecipients(), nullValue());
     assertThat(params.isDefaultRecipients(), is(true));

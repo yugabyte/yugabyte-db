@@ -32,9 +32,9 @@ public class AlertChannelManagerTest extends FakeDBApplication {
   public void testGet() {
     for (ChannelType channelType : ChannelType.values()) {
       if (IMPLEMENTED_TYPES.contains(channelType)) {
-        assertNotNull(channelManager.get(channelType.name()));
+        assertNotNull(channelManager.get(channelType));
       } else {
-        assertThrows(IllegalArgumentException.class, () -> channelManager.get(channelType.name()));
+        assertThrows(IllegalArgumentException.class, () -> channelManager.get(channelType));
       }
     }
   }
