@@ -57,6 +57,9 @@
 | "YBC admin operation timeout" | "ybc.timeout.admin_operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for admin operations" | "Integer" |
 | "YBC socket read timeout" | "ybc.timeout.socket_read_timeout_ms" | "GLOBAL" | "YBC client socket read timeout in milliseconds" | "Integer" |
 | "YBC operation timeout" | "ybc.timeout.operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for operations" | "Integer" |
+| "Javax Net SSL TrustStore" | "yb.wellKnownCA.trustStore.path" | "GLOBAL" | "Java property javax.net.ssl.trustStore" | "String" |
+| "Javax Net SSL TrustStore Type" | "yb.wellKnownCA.trustStore.type" | "GLOBAL" | "Java property javax.net.ssl.trustStoreType" | "String" |
+| "Javax Net SSL TrustStore Password" | "yb.wellKnownCA.trustStore.password" | "GLOBAL" | "Java property javax.net.ssl.trustStorePassword" | "String" |
 | "Enable Cert Reload" | "yb.features.cert_reload.enabled" | "GLOBAL" | "Enable hot reload of TLS certificates without restart of the DB nodes" | "Boolean" |
 | "Delete Output File" | "yb.logs.cmdOutputDelete" | "GLOBAL" | "Flag to delete temp output file created by the shell command" | "Boolean" |
 | "Shell Output Retention Duration" | "yb.logs.shell.output_retention_hours" | "GLOBAL" | "Output logs for shell commands are written to tmp folder.This setting defines how long will we wait before garbage collecting them." | "Integer" |
