@@ -430,6 +430,284 @@ public class TestSelect extends BaseCQLTest {
   }
 
   @Test
+  public void testCqlContains() throws Exception {
+    LOG.info("TEST CQL CONTAINS QUERY - Start");
+
+    // Test CONTAINS on sets of text, varint, boolean, decimal.
+    session.execute("CREATE TABLE t1_text (id int, deps set<text>, primary key(id))");
+    session.execute("INSERT INTO t1_text(id, deps) VALUES (1, {'1', '2', '3'})");
+    session.execute("INSERT INTO t1_text(id, deps) VALUES (2, {'1', '2', '3'})");
+    session.execute("INSERT INTO t1_text(id, deps) VALUES (3, {'2', '3'})");
+    session.execute("INSERT INTO t1_text(id, deps) VALUES (4, {'3'})");
+    assertQuery(
+        "SELECT * FROM t1_text WHERE deps CONTAINS '1'", "Row[1, [1, 2, 3]]Row[2, [1, 2, 3]]");
+    assertQuery("SELECT * FROM t1_text WHERE deps CONTAINS '1' AND id = 2", "Row[2, [1, 2, 3]]");
+
+    session.execute("CREATE TABLE t1_varint (id int, deps set<varint>, primary key(id))");
+    session.execute("INSERT INTO t1_varint(id, deps) VALUES (1, {1, 2, 3, 5})");
+    session.execute("INSERT INTO t1_varint(id, deps) VALUES (2, {1, 2, 3})");
+    session.execute("INSERT INTO t1_varint(id, deps) VALUES (3, {1})");
+    session.execute("INSERT INTO t1_varint(id, deps) VALUES (4, {})");
+    assertQuery("SELECT * FROM t1_varint WHERE deps CONTAINS 1",
+        "Row[1, [1, 2, 3, 5]]Row[2, [1, 2, 3]]Row[3, [1]]");
+
+    session.execute("CREATE TABLE t1_bool (id int, deps set<boolean>, primary key(id))");
+    session.execute("INSERT INTO t1_bool(id, deps) VALUES (1, {true})");
+    session.execute("INSERT INTO t1_bool(id, deps) VALUES (2, {false})");
+    session.execute("INSERT INTO t1_bool(id, deps) VALUES (3, {true, false})");
+    session.execute("INSERT INTO t1_bool(id, deps) VALUES (4, {})");
+    assertQuery(
+        "SELECT * FROM t1_bool WHERE deps CONTAINS true", "Row[1, [true]]Row[3, [false, true]]");
+    assertQuery("SELECT * FROM t1_bool WHERE deps CONTAINS true AND deps CONTAINS false",
+        "Row[3, [false, true]]");
+
+    session.execute("CREATE TABLE t1_decimal (id int, deps set<decimal>, primary key(id))");
+    session.execute("INSERT INTO t1_decimal(id, deps) VALUES (1, {1.0, 3.45, 1.34, 3.14})");
+    session.execute("INSERT INTO t1_decimal(id, deps) VALUES (2, {2, 4, 3})");
+    session.execute("INSERT INTO t1_decimal(id, deps) VALUES (3, {3.14, 5.0, 2.8})");
+    session.execute("INSERT INTO t1_decimal(id, deps) VALUES (4, {1.0})");
+    assertQuery("SELECT * FROM t1_decimal WHERE deps CONTAINS 1.0",
+        "Row[1, [1, 1.34, 3.14, 3.45]]Row[4, [1]]");
+
+    // Test CONTAINS on a set of frozen sets.
+    session.execute("CREATE TABLE t1_frozen_set (id int, "
+        + "deps set<frozen<set<varint>>>, primary key(id))");
+    session.execute("INSERT INTO t1_frozen_set (id, deps) VALUES (1, {{1, 2}, {3, 4}})");
+    session.execute("INSERT INTO t1_frozen_set (id, deps) VALUES (2, {{1, 3}, {1, 2}})");
+    session.execute("INSERT INTO t1_frozen_set (id, deps) VALUES (3, {{5, 6}, {7, 8}})");
+    session.execute("INSERT INTO t1_frozen_set (id, deps) VALUES (4, {{1, 2}, {9, 10}})");
+    assertQuery("SELECT * FROM t1_frozen_set  WHERE deps CONTAINS {1,2}",
+        "Row[1, [[1, 2], [3, 4]]]Row[4, [[1, 2], [9, 10]]]Row[2, [[1, 2], [1, 3]]]");
+
+    // Test CONTAINS on a set of frozen lists.
+    session.execute("CREATE TABLE t1_frozen_list(id int, "
+        + "deps set<frozen<list<varint>>>, primary key(id))");
+    session.execute("INSERT INTO t1_frozen_list (id, deps) VALUES (1, {[1, 2], [3, 4]})");
+    session.execute("INSERT INTO t1_frozen_list (id, deps) VALUES (2, {[1, 3], [1, 2]})");
+    session.execute("INSERT INTO t1_frozen_list (id, deps) VALUES (3, {[5, 6], [7, 8]})");
+    session.execute("INSERT INTO t1_frozen_list (id, deps) VALUES (4, {[1, 2], [9, 1]})");
+    assertQuery("SELECT * FROM t1_frozen_list WHERE deps CONTAINS [1,2]",
+        "Row[1, [[1, 2], [3, 4]]]Row[4, [[1, 2], [9, 1]]]Row[2, [[1, 2], [1, 3]]]");
+
+    // Test CONTAINS on a set of frozen maps.
+    session.execute("CREATE TABLE t1_frozen_map (id int, "
+        + "deps set<frozen<map<varint,varint>>>, primary key(id))");
+    session.execute("INSERT INTO t1_frozen_map (id, deps) VALUES (1, {{1:2}, {3:4}})");
+    session.execute("INSERT INTO t1_frozen_map (id, deps) VALUES (2, {{1:3}, {1:2}})");
+    session.execute("INSERT INTO t1_frozen_map (id, deps) VALUES (3, {{5:6}, {7:8}})");
+    session.execute("INSERT INTO t1_frozen_map (id, deps) VALUES (4, {{1:2}, {9:1}})");
+    assertQuery("SELECT * FROM t1_frozen_map WHERE deps CONTAINS {1:2}",
+        "Row[1, [{1=2}, {3=4}]]Row[4, [{1=2}, {9=1}]]Row[2, [{1=2}, {1=3}]]");
+
+    // TODO: Add tests to test CONTAINS on a set/list/map of frozen tuples.
+    // Currently TServer crashes when trying to create a table with a collection containing frozen
+    // tuple.
+    // GHI - https://github.com/yugabyte/yugabyte-db/issues/3588,
+    //       https://github.com/yugabyte/yugabyte-db/issues/936
+    // Example Test: CREATE TABLE table (id int, deps set<frozen<tuple<int, int>>, primary key (id))
+    // INSERT INTO table (id, deps) VALUES (1, {(1,1), (2,2)});
+    // INSERT INTO table (id, deps) VALUES (2, {(2,2), (3,3)});
+    // SELECT * FROM table WHERE deps CONTAINS (1,1)
+    // Expected Result: Row[1, [(1,1), (2,2)]]
+    runInvalidStmt("CREATE TABLE tuple_not_implemented (id int primary key, deps tuple<int,int>)",
+        "Feature Not Supported");
+
+    // Test CONTAINS on LIST of TEXT, VARINT, BOOLEAN, DECIMAL.
+    session.execute("CREATE TABLE t2_text (id int, deps list<text>, primary key(id))");
+    session.execute("INSERT INTO t2_text(id, deps) VALUES (1, ['1', '2', '3'])");
+    session.execute("INSERT INTO t2_text(id, deps) VALUES (2, ['1', '2', '3'])");
+    session.execute("INSERT INTO t2_text(id, deps) VALUES (3, ['2', '3'])");
+    session.execute("INSERT INTO t2_text(id, deps) VALUES (4, ['3'])");
+    assertQuery(
+        "SELECT * FROM t2_text WHERE deps CONTAINS '1'", "Row[1, [1, 2, 3]]Row[2, [1, 2, 3]]");
+
+    session.execute("CREATE TABLE t2_varint (id int, deps list<varint>, primary key(id))");
+    session.execute("INSERT INTO t2_varint(id, deps) VALUES (1, [1, 2, 3])");
+    session.execute("INSERT INTO t2_varint(id, deps) VALUES (2, [1, 2, 3])");
+    session.execute("INSERT INTO t2_varint(id, deps) VALUES (3, [1])");
+    session.execute("INSERT INTO t2_varint(id, deps) VALUES (4, [])");
+    assertQuery("SELECT * FROM t2_varint WHERE deps CONTAINS 1 AND deps[2] = 3",
+        "Row[1, [1, 2, 3]]Row[2, [1, 2, 3]]");
+
+    session.execute("CREATE TABLE t2_bool (id int, deps list<boolean>, primary key(id))");
+    session.execute("INSERT INTO t2_bool(id, deps) VALUES (1, [true])");
+    session.execute("INSERT INTO t2_bool(id, deps) VALUES (2, [false])");
+    session.execute("INSERT INTO t2_bool(id, deps) VALUES (3, [true, false])");
+    session.execute("INSERT INTO t2_bool(id, deps) VALUES (4, [])");
+    assertQuery(
+        "SELECT * FROM t2_bool WHERE deps CONTAINS true", "Row[1, [true]]Row[3, [true, false]]");
+
+    session.execute("CREATE TABLE t2_decimal (id int, deps list<decimal>, primary key(id))");
+    session.execute("INSERT INTO t2_decimal(id, deps) VALUES (1, [1.0, 3.45, 1.34, 3.14])");
+    session.execute("INSERT INTO t2_decimal(id, deps) VALUES (2, [2, 4, 3])");
+    session.execute("INSERT INTO t2_decimal(id, deps) VALUES (3, [3.14, 5.0, 2.8])");
+    session.execute("INSERT INTO t2_decimal(id, deps) VALUES (4, [1.0])");
+    assertQuery("SELECT * FROM t2_decimal WHERE deps CONTAINS 1.0",
+        "Row[1, [1, 3.45, 1.34, 3.14]]Row[4, [1]]");
+
+    // Test CONTAINS on a list of frozen sets.
+    session.execute("CREATE TABLE t2_frozen_set (id int, "
+        + "deps list<frozen<set<varint>>>, primary key(id))");
+    session.execute("INSERT INTO t2_frozen_set (id, deps) VALUES (1, [{1, 2}, {3, 4}])");
+    session.execute("INSERT INTO t2_frozen_set (id, deps) VALUES (2, [{1, 3}, {1, 2}])");
+    session.execute("INSERT INTO t2_frozen_set (id, deps) VALUES (3, [{5, 6}, {7, 8}])");
+    session.execute("INSERT INTO t2_frozen_set (id, deps) VALUES (4, [{1, 2}, {9, 10}])");
+    assertQuery("SELECT * FROM t2_frozen_set  WHERE deps CONTAINS {1,2}",
+        "Row[1, [[1, 2], [3, 4]]]Row[4, [[1, 2], [9, 10]]]Row[2, [[1, 3], [1, 2]]]");
+
+    // Test CONTAINS on a list of frozen lists.
+    session.execute("CREATE TABLE t2_frozen_list (id int, "
+        + "deps list<frozen<list<varint>>>, primary key(id))");
+    session.execute("INSERT INTO t2_frozen_list (id, deps) VALUES (1, [[1, 2], [3, 4]])");
+    session.execute("INSERT INTO t2_frozen_list (id, deps) VALUES (2, [[1, 3], [1, 2]])");
+    session.execute("INSERT INTO t2_frozen_list (id, deps) VALUES (3, [[5, 6], [7, 8]])");
+    session.execute("INSERT INTO t2_frozen_list (id, deps) VALUES (4, [[1, 2], [9, 10]])");
+    assertQuery("SELECT * FROM t2_frozen_list  WHERE deps CONTAINS [1,2]",
+        "Row[1, [[1, 2], [3, 4]]]Row[4, [[1, 2], [9, 10]]]Row[2, [[1, 3], [1, 2]]]");
+
+    // Test CONTAINS on a list of frozen map.
+    session.execute("CREATE TABLE t2_frozen_map (id int, "
+        + "deps list<frozen<map<varint,varint>>>, primary key(id))");
+    session.execute("INSERT INTO t2_frozen_map (id, deps) VALUES (1, [{1:2}, {3:4}])");
+    session.execute("INSERT INTO t2_frozen_map (id, deps) VALUES (2, [{1:3}, {1:2}])");
+    session.execute("INSERT INTO t2_frozen_map (id, deps) VALUES (3, [{5:6}, {7:8}])");
+    session.execute("INSERT INTO t2_frozen_map (id, deps) VALUES (4, [{1:2}, {9:1}])");
+    assertQuery("SELECT * FROM t2_frozen_map WHERE deps CONTAINS {1:2}",
+        "Row[1, [{1=2}, {3=4}]]Row[4, [{1=2}, {9=1}]]Row[2, [{1=3}, {1=2}]]");
+
+    // Test CONTAINS on MAP (INT, INT) (INT, TEXT) (TEXT, BOOLEAN).
+    session.execute("CREATE TABLE t3_int_int (id int, deps map<int, int>, primary key(id))");
+    session.execute("INSERT INTO t3_int_int(id, deps) VALUES (1, {1:1, 2:2, 3:3, 4:4})");
+    session.execute("INSERT INTO t3_int_int(id, deps) VALUES (2, {4:1, 2:5, 3:3, 6:4})");
+    session.execute("INSERT INTO t3_int_int(id, deps) VALUES (3, {8:4, 4:2, 3:5, 2:4})");
+    session.execute("INSERT INTO t3_int_int(id, deps) VALUES (4, {0:2, 2:43, 3:7, 5:4})");
+    assertQuery("SELECT * FROM t3_int_int WHERE deps CONTAINS 1",
+        "Row[1, {1=1, 2=2, 3=3, 4=4}]Row[2, {2=5, 3=3, 4=1, 6=4}]");
+
+    session.execute("CREATE TABLE t3_int_text (id int, deps map<int, text>, primary key(id))");
+    session.execute("INSERT INTO t3_int_text(id, deps) VALUES (1, {1:'1', 2:'2', 3:'3', 4:'4'})");
+    session.execute("INSERT INTO t3_int_text(id, deps) VALUES (2, {4:'1', 2:'5', 3:'3', 6:'4'})");
+    session.execute("INSERT INTO t3_int_text(id, deps) VALUES (3, {8:'4', 4:'2', 3:'5', 2:'4'})");
+    session.execute("INSERT INTO t3_int_text(id, deps) VALUES (4, {0:'2', 2:'4', 3:'7', 5:'4'})");
+    assertQuery("SELECT * FROM t3_int_text WHERE deps CONTAINS '1'",
+        "Row[1, {1=1, 2=2, 3=3, 4=4}]Row[2, {2=5, 3=3, 4=1, 6=4}]");
+
+    session.execute("CREATE TABLE t3_text_boolean (id int, deps map<text, boolean>, "
+        + "primary key(id))");
+    session.execute("INSERT INTO t3_text_boolean(id, deps) VALUES (1, "
+        + "{'1':false, '2':false, '3':false, '4':false})");
+    session.execute("INSERT INTO t3_text_boolean(id, deps) VALUES (2, "
+        + "{'1':true, '5':true, '3':false, '4':true})");
+    session.execute("INSERT INTO t3_text_boolean(id, deps) VALUES (3, "
+        + "{'4':true, '2':false, '5':false, '40':true})");
+    session.execute("INSERT INTO t3_text_boolean(id, deps) VALUES (4, "
+        + "{'2':false, '4':false, '7':false, '4':false})");
+    assertQuery("SELECT * FROM t3_text_boolean WHERE deps CONTAINS true",
+        "Row[2, {1=true, 3=false, 4=true, 5=true}]Row[3, {"
+            + "2=false, 4=true, 40=true, 5=false}]");
+
+    // Test CONTAINS on a map of frozen list.
+    session.execute("CREATE TABLE t4_map_frozen_list (id int, deps map<text, "
+        + "frozen<list<boolean>>>, primary key(id))");
+    session.execute("INSERT INTO t4_map_frozen_list(id, deps) VALUES (1, "
+        + "{'1':[true, true, true], '2':[false, false, false], '3':[false, false, false], "
+        + "'4':[false, false, false]})");
+    session.execute("INSERT INTO t4_map_frozen_list(id, deps) VALUES (2, "
+        + "{'1':[true, true, false], '5':[true, true, false], '3':[false, false, false],"
+        + " '4':[true, true, false]})");
+    session.execute("INSERT INTO t4_map_frozen_list(id, deps) VALUES (3, "
+        + "{'4':[false, false, false], '2':[false, false, false], '5':[true, true, false], "
+        + "'40':[false, false, false]})");
+    session.execute("INSERT INTO t4_map_frozen_list(id, deps) VALUES (4, "
+        + "{'2':[true, true, false], '4':[true, true, false], '7':[false, false, false], "
+        + "'40':[true, true, false]})");
+    assertQuery("SELECT * FROM t4_map_frozen_list WHERE deps CONTAINS [true, true, true]",
+        "Row[1, {1=[true, true, true], 2=[false, false, false], "
+            + "3=[false, false, false], 4=[false, false, false]}]");
+
+    // Test CONTAINS on a map of frozen set.
+    session.execute("CREATE TABLE t4_map_frozen_set (id int, deps map<text, "
+        + "frozen<set<boolean>>>, primary key(id))");
+    session.execute("INSERT INTO t4_map_frozen_set(id, deps) VALUES (1, "
+        + "{'1':{true}, '2':{false}, '3':{true}, "
+        + "'4':{false}})");
+    session.execute("INSERT INTO t4_map_frozen_set(id, deps) VALUES (2, "
+        + "{'1':{true}, '5':{false, true}})");
+    assertQuery("SELECT * FROM t4_map_frozen_set WHERE deps CONTAINS {true, false}",
+        "Row[2, {1=[true], 5=[false, true]}]");
+
+    // Test CONTAINS on a map of frozen map.
+    session.execute("CREATE TABLE t4_map_frozen_map (id int, deps map<text, "
+        + "frozen<map<boolean, boolean>>>, primary key(id))");
+    session.execute("INSERT INTO t4_map_frozen_map(id, deps) VALUES (1, "
+        + "{'1':{true:true}, '2':{false:false}, '3':{true:true}, "
+        + "'4':{false:false}})");
+    session.execute("INSERT INTO t4_map_frozen_map(id, deps) VALUES (2, "
+        + "{'1':{true:true}, '5':{false:false, true:true}})");
+    assertQuery("SELECT * FROM t4_map_frozen_map WHERE deps CONTAINS {false:false, true:true}",
+        "Row[2, {1={true=true}, 5={false=false, true=true}}]");
+
+    // Test failure for frozen collections.
+    final String unsupportedTypeForContains = "Datatype Mismatch. CONTAINS is only supported for "
+        + "Collections that are not frozen.";
+
+    session.execute("CREATE TABLE t5_frozen_list (id int, deps frozen<list<int>>,"
+        + " primary key(id))");
+    runInvalidStmt(
+        "SELECT * FROM t5_frozen_list WHERE deps CONTAINS 5", unsupportedTypeForContains);
+
+    session.execute("CREATE TABLE t5_frozen_set (id int, deps frozen<set<int>>,"
+        + " primary key(id))");
+    runInvalidStmt("SELECT * FROM t5_frozen_set WHERE deps CONTAINS 5", unsupportedTypeForContains);
+
+    session.execute("CREATE TABLE t5_frozen_map (id int, deps frozen<map<int, int>>,"
+        + " primary key(id))");
+    runInvalidStmt("SELECT * FROM t5_frozen_map WHERE deps CONTAINS 5", unsupportedTypeForContains);
+
+    session.execute("CREATE TABLE t5_list_of_frozen_map (id int, "
+        + "deps list<frozen<map<int, int>>>,"
+        + " primary key(id))");
+    runInvalidStmt(
+        "SELECT * FROM t5_list_of_frozen_map WHERE deps[0] CONTAINS 5", unsupportedTypeForContains);
+
+    // Test failure with NULL as RHS.
+    final String nullNotSupported = "CONTAINS does not support NULL";
+
+    session.execute("CREATE TABLE t6 (id int, deps set<int>, primary key(id))");
+    runInvalidStmt("SELECT * FROM t6 WHERE deps CONTAINS NULL", nullNotSupported);
+
+    // Test failure incomparable types
+    final String incomparableTypes = "Datatype Mismatch";
+    runInvalidStmt("SELECT * FROM t6 WHERE deps CONTAINS 'text'", incomparableTypes);
+    runInvalidStmt("SELECT * FROM t6 WHERE deps CONTAINS 1.2", incomparableTypes);
+
+    // Test with bind variables.
+    session.execute("CREATE TABLE t7 (id int, deps map<int, int>, primary key(id))");
+    String query = "SELECT * FROM t7 WHERE deps CONTAINS ?";
+
+    try {
+      session.execute(query, (Object) null);
+      fail("CONTAINS query with NULL did not fail with Bind Variables");
+    } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+      LOG.info("Expected exception", e);
+    }
+
+    try {
+      session.execute(query, "string");
+      fail("CONTAINS query with mismatched datatype did not fail.");
+    } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+      LOG.info("Expected exception", e);
+    }
+
+    try {
+      session.execute(query, 0.1234);
+      fail("CONTAINS query with mismatched datatype did not fail.");
+    } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+      LOG.info("Expected exception", e);
+    }
+  }
+
+  @Test
   public void testSelectWithLimit() throws Exception {
     LOG.info("TEST CQL LIMIT QUERY - Start");
 

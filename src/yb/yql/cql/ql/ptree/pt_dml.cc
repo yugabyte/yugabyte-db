@@ -811,6 +811,22 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
       break;
     }
 
+    case QL_OP_CONTAINS: {
+      if (col_args != nullptr) {
+        return sem_context->Error(
+            expr, "Operator not supported for subscripted column",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      } else {
+        counter.increase_contains();
+        if (!counter.is_valid()) {
+          return sem_context->Error(
+              expr, "Illogical condition for where clause", ErrorCode::CQL_STATEMENT_INVALID);
+        }
+        ops_->emplace_back(col_desc, value, expr->ql_op());
+      }
+      break;
+    }
+
     case QL_OP_NOT_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_IN: FALLTHROUGH_INTENDED;
     case QL_OP_IN: {
