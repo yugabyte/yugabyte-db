@@ -414,7 +414,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const dockv::ReaderProjection& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
-      CoarseTimePoint deadline = CoarseTimePoint::max()) const;
+      CoarseTimePoint deadline = CoarseTimePoint::max(),
+      docdb::SkipSeek skip_seek = docdb::SkipSeek::kFalse) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;

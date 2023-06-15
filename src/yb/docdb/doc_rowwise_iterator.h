@@ -46,7 +46,6 @@ namespace docdb {
 
 class IntentAwareIterator;
 class ScanChoices;
-struct FetchKeyResult;
 
 // In tests we could set doc mode to kAny to allow fetching PgTableRow for CQL table.
 YB_DEFINE_ENUM(DocMode, (kGeneric)(kFlat)(kAny));
@@ -119,7 +118,7 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   // ensures that the iterator will be positioned on the first kv-pair of the next row.
   // row_finished - true when current row was fully iterated. So we would not have to perform
   // extra Seek in case of full scan.
-  Status AdvanceIteratorToNextDesiredRow(bool row_finished) const;
+  Status AdvanceIteratorToNextDesiredRow(bool row_finished);
 
   // Read next row into a value map using the specified projection.
   Status FillRow(qlexpr::QLTableRow* table_row, const dockv::ReaderProjection* projection);
@@ -131,8 +130,8 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
     const dockv::ReaderProjection* static_projection;
   };
 
-  Result<DocReaderResult> FetchRow(dockv::PgTableRow* table_row);
-  Result<DocReaderResult> FetchRow(QLTableRowPair table_row);
+  Result<DocReaderResult> FetchRow(FetchedEntry* fetched_entry, dockv::PgTableRow* table_row);
+  Result<DocReaderResult> FetchRow(FetchedEntry* fetched_entry, QLTableRowPair table_row);
 
   Status FillRow(QLTableRowPair table_row);
   Status FillRow(dockv::PgTableRow* table_row);
@@ -146,6 +145,10 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   std::optional<dockv::SubDocument> row_;
 
   std::unique_ptr<DocDBTableReader> doc_reader_;
+
+  // DocReader result returned by the previous fetch.
+  DocReaderResult prev_doc_found_ = DocReaderResult::kNotFound;
+  FetchedEntry current_entry_;
 
   const DocDBStatistics* statistics_;
 };

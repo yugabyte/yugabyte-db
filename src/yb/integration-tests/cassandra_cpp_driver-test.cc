@@ -2118,7 +2118,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexFails, CppCassandraDriver
       IndexPermissions::INDEX_PERM_NOT_USED,
       50ms /* max_wait */);
   ASSERT_TRUE(!res.ok());
-  ASSERT_TRUE(res.status().IsNotFound());
+  ASSERT_TRUE(res.status().IsNotFound()) << res.status();
 
   ASSERT_OK(LoggedWaitFor(
       [this, index_table_name]() {

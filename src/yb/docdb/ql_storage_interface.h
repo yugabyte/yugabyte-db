@@ -27,8 +27,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/operation_counter.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 // An interface to support various different storage backends for a QL table.
 class YQLStorageIf {
@@ -98,7 +97,7 @@ class YQLStorageIf {
       const DocDBStatistics* statistics = nullptr) const = 0;
 
   // Create iterator for querying by ybctid.
-  virtual Status GetIterator(
+  virtual Status GetIteratorForYbctid(
       uint64 stmt_id,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -108,8 +107,8 @@ class YQLStorageIf {
       const QLValuePB& max_ybctid,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
-      const DocDBStatistics* statistics = nullptr) const = 0;
+      const DocDBStatistics* statistics = nullptr,
+      SkipSeek skip_seek = SkipSeek::kFalse) const = 0;
 };
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

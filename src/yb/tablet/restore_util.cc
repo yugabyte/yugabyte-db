@@ -36,11 +36,11 @@ Status FetchState::SetPrefix(const Slice& prefix) {
 }
 
 Result<bool> FetchState::Update() {
-  if (iterator_->IsOutOfRecords()) {
+  key_ = VERIFY_RESULT(iterator_->Fetch());
+  if (!key_) {
     finished_ = true;
     return true;
   }
-  key_ = VERIFY_RESULT(iterator_->FetchKey());
   auto rest_of_key = key_.key;
   if (!rest_of_key.starts_with(prefix_)) {
     finished_ = true;

@@ -1714,12 +1714,13 @@ Result<boost::optional<Expiration>> GetTtl(
     VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, dockv::DocKeyPart::kWholeDocKey));
   Slice key_slice(encoded_subdoc_key.data(), dockey_size);
   iter->Seek(key_slice);
-  if (iter->IsOutOfRecords())
+  auto key_data = VERIFY_RESULT(iter->Fetch());
+  if (!key_data) {
     return boost::none;
-  auto key_data = VERIFY_RESULT(iter->FetchKey());
+  }
   if (!key_data.key.compare(key_slice)) {
     dockv::Value doc_value{dockv::PrimitiveValue(ValueEntryType::kInvalid)};
-    RETURN_NOT_OK(doc_value.Decode(iter->value()));
+    RETURN_NOT_OK(doc_value.Decode(key_data.value));
     if (doc_value.value_type() != ValueEntryType::kTombstone) {
       return Expiration(VERIFY_RESULT(key_data.write_time.Decode()).hybrid_time(), doc_value.ttl());
     }
@@ -2036,11 +2037,15 @@ Status RedisReadOperation::ExecuteKeys() {
   bool doc_found;
   SubDocument result;
 
-  while (!iterator_->IsOutOfRecords()) {
+  for (;;) {
+    auto key_data = VERIFY_RESULT(iterator_->Fetch());
+    if (!key_data) {
+      break;
+    }
     if (deadline_info_.get_ptr() && deadline_info_->CheckAndSetDeadlinePassed()) {
       return STATUS(Expired, "Deadline for query passed.");
     }
-    auto key = VERIFY_RESULT(iterator_->FetchKey()).key;
+    auto key = key_data.key;
 
     // Key could be invalidated because we could move iterator, so back it up.
     KeyBytes key_copy(key);
@@ -2053,7 +2058,7 @@ Status RedisReadOperation::ExecuteKeys() {
         !RedisPatternMatch(request_.keys_request().pattern(),
                            key_primitive.GetString(),
                            false /* ignore_case */)) {
-      iterator_->SeekOutOfSubDoc(key);
+      iterator_->SeekOutOfSubDoc(&key_copy);
       continue;
     }
 
@@ -2073,7 +2078,7 @@ Status RedisReadOperation::ExecuteKeys() {
       RETURN_NOT_OK(AddPrimitiveValueToResponseArray(key_primitive,
                                                      response_.mutable_array_response()));
     }
-    iterator_->SeekOutOfSubDoc(key);
+    iterator_->SeekOutOfSubDoc(&key_copy);
   }
 
   response_.set_code(RedisResponsePB::OK);
