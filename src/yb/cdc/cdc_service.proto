@@ -214,6 +214,9 @@ message GetChangesRequestPB {
   optional CDCSDKCheckpointPB explicit_cdc_sdk_checkpoint = 10;
 
   optional int64 safe_hybrid_time = 11 [default = -1];
+
+  // index used to filter out the records we've already streamed.
+  optional int32 wal_segment_index = 12 [default = 0];
 }
 
 message KeyValuePairPB {
@@ -413,6 +416,9 @@ message GetChangesResponsePB {
 
   // The safe time to be used on the target for this tablet.
   optional int64 safe_hybrid_time = 10;
+
+  // index used to filter out the records we've already streamed.
+  optional int32 wal_segment_index = 11 [default = 0];
 }
 
 message GetCheckpointRequestPB {

@@ -487,6 +487,13 @@ public class AsyncYBClient implements AutoCloseable {
       needSchemaInfo, null, -1);
   }
 
+  public Deferred<GetChangesResponse> getChangesCDCSDK(YBTable table, String streamId,
+      String tabletId, long term, long index, byte[] key, int write_id, long time,
+      boolean needSchemaInfo, CdcSdkCheckpoint explicitCheckpoint, long safeHybridTime) {
+    return getChangesCDCSDK(
+        table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo, null, -1, 0);
+  }
+
   /**
    * Get changes for a given tablet and stream.
    * @param table the table to get changes for.
@@ -498,18 +505,18 @@ public class AsyncYBClient implements AutoCloseable {
    * @param time the time to start get changes for.
    * @param needSchemaInfo request schema from the response.
    * @param explicitCheckpoint checkpoint works in explicit mode.
+   * @param safeHybridTime safe hybrid time received from the previous get changes call.
+   * @param walSegmentIndex wal segment index received from the previous get changes call.
    * @return a deferred object for the response from server.
    */
   public Deferred<GetChangesResponse> getChangesCDCSDK(YBTable table, String streamId,
-                                                       String tabletId, long term,
-                                                       long index, byte[] key,
-                                                       int write_id, long time,
-                                                       boolean needSchemaInfo,
-                                                       CdcSdkCheckpoint explicitCheckpoint,
-                                                       long safeHybridTime) {
+      String tabletId, long term, long index, byte[] key, int write_id, long time,
+      boolean needSchemaInfo, CdcSdkCheckpoint explicitCheckpoint, long safeHybridTime,
+      int walSegmentIndex) {
     checkIsClosed();
     GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term, index, key,
-        write_id, time, needSchemaInfo, explicitCheckpoint, table.getTableId(), safeHybridTime);
+        write_id, time, needSchemaInfo, explicitCheckpoint, table.getTableId(), safeHybridTime,
+        walSegmentIndex);
     Deferred<GetChangesResponse> d = rpc.getDeferred();
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
