@@ -43,7 +43,7 @@ You cannot back up and restore Prometheus metrics data.
 
 Download the version of the backup script that corresponds to the version of Yugabyte Platform that you are backing up and restoring.
 
-For example, you can copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
+For example, if you are running version {{< yb-version version="v2.8">}}, you can copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
 
 ```sh
 wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/v{{< yb-version version="v2.8">}}/managed/devops/bin/yb_platform_backup.sh
