@@ -35,6 +35,7 @@ import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
@@ -43,6 +44,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -515,9 +517,19 @@ public class AWSUtil implements CloudUtil {
     return regionLocationsMap;
   }
 
-  public static Double getAwsSpotPrice(String zone, String instanceType) {
+  public static Double getAwsSpotPrice(
+      String zone, String instanceType, String providerUUID, String region) {
     try {
-      AmazonEC2 ec2Client = AmazonEC2ClientBuilder.defaultClient();
+      Provider p = Provider.getOrBadRequest(UUID.fromString(providerUUID));
+      AWSCredentials creds =
+          new BasicAWSCredentials(
+              p.getDetails().getCloudInfo().getAws().awsAccessKeyID,
+              p.getDetails().getCloudInfo().getAws().awsAccessKeySecret);
+      AmazonEC2 ec2Client =
+          AmazonEC2ClientBuilder.standard()
+              .withCredentials(new AWSStaticCredentialsProvider(creds))
+              .withRegion(region)
+              .build();
       DescribeSpotPriceHistoryRequest request =
           new DescribeSpotPriceHistoryRequest()
               .withAvailabilityZone(zone)
