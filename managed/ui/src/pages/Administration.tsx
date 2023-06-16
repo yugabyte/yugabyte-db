@@ -14,6 +14,7 @@ import { UserManagementContainer } from '../components/users';
 import { RuntimeConfigContainer } from '../components/advanced';
 import { HAInstancesContainer } from '../components/ha/instances/HAInstanceContainer';
 
+import ListCACerts from '../components/customCACerts/ListCACerts';
 import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
@@ -182,6 +183,14 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     );
   };
 
+  const getCustomCACertsTab = () => {
+    return(
+      <Tab eventKey="custom-ca-certs" title="CA Certificates" key="CA_Certificates">
+        <ListCACerts />
+      </Tab>
+    )
+  }
+
   return (
     <div>
       <h2 className="content-title">Platform Configuration</h2>
@@ -195,6 +204,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
         {getHighAvailabilityTab()}
         {getAlertTab()}
         {getUserManagementTab()}
+        {getCustomCACertsTab()}
         {isCongifUIEnabled && getAdvancedTab()}
       </YBTabsWithLinksPanel>
     </div>

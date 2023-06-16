@@ -88,7 +88,7 @@ export const YBDropZone = ({
       )}
     </div>
   ) : (
-    <div className={styles.updateFilesContainer}>
+    <div className={clsx('updateFilesContainer', styles.updateFilesContainer)}>
       <div className={styles.acceptedFilesMetadataContainer}>
         {storedFiles.map((acceptedFile) => (
           <li>{acceptedFile.name}</li>
