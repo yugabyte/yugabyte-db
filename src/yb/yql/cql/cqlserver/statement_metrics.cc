@@ -36,19 +36,13 @@
 namespace yb {
 namespace cqlserver {
 
-StatementMetrics::StatementMetrics(std::string query,
-                                   ql::CQLMessage::QueryId query_id)
-    : query_(query), query_id_(query_id) {
+StatementMetrics::StatementMetrics(const ql::CQLMessage::QueryId& query_id,
+                                   const std::shared_ptr<const StmtCounters> stmt_counters)
+    : query_id_(query_id), counters_(stmt_counters) {
 }
 
 void StatementMetrics::WriteAsJson(JsonWriter* jw) const {
-  jw->StartObject();
-  jw->String("query");
-  jw->String(query_);
-
-  jw->String("query_id");
-  jw->String(b2a_hex(query_id_));
-  jw->EndObject();
+  counters_->WriteAsJson(jw, b2a_hex(query_id_));
 }
 } // namespace cqlserver
 
