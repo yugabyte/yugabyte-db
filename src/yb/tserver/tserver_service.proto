@@ -66,6 +66,8 @@ service TabletServerService {
   rpc UpdateTransaction(UpdateTransactionRequestPB) returns (UpdateTransactionResponsePB);
   // Returns transaction status at coordinator, i.e. PENDING, ABORTED, COMMITTED etc.
   rpc GetTransactionStatus(GetTransactionStatusRequestPB) returns (GetTransactionStatusResponsePB);
+  // Returns the oldest transactions (older than a specified age) from a specified status tablet.
+  rpc GetOldTransactions(GetOldTransactionsRequestPB) returns (GetOldTransactionsResponsePB);
   // Returns transaction status at participant, i.e. number of replicated batches or whether it was
   // aborted.
   rpc GetTransactionStatusAtParticipant(GetTransactionStatusAtParticipantRequestPB)
@@ -190,6 +192,7 @@ message UpdateTransactionRequestPB {
 
   optional fixed64 propagated_hybrid_time = 3;
   optional bool is_external = 4;
+  optional fixed64 start_time = 5;
 }
 
 message UpdateTransactionResponsePB {
@@ -225,6 +228,27 @@ message GetTransactionStatusResponsePB {
   repeated fixed64 coordinator_safe_time = 6;
 
   repeated SubtxnSetPB aborted_subtxn_set = 7;
+}
+
+message GetOldTransactionsRequestPB {
+  optional bytes tablet_id = 1;
+  optional uint32 min_txn_age_ms = 2;
+  optional uint32 max_num_txns = 3;
+  optional fixed64 propagated_hybrid_time = 4;
+}
+
+message GetOldTransactionsResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  message OldTransactionMetadataPB {
+    optional bytes transaction_id = 1;
+    repeated bytes tablets = 2;
+    optional SubtxnSetPB aborted_subtxn_set = 3;
+  }
+  repeated OldTransactionMetadataPB txn = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
 }
 
 message UpdateTransactionWaitingForStatusRequestPB {

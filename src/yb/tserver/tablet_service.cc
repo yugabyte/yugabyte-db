@@ -1163,6 +1163,23 @@ void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB
   });
 }
 
+void TabletServiceImpl::GetOldTransactions(const GetOldTransactionsRequestPB* req,
+                                           GetOldTransactionsResponsePB* resp,
+                                           rpc::RpcContext context) {
+  TRACE("GetOldTransactions");
+
+  PerformAtLeader(req, resp, &context,
+      [req, resp, &context](const LeaderTabletPeer& tablet_peer) {
+    auto* transaction_coordinator = tablet_peer.tablet->transaction_coordinator();
+    if (!transaction_coordinator) {
+      return STATUS_FORMAT(
+          InvalidArgument, "No transaction coordinator at tablet $0",
+          tablet_peer.peer->tablet_id());
+    }
+    return transaction_coordinator->GetOldTransactions(req, resp, context.GetClientDeadline());
+  });
+}
+
 void TabletServiceImpl::GetTransactionStatusAtParticipant(
     const GetTransactionStatusAtParticipantRequestPB* req,
     GetTransactionStatusAtParticipantResponsePB* resp,
