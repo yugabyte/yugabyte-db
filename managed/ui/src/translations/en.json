@@ -22,7 +22,8 @@
       "edit": "Edit",
       "remove": "Remove",
       "wrong": "Something went wrong.",
-      "areYouSure": "Are you sure ?"
+      "areYouSure": "Are you sure ?",
+      "delete": "Delete"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -460,7 +461,37 @@
         "helpText": "Choose the values to display in the actual alert notifications."
       },
       "variableName": "Variable Name:",
-      "variableValUpdateSuccess": "variable updated sucessfulyy for policy \"{{policy_name}}\""
+      "variableValUpdateSuccess": "variable updated successfully for policy \"{{policy_name}}\""
+    },
+    "customCACerts": {
+      "listing": {
+        "header": "Trusted CA Certificates",
+        "addCertButton": "Add Trusted CA Certificate",
+        "caCertsListEmpty": "Upload CA certificates if your TLS connections use certificates issued by Certificate Authorities (CAs) not within the Trusted CA list.\nSuch as self-signed certificates or private third-party certificate authorities.",
+        "table": {
+          "name": "Certificate Name",
+          "created": "Created",
+          "validFrom": "Valid From",
+          "validUntil": "Valid Until",
+          "moreActions":{
+            "download": "Download",
+            "updateCert": "Update Certificate"
+          }
+        }
+      },
+      "uploadCACertModal": {
+        "title": "Upload Trusted CA Certificate",
+        "certNameTitle": "Name your CA Certificate",
+        "save": "Save CA Certificate",
+        "uploadBtnText": "Upload CA Certificate",
+        "uploadBtnSubText": "Upload certificate from private third-party Certificate Authority (CA) or self-signed certificate.\nOnly .crt file allowed.",
+        "successMsg": "Certificate updated successfully"
+      },
+      "deleteCACertModal": {
+        "title": "Delete CA Certificate",
+        "info": "TLS connections using this CA Certificate will fail. Are you sure you want to delete your CA Certificate? ",
+        "successMsg" : "Certificate deleted successfully"
+      }
     }
   }
 }
