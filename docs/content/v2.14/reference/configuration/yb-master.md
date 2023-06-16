@@ -486,6 +486,12 @@ Clusters created with `yugabyted` always use a default value of `1`.
 
 {{< note title="Note" >}}
 
+- This flag must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup.
+- The [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
+
+{{< /note >}}
+
 ### Tablet splitting flags
 
 ##### --enable_automatic_tablet_splitting
