@@ -1796,7 +1796,7 @@ ExecAgg(PlanState *pstate)
 			// aggregate targets. More importantly, the current behavior to
 			// retrieve the complete tuple is not necessarily optimal for
 			// remote storage such as DocDB and this may change in the future
-			pstate->state->yb_exec_params.is_select_distinct = false;
+			pstate->state->yb_exec_params.yb_can_pushdown_distinct = false;
 		}
 
 		/* Dispatch based on strategy */
