@@ -1070,7 +1070,6 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     Status st;
     SetCDCCheckpointResponsePB set_checkpoint_resp_final;
 
-
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           RpcController set_checkpoint_rpc;
@@ -1086,7 +1085,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
               set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
 
           if (set_checkpoint_resp.has_error() &&
-              (set_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND)) {
+              set_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND &&
+              set_checkpoint_resp.error().code() != CDCErrorPB::LEADER_NOT_READY) {
             return STATUS_FORMAT(
                 InternalError, "Response had error: $0", set_checkpoint_resp.DebugString());
           }
