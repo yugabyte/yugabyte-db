@@ -306,6 +306,10 @@ public class AWSUtil implements CloudUtil {
       throws Exception {
     for (String backupLocation : backupLocations) {
       try {
+        // Disable cert checking while connecting with s3
+        // Enabling it can potentially fail when s3 compatible storages like
+        // Dell ECS are provided and custom certs are needed to connect
+        // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
         System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
         AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
         String[] splitLocation = getSplitLocationValue(backupLocation);
@@ -336,6 +340,7 @@ public class AWSUtil implements CloudUtil {
         log.error(" Error in deleting objects at location " + backupLocation, e.getErrorMessage());
         throw e;
       } finally {
+        // Re-enable cert checking as it applies globally
         System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
       }
     }

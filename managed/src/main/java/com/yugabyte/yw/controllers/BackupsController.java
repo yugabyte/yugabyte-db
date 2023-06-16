@@ -757,6 +757,7 @@ public class BackupsController extends AuthenticatedController {
           DeleteBackupYb.Params taskParams = new DeleteBackupYb.Params();
           taskParams.customerUUID = customerUUID;
           taskParams.backupUUID = backupUUID;
+          taskParams.deleteForcefully = deleteBackupParams.deleteForcefully;
           UUID taskUUID = commissioner.submit(TaskType.DeleteBackupYb, taskParams);
           LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, backupUUID);
           String target =
