@@ -40,6 +40,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 
 DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,
                  "How much latency to inject when a write operation is applied.");
@@ -75,6 +76,7 @@ Status WriteOperation::DoAborted(const Status& status) {
 Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE_EVENT0("txn", "WriteOperation::Complete");
   TRACE("APPLY: Starting");
+  // SET_WAIT_STATUS_TO(nullptr, util::WaitStateCode::Applying);
 
   auto injected_latency = GetAtomicFlag(&FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms);
   if (PREDICT_FALSE(injected_latency) > 0) {

@@ -46,6 +46,7 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/flags.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::placeholders;
 using namespace std::literals;
@@ -177,6 +178,7 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     return;
   }
 
+  SET_WAIT_STATUS(util::WaitStateCode::SubmittingToRaft);
   context_->Submit(self.release()->PrepareSubmit(), term_);
 }
 
@@ -423,6 +425,7 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
 }
 
 void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ExecuteWrite);
   auto* query_ptr = query.get();
   query_ptr->self_ = std::move(query);
 

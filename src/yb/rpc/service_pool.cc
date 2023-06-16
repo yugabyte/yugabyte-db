@@ -69,6 +69,7 @@
 using namespace std::literals;
 using namespace std::placeholders;
 using std::string;
+using yb::util::ScopedWaitState;
 
 DEFINE_RUNTIME_int64(max_time_in_queue_ms, 6000,
     "Fail calls that get stuck in the queue longer than the specified amount of time (in ms)");
@@ -249,6 +250,8 @@ class ServicePoolImpl final : public InboundCallHandler {
   void Handle(InboundCallPtr incoming) override {
     incoming->RecordHandlingStarted(incoming_queue_time_);
     ADOPT_TRACE(incoming->trace());
+    SCOPED_ADOPT_WAIT_STATE(incoming->wait_state());
+    SCOPED_WAIT_STATUS(util::WaitStateCode::Handling);
 
     const char* error_message;
     if (PREDICT_FALSE(incoming->ClientTimedOut())) {
