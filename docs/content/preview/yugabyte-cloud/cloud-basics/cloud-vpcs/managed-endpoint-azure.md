@@ -32,8 +32,9 @@ type: docs
 
 To use Azure Private Link, you need the following:
 
-- An Azure user account with an IAM user policy that grants permissions to create, modify, describe, and delete endpoints.
-- The Amazon resource names (ARN) of [security principals](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) to which to grant access to the endpoint.
+- An Azure user account with an active subscription.
+- An Azure service that supports private endpoints.
+- The [subscription ID](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id) of the service to which to grant access to the endpoint.
 
 Make sure that default security group in your application VPC allows internal connectivity. Otherwise, your application may not be able to reach the endpoint.
 
@@ -52,14 +53,14 @@ To create a PSE, do the following:
       --cluster-name <yugabytedb_cluster> \
       --region <cluster_region> \
       --accessibility-type PRIVATE_SERVICE_ENDPOINT \
-      --security-principals <amazon_resource_names>
+      --subscription-id <subscription_ids>
     ```
 
     Replace values as follows:
 
     - `yugabytedb_cluster` - name of your cluster.
     - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed (for example, `us-west-2`), as well as the region where your application is deployed.
-    - `amazon_resource_names` - comma-separated list of the ARNs of security principals that you want to grant access. For example, `arn:aws:iam::<aws account number>:root`.
+    - `subscription_id` - comma-separated list of the subscription IDs of services that you want to grant access.
 
 1. Note the endpoint ID in the response.
 
