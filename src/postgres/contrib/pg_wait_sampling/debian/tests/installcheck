@@ -1,0 +1,5 @@
+#!/bin/sh
+
+set -eu
+
+pg_buildext  -o "shared_preload_libraries=pg_wait_sampling" installcheck

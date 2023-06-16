@@ -94,6 +94,11 @@ DEFINE_UNKNOWN_string(ysql_hba_conf, "",
               "Deprecated, use `ysql_hba_conf_csv` flag instead. " \
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
+
+DEFINE_NON_RUNTIME_bool(ysql_auh_enabled, true,
+"True to enable active universe history extension PostgreSQL server");
+TAG_FLAG(ysql_auh_enabled, experimental);
+
 DECLARE_string(tmp_dir);
 
 // gFlag wrappers over Postgres GUC parameter.
@@ -382,6 +387,12 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
+  if (FLAGS_ysql_auh_enabled) {
+    metricsLibs.push_back("yb_auh");
+    // TODO: pgsentinel and pg_wait_sampling will be removed once yb_auh takes shape
+    metricsLibs.push_back("pgsentinel");
+    metricsLibs.push_back("pg_wait_sampling");
+  }
 
   vector<string> lines;
   string line;

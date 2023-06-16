@@ -1,0 +1,5 @@
+# yb_auh extension
+comment = 'track active universe history using yb endpoints'
+default_version = '1.0'
+module_pathname = '$libdir/yb_auh'
+relocatable = true

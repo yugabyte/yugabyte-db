@@ -1,0 +1,4 @@
+comment = 'active session history'
+default_version = '1.0'
+module_pathname = '$libdir/pgsentinel'
+relocatable = true

@@ -1,0 +1,11 @@
+pg-wait-sampling (1.1.2-1) unstable; urgency=medium
+
+  * New upstream version compatible with PG13
+
+ -- Adrien Nayrat <adrien.nayrat@anayrat.info>  Wed, 28 Oct 2020 09:03:03 +0000
+
+pg-wait-sampling (1.1.1-1) unstable; urgency=medium
+
+  * Release 1.1.1
+
+ -- Adrien Nayrat <adrien.nayrat@anayrat.info>  Wed, 17 Jun 2020 12:26:59 +0000

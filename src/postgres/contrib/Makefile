@@ -38,8 +38,10 @@ SUBDIRS = \
 		pgaudit 	\
 		pg_stat_monitor  \
 		pg_trgm		\
+		pg_wait_sampling \
 		pgcrypto	\
 		pgrowlocks	\
+		pgsentinel  \
 		pgstattuple	\
 		pg_visibility	\
 		postgres_fdw	\
@@ -52,6 +54,7 @@ SUBDIRS = \
 		tsm_system_time \
 		unaccent	\
 		vacuumlo    \
+		yb_auh \
 		yb_pg_metrics \
 		yb_test_extension
 

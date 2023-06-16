@@ -1,0 +1,15 @@
+Source: pg-wait-sampling
+Section: database
+Priority: optional
+Maintainer: Adrien Nayrat <adrien.nayrat@anayrat.info>
+Standards-Version: 4.5.0
+Build-Depends: debhelper (>=9~), postgresql-server-dev-all (>= 141~)
+Homepage: https://github.com/postgrespro/pg_wait_sampling
+Vcs-Browser: https://github.com/postgrespro/pg_wait_sampling
+Vcs-Git: https://github.com/postgrespro/pg_wait_sampling.git
+
+Package: postgresql-PGVERSION-pg-wait-sampling
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-PGVERSION,
+Description: pg_wait-sampling provides functions for detailed per backend
+ and per query statistics about PostgreSQL wait events

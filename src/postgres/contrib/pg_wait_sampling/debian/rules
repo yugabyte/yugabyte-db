@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+
+PKGVER = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Version:/ { print substr($$2, 2) }')
+EXCLUDE = --exclude-vcs --exclude=debian
+
+include /usr/share/postgresql-common/pgxs_debian_control.mk
+
+override_dh_auto_build:
+	# do nothing
+
+override_dh_auto_test:
+	# nothing to do here, upstream tests used, see debian/tests/*
+
+override_dh_auto_install:
+	# build all supported versions
+	+pg_buildext loop postgresql-%v-pg-wait-sampling
+
+override_dh_installdocs:
+	dh_installdocs --all README.md
+
+override_dh_auto_clean:
+	$(MAKE) clean USE_PGXS=1 PG_CONFIG=/usr/bin/pg_config
+
+orig: debian/control clean
+	cd .. && tar czf pg-wait-sampling_$(PKGVER).orig.tar.gz $(EXCLUDE) pg_wait_sampling-$(PKGVER)
+%:
+	dh $@
