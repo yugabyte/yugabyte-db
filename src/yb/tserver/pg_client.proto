@@ -80,12 +80,9 @@ service PgClientService {
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
-<<<<<<< HEAD
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
-=======
   rpc ActiveUniverseHistory(PgActiveUniverseHistoryRequestPB)
       returns (PgActiveUniverseHistoryResponsePB);
->>>>>>> 4d2bca8fae8 (fetch rpcz data back to pggate and log it)
 }
 
 message PgHeartbeatRequestPB {
