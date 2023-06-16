@@ -36,7 +36,7 @@ Add the `leader_failure_max_missed_heartbeat_periods` configuration flag for YB-
 1. Specify the following on the **Read Replica** tab to create a read replica cluster:
 
     - Specify the regions where you want to place replicas.
-    - Specify the number of nodes and the number of read replicas. The number of nodes must exceed the number of replicas.
+    - Specify the number of nodes and the number of read replicas. The number of nodes must be greater than or equal to the number of replicas.
     - Customize the availability zones if desired.
     - Configure the instance type to use for your read replica cluster.
     - You can choose to use the same flags as the primary cluster, or set custom flags.
