@@ -14,6 +14,7 @@
 //
 
 #include "yb/tablet/transaction_coordinator.h"
+#include <time.h>
 
 #include <atomic>
 #include <iterator>
@@ -212,11 +213,13 @@ class TransactionState {
  public:
   explicit TransactionState(TransactionStateContext* context,
                             const TransactionId& id,
+                            MicrosTime first_touch,
                             HybridTime last_touch,
                             const std::string& parent_log_prefix)
       : context_(*context),
         id_(id),
         log_prefix_(BuildLogPrefix(parent_log_prefix, id)),
+        first_touch_(first_touch),
         last_touch_(last_touch),
         aborted_subtxn_info_(std::make_shared<const SubtxnSetAndPB>()) {
   }
@@ -236,6 +239,14 @@ class TransactionState {
   // that updates status of this transaction.
   HybridTime last_touch() const {
     return last_touch_;
+  }
+
+  MicrosTime first_touch() const {
+    return first_touch_;
+  }
+
+  const auto& pending_involved_tablets() const {
+    return pending_involved_tablets_;
   }
 
   // Status of transaction.
@@ -680,6 +691,14 @@ class TransactionState {
             "Transaction in wrong state during heartbeat: $0",
             TransactionStatus_Name(status_));
       }
+
+      // Store pending involved tablets and txn start time in memory. Clear the tablets field if the
+      // transaction is still PENDING to avoid raft-replicating this additional metadata.
+      for (const auto& tablet_id : request->request()->tablets()) {
+        pending_involved_tablets_.insert(tablet_id.ToBuffer());
+      }
+      first_touch_ = request->request()->start_time();
+      request->mutable_request()->clear_tablets();
     }
 
     if (!status.ok()) {
@@ -930,6 +949,7 @@ class TransactionState {
   const TransactionId id_;
   const std::string log_prefix_;
   TransactionStatus status_ = TransactionStatus::PENDING;
+  MicrosTime first_touch_;
   HybridTime last_touch_;
   // It should match last_touch_, but it is possible that because of some code errors it
   // would not be so. To add stability we introduce a separate field for it.
@@ -954,6 +974,11 @@ class TransactionState {
                     required_replicated_batches, all_batches_replicated, all_intents_applied);
     }
   };
+
+  // Set of tablets at which this txn has written data or acquired locks, while the transaction is
+  // still pending. Note that involved_tablets_ is only populated on COMMIT and includes additional
+  // metadata not known or needed before COMMIT time.
+  std::unordered_set<TabletId> pending_involved_tablets_;
 
   // Tablets participating in this transaction.
   std::unordered_map<
@@ -1090,6 +1115,43 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       return STATUS(TimedOut, "Timed out waiting for running transactions to complete");
     }
 
+    return Status::OK();
+  }
+
+  Status GetOldTransactions(const tserver::GetOldTransactionsRequestPB* req,
+                            tserver::GetOldTransactionsResponsePB* resp,
+                            CoarseTimePoint deadline) {
+    auto min_age = req->min_txn_age_ms() * 1ms;
+    auto now = context_.clock().Now();
+
+    {
+      std::unique_lock<std::mutex> lock(managed_mutex_);
+      const auto& index = managed_transactions_.get<FirstTouchTag>();
+      for (auto it = index.begin(); it != index.end(); ++it) {
+        if (static_cast<uint32_t>(resp->txn_size()) >= req->max_num_txns()) {
+          break;
+        }
+        if (it->status() != TransactionStatus::PENDING || !it->first_touch()) {
+          continue;
+        }
+
+        auto age = (now.GetPhysicalValueMicros() - it->first_touch()) * 1us;
+        if (age <= min_age) {
+          // Since our iterator is sorted by first_touch, if we encounter a transaction which is too
+          // new, we can discontinue our scan of active transactions.
+          break;
+        }
+
+        auto* resp_txn = resp->add_txn();
+        const auto& id = it->id();
+        resp_txn->set_transaction_id(id.data(), id.size());
+        *resp_txn->mutable_aborted_subtxn_set() = it->GetAbortedSubtxnInfo()->pb();
+
+        for (const auto& tablet_id : it->pending_involved_tablets()) {
+          resp_txn->add_tablets(tablet_id);
+        }
+      }
+    }
     return Status::OK();
   }
 
@@ -1307,7 +1369,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     {
       std::lock_guard lock(managed_mutex_);
       postponed_leader_actions_.leader_term = data.leader_term;
-      auto it = GetTransaction(*id, data.state.status(), data.hybrid_time);
+      auto it = GetTransaction(*id, data.state.status(), data.state.start_time(), data.hybrid_time);
       if (it == managed_transactions_.end()) {
         return Status::OK();
       }
@@ -1427,7 +1489,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         auto status = HandleTransactionNotFound(*id, state);
         if (status.ok()) {
           it = managed_transactions_.emplace(
-              this, *id, context_.clock().Now(), log_prefix_).first;
+              this, *id, state.start_time(), context_.clock().Now(), log_prefix_).first;
         } else {
           lock.unlock();
           status = status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
@@ -1504,6 +1566,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
  private:
   class LastTouchTag;
+  class FirstTouchTag;
   class FirstEntryIndexTag;
 
   typedef boost::multi_index_container<TransactionState,
@@ -1518,6 +1581,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
               boost::multi_index::const_mem_fun<TransactionState,
                                                 HybridTime,
                                                 &TransactionState::last_touch>
+          >,
+          boost::multi_index::ordered_non_unique <
+              boost::multi_index::tag<FirstTouchTag>,
+              boost::multi_index::const_mem_fun<TransactionState,
+                                                MicrosTime,
+                                                &TransactionState::first_touch>
           >,
           boost::multi_index::ordered_non_unique <
               boost::multi_index::tag<FirstEntryIndexTag>,
@@ -1659,11 +1728,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
   ManagedTransactions::iterator GetTransaction(const TransactionId& id,
                                                TransactionStatus status,
+                                               MicrosTime start_time,
                                                HybridTime hybrid_time) {
     auto it = managed_transactions_.find(id);
     if (it == managed_transactions_.end()) {
       if (status != TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
-        it = managed_transactions_.emplace(this, id, hybrid_time, log_prefix_).first;
+        it = managed_transactions_.emplace(this, id, start_time, hybrid_time, log_prefix_).first;
         VLOG_WITH_PREFIX(1) << Format("Added: $0", *it);
       }
     }
@@ -1898,6 +1968,12 @@ Status TransactionCoordinator::GetStatus(
     CoarseTimePoint deadline,
     tserver::GetTransactionStatusResponsePB* response) {
   return impl_->GetStatus(transaction_ids, deadline, response);
+}
+
+Status TransactionCoordinator::GetOldTransactions(
+    const tserver::GetOldTransactionsRequestPB* req, tserver::GetOldTransactionsResponsePB* resp,
+    CoarseTimePoint deadline) {
+  return impl_->GetOldTransactions(req, resp, deadline);
 }
 
 void TransactionCoordinator::Abort(const TransactionId& transaction_id,

@@ -111,7 +111,7 @@ class YBOperation {
     return succeeded();
   }
 
-  virtual bool should_add_intents(IsolationLevel isolation_level) {
+  virtual bool should_apply_intents(IsolationLevel isolation_level) {
     return !read_only() || isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
   }
 
@@ -557,7 +557,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   static std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
       const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs);
 
-  bool should_add_intents(IsolationLevel isolation_level) override;
+  bool should_apply_intents(IsolationLevel isolation_level) override;
   void SetUsedReadTime(const ReadHybridTime& used_time);
   const ReadHybridTime& used_read_time() const { return used_read_time_; }
 
