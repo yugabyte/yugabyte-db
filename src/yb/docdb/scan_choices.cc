@@ -779,7 +779,7 @@ void HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
       << "current_scan_target_ is non-empty. " << DocKey::DebugSliceToString(current_scan_target_);
   if (is_forward_scan_) {
     VLOG_WITH_FUNC(3) << "Seeking to " << DocKey::DebugSliceToString(current_scan_target_);
-    db_iter->Seek(current_scan_target_);
+    db_iter->SeekForward(current_scan_target_);
   } else {
     // seek to the highest key <= current_scan_target_
     // seeking to the highest key < current_scan_target_ + kHighest
