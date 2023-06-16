@@ -8102,6 +8102,41 @@
       "required" : [ "HOST_BASE", "LOCATION", "REGION" ],
       "type" : "object"
     },
+    "RegionMetadata" : {
+      "properties" : {
+        "regionMetadata" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/RegionMetadataInfo"
+          },
+          "type" : "object"
+        }
+      },
+      "required" : [ "regionMetadata" ],
+      "type" : "object"
+    },
+    "RegionMetadataInfo" : {
+      "properties" : {
+        "availabilityZones" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "latitude" : {
+          "format" : "double",
+          "type" : "number"
+        },
+        "longitude" : {
+          "format" : "double",
+          "type" : "number"
+        },
+        "name" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "availabilityZones", "latitude", "longitude", "name" ],
+      "type" : "object"
+    },
     "ReleaseFormData" : {
       "description" : "Specification for release locations",
       "properties" : {
@@ -16963,6 +16998,37 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Create a provider",
+        "tags" : [ "Cloud providers" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/region_metadata/{code}" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getRegionMetadata",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "code",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RegionMetadata"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Retrieves the region metadata for the cloud providers",
         "tags" : [ "Cloud providers" ]
       }
     },
