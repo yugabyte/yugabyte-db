@@ -209,6 +209,8 @@ class MasterPathHandlers {
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_tables = false);
+  void HandleCatalogManagerJSON(const Webserver::WebRequest& req,
+                                Webserver::WebResponse* resp);
   void HandleNamespacesHTML(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_namespaces = false);
