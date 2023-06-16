@@ -53,5 +53,41 @@ ql::CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const s
   return ql::CQLMessage::QueryId(to_char_ptr(md5), sizeof(md5));
 }
 
+void StmtCounters::WriteAsJson(
+    JsonWriter *jw, const ql::CQLMessage::QueryId& query_id) const {
+  jw->StartObject();
+  jw->String("query");
+  jw->String(this->query);
+
+  jw->String("query_id");
+  jw->String(query_id);
+
+  jw->String("num_calls");
+  jw->Int64(this->num_calls);
+
+  jw->String("total_time_in_msec");
+  jw->Double(this->total_time_in_msec);
+
+  jw->String("min_time_in_msec");
+  jw->Double(this->min_time_in_msec);
+
+  jw->String("max_time_in_msec");
+  jw->Double(this->max_time_in_msec);
+
+  jw->String("mean_time");
+  jw->Double(this->total_time_in_msec/this->num_calls);
+
+  // Note we are calculating the population variance here, not the
+  // sample variance, as we have data for the whole population, so
+  // Bessel's correction is not used, and we don't divide by
+  // this->num_calls-1.
+  const double stddev_time = this->num_calls == 0 ? 0. :
+      sqrt(this->sum_var_time_in_msec / this->num_calls);
+
+  jw->String("stddev_time");
+  jw->Double(stddev_time);
+  jw->EndObject();
+}
+
 }  // namespace cqlserver
 }  // namespace yb

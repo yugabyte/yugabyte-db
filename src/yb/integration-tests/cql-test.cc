@@ -34,6 +34,8 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
+#include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/status_log.h"
@@ -77,6 +79,7 @@ class CqlTest : public CqlTestBase<MiniCluster> {
   void TestAlteredPrepareForIndexWithPaging(bool check_schema_in_paging,
                                             bool metadata_in_exec_resp = false);
   void TestPrepareWithDropTableWithPaging();
+  void TestCQLPreparedStmtStats();
 };
 
 TEST_F(CqlTest, ProcessorsLimit) {
@@ -777,6 +780,58 @@ TEST_F(CqlTest, AlteredPrepare) {
 
 TEST_F(CqlTest, AlteredPrepare_MetadataInExecResp) {
   TestAlteredPrepare(/* metadata_in_exec_resp =*/ true);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, TestCQLPreparedStmtStats) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  EasyCurl curl;
+  faststring buf;
+  std::vector<Endpoint> addrs;
+  CHECK_OK(cql_server_->web_server()->GetBoundAddresses(&addrs));
+  CHECK_EQ(addrs.size(), 1);
+  LOG(INFO) << "Create Table";
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT)"));
+
+  LOG(INFO) << "Prepare";
+  auto sel_prepared = ASSERT_RESULT(session.Prepare("SELECT * FROM t1 WHERE i = ?"));
+  auto ins_prepared = ASSERT_RESULT(session.Prepare("INSERT INTO t1 (i, j) VALUES (?, ?)"));
+
+  for (int i = 0; i < 10; i++) {
+    ASSERT_OK(session.Execute(ins_prepared.Bind().Bind(0, i).Bind(1, i)));
+  }
+
+  for (int i = 0; i < 9; i += 2) {
+    CassandraResult res =  ASSERT_RESULT(
+        session.ExecuteWithResult(sel_prepared.Bind().Bind(0, i)));
+    ASSERT_EQ(res.RenderToString(), strings::Substitute("$0,$1", i, i));
+  }
+
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
+  JsonReader r(buf.ToString());
+  ASSERT_OK(r.Init());
+  std::vector<const rapidjson::Value*> stmt_stats;
+  ASSERT_OK(r.ExtractObjectArray(r.root(), "prepared_statements", &stmt_stats));
+  ASSERT_EQ(2, stmt_stats.size());
+
+  const rapidjson::Value* insert_stat = stmt_stats[0];
+  string insert_query;
+  ASSERT_OK(r.ExtractString(insert_stat, "query", &insert_query));
+  ASSERT_EQ("INSERT INTO t1 (i, j) VALUES (?, ?)", insert_query);
+
+  int64 insert_num_calls = 0;
+  ASSERT_OK(r.ExtractInt64(insert_stat, "num_calls", &insert_num_calls));
+  ASSERT_EQ(10, insert_num_calls);
+
+  const rapidjson::Value* select_stat = stmt_stats[1];
+  string select_query;
+  ASSERT_OK(r.ExtractString(select_stat, "query", &select_query));
+  ASSERT_EQ("SELECT * FROM t1 WHERE i = ?", select_query);
+
+  int64 select_num_calls = 0;
+  ASSERT_OK(r.ExtractInt64(select_stat, "num_calls", &select_num_calls));
+  ASSERT_EQ(5, select_num_calls);
+
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

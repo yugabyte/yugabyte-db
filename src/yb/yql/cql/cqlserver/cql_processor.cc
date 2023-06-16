@@ -103,6 +103,8 @@ DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
 
+DEFINE_RUNTIME_bool(ycql_enable_stat_statements, true,
+    "If enabled, it will track queries and dump the metrics on http://localhost:12000/statements.");
 DEFINE_RUNTIME_bool(ycql_enable_tracing_flag, true,
     "If enabled, setting TRACING ON in cqlsh will cause "
     "the server to enable tracing for the requested RPCs and print them. Use this as a safety flag "
@@ -309,6 +311,14 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   cql_metrics_->time_to_queue_cql_response_->Increment(
       response_done.GetDeltaSince(response_begin).ToMicroseconds());
 
+  // Query id of a prepared statement if type of request is Execute request.
+  const std::string prep_query_id = GetPrepQueryId();
+  if (FLAGS_ycql_enable_stat_statements && !prep_query_id.empty()) {
+    service_impl_->UpdatePrepStmtCounters(
+        prep_query_id,
+        response_done.GetDeltaSince(execute_begin_).ToSeconds()*1000.);
+  }
+
   Release();
 }
 
@@ -399,6 +409,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   VLOG(1) << "PREPARE " << req.query();
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
       ql_env_.CurrentKeyspace(), req.query());
+  VLOG(1) << "Generated Query Id = " << query_id;
   // To prevent multiple clients from preparing the same new statement in parallel and trying to
   // cache the same statement (a typical "login storm" scenario), each caller will try to allocate
   // the statement in the cached statement first. If it already exists, the existing one will be

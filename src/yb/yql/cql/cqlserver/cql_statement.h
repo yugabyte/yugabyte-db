@@ -20,6 +20,7 @@
 
 #include <list>
 
+#include "yb/util/jsonwriter.h"
 #include "yb/yql/cql/ql/statement.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
 
@@ -36,6 +37,24 @@ using CQLStatementMap = std::unordered_map<ql::CQLMessage::QueryId, std::shared_
 // A LRU list of CQL statements and position in the list.
 using CQLStatementList = std::list<std::shared_ptr<CQLStatement>>;
 using CQLStatementListPos = CQLStatementList::iterator;
+
+struct StmtCounters{
+  explicit StmtCounters(const std::string& text) : query(text) {}
+
+  explicit StmtCounters(const std::shared_ptr<StmtCounters>& other) :
+      num_calls(other->num_calls), total_time_in_msec(other->total_time_in_msec),
+      min_time_in_msec(other->min_time_in_msec), max_time_in_msec(other->max_time_in_msec),
+      sum_var_time_in_msec(other->sum_var_time_in_msec), query(other->query) {}
+
+  void WriteAsJson(JsonWriter* jw, const ql::CQLMessage::QueryId& query_id) const;
+
+  int64 num_calls = 0;              // Number of times executed.
+  double total_time_in_msec = 0.;   // Total execution time, in msec.
+  double min_time_in_msec = 0.;     // Minimum execution time in msec.
+  double max_time_in_msec = 0.;     // Maximum execution time in msec.
+  double sum_var_time_in_msec = 0.; // Sum of variances in execution time in msec.
+  std::string query;                // Stores the query text.
+};
 
 // A CQL statement that is prepared and cached.
 class CQLStatement : public ql::Statement {
@@ -64,9 +83,20 @@ class CQLStatement : public ql::Statement {
   // Return the query id of a statement.
   static ql::CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& query);
 
+  std::shared_ptr<StmtCounters> GetWritableCounters() {
+    return stmt_counters_;
+  }
+
+  void SetCounters(const std::shared_ptr<StmtCounters>& other) {
+    stmt_counters_ = other;
+  }
+
  private:
   // Position of the statement in the LRU.
   mutable CQLStatementListPos pos_;
+
+  // Stores the metrics for a prepared statements.
+  std::shared_ptr<StmtCounters> stmt_counters_;
 
   ScopedTrackedConsumption consumption_;
 };

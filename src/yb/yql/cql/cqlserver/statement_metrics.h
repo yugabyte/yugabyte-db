@@ -32,7 +32,7 @@
 #pragma once
 
 #include "yb/util/jsonwriter.h"
-
+#include "yb/yql/cql/cqlserver/cql_statement.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
 
 namespace yb {
@@ -41,8 +41,8 @@ namespace cqlserver {
 
 class StatementMetrics {
  public:
-  StatementMetrics(std::string query,
-                   ql::CQLMessage::QueryId query_id);
+  StatementMetrics(const ql::CQLMessage::QueryId& query_id,
+                   const std::shared_ptr<const StmtCounters> stmt_counters);
 
   ~StatementMetrics() {}
 
@@ -51,8 +51,8 @@ class StatementMetrics {
   ql::CQLMessage::QueryId query_id() const { return query_id_; }
 
  private:
-  const std::string query_;
   const ql::CQLMessage::QueryId query_id_;
+  const std::shared_ptr<const StmtCounters> counters_;
 
 };
 } // namespace cqlserver
