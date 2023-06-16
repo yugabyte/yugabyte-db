@@ -19,6 +19,9 @@ import static org.mockito.Mockito.when;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.LdapDnToYbaRole;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.apache.directory.api.ldap.model.cursor.EntryCursor;
 import org.apache.directory.api.ldap.model.entry.DefaultEntry;
 import org.apache.directory.api.ldap.model.entry.Entry;
@@ -29,8 +32,10 @@ import org.apache.directory.api.ldap.model.message.SearchScope;
 import org.apache.directory.ldap.client.api.LdapNetworkConnection;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.MockitoAnnotations;
 
+@RunWith(JUnitParamsRunner.class)
 public class LdapUtilTest extends FakeDBApplication {
 
   private LdapUtil ldapUtil;
@@ -108,6 +113,8 @@ public class LdapUtilTest extends FakeDBApplication {
 
     assertNotNull(user);
     assertEquals("test-user", user.getEmail());
+    assertEquals(Role.ReadOnly, user.getRole());
+    assertEquals(false, user.isLdapSpecifiedRole());
   }
 
   @Test
@@ -220,6 +227,7 @@ public class LdapUtilTest extends FakeDBApplication {
 
     assertNotNull(user);
     assertEquals(Users.Role.BackupAdmin, user.getRole());
+    assertEquals(true, user.isLdapSpecifiedRole());
   }
 
   @Test
@@ -262,6 +270,7 @@ public class LdapUtilTest extends FakeDBApplication {
 
     assertNotNull(updatedUser);
     assertEquals(Users.Role.BackupAdmin, updatedUser.getRole());
+    assertEquals(true, updatedUser.isLdapSpecifiedRole());
   }
 
   @Test
@@ -305,6 +314,103 @@ public class LdapUtilTest extends FakeDBApplication {
     assertEquals(user, oldUser);
   }
 
+  @Parameters({
+    "true, false, false, BackupAdmin, true, Admin",
+    "true, false, false, BackupAdmin, false, Admin",
+    "true, true, false, BackupAdmin, true, Admin",
+    "true, true, false, BackupAdmin, false, Admin",
+    "true, true, true, BackupAdmin, true, Admin",
+    "true, true, true, BackupAdmin, false, Admin",
+    "false, true, false, BackupAdmin, false, Admin",
+    "false, true, true, BackupAdmin, false, Admin",
+    "false, false, false, BackupAdmin, false, Admin",
+    "false, true, false, BackupAdmin, true, SuperAdmin",
+    "false, true, true, Admin, true, SuperAdmin",
+    "false, false, false, BackupAdmin, true, SuperAdmin"
+  })
+  @Test
+  public void testRoleAssignment(
+      boolean groupMappingOn,
+      boolean oldUserPresent,
+      boolean oldUserLdapSpecifiedRole,
+      Role oldUserRole,
+      boolean newLdapRoleValid,
+      Role newLdapRole)
+      throws Exception {
+    setupTest();
+    doNothing().when(ldapNetworkConnection).unBind();
+    String email = "email";
+
+    Users oldUser;
+    if (oldUserPresent) {
+      oldUser = ModelFactory.testUser(testCustomer);
+      oldUser.setEmail(email);
+      oldUser.setRole(oldUserRole);
+      oldUser.setLdapSpecifiedRole(oldUserLdapSpecifiedRole);
+      oldUser.setUserType(Users.UserType.ldap);
+      oldUser.update();
+    }
+
+    Entry entry = new DefaultEntry();
+    when(entryCursor.next()).thenReturn(true).thenReturn(false);
+    when(entryCursor.get()).thenReturn(entry);
+
+    if (groupMappingOn) {
+      if (newLdapRoleValid) {
+        String groupDn = "cn=groupname," + baseDn;
+        entry.add(memberOfAttribute, groupDn);
+        LdapDnToYbaRole.create(testCustomer.getUuid(), groupDn, newLdapRole);
+      }
+    } else {
+      entry.add("yugabytePlatformRole", newLdapRoleValid ? newLdapRole.toString() : "Invalid role");
+    }
+
+    Users loggedInUser =
+        ldapUtil.authViaLDAP(
+            email,
+            "password",
+            new LdapUtil.LdapConfiguration(
+                "ldapUrl",
+                389,
+                "base-dn",
+                "",
+                "cn=",
+                false,
+                false,
+                false,
+                "service_account",
+                "service_password",
+                "",
+                false,
+                "*",
+                SearchScope.SUBTREE,
+                "base-dn",
+                memberOfAttribute,
+                false,
+                groupMappingOn));
+
+    if (groupMappingOn) {
+      assertEquals(true, loggedInUser.isLdapSpecifiedRole());
+      if (newLdapRoleValid) {
+        assertEquals(newLdapRole, loggedInUser.getRole());
+      } else {
+        assertEquals(Role.ReadOnly, loggedInUser.getRole());
+      }
+    } else {
+      if (!newLdapRoleValid) {
+        assertEquals(false, loggedInUser.isLdapSpecifiedRole());
+        if (oldUserPresent) {
+          assertEquals(oldUserRole, loggedInUser.getRole());
+        } else {
+          assertEquals(Role.ReadOnly, loggedInUser.getRole());
+        }
+      } else {
+        assertEquals(true, loggedInUser.isLdapSpecifiedRole());
+        assertEquals(newLdapRole, loggedInUser.getRole());
+      }
+    }
+  }
+
   @Test
   public void testAuthViaLDAPWithSearchAndBindSuccess() throws Exception {
     setupTest();
@@ -340,6 +446,8 @@ public class LdapUtilTest extends FakeDBApplication {
 
     assertNotNull(user);
     assertEquals("test-user", user.getEmail());
+    assertEquals(Role.Admin, user.getRole());
+    assertEquals(true, user.isLdapSpecifiedRole());
   }
 
   @Test
@@ -445,6 +553,7 @@ public class LdapUtilTest extends FakeDBApplication {
     assertNotNull(user);
     assertEquals(username, user.getEmail());
     assertEquals(user.getRole(), ldapMapping.ybaRole);
+    assertEquals(true, user.isLdapSpecifiedRole());
   }
 
   @Test
@@ -490,6 +599,7 @@ public class LdapUtilTest extends FakeDBApplication {
     assertNotNull(user);
     assertEquals(username, user.getEmail());
     assertEquals(user.getRole(), ldapMapping.ybaRole);
+    assertEquals(true, user.isLdapSpecifiedRole());
   }
 
   @Test

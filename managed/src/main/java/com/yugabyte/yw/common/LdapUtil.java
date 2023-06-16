@@ -472,9 +472,16 @@ public class LdapUtil {
           break;
         default:
           roleToAssign = Users.Role.ReadOnly;
-          users.setLdapSpecifiedRole(false);
+          log.warn("No valid role could be ascertained, defaulting to ReadOnly.");
+          if (!ldapConfiguration.isLdapGroupUseRoleMapping()) {
+            users.setLdapSpecifiedRole(false);
+          }
       }
       Users oldUser = Users.find.query().where().eq("email", email).findOne();
+      if (oldUser != null) {
+        oldUser.setLdapSpecifiedRole(users.isLdapSpecifiedRole());
+      }
+
       if (oldUser != null
           && (oldUser.getRole() == roleToAssign || !oldUser.isLdapSpecifiedRole())) {
         return oldUser;
