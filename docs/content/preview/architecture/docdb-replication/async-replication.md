@@ -156,12 +156,12 @@ consistency, we additionally disallow writes on the sink universe and
 cause reads to read as of a time far enough in the past that all the
 relevant data from the source universe has already been replicated.
 
-In particular, we pick the time to read as of, T, so that all the writes
-from all the transactions that will commit at or before time T have been
-replicated to the sink universe.  Put another way, we refuse to read as
-of a time that there could be incoming source writes at or before.  This
-restores consistent reads and ensures source universe transaction
-results become visible atomically.
+In particular, we pick the time to read as of, _T_, so that all the
+writes from all the transactions that will commit at or before time _T_
+have been replicated to the sink universe.  Put another way, we refuse
+to read as of a time that there could be incoming source writes at or
+before.  This restores consistent reads and ensures source universe
+transaction results become visible atomically.
 
 In order to know when to read as of, we maintain an analog of safe time
 called _xCluster safe time_, which is the latest time it is currently
@@ -203,34 +203,139 @@ the past.
 
 ## High-level implementation details
 
+At a high level, xCluster replication is implemented by having _pollers_
+in the sink universe that poll the source universe tablet servers for
+recent changes.  Each poller works independently and polls one or more
+source tablet servers, distributing the received changes among a set
+of sink tablet servers.
+
+The polled tablets examine only their Raft logs to determine what
+changes have occurred recently rather than looking at their RocksDB
+instances.  The incoming poll request specifies the Raft log entry ID to
+start gathering changes from and the response includes a batch of
+changes and the Raft log entry ID it left off on.
+
+Pollers occasionally checkpoint the Raft ID of the last batch of changes
+they have processed; this ensures each change is processed at least
+once.  Much of the code for responding to polls is shared with the
+[Change data capture (CDC)](../change-data-capture) feature.
+
+### The mapping between source and sink tablets
+
+In simple cases, we can associate a poller with each sink tablet that
+polls the corresponding source tablet.
+
+However, in the general case the number of tablets for a table in the
+source universe and in the sink universe may be different.  Even if the
+number of tablets is the same, they may have different sharding
+boundaries due to tablet splits occurring at different places in the
+past.
+
+This means that each sink tablet may need the changes from multiple
+source tablets and multiple sink tablets may need changes from the same
+source tablets.  To avoid multiple redundant cross-universe reads to the
+same source tablet, the sink master leader assigns only one poller for
+each source tablet; in cases where a source tablet's changes are needed
+by multiple sink tablets, the poller assigned to that source tablet
+distributes the changes to the relevant sink tablets.
+
+The following illustrative diagram shows what this looks like:
+
+_diagram showing mapping of tablets and placement of pollers_
+
+Tablet splitting involves a Raft entry, which is replicated to the sink
+side so that the mapping of pollers to source tablets can be updated as
+needed when a source tablet splits.
+
+### Single-shard transactions
+
+These are straightforward: when one of these transaction commits, a
+single Raft log entry is produced containing all of that transaction's
+writes and its commit time.  This entry in turn is used to generate part
+of a changes batch when the poller requests changes.
+
+Upon receiving the changes, the poller examines each write to see what
+key it writes to in order to determine which tablet covers that part of
+the table then forwards the relevant writes to each of the associated
+tablets.  The commit times of the writes are preserved and the writes
+are marked as _external_, which prevents them from being further
+replicated by xCluster.
+
+### Distributed transactions
+
+These are more complicated because they involve multiple Raft records.
+Simplifying somewhat, each time one of these transactions makes a
+provisional write, a Raft entry is made on the appropriate tablet and
+after the transaction commits, a Raft entry is made on all the involved
+tablets to _apply the transaction_.  Applying a transaction here means
+converting its writes from provisional records to regular writes.
+
+Provisional writes are handled similarly to the normal writes in the
+single-shard transaction case but are written as provisional records
+instead of normal writes.  A special inert format is used that differs
+from the usual provisional records format.  This both saves space as the
+original locking information, which is not needed on the sink side, is
+omitted and prevents the provisional records from interacting with the
+sink read or locking pathways.  This ensures the transaction will not
+affect transactions on the sink side yet.
+
+The apply Raft entries also generate changes received by the pollers.
+When a poller receives an apply entry, it sends instructions to all the
+sink tablets it handles to apply the given transaction.  Transaction
+application on the sink tablets is similar to that on the source
+universe but differs among other things due to the different provisional
+record format.  It converts the provisional writes into regular writes,
+again at the same commit time as on the source universe and with them
+being marked as external.  At this point the writes of the transaction
+to this tablet become visible to reads.
+
+Because pollers operate independently and the writes/applies to multiple
+tablets are not done as a set atomically, writes from a single
+transaction &mdash; even a single-shard one &mdash; to multiple tablets
+can become visible at different times.
+
+When a transaction commits, it is applied to the relevant tablets
+lazily.  This means that even though transaction _X_ commits before
+transaction _Y_, _X_'s application Raft entry may occur after _Y_'s
+application Raft entry on some tablets.  If this happens, the writes
+from _X_ can become visible in the sink universe after _Y_'s.  This is
+why non-transactional mode reads are only eventually consistent and not
+timeline consistent.
+
+### Transactional mode
+
+xCluster safe time is computed for each database by the sink master
+leader as the minimum _xCluster application time_ any tablet in that
+database has reached.  Pollers determine this time using information from
+the source tablet servers of the form "once you have fully applied all
+the changes before this one, your xCluster application time will be _T_".
+
+A source tablet server sends such information when it determines that no
+active transaction involving that tablet can commit before _T_ and that
+all transactions involving that tablet that committed before _T_ have
+application Raft entries that have been previously sent as changes.  A
+periodic background task checks for committed transactions that are
+missing apply Raft entries and generates such entries for them; this
+helps xCluster safe time advance faster.
+
+Note: a previous implementation (pre-2.18) of this mode replicated Raft
+entries for the transaction coordinators instead of replicating the
+application Raft entries.  This was found to have much greater
+complexity than the current implementation.
+
+
+## Schema differences
+
 _To be written..._
 
-mention whether or not we are using CDC
+
+## Replication bootstrapping
+
+_To be written..._
+
+
 
 ## After this point not yet edited
-
-For these needs,
-YugabyteDB supports two-data-center (2DC) deployments that use
-cross-cluster (xCluster) replication built on top of [change data
-capture (CDC)](../change-data-capture) in DocDB.
-
-
-
-
-    * moving data to a new cluster configuration
-
-* the modes we have built so far and their trade-offs
-    * consequences of producer cluster cut off
-    * ability to have bidirectional or at least writes on both sides
-
-
-
-
-
-
-
-
-
 
 YugabyteDB provides [synchronous replication](../replication/) of data in universes dispersed across multiple (three or more) data centers by using the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two-data-center (2DC) deployments that use cross-cluster (xCluster) replication built on top of [change data capture (CDC)](../change-data-capture) in DocDB.
 
