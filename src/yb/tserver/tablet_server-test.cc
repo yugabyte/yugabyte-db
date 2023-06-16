@@ -565,7 +565,7 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
 // throws an exception.
 TEST_F(TabletServerTest, TestInvalidWriteRequest_BadSchema) {
   SchemaBuilder schema_builder(schema_);
-  ASSERT_OK(schema_builder.AddColumn("col_doesnt_exist", INT32));
+  ASSERT_OK(schema_builder.AddColumn("col_doesnt_exist", DataType::INT32));
   Schema bad_schema_with_ids = schema_builder.Build();
   Schema bad_schema = schema_builder.BuildWithoutIds();
 

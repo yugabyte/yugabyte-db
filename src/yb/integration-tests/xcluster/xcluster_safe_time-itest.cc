@@ -76,7 +76,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
 
     YBSchema schema;
     client::YBSchemaBuilder b;
-    b.AddColumn("c0")->Type(INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("c0")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
     ASSERT_OK(b.Build(&schema));
 
     auto producer_cluster_future = std::async(std::launch::async, [&] {

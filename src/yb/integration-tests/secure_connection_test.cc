@@ -145,8 +145,8 @@ TEST_F_EX(SecureConnectionTest, TLS12, SecureConnectionTLS12Test) {
 
 TEST_F(SecureConnectionTest, BigWrite) {
   client::YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(STRING);
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(DataType::STRING);
 
   ASSERT_OK(table_.Create(client::kTableName, 1, client_.get(), &builder));
 

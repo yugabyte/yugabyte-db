@@ -1582,7 +1582,7 @@ Status Executor::ExecPTNode(const PTExplainStmt *tnode) {
   TreeNode::SharedPtr subStmt = tnode->stmt();
   PTDmlStmt *dmlStmt = down_cast<PTDmlStmt *>(subStmt.get());
   const YBTableName explainTable(YQL_DATABASE_CQL, "Explain");
-  ColumnSchema explainColumn("QUERY PLAN", STRING);
+  ColumnSchema explainColumn("QUERY PLAN", DataType::STRING);
   auto explainColumns = std::make_shared<std::vector<ColumnSchema>>(
       std::initializer_list<ColumnSchema>{explainColumn});
   auto explainSchema = std::make_shared<Schema>(*explainColumns);

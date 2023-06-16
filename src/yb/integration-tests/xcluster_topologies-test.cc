@@ -107,7 +107,7 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
       const std::vector<uint32_t>& num_consumer_tablets,
       const std::vector<uint32_t>& num_producer_tablets) {
     YBSchemaBuilder b;
-    b.AddColumn("c0")->Type(INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("c0")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
     // Create transactional table.
     TableProperties table_properties;
     b.SetTableProperties(table_properties);

@@ -196,8 +196,8 @@ void CreateTable(
                                                table_name.namespace_type()));
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(INT32);
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(DataType::INT32);
   if (transactional) {
     TableProperties table_properties;
     table_properties.SetTransactional(true);
@@ -210,12 +210,13 @@ void CreateTable(
 void BuildSchema(Partitioning partitioning, Schema* schema) {
   switch (partitioning) {
     case Partitioning::kHash:
-      *schema = Schema({ ColumnSchema(kKeyColumn, INT32, ColumnKind::HASH),
-                         ColumnSchema(kValueColumn, INT32) });
+      *schema = Schema({ ColumnSchema(kKeyColumn, DataType::INT32, ColumnKind::HASH),
+                         ColumnSchema(kValueColumn, DataType::INT32) });
       return;
     case Partitioning::kRange:
-      *schema = Schema({ ColumnSchema(kKeyColumn, INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
-                         ColumnSchema(kValueColumn, INT32) });
+      *schema = Schema({
+          ColumnSchema(kKeyColumn, DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+          ColumnSchema(kValueColumn, DataType::INT32) });
       return;
   }
   FATAL_INVALID_ENUM_VALUE(Partitioning, partitioning);

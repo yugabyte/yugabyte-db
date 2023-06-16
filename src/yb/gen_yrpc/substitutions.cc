@@ -121,6 +121,14 @@ Substitutions CreateSubstitutions(const google::protobuf::Descriptor* message) {
   return result;
 }
 
+Substitutions CreateSubstitutions(const google::protobuf::EnumDescriptor* enum_desc) {
+  Substitutions result;
+  result.emplace_back(
+      "enum_name", UnnestedName(enum_desc, Lightweight::kFalse, FullPath::kFalse));
+  result.emplace_back("enum_lw_name", *LightweightName(enum_desc));
+  return result;
+}
+
 Substitutions CreateSubstitutions(
     const google::protobuf::MethodDescriptor* method, rpc::RpcSides side) {
   Substitutions result;

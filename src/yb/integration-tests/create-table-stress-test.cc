@@ -125,9 +125,9 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   CreateTableStressTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("v1")->Type(INT64)->NotNull();
-    b.AddColumn("v2")->Type(STRING)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("v1")->Type(DataType::INT64)->NotNull();
+    b.AddColumn("v2")->Type(DataType::STRING)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 

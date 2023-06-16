@@ -140,8 +140,8 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   virtual void InitSchemaBuilder(YBSchemaBuilder* builder) {
-    builder->AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder->AddColumn(kValueColumn)->Type(STRING);
+    builder->AddColumn("h")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    builder->AddColumn(kValueColumn)->Type(DataType::STRING);
   }
 
   Status WaitForTabletLeaders() {
@@ -480,8 +480,8 @@ TEST_F(QLStressTest, RetryWritesDisabled) {
 class QLStressTestIntValue : public QLStressTest {
  private:
   void InitSchemaBuilder(YBSchemaBuilder* builder) override {
-    builder->AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder->AddColumn(kValueColumn)->Type(INT64);
+    builder->AddColumn("h")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    builder->AddColumn(kValueColumn)->Type(DataType::INT64);
   }
 };
 
@@ -1042,8 +1042,8 @@ class QLStressDynamicCompactionPriorityTest : public QLStressTest {
   }
 
   void InitSchemaBuilder(YBSchemaBuilder* builder) override {
-    builder->AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder->AddColumn(kValueColumn)->Type(STRING);
+    builder->AddColumn("h")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    builder->AddColumn(kValueColumn)->Type(DataType::STRING);
   }
 };
 

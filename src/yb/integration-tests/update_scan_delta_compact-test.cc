@@ -94,9 +94,9 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
  protected:
   UpdateScanDeltaCompactionTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT64)->NotNull()->HashPrimaryKey();
-    b.AddColumn("string")->Type(STRING)->NotNull();
-    b.AddColumn("int64")->Type(INT64)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
+    b.AddColumn("string")->Type(DataType::STRING)->NotNull();
+    b.AddColumn("int64")->Type(DataType::INT64)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 

@@ -107,9 +107,9 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
 
     client::YBSchema schema;
     client::YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("int_val")->Type(INT32)->NotNull();
-    b.AddColumn("string_val")->Type(STRING);
+    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("int_val")->Type(DataType::INT32)->NotNull();
+    b.AddColumn("string_val")->Type(DataType::STRING);
     CHECK_OK(b.Build(&schema));
     std::unique_ptr<client::YBTableCreator> table_creator(client->NewTableCreator());
     if (num_tablets) {

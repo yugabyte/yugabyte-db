@@ -288,7 +288,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
                              &json_col_where_ops_, &partition_key_ops_, &op_counters,
                              &partition_key_counter, opcode(), &func_ops_, &multi_col_where_ops_);
 
-  SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+  SemState sem_state(sem_context, QLType::Create(DataType::BOOL), InternalType::kBoolValue);
   sem_state.SetWhereState(&where_state);
   RETURN_NOT_OK(expr->Analyze(sem_context));
 
@@ -369,7 +369,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
 Status PTDmlStmt::AnalyzeIfClause(SemContext *sem_context) {
   if (if_clause_) {
-    SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+    SemState sem_state(sem_context, QLType::Create(DataType::BOOL), InternalType::kBoolValue);
     sem_state.set_processing_if_clause(true);
     return if_clause_->Analyze(sem_context);
   }

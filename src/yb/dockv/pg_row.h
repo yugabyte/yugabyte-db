@@ -84,6 +84,8 @@ class PgTableRow {
   bool IsEmpty() const;
   std::string ToString() const;
 
+  // Append encoded value at specified index to the buffer.
+  void AppendValueByIndex(size_t index, WriteBuffer* buffer) const;
   std::optional<PgValue> GetValueByIndex(size_t index) const;
 
   std::optional<PgValue> GetValueByColumnId(ColumnId column_id) const {
@@ -98,7 +100,7 @@ class PgTableRow {
   void SetNull(size_t column_idx);
 
   Status DecodeKey(size_t column_idx, Slice* value);
-  Status DecodeValue(size_t column_idx, const Slice& value);
+  Status DecodeValue(size_t column_idx, Slice value);
 
   bool IsNull(size_t index) const {
     return is_null_[index];

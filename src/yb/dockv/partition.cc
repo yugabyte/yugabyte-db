@@ -396,7 +396,7 @@ Status PartitionSchema::EncodeKey(const YBPartialRow& row, string* buf) const {
     }
   }
 
-  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
+  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(DataType::UINT32));
 
   for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
     int32_t bucket;
@@ -421,7 +421,7 @@ Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) co
     }
   }
 
-  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
+  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(DataType::UINT32));
   for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
     int32_t bucket;
     RETURN_NOT_OK(BucketForRow(row, hash_bucket_schema, &bucket));
@@ -713,7 +713,7 @@ Status PartitionSchema::CreatePartitions(int32_t num_tablets, vector<Partition> 
 Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
                                          const Schema& schema,
                                          vector<Partition>* partitions) const {
-  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
+  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(DataType::UINT32));
 
   // Create a partition per hash bucket combination.
   *partitions = vector<Partition>(1);

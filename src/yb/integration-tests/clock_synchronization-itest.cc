@@ -62,8 +62,8 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(cluster_->Start());
 
     client::YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT64)->NotNull()->HashPrimaryKey();
-    b.AddColumn("value")->Type(INT64)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
+    b.AddColumn("value")->Type(DataType::INT64)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());

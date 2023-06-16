@@ -84,7 +84,7 @@ using client::YBTableName;
 class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   RegistrationTest()
-      : schema_({ ColumnSchema("c1", UINT32, ColumnKind::HASH)}) {
+      : schema_({ ColumnSchema("c1", DataType::UINT32, ColumnKind::HASH)}) {
   }
 
   void SetUp() override {

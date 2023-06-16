@@ -421,7 +421,7 @@ void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
           *(map->add_values()) = seq.elems(i);
         }
       }
-    } else if (type->param_type()->main() == MAP) {
+    } else if (type->param_type()->main() == DataType::MAP) {
       // Case: FROZEN<MAP>=[Key1,Value1,Key2,Value2] -> MAP<Key1:Value1, Key2:Value2>.
       QLSeqValuePB seq(value->frozen_value());
       DCHECK_EQ(seq.elems_size() % 2, 0);
@@ -437,31 +437,32 @@ void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
         UnpackUDTAndFrozen(type->param_type()->values_type(), value);
       }
     } else {
-      DCHECK(type->param_type()->main() == LIST || type->param_type()->main() == SET);
+      DCHECK(type->param_type()->main() == DataType::LIST ||
+             type->param_type()->main() == DataType::SET);
       // Case: FROZEN<LIST/SET>
       QLSeqValuePB* seq = value->mutable_frozen_value();
       for (int i = 0; i < seq->elems_size(); ++i) {
         UnpackUDTAndFrozen(type->param_type()->param_type(), seq->mutable_elems(i));
       }
     }
-  } else if (type->main() == LIST && value->value_case() == QLValuePB::kListValue) {
+  } else if (type->main() == DataType::LIST && value->value_case() == QLValuePB::kListValue) {
     QLSeqValuePB* seq = value->mutable_list_value();
     for (int i = 0; i < seq->elems_size(); ++i) {
       UnpackUDTAndFrozen(type->param_type(), seq->mutable_elems(i));
     }
-  } else if (type->main() == SET && value->value_case() == QLValuePB::kSetValue) {
+  } else if (type->main() == DataType::SET && value->value_case() == QLValuePB::kSetValue) {
     QLSeqValuePB* seq = value->mutable_set_value();
     for (int i = 0; i < seq->elems_size(); ++i) {
       UnpackUDTAndFrozen(type->param_type(), seq->mutable_elems(i));
     }
-  } else if (type->main() == MAP && value->value_case() == QLValuePB::kMapValue) {
+  } else if (type->main() == DataType::MAP && value->value_case() == QLValuePB::kMapValue) {
     QLMapValuePB* map = value->mutable_map_value();
     DCHECK_EQ(map->keys_size(), map->values_size());
     for (int i = 0; i < map->keys_size(); ++i) {
       UnpackUDTAndFrozen(type->keys_type(), map->mutable_keys(i));
       UnpackUDTAndFrozen(type->values_type(), map->mutable_values(i));
     }
-  } else if (type->main() == TUPLE) {
+  } else if (type->main() == DataType::TUPLE) {
     // https://github.com/YugaByte/yugabyte-db/issues/936
     LOG(FATAL) << "Tuple type not implemented yet";
   }

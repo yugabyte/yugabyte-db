@@ -128,8 +128,8 @@ class TestTabletSchema : public YBTabletTest {
 
  private:
   Schema CreateBaseSchema() {
-    return Schema({ ColumnSchema("key", INT32, ColumnKind::HASH),
-                    ColumnSchema("c1", INT32) });
+    return Schema({ ColumnSchema("key", DataType::INT32, ColumnKind::HASH),
+                    ColumnSchema("c1", DataType::INT32) });
   }
 };
 
@@ -207,7 +207,7 @@ TEST_F(TestTabletSchema, TestDeleteAndReAddColumn) {
   ASSERT_OK(builder.RemoveColumn("c1"));
   // NOTE this new 'c1' will have a different id from the previous one
   //      so the data added to the previous 'c1' will not be visible.
-  ASSERT_OK(builder.AddNullableColumn("c1", INT32));
+  ASSERT_OK(builder.AddNullableColumn("c1", DataType::INT32));
   AlterSchema(builder.Build());
   Schema s2 = builder.BuildWithoutIds();
 
