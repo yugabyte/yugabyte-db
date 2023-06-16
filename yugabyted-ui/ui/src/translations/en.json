@@ -1105,6 +1105,7 @@
         "diskStorage": "Disk Storage",
         "numberOfTablets": "Number of Tablets",
         "readReplica": "Read replica",
+        "readReplicaAvailable": "Read replica available",
         "peer": "Peer",
         "leader": "Leader",
         "total": "Total",

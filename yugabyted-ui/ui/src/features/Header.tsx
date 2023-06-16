@@ -61,6 +61,17 @@ const useStyles = makeStyles((theme) => ({
       backgroundColor: 'unset',
       cursor: 'default'
     }
+  },
+  badge: {
+    backgroundColor: theme.palette.grey[200],
+    color: theme.palette.grey[700],
+    borderRadius: theme.shape.borderRadius,
+    fontSize: '10px',
+    fontWeight: 500,
+    letterSpacing: '0.2px',
+    textTransform: 'uppercase',
+    padding: theme.spacing(0.5, 1),
+    marginLeft: theme.spacing(1),
   }
 }));
 
@@ -81,6 +92,7 @@ export const Header: FC = () => {
   // Get nodes
   const { data: nodesResponse } = useGetClusterNodesQuery();
   const deadNodes = nodesResponse?.data?.filter(node => !node.is_node_up) ?? [];
+  const hasReadReplica = !!nodesResponse?.data.find(node => node.is_read_replica);
 
   return (
     <AppBar position="static" color="transparent">
@@ -155,6 +167,9 @@ export const Header: FC = () => {
         <Typography variant="h4" color="inherit">
           {clusterName}
         </Typography>
+        {hasReadReplica &&
+          <Box className={classes.badge}>{t('clusterDetail.nodes.readReplicaAvailable')}</Box>
+        }
         <div className={classes.toRight}>
           <Box display="flex">
             <MUILink className={classes.sendFeedback} href={LINK_SLACK} target="_blank">
