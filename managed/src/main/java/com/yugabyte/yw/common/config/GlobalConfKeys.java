@@ -869,4 +869,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable wait for autotasks to finish during provider edit",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> deleteExpiredBackupMaxGCSize =
+      new ConfKeyInfo<>(
+          "yb.backup.delete_expired_backup_max_gc_size",
+          ScopeType.GLOBAL,
+          "Delete Expired Backup MAX GC Size",
+          "Number of expired backups to be deleted in a single GC iteration.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

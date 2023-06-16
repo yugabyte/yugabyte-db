@@ -149,6 +149,18 @@ public enum AlertTemplate {
       TargetType.UNIVERSE,
       ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
+  BACKUP_DELETION_FAILURE(
+      "Backup Deletion failure",
+      "Failed to Delete Backups for customer",
+      "last_over_time(ybp_delete_backup_failure{customer_uuid = \"__customerUuid__\"}[1d])"
+          + " {{ query_condition }} 0",
+      "Failed to delete {{ $value | printf \\\"%.0f\\\" }} backups for "
+          + "customer {{ $labels.source_name }} in Last GC run - check logs for more details",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.PLATFORM,
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+
   BACKUP_SCHEDULE_FAILURE(
       "Backup Schedule Failure",
       "Last attempt to run scheduled backup failed due to other backup"
