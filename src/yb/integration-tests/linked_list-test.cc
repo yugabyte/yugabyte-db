@@ -140,10 +140,10 @@ class LinkedListTester {
         client_(client) {
     client::YBSchemaBuilder b;
 
-    b.AddColumn(kKeyColumnName)->Type(INT64)->NotNull()->HashPrimaryKey();
-    b.AddColumn(kLinkColumnName)->Type(INT64)->NotNull();
-    b.AddColumn(kInsertTsColumnName)->Type(INT64)->NotNull();
-    b.AddColumn(kUpdatedColumnName)->Type(BOOL)->NotNull();
+    b.AddColumn(kKeyColumnName)->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
+    b.AddColumn(kLinkColumnName)->Type(DataType::INT64)->NotNull();
+    b.AddColumn(kInsertTsColumnName)->Type(DataType::INT64)->NotNull();
+    b.AddColumn(kUpdatedColumnName)->Type(DataType::BOOL)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 

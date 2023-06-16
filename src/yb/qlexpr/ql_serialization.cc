@@ -35,25 +35,25 @@ void SerializeValue(
   }
 
   switch (ql_type->main()) {
-    case INT8:
+    case DataType::INT8:
       CQLEncodeNum(Store8, static_cast<int8_t>(pb.int8_value()), buffer);
       return;
-    case INT16:
+    case DataType::INT16:
       CQLEncodeNum(NetworkByteOrder::Store16, static_cast<int16_t>(pb.int16_value()), buffer);
       return;
-    case INT32:
+    case DataType::INT32:
       CQLEncodeNum(NetworkByteOrder::Store32, pb.int32_value(), buffer);
       return;
-    case INT64:
+    case DataType::INT64:
       CQLEncodeNum(NetworkByteOrder::Store64, pb.int64_value(), buffer);
       return;
-    case FLOAT:
+    case DataType::FLOAT:
       CQLEncodeFloat(NetworkByteOrder::Store32, pb.float_value(), buffer);
       return;
-    case DOUBLE:
+    case DataType::DOUBLE:
       CQLEncodeFloat(NetworkByteOrder::Store64, pb.double_value(), buffer);
       return;
-    case DECIMAL: {
+    case DataType::DECIMAL: {
       auto decimal = util::DecimalFromComparable(pb.decimal_value());
       bool is_out_of_range = false;
       CQLEncodeBytes(decimal.EncodeToSerializedBigDecimal(&is_out_of_range), buffer);
@@ -63,52 +63,52 @@ void SerializeValue(
       }
       return;
     }
-    case VARINT: {
+    case DataType::VARINT: {
       CQLEncodeBytes(QLValue::varint_value(pb).EncodeToTwosComplement(), buffer);
       return;
     }
-    case STRING:
+    case DataType::STRING:
       CQLEncodeBytes(pb.string_value(), buffer);
       return;
-    case BOOL:
+    case DataType::BOOL:
       CQLEncodeNum(Store8, static_cast<uint8>(pb.bool_value() ? 1 : 0), buffer);
       return;
-    case BINARY:
+    case DataType::BINARY:
       CQLEncodeBytes(pb.binary_value(), buffer);
       return;
-    case TIMESTAMP: {
+    case DataType::TIMESTAMP: {
       int64_t val = DateTime::AdjustPrecision(QLValue::timestamp_value_pb(pb),
                                               DateTime::kInternalPrecision,
                                               DateTime::CqlInputFormat.input_precision);
       CQLEncodeNum(NetworkByteOrder::Store64, val, buffer);
       return;
     }
-    case DATE: {
+    case DataType::DATE: {
       CQLEncodeNum(NetworkByteOrder::Store32, pb.date_value(), buffer);
       return;
     }
-    case TIME: {
+    case DataType::TIME: {
       CQLEncodeNum(NetworkByteOrder::Store64, pb.time_value(), buffer);
       return;
     }
-    case INET: {
+    case DataType::INET: {
       CQLEncodeBytes(QLValue::inetaddress_value(pb).ToBytes(), buffer);
       return;
     }
-    case JSONB: {
+    case DataType::JSONB: {
       std::string json;
       common::Jsonb jsonb(pb.jsonb_value());
       CHECK_OK(jsonb.ToJsonString(&json));
       CQLEncodeBytes(json, buffer);
       return;
     }
-    case UUID: {
+    case DataType::UUID: {
       std::string bytes;
       QLValue::uuid_value(pb).ToBytes(&bytes);
       CQLEncodeBytes(bytes, buffer);
       return;
     }
-    case TIMEUUID: {
+    case DataType::TIMEUUID: {
       std::string bytes;
       Uuid uuid = QLValue::timeuuid_value(pb);
       CHECK_OK(uuid.IsTimeUuid());
@@ -116,7 +116,7 @@ void SerializeValue(
       CQLEncodeBytes(bytes, buffer);
       return;
     }
-    case MAP: {
+    case DataType::MAP: {
       const QLMapValuePB& map = pb.map_value();
       DCHECK_EQ(map.keys_size(), map.values_size());
       auto start_pos = CQLStartCollection(buffer);
@@ -131,7 +131,7 @@ void SerializeValue(
       CQLFinishCollection(start_pos, buffer);
       return;
     }
-    case SET: {
+    case DataType::SET: {
       const QLSeqValuePB& set = pb.set_value();
       auto start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(set.elems_size());
@@ -143,7 +143,7 @@ void SerializeValue(
       CQLFinishCollection(start_pos, buffer);
       return;
     }
-    case LIST: {
+    case DataType::LIST: {
       const QLSeqValuePB& list = pb.list_value();
       auto start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(list.elems_size());
@@ -156,7 +156,7 @@ void SerializeValue(
       return;
     }
 
-    case USER_DEFINED_TYPE: {
+    case DataType::USER_DEFINED_TYPE: {
       const QLMapValuePB& map = pb.map_value();
       DCHECK_EQ(map.keys_size(), map.values_size());
       auto start_pos = CQLStartCollection(buffer);
@@ -177,11 +177,11 @@ void SerializeValue(
       CQLFinishCollection(start_pos, buffer);
       return;
     }
-    case FROZEN: {
+    case DataType::FROZEN: {
       const QLSeqValuePB& frozen = pb.frozen_value();
       const auto& type = ql_type->param_type(0);
       switch (type->main()) {
-        case MAP: {
+        case DataType::MAP: {
           DCHECK_EQ(frozen.elems_size() % 2, 0);
           auto start_pos = CQLStartCollection(buffer);
           int32_t length = static_cast<int32_t>(frozen.elems_size() / 2);
@@ -195,8 +195,8 @@ void SerializeValue(
           CQLFinishCollection(start_pos, buffer);
           return;
         }
-        case SET: FALLTHROUGH_INTENDED;
-        case LIST: {
+        case DataType::SET: FALLTHROUGH_INTENDED;
+        case DataType::LIST: {
           auto start_pos = CQLStartCollection(buffer);
           int32_t length = static_cast<int32_t>(frozen.elems_size());
           CQLEncodeLength(length, buffer); // number of elements in collection
@@ -207,7 +207,7 @@ void SerializeValue(
           CQLFinishCollection(start_pos, buffer);
           return;
         }
-        case USER_DEFINED_TYPE: {
+        case DataType::USER_DEFINED_TYPE: {
           auto start_pos = CQLStartCollection(buffer);
           for (int i = 0; i < frozen.elems_size(); i++) {
             SerializeValue(type->param_type(i), client, frozen.elems(i), buffer);
@@ -221,7 +221,7 @@ void SerializeValue(
       }
       break;
     }
-    case TUPLE: {
+    case DataType::TUPLE: {
       const QLSeqValuePB& tuple = pb.tuple_value();
       size_t num_elems = tuple.elems_size();
       DCHECK_EQ(num_elems, ql_type->params().size());

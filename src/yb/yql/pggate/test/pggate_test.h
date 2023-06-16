@@ -20,7 +20,8 @@
 
 #include "pg_type_d.h" // NOLINT
 
-#include "yb/common/value.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 

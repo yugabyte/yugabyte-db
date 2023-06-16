@@ -128,10 +128,10 @@ const QLValuePB& GetValueHelper<QLValuePB>::Apply(
 QLValuePB GetValueHelper<std::string>::Apply(const std::string& strval, const DataType data_type) {
   QLValuePB value_pb;
   switch (data_type) {
-    case STRING:
+    case DataType::STRING:
       value_pb.set_string_value(strval);
       break;
-    case BINARY:
+    case DataType::BINARY:
       value_pb.set_binary_value(strval);
       break;
     default:
@@ -145,10 +145,10 @@ QLValuePB GetValueHelper<std::string>::Apply(
     const char* strval, size_t len, const DataType data_type) {
   QLValuePB value_pb;
   switch (data_type) {
-    case STRING:
+    case DataType::STRING:
       value_pb.set_string_value(strval, len);
       break;
-    case BINARY:
+    case DataType::BINARY:
       value_pb.set_binary_value(strval, len);
       break;
     default:
@@ -161,16 +161,16 @@ QLValuePB GetValueHelper<std::string>::Apply(
 QLValuePB GetValueHelper<int32_t>::Apply(const int32_t intval, const DataType data_type) {
   QLValuePB value_pb;
   switch (data_type) {
-    case INT64:
+    case DataType::INT64:
       value_pb.set_int64_value(intval);
       break;
-    case INT32:
+    case DataType::INT32:
       value_pb.set_int32_value(intval);
       break;
-    case INT16:
+    case DataType::INT16:
       value_pb.set_int16_value(intval);
       break;
-    case INT8:
+    case DataType::INT8:
       value_pb.set_int8_value(intval);
       break;
     default:

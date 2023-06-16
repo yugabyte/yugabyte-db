@@ -508,7 +508,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
 
   auto task = [kNamespaceName, this]() {
     const char *kTableName = "testtable";
-    const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::HASH) });
+    const Schema kTableSchema({ ColumnSchema("key", DataType::INT32, ColumnKind::HASH) });
     shared_ptr<RpcController> controller;
     // Set an RPC timeout for the controllers.
     controller = make_shared<RpcController>();
@@ -564,9 +564,10 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
 TEST_F(MasterTest, TestCatalog) {
   const char *kTableName = "testtb";
   const char *kOtherTableName = "tbtest";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
-                              ColumnSchema("v1", UINT64),
-                              ColumnSchema("v2", STRING) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+      ColumnSchema("v1", DataType::UINT64),
+      ColumnSchema("v2", DataType::STRING) });
 
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
 
@@ -709,9 +710,9 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
   const std::string kNewSchemaTableName = "newschema";
   const std::string kOldSchemaTableName = "oldschema";
   const Schema kTableSchema(
-      {ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
-       ColumnSchema("v1", UINT64),
-       ColumnSchema("v2", STRING)});
+      {ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       ColumnSchema("v1", DataType::UINT64),
+       ColumnSchema("v2", DataType::STRING)});
   FLAGS_use_parent_table_id_field = true;
   ASSERT_OK(CreateTable(kNewSchemaTableName, kTableSchema));
   FLAGS_use_parent_table_id_field = false;
@@ -790,7 +791,8 @@ TEST_F(MasterTest, TestTablegroups) {
   TablegroupId kTablegroupId = GetPgsqlTablegroupId(12345, 67890);
   TableId      kTableId = GetPgsqlTableId(123455, 67891);
   const char*  kTableName = "test_table";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   const NamespaceName ns_name = "test_tablegroup_ns";
 
   // Create a new namespace.
@@ -869,7 +871,7 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
   for (int i = 0; i < 2; i++) {
     ColumnSchemaPB* col = req.mutable_schema()->add_columns();
     col->set_name("col");
-    QLType::Create(INT32)->ToQLTypePB(col->mutable_type());
+    QLType::Create(DataType::INT32)->ToQLTypePB(col->mutable_type());
     col->set_is_key(true);
   }
 
@@ -884,7 +886,7 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
 // invalid.
 TEST_F(MasterTest, TestInvalidGetTableLocations) {
   const TableName kTableName = "test";
-  Schema schema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ASSERT_OK(CreateTable(kTableName, schema));
   {
     GetTableLocationsRequestPB req;
@@ -907,7 +909,7 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
 // the tablespace first before defaulting to cluster config.
 TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
   const TableName kTableName = "test";
-  Schema schema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
   ASSERT_OK(
@@ -961,7 +963,7 @@ TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
 // table level overrides.
 TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
   const TableName kTableName = "test";
-  Schema schema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
   ASSERT_OK(
@@ -1009,7 +1011,7 @@ TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
 
 TEST_F(MasterTest, TestInvalidPlacementInfo) {
   const TableName kTableName = "test";
-  Schema schema({ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST)});
+  Schema schema({ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST)});
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
   ASSERT_OK(proxy_cluster_->GetMasterClusterConfig(
@@ -1290,7 +1292,8 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   // Create a table.
   const TableName kTableName = "testtb";
   const TableName kTableNamePgsql = "testtb_pgsql";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
 
   ASSERT_OK(CreateTable(other_ns_name, kTableName, kTableSchema));
   ASSERT_OK(CreatePgsqlTable(other_ns_pgsql_id, kTableNamePgsql + "_1", kTableSchema));
@@ -1431,7 +1434,8 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
 
 TEST_F(MasterTest, TestTablesWithNamespace) {
   const TableName kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ListTablesResponsePB tables;
 
   // Create a table with default namespace.
@@ -1639,7 +1643,8 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
 
   // Test that Basic Access is not allowed to a Namespace while INITIALIZING.
   // 1. CANNOT Create a Table on the namespace.
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ASSERT_NOK(CreatePgsqlTable(nsid, "test_table", kTableSchema));
   // 2. CANNOT Alter the namespace.
   {
@@ -1906,7 +1911,8 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
 
 TEST_F(MasterTest, TestFullTableName) {
   const TableName kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ListTablesResponsePB tables;
 
   // Create a table with the default namespace.
@@ -2078,7 +2084,8 @@ TEST_F(MasterTest, TestGetTableSchema) {
 
   // Create a table with the defined new namespace.
   const TableName kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ASSERT_OK(CreateTable(other_ns_name, kTableName, kTableSchema));
 
   ListTablesResponsePB tables;
@@ -2269,9 +2276,10 @@ void GetTableSchema(const char* table_name,
 // test ensures that bug does not regress.
 TEST_F(MasterTest, TestGetTableSchemaIsAtomicWithCreateTable) {
   const char *kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
-                              ColumnSchema("v1", UINT64),
-                              ColumnSchema("v2", STRING) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+      ColumnSchema("v1", DataType::UINT64),
+      ColumnSchema("v2", DataType::STRING) });
 
   CountDownLatch started(1);
   AtomicBool done(false);

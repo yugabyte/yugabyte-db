@@ -100,7 +100,7 @@ using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 
 static Schema GetTestSchema() {
-  return Schema({ ColumnSchema("key", INT32, ColumnKind::HASH) });
+  return Schema({ ColumnSchema("key", DataType::INT32, ColumnKind::HASH) });
 }
 
 class TabletPeerTest : public YBTabletTest {
@@ -473,7 +473,7 @@ TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
   table_info.set_table_id("00004000000030008000000000004020");
   table_info.set_table_name("test");
   table_info.set_table_type(PGSQL_TABLE_TYPE);
-  ColumnSchema col("a", UINT32, ColumnKind::RANGE_ASC_NULL_FIRST);
+  ColumnSchema col("a", DataType::UINT32, ColumnKind::RANGE_ASC_NULL_FIRST);
   ColumnId col_id(1);
   Schema schema({col}, {col_id});
   SchemaToPB(schema, table_info.mutable_schema());

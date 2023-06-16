@@ -632,7 +632,8 @@ Status PgClientSession::AlterTable(
     alterer->set_increment_schema_version();
   }
   for (const auto& add_column : req.add_columns()) {
-    const auto yb_type = QLType::Create(static_cast<DataType>(add_column.attr_ybtype()));
+    const auto yb_type = QLType::Create(ToLW(
+        static_cast<PersistentDataType>(add_column.attr_ybtype())));
     alterer->AddColumn(add_column.attr_name())
            ->Type(yb_type)->Order(add_column.attr_num())->PgTypeOid(add_column.attr_pgoid());
     // Do not set 'nullable' attribute as PgCreateTable::AddColumn() does not do it.

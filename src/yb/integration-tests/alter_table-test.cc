@@ -122,8 +122,8 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
       inserted_idx_(0) {
 
     YBSchemaBuilder b;
-    b.AddColumn("c0")->Type(INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("c1")->Type(INT32)->NotNull();
+    b.AddColumn("c0")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("c1")->Type(DataType::INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
@@ -233,7 +233,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
                          const string& column_name,
                          const MonoDelta& timeout) {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name));
-    table_alterer->AddColumn(column_name)->Type(INT32)->NotNull();
+    table_alterer->AddColumn(column_name)->Type(DataType::INT32)->NotNull();
     return table_alterer->timeout(timeout)->Alter();
   }
 
@@ -333,7 +333,7 @@ TEST_P(AlterTableTest, TestAddNullableColumnWithoutDefault) {
 
   {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("new")->Type(INT32);
+    table_alterer->AddColumn("new")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
   }
 
@@ -908,7 +908,7 @@ TEST_P(AlterTableTest, TestMultipleAlters) {
   for (size_t i = 0; i < kNumNewCols; i++) {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
     table_alterer->AddColumn(strings::Substitute("new_col$0", i))
-                 ->Type(INT32)->NotNull();
+                 ->Type(DataType::INT32)->NotNull();
     ASSERT_OK(table_alterer->wait(false)->Alter());
   }
 

@@ -21,7 +21,8 @@
 // https://gist.githubusercontent.com/mbautin/ed9e5d17f39fc0066eba77ce15cbbef9/raw
 #include <boost/asio/ip/address.hpp>
 
-#include "yb/common/value.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_fwd.h"

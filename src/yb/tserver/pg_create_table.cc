@@ -199,7 +199,7 @@ Status PgCreateTable::Exec(
 }
 
 Status PgCreateTable::AddColumn(const PgCreateColumnPB& req) {
-  auto yb_type = QLType::Create(static_cast<DataType>(req.attr_ybtype()));
+  auto yb_type = QLType::Create(ToLW(static_cast<PersistentDataType>(req.attr_ybtype())));
   if (!req.is_hash() && !req.is_range()) {
     EnsureYBbasectidColumnCreated();
   }
@@ -340,10 +340,10 @@ Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadli
 
   // Set up the schema.
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
-  schema_builder.AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
-  schema_builder.AddColumn(kPgSequenceLastValueColName)->Type(yb::INT64)->NotNull();
-  schema_builder.AddColumn(kPgSequenceIsCalledColName)->Type(yb::BOOL)->NotNull();
+  schema_builder.AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(DataType::INT64);
+  schema_builder.AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(DataType::INT64);
+  schema_builder.AddColumn(kPgSequenceLastValueColName)->Type(DataType::INT64)->NotNull();
+  schema_builder.AddColumn(kPgSequenceIsCalledColName)->Type(DataType::BOOL)->NotNull();
   client::YBSchema schema;
   CHECK_OK(schema_builder.Build(&schema));
 

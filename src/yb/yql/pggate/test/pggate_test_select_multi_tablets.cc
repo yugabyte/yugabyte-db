@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/constants.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/util/status_log.h"
 

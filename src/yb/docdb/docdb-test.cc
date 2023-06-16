@@ -631,7 +631,7 @@ TEST_P(DocDBTestWrapper, NullChildObjectShouldMaskValues) {
       QLValue::Primitive("value"), 2000_usec_ht));
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key, KeyEntryValue("obj")),
-      ValueRef(ValueEntryType::kNullHigh), 3000_usec_ht));
+      ValueRef(ValueEntryType::kNullLow), 3000_usec_ht));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
       SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
       SubDocKey(DocKey([], ["mydockey", 123456]), ["obj"; HT{ physical: 3000 }]) -> null

@@ -39,7 +39,7 @@ using std::string;
 namespace yb {
 
 TEST(TestTypes, TestTimestampPrinting) {
-  const TypeInfo* info = GetTypeInfo(TIMESTAMP);
+  const TypeInfo* info = GetTypeInfo(DataType::TIMESTAMP);
 
   // Test the minimum value
   int64 time;

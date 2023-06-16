@@ -182,10 +182,10 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
  public:
   ClientTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("int_val")->Type(INT32)->NotNull();
-    b.AddColumn("string_val")->Type(STRING)->Nullable();
-    b.AddColumn("non_null_with_default")->Type(INT32)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("int_val")->Type(DataType::INT32)->NotNull();
+    b.AddColumn("string_val")->Type(DataType::STRING)->Nullable();
+    b.AddColumn("non_null_with_default")->Type(DataType::INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
@@ -1540,7 +1540,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->DropColumn("int_val")
-      ->AddColumn("new_col")->Type(INT32);
+      ->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
     ASSERT_EQ(1, tablet_peer->tablet()->metadata()->schema_version());
@@ -1889,7 +1889,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
         new_leader->server()->tablet_manager()->GetTablet(remote_tablet->tablet_id()));
     auto old_version = tablet_peer->tablet()->metadata()->schema_version();
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kReplicatedTable));
-    table_alterer->AddColumn("new_col")->Type(INT32);
+    table_alterer->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
     ASSERT_EQ(old_version + 1, tablet_peer->tablet()->metadata()->schema_version());
   }
@@ -2414,8 +2414,8 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   auto yql_table_name = YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "yqlrangepartitionedtable");
 
   YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("key")->PrimaryKey()->Type(yb::STRING)->NotNull();
-  schema_builder.AddColumn("value")->Type(yb::INT64)->NotNull();
+  schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
+  schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
   // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
   schema_builder.SetSchemaName(kPgsqlSchemaName);
@@ -2906,8 +2906,8 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
       /* colocated =*/ true));
 
   YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("key")->PrimaryKey()->Type(yb::INT64);
-  schema_builder.AddColumn("value")->Type(yb::INT64);
+  schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::INT64);
+  schema_builder.AddColumn("value")->Type(DataType::INT64);
   // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
   schema_builder.SetSchemaName(kPgsqlSchemaName);
@@ -2956,9 +2956,9 @@ class ClientTestWithHashAndRangePk : public ClientTest {
  public:
   void SetUp() override {
     YBSchemaBuilder b;
-    b.AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("r")->Type(INT32)->PrimaryKey()->NotNull();
-    b.AddColumn("v")->Type(INT32);
+    b.AddColumn("h")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("r")->Type(DataType::INT32)->PrimaryKey()->NotNull();
+    b.AddColumn("v")->Type(DataType::INT32);
 
     CHECK_OK(b.Build(&schema_));
 

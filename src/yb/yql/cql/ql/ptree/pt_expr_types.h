@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include "yb/common/value.messages.h"
+
 #include "yb/util/memory/mc_types.h"
 
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"

@@ -146,8 +146,8 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
                                                     table.namespace_type()));
 
       YBSchemaBuilder b;
-      b.AddColumn(kKeyColumnName)->Type(INT32)->NotNull()->HashPrimaryKey();
-      b.AddColumn(kValueColumnName)->Type(INT32)->NotNull();
+      b.AddColumn(kKeyColumnName)->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+      b.AddColumn(kValueColumnName)->Type(DataType::INT32)->NotNull();
       ASSERT_OK(b.Build(&schema_));
 
       ASSERT_OK(NewTableCreator()->table_name(table_name()).schema(&schema_).Create());

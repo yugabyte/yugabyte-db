@@ -200,9 +200,9 @@ void CDCServiceTest::CreateTable(int num_tablets, TableHandle* table) {
                                                 kTableName.namespace_type()));
 
   client::YBSchemaBuilder builder;
-  builder.AddColumn("key")->Type(INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn("int_val")->Type(INT32);
-  builder.AddColumn("string_val")->Type(STRING);
+  builder.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn("int_val")->Type(DataType::INT32);
+  builder.AddColumn("string_val")->Type(DataType::STRING);
 
   TableProperties table_properties;
   table_properties.SetTransactional(true);
@@ -452,9 +452,9 @@ TEST_F(CDCServiceTest, TestCompoundKey) {
     YQL_DATABASE_CQL, kCDCTestKeyspace, kCDCTestTableCompoundKeyName);
 
   client::YBSchemaBuilder builder;
-  builder.AddColumn("hash_key")->Type(STRING)->HashPrimaryKey()->NotNull();
-  builder.AddColumn("range_key")->Type(STRING)->PrimaryKey()->NotNull();
-  builder.AddColumn("val")->Type(INT32);
+  builder.AddColumn("hash_key")->Type(DataType::STRING)->HashPrimaryKey()->NotNull();
+  builder.AddColumn("range_key")->Type(DataType::STRING)->PrimaryKey()->NotNull();
+  builder.AddColumn("val")->Type(DataType::INT32);
 
   TableProperties table_properties;
   table_properties.SetTransactional(true);

@@ -35,9 +35,10 @@ DECLARE_bool(disable_truncate_table);
 namespace yb {
 namespace master {
 constexpr const char* kTableName = "cdc_table";
-static const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
-                                   ColumnSchema("v1", UINT64),
-                                   ColumnSchema("v2", STRING) });
+static const Schema kTableSchema({
+    ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+    ColumnSchema("v1", DataType::UINT64),
+    ColumnSchema("v2", DataType::STRING) });
 
 class MasterTestXRepl  : public MasterTestBase {
  protected:

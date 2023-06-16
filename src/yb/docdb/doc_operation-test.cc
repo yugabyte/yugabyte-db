@@ -153,10 +153,10 @@ class DocOperationTest : public DocDBTestBase {
   }
 
   Schema CreateSchema() override {
-    ColumnSchema hash_column_schema("k", INT32, ColumnKind::HASH);
-    ColumnSchema column1_schema("c1", INT32);
-    ColumnSchema column2_schema("c2", INT32);
-    ColumnSchema column3_schema("c3", INT32);
+    ColumnSchema hash_column_schema("k", DataType::INT32, ColumnKind::HASH);
+    ColumnSchema column1_schema("c1", DataType::INT32);
+    ColumnSchema column2_schema("c2", DataType::INT32);
+    ColumnSchema column3_schema("c3", DataType::INT32);
     const vector<ColumnSchema> columns({
         hash_column_schema, column1_schema, column2_schema, column3_schema});
     return Schema(columns, CreateColumnIds(columns.size()));
@@ -495,10 +495,11 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
   // Define the schema with a partition key, range key, static column, and value.
   SchemaBuilder builder;
   builder.set_next_column_id(ColumnId(0));
-  ASSERT_OK(builder.AddHashKeyColumn("k", INT32));
-  ASSERT_OK(builder.AddKeyColumn("r", INT32));
-  ASSERT_OK(builder.AddColumn(ColumnSchema("s", INT32, ColumnKind::VALUE, Nullable::kTrue)));
-  ASSERT_OK(builder.AddColumn(ColumnSchema("v", INT32)));
+  ASSERT_OK(builder.AddHashKeyColumn("k", DataType::INT32));
+  ASSERT_OK(builder.AddKeyColumn("r", DataType::INT32));
+  ASSERT_OK(builder.AddColumn(
+      ColumnSchema("s", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)));
+  ASSERT_OK(builder.AddColumn(ColumnSchema("v", DataType::INT32)));
   auto schema = builder.Build();
 
   // Write rows with the same partition key but different range key
@@ -814,9 +815,10 @@ class DocOperationScanTest : public DocOperationTest {
   }
 
   Schema CreateSchema() override {
-    ColumnSchema hash_column("k", INT32, ColumnKind::HASH);
-    ColumnSchema range_column("r", INT32, SortingTypeToColumnKind(range_column_sorting_type_));
-    ColumnSchema value_column("v", INT32);
+    ColumnSchema hash_column("k", DataType::INT32, ColumnKind::HASH);
+    ColumnSchema range_column(
+        "r", DataType::INT32, SortingTypeToColumnKind(range_column_sorting_type_));
+    ColumnSchema value_column("v", DataType::INT32);
     auto columns = { hash_column, range_column, value_column };
     return Schema(columns, CreateColumnIds(columns.size()));
   }
