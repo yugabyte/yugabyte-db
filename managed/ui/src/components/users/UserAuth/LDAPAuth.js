@@ -25,7 +25,7 @@ const VALIDATION_SCHEMA = Yup.object().shape({
     })
     .required('LDAP URL is Required'),
   ldap_security: Yup.string().required('Please select connection security'),
-  ldap_service_account_password: Yup.string().when('ldap_service_account_username', {
+  ldap_service_account_password: Yup.string().when('ldap_service_account_distinguished_name', {
     is: (username) => username && username.length > 0,
     then: Yup.string().required('Password is Required'),
     otherwise: Yup.string()
@@ -62,7 +62,7 @@ const VALIDATION_SCHEMA = Yup.object().shape({
       otherwise: Yup.string()
     }
   ),
-  ldap_service_account_username: Yup.string().when(
+  ldap_service_account_distinguished_name: Yup.string().when(
     ['use_search_and_bind', 'ldap_group_use_role_mapping'],
     {
       is: (use_search_and_bind, ldap_group_use_role_mapping) =>
@@ -199,7 +199,7 @@ export const LDAPAuth = (props) => {
     }
 
     if (showServiceAccToggle && !values.use_service_account) {
-      transformedData.ldap_service_account_username = '';
+      transformedData.ldap_service_account_distinguished_name = '';
       transformedData.ldap_service_account_password = '';
     }
 
@@ -231,7 +231,7 @@ export const LDAPAuth = (props) => {
       ldap_group_search_scope: formData?.ldap_group_search_scope
         ? LDAP_SCOPES.find((scope) => scope.value === formData.ldap_group_search_scope)
         : null,
-      use_service_account: !!formData.ldap_service_account_username
+      use_service_account: !!formData.ldap_service_account_distinguished_name
     };
 
     //transform security data
@@ -951,7 +951,7 @@ export const LDAPAuth = (props) => {
                         )}
                         {showServAccFields && (
                           <>
-                            <Row key="ldap_service_account_username">
+                            <Row key="ldap_service_account_distinguished_name">
                               <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c">
                                 <Row className="ua-field-row">
                                   <Col className="ua-label-c">
@@ -968,7 +968,7 @@ export const LDAPAuth = (props) => {
                                   </Col>
                                   <Col lg={12} className="ua-field">
                                     <Field
-                                      name="ldap_service_account_username"
+                                      name="ldap_service_account_distinguished_name"
                                       component={YBFormInput}
                                       disabled={isDisabled}
                                       className="ua-form-field"

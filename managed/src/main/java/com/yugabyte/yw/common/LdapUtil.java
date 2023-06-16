@@ -63,7 +63,7 @@ public class LdapUtil {
     boolean ldapUseSsl;
     boolean ldapUseTls;
     boolean useLdapSearchAndBind;
-    String serviceAccountUserName;
+    String serviceAccountDistinguishedName;
     String serviceAccountPassword;
     String ldapSearchAttribute;
     boolean enableDetailedLogs;
@@ -85,8 +85,8 @@ public class LdapUtil {
     boolean ldapUseSsl = confGetter.getGlobalConf(GlobalConfKeys.enableLdap);
     boolean ldapUseTls = confGetter.getGlobalConf(GlobalConfKeys.enableLdapStartTls);
     boolean useLdapSearchAndBind = confGetter.getGlobalConf(GlobalConfKeys.ldapUseSearchAndBind);
-    String serviceAccountUserName =
-        confGetter.getGlobalConf(GlobalConfKeys.ldapServiceAccountUsername);
+    String serviceAccountDistiguishedName =
+        confGetter.getGlobalConf(GlobalConfKeys.ldapServiceAccountDistinguishedName);
     String serviceAccountPassword =
         confGetter.getGlobalConf(GlobalConfKeys.ldapServiceAccountPassword);
     String ldapSearchAttribute = confGetter.getGlobalConf(GlobalConfKeys.ldapSearchAttribute);
@@ -111,7 +111,7 @@ public class LdapUtil {
             ldapUseSsl,
             ldapUseTls,
             useLdapSearchAndBind,
-            serviceAccountUserName,
+            serviceAccountDistiguishedName,
             serviceAccountPassword,
             ldapSearchAttribute,
             enabledDetailedLogs,
@@ -255,14 +255,11 @@ public class LdapUtil {
       throws Exception {
     Entry userEntry = null;
     String distinguishedName = "", role = "";
-    String serviceAccountDistinguishedName =
-        ldapConfiguration.getLdapDnPrefix()
-            + ldapConfiguration.getServiceAccountUserName()
-            + ","
-            + ldapConfiguration.getLdapBaseDN();
+
     try {
       connection.bind(
-          serviceAccountDistinguishedName, ldapConfiguration.getServiceAccountPassword());
+          ldapConfiguration.getServiceAccountDistinguishedName(),
+          ldapConfiguration.getServiceAccountPassword());
     } catch (LdapAuthenticationException e) {
       String errorMessage = "Service Account bind failed. " + e.getMessage();
       log.error(errorMessage);
@@ -339,7 +336,7 @@ public class LdapUtil {
       String role = "";
       Entry userEntry = null;
       if (ldapConfiguration.isUseLdapSearchAndBind()) {
-        if (ldapConfiguration.getServiceAccountUserName().isEmpty()
+        if (ldapConfiguration.getServiceAccountDistinguishedName().isEmpty()
             || ldapConfiguration.getServiceAccountPassword().isEmpty()
             || ldapConfiguration.getLdapSearchAttribute().isEmpty()) {
           throw new PlatformServiceException(
@@ -376,19 +373,14 @@ public class LdapUtil {
       // User has been authenticated.
       users.setCustomerUUID(getCustomerUUID(ldapConfiguration.getLdapCustomerUUID(), email));
 
-      String serviceAccountDistinguishedName =
-          ldapConfiguration.getLdapDnPrefix()
-              + ldapConfiguration.getServiceAccountUserName()
-              + ","
-              + ldapConfiguration.getLdapBaseDN();
-
       if (role.isEmpty() && !ldapConfiguration.isUseLdapSearchAndBind()) {
-        if (!ldapConfiguration.getServiceAccountUserName().isEmpty()
+        if (!ldapConfiguration.getServiceAccountDistinguishedName().isEmpty()
             && !ldapConfiguration.getServiceAccountPassword().isEmpty()) {
           connection.unBind();
           try {
             connection.bind(
-                serviceAccountDistinguishedName, ldapConfiguration.getServiceAccountPassword());
+                ldapConfiguration.getServiceAccountDistinguishedName(),
+                ldapConfiguration.getServiceAccountPassword());
           } catch (LdapAuthenticationException e) {
             String errorMessage =
                 "Service Account bind failed. "
@@ -415,7 +407,7 @@ public class LdapUtil {
       }
 
       if (ldapConfiguration.isLdapGroupUseRoleMapping()) {
-        if (ldapConfiguration.getServiceAccountUserName().isEmpty()
+        if (ldapConfiguration.getServiceAccountDistinguishedName().isEmpty()
             || ldapConfiguration.getServiceAccountPassword().isEmpty()) {
           throw new PlatformServiceException(
               BAD_REQUEST, "Service account must be configured to use group to role mapping.");
@@ -423,7 +415,8 @@ public class LdapUtil {
         connection.unBind();
         try {
           connection.bind(
-              serviceAccountDistinguishedName, ldapConfiguration.getServiceAccountPassword());
+              ldapConfiguration.getServiceAccountDistinguishedName(),
+              ldapConfiguration.getServiceAccountPassword());
         } catch (LdapAuthenticationException e) {
           String errorMessage = "Service Account bind failed. " + e.getMessage();
           log.error(errorMessage);
