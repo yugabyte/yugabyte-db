@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -39,6 +40,7 @@ import play.data.validation.Constraints;
 @ApiModel(description = "Availability zone (AZ) for a region")
 @Getter
 @Setter
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class AvailabilityZone extends Model {
 
   @Id
