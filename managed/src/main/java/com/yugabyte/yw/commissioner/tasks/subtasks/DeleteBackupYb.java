@@ -24,6 +24,7 @@ public class DeleteBackupYb extends AbstractTaskBase {
   public static class Params extends AbstractTaskParams {
     public UUID customerUUID;
     public UUID backupUUID;
+    public boolean deleteForcefully;
   }
 
   public Params params() {
@@ -56,6 +57,11 @@ public class DeleteBackupYb extends AbstractTaskBase {
       backupsToDelete.add(backup);
       backupsToDelete.forEach(
           (backupToBeDeleted) -> backupToBeDeleted.transitionState(BackupState.QueuedForDeletion));
+      if (params().deleteForcefully) {
+        backupsToDelete.forEach(
+            (backupToBeDeleted) ->
+                backupToBeDeleted.transitionState(BackupState.QueuedForForcedDeletion));
+      }
     } catch (Exception e) {
       log.error("Errored out with: " + e);
       if (updateState) {
