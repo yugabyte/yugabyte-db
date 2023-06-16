@@ -87,7 +87,7 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
           e);
       return null;
     }
-    LOG.info("Returing from createAuthConfigWithService");
+    LOG.info("Returning from createAuthConfigWithService");
     return result;
   }
 

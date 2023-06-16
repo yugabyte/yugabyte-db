@@ -20,12 +20,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,13 +38,13 @@ import org.apache.commons.lang3.StringUtils;
 @Singleton
 @Slf4j
 public class CustomCAStoreManager {
-
   private final List<TrustStoreManager> trustStoreManagers = new ArrayList<>();
 
   // Reference to the listeners who want to get notified about updates in this custom trust-store.
   private final List<CustomTrustStoreListener> trustStoreListeners = new ArrayList<>();
 
   private final PemTrustStoreManager pemTrustStoreManager;
+  private final Pkcs12TrustStoreManager pkcs12TrustStoreManager;
 
   @Inject
   public CustomCAStoreManager(
@@ -50,6 +52,7 @@ public class CustomCAStoreManager {
     trustStoreManagers.add(pkcs12TrustStoreManager);
     trustStoreManagers.add(pemTrustStoreManager);
     this.pemTrustStoreManager = pemTrustStoreManager;
+    this.pkcs12TrustStoreManager = pkcs12TrustStoreManager;
   }
 
   public UUID addCACert(UUID customerId, String name, String contents, String storagePath) {
@@ -304,6 +307,8 @@ public class CustomCAStoreManager {
     return CustomCaCertificateInfo.getOrGrunt(customerId, certId);
   }
 
+  // -------------- PEM CA trust-store specific methods ------------
+
   public List<Map<String, String>> getPemStoreConfig() {
     String storagePath = AppConfigHelper.getStoragePath();
     String trustStoreHome = getTruststoreHome(storagePath);
@@ -326,7 +331,43 @@ public class CustomCAStoreManager {
     return ybaTrustStoreConfig;
   }
 
+  // -------------- PKCS12 CA trust-store specific methods ------------
+
+  private KeyStore getYbaKeyStore() {
+    String storagePath = AppConfigHelper.getStoragePath();
+    String trustStoreHome = getTruststoreHome(storagePath);
+    String pkcs12StorePathStr = pkcs12TrustStoreManager.getYbaTrustStorePath(trustStoreHome);
+    KeyStore pkcs12Store =
+        pkcs12TrustStoreManager.maybeGetTrustStore(pkcs12StorePathStr, getTruststorePassword());
+    return pkcs12Store;
+  }
+
+  public KeyStore getYbaAndJavaKeyStore() {
+    // Add YBA certs into this default keystore.
+    KeyStore ybaJavaKeyStore = pkcs12TrustStoreManager.getJavaDefaultKeystore();
+
+    try {
+      KeyStore ybaKeyStore = getYbaKeyStore();
+      if (ybaKeyStore != null) {
+        Enumeration<String> aliases = ybaKeyStore.aliases();
+        while (aliases.hasMoreElements()) {
+          String alias = aliases.nextElement();
+          ybaJavaKeyStore.setCertificateEntry(alias, ybaKeyStore.getCertificate(alias));
+        }
+      }
+    } catch (KeyStoreException e) {
+      log.error("Failed to get aliases from YBA's custom keystore", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getLocalizedMessage());
+    }
+    return ybaJavaKeyStore;
+  }
+
+  public Map<String, String> getJavaDefaultConfig() {
+    return pkcs12TrustStoreManager.getJavaDefaultConfig();
+  }
+
   // ---------------- helper methods ------------------
+
   private List<X509Certificate> getCertChain(UUID customerId, String name, String contents)
       throws CertificateException {
     if (customerId == null || StringUtils.isAnyBlank(name, contents)) {
@@ -384,6 +425,7 @@ public class CustomCAStoreManager {
     return "global-truststore-password".toCharArray();
   }
 
+  // ---------------- methods for CA store observers ---------------
   public void addListener(CustomTrustStoreListener listener) {
     trustStoreListeners.add(listener);
   }
@@ -392,5 +434,15 @@ public class CustomCAStoreManager {
     for (CustomTrustStoreListener listener : trustStoreListeners) {
       listener.truststoreUpdated();
     }
+  }
+
+  public boolean areCustomCAsPresent() {
+    List<CustomCaCertificateInfo> customCAList = getAll();
+    if (customCAList.isEmpty()) {
+      log.debug("There are no custom CAs uploaded");
+      return false;
+    }
+    log.info("There are {} custom CAs uploaded", customCAList.size());
+    return true;
   }
 }
