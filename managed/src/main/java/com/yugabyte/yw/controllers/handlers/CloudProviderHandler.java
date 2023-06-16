@@ -28,7 +28,6 @@ import com.yugabyte.yw.cloud.azu.AZUInitializer;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
@@ -44,7 +43,6 @@ import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -86,7 +84,6 @@ public class CloudProviderHandler {
   @Inject private AWSInitializer awsInitializer;
   @Inject private GCPInitializer gcpInitializer;
   @Inject private AZUInitializer azuInitializer;
-  @Inject private RuntimeConfGetter confGetter;
 
   public UUID delete(Customer customer, UUID providerUUID) {
     CloudProviderDelete.Params params = new CloudProviderDelete.Params();
@@ -114,12 +111,6 @@ public class CloudProviderHandler {
       Provider reqProvider,
       boolean validate,
       boolean ignoreValidationErrors) {
-    Provider existentProvider = Provider.get(customer.getUuid(), providerName, providerCode);
-    if (existentProvider != null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, String.format("Provider with the name %s already exists", providerName));
-    }
-
     if (providerCode.equals(Common.CloudType.gcp)) {
       cloudProviderHelper.maybeUpdateGCPProject(reqProvider);
     }
@@ -263,19 +254,10 @@ public class CloudProviderHandler {
   //  Note that we already have all the beans (i.e. regions and zones) in reqProvider.
   //  We do not need to call all the updateKubeConfig* methods. Instead just save
   //  whole thing after some validation.
-  public Provider createKubernetesNew(Customer customer, Provider reqProvider) {
-    Common.CloudType providerCode = CloudType.valueOf(reqProvider.getCode());
-    Provider existentProvider =
-        Provider.get(customer.getUuid(), reqProvider.getName(), providerCode);
-    if (existentProvider != null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format("Provider with the name %s already exists", reqProvider.getName()));
-    }
+  public Provider createKubernetesNew(UUID providerUUID, Provider reqProvider) {
+    Provider provider = Provider.getOrBadRequest(providerUUID);
+    Customer customer = Customer.getOrBadRequest(provider.getCustomerUUID());
     cloudProviderHelper.validateKubernetesProviderConfig(reqProvider);
-    Provider provider =
-        Provider.create(
-            customer.getUuid(), providerCode, reqProvider.getName(), reqProvider.getDetails());
 
     cloudProviderHelper.bootstrapKubernetesProvider(
         provider, reqProvider, reqProvider.getRegions(), false);
@@ -389,7 +371,7 @@ public class CloudProviderHandler {
       taskParams.perRegionMetadata = new HashMap<>();
     }
     if (taskParams.perRegionMetadata.isEmpty()
-        && !provider.getCloudCode().equals(Common.CloudType.onprem)) {
+        && provider.getCloudCode().regionBootstrapSupported()) {
       List<String> regionCodes = queryHelper.getRegionCodes(provider);
       for (String regionCode : regionCodes) {
         taskParams.perRegionMetadata.put(regionCode, new CloudBootstrap.Params.PerRegionMetadata());

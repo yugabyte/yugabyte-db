@@ -160,6 +160,14 @@ public class CloudProviderApiController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     reqProvider.setCustomerUUID(customerUUID);
     CloudType providerCode = CloudType.valueOf(reqProvider.getCode());
+    Provider existingProvider =
+        Provider.get(customer.getUuid(), reqProvider.getName(), providerCode);
+    if (existingProvider != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Provider with the name %s already exists", reqProvider.getName()));
+    }
+
     Provider providerEbean;
     if (providerCode.equals(CloudType.kubernetes)) {
       /*
@@ -172,7 +180,9 @@ public class CloudProviderApiController extends AuthenticatedController {
        */
       KubernetesInfo k8sInfo = CloudInfoInterface.get(reqProvider);
       k8sInfo.setLegacyK8sProvider(false);
-      providerEbean = cloudProviderHandler.createKubernetesNew(customer, reqProvider);
+      providerEbean =
+          Provider.create(
+              customer.getUuid(), providerCode, reqProvider.getName(), reqProvider.getDetails());
     } else {
       providerEbean =
           cloudProviderHandler.createProvider(
@@ -189,6 +199,9 @@ public class CloudProviderApiController extends AuthenticatedController {
       try {
         CloudBootstrap.Params taskParams =
             CloudBootstrap.Params.fromProvider(providerEbean, reqProvider);
+        if (providerEbean.getCloudCode() == CloudType.kubernetes) {
+          taskParams.reqProviderEbean = reqProvider;
+        }
 
         taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
         auditService()
