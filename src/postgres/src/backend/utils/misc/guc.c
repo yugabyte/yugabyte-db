@@ -2134,6 +2134,15 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_enable_distinct_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Push supported DISTINCT operations to DocDB."),
+			NULL
+		},
+		&yb_enable_distinct_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_enable_hash_batch_in", PGC_USERSET, QUERY_TUNING_METHOD,
 		gettext_noop("GUC variable that enables batching RPCs of generated for IN queries on hash "
 					 "keys issued to the same tablets."),
@@ -4863,7 +4872,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		{"yb_pg_batch_detection_mechanism", PGC_SIGHUP, COMPAT_OPTIONS_CLIENT,
 			gettext_noop("The drivers use message protocol to communicate "
 						 "with PG. The driver does not inform PG in advance "
-						 "about a Batch execution. We need to identify a batch " 
+						 "about a Batch execution. We need to identify a batch "
 						 "because in that case the single-shard optimization "
 						 "should be disabled. Postgres drivers pipeline "
 						 "messages and we exploit this to peek the message "
