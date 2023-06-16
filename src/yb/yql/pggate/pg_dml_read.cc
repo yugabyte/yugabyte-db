@@ -292,7 +292,7 @@ bool PgDmlRead::IsConcreteRowRead() const {
 }
 
 void PgDmlRead::SetDistinctScan(const PgExecParameters *exec_params) {
-  if (exec_params && exec_params->is_select_distinct) {
+  if (exec_params && exec_params->yb_can_pushdown_distinct) {
     // If we have a nested index requested (due to a colocated index scan), we want
     // to set prefix length based on that nested index scan, not the higher level scan.
     if (secondary_index_query_) {
