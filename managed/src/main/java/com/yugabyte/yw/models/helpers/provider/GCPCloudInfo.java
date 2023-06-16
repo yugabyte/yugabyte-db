@@ -9,8 +9,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
+import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.audit.AuditService;
-import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModelProperty;
@@ -32,7 +32,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
           "gceProject", "project_id",
           "gceApplicationCredentialsPath", "GOOGLE_APPLICATION_CREDENTIALS",
           "destVpcId", "network",
-          "ybFirewallTags", CloudProviderHandler.YB_FIREWALL_TAGS,
+          "ybFirewallTags", CloudProviderHelper.YB_FIREWALL_TAGS,
           "useHostVPC", "use_host_vpc");
 
   private static final List<String> toRemoveKeyFromConfig =
@@ -71,7 +71,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
   @ApiModelProperty
   private String destVpcId;
 
-  @JsonAlias(CloudProviderHandler.YB_FIREWALL_TAGS)
+  @JsonAlias(CloudProviderHelper.YB_FIREWALL_TAGS)
   @ApiModelProperty
   private String ybFirewallTags;
 
@@ -96,7 +96,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
     Map<String, String> envVars = new HashMap<>();
 
     if (ybFirewallTags != null) {
-      envVars.put(CloudProviderHandler.YB_FIREWALL_TAGS, ybFirewallTags);
+      envVars.put(CloudProviderHelper.YB_FIREWALL_TAGS, ybFirewallTags);
     }
     if (gceProject != null) {
       envVars.put(GCPCloudImpl.GCE_PROJECT_PROPERTY, gceProject);
