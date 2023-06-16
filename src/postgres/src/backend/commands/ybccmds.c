@@ -908,7 +908,8 @@ static void
 CreateIndexHandleSplitOptions(YBCPgStatement handle,
                               TupleDesc desc,
                               OptSplit *split_options,
-                              int16 * coloptions)
+                              int16 * coloptions,
+                              int numIndexKeyAttrs)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -928,7 +929,7 @@ CreateIndexHandleSplitOptions(YBCPgStatement handle,
 			/* Construct array to SPLIT column datatypes */
 			Form_pg_attribute attrs[INDEX_MAX_KEYS];
 			int attr_count;
-			for (attr_count = 0; attr_count < desc->natts; ++attr_count)
+			for (attr_count = 0; attr_count < numIndexKeyAttrs; ++attr_count)
 			{
 				attrs[attr_count] = TupleDescAttr(desc, attr_count);
 			}
@@ -1021,7 +1022,8 @@ YBCCreateIndex(const char *indexName,
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
-		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions);
+		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions,
+		                              indexInfo->ii_NumIndexKeyAttrs);
 
 	/* Create the index. */
 	HandleYBStatus(YBCPgExecCreateIndex(handle));
