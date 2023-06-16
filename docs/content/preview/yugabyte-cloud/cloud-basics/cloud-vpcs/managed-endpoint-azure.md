@@ -53,14 +53,14 @@ To create a PSE, do the following:
       --cluster-name <yugabytedb_cluster> \
       --region <cluster_region> \
       --accessibility-type PRIVATE_SERVICE_ENDPOINT \
-      --subscription-id <subscription_ids>
+      --security-principals <subscription_ids>
     ```
 
     Replace values as follows:
 
     - `yugabytedb_cluster` - name of your cluster.
-    - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed (for example, `us-west-2`), as well as the region where your application is deployed.
-    - `subscription_id` - comma-separated list of the subscription IDs of services that you want to grant access.
+    - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed (for example, `us-west-2`), and preferably match the region where your application is deployed.
+    - `subscription_ids` - comma-separated list of the subscription IDs of services that you want to grant access.
 
 1. Note the endpoint ID in the response.
 
@@ -82,6 +82,16 @@ To create a PSE, do the following:
 
 ### Create the private endpoint in Azure
 
+You can create the private endpoint using the [Azure Portal](https://portal.azure.com/) or from the command line using the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/).
+
+#### Use the Azure Portal
+
+To create a private endpoint to connect to your cluster PSE, do the following:
+
+1. Open the [Azure Portal](https://portal.azure.com/).
+
+#### Use Azure CLI
+
 You can create the Azure endpoint using the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/).
 
 To create the private endpoint and connect it to your YBM PSE (called a private link service in Azure), enter the following command:
@@ -94,7 +104,7 @@ az network private-endpoint create \
 --resource-group <resource_group_name> \
 --subnet <subnet_id> \
 --vnet-name <private_endpoint_vnet_name> \
-–-location <PRIVATE_ENDPOINT_REGION_NAME>
+–-location <private_endpoint_region_name>
 ```
 
 Replace values as follows:
@@ -122,7 +132,7 @@ To ensure no change to your application settings and connect using sslmode=verif
     - `cluster_id` - the cluster ID of the cluster with the PSE; the cluster ID is displayed on the cluster **Settings** tab in YBM.
     - `resource_group_name` - the resource group in which the private endpoint was created.
 
-1. To obtain the ipv4 address and VNet of the private endpoint, enter the following command:
+1. To obtain the ipv4 address of the private endpoint, enter the following command:
 
     ```sh
     az network private-endpoint show \
@@ -130,10 +140,7 @@ To ensure no change to your application settings and connect using sslmode=verif
     --resource-group <resource_group_name>
     ```
 
-    This command returns the following values that you use to link the private DNS zone to the VNET:
-
-    - ipv4 address of the private endpoint (`private_endpoint_ipv4_address` in the following commands)
-    - VNet of the private endpoint (`private_endpoint_vnet` in the following commands)
+    This command returns the following ipv4 address of the private endpoint (`private_endpoint_ipv4_address` in the following commands) that you use to link the private DNS zone to the VNET.
 
 1. To link the private DNS zone to the VNet containing the private endpoint, enter the following command:
 
@@ -142,7 +149,7 @@ To ensure no change to your application settings and connect using sslmode=verif
         --name <private_dns_zone_name>
         --registration-enabled true
         --resource-group <resource_group_name>
-        --virtual-network <private_endpoint_vnet>
+        --virtual-network <private_endpoint_vnet_name>
         --zone-name <cluster_id>.azure.ybdb.io
         --tags yugabyte
     ```
@@ -151,7 +158,7 @@ To ensure no change to your application settings and connect using sslmode=verif
 
     - `private_dns_zone_name` - provide a name for the private DNS zone.
     - `resource_group_name` - the resource group in which the private endpoint was created.
-    - `private_endpoint_vnet` - the VNet of the private endpoint.
+    - `private_endpoint_vnet_name` - the name of VNet in which the private endpoint was created.
     - `cluster_id` - the cluster ID of the cluster with the PSE; the cluster ID is displayed on the cluster **Settings** tab in YBM.
 
 1. To create an A record in the private DNS zone, enter the following command:
