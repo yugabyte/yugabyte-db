@@ -6619,6 +6619,224 @@
     "NodeConfig" : {
       "description" : "A node configuration.",
       "properties" : {
+        "archType" : {
+          "description" : "Node agent host machine arch",
+          "enum" : [ "ARM64", "AMD64" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "config" : {
+          "$ref" : "#/definitions/Config",
+          "description" : "Node agent configuration",
+          "readOnly" : true
+        },
+        "customerUuid" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "home" : {
+          "description" : "Node agent installation directory",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ip" : {
+          "description" : "Node agent server IP",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Node agent name",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "osType" : {
+          "description" : "Node agent host OS",
+          "enum" : [ "DARWIN", "LINUX" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "port" : {
+          "description" : "Node agent server port",
+          "format" : "int32",
+          "readOnly" : true,
+          "type" : "integer"
+        },
+        "state" : {
+          "description" : "Node agent state",
+          "enum" : [ "REGISTERING", "UPGRADE", "UPGRADED", "READY" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "updatedAt" : {
+          "description" : "Updated time",
+          "example" : "2022-12-21T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Node agent UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "version" : {
+          "description" : "Node agent installed version",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "NodeAgentApiFilter" : {
+      "properties" : {
+        "nodeIps" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "nodeIps" ],
+      "type" : "object"
+    },
+    "NodeAgentPagedApiQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [ "ASC", "DESC" ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/NodeAgentApiFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [ "uuid", "ip", "name", "state", "updatedAt", "version" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "direction", "filter", "limit", "needTotalCount", "offset", "sortBy" ],
+      "type" : "object"
+    },
+    "NodeAgentPagedApiResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/NodeAgentResp"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "totalCount" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
+      "type" : "object"
+    },
+    "NodeAgentResp" : {
+      "description" : "Node agent details",
+      "properties" : {
+        "archType" : {
+          "description" : "Node agent host machine arch",
+          "enum" : [ "ARM64", "AMD64" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "config" : {
+          "$ref" : "#/definitions/Config",
+          "description" : "Node agent configuration",
+          "readOnly" : true
+        },
+        "customerUuid" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "home" : {
+          "description" : "Node agent installation directory",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ip" : {
+          "description" : "Node agent server IP",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Node agent name",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "osType" : {
+          "description" : "Node agent host OS",
+          "enum" : [ "DARWIN", "LINUX" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "port" : {
+          "description" : "Node agent server port",
+          "format" : "int32",
+          "readOnly" : true,
+          "type" : "integer"
+        },
+        "reachable" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "state" : {
+          "description" : "Node agent state",
+          "enum" : [ "REGISTERING", "UPGRADE", "UPGRADED", "READY" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "updatedAt" : {
+          "description" : "Updated time",
+          "example" : "2022-12-21T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Node agent UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "version" : {
+          "description" : "Node agent installed version",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "versionMatched" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
+    "NodeConfig" : {
+      "description" : "A node configuration.",
+      "properties" : {
         "type" : {
           "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YCQL_SERVER_HTTP_PORT", "YCQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
           "type" : "string"
@@ -8032,6 +8250,41 @@
         }
       },
       "required" : [ "HOST_BASE", "LOCATION", "REGION" ],
+      "type" : "object"
+    },
+    "RegionMetadata" : {
+      "properties" : {
+        "regionMetadata" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/RegionMetadataInfo"
+          },
+          "type" : "object"
+        }
+      },
+      "required" : [ "regionMetadata" ],
+      "type" : "object"
+    },
+    "RegionMetadataInfo" : {
+      "properties" : {
+        "availabilityZones" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "latitude" : {
+          "format" : "double",
+          "type" : "number"
+        },
+        "longitude" : {
+          "format" : "double",
+          "type" : "number"
+        },
+        "name" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "availabilityZones", "latitude", "longitude", "name" ],
       "type" : "object"
     },
     "ReleaseFormData" : {
@@ -16879,6 +17132,37 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Create a provider",
+        "tags" : [ "Cloud providers" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/region_metadata/{code}" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getRegionMetadata",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "code",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RegionMetadata"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Retrieves the region metadata for the cloud providers",
         "tags" : [ "Cloud providers" ]
       }
     },

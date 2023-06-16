@@ -18,6 +18,7 @@ import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import com.yugabyte.yw.models.helpers.provider.region.RegionMetadata;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -58,6 +60,7 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private ConfigHelper configHelper;
 
   @ApiOperation(
       value = "List cloud providers",
@@ -337,6 +340,32 @@ public class CloudProviderApiController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.Schedule, scheduleUUID.toString(), Audit.ActionType.Edit);
     return PlatformResults.withData(schedule);
+  }
+
+  @ApiOperation(
+      value = "Retrieves the region metadata for the cloud providers",
+      response = RegionMetadata.class,
+      nickname = "getRegionMetadata")
+  public Result fetchRegionMetadata(UUID customerUUID, String code) {
+    CloudType cloudType = null;
+    try {
+      cloudType = CloudType.valueOf(code);
+    } catch (IllegalArgumentException e) {
+      throw new PlatformServiceException(BAD_REQUEST, "Specify a valid cloud provider code.");
+    }
+    try {
+      Map<String, Object> regionMetadataMap = configHelper.getRegionMetadata(cloudType);
+      ObjectMapper mapper = Json.mapper();
+      ObjectNode regionMetadataObj = mapper.createObjectNode();
+      regionMetadataObj.set("regionMetadata", Json.toJson(regionMetadataMap));
+      RegionMetadata regionMetadata =
+          mapper.readValue(Json.toJson(regionMetadataObj).toString(), RegionMetadata.class);
+      return PlatformResults.withData(regionMetadata);
+    } catch (Exception e) {
+      log.debug(
+          String.format("Transaltion to regionMetadata object failed with %s", e.getMessage()));
+    }
+    return PlatformResults.withData(null);
   }
 
   // v2 API version 1 backward compatibility support.
