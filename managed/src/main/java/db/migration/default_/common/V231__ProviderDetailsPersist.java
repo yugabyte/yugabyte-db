@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.migrations.V231.AvailabilityZone;
 import com.yugabyte.yw.models.migrations.V231.CloudInfoInterface_Clone;
@@ -87,7 +87,7 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
             put("project_id", "host_project_id");
             put("GOOGLE_APPLICATION_CREDENTIALS", "config_file_path");
             put("CUSTOM_GCE_NETWORK", "network");
-            put(CloudProviderHandler.YB_FIREWALL_TAGS, CloudProviderHandler.YB_FIREWALL_TAGS);
+            put(CloudProviderHelper.YB_FIREWALL_TAGS, CloudProviderHelper.YB_FIREWALL_TAGS);
           }
         };
 
