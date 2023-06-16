@@ -27,6 +27,7 @@ message TransactionStatePB {
   optional TransactionStatus status = 2;
 
   // tablets has different meaning, depending on status:
+  // PENDING - list of involved tablets, if FLAGS_disable_heartbeat_send_involved_tablets = false.
   // COMMITTED - list of involved tablets
   // APPLYING - single entry, status tablet of this transaction
   // APPLIED - single entry, tablet that applied this transaction
@@ -52,6 +53,9 @@ message TransactionStatePB {
   optional fixed64 external_hybrid_time = 8;
   // For xcluster writes, the producer side status tablet for the transaction.
   optional string external_status_tablet_id = 9;
+
+  // The time at which this transaction started at the client.
+  optional fixed64 start_time = 10;
 }
 
 message TruncatePB {

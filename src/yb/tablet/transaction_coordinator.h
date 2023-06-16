@@ -146,6 +146,14 @@ class TransactionCoordinator {
   bool CancelTransactionIfFound(
       const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback);
 
+  // Populates old transactions and their metadata (involved tablets, active subtransactions) based
+  // on the arguments in the request. Used by pg_client_service to determine which transactions to
+  // display in pg_locks/yb_lock_status.
+  Status GetOldTransactions(
+      const tserver::GetOldTransactionsRequestPB* req,
+      tserver::GetOldTransactionsResponsePB* resp,
+      CoarseTimePoint deadline);
+
   std::string DumpTransactions();
 
   // Returns count of managed transactions. Used in tests.
