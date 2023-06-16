@@ -197,7 +197,8 @@ class PgClientServiceImpl::Impl {
       rpc::Scheduler* scheduler,
       const std::optional<XClusterContext>& xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter,
-      MetricEntity* metric_entity)
+      MetricEntity* metric_entity,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
         clock_(clock),
@@ -206,7 +207,7 @@ class PgClientServiceImpl::Impl {
         check_expired_sessions_(scheduler),
         xcluster_context_(xcluster_context),
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
-        response_cache_(metric_entity),
+        response_cache_(parent_mem_tracker, metric_entity),
         instance_id_(Uuid::Generate()) {
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
   }
@@ -730,6 +731,7 @@ PgClientServiceImpl::PgClientServiceImpl(
     const std::shared_future<client::YBClient*>& client_future,
     const scoped_refptr<ClockBase>& clock,
     TransactionPoolProvider transaction_pool_provider,
+    const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const scoped_refptr<MetricEntity>& entity,
     rpc::Scheduler* scheduler,
     const std::optional<XClusterContext>& xcluster_context,
@@ -737,7 +739,7 @@ PgClientServiceImpl::PgClientServiceImpl(
     : PgClientServiceIf(entity),
       impl_(new Impl(
           tablet_server, client_future, clock, std::move(transaction_pool_provider), scheduler,
-          xcluster_context, pg_node_level_mutation_counter, entity.get())) {}
+          xcluster_context, pg_node_level_mutation_counter, entity.get(), parent_mem_tracker)) {}
 
 PgClientServiceImpl::~PgClientServiceImpl() = default;
 
