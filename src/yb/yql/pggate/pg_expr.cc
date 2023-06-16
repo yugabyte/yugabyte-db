@@ -551,7 +551,9 @@ struct PgColumnRefFactory {
 
 InternalType PgExpr::internal_type() const {
   DCHECK(type_entity_) << "Type entity is not set up";
-  return client::YBColumnSchema::ToInternalDataType(static_cast<DataType>(type_entity_->yb_type));
+  // PersistentDataType and DataType has different values so have to use ToLW/ToPB for conversion.
+  return client::YBColumnSchema::ToInternalDataType(ToLW(
+      static_cast<PersistentDataType>(type_entity_->yb_type)));
 }
 
 int PgExpr::get_pg_typid() const {

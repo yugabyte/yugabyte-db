@@ -802,7 +802,7 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
                               table_name.ToString()));
 
       YBSchemaBuilder schema_builder;
-      schema_builder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey();
+      schema_builder.AddColumn("parent_column")->Type(DataType::BINARY)->PrimaryKey();
       YBSchema ybschema;
       CHECK_OK(schema_builder.Build(&ybschema));
 

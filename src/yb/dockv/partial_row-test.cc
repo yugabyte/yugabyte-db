@@ -44,10 +44,11 @@ namespace yb::dockv {
 class PartialRowTest : public YBTest {
  public:
   PartialRowTest()
-    : schema_({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
-                ColumnSchema("int_val", INT32),
-                ColumnSchema("string_val", STRING, ColumnKind::VALUE, Nullable::kTrue),
-                ColumnSchema("binary_val", BINARY, ColumnKind::VALUE, Nullable::kTrue) }) {
+    : schema_({
+          ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+          ColumnSchema("int_val", DataType::INT32),
+          ColumnSchema("string_val", DataType::STRING, ColumnKind::VALUE, Nullable::kTrue),
+          ColumnSchema("binary_val", DataType::BINARY, ColumnKind::VALUE, Nullable::kTrue) }) {
     SeedRandom();
   }
  protected:

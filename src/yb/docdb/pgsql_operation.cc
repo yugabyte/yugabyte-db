@@ -1607,12 +1607,7 @@ Status PgsqlReadOperation::PopulateResultSet(const dockv::PgTableRow& table_row,
   for (int i = 0; i != size; ++i) {
     auto index = target_index_[i];
     if (index != dockv::ReaderProjection::kNotFoundIndex) {
-      const auto value = table_row.GetValueByIndex(index);
-      if (value) {
-        value->AppendTo(table_row.projection().columns[index].data_type, result_buffer);
-      } else {
-        result_buffer->Append(&kNullMark, 1);
-      }
+      table_row.AppendValueByIndex(index, result_buffer);
       continue;
     }
     const auto& expr = request_.targets()[i];

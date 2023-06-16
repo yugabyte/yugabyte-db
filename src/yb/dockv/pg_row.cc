@@ -78,7 +78,9 @@ bool StoreAsValue(DataType data_type) {
   return FixedSize(data_type) != 0;
 }
 
-void AppendString(const Slice& slice, ValueBuffer* buffer, bool append_zero) {
+// Return appended string offset in the buffer.
+size_t AppendString(Slice slice, ValueBuffer* buffer, bool append_zero) {
+  auto result = buffer->size();
   int64_t length = slice.size();
   char* out = buffer->GrowByAtLeast(sizeof(uint64_t) + length + append_zero);
   BigEndian::Store64(out, length + append_zero);
@@ -87,76 +89,67 @@ void AppendString(const Slice& slice, ValueBuffer* buffer, bool append_zero) {
   if (append_zero) {
     out[length] = 0;
   }
+  return result;
 }
 
 Status DoDecodeValue(
-    const Slice& rocksdb_slice, DataType data_type,
-    bool* is_null, PgValueDatum* value, ValueBuffer* buffer) {
-  RSTATUS_DCHECK(!rocksdb_slice.empty(), Corruption, "Cannot decode a value from an empty slice");
-  Slice slice(rocksdb_slice);
+    Slice slice, DataType data_type, bool* is_null, PgValueDatum* value, ValueBuffer* buffer) {
+  RSTATUS_DCHECK(!slice.empty(), Corruption, "Cannot decode a value from an empty slice");
+  auto original_start = slice.data();
 
   const auto value_type = static_cast<ValueEntryType>(slice.consume_byte());
-  if (value_type == ValueEntryType::kNullHigh ||
-      value_type == ValueEntryType::kNullLow ||
-      value_type == ValueEntryType::kTombstone) {
+  if (value_type == ValueEntryType::kNullLow) {
     *is_null = true;
     return Status::OK();
   }
 
   *is_null = false;
 
-  switch (value_type) {
-    case ValueEntryType::kFalse: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kTrue:
-      if (data_type != DataType::BOOL) {
-        return STATUS_FORMAT(
-            Corruption, "Wrong datatype $0 for boolean value type $1",
-            DataType_Name(data_type), value_type);
+  switch (data_type) {
+    case DataType::BOOL:
+      if (value_type == ValueEntryType::kTrue) {
+        *value = 1;
+        return Status::OK();
       }
-      *value = value_type != ValueEntryType::kFalse;
-      return Status::OK();
-
-    case ValueEntryType::kInt32: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kWriteId: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kFloat: {
+      if (value_type == ValueEntryType::kFalse) {
+        *value = 0;
+        return Status::OK();
+      }
+      break;
+    case DataType::INT8: [[fallthrough]];
+    case DataType::INT16: [[fallthrough]];
+    case DataType::INT32: [[fallthrough]];
+    case DataType::FLOAT: [[fallthrough]];
+    case DataType::UINT8: [[fallthrough]];
+    case DataType::UINT16: [[fallthrough]];
+    case DataType::UINT32:
       RSTATUS_DCHECK_EQ(
           slice.size(), sizeof(int32_t), Corruption,
-          Format("Invalid number of bytes for a $0", value_type));
+          Format("Invalid number of bytes for a $0", data_type));
       *value = BigEndian::Load32(slice.data());
       return Status::OK();
-    }
-
-    case ValueEntryType::kUInt32: {
-      RSTATUS_DCHECK_EQ(
-          slice.size(), sizeof(uint32_t), Corruption,
-          Format("Invalid number of bytes for a $0", value_type));
-      *value = BigEndian::Load32(slice.data());
-      return Status::OK();
-    }
-    case ValueEntryType::kInt64: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kArrayIndex: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kDouble: {
+    case DataType::DOUBLE: [[fallthrough]];
+    case DataType::INT64: [[fallthrough]];
+    case DataType::UINT64:
       RSTATUS_DCHECK_EQ(
           slice.size(), sizeof(int64_t), Corruption,
-          Format("Invalid number of bytes for a $0", value_type));
+          Format("Invalid number of bytes for a $0", data_type));
       *value = BigEndian::Load64(slice.data());
       return Status::OK();
-    }
-
-    case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kDecimal: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kString: {
-      *value = buffer->size();
-      AppendString(slice, buffer, data_type != DataType::BINARY);
+    case DataType::DECIMAL: [[fallthrough]];
+    case DataType::STRING:
+      *value = AppendString(slice, buffer, true);
       return Status::OK();
-    }
+    case DataType::BINARY:
+      *value = AppendString(slice, buffer, false);
+      return Status::OK();
     default:
       break;
   }
 
   RSTATUS_DCHECK(
       false, Corruption, "Wrong value type $0 in $1 OR unsupported datatype $2",
-      value_type, rocksdb_slice.ToDebugHexString(), DataType_Name(data_type));
+      value_type, Slice(original_start, slice.end()).ToDebugHexString(), data_type);
 }
 
 Result<const char*> ExtractPrefix(Slice* slice, size_t required, const char* name) {
@@ -459,6 +452,26 @@ std::optional<PgValue> PgTableRow::GetValueByIndex(size_t index) const {
   return PgValue(GetDatum(index));
 }
 
+void PgTableRow::AppendValueByIndex(size_t index, WriteBuffer* buffer) const {
+  if (is_null_[index]) {
+    const char kNullMark = 1;
+    buffer->Append(&kNullMark, 1);
+    return;
+  }
+
+  const auto fixed_size = FixedSize(projection_->columns[index].data_type);
+  if (fixed_size) {
+    auto big_endian_value = BigEndian::FromHost64(values_[index]);
+    Slice slice(pointer_cast<const uint8_t*>(&big_endian_value), 8);
+    buffer->AppendWithPrefix(0, slice.Suffix(fixed_size));
+    return;
+  }
+
+  const auto data = pointer_cast<const char*>(buffer_.data()) + values_[index];
+  const auto len = BigEndian::Load64(data);
+  buffer->AppendWithPrefix(0, data, len + 8);
+}
+
 std::optional<PgValue> PgTableRow::GetValueByColumnId(ColumnIdRep column_id) const {
   auto idx = projection_->ColumnIdxById(ColumnId(column_id));
   if (idx == ReaderProjection::kNotFoundIndex) {
@@ -488,7 +501,7 @@ void PgTableRow::SetNull(size_t column_idx) {
   is_null_[column_idx] = true;
 }
 
-Status PgTableRow::DecodeValue(size_t column_idx, const Slice& value) {
+Status PgTableRow::DecodeValue(size_t column_idx, Slice value) {
   return DoDecodeValue(
       value, projection_->columns[column_idx].data_type,
       &is_null_[column_idx], &values_[column_idx], &buffer_);

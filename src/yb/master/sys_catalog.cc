@@ -742,9 +742,9 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
 // protobuf itself.
 Schema SysCatalogTable::BuildTableSchema() {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kSysCatalogTableColType, INT8));
-  CHECK_OK(builder.AddKeyColumn(kSysCatalogTableColId, BINARY));
-  CHECK_OK(builder.AddColumn(kSysCatalogTableColMetadata, BINARY));
+  CHECK_OK(builder.AddKeyColumn(kSysCatalogTableColType, DataType::INT8));
+  CHECK_OK(builder.AddKeyColumn(kSysCatalogTableColId, DataType::BINARY));
+  CHECK_OK(builder.AddColumn(kSysCatalogTableColMetadata, DataType::BINARY));
   return builder.Build();
 }
 

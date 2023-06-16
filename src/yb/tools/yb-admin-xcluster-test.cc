@@ -258,7 +258,7 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationChecksForColumnIdMismat
   // between the producer and consumer versions of the table.
   {
     auto table_alterer = client_.get()->NewTableAlterer(table_name);
-    table_alterer->AddColumn(kValueColumn)->Type(INT32);
+    table_alterer->AddColumn(kValueColumn)->Type(DataType::INT32);
     ASSERT_OK(table_alterer->timeout(MonoDelta::FromSeconds(60 * kTimeMultiplier))->Alter());
   }
 
@@ -928,8 +928,8 @@ TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
 
     // Build the table.
     client::YBSchemaBuilder builder;
-    builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder.AddColumn(kValueColumn)->Type(INT32);
+    builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    builder.AddColumn(kValueColumn)->Type(DataType::INT32);
 
     TableProperties table_properties;
     table_properties.SetTransactional(true);

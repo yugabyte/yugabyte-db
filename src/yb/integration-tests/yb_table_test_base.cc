@@ -245,8 +245,8 @@ void YBTableTestBase::CreateTable() {
     ASSERT_OK(client_->CreateNamespaceIfNotExists(tn.namespace_name(), tn.namespace_type()));
 
     YBSchemaBuilder b;
-    b.AddColumn("k")->Type(BINARY)->NotNull()->HashPrimaryKey();
-    b.AddColumn("v")->Type(BINARY)->NotNull();
+    b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+    b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
     ASSERT_OK(b.Build(&schema_));
 
     ASSERT_OK(NewTableCreator()->table_name(tn).schema(&schema_).Create());

@@ -197,7 +197,7 @@ Status PTCreateIndex::Analyze(SemContext *sem_context) {
   // predicate.
   if (where_clause_.get()) {
     IdxPredicateState idx_predicate_state(sem_context->PTempMem(), opcode());
-    SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+    SemState sem_state(sem_context, QLType::Create(DataType::BOOL), InternalType::kBoolValue);
     sem_state.SetIdxPredicateState(&idx_predicate_state);
     RETURN_NOT_OK(where_clause_->Analyze(sem_context));
     where_clause_column_refs_ = idx_predicate_state.column_refs();

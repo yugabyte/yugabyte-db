@@ -64,8 +64,8 @@ class NetworkFailureTest : public MiniClusterTestWithClient<MiniCluster> {
     ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
 
     client::YBSchemaBuilder builder;
-    builder.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
-    builder.AddColumn("value")->Type(INT32)->NotNull();
+    builder.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    builder.AddColumn("value")->Type(DataType::INT32)->NotNull();
 
     ASSERT_OK(table_.Create(kTableName, kNumTablets, client_.get(), &builder));
 

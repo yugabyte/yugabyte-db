@@ -2870,7 +2870,7 @@ void SetSelectedExprToTrue(QLReadRequestPB* req) {
   QLRSRowDescPB* rsrow_desc = req->mutable_rsrow_desc();
   QLRSColDescPB* rscol_desc = rsrow_desc->add_rscol_descs();
   rscol_desc->set_name("1");
-  rscol_desc->mutable_ql_type()->set_main(yb::DataType::BOOL);
+  rscol_desc->mutable_ql_type()->set_main(PersistentDataType::BOOL);
 }
 
 Status WhereMainTableToPB(

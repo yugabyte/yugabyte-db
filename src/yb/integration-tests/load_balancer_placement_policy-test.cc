@@ -182,7 +182,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {
 
   yb::client::YBSchemaBuilder b;
   yb::client::YBSchema schema;
-  b.AddColumn("k")->Type(BINARY)->NotNull()->HashPrimaryKey();
+  b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
   ASSERT_OK(b.Build(&schema));
 
   // Set placement policy for the new table that is different from the cluster placement policy.
@@ -248,8 +248,8 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
 
   yb::client::YBSchemaBuilder b;
   yb::client::YBSchema schema;
-  b.AddColumn("k")->Type(BINARY)->NotNull()->HashPrimaryKey();
-  b.AddColumn("v")->Type(BINARY)->NotNull();
+  b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+  b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
   ASSERT_OK(b.Build(&schema));
 
   ASSERT_OK(NewTableCreator()->table_name(placement_table).schema(&schema).Create());

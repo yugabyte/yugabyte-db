@@ -31,16 +31,16 @@
 
 // The list of unsupported datatypes to use in switch statements
 #define QL_UNSUPPORTED_TYPES_IN_SWITCH \
-  case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
-  case TYPEARGS: FALLTHROUGH_INTENDED;  \
-  case UNKNOWN_DATA
+  case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
+  case DataType::TYPEARGS: FALLTHROUGH_INTENDED;  \
+  case DataType::UNKNOWN_DATA
 
 #define QL_INVALID_TYPES_IN_SWITCH     \
-  case UINT8:  FALLTHROUGH_INTENDED;    \
-  case UINT16: FALLTHROUGH_INTENDED;    \
-  case UINT32: FALLTHROUGH_INTENDED;    \
-  case UINT64: FALLTHROUGH_INTENDED;    \
-  case GIN_NULL
+  case DataType::UINT8:  FALLTHROUGH_INTENDED;    \
+  case DataType::UINT16: FALLTHROUGH_INTENDED;    \
+  case DataType::UINT32: FALLTHROUGH_INTENDED;    \
+  case DataType::UINT64: FALLTHROUGH_INTENDED;    \
+  case DataType::GIN_NULL
 
 namespace yb {
 

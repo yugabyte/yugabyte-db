@@ -4510,7 +4510,7 @@ Status CatalogManager::CreateTransactionStatusTableInternal(
   }
   req.mutable_schema()->mutable_table_properties()->set_num_tablets(num_tablets);
 
-  ColumnSchema hash(kRedisKeyColumnName, BINARY, ColumnKind::HASH);
+  ColumnSchema hash(kRedisKeyColumnName, DataType::BINARY, ColumnKind::HASH);
   ColumnSchemaToPB(hash, req.mutable_schema()->mutable_columns()->Add());
 
   Status s = CreateTable(&req, &resp, rpc);
@@ -4772,13 +4772,13 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
   // which the snapshot was recorded. "details" is a json column for future extensibility.
 
   YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("node")->Type(STRING)->HashPrimaryKey();
-  schema_builder.AddColumn("entity_type")->Type(STRING)->PrimaryKey();
-  schema_builder.AddColumn("entity_id")->Type(STRING)->PrimaryKey();
-  schema_builder.AddColumn("metric")->Type(STRING)->PrimaryKey();
-  schema_builder.AddColumn("ts")->Type(TIMESTAMP)->PrimaryKey(SortingType::kDescending);
-  schema_builder.AddColumn("value")->Type(INT64);
-  schema_builder.AddColumn("details")->Type(JSONB);
+  schema_builder.AddColumn("node")->Type(DataType::STRING)->HashPrimaryKey();
+  schema_builder.AddColumn("entity_type")->Type(DataType::STRING)->PrimaryKey();
+  schema_builder.AddColumn("entity_id")->Type(DataType::STRING)->PrimaryKey();
+  schema_builder.AddColumn("metric")->Type(DataType::STRING)->PrimaryKey();
+  schema_builder.AddColumn("ts")->Type(DataType::TIMESTAMP)->PrimaryKey(SortingType::kDescending);
+  schema_builder.AddColumn("value")->Type(DataType::INT64);
+  schema_builder.AddColumn("details")->Type(DataType::JSONB);
 
   YBSchema ybschema;
   RETURN_NOT_OK(schema_builder.Build(&ybschema));
@@ -8360,7 +8360,7 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
   ctreq.set_tablespace_id(req->tablespace_id());
 
   YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey();
+  schema_builder.AddColumn("parent_column")->Type(DataType::BINARY)->PrimaryKey();
   YBSchema ybschema;
   CHECK_OK(schema_builder.Build(&ybschema));
   auto schema = yb::client::internal::GetSchema(ybschema);
@@ -8621,7 +8621,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     req.set_is_colocated_via_database(true);
 
     YBSchemaBuilder schema_builder;
-    schema_builder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey();
+    schema_builder.AddColumn("parent_column")->Type(DataType::BINARY)->PrimaryKey();
     YBSchema ybschema;
     CHECK_OK(schema_builder.Build(&ybschema));
     auto schema = yb::client::internal::GetSchema(ybschema);

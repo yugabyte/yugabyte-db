@@ -170,7 +170,7 @@ class XClusterTest : public XClusterTestBase,
     consumer_cluster_.txn_mgr_.emplace(consumer_client(), clock_, client::LocalTabletFilter());
 
     YBSchemaBuilder b;
-    b.AddColumn("c0")->Type(INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("c0")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
 
     // Create transactional table.
     TableProperties table_properties;
@@ -2213,7 +2213,7 @@ TEST_P(XClusterTest, TestWalRetentionSet) {
 
   // Issue an ALTER TABLE request on the producer to verify that it doesn't crash.
   auto table_alterer = producer_client()->NewTableAlterer(table_name);
-  table_alterer->AddColumn("new_col")->Type(INT32);
+  table_alterer->AddColumn("new_col")->Type(DataType::INT32);
   ASSERT_OK(table_alterer->timeout(MonoDelta::FromSeconds(kRpcTimeout))->Alter());
 
   // Verify that the table got altered on the producer.
@@ -2287,7 +2287,7 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
   {
     std::unique_ptr<YBTableAlterer> table_alterer(producer_client()->
                                                   NewTableAlterer(tables[0]->name()));
-    table_alterer->AddColumn("contact_name")->Type(STRING);
+    table_alterer->AddColumn("contact_name")->Type(DataType::STRING);
     ASSERT_OK(table_alterer->Alter());
   }
 
@@ -2321,7 +2321,7 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
   {
     std::unique_ptr<YBTableAlterer> table_alterer(consumer_client()->
                                                   NewTableAlterer(tables[1]->name()));
-    table_alterer->AddColumn("contact_name")->Type(STRING);
+    table_alterer->AddColumn("contact_name")->Type(DataType::STRING);
     ASSERT_OK(table_alterer->Alter());
   }
 
@@ -2363,7 +2363,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   {
     std::unique_ptr<YBTableAlterer> table_alterer(
         producer_client()->NewTableAlterer(tables[0]->name()));
-    table_alterer->AddColumn("contact_name")->Type(STRING);
+    table_alterer->AddColumn("contact_name")->Type(DataType::STRING);
     ASSERT_OK(table_alterer->Alter());
   }
 
@@ -2424,7 +2424,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   {
     std::unique_ptr<YBTableAlterer> table_alterer(consumer_client()->
         NewTableAlterer(tables[1]->name()));
-    table_alterer->AddColumn("contact_name")->Type(STRING);
+    table_alterer->AddColumn("contact_name")->Type(DataType::STRING);
     ASSERT_OK(table_alterer->Alter());
   }
 

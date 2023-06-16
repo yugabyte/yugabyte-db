@@ -53,6 +53,7 @@ class FileSubstitutions {
 };
 
 Substitutions CreateSubstitutions(const google::protobuf::Descriptor* message);
+Substitutions CreateSubstitutions(const google::protobuf::EnumDescriptor* enum_desc);
 Substitutions CreateSubstitutions(
     const google::protobuf::MethodDescriptor* method, rpc::RpcSides side);
 Substitutions CreateSubstitutions(const google::protobuf::FieldDescriptor* field);

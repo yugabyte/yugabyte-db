@@ -65,7 +65,7 @@ import "yb/common/value.proto";
 //                                    field_names = ["firstname", "lastname", "ssn"]}
 
 message QLTypePB {
-  optional DataType main = 1;
+  optional PersistentDataType main = 1;
   repeated QLTypePB params = 2;
 
   // Fields for user-defined types
