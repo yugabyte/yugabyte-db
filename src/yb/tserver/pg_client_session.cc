@@ -393,7 +393,7 @@ struct PerformData {
       StatusToPB(status, resp.mutable_status());
     }
     if (cache_setter) {
-      cache_setter({status.ok(), resp, ExtractRowsSidecar(resp, sidecars)});
+      cache_setter({resp, ExtractRowsSidecar(resp, sidecars)});
     }
     SendResponse();
   }

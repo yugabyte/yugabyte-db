@@ -533,48 +533,44 @@ Status TabletServer::RegisterServices() {
   cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
       std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry());
 
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+  RETURN_NOT_OK(RegisterService(
       FLAGS_ts_backup_svc_queue_length,
-      std::make_unique<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
+      std::make_shared<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
 
-  RETURN_NOT_OK(
-      RpcAndWebServerBase::RegisterService(FLAGS_xcluster_svc_queue_length, cdc_service_));
+  RETURN_NOT_OK(RegisterService(FLAGS_xcluster_svc_queue_length, cdc_service_));
 
   auto tablet_server_service = std::make_shared<TabletServiceImpl>(this);
   tablet_server_service_ = tablet_server_service;
   LOG(INFO) << "yb::tserver::TabletServiceImpl created at " << tablet_server_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
-                                                     std::move(tablet_server_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_tablet_server_svc_queue_length, std::move(tablet_server_service)));
 
-  std::unique_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
+  auto admin_service = std::make_shared<TabletServiceAdminImpl>(this);
   LOG(INFO) << "yb::tserver::TabletServiceAdminImpl created at " << admin_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_admin_svc_queue_length,
-                                                     std::move(admin_service)));
+  RETURN_NOT_OK(RegisterService(FLAGS_ts_admin_svc_queue_length, std::move(admin_service)));
 
-  std::unique_ptr<ServiceIf> consensus_service(new ConsensusServiceImpl(metric_entity(),
-                                                                        tablet_manager_.get()));
+  auto consensus_service = std::make_shared<ConsensusServiceImpl>(
+      metric_entity(), tablet_manager_.get());
   LOG(INFO) << "yb::tserver::ConsensusServiceImpl created at " << consensus_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_consensus_svc_queue_length,
-                                                     std::move(consensus_service),
-                                                     rpc::ServicePriority::kHigh));
+  RETURN_NOT_OK(RegisterService(FLAGS_ts_consensus_svc_queue_length,
+                                std::move(consensus_service),
+                                rpc::ServicePriority::kHigh));
 
-  std::unique_ptr<ServiceIf> remote_bootstrap_service =
-      std::make_unique<RemoteBootstrapServiceImpl>(
+  auto remote_bootstrap_service = std::make_shared<RemoteBootstrapServiceImpl>(
           fs_manager_.get(), tablet_manager_.get(), metric_entity(), this->MakeCloudInfoPB(),
           &this->proxy_cache());
   LOG(INFO) << "yb::tserver::RemoteBootstrapServiceImpl created at " <<
     remote_bootstrap_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
-                                                     std::move(remote_bootstrap_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_ts_remote_bootstrap_svc_queue_length, std::move(remote_bootstrap_service)));
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
       *this, tablet_manager_->client_future(), clock(),
-      std::bind(&TabletServer::TransactionPool, this), metric_entity(),
+      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
       &messenger()->scheduler(), XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
       &pg_node_level_mutation_counter_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
+  RETURN_NOT_OK(RegisterService(FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
 
   if (FLAGS_TEST_echo_service_enabled) {
     auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
@@ -582,8 +578,7 @@ Status TabletServer::RegisterServices() {
     LOG(INFO) << "yb::tserver::stateful_service::TestEchoService created at "
               << test_echo_service.get();
     RETURN_NOT_OK(test_echo_service->Init(tablet_manager_.get()));
-    RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-        FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
+    RETURN_NOT_OK(RegisterService(FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
   }
 
   auto pg_auto_analyze_service =
@@ -591,7 +586,7 @@ Status TabletServer::RegisterServices() {
   LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
             << pg_auto_analyze_service.get();
   RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+  RETURN_NOT_OK(RegisterService(
       FLAGS_TEST_echo_svc_queue_length, std::move(pg_auto_analyze_service)));
 
   return Status::OK();

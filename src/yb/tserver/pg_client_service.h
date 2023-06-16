@@ -15,9 +15,12 @@
 
 #include <functional>
 #include <future>
+#include <memory>
 #include <optional>
 
 #include "yb/client/client_fwd.h"
+
+#include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -26,6 +29,8 @@
 #include "yb/tserver/xcluster_context.h"
 
 namespace yb {
+
+class MemTracker;
 
 namespace tserver {
 
@@ -78,6 +83,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity,
       rpc::Scheduler* scheduler,
       const std::optional<XClusterContext>& xcluster_context = std::nullopt,
