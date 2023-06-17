@@ -66,7 +66,7 @@ DocDBRocksDBUtil::DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
 DocReadContext& DocDBRocksDBUtil::doc_read_context() {
   if (!doc_read_context_) {
     doc_read_context_ = std::make_shared<DocReadContext>(
-        kEmptyLogPrefix, TableType::YQL_TABLE_TYPE, CreateSchema(), 0);
+        DocReadContext::TEST_Create(CreateSchema()));
   }
   return *doc_read_context_;
 }
