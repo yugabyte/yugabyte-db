@@ -2915,6 +2915,7 @@ reaper(SIGNAL_ARGS)
 		 *    acquired we take a conservative approach and restart the
 		 *    postmaster.
 		 */
+		YBC_LOG_INFO("Child proc %d exited with status %d", pid, exitstatus);
 
 		int i;
 		for (i = 0; i < ProcGlobal->allProcCount; i++)
@@ -2942,9 +2943,12 @@ reaper(SIGNAL_ARGS)
 			 */
 			if (WIFSIGNALED(exitstatus))
 			{
+				YBC_LOG_INFO("Cleaning up killed proc %d", pid);
 				CleanupKilledProcess(proc);
 				break;
 			}
+
+			YBC_LOG_INFO("Proc %d exit not signaled", pid);
 		}
 
 		/*
@@ -3248,6 +3252,8 @@ reaper(SIGNAL_ARGS)
 			yb_pgstat_clear_entry_pid(pid);
 
 		}
+
+		HaveNFreeProcs(0);
 	}							/* loop over pending child-death reports */
 
 	/*
@@ -3370,6 +3376,7 @@ static void CleanupKilledProcess(PGPROC *proc)
 
 	if (proc->backendId == InvalidBackendId)
 	{
+		YBC_LOG_INFO("Proc does not have a valid backend ID");
 		/* These come from ShutdownAuxiliaryProcess */
 		ConditionVariableCancelSleepForProc(proc);
 		pgstat_report_wait_end_for_proc(proc);
@@ -3455,6 +3462,7 @@ CleanupBackend(int pid,
 {
 	dlist_mutable_iter iter;
 
+	YBC_LOG_INFO("Cleaning up backend of proc %d", pid);
 	LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
 
 	/*
@@ -3494,6 +3502,7 @@ CleanupBackend(int pid,
 		{
 			if (!bp->dead_end)
 			{
+				YBC_LOG_INFO("Proc killed: Release invoked for proc %d", bp->pid);
 				if (!ReleasePostmasterChildSlot(bp->child_slot))
 				{
 					/*
@@ -3561,6 +3570,8 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		if (YbCrashWhileLockIntermediateState)
 			YbCrashWhileLockIntermediateState = false;
 	}
+
+	YBC_LOG_INFO("Handling child crash for proc %d take_action: %d", pid, take_action);
 
 	if (take_action)
 	{

@@ -344,6 +344,7 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 		DisplayXidCache();
 #endif
 
+	YBC_LOG_INFO("Removing proc %d (Backend: %d) from array", proc->pid, proc->backendId);
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
 	/*
@@ -380,6 +381,8 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 			return;
 		}
 	}
+
+	YBC_LOG_INFO("Failed to release proc %d (Backend: %d) from array", proc->pid, proc->backendId);
 
 	/* Oops */
 	LWLockRelease(ProcArrayLock);

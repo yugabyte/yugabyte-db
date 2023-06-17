@@ -2827,6 +2827,7 @@ pgstat_initialize(void)
 	{
 		Assert(MyBackendId >= 1 && MyBackendId <= MaxBackends);
 		MyBEEntry = &BackendStatusArray[MyBackendId - 1];
+		YBC_LOG_INFO("Adding Backend %d at slot %d", MyBackendId, (MyBackendId - 1));
 	}
 	else
 	{
@@ -3090,6 +3091,8 @@ pgstat_bestart(void)
 	/* Update app name to current GUC setting */
 	if (application_name)
 		pgstat_report_appname(application_name);
+
+	YBC_LOG_INFO("Backend %d started", MyBackendId);
 }
 
 /*
@@ -3113,6 +3116,7 @@ yb_pgstat_clear_entry_pid(int pid)
 
 		if (pid == vbeentry->st_procpid)
 		{
+			YBC_LOG_INFO("Backend %d shut down detected by postmaster", pid);
 			PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 			beentry->st_procpid = 0;	/* mark invalid */
 			PGSTAT_END_WRITE_ACTIVITY(beentry);
@@ -3135,6 +3139,8 @@ static void
 pgstat_beshutdown_hook(int code, Datum arg)
 {
 	volatile PgBackendStatus *beentry = MyBEEntry;
+
+	YBC_LOG_INFO("Backend %d shutting down", MyBackendId);
 
 	/*
 	 * If we got as far as discovering our own database ID, we can report what

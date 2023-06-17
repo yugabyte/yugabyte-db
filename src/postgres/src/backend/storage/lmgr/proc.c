@@ -660,6 +660,7 @@ bool
 HaveNFreeProcs(int n)
 {
 	PGPROC	   *proc;
+	int count = 0;
 
 	SpinLockAcquire(ProcStructLock);
 
@@ -671,7 +672,17 @@ HaveNFreeProcs(int n)
 		n--;
 	}
 
+	proc = ProcGlobal->freeProcs;
+
+	while (proc != NULL) {
+		count += 1;
+		proc = (PGPROC *) proc->links.next;
+	}
+
 	SpinLockRelease(ProcStructLock);
+
+	
+	YBC_LOG_INFO("Have n free procs: %d", (count));
 
 	return (n <= 0);
 }
