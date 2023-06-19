@@ -20,6 +20,7 @@ import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseSupportBundle.scss';
 import {filterTypes} from "../../metrics/MetricsComparisonModal/ComparisonFilterContextProvider";
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { getUniverseStatus } from '../helpers/universeHelpers';
 
 
 const stepsObj = {
@@ -153,6 +154,7 @@ export const UniverseSupportBundle = (props) => {
               }
             }}
             isK8sUniverse={isK8sUniverse}
+            universeStatus={getUniverseStatus(props.currentUniverse)}
           />
         )}
         {steps === stepsObj.thirdStep && (
