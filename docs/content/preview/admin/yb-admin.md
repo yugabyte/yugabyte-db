@@ -1104,7 +1104,7 @@ In both cases, the output is similar to the following:
 
 Deletes the snapshot schedule with the given ID, **and all of the snapshots** associated with that schedule.
 
-Returns a JSON object with the schedule_id that was just deleted.
+Returns a JSON object with the `schedule_id` that was just deleted.
 
 **Syntax**
 
@@ -1902,7 +1902,7 @@ yb-admin \
 * *source_master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *comma_separated_list_of_stream_ids*: Comma-separated list of stream IDs.
 * *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
-* *minus <interval>*: The `minus <interval>` is the same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [`yb-admin restore_snapshot_schedule` command](#restore-snapshot-schedule).
+* *minus <interval>*: The `minus <interval>` is the same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [`restore_snapshot_schedule`](#restore-snapshot-schedule).
 
 **Example**
 

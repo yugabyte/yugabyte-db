@@ -22,9 +22,9 @@ For information on xCluster deployment architecture and replication scenarios, s
 
 You can create source and target universes as follows:
 
-1. Create the yugabyte-source universe by following the procedure from [Manual deployment](../../manual-deployment/).
+1. Create the source universe by following the procedure from [Manual deployment](../../manual-deployment/).
 1. Create tables for the APIs being used by the source universe.
-1. Create the yugabyte-target universe by following the procedure from [Manual deployment](../../manual-deployment/).
+1. Create the target universe by following the procedure from [Manual deployment](../../manual-deployment/).
 1. Create tables for the APIs being used by the target universe. These should be the same tables as you created for the source universe.
 1. Proceed to setting up [unidirectional](#set-up-unidirectional-replication) or [bidirectional](#set-up-bidirectional-replication) replication.
 
@@ -76,7 +76,7 @@ If you need to set up bidirectional replication, see instructions provided in [S
 
 ## Set up bidirectional replication
 
-To set up bidirectional replication, repeat the procedure described in [Set up unidirectional replication](#set-up-unidirectional-replication) applying the steps to the yugabyte-target universe. You need to set up each yugabyte-source to consume data from yugabyte-target.
+To set up bidirectional replication, repeat the procedure described in [Set up unidirectional replication](#set-up-unidirectional-replication) applying the steps to the target universe. You need to set up each source to consume data from target.
 
 When completed, proceed to [Load data](#load-data-into-the-source-universe).
 
@@ -86,7 +86,7 @@ After you have set up replication, load data into the source universe, as follow
 
 - Download the YugabyteDB workload generator JAR file `yb-sample-apps.jar` from [GitHub](https://github.com/yugabyte/yb-sample-apps/releases).
 
-- Start loading data into yugabyte-source by following examples for YSQL or YCQL:
+- Start loading data into source by following examples for YSQL or YCQL:
 
   - YSQL:
 
@@ -102,25 +102,25 @@ After you have set up replication, load data into the source universe, as follow
 
   Note that the IP address needs to correspond to the IP of any T-Servers in the universe.
 
-- For bidirectional replication, repeat the preceding step in the yugabyte-target universe.
+- For bidirectional replication, repeat the preceding step in the target universe.
 
 When completed, proceed to [Verify replication](#verify-replication).
 
 ## Verify replication
 
-You can verify replication by stopping the workload and then using the `COUNT(*)` function on the yugabyte-target to yugabyte-source match.
+You can verify replication by stopping the workload and then using the `COUNT(*)` function on the target to source match.
 
 ### Unidirectional replication
 
-For unidirectional replication, connect to the yugabyte-target universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and confirm that you can see the expected records.
+For unidirectional replication, connect to the target universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and confirm that you can see the expected records.
 
 ### Bidirectional replication
 
 For bidirectional replication, repeat the procedure described in [Unidirectional replication](#unidirectional-replication), but reverse the source and destination information, as follows:
 
-1. Run `yb-admin setup_universe_replication` on the yugabyte-target universe, pointing to yugabyte-source.
-2. Use the workload generator to start loading data into the yugabyte-target universe.
-3. Verify replication from yugabyte-target to yugabyte-source.
+1. Run `yb-admin setup_universe_replication` on the target universe, pointing to source.
+2. Use the workload generator to start loading data into the target universe.
+3. Verify replication from target to source.
 
 To avoid primary key conflict errors, keep the key ranges for the two universes separate. This is done automatically by the applications included in the `yb-sample-apps.jar`.
 
@@ -269,7 +269,7 @@ To create unidirectional replication, perform the following:
     ```sh
     ./bin/yb-admin -master_addresses <target_master_addresses> \
     setup_universe_replication <source_universe_UUID>_<replication_stream_name> \
-    <producer_master_addresses> <comma_separated_table_ids>
+    <source_master_addresses> <comma_separated_table_ids>
     ```
 
     Consider the following example:
@@ -386,7 +386,7 @@ You can set up xCluster replication for the following purposes:
 - Enabling replication on a table that has existing data.
 - Catching up an existing stream where the target has fallen too far behind.
 
-To ensure that the WALs are still available, you need to perform the following steps within the [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) flag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
+To ensure that the WALs are still available, you need to perform the following steps in the [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) flag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
 
 Proceed as follows:
 

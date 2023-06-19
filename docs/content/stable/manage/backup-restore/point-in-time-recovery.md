@@ -184,7 +184,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
 
 YugabyteDB supports [index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which asynchronously populates a new index. The process runs in the background and can take a significant amount of time, depending on the size of the data. If you restore to a point in time soon after an index creation, you're likely to hit a state where the index is in the middle of the backfill process.
 
-**YugabyteDB ignores these partly-backfilled indexes during read operations. To make sure the indexes are properly used, you need to drop and create them again to reinitiate the backfill process.** Run the following query to get a list of indexes that need to be recreated:
+**YugabyteDB ignores these partly-backfilled indexes during read operations. To make sure the indexes are properly used, you need to drop and create them again to re-initiate the backfill process.** Run the following query to get a list of indexes that need to be recreated:
 
 ```sql
 SELECT pg_class.relname
@@ -204,7 +204,7 @@ This limitation will be removed in an upcoming release, and is tracked in issue 
 
 PITR functionality has several limitations, primarily related to interactions with other YugabyteDB features. Most of these limitations will be addressed in upcoming releases; refer to each limitation's corresponding tracking issue for details.
 
-###  CDC
+### CDC
 
 Using PITR and [CDC](../../../explore/change-data-capture/) together is currently not supported.
 
