@@ -780,7 +780,6 @@ class UniverseDetail extends Component {
                               closeModal={closeModal}
                               button={
                                 <YBMenuItem
-                                  disabled={updateInProgress}
                                   onClick={showSupportBundleModal}
                                 >
                                   <YBLabelWithIcon icon="fa fa-file-archive-o">
