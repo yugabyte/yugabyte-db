@@ -19,6 +19,7 @@ models/model_cluster_tablet.go
 models/model_cluster_tablet_list_response.go
 models/model_encryption_info.go
 models/model_entity_metadata.go
+models/model_gflags_info.go
 models/model_health_check_info.go
 models/model_health_check_response.go
 models/model_is_load_balancer_idle.go
