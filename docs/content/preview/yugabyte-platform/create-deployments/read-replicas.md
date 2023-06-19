@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-You can create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/read-replicas/) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove a read replica cluster.
+You can create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/read-replicas/) cluster, as well as dynamically add, edit, and remove a read replica cluster.
 
 You can add up to 15 read replicas to a universe. The number of read replicas can't exceed the number of nodes in the read replica cluster.
 
@@ -39,7 +39,7 @@ Add the `leader_failure_max_missed_heartbeat_periods` configuration flag for YB-
     - Specify the number of nodes and the number of read replicas. The number of nodes must be greater than or equal to the number of replicas.
     - Customize the availability zones if desired.
     - Configure the instance type to use for your read replica cluster.
-    - You can choose to use the same flags as the primary cluster, or set custom flags.
+    - You can choose to use the same flags as the primary cluster, or set custom flags for the read replica cluster. Read replicas only have YB-TServers. You can also set flags after universe creation. Refer to [Edit configuration flags](../../manage-deployments/edit-config-flags/).
 
 1. To finish the process, click **Create**.
 
