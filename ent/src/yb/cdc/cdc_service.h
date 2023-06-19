@@ -217,7 +217,8 @@ class CDCServiceImpl : public CDCServiceIf {
       bool ignore_cache = false);
 
   Result<OpId> GetLastCheckpoint(
-      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session);
+      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session,
+      const CDCRequestSource& request_source);
 
   Result<std::vector<std::pair<std::string, std::string>>> GetDBStreamInfo(
       const std::string& db_stream_id, const client::YBSessionPtr& session);

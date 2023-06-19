@@ -512,8 +512,7 @@ class CDCServiceImpl::Impl {
     if (!tablet_ptr) {
       return nullptr;
     }
-    auto cdc_mem_tracker = MemTracker::FindOrCreateTracker(
-        "CDC", tablet_ptr->mem_tracker());
+    auto cdc_mem_tracker = MemTracker::FindOrCreateTracker("CDC", tablet_ptr->mem_tracker());
     it->mem_tracker = MemTracker::FindOrCreateTracker(producer_info.stream_id, cdc_mem_tracker);
     return it->mem_tracker;
   }
@@ -1023,8 +1022,7 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
 
   bool set_active = required_tables.empty();
   CDCStreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
-      client()->CreateCDCStream(ns_id, options, set_active),
-      CDCError(CDCErrorPB::INTERNAL_ERROR));
+      client()->CreateCDCStream(ns_id, options, set_active), CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   options.erase(kIdType);
 
@@ -1354,7 +1352,7 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
       auto session = client()->NewSession();
       ProducerTabletInfo parent_tablet = {
           "" /* UUID */, req->table_info().stream_id(), req->tablet_id()};
-      auto result = GetLastCheckpoint(parent_tablet, session);
+      auto result = GetLastCheckpoint(parent_tablet, session, CDCRequestSource::CDCSDK);
       RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
       (*result).ToPB(&parent_checkpoint_pb);
     }
@@ -1368,7 +1366,7 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
       tablet_checkpoint_pair_pb->mutable_tablet_locations()->CopyFrom(
           tablet_id_to_tablet_locations_map[child_tablet_id]);
 
-      auto result = GetLastCheckpoint(cur_child_tablet, session);
+      auto result = GetLastCheckpoint(cur_child_tablet, session, CDCRequestSource::CDCSDK);
       RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
       if (result->is_valid_not_empty()) {
         CDCSDKCheckpointPB checkpoint_pb;
@@ -1576,7 +1574,7 @@ void CDCServiceImpl::GetChanges(
   CDCSDKCheckpointPB cdc_sdk_op_id;
   // Get opId from request.
   if (!GetFromOpId(req, &op_id, &cdc_sdk_op_id)) {
-    auto result = GetLastCheckpoint(producer_tablet, session);
+    auto result = GetLastCheckpoint(producer_tablet, session, record.source_type);
     RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     if (record.source_type == XCLUSTER) {
       op_id = *result;
@@ -2892,12 +2890,16 @@ void CDCServiceImpl::GetCheckpoint(
   auto s = CheckTabletValidForStream(producer_tablet);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
+  auto res = GetStream(req->stream_id());
+  RPC_RESULT_RETURN_ERROR(res, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+  const auto& stream_ptr = res->get();
+
   auto session = client()->NewSession();
   CoarseTimePoint deadline = GetDeadline(context, client());
 
   session->SetDeadline(deadline);
 
-  auto result = GetLastCheckpoint(producer_tablet, session);
+  auto result = GetLastCheckpoint(producer_tablet, session, stream_ptr->source_type);
   RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   result->ToPB(resp->mutable_checkpoint()->mutable_op_id());
@@ -3679,7 +3681,8 @@ Result<int64_t> CDCServiceImpl::GetLastActiveTime(
 }
 
 Result<OpId> CDCServiceImpl::GetLastCheckpoint(
-    const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session) {
+    const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session,
+    const CDCRequestSource& request_source) {
   auto result = impl_->GetLastCheckpoint(producer_tablet);
   if (result) {
     return *result;
@@ -3701,6 +3704,9 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
   req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
   req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
   (*cdc_state_table_result)->AddColumns({master::kCdcCheckpoint}, req);
+  (*cdc_state_table_result)->AddColumns({master::kCdcData}, req);
+  (*cdc_state_table_result)->AddColumns({master::kCdcLastReplicationTime}, req);
+  const size_t last_replicated_column_idx = 2;
 
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   RETURN_NOT_OK(RefreshCacheOnFail(session->ReadSync(op)));
@@ -3713,6 +3719,14 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
 
   DCHECK_EQ(row_block->row_count(), 1);
   DCHECK_EQ(row_block->row(0).column(0).type(), InternalType::kStringValue);
+
+  if (row_block->row(0).column(last_replicated_column_idx).IsNull() &&
+      request_source == CDCRequestSource::CDCSDK) {
+    // This would mean the row is un-polled through GetChanges, since the 'kCdcLastReplicationTime'
+    // column is null. There is a small window where children tablets after tablet split have a
+    // valid checkpoint but they will not have the 'kCdcLastReplicationTime' value set.
+    return OpId::Invalid();
+  }
 
   return OpId::FromString(row_block->row(0).column(0).string_value());
 }
@@ -3759,10 +3773,9 @@ void CDCServiceImpl::UpdateCDCTabletMetrics(
       tablet_metric->cdcsdk_traffic_sent->IncrementBy(
           resp->cdc_sdk_proto_records_size() * resp->cdc_sdk_proto_records(0).ByteSize());
       auto last_record_time = GetCDCSDKLastSendRecordTime(resp);
-      auto last_record_micros =
-          last_record_time
-              ? last_record_time.get()
-              : tablet_metric->cdcsdk_last_sent_physicaltime->value();
+      auto last_record_micros = last_record_time
+                                    ? last_record_time.get()
+                                    : tablet_metric->cdcsdk_last_sent_physicaltime->value();
       auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
       tablet_metric->cdcsdk_last_sent_physicaltime->set_value(last_record_micros);
       tablet_metric->cdcsdk_sent_lag_micros->set_value(last_replicated_micros - last_record_micros);
@@ -4069,7 +4082,7 @@ void CDCServiceImpl::IsBootstrapRequired(
       auto s = CheckTabletValidForStream(producer_tablet);
       RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
-      auto result = GetLastCheckpoint(producer_tablet, session);
+      auto result = GetLastCheckpoint(producer_tablet, session, CDCRequestSource::XCLUSTER);
       if (result.ok()) {
         op_id = *result;
       }
