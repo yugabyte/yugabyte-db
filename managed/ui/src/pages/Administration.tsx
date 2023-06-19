@@ -184,12 +184,12 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   };
 
   const getCustomCACertsTab = () => {
-    return(
+    return (
       <Tab eventKey="custom-ca-certs" title="CA Certificates" key="CA_Certificates">
         <ListCACerts />
       </Tab>
-    )
-  }
+    );
+  };
 
   return (
     <div>
