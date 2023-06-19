@@ -22,6 +22,8 @@
 #include "yb/client/table.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_type.h"
@@ -144,7 +146,7 @@ bool PTExpr::CheckIndexColumn(SemContext *sem_context) {
 }
 
 Status PTExpr::CheckOperator(SemContext *sem_context) {
-  // Where clause only allow AND, EQ, LT, LE, GT, GE and CONTAINS operators.
+  // Where clause only allow AND, EQ, LT, LE, GT, GE, CONTAINS AND CONTAINS KEY operators.
   if (sem_context->where_state() != nullptr) {
     switch (ql_op_) {
       case QL_OP_AND:
@@ -156,6 +158,7 @@ Status PTExpr::CheckOperator(SemContext *sem_context) {
       case QL_OP_IN:
       case QL_OP_NOT_IN:
       case QL_OP_NOT_EQUAL:
+      case QL_OP_CONTAINS_KEY:
       case QL_OP_CONTAINS:
       case QL_OP_NOOP:
         break;
@@ -839,6 +842,21 @@ Status PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
       break;
     }
 
+    case QL_OP_CONTAINS_KEY: {
+      // We will check for data type mismatch errors in AnalyzeOperator
+      if (operand1->expr_op() == ExprOperator::kRef &&
+          operand1->ql_type()->main() == yb::DataType::MAP) {
+        const PTRef *ref = static_cast<const PTRef *>(operand1.get());
+        auto ql_type = operand1->ql_type()->keys_type();
+        sem_state->SetExprState(
+            ql_type,
+            client::YBColumnSchema::ToInternalDataType(ql_type),
+            ref->bindvar_name(),
+            ref->desc());
+      }
+      break;
+    }
+
     case QL_OP_CONTAINS: {
       // We will check for data type mismatch errors in AnalyzeOperator.
       if (operand1->expr_op() == ExprOperator::kRef && operand1->ql_type()->IsCollection()) {
@@ -946,6 +964,7 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
                                   ErrorCode::INCOMPARABLE_DATATYPES);
       }
       break;
+
     case QL_OP_CONTAINS: {
       RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
       RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
@@ -964,11 +983,37 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
       // For CONTAINS operator, we check compatibility between op1's value_type and op2's type.
       auto value_type_lhs = op1->ql_type()->values_type();
       if (!sem_context->IsComparable(value_type_lhs->main(), op2->ql_type_id())) {
-        return sem_context->Error(this, "Cannot compare values of these datatypes",
-                                  ErrorCode::INCOMPARABLE_DATATYPES);
+        return sem_context->Error(
+            this, "Cannot compare values of these datatypes", ErrorCode::INCOMPARABLE_DATATYPES);
       }
       break;
     }
+
+    case QL_OP_CONTAINS_KEY: {
+      RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
+      RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
+      // We must check if LHS is map
+      if (op1->ql_type()->main() != yb::DataType::MAP) {
+        return sem_context->Error(
+            this,
+            "CONTAINS KEY is only supported for Maps that are not frozen.",
+            ErrorCode::DATATYPE_MISMATCH);
+      }
+
+      if (op2->is_null()) {
+        return sem_context->Error(
+            this, "CONTAINS KEY does not support NULL.", ErrorCode::INVALID_ARGUMENTS);
+      }
+
+      // For CONTAINS KEY operator, we check compatibility between op1's key type and op2's type.
+      auto value_type_lhs = op1->ql_type()->keys_type();
+      if (!sem_context->IsComparable(value_type_lhs->main(), op2->ql_type_id())) {
+        return sem_context->Error(
+            this, "Cannot compare values of these datatypes", ErrorCode::INCOMPARABLE_DATATYPES);
+      }
+      break;
+    }
+
     default:
       return sem_context->Error(this, "Operator not supported yet",
                                 ErrorCode::CQL_STATEMENT_INVALID);
@@ -1171,6 +1216,8 @@ string PTRelationExpr::QLName(QLNameOption option) const {
       return op1()->QLName(option) + " NOT IN " + op2()->QLName(option);
     case QL_OP_CONTAINS:
       return op1()->QLName(option) + " CONTAINS " + op2()->QLName(option);
+    case QL_OP_CONTAINS_KEY:
+      return op1()->QLName(option) + " CONTAINS KEY " + op2()->QLName(option);
 
     // Relation operators that take three operands.
     case QL_OP_BETWEEN:

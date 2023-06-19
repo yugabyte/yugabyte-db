@@ -166,6 +166,7 @@ enum QLOperator {
   QL_OP_IN = 16;
   QL_OP_NOT_IN = 17;
   QL_OP_CONTAINS = 22;
+  QL_OP_CONTAINS_KEY = 23;
 
   // Relation operators that take three operands.
   QL_OP_BETWEEN = 18;
