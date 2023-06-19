@@ -234,6 +234,29 @@ paths:
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
+  /gflags:
+    get:
+      summary: Get gflags of master and tserver process
+      description: Retrieve gflags of master and tserver process
+      operationId: getGflags
+      tags:
+        - cluster-info
+      parameters:
+        - name: node_address
+          in: query
+          description: Specify the node ip-address from where gflags are retrieved
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/GflagsResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
   /cluster:
     get:
       summary: Get a cluster
@@ -1040,6 +1063,21 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/VersionInfo'
+    GflagsResponse:
+      description: Gflags information
+      content:
+        application/json:
+          schema:
+            title: Gflags Info
+            type: object
+            properties:
+              masterFlags:
+                type: object
+              tserverFlags:
+                type: object
+            required:
+              - masterFlags
+              - tserverFlags
     ClusterResponse:
       description: Cluster response
       content:
