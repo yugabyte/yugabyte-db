@@ -4268,7 +4268,16 @@ static struct config_real ConfigureNamesReal[] =
 		DEFAULT_PARALLEL_SETUP_COST, 0, DBL_MAX,
 		NULL, NULL, NULL
 	},
-
+	{
+		{"yb_network_fetch_cost", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Sets the planner's estimate of the fixed cost of "
+							 "fetching a batch of rows from a YB relation"),
+			NULL
+		},
+		&yb_network_fetch_cost,
+		YB_DEFAULT_FETCH_COST, 0, DBL_MAX,
+		NULL, NULL, NULL
+	},
 	{
 		{"jit_above_cost", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Perform JIT compilation if query is more expensive."),

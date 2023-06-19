@@ -1141,6 +1141,9 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 	}
 
+	/* Account for stats collected during the execution of utility command */
+	YbRefreshSessionStatsDuringExecution();
+
 	free_parsestate(pstate);
 
 	/*

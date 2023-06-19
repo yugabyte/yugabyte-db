@@ -572,8 +572,6 @@ extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations();
-extern void YBGetAndResetOperationFlushRpcStats(uint64_t *count,
-												uint64_t *wait_time);
 
 bool YBEnableTracing();
 bool YBReadFromFollowersEnabled();
@@ -728,11 +726,29 @@ extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
 												GucSource source);
 extern void assign_yb_xcluster_consistency_level(const char *newval,
 												 void		*extra);
+
 /*
- * Update read RPC statistics for EXPLAIN ANALYZE.
+ * Updates the session stats snapshot with the collected stats and copies the
+ * difference to the query execution context's instrumentation.
  */
-void YbUpdateReadRpcStats(YBCPgStatement handle,
-						  YbPgRpcStats *reads, YbPgRpcStats *tbl_reads);
+void YbUpdateSessionStats(YbInstrumentation *yb_instr);
+
+/*
+ * Refreshes the session stats snapshot with the collected stats. This function
+ * is to be invoked before the query has started its execution.
+ */
+void YbRefreshSessionStatsBeforeExecution();
+
+/*
+ * Refreshes the session stats snapshot with the collected stats. This function
+ * is to be invoked when during/after query execution.
+ */
+void YbRefreshSessionStatsDuringExecution();
+/*
+ * Updates the global flag indicating whether RPC requests to the underlying
+ * storage layer need to be timed.
+ */
+void YbToggleSessionStatsTimer(bool timing_on);
 
 /*
  * If the tserver gflag --ysql_disable_server_file_access is set to

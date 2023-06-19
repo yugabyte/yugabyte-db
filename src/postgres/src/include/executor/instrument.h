@@ -71,6 +71,16 @@ typedef struct YbPgRpcStats {
 	double	wait_time;		/* RPC wait time (ns) */
 } YbPgRpcStats;
 
+typedef struct YbInstrumentation {
+	YbPgRpcStats tbl_reads;
+	YbPgRpcStats index_reads;
+	YbPgRpcStats catalog_reads;
+	YbPgRpcStats write_flushes;
+	double		 tbl_writes;
+	double		 index_writes;
+	double		 catalog_writes;
+} YbInstrumentation;
+
 typedef struct Instrumentation
 {
 	/* Parameters set at node creation: */
@@ -97,8 +107,7 @@ typedef struct Instrumentation
 	BufferUsage bufusage;		/* total buffer usage */
 	WalUsage	walusage;		/* total WAL usage */
 
-	YbPgRpcStats yb_read_rpcs;	/* Index read RPC stats */
-	YbPgRpcStats yb_tbl_read_rpcs;	/* Table row fetch RPC stats */
+	YbInstrumentation yb_instr; /* YB specific instrumentation stats */
 } Instrumentation;
 
 typedef struct WorkerInstrumentation

@@ -160,7 +160,101 @@ static void ExplainJSONLineEnding(ExplainState *es);
 static void ExplainYAMLLineStarting(ExplainState *es);
 static void escape_yaml(StringInfo buf, const char *str);
 static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
+static void
+YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
+									 const YbInstrumentation *instr);
 
+typedef enum YbStatLabel
+{
+	YB_STAT_LABEL_FIRST = 0,
+
+	YB_STAT_LABEL_CATALOG_READ = YB_STAT_LABEL_FIRST,
+	YB_STAT_LABEL_CATALOG_WRITE,
+
+	YB_STAT_LABEL_STORAGE_READ,
+	YB_STAT_LABEL_STORAGE_WRITE,
+
+	YB_STAT_LABEL_STORAGE_TABLE_READ,
+	YB_STAT_LABEL_STORAGE_TABLE_WRITE,
+
+	YB_STAT_LABEL_STORAGE_INDEX_READ,
+	YB_STAT_LABEL_STORAGE_INDEX_WRITE,
+
+	YB_STAT_LABEL_STORAGE_FLUSH,
+
+	YB_STAT_LABEL_LAST
+} YbStatLabel;
+
+typedef struct YbStatLabelData
+{
+	const char *requests;
+	const char *execution_time;
+} YbStatLabelData;
+
+typedef struct YbExplainState
+{
+	ExplainState *es;
+	bool		  display_zero;
+} YbExplainState;
+
+#define BUILD_STAT_LABEL_DATA(NAME) \
+	{ \
+		NAME " Requests", NAME " Execution Time" \
+	}
+
+const YbStatLabelData yb_stat_label_data[] = {
+	[YB_STAT_LABEL_CATALOG_READ] = BUILD_STAT_LABEL_DATA("Catalog Read"),
+	[YB_STAT_LABEL_CATALOG_WRITE] = BUILD_STAT_LABEL_DATA("Catalog Write"),
+
+	[YB_STAT_LABEL_STORAGE_READ] = BUILD_STAT_LABEL_DATA("Storage Read"),
+	[YB_STAT_LABEL_STORAGE_WRITE] = BUILD_STAT_LABEL_DATA("Storage Write"),
+
+	[YB_STAT_LABEL_STORAGE_TABLE_READ] = BUILD_STAT_LABEL_DATA("Storage Table "
+															   "Read"),
+	[YB_STAT_LABEL_STORAGE_TABLE_WRITE] = BUILD_STAT_LABEL_DATA("Storage Table "
+																"Write"),
+
+	[YB_STAT_LABEL_STORAGE_INDEX_READ] = BUILD_STAT_LABEL_DATA("Storage Index "
+															   "Read"),
+	[YB_STAT_LABEL_STORAGE_INDEX_WRITE] = BUILD_STAT_LABEL_DATA("Storage Index "
+																"Write"),
+
+	[YB_STAT_LABEL_STORAGE_FLUSH] = BUILD_STAT_LABEL_DATA("Storage Flush"),
+};
+
+#undef BUILD_STAT_LABEL_DATA
+
+/* Explains a single stat with no associated timing */
+static void
+YbExplainStatWithoutTiming(YbExplainState *yb_es, YbStatLabel label,
+						   double count)
+{
+	if (!(count > 0 || yb_es->display_zero))
+		return;
+
+	const YbStatLabelData *label_data = &yb_stat_label_data[label];
+	ExplainState		  *es = yb_es->es;
+	ExplainPropertyFloat(label_data->requests, NULL, count, 0, es);
+}
+
+/* Explains a single RPC related stat and its associated timing */
+static void
+YbExplainRpcRequestStat(YbExplainState *yb_es, YbStatLabel label, double count,
+						double timing)
+{
+	if (!(count > 0 || yb_es->display_zero))
+		return;
+
+	const YbStatLabelData *label_data = &yb_stat_label_data[label];
+	ExplainState   *es = yb_es->es;
+	ExplainPropertyFloat(label_data->requests, NULL, count, 0, es);
+
+	/* Display timing info only when there is at least 1 RPC request. This
+	 * enables the output to be concise. */
+	if (yb_es->es->timing && count > 0)
+		ExplainPropertyFloat(label_data->execution_time, "ms",
+							 timing / 1000000.0, 3, yb_es->es);
+}
 
 /*
  * ExplainQuery -
@@ -260,6 +354,9 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("EXPLAIN option DIST requires ANALYZE")));
 
+	/* Turn on timing of RPC requests in accordance to the flags passed */
+	YbToggleSessionStatsTimer(es->timing);
+
 	query = castNode(Query, stmt->query);
 	if (IsQueryIdEnabled())
 		jstate = JumbleQuery(query, pstate->p_sourcetext);
@@ -317,6 +414,9 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 		do_text_output_oneline(tstate, es->str->data);
 	end_tup_output(tstate);
 
+	/* Turn off timing RPC requests so that future queries are not timed by
+	 * default */
+	YbToggleSessionStatsTimer(false);
 	pfree(es->str->data);
 }
 
@@ -607,11 +707,10 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		else
 			dir = ForwardScanDirection;
 
-		/* clear the stats by dummy read */
+		/* Refresh the session stats before the start of the query */
 		if (es->rpc)
 		{
-			uint64_t count, wait_time;
-			YBGetAndResetOperationFlushRpcStats(&count, &wait_time);
+			YbRefreshSessionStatsBeforeExecution();
 		}
 
 		/* run the plan */
@@ -622,6 +721,15 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 
 		/* run cleanup too */
 		ExecutorFinish(queryDesc);
+
+		/* Fetch stats collected at the query level (ie. not corresponding to
+		 * any execution node) */
+		if (es->rpc)
+		{
+			YbInstrumentation *yb_instr = &queryDesc->yb_query_stats->yb_instr;
+			YbUpdateSessionStats(yb_instr);
+			YbAggregateExplainableRPCRequestStat(es, yb_instr);
+		}
 
 		/* We can't run ExecutorEnd 'till we're done printing the stats... */
 		totaltime += elapsed_time(&starttime);
@@ -706,19 +814,37 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 							 es);
 		if (es->rpc)
 		{
+			/*
+			 * Total RPC wait time is the sum of Read waits, Flush waits and Catalog waits.
+			 */
 			double total_rpc_wait = 0.0;
-			uint64_t flush_count, flush_wait_time;
-			YBGetAndResetOperationFlushRpcStats(&flush_count, &flush_wait_time);
-			if (flush_count > 0)
-				total_rpc_wait += (double)flush_wait_time;
-			if (es->yb_total_read_rpc_count > 0.0)
-				total_rpc_wait += es->yb_total_read_rpc_wait;
+			if (es->yb_stats.read.count > 0.0)
+				total_rpc_wait += es->yb_stats.read.wait_time;
 
-			ExplainPropertyFloat("Storage Read Requests", NULL,
-								 es->yb_total_read_rpc_count, 0, es);
-			ExplainPropertyInteger("Storage Write Requests", NULL, flush_count, es);
-			ExplainPropertyFloat("Storage Execution Time", "ms",
-								 total_rpc_wait / 1000000.0, 3, es);
+			if (es->yb_stats.flush.count > 0.0)
+				total_rpc_wait += es->yb_stats.flush.wait_time;
+
+			if (es->yb_stats.catalog_read.count > 0.0)
+				total_rpc_wait += es->yb_stats.catalog_read.wait_time;
+
+			YbExplainState yb_es = {es, true};
+			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_READ,
+									es->yb_stats.read.count,
+									es->yb_stats.read.wait_time);
+			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_WRITE,
+									   es->yb_stats.write_count);
+			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_CATALOG_READ,
+									es->yb_stats.catalog_read.count,
+									es->yb_stats.catalog_read.wait_time);
+			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_CATALOG_WRITE,
+									   es->yb_stats.catalog_write_count);
+			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_FLUSH,
+									es->yb_stats.flush.count,
+									es->yb_stats.flush.wait_time);
+
+			if (es->timing)
+				ExplainPropertyFloat("Storage Execution Time", "ms",
+									 total_rpc_wait / 1000000.0, 3, es);
 		}
 
 		if (IsYugaByteEnabled() && yb_enable_memory_tracking)
@@ -1209,12 +1335,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 	if (planstate->instrument)
 	{
-		es->yb_total_read_rpc_count
-			+= (planstate->instrument->yb_read_rpcs.count
-				+ planstate->instrument->yb_tbl_read_rpcs.count);
-		es->yb_total_read_rpc_wait
-			+= (planstate->instrument->yb_read_rpcs.wait_time
-				+ planstate->instrument->yb_tbl_read_rpcs.wait_time);
+		YbAggregateExplainableRPCRequestStat(es,
+											 &planstate->instrument->yb_instr);
 	}
 
 	/*
@@ -1810,6 +1932,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			break;
 	}
 
+	const bool is_yb_rpc_stats_required = es->rpc && es->analyze &&
+										  planstate->instrument->nloops > 0;
+
 	/* quals, sort keys, etc */
 	switch (nodeTag(plan))
 	{
@@ -1833,7 +1958,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
-			if (es->rpc && es->analyze && planstate->instrument->nloops > 0)
+			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
 			break;
 		case T_IndexOnlyScan:
@@ -1856,7 +1981,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (es->analyze)
 				ExplainPropertyFloat("Heap Fetches", NULL,
 									 planstate->instrument->ntuples2, 0, es);
-			if (es->rpc && es->analyze && planstate->instrument->nloops > 0)
+			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
 			break;
 		case T_BitmapIndexScan:
@@ -1891,7 +2016,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
-			if (es->rpc && es->analyze && planstate->instrument->nloops > 0)
+			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, false/*indexScan*/, es);
 			break;
 		case T_YbSeqScan:
@@ -1904,6 +2029,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
+			if (is_yb_rpc_stats_required)
+				show_yb_rpc_stats(planstate, false /*indexScan*/, es);
 			break;
 		case T_Gather:
 			{
@@ -2036,7 +2163,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			show_scan_qual(((ForeignScan *) plan)->fdw_recheck_quals,
 						   "Remote Filter", planstate, ancestors, es);
 			show_foreignscan_info((ForeignScanState *) planstate, es);
-			if (es->rpc && es->analyze && planstate->instrument->nloops > 0)
+			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, false/*indexScan*/, es);
 			break;
 		case T_CustomScan:
@@ -2133,10 +2260,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
+			if (is_yb_rpc_stats_required)
+				show_yb_rpc_stats(planstate, false /*indexScan*/, es);
 			break;
 		case T_ModifyTable:
 			show_modifytable_info(castNode(ModifyTableState, planstate), ancestors,
 								  es);
+			if (is_yb_rpc_stats_required)
+				show_yb_rpc_stats(planstate, false /*indexScan*/, es);
 			break;
 		case T_Hash:
 			show_hash_info(castNode(HashState, planstate), es);
@@ -3821,39 +3952,33 @@ show_wal_usage(ExplainState *es, const WalUsage *usage)
 static void
 show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
 {
+	YbInstrumentation *yb_instr = &planstate->instrument->yb_instr;
 	double nloops = planstate->instrument->nloops;
-	double reads = planstate->instrument->yb_read_rpcs.count / nloops;
-	double read_wait
-		= planstate->instrument->yb_read_rpcs.wait_time / nloops;
-	double tbl_reads
-		= planstate->instrument->yb_tbl_read_rpcs.count / nloops;
-	double tbl_read_wait
-		= planstate->instrument->yb_tbl_read_rpcs.wait_time / nloops;
+	
+	/* Read stats */
+	double table_reads = yb_instr->tbl_reads.count / nloops;
+	double table_read_wait = yb_instr->tbl_reads.wait_time / nloops;
+	double index_reads = yb_instr->index_reads.count / nloops;
+	double index_read_wait = yb_instr->index_reads.wait_time / nloops;
 
-	if (reads > 0.0)
-	{
-		const char *kindStr = indexScan? "Index": "Table";
-		char *str;
-		str = psprintf("Storage %s Read Requests", kindStr);
-		ExplainPropertyFloat(str, NULL, reads, (reads < 1.0? 2: 0), es);
-		if (es->timing)
-		{
-			pfree(str);
-			str = psprintf("Storage %s Execution Time", kindStr);
-			ExplainPropertyFloat(str, "ms", read_wait / 1000000.0, 3, es);
-		}
-		pfree(str);
-	}
+	/* Write stats */
+	double table_writes = yb_instr->tbl_writes / nloops;
+	double index_writes = yb_instr->index_writes / nloops;
+	double flushes = yb_instr->write_flushes.count / nloops;
+	double flushes_wait = yb_instr->write_flushes.wait_time / nloops;
 
-	if (tbl_reads > 0.0)
-	{
-		ExplainPropertyFloat("Storage Table Read Requests", NULL,
-							 tbl_reads,
-							 (tbl_reads < 1.0? 2: 0), es);
-		if (es->timing)
-			ExplainPropertyFloat("Storage Table Execution Time", "ms",
-								 tbl_read_wait / 1000000.0, 3, es);
-	}
+	YbExplainState yb_es = {es, false};
+
+	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_READ,
+							table_reads, table_read_wait);
+	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_READ,
+							index_reads, index_read_wait);
+	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_WRITE,
+							   table_writes);
+	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_WRITE,
+							   index_writes);
+	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_FLUSH, flushes,
+							flushes_wait);
 }
 
 /*
@@ -5186,4 +5311,29 @@ YbAppendPgMemInfo(ExplainState *es, const Size peakMem)
 {
 	Size peakMemKb = CEILING_K(peakMem);
 	ExplainPropertyInteger("Peak Memory Usage", "kB", peakMemKb, es);
+}
+
+static void
+YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
+									 const YbInstrumentation *yb_instr)
+{
+	// Storage Reads
+	es->yb_stats.read.count +=
+		yb_instr->tbl_reads.count + yb_instr->index_reads.count;
+	es->yb_stats.read.wait_time +=
+		yb_instr->tbl_reads.wait_time + yb_instr->index_reads.wait_time;
+
+	// Storage Writes
+	es->yb_stats.write_count += yb_instr->tbl_writes + yb_instr->index_writes;
+
+	// Catalog Reads
+	es->yb_stats.catalog_read.count += yb_instr->catalog_reads.count;
+	es->yb_stats.catalog_read.wait_time += yb_instr->catalog_reads.wait_time;
+
+	// Catalog Writes
+	es->yb_stats.catalog_write_count += yb_instr->catalog_writes;
+
+	// Storage Flushes
+	es->yb_stats.flush.count += yb_instr->write_flushes.count;
+	es->yb_stats.flush.wait_time += yb_instr->write_flushes.wait_time;
 }

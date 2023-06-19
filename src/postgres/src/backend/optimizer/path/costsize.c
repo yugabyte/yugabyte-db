@@ -128,6 +128,8 @@ double		cpu_operator_cost = DEFAULT_CPU_OPERATOR_COST;
 double		parallel_tuple_cost = DEFAULT_PARALLEL_TUPLE_COST;
 double		parallel_setup_cost = DEFAULT_PARALLEL_SETUP_COST;
 
+double		yb_network_fetch_cost = YB_DEFAULT_FETCH_COST;
+
 double		yb_intercloud_cost = YB_DEFAULT_INTERCLOUD_COST;
 double		yb_interregion_cost = YB_DEFAULT_INTERREGION_COST;
 double		yb_interzone_cost = YB_DEFAULT_INTERZONE_COST;
