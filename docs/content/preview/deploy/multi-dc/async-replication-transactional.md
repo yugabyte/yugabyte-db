@@ -381,7 +381,7 @@ Proceed as follows:
 
 In the second stage, set up replication from the new active (B) universe as follows:
 
-1. Run `bootstrap_cdc_producer` command on B for all tables involved in replication and capture the bootstrap IDs. This is a preemptive step to be used during the failover workflow while setting up replication from B to A. This prevents the WAL from being GC'ed and lets A catch up.
+1. Run `bootstrap_cdc_producer` command on B for all tables involved in replication and capture the bootstrap IDs. This is a preemptive step to be used during the failover workflow while setting up replication from B to A. This prevents the WAL from being garbage collected and lets A catch up.
 
     ```sh
     ./bin/yb-admin \
