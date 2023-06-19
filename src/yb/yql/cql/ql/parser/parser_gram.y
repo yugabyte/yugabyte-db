@@ -738,7 +738,7 @@ using namespace yb::ql;
 %nonassoc   BETWEEN IN_P LIKE ILIKE SIMILAR NOT_LA
 %nonassoc   ESCAPE                                  // ESCAPE must be just above LIKE/ILIKE/SIMILAR.
 %left       POSTFIXOP                                                 // dummy for postfix Op rules.
-%nonassoc   CONTAINS
+%nonassoc   CONTAINS KEY
 
 // To support target_el without AS, we must give IDENT an explicit priority
 // between POSTFIXOP and Op.  We can safely assign the same priority to
@@ -791,6 +791,9 @@ using namespace yb::ql;
 // kluge to keep xml_whitespace_option from causing shift/reduce conflicts.
 %right    PRESERVE STRIP_P
 %right    IF_P
+
+// assigning precedence higher than KEY to avoid shift/reduce conflict in CONTAINS KEY
+%nonassoc SCONST
 
 //--------------------------------------------------------------------------------------------------
 // Logging.
@@ -3354,6 +3357,9 @@ a_expr:
   }
   | a_expr NOT_EQUALS a_expr {
     $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, QL_OP_NOT_EQUAL, $1, $3);
+  }
+  | a_expr CONTAINS KEY a_expr {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, QL_OP_CONTAINS_KEY, $1, $4);
   }
   | a_expr CONTAINS a_expr {
     $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, QL_OP_CONTAINS, $1, $3);

@@ -379,14 +379,15 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
       return;
     }
 
-    case QL_OP_IS_NULL:     FALLTHROUGH_INTENDED;
-    case QL_OP_IS_TRUE:     FALLTHROUGH_INTENDED;
-    case QL_OP_IS_FALSE:    FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_EQUAL:   FALLTHROUGH_INTENDED;
-    case QL_OP_LIKE:        FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_LIKE:    FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_IN:      FALLTHROUGH_INTENDED;
-    case QL_OP_CONTAINS:    FALLTHROUGH_INTENDED;
+    case QL_OP_IS_NULL:      FALLTHROUGH_INTENDED;
+    case QL_OP_IS_TRUE:      FALLTHROUGH_INTENDED;
+    case QL_OP_IS_FALSE:     FALLTHROUGH_INTENDED;
+    case QL_OP_NOT_EQUAL:    FALLTHROUGH_INTENDED;
+    case QL_OP_LIKE:         FALLTHROUGH_INTENDED;
+    case QL_OP_NOT_LIKE:     FALLTHROUGH_INTENDED;
+    case QL_OP_NOT_IN:       FALLTHROUGH_INTENDED;
+    case QL_OP_CONTAINS:     FALLTHROUGH_INTENDED;
+    case QL_OP_CONTAINS_KEY: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_BETWEEN:
       // No simple range can be deduced from these conditions. So the range will be unbounded.
       return;
