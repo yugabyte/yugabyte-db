@@ -27,6 +27,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -884,7 +885,31 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTasksSequence(0, subTasks, false, true, true, false, true, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(false, true);
-    assertGflags(true, true);
+    assertGflags(true, true, false);
+  }
+
+  @Test
+  public void testChangingOnlyInstanceWithSpecificGFlags() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams.UserIntent primaryIntent =
+              univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          primaryIntent.specificGFlags =
+              SpecificGFlags.construct(primaryIntent.masterGFlags, primaryIntent.tserverGFlags);
+        });
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("masterFlag", "123"), ImmutableMap.of("tserverFlag", "123"));
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, true, true);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(true, true, true);
   }
 
   @Test
@@ -899,7 +924,32 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTasksSequence(0, subTasks, false, true, true, false, false, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(false, true);
-    assertGflags(false, true);
+    assertGflags(false, true, false);
+  }
+
+  @Test
+  public void testChangingOnlyInstanceWithTserverSpecificGFlags() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams.UserIntent primaryIntent =
+              univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          primaryIntent.specificGFlags =
+              SpecificGFlags.construct(primaryIntent.masterGFlags, primaryIntent.tserverGFlags);
+        });
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            taskParams.getPrimaryCluster().userIntent.masterGFlags,
+            ImmutableMap.of("tserverFlag", "123"));
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, false, true);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(false, true, true);
   }
 
   @Test
@@ -914,18 +964,54 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTasksSequence(0, subTasks, false, true, true, false, true, false);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(false, true);
-    assertGflags(true, false);
+    assertGflags(true, false, false);
   }
 
-  private void assertGflags(boolean updateMasterGflags, boolean updateTserverGflags) {
+  @Test
+  public void testChangingOnlyInstanceWithMasterSpecificGFlags() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams.UserIntent primaryIntent =
+              univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          primaryIntent.specificGFlags =
+              SpecificGFlags.construct(primaryIntent.masterGFlags, primaryIntent.tserverGFlags);
+        });
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("masterFlag", "123"),
+            taskParams.getPrimaryCluster().userIntent.tserverGFlags);
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, true, false);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(true, false, true);
+  }
+
+  private void assertGflags(
+      boolean updateMasterGflags, boolean updateTserverGflags, boolean useSpecificGFlags) {
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newIntent = primaryCluster.userIntent;
     if (updateMasterGflags) {
+      if (useSpecificGFlags) {
+        assertEquals(
+            newIntent.specificGFlags.getGFlags(null, MASTER),
+            new HashMap<>(ImmutableMap.of("masterFlag", "123")));
+      }
       assertEquals(newIntent.masterGFlags, ImmutableMap.of("masterFlag", "123"));
     }
     if (updateTserverGflags) {
+      if (useSpecificGFlags) {
+        assertEquals(
+            newIntent.specificGFlags.getGFlags(null, TSERVER),
+            new HashMap<>(ImmutableMap.of("tserverFlag", "123")));
+      }
       assertEquals(newIntent.tserverGFlags, ImmutableMap.of("tserverFlag", "123"));
     }
   }

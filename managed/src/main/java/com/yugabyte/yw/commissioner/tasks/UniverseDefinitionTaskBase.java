@@ -10,19 +10,7 @@ import com.yugabyte.yw.commissioner.HookInserter;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseTags;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -2382,6 +2370,26 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Creates a task to update node info in universe details. */
+  protected SubTaskGroup createNodeDetailsUpdateTask(
+      NodeDetails node, boolean updateCustomImageUsage) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateNodeDetails");
+    UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
+    updateNodeDetailsParams.setUniverseUUID(taskParams().getUniverseUUID());
+    updateNodeDetailsParams.azUuid = node.azUuid;
+    updateNodeDetailsParams.nodeName = node.nodeName;
+    updateNodeDetailsParams.details = node;
+    updateNodeDetailsParams.updateCustomImageUsage = updateCustomImageUsage;
+
+    UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
+    updateNodeTask.initialize(updateNodeDetailsParams);
+    updateNodeTask.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(updateNodeTask);
+
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
