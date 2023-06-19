@@ -88,10 +88,7 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
     onOptionsChange(changedOptions);
   }
 
-  if (
-    isK8sUniverse &&
-    !find(selectionOptions, K8sLogsOption)
-  ) {
+  if (isK8sUniverse && !find(selectionOptions, K8sLogsOption)) {
     selectionOptions.push(K8sLogsOption);
     selectionOptionsValue.push(true);
     const changedOptions = updateOptions(
@@ -104,13 +101,11 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
 
   return (
     <div className="universe-support-bundle-step-two">
-      {
-        universeStatus?.state !== UniverseState.GOOD && (
-          <Alert bsStyle="warning">
-            Support bundle creation may fail since universe is not in "Ready" state
-          </Alert>
-        )
-      }
+      {universeStatus?.state !== UniverseState.GOOD && (
+        <Alert bsStyle="warning">
+          Support bundle creation may fail since universe is not in &ldquo;Ready&rdquo; state
+        </Alert>
+      )}
 
       <p className="subtitle-text">
         Support bundles contain the diagnostic information. This can include log files, config
