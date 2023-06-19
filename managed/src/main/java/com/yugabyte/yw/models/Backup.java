@@ -59,7 +59,6 @@ import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
@@ -557,24 +556,6 @@ public class Backup extends Model {
     return backupList.stream()
         .filter(backup -> backup.getBackupInfo().getUniverseUUID().equals(universeUUID))
         .collect(Collectors.toList());
-  }
-
-  public static ImmutablePair<UUID, Long> getUniverseInProgressBackupCreateTime(
-      UUID customerUUID, UUID universeUUID) {
-    Optional<Backup> oBkp =
-        find.query()
-            .where()
-            .eq("customer_uuid", customerUUID)
-            .eq("universe_uuid", universeUUID)
-            .eq("state", BackupState.InProgress)
-            .orderBy("create_time desc")
-            .setMaxRows(1)
-            .findOneOrEmpty();
-    if (oBkp.isPresent()) {
-      Backup backup = oBkp.get();
-      return ImmutablePair.of(universeUUID, backup.getCreateTime().getTime());
-    }
-    return ImmutablePair.of(universeUUID, 0l);
   }
 
   public static List<Backup> fetchBackupToDeleteByUniverseUUID(
