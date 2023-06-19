@@ -18,7 +18,7 @@ A transactional xCluster deployment preserves and guarantees transactional atomi
 
 - Global ordering guarantee. Transactions are visible on the target side in the order they were committed on source.
 
-Due to the asynchronous nature of xCluster replication, this deployment comes with non-zero recovery point objective (RPO) in the case of the source universe outage. The actual value depends on the replication lag, which in turn depends on the network characteristics between the regions.
+Due to the asynchronous nature of xCluster replication, this deployment comes with non-zero recovery point objective (RPO) in the case of a source universe outage. The actual value depends on the replication lag, which in turn depends on the network characteristics between the regions.
 
 The recovery time objective (RTO) is very low, as it only depends on the applications switching their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
@@ -32,6 +32,8 @@ The xCluster role is a property with values ACTIVE or STANDBY that determines an
 xCluster safe time is the transactionally consistent time across all tables in a given database at which Reads are served. In the following illustration, T1 is a transactionally consistent time across all tables.
 
 ![Transactional xCluster](/images/deploy/xcluster/xcluster-transactional.png)
+
+The following assumes you have set up source and target universes. Refer to [Set up universes](../async-replication/#set-up-universes).
 
 ## Set up unidirectional transactional replication
 
@@ -98,8 +100,8 @@ Set up unidirectional transactional replication as follows:
         setup_universe_replication \
         <source_universe_uuid>_<replication_name> \
         <source_universe_master_addresses> \
-        <comma_separated_table_ids_from_source_universe>  \
-        <comma_separated_bootstrap_ids_from_source_universe> transactional
+        <comma_separated_source_table_ids>  \
+        <comma_separated_source_bootstrap_ids> transactional
     ```
 
 1. Set the role of the target universe to STANDBY:
@@ -237,7 +239,7 @@ Assuming universe A is the current source (active) universe and B is the current
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_ips> \
+        -master_addresses <B_master_addresses> \
         -certs_dir_name <cert_dir> \
         list_snapshot_restorations
     ```
@@ -365,7 +367,7 @@ Proceed as follows:
 
     Note that this step may take some time.
 
-    If you get output similar to the following, then it is not yet safe to switch universe B (current standby) to active.
+    If you get output similar to the following, then it is not yet safe to switch universe B (current standby) to active:
 
     ```output
     Found undrained replications:
@@ -378,7 +380,7 @@ Proceed as follows:
 
 1. Wait until xCluster safe time on B is greater than the current time obtained on A.
 
-1. Use `change_xcluster_role` to promote B (current standby) to active role.
+1. Use `change_xcluster_role` to promote B (current standby) to ACTIVE.
 
     ```sh
     ./bin/yb-admin \
@@ -405,7 +407,7 @@ In the second stage, set up replication from the new active (B) universe as foll
     ./bin/yb-admin \
         -master_addresses <B_master_addresses> 
         -certs_dir_name <cert_dir> \
-        bootstrap_cdc_producer <comma_separated_B_universe_table_ids>
+        bootstrap_cdc_producer <comma_separated_B_table_ids>
     ```
 
 1. Resume the application traffic on B.
@@ -435,11 +437,11 @@ In the second stage, set up replication from the new active (B) universe as foll
         setup_universe_replication \
         <B_universe_uuid>_<replication_name> \
         <B_master_addresses> \
-        <comma_separated_list_of_table_ids_from_B>  \
-        <comma_separated_list_of_bootstrap_ids_from_B> transactional
+        <comma_separated_B_table_ids>  \
+        <comma_separated_B_bootstrap_ids> transactional
     ```
 
-1. Use `change_xcluster_role` to demote A to the STANDBY role.
+1. Use `change_xcluster_role` to demote A to STANDBY:
 
     ```sh
     ./bin/yb-admin \
