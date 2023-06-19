@@ -1291,6 +1291,7 @@ Status SelectScanInfo::AddWhereExpr(SemContext *sem_context,
       break;
     }
 
+    case QL_OP_CONTAINS_KEY: FALLTHROUGH_INTENDED;
     case QL_OP_CONTAINS: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_IN: FALLTHROUGH_INTENDED;
