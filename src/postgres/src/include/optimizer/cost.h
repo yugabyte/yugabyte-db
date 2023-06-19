@@ -31,6 +31,8 @@
 
 #define YB_DEFAULT_PER_TUPLE_COST 10.0
 
+#define YB_DEFAULT_FETCH_COST 4.0
+
 #define DEFAULT_CPU_TUPLE_COST	0.01
 #define DEFAULT_CPU_INDEX_TUPLE_COST 0.005
 #define DEFAULT_CPU_OPERATOR_COST  0.0025
@@ -55,6 +57,7 @@ typedef enum
  */
 
 /* parameter variables and flags (see also optimizer.h) */
+extern PGDLLIMPORT double yb_network_fetch_cost;
 extern PGDLLIMPORT double yb_intercloud_cost;
 extern PGDLLIMPORT double yb_interregion_cost;
 extern PGDLLIMPORT double yb_interzone_cost;

@@ -34,6 +34,15 @@ typedef struct ExplainWorkersState
 	StringInfo	prev_str;		/* saved output buffer while redirecting */
 } ExplainWorkersState;
 
+typedef struct YbExplainExecStats
+{
+	YbPgRpcStats read;
+	YbPgRpcStats catalog_read;
+	YbPgRpcStats flush;
+	double		 write_count;
+	double		 catalog_write_count;
+} YbExplainExecStats;
+
 typedef struct ExplainState
 {
 	StringInfo	str;			/* output buffer */
@@ -61,8 +70,7 @@ typedef struct ExplainState
 	/* state related to the current plan node */
 	ExplainWorkersState *workers_state; /* needed if parallel plan */
 
-	double		yb_total_read_rpc_count;	/* total read RPC count */
-	double		yb_total_read_rpc_wait;	/* total read RPC wait time */
+	YbExplainExecStats yb_stats;		   /* hold YB-specific exec stats */
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */

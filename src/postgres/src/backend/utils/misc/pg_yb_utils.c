@@ -619,6 +619,20 @@ YBCheckDefinedOids()
 	static_assert(kByteArrayOid == BYTEAOID, "Oid mismatch");
 }
 
+/*
+ * Holds the RPC/Storage execution stats for the session. A handle to this
+ * struct is passed down to pggate which record updates to the stats as they
+ * happen. This model helps avoid making copies of the stats and passing it
+ * back/forth.
+ */
+typedef struct YbSessionStats
+{
+	YBCPgExecStatsState current_state;
+	YBCPgExecStats		latest_snapshot;
+} YbSessionStats;
+
+static YbSessionStats yb_session_stats = {0};
+
 void
 YBInitPostgresBackend(
 	const char *program_name,
@@ -652,7 +666,8 @@ YBInitPostgresBackend(
 		 *
 		 * TODO: do we really need to DB name / username here?
 		 */
-		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name));
+		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name,
+										&yb_session_stats.current_state));
 		YBCSetTimeout(StatementTimeout, NULL);
 	}
 }
@@ -1877,10 +1892,6 @@ void YBResetOperationsBuffering() {
 
 void YBFlushBufferedOperations() {
 	HandleYBStatus(YBCPgFlushBufferedOperations());
-}
-
-void YBGetAndResetOperationFlushRpcStats(uint64_t *count, uint64_t *wait_time) {
-	YBCPgGetAndResetOperationFlushRpcStats(count, wait_time);
 }
 
 bool YBEnableTracing() {
@@ -3275,15 +3286,120 @@ void YBCheckServerAccessIsAllowed() {
 						   "set to true")));
 }
 
-void YbUpdateReadRpcStats(YBCPgStatement handle,
-						  YbPgRpcStats *reads, YbPgRpcStats *tbl_reads) {
-	uint64_t read_count = 0, read_wait = 0, tbl_read_count = 0, tbl_read_wait = 0;
-	YBCGetAndResetReadRpcStats(handle, &read_count, &read_wait,
-							   &tbl_read_count, &tbl_read_wait);
-	reads->count += read_count;
-	reads->wait_time += read_wait;
-	tbl_reads->count += tbl_read_count;
-	tbl_reads->wait_time += tbl_read_wait;
+static void
+aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
+{
+	/* User Table stats */
+	instr->tbl_reads.count += exec_stats->tables.reads;
+	instr->tbl_reads.wait_time += exec_stats->tables.read_wait;
+	instr->tbl_writes += exec_stats->tables.writes;
+
+	/* Secondary Index stats */
+	instr->index_reads.count += exec_stats->indices.reads;
+	instr->index_reads.wait_time += exec_stats->indices.read_wait;
+	instr->index_writes += exec_stats->indices.writes;
+
+	/* System Catalog stats */
+	instr->catalog_reads.count += exec_stats->catalog.reads;
+	instr->catalog_reads.wait_time += exec_stats->catalog.read_wait;
+	instr->catalog_writes += exec_stats->catalog.writes;
+
+	/* Flush stats */
+	instr->write_flushes.count += exec_stats->num_flushes;
+	instr->write_flushes.wait_time += exec_stats->flush_wait;
+}
+
+static YBCPgExecReadWriteStats
+getDiffReadWriteStats(const YBCPgExecReadWriteStats *current,
+					  const YBCPgExecReadWriteStats *old)
+{
+	return (YBCPgExecReadWriteStats){current->reads - old->reads,
+									 current->writes - old->writes,
+									 current->read_wait - old->read_wait};
+}
+
+static void
+calculateExecStatsDiff(const YbSessionStats *stats, YBCPgExecStats *result)
+{
+	const YBCPgExecStats *current = &stats->current_state.stats;
+	const YBCPgExecStats *old = &stats->latest_snapshot;
+
+	result->tables = getDiffReadWriteStats(&current->tables, &old->tables);
+	result->indices = getDiffReadWriteStats(&current->indices, &old->indices);
+	result->catalog = getDiffReadWriteStats(&current->catalog, &old->catalog);
+
+	result->num_flushes = current->num_flushes - old->num_flushes;
+	result->flush_wait = current->flush_wait - old->flush_wait;
+}
+
+static void
+refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
+{
+	const YBCPgExecStats *current = &stats->current_state.stats;
+	YBCPgExecStats		 *old = &stats->latest_snapshot;
+
+	old->tables = current->tables;
+	old->indices = current->indices;
+
+	old->num_flushes = current->num_flushes;
+	old->flush_wait = current->flush_wait;
+
+	if (include_catalog_stats)
+		old->catalog = current->catalog;
+}
+
+void
+YbUpdateSessionStats(YbInstrumentation *yb_instr)
+{
+	YBCPgExecStats exec_stats = {0};
+
+	/* Find the diff between the current stats and the last stats snapshot */
+	calculateExecStatsDiff(&yb_session_stats, &exec_stats);
+
+	/* Refresh the snapshot to reflect the current state of query execution.
+	 * This function is always invoked during the query execution phase. */
+	YbRefreshSessionStatsDuringExecution();
+
+	/* Update the supplied instrumentation handle with the delta calculated
+	 * above. */
+	aggregateStats(yb_instr, &exec_stats);
+}
+
+void
+YbRefreshSessionStatsBeforeExecution()
+{
+	/*
+	 * Catalog related stats must not be reset here because most
+	 * catalog lookups for a given query happen between
+	 * (AFTER_EXECUTOR_END(N-1) to BEFORE_EXECUTOR_START(N)] where 'N'
+	 * is the currently executing query in the session that we are
+	 * interested in collecting stats for. The catalog read related can be
+	 * refreshed during/after query execution.
+	 */
+	refreshExecStats(&yb_session_stats, false);
+}
+
+void
+YbRefreshSessionStatsDuringExecution()
+{
+	/*
+	 * Updates the stats snapshot with all stats. Stats that are
+	 * incremented async to the Postgres execution framework (for
+	 * example: reads caused by triggers and flushes), need special
+	 * handling. This is because Postgres invokes the end of execution
+	 * context (EndPlan() and EndExecutor()) before we have a chance to
+	 * account for the flushes and trigger reads. We get around this by
+	 * maintaining a query level instrumentation object in
+	 * executor/execdesc.h which is updated with the async stats right
+	 * before the execution context is garbage collected.
+	 */
+	refreshExecStats(&yb_session_stats, true);
+}
+
+void
+YbToggleSessionStatsTimer(bool timing_on)
+{
+	yb_session_stats.current_state.is_timing_required = timing_on;
 }
 
 void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version)

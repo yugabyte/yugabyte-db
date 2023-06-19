@@ -2729,7 +2729,8 @@ void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 	if (is_seq_scan && !enable_seqscan)
 		*startup_cost = disable_cost;
 	else
-		*startup_cost = 0;
+		*startup_cost =
+			yb_enable_optimizer_statistics ? yb_network_fetch_cost : 0;
 
 	/*
 	 * Yugabyte-specific per-tuple cost considerations:

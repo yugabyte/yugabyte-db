@@ -4992,6 +4992,14 @@ yb_exec_simple_query(const char* query_string, MemoryContext exec_context)
 		.command_tag  = yb_parse_command_tag(query_string)
 	};
 	yb_exec_query_wrapper(exec_context, &restart_data, &yb_exec_simple_query_impl, query_string);
+
+	/*
+	 * Fetch the updated session execution stats at the end of each query, so
+	 * that stats don't accumulate across queries. The stats collected here
+	 * typically correspond to completed flushes, reads associated with triggers
+	 * etc.
+	 */
+	YbRefreshSessionStatsDuringExecution();
 }
 
 typedef struct YBExecuteMessageFunctorContext
@@ -5017,11 +5025,19 @@ yb_exec_execute_message(const char* portal_name,
                         YBQueryRestartData* restart_data,
                         MemoryContext exec_context)
 {
-  YBExecuteMessageFunctorContext ctx = {
+	YBExecuteMessageFunctorContext ctx = {
 		.portal_name = portal_name,
 		.max_rows = max_rows
 	};
 	yb_exec_query_wrapper(exec_context, restart_data, &yb_exec_execute_message_impl, &ctx);
+
+	/*
+	 * Fetch the updated session execution stats at the end of each query, so
+	 * that stats don't accumulate across queries. The stats collected here
+	 * typically correspond to completed flushes, reads associated with triggers
+	 * etc.
+	 */
+	YbRefreshSessionStatsDuringExecution();
 }
 
 static void yb_report_cache_version_restart(const char* query, ErrorData *edata)
