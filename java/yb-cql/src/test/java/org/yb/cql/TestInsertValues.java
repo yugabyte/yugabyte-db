@@ -29,6 +29,7 @@ import java.util.*;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.fail;
 
 import org.yb.YBTestRunner;
 
@@ -519,5 +520,88 @@ public class TestInsertValues extends BaseCQLTest {
 
     // Test that the originally inserted value remains unchanged
     assertQuery("select k, v1, v2 from t where k in (3, 4);", "Row[3, 3, 3]Row[4, 4, 400]");
+  }
+
+  protected static enum Bind { BY_POS, BY_NAME };
+
+  protected void testBindExec(
+      PreparedStatement preparedStmt, Bind bindMode, int colIdx, int v1Value) throws Exception {
+    final String[] columnNames = new String[] {"h1", "h2", "r1", "r2", "v1", "v2"};
+    LOG.info("TEST: Unset column " + colIdx + " (" + columnNames[colIdx] + ") bind " + bindMode);
+    BoundStatement bstmt = preparedStmt.bind();
+
+    for (int i = 0; i < 6; ++i) {
+      if (bindMode == Bind.BY_POS) {
+        if (i == colIdx) {
+          // Unset value using binding by position.
+          bstmt.unset(colIdx);
+        } else {
+          switch (i) {
+            case 4: bstmt.setInt(4, v1Value); break; // v1
+            case 5: bstmt.setInt(5, 200); break; // v2
+            default: bstmt.setInt(i, i + 1); // PK = {1, 2, 3, 4}
+          }
+        }
+      } else { // bindMode == Bind.BY_NAME
+        if (i == colIdx) {
+          // Unset value using binding by name.
+          bstmt.unset(columnNames[colIdx]);
+        } else {
+          switch (i) {
+            case 4: bstmt.setInt(columnNames[4], v1Value); break; // v1
+            case 5: bstmt.setInt(columnNames[5], 200); break; // v2
+            default: bstmt.setInt(columnNames[i], i + 1); // PK = {1, 2, 3, 4}
+          }
+        }
+      }
+    }
+
+    if (colIdx < 4) { // PK
+      try {
+        session.execute(bstmt);
+        fail("Query did not fail with null primary key column");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Expected exception", e);
+        final String nullPKError = "Null Argument for Primary Key";
+        assertTrue("Error message '" + e.getMessage() + "' should contain '" + nullPKError + "'",
+            e.getMessage().contains(nullPKError));
+      }
+    } else {
+      session.execute(bstmt); // Should be successful for non-PK column.
+    }
+  }
+
+  @Test
+  public void testInsertUnsetMultiKey() throws Exception {
+    session.execute("create table t (h1 int, h2 int, r1 int, r2 int, v1 int, v2 int, " +
+                    "primary key((h1, h2), r1, r2))");
+
+    String insertPos = "insert into t (h1, h2, r1, r2, v1, v2) values (?, ?, ?, ?, ?, ?);";
+    PreparedStatement insertPosStmt = session.prepare(insertPos);
+    String insertNamed =
+        "insert into t (h1, h2, r1, r2, v1, v2) values (:h1, :h2, :r1, :r2, :v1, :v2);";
+    PreparedStatement insertNamedStmt = session.prepare(insertNamed);
+    // Insert a key value: (1, 2, 3, 4) -> (5, NULL).
+    session.execute(insertPosStmt.bind(1, 2, 3, 4, 5));
+
+    // Test hash key column h2 - expected error.
+    testBindExec(insertPosStmt, Bind.BY_POS, 1, 100);
+    testBindExec(insertNamedStmt, Bind.BY_NAME, 1, 100);
+
+    // Test range key column r2 - expected error.
+    testBindExec(insertPosStmt, Bind.BY_POS, 3, 100);
+    testBindExec(insertNamedStmt, Bind.BY_NAME, 3, 100);
+
+    // Test that the originally inserted value remains unchanged.
+    assertQuery("select * from t", "Row[1, 2, 3, 4, 5, NULL]");
+
+    // Set v2 = 6.
+    session.execute(insertPosStmt.bind(1, 2, 3, 4, 5, 6));
+
+    // Test non-key column v2. Ensure v2 is unchanged.
+    testBindExec(insertPosStmt, Bind.BY_POS, 5, 300);
+    assertQuery("select * from t", "Row[1, 2, 3, 4, 300, 6]");
+    testBindExec(insertNamedStmt, Bind.BY_NAME, 5, 400);
+    assertQuery("select * from t", "Row[1, 2, 3, 4, 400, 6]");
   }
 }
