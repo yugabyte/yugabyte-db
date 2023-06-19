@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-Using an xCluster deployment, you can use unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes (aka data centers).
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. However, many use cases do not require synchronous replication or justify the additional complexity and operating costs associated with managing three or more data centers. A cross-cluster (xCluster) deployment provides asynchronous replication across two data centers or cloud regions. Using an xCluster deployment, you can use unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes (aka data centers).
 
 For information on xCluster deployment architecture and replication scenarios, see [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 
@@ -144,7 +144,7 @@ You can use `yb-admin` to return the current replication status. The `get_replic
     get_replication_status
 ```
 
-```output
+```output.yaml
 statuses {
   table_id: "03ee1455f2134d5b914dd499ccad4377"
   stream_id: "53441ad2dd9f4e44a76dccab74d0a2ac"
@@ -386,7 +386,7 @@ You can set up xCluster replication for the following purposes:
 - Enabling replication on a table that has existing data.
 - Catching up an existing stream where the target has fallen too far behind.
 
-To ensure that the WALs are still available, you need to perform the following steps within the [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) gflag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
+To ensure that the WALs are still available, you need to perform the following steps within the [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) flag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
 
 Proceed as follows:
 
