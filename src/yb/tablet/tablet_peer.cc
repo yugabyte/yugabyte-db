@@ -523,10 +523,6 @@ void TabletPeer::CompleteShutdown(
     WARN_NOT_OK(log_->Close(), LogPrefix() + "Error closing the Log");
   }
 
-  if (retryable_requests_flusher_) {
-    retryable_requests_flusher_.reset();
-  }
-
   VLOG_WITH_PREFIX(1) << "Shut down!";
 
   if (tablet_) {
@@ -539,6 +535,7 @@ void TabletPeer::CompleteShutdown(
   {
     std::lock_guard lock(lock_);
     strand_.reset();
+    retryable_requests_flusher_.reset();
     // Release mem tracker resources.
     has_consensus_.store(false, std::memory_order_release);
     consensus_.reset();
