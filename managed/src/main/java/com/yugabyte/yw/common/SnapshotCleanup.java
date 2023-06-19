@@ -2,32 +2,41 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.Equator;
-import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
+import play.libs.Json;
 
 @Singleton
 public class SnapshotCleanup {
   public static final Logger LOG = LoggerFactory.getLogger(SnapshotCleanup.class);
+  public static final Set<State> RESTORE_STATES =
+      Sets.immutableEnumSet(State.RESTORED, State.RESTORING, State.DELETING);
 
   private final YBClientService ybService;
   private final RuntimeConfGetter confGetter;
@@ -39,7 +48,7 @@ public class SnapshotCleanup {
   }
 
   public List<SnapshotInfo> getNonScheduledSnapshotList(Universe universe) {
-    List<SnapshotInfo> snapshotInfosList = new ArrayList<>();
+    List<SnapshotInfo> listWithoutRestoreSnapshots = new ArrayList<>();
     String masterHostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     if (!universe.getUniverseDetails().universePaused) {
@@ -61,11 +70,16 @@ public class SnapshotCleanup {
                   .flatMap(sSI -> sSI.getSnapshotInfoList().stream())
                   .collect(Collectors.toList());
         }
+        List<SnapshotInfo> snapshotInfosList = new ArrayList<>();
         Optional.ofNullable(ybClient.listSnapshots(null, false).getSnapshotInfoList())
             .ifPresent(snapshotInfosList::addAll);
+        listWithoutRestoreSnapshots =
+            snapshotInfosList.stream()
+                .filter(sI -> !RESTORE_STATES.contains(sI.getState()))
+                .collect(Collectors.toList());
         return (List<SnapshotInfo>)
             CollectionUtils.removeAll(
-                snapshotInfosList,
+                listWithoutRestoreSnapshots,
                 scheduledSnapshotsInfos,
                 new Equator<SnapshotInfo>() {
 
@@ -85,7 +99,7 @@ public class SnapshotCleanup {
         ybService.closeClient(ybClient, masterHostPorts);
       }
     }
-    return snapshotInfosList;
+    return listWithoutRestoreSnapshots;
   }
 
   private List<SnapshotInfo> getFilterInProgressBackupSnapshots(
@@ -111,6 +125,15 @@ public class SnapshotCleanup {
   }
 
   public void deleteOrphanSnapshots() {
+    Map<UUID, BackupRequestParams> backupParamsMap = new HashMap<>();
+    List<TaskInfo> tInfoList = TaskInfo.getLatestIncompleteBackupTask();
+    if (CollectionUtils.isNotEmpty(tInfoList)) {
+      tInfoList.stream()
+          .map(tInfo -> Json.fromJson(tInfo.getDetails(), BackupRequestParams.class))
+          .filter(bRP -> bRP.backupUUID != null)
+          .forEach(bRP -> backupParamsMap.put(bRP.getUniverseUUID(), bRP));
+    }
+
     Customer.getAll()
         .forEach(
             c -> {
@@ -124,12 +147,20 @@ public class SnapshotCleanup {
                           return;
                         }
                         Universe universe = uOpt.get();
-                        ImmutablePair<UUID, Long> universeSnapshotFilterTime =
-                            Backup.getUniverseInProgressBackupCreateTime(c.getUuid(), u);
+                        Long universeSnapshotFilterTime = 0l;
+
+                        if (backupParamsMap.containsKey(universe.getUniverseUUID())) {
+                          UUID backupUUID =
+                              backupParamsMap.get(universe.getUniverseUUID()).backupUUID;
+                          Optional<Backup> oBackup = Backup.maybeGet(c.getUuid(), backupUUID);
+                          if (oBackup.isPresent()) {
+                            universeSnapshotFilterTime = oBackup.get().getCreateTime().getTime();
+                          }
+                        }
                         List<SnapshotInfo> snapshotInfoList = getNonScheduledSnapshotList(universe);
                         snapshotInfoList =
                             getFilterInProgressBackupSnapshots(
-                                snapshotInfoList, universeSnapshotFilterTime.right);
+                                snapshotInfoList, universeSnapshotFilterTime);
                         if (CollectionUtils.isNotEmpty(snapshotInfoList)) {
                           String masterHostPorts = universe.getMasterAddresses();
                           String certificate = universe.getCertificateNodetoNode();
