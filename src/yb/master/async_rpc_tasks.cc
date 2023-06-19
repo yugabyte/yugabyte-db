@@ -489,7 +489,7 @@ void RetryingTSRpcTask::UnregisterAsyncTask() {
   if (!IsStateTerminal(s)) {
     LOG_WITH_PREFIX(FATAL) << "Invalid task state " << s;
   }
-  completion_timestamp_ = MonoTime::Now();
+  completion_timestamp_.store(MonoTime::Now(), std::memory_order_release);
   if (table_ != nullptr && table_->RemoveTask(self)) {
     // We don't delete table while it have running tasks, so should check whether it was last task,
     // even it is not delete table task.
