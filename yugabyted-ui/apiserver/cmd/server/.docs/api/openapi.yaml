@@ -333,6 +333,41 @@ paths:
       summary: Check if cluster load balancer is idle
       tags:
       - cluster-info
+  /gflags:
+    get:
+      description: Retrieve gflags of master and tserver process
+      operationId: getGflags
+      parameters:
+      - description: Specify the node ip-address from where gflags are retrieved
+        explode: false
+        in: query
+        name: node_address
+        required: true
+        schema:
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gflags_Info'
+          description: Gflags information
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get gflags of master and tserver process
+      tags:
+      - cluster-info
   /cluster:
     delete:
       description: Submit task to delete a Yugabyte Cluster
@@ -470,6 +505,12 @@ components:
           schema:
             $ref: '#/components/schemas/VersionInfo'
       description: Version info for YugabyteDB
+    GflagsResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Gflags_Info'
+      description: Gflags information
     ClusterResponse:
       content:
         application/json:
@@ -1614,6 +1655,20 @@ components:
       required:
       - is_idle
       title: Is load balancer idle
+      type: object
+    Gflags_Info:
+      example:
+        masterFlags: '{}'
+        tserverFlags: '{}'
+      properties:
+        masterFlags:
+          type: object
+        tserverFlags:
+          type: object
+      required:
+      - masterFlags
+      - tserverFlags
+      title: Gflags Info
       type: object
     Cluster_Response:
       example:

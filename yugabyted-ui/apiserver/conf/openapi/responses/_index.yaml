@@ -105,3 +105,18 @@ VersionInfo:
     application/json:
       schema:
         $ref: '../schemas/_index.yaml#/VersionInfo'
+GflagsResponse:
+  description: Gflags information
+  content:
+    application/json:
+      schema:
+        title: Gflags Info
+        type: object
+        properties:
+          masterFlags:
+            type: object
+          tserverFlags:
+            type: object
+        required:
+          - masterFlags
+          - tserverFlags

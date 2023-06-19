@@ -11,7 +11,12 @@ import (
 
 type GFlagsFuture struct {
     GFlags map[string]string
-    Error error
+    Error  error
+}
+
+type GFlagsJsonFuture struct {
+    GFlags []byte
+    Error  error
 }
 
 func GetGFlagsFuture(hostName string, isMaster bool, future chan GFlagsFuture) {
@@ -19,9 +24,9 @@ func GetGFlagsFuture(hostName string, isMaster bool, future chan GFlagsFuture) {
     if isMaster {
         port = MasterUIPort
     }
-    gFlags := GFlagsFuture {
+    gFlags := GFlagsFuture{
         GFlags: map[string]string{},
-        Error: nil,
+        Error:  nil,
     }
     httpClient := &http.Client{
         Timeout: time.Second * 10,
@@ -54,5 +59,37 @@ func GetGFlagsFuture(hostName string, isMaster bool, future chan GFlagsFuture) {
             gFlags.GFlags[string(v[1])] = string(v[2])
         }
     }
+    future <- gFlags
+}
+
+func GetGFlagsJsonFuture(hostName string, isMaster bool, future chan GFlagsJsonFuture) {
+
+    port := TserverUIPort
+    if isMaster {
+        port = MasterUIPort
+    }
+
+    gFlags := GFlagsJsonFuture{
+        GFlags: []byte{},
+        Error:  nil,
+    }
+    httpClient := &http.Client{
+        Timeout: time.Second * 10,
+    }
+    url := fmt.Sprintf("http://%s:%s/api/v1/varz", hostName, port)
+    resp, err := httpClient.Get(url)
+    if err != nil {
+        gFlags.Error = err
+        future <- gFlags
+        return
+    }
+    defer resp.Body.Close()
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        gFlags.Error = err
+        future <- gFlags
+        return
+    }
+    gFlags.GFlags = body
     future <- gFlags
 }
