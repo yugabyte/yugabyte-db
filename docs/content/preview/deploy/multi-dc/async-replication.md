@@ -41,13 +41,13 @@ After you created the required tables, you can set up unidirectional replication
   - To find a table ID, execute the following command as an admin user:
 
       ```sh
-      ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id
+      ./bin/yb-admin -master_addresses <source_universe_master_addresses> list_tables include_table_id
       ```
 
       The preceding command lists all the tables, including system tables. To locate a specific table, you can add `grep`, as follows:
 
       ```sh
-      ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id | grep table_name
+      ./bin/yb-admin -master_addresses <source_universe_master_addresses> list_tables include_table_id | grep table_name
       ```
 
 - Run the following `yb-admin` [`setup_universe_replication`](../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
@@ -175,9 +175,9 @@ When universes use different certificates, you need to store the certificates fo
 
 1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../reference/configuration/yb-master/#use-node-to-node-encryption) and [t-servers](../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
 
-1. For each master and t-server on the target universe, set the gflag `certs_for_cdc_dir` to the parent directory where you want to store all the source universe's certificates for replication.
+1. For each master and t-server on the target universe, set the flag `certs_for_cdc_dir` to the parent directory where you want to store all the source universe's certificates for replication.
 
-1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored within the [`--certs_dir`]`/preview/reference/configuration/yb-master/#certs-dir`.
+1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored in the [`--certs_dir`]`/preview/reference/configuration/yb-master/#certs-dir`.
 
 1. Copy this file to each node on the target. It needs to be copied to a directory named`<certs_for_cdc_dir>/<source_universe_uuid>`.
 
@@ -267,7 +267,7 @@ To create unidirectional replication, perform the following:
 1. Run the replication setup command for the source universe, as follows:
 
     ```sh
-    ./bin/yb-admin -master_addresses <consumer_master_addresses> \
+    ./bin/yb-admin -master_addresses <target_master_addresses> \
     setup_universe_replication <source_universe_UUID>_<replication_stream_name> \
     <producer_master_addresses> <comma_separated_table_ids>
     ```

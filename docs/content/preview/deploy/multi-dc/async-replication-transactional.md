@@ -1,7 +1,7 @@
 ---
 title: Deploy to two universes with transactional xCluster replication
 headerTitle: Transactional xCluster deployment
-linkTitle: xCluster transactional
+linkTitle: Transactional xCluster
 description: Enable deployment using transactional (active-standby) replication between universes
 headContent: Transactional (active-standby) replication
 menu:
@@ -49,8 +49,7 @@ Set up unidirectional transactional replication as follows:
       company_name text,
       customer_state text,
       primary key (customer_id)
-    )
-    split into 8 tablets;
+    ) split into 8 tablets;
 
     create table orders (
       customer_id uuid,
@@ -60,8 +59,7 @@ Set up unidirectional transactional replication as follows:
       product_code text,
       order_qty int,
       constraint fk_customer foreign key(customer_id) references customers(customer_id)
-    )
-    split into 8 tablets;
+    ) split into 8 tablets;
 
     create index order_covering_index on orders (customer_id, order_id)
       include( order_qty )
@@ -72,8 +70,7 @@ Set up unidirectional transactional replication as follows:
       name text,
       salary int,
       primary key (id)
-    )
-    split into 8 tablets; 
+    ) split into 8 tablets; 
 
     create index account_balance_secondary_index on account_balance(name)
     split into 8 tablets;
@@ -90,7 +87,7 @@ Set up unidirectional transactional replication as follows:
         create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
-1. If the source universe already has data, then follow the bootstrap process described in [Bootstrap a target universe](async-replication/#bootstrap-a-target-universe) before setting up replication with the transactional flag.
+1. If the source universe already has data, then follow the bootstrap process described in [Bootstrap a target universe](../async-replication/#bootstrap-a-target-universe) before setting up replication with the transactional flag.
 
 1. Set up xCluster replication from ACTIVE (source) to STANDBY (target) using yb-admin as follows:
 
@@ -135,7 +132,7 @@ Set up unidirectional transactional replication as follows:
     ]
     ```
 
-## Failover (Unplanned)
+## Unplanned failover
 
 Unplanned failover is the process of switching application traffic to the target (standby) universe in case the source (active) universe becomes unavailable. One of the common reasons for such a scenario is an outage of the source universe region.
 
@@ -224,8 +221,7 @@ Assuming universe A is the current source (active) universe and B is the current
     ./bin/yb-admin \
         -master_addresses <B_master_addresses> \
         -certs_dir_name <cert_dir> \
-        restore_snapshot_schedule <Snapshot_ID> \
-        "<SafeTime>"
+        restore_snapshot_schedule <schedule_id> "<safe_time>"
     ```
 
     Expect output similar to the following:
@@ -236,6 +232,28 @@ Assuming universe A is the current source (active) universe and B is the current
         "restoration_id": "e05e06d7-1766-412e-a364-8914691d84a3"
     }
     ```
+
+1. Verify that restoration completed successfully by running the following command. Repeat this step until the restore state is RESTORED.
+
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses <standby_master_ips> \
+        -certs_dir_name <cert_dir> \
+        list_snapshot_restorations
+    ```
+
+    Expect output similar to the following:
+
+    ```output.json
+    {
+        "restorations": [
+            {
+                "id": "a3fdc1c0-3e07-4607-91a7-1527b7b8d9ea",
+                "snapshot_id": "3ecbfc16-e2a5-43a3-bf0d-82e04e72be65",
+                "state": "RESTORED"
+            }
+        ]
+    }
 
 1. Promote B to the active role:
 
@@ -387,7 +405,7 @@ In the second stage, set up replication from the new active (B) universe as foll
     ./bin/yb-admin \
         -master_addresses <B_master_addresses> 
         -certs_dir_name <cert_dir> \
-        bootstrap_cdc_producer <comma_separated_target_universe_table_ids>
+        bootstrap_cdc_producer <comma_separated_B_universe_table_ids>
     ```
 
 1. Resume the application traffic on B.
