@@ -2504,7 +2504,7 @@ TEST_P(XClusterTest, TestInsertDeleteWorkloadWithRestart) {
 
   // This test depends on the write op metrics from the tservers. If the load balancer changes the
   // leader of a consumer tablet, it may re-write replication records and break the test.
-  FLAGS_enable_load_balancing = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
   WriteWorkload(0, num_ops_per_workload, producer_client(), tables[0]->name());
   for (size_t i = 0; i < num_runs; i++) {
