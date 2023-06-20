@@ -1460,6 +1460,34 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 *		  order to correctly invalidate negative cache entries
 			 */
 			*is_breaking_catalog_change = false;
+			if (node_tag == T_CreateRoleStmt) {
+				/*
+				 * If a create role statement does not reference another existing
+				 * role there is no need to increment catalog version.
+				 */
+				CreateRoleStmt *stmt = castNode(CreateRoleStmt, parsetree);
+				int nopts = list_length(stmt->options);
+				if (nopts == 0)
+					*is_catalog_version_increment = false;
+				else
+				{
+					bool reference_other_role = false;
+					ListCell   *lc;
+					foreach(lc, stmt->options)
+					{
+						DefElem *def = (DefElem *) lfirst(lc);
+						if (strcmp(def->defname, "rolemembers") == 0 ||
+							strcmp(def->defname, "adminmembers") == 0 ||
+							strcmp(def->defname, "addroleto") == 0)
+						{
+							reference_other_role = true;
+							break;
+						}
+					}
+					if (!reference_other_role)
+						*is_catalog_version_increment = false;
+				}
+			}
 			break;
 		}
 		case T_CreateStmt:

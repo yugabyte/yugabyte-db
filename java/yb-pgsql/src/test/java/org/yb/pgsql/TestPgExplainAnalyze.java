@@ -108,7 +108,7 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
           .build();
 
       // Warm up the cache to get catalog requests out of the way.
-      stmt.execute(String.format("SELECT * FROM %s", TABLE_NAME));
+      testExplain(String.format("SELECT * FROM %s", TABLE_NAME), null);
 
       // Seq Scan (ybc_fdw ForeignScan)
       testExplain(String.format("SELECT * FROM %s", TABLE_NAME), checker);
@@ -309,7 +309,7 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
       stmt.execute("SET ysql_session_max_batch_size = 4");
 
       // Warm up the cache to get catalog requests out of the way.
-      stmt.execute(String.format("SELECT * FROM %s", TABLE_NAME));
+      testExplain(String.format("SELECT * FROM %s", TABLE_NAME), null);
 
       ObjectChecker planChecker =
           makePlanBuilder()
