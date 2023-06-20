@@ -101,6 +101,9 @@ public class ExplainAnalyzeUtils {
     rs.next();
     JsonElement json = JsonParser.parseString(rs.getString(1));
     LOG.info("Response:\n" + JsonUtil.asPrettyString(json));
+    if (checker == null) {
+      return;
+    }
     List<String> conflicts = JsonUtil.findConflicts(json.getAsJsonArray().get(0), checker);
     assertTrue("Json conflicts:\n" + String.join("\n", conflicts),
                conflicts.isEmpty());
