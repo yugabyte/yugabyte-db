@@ -1422,7 +1422,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.put("name", "test-k8s-provider");
     ObjectNode cloudInfo = Json.newObject();
     ObjectNode k8sConfig = Json.newObject();
-    k8sConfig.put("kubernetesProvider", "GKE");
     k8sConfig.put("kubernetesPullSecret", "Kubeconfig pull secret");
     cloudInfo.set("kubernetes", k8sConfig);
     ObjectNode details = Json.newObject();

@@ -216,7 +216,24 @@ public class CloudProviderHandler {
     List<KubernetesProviderFormData.RegionData> regionList = formData.regionList;
     for (KubernetesProviderFormData.RegionData rd : regionList) {
       Map<String, String> regionConfig = rd.config;
-      Region region = Region.create(provider, rd.code, rd.name, null, rd.latitude, rd.longitude);
+      String regionCode = rd.code;
+      String regionName = rd.name;
+      Double latitude = rd.latitude;
+      Double longitude = rd.longitude;
+      KubernetesInfo kubernetesCloudInfo = CloudInfoInterface.get(provider);
+      ConfigHelper.ConfigType kubernetesConfigType =
+          cloudProviderHelper.getKubernetesConfigType(kubernetesCloudInfo.getKubernetesProvider());
+      if (kubernetesConfigType != null) {
+        Map<String, Object> k8sRegionMetadata = configHelper.getConfig(kubernetesConfigType);
+        if (!k8sRegionMetadata.containsKey(regionCode)) {
+          throw new RuntimeException("Region " + regionCode + " metadata not found");
+        }
+        JsonNode metadata = Json.toJson(k8sRegionMetadata.get(regionCode));
+        regionName = metadata.get("name").asText();
+        latitude = metadata.get("latitude").asDouble();
+        longitude = metadata.get("longitude").asDouble();
+      }
+      Region region = Region.create(provider, regionCode, regionName, null, latitude, longitude);
       CloudInfoInterface.setCloudProviderInfoFromConfig(region, regionConfig);
       regionConfig = CloudInfoInterface.fetchEnvVars(region);
       boolean isConfigInRegion =
@@ -299,6 +316,7 @@ public class CloudProviderHandler {
               .append(RandomStringUtils.randomAlphanumeric(5))
               .append("provider")
               .toString();
+      String cloudProviderCode = cloudProviderHelper.getCloudProvider();
 
       if (pullSecret != null) {
         formData.config =
@@ -306,7 +324,7 @@ public class CloudProviderHandler {
                 "KUBECONFIG_IMAGE_PULL_SECRET_NAME",
                 pullSecretName,
                 "KUBECONFIG_PROVIDER",
-                cloudProviderHelper.getCloudProvider(),
+                cloudProviderCode,
                 "KUBECONFIG_PULL_SECRET_NAME",
                 pullSecretName, // filename
                 "KUBECONFIG_PULL_SECRET_CONTENT",
@@ -319,7 +337,7 @@ public class CloudProviderHandler {
         KubernetesProviderFormData.RegionData regionData =
             new KubernetesProviderFormData.RegionData();
         regionData.code = region;
-        String regName = cloudProviderHelper.getRegionNameFromCode(region);
+        String regName = cloudProviderHelper.getRegionNameFromCode(region, cloudProviderCode);
         if (regName == null) {
           regName = region;
         }
