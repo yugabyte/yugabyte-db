@@ -1080,8 +1080,7 @@ Restore from an absolute timestamp:
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-    1617670679185100
+    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 1617670679185100
 ```
 
 Restore from a relative time:
@@ -1089,8 +1088,7 @@ Restore from a relative time:
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-    minus 60s
+    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 60s
 ```
 
 In both cases, the output is similar to the following:
@@ -1686,7 +1684,8 @@ yb-admin \
     <source_universe_uuid>_<replication_name> \
     <source_master_addresses> \
     <comma_separated_list_of_table_ids> \
-    [ <comma_separated_list_of_producer_bootstrap_ids> ]
+    [ <comma_separated_list_of_producer_bootstrap_ids> ] \
+    [ transactional ]
 ```
 
 * *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -1695,6 +1694,7 @@ yb-admin \
 * *source_master_addresses*: Comma-separated list of the source master addresses.
 * *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
+* *transactional*: identifies the universe as Active in a transactional xCluster deployment.
 
 {{< warning title="Important" >}}
 Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
@@ -1833,9 +1833,7 @@ yb-admin \
     <role> 
 ```
 
-* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. 
-These are the addresses of the master nodes where the role has to be applied. Example: if we want to change target to `STANDBY` we have to use target universe master addresses, 
-and if we want to change source universe role then we have to use source universe master addresses.
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. These are the addresses of the master nodes where the role is to be applied. For example, to change the target to `STANDBY`, use target universe master addresses, and to change the source universe role, use source universe master addresses.
 * *role*: Can be `STANDBY` or `ACTIVE`.
 
 **Example**
@@ -1869,6 +1867,7 @@ yb-admin \
     -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     get_xcluster_safe_time
 ```
+
 ```output
 {
     "namespace_id": "000033f1000030008000000000000000",
@@ -1889,7 +1888,7 @@ yb-admin \
 
 #### wait_for_replication_drain
 
-Verify when the producer and consumer are in sync for a given list of `stream_ids` at a given timestamp. 
+Verify when the producer and consumer are in sync for a given list of `stream_ids` at a given timestamp.
 
 **Syntax**
 
@@ -1903,7 +1902,7 @@ yb-admin \
 * *source_master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *comma_separated_list_of_stream_ids*: Comma-separated list of stream IDs.
 * *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
-* *minus <interval>*: The `minus <interval>` is the same format as in <a href="{{< relref "../explore/cluster-management/point-in-time-recovery-ycql.md#restore-from-a-relative-time" >}}">PITR documentation</a>, or see [`yb-admin restore_snapshot_schedule` command](#restore-snapshot-schedule)).
+* *minus <interval>*: The `minus <interval>` is the same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [`restore_snapshot_schedule`](#restore-snapshot-schedule).
 
 **Example**
 
@@ -1913,9 +1912,11 @@ yb-admin \
     wait_for_replication_drain 000033f1000030008000000000000000,200033f1000030008000000000000002 minus 1m
 ```
 
-If all streams are caught-up, the API outputs `All replications are caught-up.` to the console.  
+If all streams are caught-up, the API outputs `All replications are caught-up.` to the console.
+
 Otherwise, it outputs the non-caught-up streams in the following format:
-```
+
+```output
 Found undrained replications:
 - Under Stream <stream_id>:
   - Tablet: <tablet_id>
@@ -1969,8 +1970,7 @@ yb-admin \
 * `force_delete`: (Optional) Force the delete operation.
 
 {{< note title="Note" >}}
-This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams.
-For normal xcluster replication cleanup, please use [`delete_universe_replication`](#delete-universe-replication).
+This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams. For normal xCluster replication cleanup, use [`delete_universe_replication`](#delete-universe-replication).
 {{< /note >}}
 
 #### bootstrap_cdc_producer <comma_separated_list_of_table_ids>
