@@ -156,6 +156,14 @@ class PgLibPqTest : public LibPqTestBase {
       GetParentTableTabletLocation getParentTableTabletLocation);
 
   Status TestDuplicateCreateTableRequest(PGConn conn);
+
+  void BumpCatalogVersion(int num_versions, PGConn* conn) {
+    LOG(INFO) << "Do " << num_versions << " breaking catalog version bumps";
+    for (int i = 0; i < num_versions; ++i) {
+      ASSERT_OK(conn->Execute("ALTER ROLE yugabyte SUPERUSER"));
+    }
+  }
+
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
 };
@@ -977,8 +985,7 @@ TEST_F_EX(PgLibPqTest, StaleMasterReads, PgLibPqReadFromSysCatalogTest) {
   ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
   for (int i = 1; i <= FLAGS_num_iter; i++) {
     LOG(INFO) << "ITERATION " << i;
-    LOG(INFO) << "Creating user " << i;
-    ASSERT_OK(conn.ExecuteFormat("CREATE USER user$0", i));
+    BumpCatalogVersion(1, &conn);
     LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
     uint64_t ver;
     ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver));
