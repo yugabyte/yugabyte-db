@@ -12,23 +12,17 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
-import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.Set;
+import com.yugabyte.yw.models.helpers.NodeStatus;
+import java.util.Collections;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 
 // Allows the addition of the master server to a node. Spawns master the process and ensures
 // the task waits for the right set of load balance primitives.
@@ -124,6 +118,10 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
 
       // Update node state to Starting Master.
       createSetNodeStateTask(currentNode, NodeState.Starting)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
+      // Make sure clock skew is low enough on the node.
+      createWaitForClockSyncTasks(universe, Collections.singleton(currentNode))
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // This starts master and if it fails after setting isMaster=true, this task cannot be run as

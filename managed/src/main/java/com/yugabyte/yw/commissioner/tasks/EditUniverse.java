@@ -347,6 +347,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             false /* ignore node status check */,
             ignoreUseCustomImageConfig);
       }
+
+      // Make sure clock skew is low enough.
+      createWaitForClockSyncTasks(universe, newMasters)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
       // Start masters. If it is already started, it has no effect.
       createStartMasterProcessTasks(newMasters);
     }
@@ -357,6 +362,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Idempotent as same set of servers are blacklisted.
       createModifyBlackListTask(newTservers, null /* To remove */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Make sure clock skew is low enough.
+      createWaitForClockSyncTasks(universe, newTservers)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       // Start tservers on all nodes.
       createStartTserverProcessTasks(newTservers, userIntent.enableYSQL);

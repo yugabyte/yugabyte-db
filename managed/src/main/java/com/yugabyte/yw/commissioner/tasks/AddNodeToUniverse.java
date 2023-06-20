@@ -196,6 +196,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       createTransferXClusterCertsCopyTasks(
           Collections.singleton(currentNode), universe, SubTaskGroupType.Provisioning);
 
+      // Make sure clock skew is low enough.
+      createWaitForClockSyncTasks(universe, nodeSet)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
       // Bring up any masters, as needed.
       if (addMaster) {
         log.info(
