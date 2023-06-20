@@ -132,6 +132,11 @@ export const YBA_ROLES = [
     label: 'ReadOnly',
     value: 'ReadOnly',
     showInDefault: true
+  },
+  {
+    label: 'ConnectOnly',
+    value: 'ConnectOnly',
+    showInDefault: true
   }
 ];
 
@@ -264,7 +269,7 @@ export const LDAPAuth = (props) => {
       if (formValues[key] !== initValues[key]) {
         const keyName = `${LDAP_PATH}.${key}`;
         const value =
-          isString(formValues[key]) && key !== 'ldap_group_search_scope'
+        isString(formValues[key]) && !['ldap_default_role', 'ldap_group_search_scope'].includes(key)
             ? `"${formValues[key]}"`
             : formValues[key];
         promiseArr.push(
@@ -698,6 +703,42 @@ export const LDAPAuth = (props) => {
                       </Row>
 
                       <div>
+                        <div className="default-ldap-role-c">
+                          <div className="ua-box-c default-ldap-role-b">
+                            <Row className="ua-field-row">
+                              <Col className="ua-label-c">
+                                <div>
+                                  User&apos;s default role &nbsp;
+                                </div>
+                              </Col>
+                              <Col lg={12} className="ua-field ua-radio-c">
+                                <Row className="ua-radio-field-c">
+                                  {YBA_ROLES.filter((role) => role.showInDefault).map(({ label, value }) => (
+                                    <Col key={`ldap_default_value-${value}`} className="ua-auth-radio-field">
+                                      <Field
+                                        name={'ldap_default_role'}
+                                        type="radio"
+                                        component="input"
+                                        value={value}
+                                        checked={`${value}` === `${values['ldap_default_role']}`}
+                                        disabled={isDisabled}
+                                      />
+                                      &nbsp;&nbsp;{label}&nbsp;
+                                      {value === 'ConnectOnly' &&
+                                        <YBInfoTip
+                                        customClass="ldap-info-popover"
+                                        title="ConnectOnly role"
+                                        content="Users with ConnectOnly role cannot see any information other than their own profile information">
+                                        <i className="fa fa-info-circle" />
+                                        </YBInfoTip>
+                                      }
+                                    </Col>
+                                  ))}
+                                </Row>
+                              </Col>
+                            </Row>
+                          </div>
+                        </div>
                         <div className="ua-box-c ">
                           <Row key="ldap_use_role_mapping" className="role-mapping-c">
                             <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c">
@@ -712,7 +753,7 @@ export const LDAPAuth = (props) => {
                                   }
                                 }}
                               />{' '}
-                              &nbsp; Define Role to Group Mapping
+                              &nbsp; Map YugabyteDB Anywhere built-in roles to your existing LDAP groups
                             </Col>
                           </Row>
                           {`true` === `${values.ldap_group_use_role_mapping}` && (
@@ -830,8 +871,7 @@ export const LDAPAuth = (props) => {
                               </div>
 
                               <div className="box-title">
-                                2. Map YugabyteDB Anywhere builtin roles to your existing LDAP
-                                groups
+                                2. Define Role to Group Mapping
                               </div>
                               <div className="box-content map-roles">
                                 <div className="ua-box-c">
