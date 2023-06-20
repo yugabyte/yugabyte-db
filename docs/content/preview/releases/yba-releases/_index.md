@@ -46,8 +46,8 @@ The information in this section is a summary for convenience only. For complete 
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2.19](v2.19/) <span class='metadata-tag-gray'>Preview</span> | {{< yb-eol-dates "v2.19" release >}} | n/a | n/a |
 | [v2.18](../release-notes/v2.16/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
-| [v2.17](v2.17/) <span class='metadata-tag-gray'>Preview</span> | {{< yb-eol-dates "v2.17" release >}} | n/a | n/a |
 | [v2.16](../release-notes/v2.16/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2.16" release >}} | {{< yb-eol-dates "v2.16" EOM >}} | {{< yb-eol-dates "v2.16" EOL >}} |
 | [v2.14](../release-notes/v2.14/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
 | [v2.12](../release-notes/v2.12/) | {{< yb-eol-dates "v2.12" release >}} | {{< yb-eol-dates "v2.12" EOM >}} | {{< yb-eol-dates "v2.12" EOL >}} |
@@ -59,6 +59,7 @@ The following releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2.17](../v2.17/) | December 8, 2022 | n/a | n/a |
 | [v2.15](../release-notes/v2.15/) | June 27, 2022 | n/a | n/a |
 | [v2.13](../release-notes/v2.13/) | March 7, 2022 | n/a | n/a |
 | [v2.11](../release-notes/v2.11/) | November 22, 2021 | n/a | n/a |
@@ -86,8 +87,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| v2.18 (STS) | Early 2023 |
-| v2.19 | Early 2023 |
+| v2.20 (STS) | Late 2023 |
 
 ## Recommended release series for projects
 
