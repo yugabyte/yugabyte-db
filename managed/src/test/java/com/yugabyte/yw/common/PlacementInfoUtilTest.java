@@ -1979,6 +1979,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     // Some additional tests for raised problems.
     "Case 21, 1, r1-az1-1-1-0;r1-az2-3-0-1, 1",
+    "Case 22, 5, r1-az1-3-0-3;r2-az2-3-0-2, 0",
   })
   // @formatter:on
   public void testSelectMasters_Extended(String name, int rf, String zones, int removedCount) {
