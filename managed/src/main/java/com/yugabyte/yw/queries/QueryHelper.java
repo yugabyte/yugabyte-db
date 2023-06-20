@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -43,18 +44,17 @@ import play.libs.ws.WSClient;
 public class QueryHelper {
   private static final String RESET_QUERY_SQL = "SELECT pg_stat_statements_reset()";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_1 =
-      "SELECT a.rolname, t.datname, t.queryid, "
-          + "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, t.stddev_time, "
-          + "t.local_blks_hit, t.local_blks_written ";
+      "SELECT s.userid::regrole, d.datname, s.queryid, s.query, s.calls, s.total_time, s.rows, "
+          + "s.min_time, s.max_time, s.mean_time, s.stddev_time, "
+          + "s.local_blks_hit, s.local_blks_written ";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_2 =
-      "FROM pg_authid a JOIN (SELECT * FROM "
-          + "pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid";
-  private static final String HISTOGRAM_QUERY = ", t.yb_latency_histogram ";
+      "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid";
+  private static final String HISTOGRAM_QUERY = ", s.yb_latency_histogram ";
   public static final String QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY =
       "yb.query_stats.slow_queries.order_by";
   public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
       "yb.query_stats.slow_queries.limit";
-  public static final String SET_ENABLE_NESTLOOP_OFF_STATEMENT = "/*+Set(enable_nestloop off)*/";
+  public static final String SET_ENABLE_NESTLOOP_OFF_STATEMENT = "Set(enable_nestloop off)";
   public static final String SET_ENABLE_NESTLOOP_OFF_KEY =
       "yb.query_stats.slow_queries.set_enable_nestloop_off";
 
@@ -312,9 +312,9 @@ public class QueryHelper {
               queryMap.forEach(
                   (queryId, queryObj) -> {
                     ObjectNode objNode = (ObjectNode) queryObj;
-                    Histogram histogram =
-                        new Histogram(
-                            Json.fromJson(objNode.get("yb_latency_histogram"), List.class));
+                    List<Map<String, Integer>> mapList = new ArrayList<>();
+                    mapList.addAll(Json.fromJson(objNode.get("yb_latency_histogram"), List.class));
+                    Histogram histogram = new Histogram(mapList);
                     objNode.put("P25", histogram.getPercentile(25));
                     objNode.put("P50", histogram.getPercentile(50));
                     objNode.put("P90", histogram.getPercentile(90));
@@ -378,7 +378,7 @@ public class QueryHelper {
             ? SET_ENABLE_NESTLOOP_OFF_STATEMENT
             : "";
     return String.format(
-        "%s%s ORDER BY t.%s DESC LIMIT %d",
+        "/*+ Leading((d pg_stat_statements)) %s */ %s ORDER BY s.%s DESC LIMIT %d",
         setEnableNestloopOffStatementOptional,
         SLOW_QUERY_STATS_UNLIMITED_SQL_1
             + (histogramSupport ? HISTOGRAM_QUERY : "")
