@@ -386,7 +386,7 @@ You can set up xCluster replication for the following purposes:
 - Enabling replication on a table that has existing data.
 - Catching up an existing stream where the target has fallen too far behind.
 
-To ensure that the WALs are still available, you need to perform the following steps in the [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) flag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
+To ensure that the WALs are still available, you need to perform the following steps in the [cdc_wal_retention_time_secs](../../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) flag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
 
 Proceed as follows:
 

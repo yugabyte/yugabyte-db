@@ -352,13 +352,13 @@ Proceed as follows:
     2023-02-16 12:20:22.245984
     ```
 
-1. Run the following command for each ACTIVE replication `stream_id` reported on A using the output of the two previous commands:
+1. Run the following command for each ACTIVE replication `stream_id` reported on A using the output of the two previous commands, in the form of a comma-separated list of the stream IDs and the timestamp:
 
     ```sh
     ./bin/yb-admin \
         -master_addresses <A_master_addresses> \
         -certs_dir_name <dir_name> \
-        wait_for_replication_drain 56bf794172da49c6804cbab59b978c7e,..,..<<comma separated list of streams>> 1665548814177072
+        wait_for_replication_drain 56bf794172da49c6804cbab59b978c7e,..,..<<comma_separated_list_of_stream_ids>> 1665548814177072
     ```
 
     ```output
