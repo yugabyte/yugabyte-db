@@ -35,7 +35,6 @@ import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -73,6 +72,7 @@ public class CloudProviderHelper {
   @Inject private AvailabilityZoneHandler availabilityZoneHandler;
   @Inject private CloudAPI.Factory cloudAPIFactory;
   @Inject private CloudQueryHelper queryHelper;
+  @Inject private ConfigHelper configHelper;
   @Inject private DnsManager dnsManager;
   @Inject private Environment environment;
   @Inject private KubernetesManagerFactory kubernetesManagerFactory;
@@ -159,6 +159,7 @@ public class CloudProviderHelper {
     Map<String, String> updatedProviderConfig = CloudInfoInterface.fetchEnvVars(provider);
 
     Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(rd);
+    String regionCode = rd.getCode();
     Region region =
         provider.getRegions().stream()
             .filter(r -> r.getCode().equals(rd.getCode()))
@@ -166,15 +167,25 @@ public class CloudProviderHelper {
             .orElse(null);
     if (region == null) {
       log.info("Region {} does not exists. Creating one...", rd.getName());
+      String regionName = rd.getName();
+      Double latitude = rd.getLatitude();
+      Double longitude = rd.getLongitude();
+      KubernetesInfo kubernetesCloudInfo = CloudInfoInterface.get(provider);
+      ConfigHelper.ConfigType kubernetesConfigType =
+          getKubernetesConfigType(kubernetesCloudInfo.getKubernetesProvider());
+      if (kubernetesConfigType != null) {
+        Map<String, Object> k8sRegionMetadata = configHelper.getConfig(kubernetesConfigType);
+        if (!k8sRegionMetadata.containsKey(regionCode)) {
+          throw new RuntimeException("Region " + regionCode + " metadata not found");
+        }
+        JsonNode metadata = Json.toJson(k8sRegionMetadata.get(regionCode));
+        regionName = metadata.get("name").asText();
+        latitude = metadata.get("latitude").asDouble();
+        longitude = metadata.get("longitude").asDouble();
+      }
       region =
           Region.create(
-              provider,
-              rd.getCode(),
-              rd.getName(),
-              null,
-              rd.getLatitude(),
-              rd.getLongitude(),
-              rd.getDetails());
+              provider, regionCode, regionName, null, latitude, longitude, rd.getDetails());
     }
     boolean regionUpdateNeeded = region.isUpdateNeeded(rd);
     if (regionUpdateNeeded) {
@@ -614,17 +625,20 @@ public class CloudProviderHelper {
     return retVal;
   }
 
-  public String getRegionNameFromCode(String code) {
+  public String getRegionNameFromCode(String code, String cloudProviderCode) {
     log.info("Code is:", code);
-    String regionFile = "k8s_regions.json";
-    InputStream inputStream = environment.resourceAsStream(regionFile);
-    JsonNode jsonNode = Json.parse(inputStream);
-    JsonNode nameNode = jsonNode.get(code);
-    if (nameNode == null || nameNode.isMissingNode()) {
+    ConfigHelper.ConfigType kubernetesConfigType = getKubernetesConfigType(cloudProviderCode);
+    if (kubernetesConfigType == null) {
+      return code;
+    }
+    Map<String, Object> k8sRegionMetadata = configHelper.getConfig(kubernetesConfigType);
+    if (!k8sRegionMetadata.containsKey(code)) {
       log.info("Could not find code in file, sending it back as name");
       return code;
     }
-    return jsonNode.get(code).asText();
+
+    JsonNode metadata = Json.toJson(k8sRegionMetadata.get(code));
+    return metadata.get(code).asText();
   }
 
   public String getKubernetesImageRepository() {
@@ -910,5 +924,30 @@ public class CloudProviderHelper {
       return r.getCode();
     }
     return null;
+  }
+
+  public ConfigHelper.ConfigType getKubernetesConfigType(String cloudProviderCode) {
+    if (cloudProviderCode == null) {
+      return null;
+    }
+
+    ConfigHelper.ConfigType kubernetesConfigType = null;
+    switch (cloudProviderCode.toLowerCase()) {
+      case "gke":
+        kubernetesConfigType = ConfigHelper.ConfigType.GKEKubernetesRegionMetadata;
+        break;
+      case "eks":
+        kubernetesConfigType = ConfigHelper.ConfigType.EKSKubernetesRegionMetadata;
+        break;
+      case "aks":
+        kubernetesConfigType = ConfigHelper.ConfigType.AKSKubernetesRegionMetadata;
+        break;
+      default:
+        // Defaulting to EKS for now.
+        kubernetesConfigType = ConfigHelper.ConfigType.EKSKubernetesRegionMetadata;
+        break;
+    }
+
+    return kubernetesConfigType;
   }
 }

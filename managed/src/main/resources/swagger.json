@@ -6424,6 +6424,249 @@
     "NodeConfig" : {
       "description" : "A node configuration.",
       "properties" : {
+        "type" : {
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YCQL_SERVER_HTTP_PORT", "YCQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
+          "type" : "string"
+        },
+        "value" : {
+          "description" : "true",
+          "type" : "string"
+        }
+      },
+      "required" : [ "type", "value" ],
+      "type" : "object"
+    },
+    "NodeData" : {
+      "properties" : {
+        "details" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "home" : {
+          "description" : "Node agent installation directory",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ip" : {
+          "description" : "Node agent server IP",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Node agent name",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "osType" : {
+          "description" : "Node agent host OS",
+          "enum" : [ "DARWIN", "LINUX" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "port" : {
+          "description" : "Node agent server port",
+          "format" : "int32",
+          "readOnly" : true,
+          "type" : "integer"
+        },
+        "state" : {
+          "description" : "Node agent state",
+          "enum" : [ "REGISTERING", "UPGRADE", "UPGRADED", "READY" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "updatedAt" : {
+          "description" : "Updated time",
+          "example" : "2022-12-21T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Node agent UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "version" : {
+          "description" : "Node agent installed version",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "NodeAgentApiFilter" : {
+      "properties" : {
+        "nodeIps" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "nodeIps" ],
+      "type" : "object"
+    },
+    "NodeAgentPagedApiQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [ "ASC", "DESC" ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/NodeAgentApiFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [ "uuid", "ip", "name", "state", "updatedAt", "version" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "direction", "filter", "limit", "needTotalCount", "offset", "sortBy" ],
+      "type" : "object"
+    },
+    "NodeAgentPagedApiResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/NodeAgentResp"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "lastVolumeUpdateTime" : {
+          "description" : "Store last volume update time",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "machineImage" : {
+          "description" : "Machine image name",
+          "type" : "string"
+        },
+        "masterHttpPort" : {
+          "description" : "Master HTTP port",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "masterRpcPort" : {
+          "description" : "Master RPC port",
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
+      "type" : "object"
+    },
+    "NodeAgentResp" : {
+      "description" : "Node agent details",
+      "properties" : {
+        "archType" : {
+          "description" : "Node agent host machine arch",
+          "enum" : [ "ARM64", "AMD64" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "config" : {
+          "$ref" : "#/definitions/Config",
+          "description" : "Node agent configuration",
+          "readOnly" : true
+        },
+        "customerUuid" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "home" : {
+          "description" : "Node agent installation directory",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ip" : {
+          "description" : "Node agent server IP",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Node agent name",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "osType" : {
+          "description" : "Node agent host OS",
+          "enum" : [ "DARWIN", "LINUX" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "port" : {
+          "description" : "Node agent server port",
+          "format" : "int32",
+          "readOnly" : true,
+          "type" : "integer"
+        },
+        "sshPortOverride" : {
+          "description" : "SSH port override for the AMI",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sshUserOverride" : {
+          "description" : "SSH user override for the AMI",
+          "type" : "string"
+        },
+        "state" : {
+          "description" : "Node state",
+          "enum" : [ "ToBeAdded", "InstanceCreated", "ServerSetup", "ToJoinCluster", "Reprovisioning", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "MetricsUnavailable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "ConfigureDBApis", "Resizing", "SystemdUpgrade", "Terminating", "Terminated", "Rebooting", "HardRebooting" ],
+          "example" : "Provisioned",
+          "type" : "string"
+        },
+        "updatedAt" : {
+          "description" : "Updated time",
+          "example" : "2022-12-21T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Node agent UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "version" : {
+          "description" : "Node agent installed version",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "versionMatched" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
+    "NodeConfig" : {
+      "description" : "A node configuration.",
+      "properties" : {
         "archType" : {
           "description" : "Node agent host machine arch",
           "enum" : [ "ARM64", "AMD64" ],
@@ -6742,6 +6985,13 @@
         "isYsqlServer" : {
           "description" : "True if this node is a YSQL server",
           "type" : "boolean"
+        },
+        "lastVolumeUpdateTime" : {
+          "description" : "Store last volume update time",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
         },
         "lastVolumeUpdateTime" : {
           "description" : "Store last volume update time",
@@ -16307,6 +16557,652 @@
     },
     "/api/v1/customers/{cUUID}/maintenance_windows" : {
       "post" : {
+        "deprecated" : true,
+        "description" : "",
+        "operationId" : "createBackupSchedule",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "in" : "body",
+          "name" : "CreateMaintenanceWindowRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/MaintenanceWindow"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindow"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create maintenance window",
+        "tags" : [ "Maintenance windows" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/create_backup_schedule_async" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "createBackupScheduleAsync",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Parameters of the backup to be restored",
+          "in" : "body",
+          "name" : "backup",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/BackupRequestParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create Backup Schedule Async",
+        "tags" : [ "Backups" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/customCAStore" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "addCA",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "CA certificate contents in 'X509' format",
+          "in" : "body",
+          "name" : "X509CACertificate",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomCACertParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Add a named custom CA certificate",
+        "tags" : [ "Custom CA Certificates" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/customCAStore/{certUUID}" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "updateCA",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "certUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "CA certificate contents in 'X509' format",
+          "in" : "body",
+          "name" : "X509CACertificate",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomCACertParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Update a named custom CA certificate",
+        "tags" : [ "Custom CA Certificates" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/customCAStoreCertificates" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listAllCustomCaCertificates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/CustomCaCertificateInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all custom CA certificates of a customer",
+        "tags" : [ "Custom CA Certificates" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/customCAStoreCertificates/{certUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "Delete custom CA certificate",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "certUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a named custom CA certificate",
+        "tags" : [ "Custom CA Certificates" ]
+      },
+      "get" : {
+        "description" : "",
+        "operationId" : "getAllCustomCaCertificates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "certUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Metrics to be added",
+          "in" : "body",
+          "name" : "Metrics",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/MetricQueryParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomCaCertificateInfo"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Download a custom CA certificates of a customer",
+        "tags" : [ "Custom CA Certificates" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/host_info" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getHostInfo",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get a customer's host info",
+        "tags" : [ "Customer management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/kms_configs" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listKMSConfigs",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "object"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List KMS configurations",
+        "tags" : [ "Encryption at rest" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/kms_configs/{configUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteKMSConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "configUUID",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NodeAgentPagedApiQuery"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a KMS configuration",
+        "tags" : [ "Encryption at rest" ]
+      },
+      "get" : {
+        "description" : "",
+        "operationId" : "getKMSConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "configUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get details of a KMS configuration",
+        "tags" : [ "Encryption at rest" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/kms_configs/{configUUID}/edit" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "editKMSConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "configUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "KMS config to be edited",
+          "in" : "body",
+          "name" : "KMS config",
+          "required" : true,
+          "schema" : {
+            "type" : "object"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Edit a KMS configuration",
+        "tags" : [ "Encryption at rest" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/kms_configs/{configUUID}/refresh" : {
+      "put" : {
+        "description" : "",
+        "operationId" : "refreshKMSConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "configUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          },
+          "500" : {
+            "description" : "If there is an error refreshing the KMS config.",
+            "schema" : {
+              "$ref" : "#/definitions/YBPError"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Refresh KMS Config",
+        "tags" : [ "Encryption at rest" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/kms_configs/{kmsProvider}" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "createKMSConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "kmsProvider",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "KMS config to be created",
+          "in" : "body",
+          "name" : "KMS config",
+          "required" : true,
+          "schema" : {
+            "type" : "object"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create a KMS configuration",
+        "tags" : [ "Encryption at rest" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/ldap_mappings" : {
+      "get" : {
+        "description" : "List LDAP Mappings",
+        "operationId" : "listLdapDnToYbaRoles",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/LdapDnToYbaRoleData"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List LDAP Mappings",
+        "tags" : [ "LDAP Role management" ]
+      },
+      "put" : {
+        "description" : "Set LDAP Mappings",
+        "operationId" : "setLdapDnToYbaRoles",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "New LDAP Mappings to be set",
+          "in" : "body",
+          "name" : "ldapMappings",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/LdapDnToYbaRoleData"
+          }
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Set LDAP Mappings",
+        "tags" : [ "LDAP Role management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/licenses" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "upload_license",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomerLicense"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Uploads the license",
+        "tags" : [ "License management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/licenses/{lUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteLicense",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "lUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a license",
+        "tags" : [ "License management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/maintenance_windows" : {
+      "post" : {
         "description" : "",
         "operationId" : "create",
         "parameters" : [ {
@@ -16315,6 +17211,18 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "validate",
+          "required" : false,
+          "type" : "boolean"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "ignoreValidationErrors",
+          "required" : false,
+          "type" : "boolean"
         }, {
           "in" : "query",
           "name" : "request",
@@ -16383,6 +17291,12 @@
           "format" : "uuid",
           "in" : "path",
           "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
           "required" : true,
           "type" : "string"
         }, {
@@ -17020,6 +17934,12 @@
           "in" : "path",
           "name" : "code",
           "required" : true,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "subType",
+          "required" : false,
           "type" : "string"
         } ],
         "responses" : {

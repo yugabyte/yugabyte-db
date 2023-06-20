@@ -18,6 +18,7 @@ import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -48,6 +49,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -59,6 +61,7 @@ import play.mvc.Result;
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
+  @Inject private CloudProviderHelper cloudProviderHelper;
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private ConfigHelper configHelper;
 
@@ -359,15 +362,27 @@ public class CloudProviderApiController extends AuthenticatedController {
       value = "Retrieves the region metadata for the cloud providers",
       response = RegionMetadata.class,
       nickname = "getRegionMetadata")
-  public Result fetchRegionMetadata(UUID customerUUID, String code) {
+  public Result fetchRegionMetadata(UUID customerUUID, String code, String subType) {
     CloudType cloudType = null;
     try {
       cloudType = CloudType.valueOf(code);
+      if (cloudType == CloudType.kubernetes && StringUtils.isEmpty(subType)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format("Specify a subType (eks, gke, aks, etc) for %s provider.", code));
+      }
     } catch (IllegalArgumentException e) {
       throw new PlatformServiceException(BAD_REQUEST, "Specify a valid cloud provider code.");
     }
     try {
-      Map<String, Object> regionMetadataMap = configHelper.getRegionMetadata(cloudType);
+      Map<String, Object> regionMetadataMap;
+      if (cloudType != CloudType.kubernetes) {
+        regionMetadataMap = configHelper.getRegionMetadata(cloudType);
+      } else {
+        ConfigHelper.ConfigType k8sConfigType =
+            cloudProviderHelper.getKubernetesConfigType(subType);
+        regionMetadataMap = configHelper.getConfig(k8sConfigType);
+      }
       ObjectMapper mapper = Json.mapper();
       ObjectNode regionMetadataObj = mapper.createObjectNode();
       regionMetadataObj.set("regionMetadata", Json.toJson(regionMetadataMap));

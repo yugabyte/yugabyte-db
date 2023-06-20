@@ -31,6 +31,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -141,6 +142,14 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
                 "us-west-1", regionMetadata,
                 "us-west-2", regionMetadata,
                 "us-east-1", regionMetadata));
+
+    when(mockConfigHelper.getConfig(ConfigHelper.ConfigType.GKEKubernetesRegionMetadata))
+        .thenReturn(
+            ImmutableMap.of(
+                // GCP regions to use.
+                "us-west1", regionMetadata,
+                "us-west2", regionMetadata,
+                "us-east1", regionMetadata));
     String kubeFile = createTempFile("test2.conf", "test5678");
     when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
         .thenReturn(kubeFile);
@@ -550,7 +559,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     ObjectNode region = Json.newObject();
     region.put("name", "Region 2");
-    region.put("code", "region-2");
+    region.put("code", "us-west2");
 
     ArrayNode zones = Json.newArray();
     ObjectNode zone = Json.newObject();
@@ -571,7 +580,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     p = Provider.getOrBadRequest(p.getUuid());
 
     assertEquals(2, p.getRegions().size());
-    assertEquals("region-2", p.getRegions().get(1).getCode());
+    assertEquals("us-west2", p.getRegions().get(1).getCode());
     assertEquals("zone-2", p.getRegions().get(1).getZones().get(0).getCode());
   }
 
@@ -736,7 +745,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     ArrayNode regions = mapper.createArrayNode();
     ObjectNode regionJson = Json.newObject();
-    regionJson.put("code", "US-West");
+    regionJson.put("code", "us-west1");
     regionJson.put("name", "US West");
     ArrayNode azs = mapper.createArrayNode();
     ObjectNode azJson = Json.newObject();
