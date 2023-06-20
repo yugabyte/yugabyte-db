@@ -10,6 +10,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.common.CloudProviderHelper;
+import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -57,6 +58,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
 
   @JsonAlias({"host_project_id", "project_id", GCPCloudImpl.GCE_PROJECT_PROPERTY})
   @ApiModelProperty
+  @EditableInUseProvider(name = "GCP Project", allowed = false)
   private String gceProject;
 
   @JsonAlias({"config_file_path", GCPCloudImpl.GOOGLE_APPLICATION_CREDENTIALS_PROPERTY})
@@ -69,13 +71,16 @@ public class GCPCloudInfo implements CloudInfoInterface {
 
   @JsonAlias({"network", GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY})
   @ApiModelProperty
+  @EditableInUseProvider(name = "Destination VPC ID", allowed = false)
   private String destVpcId;
 
   @JsonAlias(CloudProviderHelper.YB_FIREWALL_TAGS)
+  @EditableInUseProvider(name = "Firewall Tags", allowed = false)
   @ApiModelProperty
   private String ybFirewallTags;
 
   @JsonAlias("use_host_vpc")
+  @EditableInUseProvider(name = "Switching Host VPC", allowed = false)
   @ApiModelProperty
   private Boolean useHostVPC;
 

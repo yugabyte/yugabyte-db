@@ -20,7 +20,6 @@ import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
-import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
 import com.yugabyte.yw.models.AccessKey;
@@ -44,7 +43,6 @@ import lombok.extern.slf4j.Slf4j;
 public class CloudProviderEdit extends CloudTaskBase {
 
   private RegionHandler regionHandler;
-  private CloudProviderHandler cloudProviderHandler;
   private AccessKeyHandler accessKeyHandler;
   private CloudProviderHelper cloudProviderHelper;
   private ImageBundleHandler imageBundleHandler;
@@ -53,13 +51,11 @@ public class CloudProviderEdit extends CloudTaskBase {
   protected CloudProviderEdit(
       BaseTaskDependencies baseTaskDependencies,
       RegionHandler regionHandler,
-      CloudProviderHandler cloudProviderHandler,
       AccessKeyHandler accessKeyHandler,
       CloudProviderHelper cloudProviderHelper,
       ImageBundleHandler imageBundleHandler) {
     super(baseTaskDependencies);
     this.regionHandler = regionHandler;
-    this.cloudProviderHandler = cloudProviderHandler;
     this.accessKeyHandler = accessKeyHandler;
     this.cloudProviderHelper = cloudProviderHelper;
     this.imageBundleHandler = imageBundleHandler;

@@ -5137,6 +5137,7 @@
     "KubernetesInfo" : {
       "properties" : {
         "kubeConfig" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "kubeConfigContent" : {
@@ -5155,6 +5156,7 @@
           "type" : "string"
         },
         "kubernetesPullSecret" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "kubernetesPullSecretContent" : {
@@ -5422,6 +5424,7 @@
           "type" : "string"
         },
         "kubeConfig" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "kubeConfigContent" : {
@@ -5449,6 +5452,7 @@
           "type" : "string"
         },
         "kubernetesPullSecret" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "kubernetesPullSecretContent" : {

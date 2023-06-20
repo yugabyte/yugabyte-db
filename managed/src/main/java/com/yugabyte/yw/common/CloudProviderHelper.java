@@ -35,11 +35,18 @@ import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
+import java.lang.annotation.Annotation;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -728,6 +735,10 @@ public class CloudProviderHelper {
           BAD_REQUEST, "Modifying provider details is not allowed for providers in use.");
     }
 
+    CloudInfoInterface providerCloudInfo = CloudInfoInterface.get(provider);
+    CloudInfoInterface editProviderCloudInfo = CloudInfoInterface.get(editProviderReq);
+    checkCloudInfoFieldsInUseProvider(providerCloudInfo, editProviderCloudInfo);
+
     // Collect existing and current regions into maps
     Map<String, Region> existingRegions =
         provider.getRegions().stream().collect(Collectors.toMap(r -> r.getCode(), r -> r));
@@ -847,13 +858,6 @@ public class CloudProviderHelper {
       Provider provider,
       boolean cloudValidate,
       boolean ignoreCloudValidationErrors) {
-    // Validate the provider request so as to ensure we only allow editing of fields
-    // that does not impact the existing running universes.
-    long universeCount = provider.getUniverseCount();
-    if (!confGetter.getGlobalConf(GlobalConfKeys.allowUsedProviderEdit) && universeCount > 0) {
-      validateProviderEditPayload(provider, editProviderReq);
-    }
-
     if (editProviderReq.getVersion() < provider.getVersion()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Provider has changed, please refresh and try again");
@@ -861,7 +865,6 @@ public class CloudProviderHelper {
     if (!provider.getCloudCode().equals(editProviderReq.getCloudCode())) {
       throw new PlatformServiceException(BAD_REQUEST, "Changing provider type is not supported!");
     }
-    CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
     if (!provider.getName().equals(editProviderReq.getName())) {
       List<Provider> providers =
           Provider.getAll(
@@ -871,6 +874,14 @@ public class CloudProviderHelper {
             BAD_REQUEST,
             String.format("Provider with name %s already exists.", editProviderReq.getName()));
       }
+    }
+
+    CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
+    // Validate the provider request so as to ensure we only allow editing of fields
+    // that does not impact the existing running universes.
+    long universeCount = provider.getUniverseCount();
+    if (!confGetter.getGlobalConf(GlobalConfKeys.allowUsedProviderEdit) && universeCount > 0) {
+      validateProviderEditPayload(provider, editProviderReq);
     }
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     // Validate regions to add. We only support providing custom VPCs for now.
@@ -924,6 +935,50 @@ public class CloudProviderHelper {
       return r.getCode();
     }
     return null;
+  }
+
+  private void checkCloudInfoFieldsInUseProvider(
+      CloudInfoInterface cloudInfo, CloudInfoInterface reqCloudInfo) {
+    Field[] fields = reqCloudInfo.getClass().getDeclaredFields();
+    // Iterate over each field
+    for (Field field : fields) {
+      // Get the annotations for the field
+      Annotation[] annotations = field.getDeclaredAnnotations();
+      // Iterate over each annotation
+      for (Annotation annotation : annotations) {
+        // Check if it's your custom annotation
+        if (annotation instanceof EditableInUseProvider) {
+          EditableInUseProvider editableInUseProviderAnnotation =
+              (EditableInUseProvider) annotation;
+          boolean editAllowed = editableInUseProviderAnnotation.allowed();
+          if (!editAllowed) {
+            field.setAccessible(true);
+            try {
+              Object existingValue = field.get(reqCloudInfo);
+              Object updatedValue = field.get(cloudInfo);
+
+              if (!Objects.equals(existingValue, updatedValue)) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "%s cannot be modified for in-use providers.",
+                        editableInUseProviderAnnotation.name()));
+              }
+            } catch (IllegalAccessException e) {
+              log.debug(String.format("%s does not exist in cloudInfo, skipping", field.getName()));
+            }
+          }
+        }
+      }
+    }
+  }
+
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target({ElementType.METHOD, ElementType.FIELD})
+  public @interface EditableInUseProvider {
+    public String name();
+
+    public boolean allowed() default true;
   }
 
   public ConfigHelper.ConfigType getKubernetesConfigType(String cloudProviderCode) {
