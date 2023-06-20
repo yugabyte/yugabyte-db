@@ -19,9 +19,9 @@ For information on two data center (2DC) deployment architecture and supported r
 
 You can create source and target universes as follows:
 
-1. Create the yugabyte-source universe by following the procedure from [Manual deployment](../../manual-deployment).
+1. Create the source universe by following the procedure from [Manual deployment](../../manual-deployment).
 1. Create tables for the APIs being used by the source universe.
-1. Create the yugabyte-target universe by following the procedure from [Manual deployment](../../manual-deployment).
+1. Create the target universe by following the procedure from [Manual deployment](../../manual-deployment).
 1. Create tables for the APIs being used by the target universe. These should be the same tables as you created for the source universe.
 1. Proceed to setting up [unidirectional](#seting-up-unidirectional-replication) or [bidirectional](#setting-up-bidirectional-replication) replication.
 
@@ -59,7 +59,6 @@ After you created the required tables, you can set up unidirectional replication
         000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
     ```
 
-
 The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table.
 
 Also, be sure to specify all master addresses for source and target universes in the command.
@@ -68,17 +67,17 @@ If you need to set up bidirectional replication, see instructions provided in [S
 
 ## Setting Up Bidirectional Replication
 
-To set up bidirectional replication, repeat the procedure described in [Setting Up Unidirectional Replication](#setting-up-unidirectional-replication) applying the steps to the yugabyte-target universe. You need to set up each yugabyte-source to consume data from yugabyte-target.
+To set up bidirectional replication, repeat the procedure described in [Setting Up Unidirectional Replication](#setting-up-unidirectional-replication) applying the steps to the target universe. You need to set up each source to consume data from target.
 
 When completed, proceed to [Loading Data](#loading-data-into-the-source-universe).
 
 ## Loading Data into the Source Universe
 
-Once you have set up replication, load data into the source universe as follows:
+After you have set up replication, load data into the source universe as follows:
 
 - Download the YugabyteDB workload generator JAR file `yb-sample-apps.jar` from [GitHub](https://github.com/yugabyte/yb-sample-apps/releases).
 
-- Start loading data into yugabyte-source by following examples for YSQL or YCQL:
+- Start loading data into source by following examples for YSQL or YCQL:
 
   - YSQL:
 
@@ -94,7 +93,7 @@ Once you have set up replication, load data into the source universe as follows:
 
   Note that the IP address needs to correspond to the IP of any T-Servers in the cluster.
 
-- For bidirectional replication, repeat the preceding step in the yugabyte-target universe.
+- For bidirectional replication, repeat the preceding step in the target universe.
 
 When completed, proceed to [Verifying Replication](#verifying-replication).
 
@@ -118,11 +117,11 @@ For example:
 
 When both universes use different certificates, you need to store the certificates for the producer universe on the target universe:
 
-1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../reference/configuration/yb-master/#use-node-to-node-encryption) and [tservers](../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
+1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../../reference/configuration/yb-master/#use-node-to-node-encryption) and [tservers](../../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
 
-1. For each master and tserver on the target universe, set the gflag `certs_for_cdc_dir` to the parent directory where you will store all the source universe's certs for replication.
+1. For each master and tserver on the target universe, set the flag `certs_for_cdc_dir` to the parent directory where you will store all the source universe's certs for replication.
 
-1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored within the [`--certs_dir`](/preview/reference/configuration/yb-master/#certs-dir).
+1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored in the [`--certs_dir`](/preview/reference/configuration/yb-master/#certs-dir).
 
 1. Copy this file to each node on the target. It needs to be copied to a directory named: `<certs_for_cdc_dir>/<source_universe_uuid>`.
 
@@ -142,19 +141,19 @@ When both universes use different certificates, you need to store the certificat
 
 ## Verifying Replication
 
-You can verify replication by stopping the workload and then using the `COUNT(*)` function on the yugabyte-target to yugabyte-source match.
+You can verify replication by stopping the workload and then using the `COUNT(*)` function on the target to source match.
 
 ### Unidirectional Replication
 
-For unidirectional replication, connect to the yugabyte-target universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and confirm that you can see the expected records.
+For unidirectional replication, connect to the target universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and confirm that you can see the expected records.
 
 ### Bidirectional Replication
 
 For bidirectional replication, repeat the procedure described in [Unidirectional Replication](#unidirectional-replication), but reverse the source and destination information, as follows:
 
-1. Run `yb-admin setup_universe_replication` on the yugabyte-target universe, pointing to yugabyte-source.
-2. Use the workload generator to start loading data into the yugabyte-target universe.
-3. Verify replication from yugabyte-target to yugabyte-source.
+1. Run `yb-admin setup_universe_replication` on the target universe, pointing to source.
+2. Use the workload generator to start loading data into the target universe.
+3. Verify replication from target to source.
 
 To avoid primary key conflict errors, keep the key ranges for the two universes separate. This is done automatically by the applications included in the `yb-sample-apps.jar`.
 
