@@ -72,7 +72,7 @@ public class NodeDetails {
   @ApiModelProperty(value = "SSH port override for the AMI")
   public Integer sshPortOverride;
 
-  // Indicates that disks in fstab are mounted using using uuid (not as by path).
+  // Indicates that disks in fstab are mounted using uuid (not as by path).
   @ApiModelProperty(value = "Disks are mounted by uuid")
   public boolean disksAreMountedByUUID;
 

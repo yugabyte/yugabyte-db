@@ -748,7 +748,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.node_agent.client.token_lifetime",
           ScopeType.GLOBAL,
           "Node Agent Token Lifetime",
-          "Lifetime oftoken used by node agent clients",
+          "Lifetime of token used by node agent clients",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> nodeAgentServerPort =
@@ -758,5 +758,24 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node Agent Server Port",
           "Listening port for node agent servers",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> waitForClockSyncMaxAcceptableClockSkew =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.max_acceptable_clock_skew",
+          ScopeType.GLOBAL,
+          "Max acceptable clock skew on the DB nodes",
+          "The maximum clock skew on the DB nodes before the tserver or master process can"
+              + "start",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> waitForClockSyncTimeout =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.timeout",
+          ScopeType.GLOBAL,
+          "Timeout for the waitForClockSync subtask",
+          "The amount of time that the waitForClockSync subtask waits for the clocks of the "
+              + "DB nodes to sync; if the sync does not happen within this the time specified in "
+              + "this config value, the subtask will fail",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }
