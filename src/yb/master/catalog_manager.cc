@@ -8647,6 +8647,7 @@ void CatalogManager::ProcessPendingNamespace(
   auto term = leader_ready_term();
 
   if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_hang_on_namespace_transition))) {
+    TEST_SYNC_POINT("CatalogManager::ProcessPendingNamespace:Fail");
     LOG(INFO) << "Artificially waiting (" << FLAGS_catalog_manager_bg_task_wait_ms
               << "ms) on namespace creation for " << id;
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms));
@@ -8811,6 +8812,12 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
     case SysNamespaceEntryPB::DELETING:
     case SysNamespaceEntryPB::DELETED:
       resp->set_done(true);
+      if (ns->database_type() == YQL_DATABASE_PGSQL) {
+        return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR,
+            STATUS(InternalError,
+                "Namespace Create Failed: The namespace is in process "
+                "of deletion due to internal error."));
+      }
       break;
     // Pending cases.  NOT DONE
     case SysNamespaceEntryPB::PREPARING:
