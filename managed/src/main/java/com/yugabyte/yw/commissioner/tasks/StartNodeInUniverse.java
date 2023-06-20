@@ -108,6 +108,12 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
         startMaster = !startTserver;
       }
 
+      final Set<NodeDetails> nodeCollection = ImmutableSet.of(currentNode);
+
+      // Make sure clock skew is low enough on the node.
+      createWaitForClockSyncTasks(universe, nodeCollection)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
       if (startMaster) {
         if (currentNode.masterState == null) {
           saveNodeStatus(
@@ -115,7 +121,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
         }
         createStartMasterOnNodeTasks(universe, currentNode, null, false);
       }
-      final Set<NodeDetails> nodeCollection = ImmutableSet.of(currentNode);
+
       if (startTserver) {
         // Update master addresses for tservers.
         createConfigureServerTasks(nodeCollection, params -> params.updateMasterAddrsOnly = true)
