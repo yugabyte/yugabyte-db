@@ -79,6 +79,8 @@ class PgLocksTestBase : public client::GeoTransactionsTestBase {
 
   std::vector<TabletServerServiceProxy*> get_ts_proxies(const std::string& ts_uuid = "");
 
+  Result<std::future<Status>> ExpectBlockedAsync(pgwrapper::PGConn* conn, const std::string& query);
+
   static constexpr int kTimeoutMs = 2000;
 
  private:

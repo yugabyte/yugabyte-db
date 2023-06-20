@@ -4220,54 +4220,13 @@ Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
   return auto_flags_manager_->LoadFromConfig(config, ApplyNonRuntimeAutoFlags::kFalse);
 }
 
-Status AddLockInfo(Slice key, Slice val, const SchemaPtr& schema, LockInfoPB* lock_info) {
+Status PopulateLockInfoFromIntent(
+    Slice key, Slice val, const SchemaPtr& schema, LockInfoPB* lock_info) {
   auto parsed_intent = VERIFY_RESULT(docdb::ParseIntentKey(key, val));
   auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
-      val, nullptr /* verify_transaction_id_slice */,
-      HasStrong(parsed_intent.types)));
+      val, nullptr /* verify_transaction_id_slice */, HasStrong(parsed_intent.types)));
 
-  dockv::SubDocKey subdoc_key;
-  RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(
-      parsed_intent.doc_path, dockv::HybridTimeRequired::kFalse));
-  DCHECK(!subdoc_key.has_hybrid_time());
-
-  auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(parsed_intent.doc_ht));
-  lock_info->set_wait_end_ht(doc_ht.hybrid_time().ToUint64());
-  for (const auto& hash_key : subdoc_key.doc_key().hashed_group()) {
-    lock_info->add_hash_cols(hash_key.ToString());
-  }
-  for (const auto& range_key : subdoc_key.doc_key().range_group()) {
-    lock_info->add_range_cols(range_key.ToString());
-  }
-  if (subdoc_key.num_subkeys() > 0 && subdoc_key.last_subkey().IsColumnId()) {
-    lock_info->set_column_id(subdoc_key.last_subkey().GetColumnId());
-  }
-
-  lock_info->set_transaction_id(decoded_value.transaction_id.ToString());
-  lock_info->set_subtransaction_id(decoded_value.subtransaction_id);
-  lock_info->set_is_explicit(
-      decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock));
-  lock_info->set_is_full_pk(
-      schema->num_hash_key_columns() == subdoc_key.doc_key().hashed_group().size() &&
-      schema->num_range_key_columns() == subdoc_key.doc_key().range_group().size());
-
-  for (const auto& intent_type : parsed_intent.types) {
-    switch (intent_type) {
-      case dockv::IntentType::kWeakRead:
-        lock_info->add_modes(LockMode::WEAK_READ);
-        break;
-      case dockv::IntentType::kWeakWrite:
-        lock_info->add_modes(LockMode::WEAK_WRITE);
-        break;
-      case dockv::IntentType::kStrongRead:
-        lock_info->add_modes(LockMode::STRONG_READ);
-        break;
-      case dockv::IntentType::kStrongWrite:
-        lock_info->add_modes(LockMode::STRONG_WRITE);
-        break;
-    }
-  }
-  return Status::OK();
+  return docdb::PopulateLockInfoFromParsedIntent(parsed_intent, decoded_value, schema, lock_info);
 }
 
 Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
@@ -4304,64 +4263,65 @@ Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
         continue;
       }
 
-      RETURN_NOT_OK(
-          AddLockInfo(key, intent_iter->value(), schema(), tablet_lock_info->add_locks()));
+      RETURN_NOT_OK(PopulateLockInfoFromIntent(
+          key, intent_iter->value(), schema(), tablet_lock_info->add_locks()));
 
       intent_iter->Next();
     }
 
-    return intent_iter->status();
-  }
-
-  DCHECK(!transaction_ids.empty());
-  // While fetching intents of transactions below, we assume that the 'transaction_ids' set is
-  // sorted following the encoded string notation order of TransactionId. This assumption helps us
-  // avoid repeated SeekToFirst calls on the rocksdb iterator and we fetch relevants intents in one
-  // forward pass.
-  DCHECK(std::is_sorted(transaction_ids.begin(), transaction_ids.end(), IsSortedAscendingEncoded));
-
-  // If transaction_ids is set, use txn reverse mapping of intents_db to find all intent keys
-  // efficiently.
-  std::vector<dockv::KeyBytes> txn_intent_keys;
-  static constexpr size_t kReverseKeySize = 1 + sizeof(TransactionId);
-  char reverse_key_data[kReverseKeySize];
-  reverse_key_data[0] = dockv::KeyEntryTypeAsChar::kTransactionId;
-  for (auto& txn_id : transaction_ids) {
-    memcpy(&reverse_key_data[1], txn_id.data(), sizeof(TransactionId));
-    auto reverse_key = Slice(reverse_key_data, kReverseKeySize);
-    intent_iter->Seek(reverse_key);
-
-    // Skip the transaction metadata entry.
-    if (intent_iter->Valid() && intent_iter->key().compare(reverse_key) == 0) {
-      intent_iter->Next();
-    }
-
-    while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0) {
-      DCHECK_EQ(intent_iter->key()[0], dockv::KeyEntryTypeAsChar::kTransactionId);
-      txn_intent_keys.emplace_back(intent_iter->value());
-      intent_iter->Next();
-    }
     RETURN_NOT_OK(intent_iter->status());
-  }
+  } else {
+    DCHECK(!transaction_ids.empty());
+    // While fetching intents of transactions below, we assume that the 'transaction_ids' set is
+    // sorted following the encoded string notation order of TransactionId. This assumption helps us
+    // avoid repeated SeekToFirst calls on the rocksdb iterator and we fetch relevants intents in
+    // one forward pass.
+    DCHECK(std::is_sorted(
+        transaction_ids.begin(), transaction_ids.end(), IsSortedAscendingEncoded));
 
-  if (txn_intent_keys.empty()) {
-    return Status::OK();
-  }
+    // If transaction_ids is set, use txn reverse mapping of intents_db to find all intent keys
+    // efficiently.
+    std::vector<dockv::KeyBytes> txn_intent_keys;
+    static constexpr size_t kReverseKeySize = 1 + sizeof(TransactionId);
+    char reverse_key_data[kReverseKeySize];
+    reverse_key_data[0] = dockv::KeyEntryTypeAsChar::kTransactionId;
+    for (auto& txn_id : transaction_ids) {
+      memcpy(&reverse_key_data[1], txn_id.data(), sizeof(TransactionId));
+      auto reverse_key = Slice(reverse_key_data, kReverseKeySize);
+      intent_iter->Seek(reverse_key);
 
-  std::sort(txn_intent_keys.begin(), txn_intent_keys.end());
+      // Skip the transaction metadata entry.
+      if (intent_iter->Valid() && intent_iter->key().compare(reverse_key) == 0) {
+        intent_iter->Next();
+      }
 
-  intent_iter->SeekToFirst();
-  RETURN_NOT_OK(intent_iter->status());
+      while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0) {
+        DCHECK_EQ(intent_iter->key()[0], dockv::KeyEntryTypeAsChar::kTransactionId);
+        txn_intent_keys.emplace_back(intent_iter->value());
+        intent_iter->Next();
+      }
+      RETURN_NOT_OK(intent_iter->status());
+    }
 
-  for (const auto& intent_key : txn_intent_keys) {
-    intent_iter->Seek(intent_key);
+    std::sort(txn_intent_keys.begin(), txn_intent_keys.end());
+    intent_iter->SeekToFirst();
     RETURN_NOT_OK(intent_iter->status());
 
-    auto key = intent_iter->key();
-    DCHECK_EQ(intent_iter->key(), key);
+    for (const auto& intent_key : txn_intent_keys) {
+      intent_iter->Seek(intent_key);
+      RETURN_NOT_OK(intent_iter->status());
 
-    auto val = intent_iter->value();
-    RETURN_NOT_OK(AddLockInfo(key, val, schema(), tablet_lock_info->add_locks()));
+      auto key = intent_iter->key();
+      DCHECK_EQ(intent_iter->key(), key);
+
+      auto val = intent_iter->value();
+      RETURN_NOT_OK(PopulateLockInfoFromIntent(key, val, schema(), tablet_lock_info->add_locks()));
+    }
+  }
+
+  const auto& wait_queue = transaction_participant()->wait_queue();
+  if (wait_queue) {
+    RETURN_NOT_OK(wait_queue->GetLockStatus(transaction_ids, schema(), tablet_lock_info));
   }
 
   return Status::OK();

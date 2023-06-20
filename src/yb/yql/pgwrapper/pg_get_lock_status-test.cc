@@ -86,5 +86,30 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusWithCustomTransactionsList) {
   ASSERT_EQ(num_txns, 1);
 }
 
+TEST_F(PgGetLockStatusTest, YB_DISABLE_TEST_IN_TSAN(TestLocksFromWaitQueue)) {
+  const auto table = "foo";
+  const auto key = "1";
+  auto session = ASSERT_RESULT(Init(table, key));
+
+  // Create a second transaction and make it wait on the earlier txn. This txn won't acquire
+  // any locks and will wait in the wait-queue.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto status_future = ASSERT_RESULT(
+      ExpectBlockedAsync(&conn, Format("UPDATE $0 SET v=v+10 WHERE k=$1", table, key)));
+
+  // Assert that locks corresponding to the waiter txn as well are returned in
+  // GetLockStatusResponsePB.
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  const auto& tablet_id = session.first_involved_tablet;
+  auto resp = ASSERT_RESULT(GetLockStatus(tablet_id));
+  auto num_txns = ASSERT_RESULT(GetNumTxnsInLockStatusResponse(resp));
+  ASSERT_EQ(num_txns, 2);
+
+  ASSERT_TRUE(conn.IsBusy());
+  ASSERT_OK(session.conn->Execute("COMMIT"));
+  ASSERT_OK(status_future.get());
+}
+
 } // namespace pgwrapper
 } // namespace yb
