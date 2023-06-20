@@ -31,10 +31,13 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_bool(enable_wait_queues);
+DECLARE_bool(enable_deadlock_detection);
 
 using namespace std::literals;
 using std::string;
@@ -55,6 +58,10 @@ using client::internal::RemoteTabletPtr;
 using tserver::TabletServerServiceProxy;
 
 void PgLocksTestBase::SetUp() {
+  // Enable wait-queues and deadlock detection.
+  FLAGS_enable_wait_queues = true;
+  FLAGS_enable_deadlock_detection = true;
+
   PgMiniTestBase::SetUp();
   InitTSProxies();
 }
@@ -192,6 +199,18 @@ std::vector<TabletServerServiceProxy*> PgLocksTestBase::get_ts_proxies(const std
   }
 
   return ts_proxies;
+}
+
+Result<std::future<Status>> PgLocksTestBase::ExpectBlockedAsync(
+    pgwrapper::PGConn* conn, const std::string& query) {
+  auto status = std::async(std::launch::async, [&conn, query]() {
+    return conn->Execute(query);
+  });
+
+  RETURN_NOT_OK(WaitFor([&conn] () {
+    return conn->IsBusy();
+  }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
+  return status;
 }
 
 } // namespace pgwrapper
