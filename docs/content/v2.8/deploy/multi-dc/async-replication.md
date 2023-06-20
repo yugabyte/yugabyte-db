@@ -74,7 +74,7 @@ When completed, proceed to [Loading Data](#loading-data-into-the-producer-univer
 
 ## Loading Data into the Producer Universe
 
-Once you have set up replication, load data into the producer universe as follows:
+After you have set up replication, load data into the producer universe as follows:
 
 - Download the YugabyteDB workload generator JAR file `yb-sample-apps.jar` from [GitHub](https://github.com/yugabyte/yb-sample-apps/releases).
 

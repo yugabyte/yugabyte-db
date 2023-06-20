@@ -171,7 +171,7 @@ Consider the following example:
 
 When universes use different certificates, you need to store the certificates for the source universe on the target universe, as follows:
 
-1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../reference/configuration/yb-master/#use-node-to-node-encryption) and [t-servers](../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
+1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../../reference/configuration/yb-master/#use-node-to-node-encryption) and [t-servers](../../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
 
 1. For each master and t-server on the target universe, set the flag `certs_for_cdc_dir` to the parent directory where you want to store all the source universe's certificates for replication.
 
