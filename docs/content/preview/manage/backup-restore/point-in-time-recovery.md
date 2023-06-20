@@ -160,7 +160,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
     ```sh
     ./bin/yb-admin \
         -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
-        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 2022-05-01 13:00-0700
+        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 "2022-05-01 13:00-0700"
     ```
 
   * Restore to a time that is relative to the current (for example, to 10 minutes ago from now) by specifying how much time back you would like to roll a database or keyspace.
@@ -207,7 +207,7 @@ This limitation will be removed in an upcoming release, and is tracked in issue 
 
 PITR functionality has several limitations, primarily related to interactions with other YugabyteDB features. Most of these limitations will be addressed in upcoming releases; refer to each limitation's corresponding tracking issue for details.
 
-###  CDC
+### CDC
 
 Using PITR and [CDC](../../../explore/change-data-capture/) together is currently not supported.
 
