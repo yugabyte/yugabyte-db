@@ -2055,6 +2055,7 @@ public class PlacementInfoUtil {
         int freeNodesInAZ = zoneToNodes.get(zone).size() - allocatedMastersRgAz.get(zone);
         if (freeNodesInAZ > 0) {
           int toAllocate = (int) Math.round(freeNodesInAZ * mastersPerNode);
+          toAllocate = Math.min(toAllocate, mastersLeft);
           mastersLeft -= toAllocate;
           allocatedMastersRgAz.put(zone, allocatedMastersRgAz.get(zone) + toAllocate);
         }
