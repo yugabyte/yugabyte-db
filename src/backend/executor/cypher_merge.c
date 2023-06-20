@@ -198,27 +198,25 @@ static bool check_path(cypher_merge_custom_scan_state *css,
              */
             if (slot->tts_isnull[node->tuple_position - 1])
             {
+
                 return true;
             }
         }
-
     }
-
     return false;
 }
 
 static void process_path(cypher_merge_custom_scan_state *css)
 {
     cypher_create_path *path = css->path;
-
     ListCell *lc = list_head(path->target_nodes);
 
     /*
      * Create the first vertex. The create_vertex function will
      * create the rest of the path, if necessary.
      */
-    merge_vertex(css, lfirst(lc), lnext(lc));
 
+    merge_vertex(css, lfirst(lc), lnext(lc));
 
     /*
      * If this path is a variable, take the list that was accumulated
@@ -272,9 +270,13 @@ static void process_simple_merge(CustomScanState *node)
     if (TupIsNull(slot))
     {
         ExprContext *econtext = node->ss.ps.ps_ExprContext;
+        SubqueryScanState *sss = (SubqueryScanState *)node->ss.ps.lefttree;
+
+        /* our child execution node should be a subquery */
+        Assert(IsA(sss, SubqueryScanState));
 
         /* setup the scantuple that the process_path needs */
-        econtext->ecxt_scantuple = node->ss.ps.lefttree->ps_ResultTupleSlot;
+        econtext->ecxt_scantuple = sss->ss.ss_ScanTupleSlot;
         econtext->ecxt_scantuple->tts_isempty = false;
 
         process_path(css);
@@ -334,7 +336,7 @@ static TupleTableSlot *exec_cypher_merge(CustomScanState *node)
         /*
          * Case 1: MERGE is not the first clause in the cypher query.
          *
-         * For this case, we need to process all tuples give to us by the
+         * For this case, we need to process all tuples given to us by the
          * previous clause. When we receive a tuple from the previous clause:
          * check to see if the left lateral join found the pattern already. If
          * it did, we don't need to create the pattern. If the lateral join did
@@ -377,7 +379,6 @@ static TupleTableSlot *exec_cypher_merge(CustomScanState *node)
             return NULL;
         }
 
-        //return ExecProject(node->ss.ps.ps_ProjInfo);
         econtext->ecxt_scantuple = ExecProject(node->ss.ps.lefttree->ps_ProjInfo);
         return ExecProject(node->ss.ps.ps_ProjInfo);
 
@@ -783,13 +784,9 @@ static Datum merge_vertex(cypher_merge_custom_scan_state *css,
         Datum d;
         agtype_value *v = NULL;
         agtype_value *id_value = NULL;
-        TupleTableSlot *scantuple = NULL;
-        PlanState *ps = NULL;
 
-        ps = css->css.ss.ps.lefttree;
-        scantuple = ps->ps_ExprContext->ecxt_scantuple;
-
-        if (scantuple->tts_isnull[node->tuple_position - 1])
+        /* check that the variable isn't NULL */
+        if (scanTupleSlot->tts_isnull[node->tuple_position - 1])
         {
             ereport(ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -798,7 +795,7 @@ static Datum merge_vertex(cypher_merge_custom_scan_state *css,
         }
 
         /* get the vertex agtype in the scanTupleSlot */
-        d = scantuple->tts_values[node->tuple_position - 1];
+        d = scanTupleSlot->tts_values[node->tuple_position - 1];
         a = DATUM_GET_AGTYPE_P(d);
 
         /* Convert to an agtype value */

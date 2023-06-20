@@ -482,18 +482,47 @@ SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype
 --
 -- Complex MERGE w/wo RETURN values
 --
--- These should each create a path, if it doesn't already exist.
--- TODO Until the issue with variable reuse of 'x' in MERGE is corrected,
---      these commands will each create a new path.
+-- The first one should create a path, the others should just return parts of it.
 SELECT * FROM cypher('cypher_merge', $$ MERGE ()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) $$) AS (x agtype);
 SELECT * FROM cypher('cypher_merge', $$ MERGE ()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) RETURN x $$) AS (x agtype);
 SELECT * FROM cypher('cypher_merge', $$ MERGE p=()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) $$) AS (p agtype);
 SELECT * FROM cypher('cypher_merge', $$ MERGE p=()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) RETURN p $$) AS (p agtype);
 SELECT * FROM cypher('cypher_merge', $$ MERGE p=()-[:B]->(x:C)-[:E]->(x:C)<-[f:F]-(y:I) RETURN p $$) AS (p agtype);
--- TODO This should only return 1 row, as the path should already exist.
---      However, we need to fix the variable reuse in MERGE. Until then,
---      this will always return 5 rows due to 'x' above not being the same node.
+
+-- This should only return 1 row, as the path should already exist.
 SELECT * FROM cypher('cypher_merge', $$ MATCH p=()-[:B]->(:C)-[:E]->(:C)<-[:F]-(:I) RETURN p $$) AS (p agtype);
+
+-- test variable reuse in MERGE - the first MERGE of each group should create,
+-- the second MERGE shouldn't.
+SELECT * FROM cypher('cypher_merge', $$ MATCH p=(x:P)-[:E]->(x:P) RETURN p, x $$) AS (p agtype, x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE (x:P)-[:E]->(x:P) $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE (x:P)-[:E]->(x) $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MATCH p=(x:P)-[:E]->(x) RETURN p, x $$) AS (p agtype, x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MATCH p=(x:Q)-[:E]->(x:Q) RETURN p, x $$) AS (p agtype, x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE (x:Q)-[:E]->(x) $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE (x:Q)-[:E]->(x:Q) $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MATCH p=(x:Q)-[:E]->(x) RETURN p, x $$) AS (p agtype, x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MATCH p=(x:R)-[:E]->(x) RETURN p, x $$) AS (p agtype, x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x:R)-[:E]->(x) RETURN p, x $$) AS (p agtype, x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x:R)-[:E]->(x) RETURN p, x $$) AS (p agtype, x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MATCH p=(x:R)-[:E]->(x) RETURN p, x $$) AS (p agtype, x agtype);
+-- should return 4 rows
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x)-[:E]->(x) RETURN p, x $$) AS (p agtype, x agtype);
+-- should create 1 row
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x)-[:E1]->(x) RETURN p, x $$) AS (p agtype, x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MATCH p=(x)-[:E1]->(x) RETURN p, x $$) AS (p agtype, x agtype);
+-- the following should fail due to multiple labels
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x)-[:E]->(x:R) RETURN p, x $$) AS (p agtype, x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x:r)-[:E]->(x:R) RETURN p, x $$) AS (p agtype, x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE (x)-[:E]->(x:R) $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE (x:r)-[:E]->(x:R) $$) AS (x agtype);
+-- the following should fail due to reuse issues
+SELECT * FROM cypher('cypher_merge', $$ MERGE (x:r)-[y:E]->(x)-[y]->(x) $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE (x:r)-[y:E]->(x)-[x]->(y) $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE (x:r)-[y:E]->(x)-[z:E]->(y) $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x:r)-[y:E]->(x)-[p]->(x) $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x:r)-[y:E]->(x)-[p:E]->(x) $$) AS (x agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x:r)-[y:E]->(p)-[x]->(y) $$) AS (x agtype);
 
 --clean up
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);

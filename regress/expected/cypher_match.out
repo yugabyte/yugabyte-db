@@ -2174,6 +2174,15 @@ SELECT * FROM cypher('cypher_match', $$ CREATE () WITH * MATCH (x{n0:x.n1}) RETU
 ---
 (0 rows)
 
+-- these should fail due to multiple labels for a variable
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(x)-[]->(x:R) RETURN p, x $$) AS (p agtype, x agtype);
+ERROR:  multiple labels for variable 'x' are not supported
+LINE 1: ...* FROM cypher('cypher_match', $$ MATCH p=(x)-[]->(x:R) RETUR...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(x:r)-[]->(x:R) RETURN p, x $$) AS (p agtype, x agtype);
+ERROR:  multiple labels for variable 'x' are not supported
+LINE 1: ...FROM cypher('cypher_match', $$ MATCH p=(x:r)-[]->(x:R) RETUR...
+                                                             ^
 --
 -- Clean up
 --

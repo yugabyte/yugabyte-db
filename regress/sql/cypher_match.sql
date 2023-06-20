@@ -977,6 +977,10 @@ SELECT * FROM cypher('cypher_match', $$ MATCH p=(a {name:a.name})-[u {relationsh
 
 SELECT * FROM cypher('cypher_match', $$ CREATE () WITH * MATCH (x{n0:x.n1}) RETURN 0 $$) as (a agtype);
 
+-- these should fail due to multiple labels for a variable
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(x)-[]->(x:R) RETURN p, x $$) AS (p agtype, x agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(x:r)-[]->(x:R) RETURN p, x $$) AS (p agtype, x agtype);
+
 --
 -- Clean up
 --
