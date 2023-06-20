@@ -65,7 +65,11 @@ it cannot be used to replicate between clusters in the same universe.
 cluster](../../concepts/universe#universe-vs-cluster) for more on the
 distinction between universes and clusters.)
 
-For each flow, data is replicated from a _source_ (also called a producer) universe to a _sink_ (also called a consumer) universe.  Replication is done at the DocDB level, with newly committed writes in the source universe asynchronously replicated to the sink universe.  Both YSQL and YCQL are supported.
+For each flow, data is replicated from a _source_ (also called a
+producer) universe to a _sink_ (also called a consumer) universe.
+Replication is done at the DocDB level, with newly committed writes in
+the source universe asynchronously replicated to the sink universe.
+Both YSQL and YCQL are supported.
 
 Multiple flows can be used; for example, two unidirectional flows
 between two universes, one in each direction, produce bidirectional
@@ -153,7 +157,12 @@ consistency, we additionally disallow writes on the sink universe and
 cause reads to read as of a time far enough in the past that all the
 relevant data from the source universe has already been replicated.
 
-In particular, we pick the time to read as of, _T_, so that all the writes from all the source transactions that will commit at or before time _T_ have been replicated to the sink universe.  Put another way, we refuse to read as of a time that there could be incoming source writes at or before.  This restores consistent reads and ensures source universe transaction results become visible atomically.
+In particular, we pick the time to read as of, _T_, so that all the
+writes from all the source transactions that will commit at or before
+time _T_ have been replicated to the sink universe.  Put another way, we
+refuse to read as of a time that there could be incoming source writes
+at or before.  This restores consistent reads and ensures source
+universe transaction results become visible atomically.
 
 In order to know when to read as of, we maintain an analog of safe time
 called _xCluster safe time_, which is the latest time it is currently
@@ -207,7 +216,11 @@ instances.  The incoming poll request specifies the Raft log entry ID to
 start gathering changes from and the response includes a batch of
 changes and the Raft log entry ID to continue with next time.
 
-Pollers occasionally checkpoint the continue-with Raft ID of the last batch of changes they have processed; this ensures each change is processed at least once.  Much of the code for responding to polls is shared with the [Change data capture (CDC)](../change-data-capture) feature.
+Pollers occasionally checkpoint the continue-with Raft ID of the last
+batch of changes they have processed; this ensures each change is
+processed at least once.  Much of the code for responding to polls is
+shared with the [Change data capture (CDC)](../change-data-capture)
+feature.
 
 ### The mapping between source and sink tablets
 
@@ -232,7 +245,9 @@ The following illustrative diagram shows what this looks like:
 
 _diagram showing mapping of tablets and placement of pollers_
 
-Tablet splitting generates a Raft log entry, which is replicated to the sink side so that the mapping of pollers to source tablets can be updated as needed when a source tablet splits.
+Tablet splitting generates a Raft log entry, which is replicated to the
+sink side so that the mapping of pollers to source tablets can be
+updated as needed when a source tablet splits.
 
 ### Single-shard transactions
 
@@ -281,7 +296,13 @@ tablets are not done as a set atomically, writes from a single
 transaction &mdash; even a single-shard one &mdash; to multiple tablets
 can become visible at different times.
 
-When a source transaction commits, it is applied to the relevant tablets lazily.  This means that even though transaction _X_ commits before transaction _Y_, _X_'s application Raft entry may occur after _Y_'s application Raft entry on some tablets.  If this happens, the writes from _X_ can become visible in the sink universe after _Y_'s.  This is why non-transactional mode reads are only eventually consistent and not timeline consistent.
+When a source transaction commits, it is applied to the relevant tablets
+lazily.  This means that even though transaction _X_ commits before
+transaction _Y_, _X_'s application Raft entry may occur after _Y_'s
+application Raft entry on some tablets.  If this happens, the writes
+from _X_ can become visible in the sink universe after _Y_'s.  This is
+why non-transactional mode reads are only eventually consistent and not
+timeline consistent.
 
 ### Transactional mode
 
@@ -307,28 +328,63 @@ complexity than the current implementation.
 
 ## Schema differences
 
-xCluster replication does not support replicating between two copies of a table with different schemas.  For example, you cannot replicate a table to a version of that table missing a column or with a column having a different type.
+xCluster replication does not support replicating between two copies of
+a table with different schemas.  For example, you cannot replicate a
+table to a version of that table missing a column or with a column
+having a different type.
 
-More subtly, this restriction extends to hidden schema metadata like the assignment of column IDs to columns.  Just because two tables were created using the same `CREATE TABLE` statement does not mean their schemas will actually be identical.  Because of this, in practice the sink table schema needs to be copied from that of the source table; see [replication bootstrapping](#replication-bootstrapping) for how this is done.
+More subtly, this restriction extends to hidden schema metadata like the
+assignment of column IDs to columns.  Just because two tables were
+created using the same `CREATE TABLE` statement does not mean their
+schemas will actually be identical.  Because of this, in practice the
+sink table schema needs to be copied from that of the source table; see
+[replication bootstrapping](#replication-bootstrapping) for how this is
+done.
 
-Because of this restriction, xCluster does not need to do a deep translation of row contents (e.g., dropping columns or translating column IDs inside of keys and values) as rows are replicated between universes.  Only one shallow translation is done: packing schema versions are translated.  Avoiding deep translation simplifies the code and reduces the cost of replication.
+Because of this restriction, xCluster does not need to do a deep
+translation of row contents (e.g., dropping columns or translating
+column IDs inside of keys and values) as rows are replicated between
+universes.  Only one shallow translation is done: packing schema
+versions are translated.  Avoiding deep translation simplifies the code
+and reduces the cost of replication.
 
 ### Supporting schema changes
 
-Today, this is a manual process where the exact same schema change must be manually made on first one side then the other.  Replication of the given table automatically pauses while schema differences are detected and resumes once the schemas are the same again.
+Today, this is a manual process where the exact same schema change must
+be manually made on first one side then the other.  Replication of the
+given table automatically pauses while schema differences are detected
+and resumes once the schemas are the same again.
 
-Ongoing work, [#1234: Implement replication of DDL changes](), will make this automatic: schema changes made on the source universe will automatically be replicated to the sink universe and made, allowing replication to continue running without operator intervention.
+Ongoing work,
+[#11537](https://github.com/yugabyte/yugabyte-db/issues/11537), will
+make this automatic: schema changes made on the source universe will
+automatically be replicated to the sink universe and made, allowing
+replication to continue running without operator intervention.
 
 
 ## Replication bootstrapping
 
-xCluster replication copies changes made on the source universe to the sink universe.  This is fine if the source universe starts empty but what if we want to start replicating a non-empty universe?
+xCluster replication copies changes made on the source universe to the
+sink universe.  This is fine if the source universe starts empty but
+what if we want to start replicating a non-empty universe?
 
-We need to bootstrap the replication process by first copying the source universe to the sink universe.
+We need to bootstrap the replication process by first copying the source
+universe to the sink universe.
 
-Today, this is done by backing up the source universe and restoring it to the sink universe.  In addition to copying all the data, this copies the table schemas so they are identical on both sides.  Before the backup is done, the current Raft log IDs are saved so the replication can be started after the restore at a point before the backup was done.  This ensures any data written to the source universe during the backup is replicated.
+Today, this is done by backing up the source universe and restoring it
+to the sink universe.  In addition to copying all the data, this copies
+the table schemas so they are identical on both sides.  Before the
+backup is done, the current Raft log IDs are saved so the replication
+can be started after the restore at a point before the backup was done.
+This ensures any data written to the source universe during the backup
+is replicated.
 
-Ongoing work, [#2345: native bootstrap](), will replace using backup and restore here with directly copying RocksDB files between the source and sink universes.  This will be more performant and flexible and remove the need for external storage like S3 to set up replication.
+Ongoing work,
+[#17862](https://github.com/yugabyte/yugabyte-db/issues/17862), will
+replace using backup and restore here with directly copying RocksDB
+files between the source and sink universes.  This will be more
+performant and flexible and remove the need for external storage like S3
+to set up replication.
 
 
 ## Supported deployment scenarios
@@ -337,11 +393,21 @@ A number of xCluster deployment scenarios are currently supported.
 
 ### Active-passive
 
-Here the replication is unidirectional from a source universe to a sink universe.  The sink universe is typically located in data centers or regions that are different from the source universe. The sink universe is passive because it does not take writes from the higher layer services.
+Here the replication is unidirectional from a source universe to a sink
+universe.  The sink universe is typically located in data centers or
+regions that are different from the source universe. The sink universe
+is passive because it does not take writes from the higher layer
+services.
 
-Usually, such deployments are used for serving low-latency reads from the sink universes, as well as for disaster recovery purposes.  When used primarily for disaster recovery purposes, these deployments are also called active-standby because the sink universe stands by to take over if the source universe is lost.
+Usually, such deployments are used for serving low-latency reads from
+the sink universes, as well as for disaster recovery purposes.  When
+used primarily for disaster recovery purposes, these deployments are
+also called active-standby because the sink universe stands by to take
+over if the source universe is lost.
 
-Either transactional or non-transactional mode can be used here, but transactional mode is usually preferred because it provides consistency if the source universe is lost.
+Either transactional or non-transactional mode can be used here, but
+transactional mode is usually preferred because it provides consistency
+if the source universe is lost.
 
 The following diagram shows the source-sink deployment architecture:
 
@@ -349,9 +415,20 @@ The following diagram shows the source-sink deployment architecture:
 
 ### Active-active
 
-The replication of data can be bidirectional between two universes, in which case both universes can perform reads and writes. Writes to any universe are asynchronously replicated to the other universe with a timestamp for the update. If the same key is updated in both universes at similar times, this results in the write with the larger timestamp becoming the latest write. In this case, the universes are both active, and this deployment mode is called a multi-master or active-active deployment.
+The replication of data can be bidirectional between two universes, in
+which case both universes can perform reads and writes. Writes to any
+universe are asynchronously replicated to the other universe with a
+timestamp for the update. If the same key is updated in both universes
+at similar times, this results in the write with the larger timestamp
+becoming the latest write. In this case, the universes are both active,
+and this deployment mode is called a multi-master or active-active
+deployment.
 
-The multi-master deployment is built internally using two source-sink unidirectional replication streams using non-transactional mode. Special care is taken to ensure that the timestamps are assigned to guarantee last-writer-wins semantics and the data arriving from the replication stream is not rereplicated.
+The multi-master deployment is built internally using two source-sink
+unidirectional replication streams using non-transactional mode. Special
+care is taken to ensure that the timestamps are assigned to guarantee
+last-writer-wins semantics and the data arriving from the replication
+stream is not rereplicated.
 
 The following is the architecture diagram:
 
@@ -364,116 +441,151 @@ A number of deployment scenarios are not yet supported in YugabyteDB.
 
 ### Broadcast
 
-This topology involves one source universe sending data to many target universes. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
+This topology involves one source universe sending data to many sink
+universes. See
+[#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for
+details.
 
 ### Consolidation
 
-This topology involves many source universes sending data to one central target universe. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
+This topology involves many source universes sending data to one central
+sink universe. See
+[#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for
+details.
 
 ### More complex topologies
 
-Outside of the traditional 1:1 topology and the previously described 1:N and N:1 topologies, there are many other desired configurations that are not currently supported, such as the following:
+Outside of the traditional 1:1 topology and the previously described 1:N
+and N:1 topologies, there are many other desired configurations that are
+not currently supported, such as the following:
 
-- Daisy chaining, which involves connecting a series of universes as both source and target, for example: `A <-> B <-> C`
-- Ring, which involves connecting a series of universes in a loop, for example: `A <-> B <-> C <-> A`
+- Daisy chaining, which involves connecting a series of universes as
+  both source and sink, for example: `A <-> B <-> C`
+- Ring, which involves connecting a series of universes in a loop, for
+  example: `A <-> B <-> C <-> A`
 
-Some of these topologies might become naturally available as soon as the [Broadcast](#broadcast) and [Consolidation](#consolidation) use cases are resolved, thus allowing a universe to simultaneously be both a source and a target to several other universes. For details, see [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
+Some of these topologies might become naturally available as soon as the
+[Broadcast](#broadcast) and [Consolidation](#consolidation) use cases
+are resolved, thus allowing a universe to simultaneously be both a
+source and a sink to several other universes. For details, see
+[#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
 
 
-# After this point not yet edited
+## Limitations
 
-## Features and limitations
+There are a number of limitations in the current xCluster implementation
+besides what deployments are possible.
 
-A number of features and limitations are worth noting.
+### Database triggers do not fire for replicated data
 
-Because replication is done at the DocDB level
-bypassing the query layer, database triggers are not fired in the sink
-universe for these changes.
+Because xCluster replication bypasses the query layer, any database
+triggers are not fired on the sink side for replicated records, which
+can result in unexpected behavior.
 
-transactional replication currently only supports SQL
+### Constraints cannot be enforced in active-active
 
-### Features
+Similarly, there is no way to check for violations of unique constraints
+in active-active setups.  It is possible, for example, to have two
+conflicting writes in separate universes that together would violate a
+unique constraint and cause the main table to contain both rows, yet the
+index to contain only one row, resulting in an inconsistent state.
 
-- The target universe has at-least-once semantics. This means every update on the source is eventually replicated to the target.
-- Updates are timeline-consistent. That is, the target data center receives updates for a row in the same order in which they occurred on the source.
-- Multi-shard transactions are supported, but with relaxed atomicity and global ordering semantics, as per [Limitations](#limitations).
-- For active-active deployments, there could be updates to the same rows, on both universes. Underneath, a last-writer-wins conflict resolution semantic could be used. The deciding factor is the underlying hybrid time of the updates, from each universe.
+Because of this applications using active-active should avoid `UNIQUE`
+indexes and constraints as well as serial columns in primary keys:
+Because both universes generate the same sequence numbers, this can
+result in conflicting rows.  It is recommended to use UUIDs instead.
 
-### Impact on application design
+In the future, it may be possible to detect such unsafe constraints and
+issue a warning, potentially by default.  This is tracked in
+[#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
 
-Because 2DC replication is done asynchronously and by replicating the WAL (and thereby bypassing the query layer), application design needs to follow these patterns:
+### Non-transactional mode consistency issues
 
-- Avoid `UNIQUE` indexes and constraints (only for active-active mode): Because replication is done at the WAL-level, there is no way to check for unique constraints. It is possible to have two conflicting writes on separate universes which would violate the unique constraint and cause the main table to contain both rows, yet the index to contain only one row, resulting in an inconsistent state.
+When interacting with data replicated from another universe using
+non-transactional mode:
+- it can take a while for data to arrive from the other universe
+- reads are only eventually consistent
+- last writer wins for writes
+- transactions are limited to isolation level SQL-92 READ COMMITTED
 
-- Avoid triggers: Because the query layer is bypassed for replicated records, the database triggers are not fired for those records and can result in unexpected behavior.
+After losing one universe, the other universe may be left with torn
+transactions.
 
-- Avoid serial columns in primary key (only for active-active mode): Because both universes generate the same sequence numbers, this can result in conflicting rows. It is recommended to use UUIDs instead.
+### Transactional mode limitations
 
-### Limitations
+With transactional mode,
+- active-active is not supported
+- YCQL is not yet supported
+- it can take a while for data to arrive from the other universe
+- no writes are allowed in the sink universe
 
-There is a number of limitations in the current xCluster implementation.
+### Bootstrapping replication
 
-#### Transactional semantics
+- Currently, it is your responsibility to ensure that a sink universe
+  has sufficiently recent updates so that replication can safely
+  resume.  In the future, bootstrapping the sink universe will be
+  automated, which is tracked in
+  [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
+- Bootstrap currently relies on the underlying backup and restore (BaR)
+  mechanism of YugabyteDB.  This means it also inherits all of the
+  limitations of BaR.  For YSQL, currently the scope of BaR is at a
+  database level, while the scope of replication is at table level.  This
+  implies that when bootstrapping a sink universe, you automatically
+  bring any tables from source database to the sink database, even the
+  ones on which you might not plan to actually configure
+  replication.  This is tracked in
+  [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
 
-- Transactions from the source are not applied atomically on the target. That is, some changes in a transaction may be visible before others.
-- Transactions from the source might not respect global ordering on the target. While transactions affecting the same shards are guaranteed to be timeline consistent even on the target, transactions affecting different shards might end up being visible on the target in a different order than they were committed on the source.
+### DDL changes
 
-This is tracked in [#10976](https://github.com/yugabyte/yugabyte-db/issues/10976).
+- Currently, DDL changes are not automatically replicated.  Applying
+  commands such as `CREATE TABLE`, `ALTER TABLE`, and `CREATE INDEX` to
+  the sink universes is your responsibility.
+- `DROP TABLE` is not supported.  You must first disable replication for
+  this table.
+- `TRUNCATE TABLE` is not supported.  This is an underlying limitation,
+  due to the level at which the two features operate.  That is,
+  replication is implemented on top of the Raft WAL files, while
+  truncate is implemented on top of the RocksDB SST files.
+- In the future, it will be possible to propagate DDL changes safely to
+  other universes.  This is tracked in
+  [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
 
-#### Bootstrapping target universes
+### Kubernetes
 
-- Currently, it is your responsibility to ensure that a target universe has sufficiently recent updates, so that replication can safely resume. In the future, bootstrapping the target universe will be automated, which is tracked in [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
-- Bootstrap currently relies on the underlying backup and restore (BAR) mechanism of YugabyteDB. This means it also inherits all of the limitations of BAR. For YSQL, currently the scope of BAR is at a database level, while the scope of replication is at table level. This implies that when bootstrapping a target universe, you automatically bring any tables from source database to the target database, even the ones on which you might not plan to actually configure replication. This is tracked in [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
+- Technically, xCluster replication can be set up with
+  Kubernetes-deployed universes.  However, the source and sink must be
+  able to communicate by directly referencing the pods in the other
+  universe.  In practice, this either means that the two universes must
+  be part of the same Kubernetes cluster or that two Kubernetes clusters
+  must have DNS and routing properly setup amongst themselves.
+- Being able to have two YugabyteDB universes, each in their own
+  standalone Kubernetes cluster, communicating with each other via a
+  load balancer, is not currently supported, as per
+  [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
 
-#### DDL changes
-
-- Currently, DDL changes are not automatically replicated. Applying commands such as `CREATE TABLE`, `ALTER TABLE`, and `CREATE INDEX` to the target universes is your responsibility.
-- `DROP TABLE` is not supported. You must first disable replication for this table.
-- `TRUNCATE TABLE` is not supported. This is an underlying limitation, due to the level at which the two features operate. That is, replication is implemented on top of the Raft WAL files, while truncate is implemented on top of the RocksDB SST files.
-- In the future, it will be possible to propagate DDL changes safely to other universes. This is tracked in [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
-
-#### Safety of DDL and DML in active-active
-
-- Currently, certain potentially unsafe combinations of DDL and DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe because a violation could be introduced by inserting different values on the two universes, since each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint and cause the two universes to permanently diverge and the replication to fail.
-- In the future, it will be possible to detect such unsafe combinations and issue a warning, potentially by default. This is tracked in [#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
-
-#### Kubernetes
-
-- Technically, replication can be set up with Kubernetes-deployed universes. However, the source and target must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly setup amongst themselves.
-- Being able to have two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported, as per [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
-
-### Cross-feature interactions
+## Cross-feature interactions
 
 A number of interactions across features is supported.
 
-#### Supported
+### Supported
 
-- TLS is supported for both client and internal RPC traffic. Universes can also be configured with different certificates.
-- RPC compression is supported. Note that both universes must be on a version that supports compression, before a compression algorithm is enabled.
-- Encryption at rest is supported. Note that the universes can technically use different Key Management Service (KMS) configurations. However, for bootstrapping a target universe, the reliance is on the backup and restore flow. As such, a limitation from that is inherited, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken. This means both the source and the target must have access to the same KMS configurations.
+- TLS is supported for both client and internal RPC traffic.  Universes
+  can also be configured with different certificates.
+- RPC compression is supported.  Note that both universes must be on a
+  version that supports compression, before a compression algorithm is
+  enabled.
+- Encryption at rest is supported.  Note that the universes can
+  technically use different Key Management Service (KMS) configurations.
+  However, for bootstrapping a sink universe, the reliance is on the
+  backup and restore flow.  As such, a limitation from that is
+  inherited, which requires that the universe being restored has at
+  least access to the same KMS as the one in which the backup was taken.
+  This means both the source and the sink must have access to the same
+  KMS configurations.
 - YSQL colocation is supported.
-- YSQL geo-partitioning is supported. Note that you must configure replication on all new partitions manually, as DDL changes are not replicated automatically.
-- Source and target universes can have different number of tablets.
-- Tablet splitting is supported on both source and target universes.
-
-#### Not currently supported
-
-- [Savepoints](../../../explore/ysql-language-features/advanced-features/savepoints/) are not supported, as per [#14308](https://github.com/yugabyte/yugabyte-db/issues/14308).
-
-## Transactional guarantees
-
-<!--
-
-### Atomicity of transactions
-
-This implies one can never read a partial result of a transaction on the sink universe.
-
--->
-
-### Not globally ordered
-
-Transactions on non-overlapping rows may be applied in a different order on the target universe, than they were on the source universe.
-
-### Last writer wins
-
-In case of active-active configurations, if there are conflicting writes to the same key, then the update with the larger timestamp is considered the latest update. Thus, the deployment is eventually consistent across the two data centers.
+- YSQL geo-partitioning is supported.  Note that you must configure
+  replication on all new partitions manually, as DDL changes are not
+  replicated automatically.
+- Source and sink universes can have different numbers of tablets.
+- Tablet splitting is supported on both source and sink universes.
