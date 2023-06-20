@@ -96,11 +96,19 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
         }
       }
 
+      // Make sure clock skew is low enough on the master nodes.
+      createWaitForClockSyncTasks(universe, masterNodeList)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
       createStartMasterProcessTasks(masterNodeList);
 
       if (EncryptionAtRestUtil.getNumUniverseKeys(universe.getUniverseUUID()) > 0) {
         createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
+
+      // Make sure clock skew is low enough on the tserver nodes.
+      createWaitForClockSyncTasks(universe, tserverNodeList)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       createStartTServerTasks(tserverNodeList)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
