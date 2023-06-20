@@ -65,10 +65,7 @@ it cannot be used to replicate between clusters in the same universe.
 cluster](../../concepts/universe#universe-vs-cluster) for more on the
 distinction between universes and clusters.)
 
-For each flow, data is replicated from a _source_ (also called a
-producer) universe to a _sink_ (also called a consumer) universe.
-Replication is done at the DocDB level, with newly committed writes in
-the source universe asynchronously replicated to the sink universe.
+For each flow, data is replicated from a _source_ (also called a producer) universe to a _sink_ (also called a consumer) universe.  Replication is done at the DocDB level, with newly committed writes in the source universe asynchronously replicated to the sink universe.  Both YSQL and YCQL are supported.
 
 Multiple flows can be used; for example, two unidirectional flows
 between two universes, one in each direction, produce bidirectional
@@ -131,7 +128,7 @@ wait for up-to-date data from the source universe to become visible.
 
 Because the writes are being independently replicated, a transaction
 from the source universe becomes visible over time.  This means
-transactions on the sink universe can see non-repeated reads and phantom
+transactions in the sink universe can see non-repeated reads and phantom
 reads no matter what their declared isolation level is.  Effectively
 then all transactions on the sink universe are at SQL-92 isolation level
 READ COMMITTED, which only guarantees that transactions never read
@@ -156,12 +153,7 @@ consistency, we additionally disallow writes on the sink universe and
 cause reads to read as of a time far enough in the past that all the
 relevant data from the source universe has already been replicated.
 
-In particular, we pick the time to read as of, _T_, so that all the
-writes from all the transactions that will commit at or before time _T_
-have been replicated to the sink universe.  Put another way, we refuse
-to read as of a time that there could be incoming source writes at or
-before.  This restores consistent reads and ensures source universe
-transaction results become visible atomically.
+In particular, we pick the time to read as of, _T_, so that all the writes from all the source transactions that will commit at or before time _T_ have been replicated to the sink universe.  Put another way, we refuse to read as of a time that there could be incoming source writes at or before.  This restores consistent reads and ensures source universe transaction results become visible atomically.
 
 In order to know when to read as of, we maintain an analog of safe time
 called _xCluster safe time_, which is the latest time it is currently
@@ -213,12 +205,9 @@ The polled tablets examine only their Raft logs to determine what
 changes have occurred recently rather than looking at their RocksDB
 instances.  The incoming poll request specifies the Raft log entry ID to
 start gathering changes from and the response includes a batch of
-changes and the Raft log entry ID it left off on.
+changes and the Raft log entry ID to continue with next time.
 
-Pollers occasionally checkpoint the Raft ID of the last batch of changes
-they have processed; this ensures each change is processed at least
-once.  Much of the code for responding to polls is shared with the
-[Change data capture (CDC)](../change-data-capture) feature.
+Pollers occasionally checkpoint the continue-with Raft ID of the last batch of changes they have processed; this ensures each change is processed at least once.  Much of the code for responding to polls is shared with the [Change data capture (CDC)](../change-data-capture) feature.
 
 ### The mapping between source and sink tablets
 
@@ -243,9 +232,7 @@ The following illustrative diagram shows what this looks like:
 
 _diagram showing mapping of tablets and placement of pollers_
 
-Tablet splitting involves a Raft entry, which is replicated to the sink
-side so that the mapping of pollers to source tablets can be updated as
-needed when a source tablet splits.
+Tablet splitting generates a Raft log entry, which is replicated to the sink side so that the mapping of pollers to source tablets can be updated as needed when a source tablet splits.
 
 ### Single-shard transactions
 
@@ -268,7 +255,7 @@ Simplifying somewhat, each time one of these transactions makes a
 provisional write, a Raft entry is made on the appropriate tablet and
 after the transaction commits, a Raft entry is made on all the involved
 tablets to _apply the transaction_.  Applying a transaction here means
-converting its writes from provisional records to regular writes.
+converting its writes from provisional writes to regular writes.
 
 Provisional writes are handled similarly to the normal writes in the
 single-shard transaction case but are written as provisional records
@@ -294,13 +281,7 @@ tablets are not done as a set atomically, writes from a single
 transaction &mdash; even a single-shard one &mdash; to multiple tablets
 can become visible at different times.
 
-When a transaction commits, it is applied to the relevant tablets
-lazily.  This means that even though transaction _X_ commits before
-transaction _Y_, _X_'s application Raft entry may occur after _Y_'s
-application Raft entry on some tablets.  If this happens, the writes
-from _X_ can become visible in the sink universe after _Y_'s.  This is
-why non-transactional mode reads are only eventually consistent and not
-timeline consistent.
+When a source transaction commits, it is applied to the relevant tablets lazily.  This means that even though transaction _X_ commits before transaction _Y_, _X_'s application Raft entry may occur after _Y_'s application Raft entry on some tablets.  If this happens, the writes from _X_ can become visible in the sink universe after _Y_'s.  This is why non-transactional mode reads are only eventually consistent and not timeline consistent.
 
 ### Transactional mode
 
@@ -326,44 +307,56 @@ complexity than the current implementation.
 
 ## Schema differences
 
-_To be written..._
+xCluster replication does not support replicating between two copies of a table with different schemas.  For example, you cannot replicate a table to a version of that table missing a column or with a column having a different type.
+
+More subtly, this restriction extends to hidden schema metadata like the assignment of column IDs to columns.  Just because two tables were created using the same `CREATE TABLE` statement does not mean their schemas will actually be identical.  Because of this, in practice the sink table schema needs to be copied from that of the source table; see [replication bootstrapping](#replication-bootstrapping) for how this is done.
+
+Because of this restriction, xCluster does not need to do a deep translation of row contents (e.g., dropping columns or translating column IDs inside of keys and values) as rows are replicated between universes.  Only one shallow translation is done: packing schema versions are translated.  Avoiding deep translation simplifies the code and reduces the cost of replication.
+
+### Supporting schema changes
+
+Today, this is a manual process where the exact same schema change must be manually made on first one side then the other.  Replication of the given table automatically pauses while schema differences are detected and resumes once the schemas are the same again.
+
+Ongoing work, [#1234: Implement replication of DDL changes](), will make this automatic: schema changes made on the source universe will automatically be replicated to the sink universe and made, allowing replication to continue running without operator intervention.
 
 
 ## Replication bootstrapping
 
-_To be written..._
+xCluster replication copies changes made on the source universe to the sink universe.  This is fine if the source universe starts empty but what if we want to start replicating a non-empty universe?
 
+We need to bootstrap the replication process by first copying the source universe to the sink universe.
 
+Today, this is done by backing up the source universe and restoring it to the sink universe.  In addition to copying all the data, this copies the table schemas so they are identical on both sides.  Before the backup is done, the current Raft log IDs are saved so the replication can be started after the restore at a point before the backup was done.  This ensures any data written to the source universe during the backup is replicated.
 
-## After this point not yet edited
+Ongoing work, [#2345: native bootstrap](), will replace using backup and restore here with directly copying RocksDB files between the source and sink universes.  This will be more performant and flexible and remove the need for external storage like S3 to set up replication.
 
-YugabyteDB provides [synchronous replication](../replication/) of data in universes dispersed across multiple (three or more) data centers by using the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two-data-center (2DC) deployments that use cross-cluster (xCluster) replication built on top of [change data capture (CDC)](../change-data-capture) in DocDB.
-
-For details about configuring an xCluster deployment, see [xCluster deployment](../../../deploy/multi-dc/async-replication).
-
-xCluster replication of data works across YSQL and YCQL APIs because the replication is done at the DocDB level.
 
 ## Supported deployment scenarios
 
-A number of deployment scenarios is supported.
+A number of xCluster deployment scenarios are currently supported.
 
 ### Active-passive
 
-The replication could be unidirectional from a source universe (also known as producer universe) to one target universe (also known as consumer universe or sink universe). The target universes are typically located in data centers or regions that are different from the source universe. They are passive because they do not take writes from the higher layer services. Usually, such deployments are used for serving low-latency reads from the target universes, as well as for disaster recovery purposes.
+Here the replication is unidirectional from a source universe to a sink universe.  The sink universe is typically located in data centers or regions that are different from the source universe. The sink universe is passive because it does not take writes from the higher layer services.
 
-The following diagram shows the source-target deployment architecture:
+Usually, such deployments are used for serving low-latency reads from the sink universes, as well as for disaster recovery purposes.  When used primarily for disaster recovery purposes, these deployments are also called active-standby because the sink universe stands by to take over if the source universe is lost.
+
+Either transactional or non-transactional mode can be used here, but transactional mode is usually preferred because it provides consistency if the source universe is lost.
+
+The following diagram shows the source-sink deployment architecture:
 
 <img src="/images/architecture/replication/2DC-source-sink-deployment.png" style="max-width:750px;"/>
 
 ### Active-active
 
-The replication of data can be bidirectional between two universes, in which case both universes can perform reads and writes. Writes to any universe are asynchronously replicated to the other universe with a timestamp for the update. If the same key is updated in both universes at a similar time window, this results in the write with the larger timestamp becoming the latest write. In this case, the universes are all active, and this deployment mode is called a multi-master or active-active deployment.
+The replication of data can be bidirectional between two universes, in which case both universes can perform reads and writes. Writes to any universe are asynchronously replicated to the other universe with a timestamp for the update. If the same key is updated in both universes at similar times, this results in the write with the larger timestamp becoming the latest write. In this case, the universes are both active, and this deployment mode is called a multi-master or active-active deployment.
 
-The multi-master deployment is built internally using two source-target unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to guarantee last writer wins semantics and the data arriving from the replication stream is not rereplicated.
+The multi-master deployment is built internally using two source-sink unidirectional replication streams using non-transactional mode. Special care is taken to ensure that the timestamps are assigned to guarantee last-writer-wins semantics and the data arriving from the replication stream is not rereplicated.
 
 The following is the architecture diagram:
 
 <img src="/images/architecture/replication/2DC-multi-master-deployment.png" style="max-width:750px;"/>
+
 
 ## Not supported deployment scenarios
 
@@ -381,10 +374,13 @@ This topology involves many source universes sending data to one central target 
 
 Outside of the traditional 1:1 topology and the previously described 1:N and N:1 topologies, there are many other desired configurations that are not currently supported, such as the following:
 
-- Daisy chaining, which involves connecting a series of universes as both source and target, for example: `A<>B<>C`
-- Ring, which involves connecting a series of universes in a loop, for example: `A<>B<>C<>A`
+- Daisy chaining, which involves connecting a series of universes as both source and target, for example: `A <-> B <-> C`
+- Ring, which involves connecting a series of universes in a loop, for example: `A <-> B <-> C <-> A`
 
-Some of these topologies might become naturally available as soon as [Broadcast](#broadcast) and [Consolidation](#consolidation) use cases are resolved, thus allowing a universe to simultaneously be both a source and a target to several other universes. For details, see [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
+Some of these topologies might become naturally available as soon as the [Broadcast](#broadcast) and [Consolidation](#consolidation) use cases are resolved, thus allowing a universe to simultaneously be both a source and a target to several other universes. For details, see [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
+
+
+# After this point not yet edited
 
 ## Features and limitations
 
