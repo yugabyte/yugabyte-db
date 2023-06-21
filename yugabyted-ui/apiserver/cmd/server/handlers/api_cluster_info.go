@@ -1,24 +1,24 @@
 package handlers
 
 import (
-    "apiserver/cmd/server/helpers"
-    "apiserver/cmd/server/logger"
-    "apiserver/cmd/server/models"
-    "context"
-    "encoding/json"
-    "errors"
-    "fmt"
-    "math"
-    "net"
-    "net/http"
-    "sort"
-    "strconv"
-    "strings"
-    "time"
+        "apiserver/cmd/server/helpers"
+        "apiserver/cmd/server/logger"
+        "apiserver/cmd/server/models"
+        "context"
+        "encoding/json"
+        "errors"
+        "fmt"
+        "math"
+        "net"
+        "net/http"
+        "sort"
+        "strconv"
+        "strings"
+        "time"
 
-    "github.com/jackc/pgx/v4/pgxpool"
-    "github.com/labstack/echo/v4"
-    "github.com/yugabyte/gocql"
+        "github.com/jackc/pgx/v4/pgxpool"
+        "github.com/labstack/echo/v4"
+        "github.com/yugabyte/gocql"
 )
 
 const SLOW_QUERY_STATS_SQL string = "SELECT a.rolname, t.datname, t.queryid, " +
@@ -662,6 +662,80 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
         }
     }
     return ctx.JSON(http.StatusOK, metricResponse)
+}
+
+// GetClusterActivities - Get the cluster activities details
+func (c *Container) GetClusterActivities(ctx echo.Context) error {
+        response := models.ActivitiesResponse{
+                Data: []models.ActivityData{},
+        }
+
+        activityParam := strings.Split(ctx.QueryParam("activities"), ",")
+
+        for _, activity := range activityParam {
+                switch activity {
+                case "INDEX_BACKFILL":
+                        tablesFuture := make(chan helpers.TablesFuture)
+                        go helpers.GetTablesFuture(helpers.HOST, tablesFuture)
+                        tablesList := <-tablesFuture
+                        if tablesList.Error != nil {
+                                return ctx.String(http.StatusInternalServerError,
+                                        tablesList.Error.Error())
+                        }
+                        ysql_databases := make(map[string] struct{})
+                        for _, table := range tablesList.Tables {
+                                if table.IsYsql {
+                                        _, ok := ysql_databases[table.Keyspace]
+                                        if !ok {
+                                                ysql_databases[table.Keyspace] = struct{}{}
+                                        }
+                                }
+                        }
+
+                        indexBackFillInfofutures := []chan helpers.IndexBackFillInfoFuture{}
+
+                        for database := range ysql_databases {
+                                pgConnectionParams := helpers.PgClientConnectionParams{
+                                                User: helpers.DbYsqlUser,
+                                                Password: helpers.DbPassword,
+                                                Host: helpers.HOST,
+                                                Port: helpers.PORT,
+                                                Database: database,
+                                }
+
+                                pgClient, err := helpers.CreatePgClient(c.logger,
+                                        pgConnectionParams)
+                                if err != nil {
+                                        c.logger.Errorf("Error initializing the " +
+                                                "pgx client for database %s.", database)
+                                        return ctx.String(http.StatusInternalServerError,
+                                                err.Error())
+                                }
+                                indexBackFillInfoFuture := make(
+                                        chan helpers.IndexBackFillInfoFuture)
+                                indexBackFillInfofutures = append(indexBackFillInfofutures,
+                                        indexBackFillInfoFuture)
+                                go helpers.GetIndexBackFillInfo(pgClient, indexBackFillInfoFuture)
+                        }
+
+                        for _, future := range indexBackFillInfofutures {
+                                indexBackFillInfoResponse := <-future
+                                if indexBackFillInfoResponse.Error != nil {
+                                        return ctx.String(http.StatusInternalServerError,
+                                                indexBackFillInfoResponse.Error.Error())
+                                }
+                                for _, indexBackFillInfo := range
+                                                indexBackFillInfoResponse.IndexBackFillInfo {
+                                        response.Data = append(response.Data, models.ActivityData{
+                                                Name: activity,
+                                                Data: indexBackFillInfo,
+                                        })
+                                }
+
+                        }
+                }
+        }
+        return ctx.JSON(http.StatusOK, response)
 }
 
 // GetClusterNodes - Get the nodes for a cluster

@@ -191,6 +191,41 @@ paths:
       summary: Get a metric for a cluster
       tags:
       - cluster-info
+  /activities:
+    get:
+      description: Get activities data for a Yugabyte cluster
+      operationId: getClusterActivities
+      parameters:
+      - description: Which activities data to retrieve
+        explode: false
+        in: query
+        name: activities
+        required: true
+        schema:
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Activities_Response'
+          description: Activities Response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get a activities data for a cluster
+      tags:
+      - cluster-info
   /tables:
     get:
       description: Get list of tables per YB API (YCQL/YSQL)
@@ -481,6 +516,12 @@ components:
           schema:
             $ref: '#/components/schemas/Metric_Response'
       description: Metric response
+    ActivityResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Activities_Response'
+      description: Activities Response
     ClusterTableListResponse:
       content:
         application/json:
@@ -1030,6 +1071,21 @@ components:
       - name
       - values
       title: Metric Data
+      type: object
+    ActivityData:
+      description: Activity Data
+      example:
+        data: '{}'
+        name: name
+      properties:
+        name:
+          type: string
+        data:
+          type: object
+      required:
+      - data
+      - name
+      title: Activity Data
       type: object
     YbApiEnum:
       description: Type of DB API (YSQL/YCQL)
@@ -1584,6 +1640,22 @@ components:
       - end_timestamp
       - start_timestamp
       title: Metric Response
+      type: object
+    Activities_Response:
+      example:
+        data:
+        - data: '{}'
+          name: name
+        - data: '{}'
+          name: name
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/ActivityData'
+          type: array
+      required:
+      - data
+      title: Activities Response
       type: object
     Cluster_table_list_response:
       example:

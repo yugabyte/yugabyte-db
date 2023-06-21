@@ -340,6 +340,18 @@ MetricData:
   required:
     - name
     - values
+ActivityData:
+  title: Activity Data
+  description: Activity Data
+  type: object
+  properties:
+    name:
+      type: string
+    data:
+      type: object
+  required:
+    - name
+    - data
 ClusterTableData:
   title: Cluster Table Data
   description: List of cluster tables
