@@ -22,7 +22,11 @@ class ScopedStatistics;
 
 } // namespace rocksdb
 
-namespace yb::docdb {
+namespace yb {
+
+class PgsqlResponsePB;
+
+namespace docdb {
 
 class DocDBStatistics {
  public:
@@ -42,9 +46,13 @@ class DocDBStatistics {
       rocksdb::Statistics* regulardb_statistics,
       rocksdb::Statistics* intentsdb_statistics);
 
+  void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
+
  private:
   std::unique_ptr<rocksdb::ScopedStatistics> regulardb_statistics_;
   std::unique_ptr<rocksdb::ScopedStatistics> intentsdb_statistics_;
 };
 
-} // namespace yb::docdb
+} // namespace docdb
+
+} // namespace yb
