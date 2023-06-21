@@ -1159,7 +1159,7 @@ Status YBNoOp::Execute(YBClient* client, const YBPartialRow& key) {
   return Status::OK();
 }
 
-bool YBPgsqlReadOp::should_add_intents(IsolationLevel isolation_level) {
+bool YBPgsqlReadOp::should_apply_intents(IsolationLevel isolation_level) {
   return isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION ||
          IsValidRowMarkType(GetRowMarkTypeFromPB(*request_));
 }

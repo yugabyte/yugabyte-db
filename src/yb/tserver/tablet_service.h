@@ -119,6 +119,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                             GetTransactionStatusResponsePB* resp,
                             rpc::RpcContext context) override;
 
+  void GetOldTransactions(const GetOldTransactionsRequestPB* req,
+                          GetOldTransactionsResponsePB* resp,
+                          rpc::RpcContext context) override;
+
   void GetTransactionStatusAtParticipant(const GetTransactionStatusAtParticipantRequestPB* req,
                                          GetTransactionStatusAtParticipantResponsePB* resp,
                                          rpc::RpcContext context) override;
