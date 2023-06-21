@@ -2449,10 +2449,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
 }
 
-
 TEST_P(XClusterTest, ApplyOperationsRandomFailures) {
-  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
-
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   // Use unequal table count so we have M:N mapping and output to multiple tablets.
   auto tables = ASSERT_RESULT(SetUpWithParams({3}, {5}, replication_factor));
@@ -2473,6 +2470,8 @@ TEST_P(XClusterTest, ApplyOperationsRandomFailures) {
   // After creating the cluster, make sure all producer tablets are being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 5));
   ASSERT_OK(CorrectlyPollingAllTablets(producer_cluster(), 3));
+
+  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
 
   // Write 1000 entries to each cluster.
   std::thread t1([&]() { WriteWorkload(0, 1000, producer_client(), tables[0]->name()); });

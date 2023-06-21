@@ -71,6 +71,8 @@
 #include <boost/optional.hpp>
 #include <glog/logging.h>
 
+#include "yb/cdc/cdc_state_table.h"
+
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/universe_key_client.h"
@@ -1001,6 +1003,8 @@ Status CatalogManager::Init() {
 
   metric_num_tablet_servers_dead_ =
     METRIC_num_tablet_servers_dead.Instantiate(master_->metric_entity_cluster(), 0);
+
+  cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(&master_->async_client_initializer());
 
   RETURN_NOT_OK(xcluster_safe_time_service_->Init());
 
@@ -2142,6 +2146,8 @@ void CatalogManager::CompleteShutdown() {
     copy = std::vector(std::begin(tables_it), std::end(tables_it));
   }
   AbortAndWaitForAllTasks(copy);
+
+  cdc_state_table_.reset();
 
   // Shut down the underlying storage for tables and tablets.
   if (sys_catalog_) {
@@ -4210,6 +4216,28 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   DVLOG(3) << __PRETTY_FUNCTION__ << " Done.";
+  return Status::OK();
+}
+
+Status CatalogManager::CreateTableIfNotFound(
+    const std::string& namespace_name, const std::string& table_name,
+    std::function<Result<CreateTableRequestPB>()> generate_request, CreateTableResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  // If table exists do nothing, otherwise create it.
+  if (VERIFY_RESULT(TableExists(namespace_name, table_name))) {
+    return Status::OK();
+  }
+
+  auto req = VERIFY_RESULT(generate_request());
+  DCHECK_EQ(req.namespace_().name(), namespace_name);
+  DCHECK_EQ(req.name(), table_name);
+
+  Status s = CreateTable(&req, resp, /* RpcContext */ nullptr);
+  // We do not lock here so it is technically possible that the table was already created.
+  // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
+  if (!s.ok() && !s.IsAlreadyPresent()) {
+    return s;
+  }
   return Status::OK();
 }
 

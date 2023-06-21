@@ -14,9 +14,6 @@
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/client/session.h"
-#include "yb/client/yb_op.h"
-#include "yb/client/table_handle.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
@@ -324,7 +321,6 @@ Status GetChangesForXCluster(
     const std::string& tablet_id,
     const OpId& from_op_id,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    const client::YBSessionPtr& session,
     UpdateOnSplitOpFunc update_on_split_op_func,
     const MemTrackerPtr& mem_tracker,
     const CoarseTimePoint& deadline,

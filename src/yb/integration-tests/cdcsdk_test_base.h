@@ -93,6 +93,7 @@ class CDCSDKTestBase : public YBTest {
 
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_flush_rocksdb_on_shutdown = false;
+    google::SetVLOGLevel("cdc*", 4);
   }
 
   void TearDown() override;
