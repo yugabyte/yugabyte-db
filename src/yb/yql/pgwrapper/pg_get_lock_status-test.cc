@@ -47,11 +47,11 @@ class PgGetLockStatusTest : public PgLocksTestBase {
 
     std::unordered_set<std::string> txn_ids_set;
     for (const auto& tablet_lock_info : resp.tablet_lock_infos()) {
-      for (const auto& lock : tablet_lock_info.locks()) {
-        RETURN_ON_FALSE(!lock.transaction_id().empty(),
+      for (const auto& txn_lock_pair : tablet_lock_info.transaction_locks()) {
+        RETURN_ON_FALSE(!txn_lock_pair.first.empty(),
                         IllegalState,
                         "Expected to see non-empty transaction id.");
-        txn_ids_set.insert(lock.transaction_id());
+        txn_ids_set.insert(txn_lock_pair.first);
       }
     }
     return txn_ids_set.size();
@@ -105,6 +105,26 @@ TEST_F(PgGetLockStatusTest, YB_DISABLE_TEST_IN_TSAN(TestLocksFromWaitQueue)) {
   auto resp = ASSERT_RESULT(GetLockStatus(tablet_id));
   auto num_txns = ASSERT_RESULT(GetNumTxnsInLockStatusResponse(resp));
   ASSERT_EQ(num_txns, 2);
+
+  ASSERT_TRUE(conn.IsBusy());
+  ASSERT_OK(session.conn->Execute("COMMIT"));
+  ASSERT_OK(status_future.get());
+}
+
+TEST_F(PgGetLockStatusTest, YB_DISABLE_TEST_IN_TSAN(TestLocksOfSingleShardWaiters)) {
+  const auto table = "foo";
+  const auto key = "1";
+  auto session = ASSERT_RESULT(Init(table, key));
+
+  auto conn = ASSERT_RESULT(Connect());
+  // Fire a single row update that will wait on the earlier launched transaction.
+  auto status_future = ASSERT_RESULT(
+      ExpectBlockedAsync(&conn, Format("UPDATE $0 SET v=v+10 WHERE k=$1", table, key)));
+
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  const auto& tablet_id = session.first_involved_tablet;
+  auto resp = ASSERT_RESULT(GetLockStatus(tablet_id));
+  ASSERT_EQ(resp.tablet_lock_infos(0).single_shard_waiters_size(), 1);
 
   ASSERT_TRUE(conn.IsBusy());
   ASSERT_OK(session.conn->Execute("COMMIT"));
