@@ -28,6 +28,7 @@ import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApi;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -112,7 +113,7 @@ public class PlatformTest extends FakeDBApplication {
     remoteInstance = createPlatformInstance(localConfigUUID, REMOTE_ACME_ORG, false, false);
     backupDir =
         Paths.get(
-            app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY),
+            app.config().getString(AppConfigHelper.YB_STORAGE_PATH),
             PlatformReplicationHelper.BACKUP_DIR);
   }
 
@@ -133,14 +134,14 @@ public class PlatformTest extends FakeDBApplication {
             ImmutableMap.of(
                 "play.allowGlobalApplication",
                 false,
-                PlatformReplicationHelper.STORAGE_PATH_KEY,
+                AppConfigHelper.YB_STORAGE_PATH,
                 remoteStorage.getRoot().getAbsolutePath()));
     Helpers.start(remoteApp);
     mat = remoteApp.getWrappedApplication().materializer();
     EbeanServer remoteEBenServer = Ebean.getDefaultServer();
     replicationDir =
         Paths.get(
-            remoteApp.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY),
+            remoteApp.config().getString(AppConfigHelper.YB_STORAGE_PATH),
             PlatformReplicationHelper.REPLICATION_DIR);
     return new FakeApi(remoteApp, remoteEBenServer);
   }
@@ -181,7 +182,7 @@ public class PlatformTest extends FakeDBApplication {
   }
 
   private void assertUploadContents(File backupFile) throws IOException {
-    String storagePath = remoteApp.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
+    String storagePath = remoteApp.config().getString(AppConfigHelper.YB_STORAGE_PATH);
     File uploadedFile =
         Paths.get(
                 storagePath,

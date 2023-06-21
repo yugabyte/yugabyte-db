@@ -17,6 +17,7 @@ import com.google.api.client.util.Strings;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderBase;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateSelfSigned;
@@ -67,7 +68,7 @@ public class EncryptionInTransitUtil {
   public static void fetchLatestCAForHashicorpPKI(CertificateInfo info, Config config)
       throws Exception {
     UUID custUUID = info.getCustomerUUID();
-    String storagePath = config.getString("yb.storage.path");
+    String storagePath = AppConfigHelper.getStoragePath();
     CertificateProviderBase provider = getCertificateProviderInstance(info, config);
     provider.dumpCACertBundle(storagePath, custUUID);
   }

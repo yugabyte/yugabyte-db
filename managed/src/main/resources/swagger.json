@@ -1311,7 +1311,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -3650,6 +3650,62 @@
           "type" : "array"
         }
       },
+      "type" : "object"
+    },
+    "CustomCACertParams" : {
+      "properties" : {
+        "contents" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "contents", "name" ],
+      "type" : "object"
+    },
+    "CustomCaCertificateInfo" : {
+      "description" : "Custom CA certificate",
+      "properties" : {
+        "active" : {
+          "type" : "boolean"
+        },
+        "contents" : {
+          "description" : "Path to CA Certificate",
+          "example" : "/opt/yugaware/certs/trust-store/<ID>/ca.root.cert",
+          "type" : "string"
+        },
+        "createdTime" : {
+          "description" : "Date when certificate was added.",
+          "example" : "2023-11-10T15:09:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "customerId" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "expiryDate" : {
+          "description" : "End date of certificate validity.",
+          "example" : "2024-07-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "id" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "startDate" : {
+          "description" : "Start date of certificate validity.",
+          "example" : "2023-10-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        }
+      },
+      "required" : [ "active", "customerId", "id", "name" ],
       "type" : "object"
     },
     "CustomCertInfo" : {
@@ -15337,6 +15393,189 @@
         "tags" : [ "Backups" ]
       }
     },
+    "/api/v1/customers/{cUUID}/customCAStore" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "addCA",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "CA certificate contents in 'X509' format",
+          "in" : "body",
+          "name" : "X509CACertificate",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomCACertParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Add a named custom CA certificate",
+        "tags" : [ "Custom CA Certificates" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/customCAStore/{certUUID}" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "updateCA",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "certUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "CA certificate contents in 'X509' format",
+          "in" : "body",
+          "name" : "X509CACertificate",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomCACertParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Update a named custom CA certificate",
+        "tags" : [ "Custom CA Certificates" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/customCAStoreCertificates" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listAllCustomCaCertificates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/CustomCaCertificateInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all custom CA certificates of a customer",
+        "tags" : [ "Custom CA Certificates" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/customCAStoreCertificates/{certUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "Delete custom CA certificate",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "certUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a named custom CA certificate",
+        "tags" : [ "Custom CA Certificates" ]
+      },
+      "get" : {
+        "description" : "",
+        "operationId" : "getAllCustomCaCertificates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "certUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomCaCertificateInfo"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Download a custom CA certificates of a customer",
+        "tags" : [ "Custom CA Certificates" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/host_info" : {
       "get" : {
         "description" : "",
@@ -23423,6 +23662,8 @@
     "name" : "Certificate Info"
   }, {
     "name" : "Cloud providers"
+  }, {
+    "name" : "Custom CA Certificates"
   }, {
     "name" : "Customer Configuration"
   }, {

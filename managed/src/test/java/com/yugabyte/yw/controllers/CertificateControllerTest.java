@@ -11,7 +11,6 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
@@ -64,9 +63,6 @@ public class CertificateControllerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     spyConf = spy(app.config());
-    doReturn("/tmp/" + getClass().getSimpleName() + "/certs")
-        .when(spyConf)
-        .getString("yb.storage.path");
     for (String cert : test_certs) {
       test_certs_uuids.add(CertificateHelper.createRootCA(spyConf, cert, customer.getUuid()));
     }
