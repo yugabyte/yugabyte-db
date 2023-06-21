@@ -2225,6 +2225,7 @@ tserver_rpc_queue_size_tserver:
         "rpcs_in_queue_yb_tserver_TabletServerAdminService": "Admin"
         "rpcs_in_queue_yb_cdc_CDCService": "CDC"
         "rpcs_in_queue_yb_tserver_PgClientService": "PG Client"
+        "rpcs_in_queue_yb_stateful_service_PgAutoAnalyzeService": "PG AutoAnalyze"
 
 tserver_rpc_queue_size_cql:
   metric: ""
