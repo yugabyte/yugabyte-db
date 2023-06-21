@@ -37,7 +37,9 @@ Because YugabyteDB Anywhere and the LDAP server are synchronized during login, Y
 
 If configured by the LDAP server, YugabyteDB Anywhere can prevent the user from being able to change their password.
 
-## Use the YugabyteDB Anywhere UI
+## Enable LDAP authentication
+
+### Use the YugabyteDB Anywhere UI
 
 You can use the YugabyteDB Anywhere UI to enable LDAP authentication for YugabyteDB Anywhere login, as follows:
 
@@ -57,30 +59,7 @@ You can use the YugabyteDB Anywhere UI to enable LDAP authentication for Yugabyt
 
   - The **Bind DN** field value represents the distinguished name (DN) used for searching and binding.
 
-### Map LDAP groups to YugabyteDB Anywhere roles
-
-You can map LDAP groups to YugabyteDB Anywhere roles. Upon login, the user's role is assigned based on whatever role their LDAP group has been mapped to in YugabyteDB Anywhere. If a user is in multiple mapped LDAP groups, YugabyteDB Anywhere performs a union of all the roles that are chosen as a result of group mapping and assigns the union to the user.
-
-To map LDAP groups to YugabyteDB Anywhere roles, do the following:
-
-1. Navigate to **Admin > User Management > User Authentication** and select **LDAP Configuration**.
-
-1. Under **Role Settings**, enable the **Define Role to Group Mapping** option.
-
-1. Choose how to look up LDAP group membership:
-
-    - Select **User Attribute** and set the name of the LDAP user attribute to use to find the groups that users belong to.
-    - Select **Group Search Filter** and enter a search filter to use get a list of groups.
-
-1. Click **Create Mappings** (or, if you have existing mappings, **Edit**) to display the **Create Mapping** dialog.
-
-1. Click **Add rows** to add mappings. Select the YugabyteDB Anywhere role and enter the LDAP Group DN that you want to map the role to.
-
-1. Click **Confirm**.
-
-1. Click **Save** when you are done.
-
-## Use the YugabyteDB Anywhere API
+### Use the YugabyteDB Anywhere API
 
 To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a number of runtime configurations to specify the following:
 
@@ -219,7 +198,30 @@ The following is the runtime configuration to specify:
 
   Replace `[SERVICE ACCOUNT PASSWORD]` with the actual value.
 
-## Define the YugabyteDB Anywhere role
+## Role management
+
+You can map LDAP groups to YugabyteDB Anywhere roles. Upon login, the user's role is assigned based on whatever role their LDAP group has been mapped to in YugabyteDB Anywhere. If a user is in multiple mapped LDAP groups, YugabyteDB Anywhere performs a union of all the roles that are chosen as a result of group mapping and assigns the union to the user.
+
+To map LDAP groups to YugabyteDB Anywhere roles, do the following:
+
+1. Navigate to **Admin > User Management > User Authentication** and select **LDAP Configuration**.
+
+1. Under **Role Settings**, enable the **Define Role to Group Mapping** option.
+
+1. Choose how to look up LDAP group membership:
+
+    - Select **User Attribute** and set the name of the LDAP user attribute to use to find the groups that users belong to.
+    - Select **Group Search Filter** and enter a search filter to use get a list of groups.
+
+1. Click **Create Mappings** (or, if you have existing mappings, **Edit**) to display the **Create Mapping** dialog.
+
+1. Click **Add rows** to add mappings. Select the YugabyteDB Anywhere role and enter the LDAP Group DN that you want to map the role to.
+
+1. Click **Confirm**.
+
+1. Click **Save** when you are done.
+
+### Define the YugabyteDB Anywhere role
 
 You need to define a YugabyteDB Anywhere-specific role for each user on your LDAP server by setting the `yugabytePlatformRole` annotation. The value set for this annotation is read during the YugabyteDB Anywhere login. Note that if the value is modified on the LDAP server, the change is propagated to YugabyteDB Anywhere and automatically updated during login. Password updates are also automatically handled.
 
