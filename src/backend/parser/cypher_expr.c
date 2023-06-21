@@ -655,34 +655,107 @@ static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm)
     return (Node *)fexpr;
 }
 
+/*
+ * Helper function to transform a cypher list into an agtype list. The function
+ * will use agtype_add to concatenate lists when the number of parameters
+ * exceeds 100, a PG limitation.
+ */
 static Node *transform_cypher_list(cypher_parsestate *cpstate, cypher_list *cl)
 {
-    List *newelems = NIL;
-    ListCell *le;
-    FuncExpr *fexpr;
-    Oid func_oid;
+    List *abl_args = NIL;
+    ListCell *le = NULL;
+    FuncExpr *aa_lhs_arg = NULL;
+    FuncExpr *fexpr = NULL;
+    Oid abl_func_oid = InvalidOid;
+    Oid aa_func_oid = InvalidOid;
+    int nelems = 0;
+    int i = 0;
 
-    foreach (le, cl->elems)
+    /* determine which build function we need */
+    nelems = list_length(cl->elems);
+    if (nelems == 0)
     {
-        Node *newv;
-
-        newv = transform_cypher_expr_recurse(cpstate, lfirst(le));
-
-        newelems = lappend(newelems, newv);
-    }
-
-    if (list_length(newelems) == 0)
-    {
-        func_oid = get_ag_func_oid("agtype_build_list", 0);
+        abl_func_oid = get_ag_func_oid("agtype_build_list", 0);
     }
     else
     {
-        func_oid = get_ag_func_oid("agtype_build_list", 1, ANYOID);
+        abl_func_oid = get_ag_func_oid("agtype_build_list", 1, ANYOID);
     }
 
-    fexpr = makeFuncExpr(func_oid, AGTYPEOID, newelems, InvalidOid, InvalidOid,
-                         COERCE_EXPLICIT_CALL);
+    /* get the concat function oid, if necessary */
+    if (nelems > 100)
+    {
+        aa_func_oid = get_ag_func_oid("agtype_add", 2, AGTYPEOID, AGTYPEOID);
+    }
+
+    /* iterate through the list of elements */
+    foreach (le, cl->elems)
+    {
+        Node *texpr = NULL;
+
+        /* transform the argument */
+        texpr = transform_cypher_expr_recurse(cpstate, lfirst(le));
+
+        /*
+         * If we have more than 100 elements we will need to add in the list
+         * concatenation function.
+         */
+        if (i >= 100)
+        {
+            /* build the list function node argument for concatenate */
+            fexpr = makeFuncExpr(abl_func_oid, AGTYPEOID, abl_args, InvalidOid,
+                                 InvalidOid, COERCE_EXPLICIT_CALL);
+            fexpr->location = cl->location;
+
+            /* initial case, set up for concatenating 2 lists */
+            if (aa_lhs_arg == NULL)
+            {
+                aa_lhs_arg = fexpr;
+            }
+            /*
+             * For every other case, concatenate the list on to the previous
+             * concatenate operation.
+             */
+            else
+            {
+                List *aa_args = list_make2(aa_lhs_arg, fexpr);
+
+                fexpr = makeFuncExpr(aa_func_oid, AGTYPEOID, aa_args,
+                                     InvalidOid, InvalidOid,
+                                     COERCE_EXPLICIT_CALL);
+                fexpr->location = cl->location;
+
+                /* set the lhs to the concatenation operation */
+                aa_lhs_arg = fexpr;
+            }
+
+            /* reset */
+            abl_args = NIL;
+            i = 0;
+            fexpr = NULL;
+        }
+
+        /* now add the latest transformed expression to the list */
+        abl_args = lappend(abl_args, texpr);
+        i++;
+    }
+
+    /* now build the final list function */
+    fexpr = makeFuncExpr(abl_func_oid, AGTYPEOID, abl_args, InvalidOid,
+                         InvalidOid, COERCE_EXPLICIT_CALL);
     fexpr->location = cl->location;
+
+    /*
+     * If there was a previous concatenation or list function, build a final
+     * concatenation function node
+     */
+    if (aa_lhs_arg != NULL)
+    {
+        List *aa_args = list_make2(aa_lhs_arg, fexpr);
+
+        fexpr = makeFuncExpr(aa_func_oid, AGTYPEOID, aa_args, InvalidOid,
+                             InvalidOid, COERCE_EXPLICIT_CALL);
+    }
 
     return (Node *)fexpr;
 }
