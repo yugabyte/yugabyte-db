@@ -509,6 +509,16 @@ message PgsqlReadRequestPB {
 // Responses.
 //--------------------------------------------------------------------------------------------------
 
+message PgsqlRequestGaugeMetricPB {
+  optional int64 metric = 1;
+  optional int64 value = 2;
+}
+
+message PgsqlRequestMetricsPB {
+  // Gauge metrics changes as a result of processing the request.
+  repeated PgsqlRequestGaugeMetricPB gauge_metrics = 1;
+}
+
 // Response from tablet server for both read and write.
 message PgsqlResponsePB {
   // Response status
@@ -585,4 +595,7 @@ message PgsqlResponsePB {
   // Repeated field provides support for multiple Statuses per response, allowing to return
   // not only detailed error, but also warnings and notices.
   repeated AppStatusPB error_status = 16;
+
+  // Metrics changes as a result of processing the request.
+  optional PgsqlRequestMetricsPB metrics = 17;
 }

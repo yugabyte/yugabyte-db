@@ -193,6 +193,9 @@ DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
     "operation take an exclusive lock making all write operations wait for it.");
 TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 
+DEFINE_RUNTIME_bool(ysql_analyze_dump_metrics, false,
+    "Whether to return changed metrics for YSQL queries in RPC response.");
+
 DEFINE_UNKNOWN_bool(cleanup_intents_sst_files, true,
     "Cleanup intents files that are no more relevant to any running transaction.");
 
@@ -1675,6 +1678,9 @@ Status Tablet::HandlePgsqlReadRequest(
       pgsql_read_request, table_info, *txn_op_ctx, statistics, scoped_read_operation, result);
 
   if (statistics) {
+    if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics)) {
+      statistics->CopyToPgsqlResponse(&result->response);
+    }
     statistics->MergeAndClear(regulardb_statistics_.get(), intentsdb_statistics_.get());
   }
 
