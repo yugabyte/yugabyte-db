@@ -24,6 +24,7 @@ void ConsistentReadPoint::SetReadTime(
     const ReadHybridTime& read_time, HybridTimeMap&& local_limits) {
   std::lock_guard<simple_spinlock> lock(mutex_);
   read_time_ = read_time;
+  read_time_.local_limit = read_time.global_limit;
   restart_read_ht_ = read_time_.read;
   local_limits_ = std::move(local_limits);
   restarts_.clear();
@@ -45,6 +46,8 @@ ReadHybridTime ConsistentReadPoint::GetReadTime(const TabletId& tablet) const {
     const auto it = local_limits_.find(tablet);
     if (it != local_limits_.end()) {
       read_time.local_limit = it->second;
+    } else {
+      read_time.local_limit = read_time.local_limit;
     }
   }
   return read_time;

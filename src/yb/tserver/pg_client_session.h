@@ -74,6 +74,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   struct UsedReadTime {
     simple_spinlock lock;
     ReadHybridTime value;
+    TabletId tablet_id;
   };
 
   using UsedReadTimePtr = std::weak_ptr<UsedReadTime>;
