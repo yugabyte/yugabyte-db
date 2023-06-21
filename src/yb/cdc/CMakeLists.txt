@@ -103,6 +103,7 @@ set(CDC_SRCS
   cdc_producer.cc
   cdcsdk_producer.cc
   cdc_rpc.cc
+  cdc_state_table.cc
   xrepl_stream_metadata.cc)
 
 ADD_YB_LIBRARY(

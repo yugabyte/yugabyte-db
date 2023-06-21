@@ -83,7 +83,6 @@ Status GetChangesForXCluster(
     const std::string& tablet_id,
     const OpId& op_id,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    const client::YBSessionPtr& session,
     UpdateOnSplitOpFunc update_on_split_op_func,
     const std::shared_ptr<MemTracker>& mem_tracker,
     const CoarseTimePoint& deadline,
