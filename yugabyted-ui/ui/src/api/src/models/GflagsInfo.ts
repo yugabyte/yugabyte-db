@@ -17,21 +17,21 @@
 /**
  * 
  * @export
- * @interface NodeDataMetricsActiveConnections
+ * @interface GflagsInfo
  */
-export interface NodeDataMetricsActiveConnections  {
+export interface GflagsInfo  {
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {object}
+   * @memberof GflagsInfo
    */
-  ysql: number;
+  masterFlags: object;
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {object}
+   * @memberof GflagsInfo
    */
-  ycql: number;
+  tserverFlags: object;
 }
 
 

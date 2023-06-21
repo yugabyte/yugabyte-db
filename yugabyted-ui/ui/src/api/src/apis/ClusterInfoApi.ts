@@ -23,6 +23,7 @@ import type {
   ClusterNodesResponse,
   ClusterTableListResponse,
   ClusterTabletListResponse,
+  GflagsInfo,
   HealthCheckResponse,
   IsLoadBalancerIdle,
   LiveQueryResponseSchema,
@@ -42,6 +43,9 @@ export interface GetClusterMetricForQuery {
 }
 export interface GetClusterTablesForQuery {
   api?: GetClusterTablesApiEnum;
+}
+export interface GetGflagsForQuery {
+  node_address: string;
 }
 export interface GetLiveQueriesForQuery {
   api?: GetLiveQueriesApiEnum;
@@ -429,6 +433,87 @@ export const useGetClusterTabletsQuery = <T = ClusterTabletListResponse, Error =
   const query = useQuery<ClusterTabletListResponse, Error, T>(
     queryKey,
     () => getClusterTabletsAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Retrieve gflags of master and tserver process
+ * Get gflags of master and tserver process
+ */
+
+export const getGflagsAxiosRequest = (
+  requestParameters: GetGflagsForQuery,
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<GflagsInfo>(
+    {
+      url: '/gflags',
+      method: 'GET',
+      params: {
+        node_address: requestParameters['node_address'],
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getGflagsQueryKey = (
+  requestParametersQuery: GetGflagsForQuery,
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/gflags`,
+  pageParam,
+  ...(requestParametersQuery ? [requestParametersQuery] : [])
+];
+
+
+export const useGetGflagsInfiniteQuery = <T = GflagsInfo, Error = ApiError>(
+  params: GetGflagsForQuery,
+  options?: {
+    query?: UseInfiniteQueryOptions<GflagsInfo, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getGflagsQueryKey(params, pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<GflagsInfo, Error, T>(
+    queryKey,
+    () => getGflagsAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetGflagsQuery = <T = GflagsInfo, Error = ApiError>(
+  params: GetGflagsForQuery,
+  options?: {
+    query?: UseQueryOptions<GflagsInfo, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getGflagsQueryKey(params,  version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<GflagsInfo, Error, T>(
+    queryKey,
+    () => getGflagsAxiosRequest(params, customAxiosInstance),
     queryOptions
   );
 

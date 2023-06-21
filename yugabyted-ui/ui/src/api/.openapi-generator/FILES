@@ -25,6 +25,7 @@ src/models/ClusterTablet.ts
 src/models/ClusterTabletListResponse.ts
 src/models/EncryptionInfo.ts
 src/models/EntityMetadata.ts
+src/models/GflagsInfo.ts
 src/models/HealthCheckInfo.ts
 src/models/HealthCheckResponse.ts
 src/models/IsLoadBalancerIdle.ts

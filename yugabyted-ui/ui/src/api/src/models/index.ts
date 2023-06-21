@@ -17,6 +17,7 @@ export type { ClusterTablet } from  './ClusterTablet';
 export type { ClusterTabletListResponse } from  './ClusterTabletListResponse';
 export type { EncryptionInfo } from  './EncryptionInfo';
 export type { EntityMetadata } from  './EntityMetadata';
+export type { GflagsInfo } from  './GflagsInfo';
 export type { HealthCheckInfo } from  './HealthCheckInfo';
 export type { HealthCheckResponse } from  './HealthCheckResponse';
 export type { IsLoadBalancerIdle } from  './IsLoadBalancerIdle';
