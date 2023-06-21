@@ -52,6 +52,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
     nodeName: withDefault(StringParam, 'all'),
     clusterType: StringParam,
   });
+
   const filteredNode = nodeName === 'all' || nodeName === '' || !nodeName ? undefined : nodeName; 
   const isReadReplica = clusterType === 'READ_REPLICA';
 
@@ -264,7 +265,7 @@ class CpuSankeyLink extends Component<any, any> {
         </defs>
         
         <Link component={RouterLink}
-          to={`/performance/metrics?nodeName=${payload.name}&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
+          to={`/performance/metrics?nodeName=${payload.target.name}&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
           <path
             d={`
               M${sourceX},${sourceY + linkWidth / 2}

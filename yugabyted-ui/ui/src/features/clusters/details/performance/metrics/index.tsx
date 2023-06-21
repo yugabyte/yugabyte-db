@@ -130,7 +130,7 @@ export const Metrics: FC = () => {
     ...(nodesResponse?.data.filter(node => (tab === "PRIMARY" && !node.is_read_replica) || 
       (tab === "READ_REPLICA" && node.is_read_replica))
       .map((node) => ({ label: node.name, value: node.name })) ?? [])
-  ], [tab]);
+  ], [tab, nodesResponse?.data]);
 
   function handleTabChange(newTab: typeof tab) {
     setTab(newTab);
