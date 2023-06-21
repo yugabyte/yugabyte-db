@@ -296,6 +296,12 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
+1. If the node is running SELinux and the home directory is customized, set the correct SELinux ssh context, as follows:
+
+    ```bash
+    chcon -R -t ssh_home_t <yugabyte_home>
+    ```
+
 1. Copy the SSH public key to each DB node. This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
 
 1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
