@@ -329,6 +329,37 @@
           "ScanTime": "Last Scanned",
           "DBScanFailed": "Failed to scan the database. Try again later."
         },
+        "queryDetailsPanel": {
+          "title": "Query Details",
+          "label": {
+            "responseTimePercentile": "Response Time Percentile",
+            "details": "Details"
+          },
+          "aria": {
+            "queryInfoPanelTabs": "Query information panel tabs"
+          },
+          "field": {
+            "calls": "Total Count",
+            "datname": "Database",
+            "local_blks_hit": "Tmp tables RAM",
+            "local_blks_written": "Tmp tables On Disk",
+            "max_time": "Max Exec Time",
+            "mean_time": "Avg Exec Time",
+            "min_time": "Min Exec Time",
+            "P25": "P25 Latency",
+            "P50": "P50 Latency",
+            "P90": "P90 Latency",
+            "P95": "P95 Latency",
+            "P99": "P99 Latency",
+            "rolname": "User",
+            "rows": "Rows",
+            "stddev_time": "Stdev Exec Time",
+            "total_time": "Total Time"
+          },
+          "slowQueryGraph": {
+            "title": "Query count by Response Time"
+          }
+        },
         "typeTag": {
           "IndexSuggestion": "INDEX SUGGESTION",
           "SchemaSuggestion": "SCHEMA SUGGESTION",

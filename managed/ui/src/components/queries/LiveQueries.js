@@ -7,7 +7,7 @@ import { Dropdown, MenuItem, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Highlighter } from '../../helpers/Highlighter';
 import { YBPanelItem } from '../panels';
-import { QueryInfoSidePanel } from './QueryInfoSidePanel';
+import { LegacyQueryInfoSidePanel } from './LegacyQueryInfoSidePanel';
 import { YBButtonLink } from '../common/forms/fields';
 import { useLiveQueriesApi, filterBySearchTokens } from './helpers/queriesHelper';
 import { YBLoadingCircleIcon } from '../common/indicators';
@@ -95,7 +95,6 @@ const LiveQueriesComponent = ({ location }) => {
     }
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-
   const getTserverLink = (cell, row) => {
     const tserverPort = currentUniverse?.data?.universeDetails?.communicationPorts?.tserverHttpPort;
     const href = getProxyNodeAddress(universeUUID, row.privateIp, tserverPort);
@@ -171,13 +170,13 @@ const LiveQueriesComponent = ({ location }) => {
       );
     }
   } else if (errors.ycql > 0) {
-      const percentFailed = parseFloat(errors.ycql) / (errors.ycql + ycqlQueries.length);
-      failedQueries = (
-        <Alert bsStyle={percentFailed > 0.8 ? 'danger' : 'warning'}>
-          Number of failed queries: {errors.ycql}/{errors.ycql + ycqlQueries.length}
-        </Alert>
-      );
-    }
+    const percentFailed = parseFloat(errors.ycql) / (errors.ycql + ycqlQueries.length);
+    failedQueries = (
+      <Alert bsStyle={percentFailed > 0.8 ? 'danger' : 'warning'}>
+        Number of failed queries: {errors.ycql}/{errors.ycql + ycqlQueries.length}
+      </Alert>
+    );
+  }
 
   return (
     <div className="live-queries">
@@ -201,23 +200,23 @@ const LiveQueriesComponent = ({ location }) => {
                 btnClass="btn btn-default refresh-btn"
                 onClick={getLiveQueries}
               />
-                <div>
-                  <div className="live-queries__dropdown-label">Show live queries</div>
-                  <Dropdown id="queries-filter-dropdown" pullRight={true}>
-                    <Dropdown.Toggle>
-                      <i className="fa fa-database"></i>&nbsp;
-                      {type}
-                    </Dropdown.Toggle>
-                    <Dropdown.Menu>
-                      <MenuItem key="YCQL" active={!isYSQL} onClick={() => setType('YCQL')}>
-                        YCQL
-                      </MenuItem>
-                      <MenuItem key="YSQL" active={isYSQL} onClick={() => setType('YSQL')}>
-                        YSQL
-                      </MenuItem>
-                    </Dropdown.Menu>
-                  </Dropdown>
-                </div>
+              <div>
+                <div className="live-queries__dropdown-label">Show live queries</div>
+                <Dropdown id="queries-filter-dropdown" pullRight={true}>
+                  <Dropdown.Toggle>
+                    <i className="fa fa-database"></i>&nbsp;
+                    {type}
+                  </Dropdown.Toggle>
+                  <Dropdown.Menu>
+                    <MenuItem key="YCQL" active={!isYSQL} onClick={() => setType('YCQL')}>
+                      YCQL
+                    </MenuItem>
+                    <MenuItem key="YSQL" active={isYSQL} onClick={() => setType('YSQL')}>
+                      YSQL
+                    </MenuItem>
+                  </Dropdown.Menu>
+                </Dropdown>
+              </div>
             </div>
           </div>
         }
@@ -284,10 +283,10 @@ const LiveQueriesComponent = ({ location }) => {
           </div>
         }
       />
-      <QueryInfoSidePanel
+      <LegacyQueryInfoSidePanel
         visible={selectedRow.length}
         onHide={() => setSelectedRow([])}
-        data={displayedQueries.find((x) => selectedRow.length && x.id === selectedRow[0])}
+        queryData={displayedQueries.find((x) => selectedRow.length && x.id === selectedRow[0])}
       />
     </div>
   );
