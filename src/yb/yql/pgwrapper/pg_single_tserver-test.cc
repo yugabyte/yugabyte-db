@@ -24,6 +24,7 @@
 
 
 DECLARE_uint64(max_clock_skew_usec);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
@@ -572,6 +573,22 @@ TEST_F_EX(PgSingleTServerTest,
     .first_row_to_scan = 1,  // 0-based
     .last_row_to_scan = 3,
   });
+}
+
+// Repro for https://github.com/yugabyte/yugabyte-db/issues/17558.
+TEST_F(PgSingleTServerTest, PagingSelectWithDelayedIntentsApply) {
+  FLAGS_TEST_inject_sleep_before_applying_intents_ms = 100;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (v INT) SPLIT INTO 2 TABLETS"));
+  for (int i = 0; i != 20; ++i) {
+    LOG(INFO) << "Delete iteration " << i;
+    ASSERT_OK(conn.Execute("DELETE FROM t"));
+    LOG(INFO) << "Insert iteration " << i;
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+    LOG(INFO) << "Reading iteration " << i;
+    auto all = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t"));
+    ASSERT_EQ(all, "1");
+  }
 }
 
 }  // namespace yb::pgwrapper
