@@ -163,6 +163,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-identity" % "1.6.0",
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.27.0",
   "javax.mail" % "mail" % "1.4.7",
   "javax.validation" % "validation-api" % "2.0.1.Final",
   "io.prometheus" % "simpleclient" % "0.11.0",
