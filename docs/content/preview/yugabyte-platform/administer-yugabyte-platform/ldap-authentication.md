@@ -2,6 +2,7 @@
 title: Enable YugabyteDB Anywhere authentication via LDAP
 headerTitle: Enable YugabyteDB Anywhere authentication via LDAP
 description: Use LDAP to enable login to YugabyteDB Anywhere.
+headcontent: Manage YugabyteDB Anywhere users using LDAP
 linkTitle: Configure authentication
 menu:
   preview_yugabyte-platform:
@@ -200,7 +201,7 @@ The following is the runtime configuration to specify:
 
 ## Role management
 
-You can map LDAP groups to YugabyteDB Anywhere roles. Upon login, the user's role is assigned based on whatever role their LDAP group has been mapped to in YugabyteDB Anywhere. If a user is in multiple mapped LDAP groups, YugabyteDB Anywhere performs a union of all the roles that are chosen as a result of group mapping and assigns the union to the user.
+You can map LDAP groups to [YugabyteDB Anywhere roles](../../security/authorization-platform/#roles). Upon login, the user's role is assigned based on whatever role their LDAP group has been mapped to in YugabyteDB Anywhere. If a user is in multiple mapped LDAP groups, YugabyteDB Anywhere performs a union of all the roles that are chosen as a result of group mapping and assigns the union to the user.
 
 To map LDAP groups to YugabyteDB Anywhere roles, do the following:
 

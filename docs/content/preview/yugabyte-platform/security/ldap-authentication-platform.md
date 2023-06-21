@@ -3,6 +3,7 @@ title: LDAP authentication
 headerTitle: LDAP authentication
 linkTitle: LDAP authentication
 description: Configuring YugabyteDB Anywhere to use an external LDAP authentication service.
+headcontent: Manage database users using LDAP
 menu:
   preview_yugabyte-platform:
     identifier: ldap-authentication-platform
@@ -24,7 +25,7 @@ LDAP Authentication is similar to password authentication, except that it uses t
 
 You enable LDAP authentication in the YugabyteDB cluster by setting the LDAP configuration with the <code>[--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
 
-This section describes how to configure YugabyteDB Anywhere to use an LDAP server such as Active Directory with TLS.
+This section describes how to configure a YugabyteDB Anywhere universe to use an LDAP server such as Active Directory with TLS.
 
 For more information on LDAP in YugabyteDB, refer to [LDAP authentication](../../../secure/authentication/ldap-authentication/).
 
@@ -60,7 +61,6 @@ Consider the following example:
     ldapsearch -x -H ldaps://ldapserver.example.org -b dc=example,dc=org 'uid=adam' -D "cn=admin,dc=example,dc=org" -w adminpassword
     ```
 
-    
     You should see a response similar to the following:
 
     ```output
