@@ -62,6 +62,7 @@ set(INTEGRATION_TESTS_SRCS
   yb_table_test_base.cc
   xcluster_test_base.cc
   cdcsdk_test_base.cc
+  cdcsdk_ysql_test_base.cc
   xcluster_ysql_test_base.cc
   xcluster_ycql_test_base.cc
 )
