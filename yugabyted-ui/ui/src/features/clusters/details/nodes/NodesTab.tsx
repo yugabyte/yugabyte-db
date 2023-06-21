@@ -164,10 +164,11 @@ export const NodesTab: FC = () => {
   const [showEditColumns, setShowEditColumns] = useState(false);
 
   const [queryParams, setQueryParams] = useQueryParams({
-    filter: withDefault(StringParam, '')
+    filter: withDefault(StringParam, ''),
+    node: withDefault(StringParam, ''),
   });
   const [filter, setFilter] = useState<string | undefined>(queryParams.filter);
-  const [nodeFilter, setNodeFilter] = useState<string>('');
+  const [nodeFilter, setNodeFilter] = useState<string>(queryParams.node);
 
   const handleChangeFilter = (
     newFilter: string,
@@ -182,6 +183,9 @@ export const NodesTab: FC = () => {
     newNodeFilter: string,
   ) => {
     setNodeFilter(newNodeFilter);
+    setQueryParams({
+      node: newNodeFilter || undefined
+    });
   };
 
   // Get nodes
