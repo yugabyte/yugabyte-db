@@ -629,22 +629,22 @@ Status Histogram::WriteForPrometheus(
 
   // Copy the label map to add the quatiles.
   if (export_percentiles_ && FLAGS_expose_metric_histogram_percentiles) {
+    const char* gauge_type = MetricType::PrometheusType(MetricType::kGauge);
     copy_of_attr["quantile"] = "p50";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.ValueAtPercentile(50),
                                            prototype()->aggregation_function(),
-                                           counter_type, description));
+                                           gauge_type, description));
     copy_of_attr["quantile"] = "p95";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.ValueAtPercentile(95),
                                            prototype()->aggregation_function(),
-                                           counter_type, description));
+                                           gauge_type, description));
     copy_of_attr["quantile"] = "p99";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.ValueAtPercentile(99),
                                            prototype()->aggregation_function(),
-                                           counter_type, description));
-    const char* gauge_type = MetricType::PrometheusType(MetricType::kGauge);
+                                           gauge_type, description));
     copy_of_attr["quantile"] = "mean";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.MeanValue(),
