@@ -393,6 +393,7 @@ public class NodeInstanceController extends AuthenticatedController {
     }
 
     NodeActionType nodeAction = nodeActionFormData.getNodeAction();
+    boolean force = nodeActionFormData.isForce();
     NodeTaskParams taskParams = new NodeTaskParams();
 
     if (nodeAction == NodeActionType.REBOOT || nodeAction == HARD_REBOOT) {
@@ -400,6 +401,7 @@ public class NodeInstanceController extends AuthenticatedController {
           UniverseControllerRequestBinder.deepCopy(
               universe.getUniverseDetails(), RebootNodeInUniverse.Params.class);
       params.isHardReboot = nodeAction == HARD_REBOOT;
+      params.skipWaitingForMasterLeader = force;
       taskParams = params;
     } else {
       taskParams =
@@ -412,12 +414,12 @@ public class NodeInstanceController extends AuthenticatedController {
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
-    if (nodeAction == NodeActionType.STOP
-        || nodeAction == NodeActionType.REMOVE
-        || nodeAction == NodeActionType.DELETE
-        || nodeAction == NodeActionType.REBOOT
-        || nodeAction == NodeActionType.HARD_REBOOT) {
-      // Always check this?? For now leaving it as is since it breaks many tests
+    if ((nodeAction == NodeActionType.STOP
+            || nodeAction == NodeActionType.REMOVE
+            || nodeAction == NodeActionType.DELETE
+            || nodeAction == NodeActionType.REBOOT
+            || nodeAction == NodeActionType.HARD_REBOOT)
+        && !force) {
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
     }
