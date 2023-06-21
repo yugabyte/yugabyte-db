@@ -76,7 +76,11 @@ public class VaultAccessor {
     CustomCAStoreManager customCAStoreManager =
         StaticInjectorHolder.injector().instanceOf(CustomCAStoreManager.class);
     boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
-    if (customCAUploaded) {
+    boolean ybaTrustStoreEnabled = customCAStoreManager.isEnabled();
+    if (customCAUploaded && !ybaTrustStoreEnabled) {
+      LOG.warn("Skipping to use YBA's custom trust-store as the feature is disabled");
+    }
+    if (customCAUploaded && ybaTrustStoreEnabled) {
       LOG.debug("Using YBA's custom trust-store with Java defaults");
       KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
       config.sslConfig(new SslConfig().trustStore(ybaJavaKeyStore).build());
