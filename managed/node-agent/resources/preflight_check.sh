@@ -9,6 +9,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 check_type="provision"
+node_agent_mode=false
 airgap=false
 install_node_exporter=true
 skip_ntp_check=false
@@ -434,6 +435,9 @@ while [[ $# -gt 0 ]]; do
       check_type="$2"
       shift
     ;;
+    --node_agent_mode)
+      node_agent_mode=true
+    ;;
     --airgap)
       airgap=true
     ;;
@@ -532,4 +536,19 @@ else
   preflight_configure_check >/dev/null 2>&1
 fi
 
-echo "{$result_kvs}"
+if [[ "$node_agent_mode" == "false" ]]; then
+  python - "{$result_kvs}" <<EOF
+import json
+import sys
+dict=json.loads(sys.argv[1])
+keys = list(dict.keys())
+keys.sort()
+idx = 1
+for key in keys:
+  val = dict[key].get("value")
+  print('{}. {} is {}'.format(idx, key, val))
+  idx += 1
+EOF
+else
+  echo "{$result_kvs}"
+fi

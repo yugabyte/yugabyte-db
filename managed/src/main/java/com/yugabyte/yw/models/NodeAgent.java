@@ -22,7 +22,6 @@ import io.ebean.Model;
 import io.ebean.PersistenceContextScope;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.WhenModified;
-import io.fabric8.utils.Strings;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.ByteArrayInputStream;
@@ -481,7 +480,7 @@ public class NodeAgent extends Model {
     sb.append(" on node_agents.ip = universe_node_private_ip or node_agents.ip = node_instance_ip");
     sb.append(" where node_agents.customer_uuid = '").append(customerUuid.toString()).append("'");
     if (CollectionUtils.isNotEmpty(filter.getNodeIps())) {
-      sb.append(" and node_agents.ip in ('").append(Strings.join(filter.getNodeIps(), "'"));
+      sb.append(" and node_agents.ip in ('").append(StringUtils.join(filter.getNodeIps(), "'"));
       sb.append("')");
     }
     if (filter.getCloudType() != null) {

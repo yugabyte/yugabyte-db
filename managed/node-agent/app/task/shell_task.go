@@ -350,6 +350,7 @@ func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []s
 	} else {
 		options = append(options, "provision")
 	}
+	options = append(options, "--node_agent_mode")
 	options = append(options, "--yb_home_dir", "'"+handler.param.YbHomeDir+"'")
 	if handler.param.SshPort != 0 {
 		options = append(
