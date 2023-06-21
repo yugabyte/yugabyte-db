@@ -72,7 +72,7 @@ To map LDAP groups to YugabyteDB Anywhere roles, do the following:
     - Select **User Attribute** and set the name of the LDAP user attribute to use to find the groups that users belong to.
     - Select **Group Search Filter** and enter a search filter to use get a list of groups.
 
-1. Click **Edit** to display the **Create Mapping** dialog.
+1. Click **Create Mappings** (or, if you have existing mappings, **Edit**) to display the **Create Mapping** dialog.
 
 1. Click **Add rows** to add mappings. Select the YugabyteDB Anywhere role and enter the LDAP Group DN that you want to map the role to.
 
