@@ -1363,7 +1363,6 @@ Status PopulateLockInfoFromParsedIntent(
     lock_info->set_column_id(subdoc_key.last_subkey().GetColumnId());
   }
 
-  lock_info->set_transaction_id(decoded_value.transaction_id.ToString());
   lock_info->set_subtransaction_id(decoded_value.subtransaction_id);
   lock_info->set_is_explicit(
       decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock));
