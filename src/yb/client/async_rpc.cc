@@ -758,7 +758,8 @@ void ReadRpc::SwapResponses() {
         if (!used_read_time_set && resp_.has_used_read_time()) {
           // Single operation in a group required used read time.
           used_read_time_set = true;
-          pgsql_op->SetUsedReadTime(ReadHybridTime::FromPB(resp_.used_read_time()));
+          pgsql_op->SetUsedReadTime(
+              ReadHybridTime::FromPB(resp_.used_read_time()), tablet().tablet_id());
         }
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();

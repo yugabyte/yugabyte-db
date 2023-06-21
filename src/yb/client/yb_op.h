@@ -562,8 +562,9 @@ class YBPgsqlReadOp : public YBPgsqlOp {
       const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs);
 
   bool should_add_intents(IsolationLevel isolation_level) override;
-  void SetUsedReadTime(const ReadHybridTime& used_time);
+  void SetUsedReadTime(const ReadHybridTime& used_time, const TabletId& tablet);
   const ReadHybridTime& used_read_time() const { return used_read_time_; }
+  const TabletId& used_tablet() const { return used_tablet_; }
 
   Status GetPartitionKey(std::string* partition_key) const override;
 
@@ -578,6 +579,8 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   std::unique_ptr<PgsqlReadRequestPB> request_holder_;
   YBConsistencyLevel yb_consistency_level_ = YBConsistencyLevel::STRONG;
   ReadHybridTime used_read_time_;
+  // The tablet that served this operation.
+  TabletId used_tablet_;
 };
 
 // This class is not thread-safe, though different YBNoOp objects on

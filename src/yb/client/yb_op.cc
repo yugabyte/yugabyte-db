@@ -1054,8 +1054,9 @@ OpGroup YBPgsqlReadOp::group() {
       ? OpGroup::kConsistentPrefixRead : OpGroup::kLeaderRead;
 }
 
-void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time) {
+void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time, const TabletId& tablet) {
   used_read_time_ = used_time;
+  used_tablet_ = tablet;
 }
 
 Status YBPgsqlReadOp::GetPartitionKey(std::string* partition_key) const {
