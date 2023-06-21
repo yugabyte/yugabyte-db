@@ -73,7 +73,10 @@ public class WSClientRefresher implements CustomTrustStoreListener {
 
     // Add the custom CA truststore config if applicable.
     List<Map<String, String>> ybaStoreConfig = customCAStoreManager.getPemStoreConfig();
-    if (!ybaStoreConfig.isEmpty()) {
+    if (!ybaStoreConfig.isEmpty() && !customCAStoreManager.isEnabled()) {
+      log.warn("Skipping to add YBA's custom trust-store config as the feature is disabled");
+    }
+    if (!ybaStoreConfig.isEmpty() && customCAStoreManager.isEnabled()) {
       // Add JRE default cert paths as well in this case.
       ybaStoreConfig.add(customCAStoreManager.getJavaDefaultConfig());
 
