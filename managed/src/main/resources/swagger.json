@@ -6199,6 +6199,10 @@
     },
     "NodeActionFormData" : {
       "properties" : {
+        "force" : {
+          "description" : "Should ignore errors and proceed with the node action",
+          "type" : "boolean"
+        },
         "nodeAction" : {
           "enum" : [ "ADD", "REMOVE", "START", "STOP", "DELETE", "QUERY", "RELEASE", "REBOOT", "START_MASTER", "PRECHECK_DETACHED", "HARD_REBOOT" ],
           "type" : "string"
