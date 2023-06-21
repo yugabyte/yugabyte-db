@@ -20,3 +20,29 @@ export const EXTERNAL_LINKS: Record<string, string> = {
 export const CONST_VAR: Record<string, string> = {
   AVG_NODES: 'Avg of the other nodes'
 };
+
+export const DURATION_FIELDS = [
+  'P25',
+  'P50',
+  'P90',
+  'P95',
+  'P99',
+  'max_time',
+  'mean_time',
+  'min_time',
+  'stddev_time',
+  'total_time'
+] as const;
+
+export const DURATION_FIELD_DECIMALS = 2;
+
+export const QueryType = {
+  SLOW: 'slowQuery',
+  LIVE: 'liveQuery'
+} as const;
+export type QueryType = typeof QueryType[keyof typeof QueryType];
+
+/**
+ * A YB software version must exceed the threshold to be considered a supported version.
+ */
+export const SLOW_QUERY_P99_LATENCY_YB_SOFTWARE_VERSION_THRESHOLD = '2.19.1.0-b80';

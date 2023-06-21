@@ -30,7 +30,7 @@ const statsTextMap = {
   rolname: 'User'
 };
 
-export const QueryInfoSidePanel = ({ data, visible, onHide }) => {
+export const LegacyQueryInfoSidePanel = ({ data, visible, onHide }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {

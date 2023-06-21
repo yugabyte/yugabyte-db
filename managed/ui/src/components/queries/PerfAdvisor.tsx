@@ -10,7 +10,7 @@ import { YBLoading } from '../../components/common/indicators';
 import { YBButton } from '../common/forms/fields';
 import { performanceRecommendationApi, QUERY_KEY } from './helpers/api';
 import { formatPerfRecommendationsData } from './helpers/utils';
-import { EXTERNAL_LINKS } from './helpers/const';
+import { EXTERNAL_LINKS } from './helpers/constants';
 import { ybFormatDate } from '../../redesign/helpers/DateUtils';
 import { isEmptyString, isNonEmptyString } from '../../utils/ObjectUtils';
 import {
