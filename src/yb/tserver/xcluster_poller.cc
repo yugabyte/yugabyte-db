@@ -328,7 +328,7 @@ void XClusterPoller::DoPoll() {
     return;
   }
 
-  VLOG_WITH_PREFIX(3) << "Sending GetChangesRequest: " << req.ShortDebugString();
+  VLOG_WITH_PREFIX(5) << "Sending GetChangesRequest: " << req.ShortDebugString();
 
   *poll_handle_ = CreateGetChangesCDCRpc(
       CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),

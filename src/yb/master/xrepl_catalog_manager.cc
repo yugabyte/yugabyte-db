@@ -11,18 +11,16 @@
 // under the License.
 
 #include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_state_table.h"
 
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
-#include "yb/client/yb_op.h"
-#include "yb/client/yb_table_name.h"
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/ql_type.h"
 #include "yb/common/schema_pbutil.h"
 
 #include "yb/docdb/docdb_pgapi.h"
@@ -60,10 +58,6 @@ using std::vector;
 
 DEFINE_RUNTIME_int32(cdc_wal_retention_time_secs, 4 * 3600,
     "WAL retention time in seconds to be used for tables for which a CDC stream was created.");
-
-DEFINE_RUNTIME_int32(cdc_state_table_num_tablets, 0,
-    "Number of tablets to use when creating the CDC state table. "
-    "0 to use the same default num tablets as for regular tables.");
 
 DEFINE_RUNTIME_bool(check_bootstrap_required, false,
     "Is it necessary to check whether bootstrap is required for Universe Replication.");
@@ -392,56 +386,6 @@ Status CatalogManager::LoadUniverseReplication() {
   return Status::OK();
 }
 
-Status CatalogManager::CreateCdcStateTableIfNeeded(rpc::RpcContext* rpc) {
-  // If CDC state table exists do nothing, otherwise create it.
-  if (VERIFY_RESULT(TableExists(kSystemNamespaceName, kCdcStateTableName))) {
-    return Status::OK();
-  }
-  // Set up a CreateTable request internally.
-  CreateTableRequestPB req;
-  CreateTableResponsePB resp;
-  req.set_name(kCdcStateTableName);
-  req.mutable_namespace_()->set_name(kSystemNamespaceName);
-  req.set_table_type(TableType::YQL_TABLE_TYPE);
-
-  client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn(master::kCdcTabletId)->HashPrimaryKey()->Type(DataType::STRING);
-  schema_builder.AddColumn(master::kCdcStreamId)->PrimaryKey()->Type(DataType::STRING);
-  schema_builder.AddColumn(master::kCdcCheckpoint)->Type(DataType::STRING);
-  schema_builder.AddColumn(master::kCdcData)
-      ->Type(QLType::CreateTypeMap(DataType::STRING, DataType::STRING));
-  schema_builder.AddColumn(master::kCdcLastReplicationTime)->Type(DataType::TIMESTAMP);
-
-  client::YBSchema yb_schema;
-  CHECK_OK(schema_builder.Build(&yb_schema));
-
-  auto schema = yb::client::internal::GetSchema(yb_schema);
-  SchemaToPB(schema, req.mutable_schema());
-  // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
-  // will use the same defaults as for regular tables.
-  if (FLAGS_cdc_state_table_num_tablets > 0) {
-    req.mutable_schema()->mutable_table_properties()->set_num_tablets(
-        FLAGS_cdc_state_table_num_tablets);
-  }
-
-  Status s = CreateTable(&req, &resp, rpc);
-  // We do not lock here so it is technically possible that the table was already created.
-  // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
-  if (!s.ok() && !s.IsAlreadyPresent()) {
-    return s;
-  }
-  return Status::OK();
-}
-
-Status CatalogManager::IsCdcStateTableCreated(IsCreateTableDoneResponsePB* resp) {
-  IsCreateTableDoneRequestPB req;
-
-  req.mutable_table()->set_table_name(kCdcStateTableName);
-  req.mutable_table()->mutable_namespace_()->set_name(kSystemNamespaceName);
-
-  return IsCreateTableDone(&req, resp);
-}
-
 // Helper class to print a vector of CDCStreamInfo pointers.
 namespace {
 
@@ -759,52 +703,34 @@ Status CatalogManager::CreateNewCDCStream(
   stream->mutable_metadata()->CommitMutation();
   LOG(INFO) << "Created CDC stream " << stream->ToString();
 
-  RETURN_NOT_OK(CreateCdcStateTableIfNeeded(rpc));
+  CreateTableResponsePB table_resp;
+  RETURN_NOT_OK(CreateTableIfNotFound(
+      cdc::CDCStateTable::GetNamespaceName(), cdc::CDCStateTable::GetTableName(),
+      &cdc::CDCStateTable::GenerateCreateCdcStateTableRequest, &table_resp, /* rpc */ nullptr));
   TRACE("Created CDC state table");
 
-  if (!PREDICT_FALSE(FLAGS_TEST_disable_cdc_state_insert_on_setup) &&
-      (!req.has_initial_state() || (req.initial_state() == master::SysCDCStreamEntryPB::ACTIVE)) &&
-      (id_type_option_value != cdc::kNamespaceId)) {
-    // Create the cdc state entries for the tablets in this table from scratch since we have no
-    // data to bootstrap. If we data to bootstrap, let the BootstrapProducer logic take care of
-    // populating entries in cdc_state.
-    auto ybclient = master_->cdc_state_client_initializer().client();
-    if (!ybclient) {
-      return STATUS(IllegalState, "Client not initialized or shutting down");
-    }
-    client::TableHandle cdc_table;
-    const client::YBTableName cdc_state_table_name(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    RETURN_NOT_OK(ybclient->WaitForCreateTableToFinish(cdc_state_table_name));
-    RETURN_NOT_OK(cdc_table.Open(cdc_state_table_name, ybclient));
-    std::shared_ptr<client::YBSession> session = ybclient->NewSession();
-    scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTableById(req.table_id()));
-    auto tablets = table->GetTablets();
-    for (const auto& tablet : tablets) {
-      const auto op = cdc_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
-      auto* const req = op->mutable_request();
-      QLAddStringHashValue(req, tablet->id());
-      QLAddStringRangeValue(req, stream->id());
-      cdc_table.AddStringColumnValue(req, master::kCdcCheckpoint, OpId().ToString());
-      cdc_table.AddTimestampColumnValue(
-          req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
-
-      if (id_type_option_value == cdc::kNamespaceId) {
-        // For cdcsdk cases, we also need to persist last_active_time in the 'cdc_state' table. We
-        // will store this info in the map in the 'kCdcData' column.
-        auto column_id = cdc_table.ColumnId(master::kCdcData);
-        auto map_value_pb = client::AddMapColumn(req, column_id);
-        client::AddMapEntryToColumn(map_value_pb, "active_time", "0");
-        client::AddMapEntryToColumn(map_value_pb, "cdc_sdk_safe_time", "0");
-      }
-
-      session->Apply(op);
-    }
-    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-    RETURN_NOT_OK(session->TEST_Flush());
-    TRACE("Created CDC state entries");
+  // Skip if disable_cdc_state_insert_on_setup is set.
+  // If this is a bootstrap (initial state not ACTIVE), let the BootstrapProducer logic take care of
+  // populating entries in cdc_state.
+  if (PREDICT_FALSE(FLAGS_TEST_disable_cdc_state_insert_on_setup) ||
+      (req.has_initial_state() && req.initial_state() != master::SysCDCStreamEntryPB::ACTIVE) ||
+      (id_type_option_value == cdc::kNamespaceId)) {
+    return Status::OK();
   }
 
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTableById(req.table_id()));
+  auto tablets = table->GetTablets();
+  std::vector<cdc::CDCStateTableEntry> entries;
+  entries.reserve(tablets.size());
+  for (const auto& tablet : tablets) {
+    cdc::CDCStateTableEntry entry(tablet->id(), stream->id());
+    entry.checkpoint = OpId().Min();
+    entry.last_replication_time = GetCurrentTimeMicros();
+    entries.push_back(std::move(entry));
+  }
+
+  RETURN_NOT_OK(cdc_state_table_->InsertEntries(entries));
+  TRACE("Created CDC state entries");
   return Status::OK();
 }
 
@@ -1087,16 +1013,6 @@ void CatalogManager::FindAllTablesMissingInCDCSDKStream(
 
 Status CatalogManager::AddTabletEntriesToCDCSDKStreamsForNewTables(
     const TableStreamIdsMap& table_to_unprocessed_streams_map) {
-  client::TableHandle cdc_table;
-  const client::YBTableName cdc_state_table_name(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  auto ybclient = master_->cdc_state_client_initializer().client();
-  if (!ybclient) {
-    return STATUS(IllegalState, "Client not initialized or shutting down");
-  }
-  RETURN_NOT_OK(cdc_table.Open(cdc_state_table_name, ybclient));
-  std::shared_ptr<client::YBSession> session = ybclient->NewSession();
-
   int32_t processed_tables = 0;
   for (const auto& [table_id, streams] : table_to_unprocessed_streams_map) {
     if (processed_tables++ >= FLAGS_cdcsdk_table_processing_limit_per_run) {
@@ -1141,25 +1057,24 @@ Status CatalogManager::AddTabletEntriesToCDCSDKStreamsForNewTables(
         continue;
       }
 
-      for (const auto& tablet_pb : resp.tablet_locations()) {
-        const auto insert_op = cdc_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
-        auto* insert_req = insert_op->mutable_request();
-        auto* const condition = insert_req->mutable_if_expr()->mutable_condition();
-        condition->set_op(QL_OP_NOT_EXISTS);
-        QLAddStringHashValue(insert_req, tablet_pb.tablet_id());
-        QLAddStringRangeValue(insert_req, stream->id());
-        cdc_table.AddStringColumnValue(
-            insert_req, master::kCdcCheckpoint, OpId::Invalid().ToString());
-        auto map_value_pb = client::AddMapColumn(insert_req, cdc_table.ColumnId(master::kCdcData));
-        client::AddMapEntryToColumn(map_value_pb, "active_time", "0");
-        client::AddMapEntryToColumn(map_value_pb, "cdc_sdk_safe_time", "0");
-        session->Apply(insert_op);
+      std::vector<TabletId> tablet_ids;
+      const auto& tablets = resp.tablet_locations();
+      std::vector<cdc::CDCStateTableEntry> entries;
+      entries.reserve(tablets.size());
+
+      for (const auto& tablet : tablets) {
+        cdc::CDCStateTableEntry entry(tablet.tablet_id(), stream->id());
+        entry.checkpoint = OpId::Invalid();
+        entry.active_time = 0;
+        entry.cdc_sdk_safe_time = 0;
+        entries.push_back(std::move(entry));
       }
 
-      auto status = session->TEST_Flush();
+      auto status = cdc_state_table_->InsertEntries(entries);
+
       if (!status.ok()) {
         LOG(WARNING) << "Encoutered error while trying to add tablets of table: " << table_id
-                     << ", to cdc_state table for stream" << stream->id();
+                     << ", to cdc_state table for stream" << stream->id() << ": " << status;
         stream_pending = true;
         continue;
       }
@@ -1265,38 +1180,6 @@ void CatalogManager::GetValidTabletsAndDroppedTablesForStream(
   }
 }
 
-Result<std::shared_ptr<client::TableHandle>> CatalogManager::GetCDCStateTable() {
-  auto ybclient = master_->cdc_state_client_initializer().client();
-  const client::YBTableName cdc_state_table_name(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  auto cdc_state_table = std::make_shared<yb::client::TableHandle>();
-  auto s = cdc_state_table->Open(cdc_state_table_name, ybclient);
-  RETURN_NOT_OK(s);
-  if (!cdc_state_table) {
-    return STATUS_FORMAT(
-        IllegalState, "Unable to open table $0.", cdc_state_table_name.table_name());
-  }
-  return cdc_state_table;
-}
-
-Status CatalogManager::DeleteFromCDCStateTable(
-    std::shared_ptr<yb::client::TableHandle> cdc_state_table_result,
-    std::shared_ptr<client::YBSession> session, const TabletId& tablet_id,
-    const CDCStreamId& stream_id) {
-  const auto delete_op = cdc_state_table_result->NewDeleteOp();
-  auto* const delete_req = delete_op->mutable_request();
-  QLAddStringHashValue(delete_req, tablet_id);
-  QLAddStringRangeValue(delete_req, stream_id);
-  session->Apply(delete_op);
-  // Don't remove the stream from the system catalog as well as master cdc_stream_map_
-  // cache, if there is an error during a row delete for the corresponding stream-id,
-  // tablet-id combination from cdc_state table.
-  if (!delete_op->succeeded()) {
-    return STATUS_FORMAT(QLError, "$0", delete_op->response().status());
-  }
-  return Status::OK();
-}
-
 Status CatalogManager::CleanUpCDCMetadataFromSystemCatalog(
     const StreamTablesMap& drop_stream_tablelist) {
   std::vector<scoped_refptr<CDCStreamInfo>> streams_to_delete;
@@ -1350,24 +1233,14 @@ Status CatalogManager::CleanUpCDCMetadataFromSystemCatalog(
 
 Status CatalogManager::CleanUpCDCStreamsMetadata(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
-  auto ybclient = master_->cdc_state_client_initializer().client();
-  if (!ybclient) {
-    return STATUS(IllegalState, "Client not initialized or shutting down");
+  if (streams.empty()) {
+    return Status::OK();
   }
-  std::shared_ptr<yb::client::TableHandle> cdc_state_table = VERIFY_RESULT(GetCDCStateTable());
-  client::TableIteratorOptions options;
-  Status failer_status;
-  options.error_handler = [&failer_status](const Status& status) {
-    LOG(WARNING) << "Scan of table failed: " << status;
-    failer_status = status;
-  };
-  options.columns = std::vector<std::string>{
-      master::kCdcTabletId, master::kCdcStreamId, master::kCdcCheckpoint,
-      master::kCdcLastReplicationTime};
-  std::shared_ptr<client::YBSession> session = ybclient->NewSession();
+
   // Map to identify the list of drop tables for the stream.
-  StreamTablesMap drop_stream_tablelist;
+  StreamTablesMap drop_stream_table_list;
   for (const auto& stream : streams) {
+    const auto& stream_id = stream->id();
     // The set "tablets_with_streams" consists of all tablets not associated with the table
     // dropped. Tablets belonging to this set will not be deleted from cdc_state.
     // The set "drop_table_list" consists of all the tables those were associated with the stream,
@@ -1377,39 +1250,28 @@ Status CatalogManager::CleanUpCDCStreamsMetadata(
     bool should_delete_from_map = true;
     GetValidTabletsAndDroppedTablesForStream(stream, &tablets_with_streams, &drop_table_list);
 
-    for (const auto& row : client::TableRange(*cdc_state_table, options)) {
-      auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-      auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-      // 1. stream id matches the one marked for deleting.
-      // 2. And tablet id is not contained in the set "tablets_with_streams".
-      if ((stream_id == stream->id()) &&
-          (tablets_with_streams.find(tablet_id) == tablets_with_streams.end())) {
-        auto result = DeleteFromCDCStateTable(cdc_state_table, session, tablet_id, stream_id);
-        if (!result.ok()) {
-          LOG(WARNING) << "Error deleting cdc_state row with tablet id " << tablet_id
-                       << " and stream id " << stream_id << " : " << result.message().cdata();
-          should_delete_from_map = false;
-          break;
-        }
-        LOG(INFO) << "Deleted cdc_state table entry for stream " << stream_id << " for tablet "
-                  << tablet_id;
+    for (const auto& tablet_id : tablets_with_streams) {
+      auto status = cdc_state_table_->DeleteEntries({{tablet_id, stream_id}});
+      if (!status.ok()) {
+        // Don't remove the stream from the system catalog as well as master cdc_stream_map_
+        // cache, if there is an error during a row delete for the corresponding stream-id,
+        // tablet-id combination from cdc_state table.
+        LOG(WARNING) << "Error deleting cdc_state row with tablet id " << tablet_id
+                     << " and stream id " << stream_id << " : " << status;
+        should_delete_from_map = false;
+        break;
       }
+      LOG(INFO) << "Deleted cdc_state table entry for stream " << stream_id << ", tablet "
+                << tablet_id;
     }
 
     if (should_delete_from_map) {
-      // Track those succeed delete stream in the map.
-      drop_stream_tablelist[stream->id()] = drop_table_list;
+      drop_stream_table_list[stream->id()] = drop_table_list;
     }
   }
 
-  Status s = session->TEST_Flush();
-  if (!s.ok()) {
-    LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
-    return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
-  }
-
   // Cleanup the streams from system catalog and from internal maps.
-  return CleanUpCDCMetadataFromSystemCatalog(drop_stream_tablelist);
+  return CleanUpCDCMetadataFromSystemCatalog(drop_stream_table_list);
 }
 
 Status CatalogManager::RemoveStreamFromXClusterProducerConfig(
@@ -1432,11 +1294,6 @@ Status CatalogManager::RemoveStreamFromXClusterProducerConfig(
 
 Status CatalogManager::CleanUpDeletedCDCStreams(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
-  auto ybclient = master_->cdc_state_client_initializer().client();
-  if (!ybclient) {
-    return STATUS(IllegalState, "Client not initialized or shutting down");
-  }
-
   // First. For each deleted stream, delete the cdc state rows.
   // Delete all the entries in cdc_state table that contain all the deleted cdc streams.
 
@@ -1447,96 +1304,56 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
     stream_id_to_stream_info_map.emplace(stream->id(), stream.get());
   }
 
-  std::shared_ptr<yb::client::TableHandle> cdc_table = VERIFY_RESULT(GetCDCStateTable());
-  client::TableIteratorOptions options;
-  Status failure_status;
-  options.error_handler = [&failure_status](const Status& status) {
-    LOG(WARNING) << "Scan of table failed: " << status;
-    failure_status = status;
-  };
-  options.columns = std::vector<std::string>{master::kCdcTabletId, master::kCdcStreamId};
-
-  std::shared_ptr<client::YBSession> session = ybclient->NewSession();
-  std::vector<std::pair<CDCStreamId, std::shared_ptr<client::YBqlWriteOp>>> stream_ops;
-  std::set<CDCStreamId> failed_streams;
-  cdc::CDCRequestSource streams_type = cdc::XCLUSTER;
+  Status iteration_status;
+  auto all_entry_keys =
+      VERIFY_RESULT(cdc_state_table_->GetTableRange({} /* just key columns */, &iteration_status));
+  std::vector<cdc::CDCStateTableKey> entries_to_delete;
+  std::vector<cdc::CDCStateTableEntry> entries_to_update;
 
   // Remove all entries from cdc_state with the given stream ids.
-  for (const auto& row : client::TableRange(*cdc_table, options)) {
-    auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
+  for (const auto& entry_result : all_entry_keys) {
+    RETURN_NOT_OK(entry_result);
+    const auto& entry = *entry_result;
+    const auto stream = FindPtrOrNull(stream_id_to_stream_info_map, entry.key.stream_id);
+    if (!stream) {
+      continue;
+    }
 
-    const auto stream = FindPtrOrNull(stream_id_to_stream_info_map, stream_id);
-    if (stream) {
-      if (!stream->namespace_id().empty()) {
-        // CDCSDK stream.
-        streams_type = cdc::CDCSDK;
-        const auto update_op = cdc_table->NewUpdateOp();
-        auto* const update_req = update_op->mutable_request();
-        QLAddStringHashValue(update_req, tablet_id);
-        QLAddStringRangeValue(update_req, stream->id());
-        cdc_table->AddStringColumnValue(update_req, master::kCdcCheckpoint, OpId::Max().ToString());
-        auto* condition = update_req->mutable_if_expr()->mutable_condition();
-        condition->set_op(QL_OP_EXISTS);
-        session->Apply(update_op);
-        stream_ops.push_back(std::make_pair(stream->id(), update_op));
-        LOG(INFO) << "Setting checkpoint to OpId::Max() for stream " << stream->id()
-                  << " and tablet " << tablet_id << " with request "
-                  << update_req->ShortDebugString();
-      } else {
-        // XCluster stream.
-        const auto delete_op = cdc_table->NewDeleteOp();
-        auto* delete_req = delete_op->mutable_request();
-
-        QLAddStringHashValue(delete_req, tablet_id);
-        QLAddStringRangeValue(delete_req, stream->id());
-        session->Apply(delete_op);
-        stream_ops.push_back(std::make_pair(stream->id(), delete_op));
-        LOG(INFO) << "Deleting stream " << stream->id() << " for tablet " << tablet_id
-                  << " with request " << delete_req->ShortDebugString();
-      }
+    if (!stream->namespace_id().empty()) {
+      // CDCSDK stream.
+      cdc::CDCStateTableEntry update_entry(entry.key);
+      update_entry.checkpoint = OpId::Max();
+      entries_to_update.emplace_back(std::move(update_entry));
+      LOG(INFO) << "Setting checkpoint to OpId::Max() for " << entry.key.ToString();
+    } else {
+      // XCluster stream.
+      entries_to_delete.emplace_back(entry.key);
+      LOG(INFO) << "Deleting stream " << entry.key.ToString();
     }
   }
+  RETURN_NOT_OK(iteration_status);
 
-  if (!failure_status.ok()) {
-    return STATUS_FORMAT(
-        IllegalState, "Failed to scan table $0: $1", kCdcStateTableName, failure_status);
+  Status s = cdc_state_table_->UpdateEntries(entries_to_update);
+  if (!s.ok()) {
+    LOG(ERROR) << "Unable to flush operations to update cdc streams: " << s;
+    return s.CloneAndPrepend("Error setting checkpoint to OpId::Max() in cdc_state table");
   }
 
-  // Flush all the delete operations.
-  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  Status s = session->TEST_Flush();
+  s = cdc_state_table_->DeleteEntries(entries_to_delete);
   if (!s.ok()) {
     LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
-    if (streams_type == cdc::CDCSDK) {
-      return s.CloneAndPrepend("Error setting checkpoint to OpId::Max() in cdc_state table");
-    } else {
-      return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
-    }
-  }
-
-  for (const auto& e : stream_ops) {
-    if (!e.second->succeeded()) {
-      LOG(WARNING) << "Error deleting cdc_state row with tablet id "
-                   << e.second->request().hashed_column_values(0).value().string_value()
-                   << " and stream id "
-                   << e.second->request().range_column_values(0).value().string_value() << ": "
-                   << e.second->response().status();
-      failed_streams.insert(e.first);
-    }
+    return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
   }
 
   std::vector<CDCStreamInfo::WriteLock> locks;
-  locks.reserve(streams.size() - failed_streams.size());
+  locks.reserve(streams.size());
   std::vector<CDCStreamInfo*> streams_to_delete;
-  streams_to_delete.reserve(streams.size() - failed_streams.size());
+  streams_to_delete.reserve(streams.size());
 
   // Delete from sys catalog only those streams that were successfully deleted from cdc_state.
   for (auto& stream : streams) {
-    if (failed_streams.find(stream->id()) == failed_streams.end()) {
-      locks.push_back(stream->LockForWrite());
-      streams_to_delete.push_back(stream.get());
-    }
+    locks.push_back(stream->LockForWrite());
+    streams_to_delete.push_back(stream.get());
   }
 
   // Remove the stream ID from the cluster config CDC stream replication enabled/disabled map.
@@ -2943,66 +2760,39 @@ Status CatalogManager::UpdateXClusterConsumerOnTabletSplit(
 
 Status CatalogManager::UpdateCDCProducerOnTabletSplit(
     const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) {
-  // First check if this table has any streams associated with it.
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
-  std::vector<scoped_refptr<CDCStreamInfo>> cdcsdk_streams;
-  {
-    SharedLock lock(mutex_);
-    streams = FindCDCStreamsForTableUnlocked(producer_table_id, cdc::XCLUSTER);
-    cdcsdk_streams = FindCDCStreamsForTableUnlocked(producer_table_id, cdc::CDCSDK);
-    // Combine cdcsdk streams and xcluster streams into a single vector: 'streams'.
-    streams.insert(std::end(streams), std::begin(cdcsdk_streams), std::end(cdcsdk_streams));
-  }
-
-  if (!streams.empty()) {
-    // For each stream, need to add in the children entries to the cdc_state table.
-    client::TableHandle cdc_table;
-    const client::YBTableName cdc_state_table_name(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    auto ybclient = master_->cdc_state_client_initializer().client();
-    if (!ybclient) {
-      return STATUS(IllegalState, "Client not initialized or shutting down");
+  std::vector<cdc::CDCStateTableEntry> entries;
+  for (const auto stream_type : {cdc::XCLUSTER, cdc::CDCSDK}) {
+    {
+      SharedLock lock(mutex_);
+      streams = FindCDCStreamsForTableUnlocked(producer_table_id, stream_type);
     }
-    RETURN_NOT_OK(cdc_table.Open(cdc_state_table_name, ybclient));
-    std::shared_ptr<client::YBSession> session = ybclient->NewSession();
 
     for (const auto& stream : streams) {
-      bool is_cdcsdk_stream =
-          std::find(cdcsdk_streams.begin(), cdcsdk_streams.end(), stream) != cdcsdk_streams.end();
-
+      // Insert children entries into cdc_state now, set the opid to 0.0 and the timestamp to
+      // NULL. When we process the parent's SPLIT_OP in GetChanges, we will update the opid to
+      // the SPLIT_OP so that the children pollers continue from the next records. When we process
+      // the first GetChanges for the children, then their timestamp value will be set. We use
+      // this information to know that the children has been polled for. Once both children have
+      // been polled for, then we can delete the parent tablet via the bg task
+      // DoProcessXClusterParentTabletDeletion.
       for (const auto& child_tablet_id :
            {split_tablet_ids.children.first, split_tablet_ids.children.second}) {
-        // Insert children entries into cdc_state now, set the opid to 0.0 and the timestamp to
-        // NULL. When we process the parent's SPLIT_OP in GetChanges, we will update the opid to
-        // the SPLIT_OP so that the children pollers continue from the next records. When we process
-        // the first GetChanges for the children, then their timestamp value will be set. We use
-        // this information to know that the children has been polled for. Once both children have
-        // been polled for, then we can delete the parent tablet via the bg task
-        // DoProcessXClusterParentTabletDeletion.
-        const auto insert_op = cdc_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
-        auto* insert_req = insert_op->mutable_request();
-        auto* const condition = insert_req->mutable_if_expr()->mutable_condition();
-        condition->set_op(QL_OP_NOT_EXISTS);
-        QLAddStringHashValue(insert_req, child_tablet_id);
-        QLAddStringRangeValue(insert_req, stream->id());
-        cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, OpId().ToString());
-        if (is_cdcsdk_stream) {
+        cdc::CDCStateTableEntry entry(child_tablet_id, stream->id());
+        entry.checkpoint = OpId().Min();
+
+        if (stream_type == cdc::CDCSDK) {
           auto last_active_time = GetCurrentTimeMicros();
-          auto column_id = cdc_table.ColumnId(master::kCdcData);
-          auto map_value_pb = client::AddMapColumn(insert_req, column_id);
-          client::AddMapEntryToColumn(
-              map_value_pb, "active_time", std::to_string(last_active_time));
-          client::AddMapEntryToColumn(
-              map_value_pb, "cdc_sdk_safe_time", std::to_string(last_active_time));
+          entry.active_time = last_active_time;
+          entry.cdc_sdk_safe_time = last_active_time;
         }
-        session->Apply(insert_op);
+
+        entries.push_back(std::move(entry));
       }
     }
-    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-    RETURN_NOT_OK(session->TEST_Flush());
   }
 
-  return Status::OK();
+  return cdc_state_table_->InsertEntries(entries);
 }
 
 Status CatalogManager::InitXClusterConsumer(
@@ -4844,7 +4634,7 @@ std::unordered_set<CDCStreamId> CatalogManager::GetCDCSDKStreamsForTable(
   return it->second;
 }
 
-std::unordered_set<CDCStreamId> CatalogManager::GetCdcStreamsForProducerTable(
+std::unordered_set<CDCStreamId> CatalogManager::GetXClusterStreamsForProducerTable(
     const TableId& table_id) const {
   SharedLock lock(mutex_);
   auto it = xcluster_producer_tables_to_stream_map_.find(table_id);
@@ -5018,9 +4808,7 @@ Status CatalogManager::RunXClusterBgTasks() {
       FindCDCStreamsMarkedForMetadataDeletion(
           &cdcsdk_streams, SysCDCStreamEntryPB::DELETING_METADATA),
       "Failed CDC Stream Metadata Deletion");
-  if (!cdcsdk_streams.empty()) {
-    WARN_NOT_OK(CleanUpCDCStreamsMetadata(cdcsdk_streams), "Failed Cleanup CDC Streams Metadata");
-  }
+  WARN_NOT_OK(CleanUpCDCStreamsMetadata(cdcsdk_streams), "Failed Cleanup CDC Streams Metadata");
 
   // Restart xCluster and CDCSDK parent tablet deletion bg task.
   StartCDCParentTabletDeletionTaskIfStopped();
@@ -5140,194 +4928,241 @@ void CatalogManager::ProcessCDCParentTabletDeletionPeriodically() {
     cdc_parent_tablet_deletion_task_running_ = false;
     return;
   }
-  WARN_NOT_OK(
-      DoProcessCDCClusterTabletDeletion(cdc::CDCSDK),
-      "Failed to run DoProcessCDCClusterTabletDeletion task for CDCSDK.");
-  WARN_NOT_OK(
-      DoProcessCDCClusterTabletDeletion(cdc::XCLUSTER),
-      "Failed to run DoProcessCDCClusterTabletDeletion task for XCLUSTER.");
+  WARN_NOT_OK(DoProcessCDCSDKTabletDeletion(), "Failed to run DoProcessCDCSdkTabletDeletion.");
+  WARN_NOT_OK(DoProcessXClusterTabletDeletion(), "Failed to run DoProcessXClusterTabletDeletion.");
 
   // Schedule the next iteration of the task.
   ScheduleCDCParentTabletDeletionTask();
 }
 
-Status CatalogManager::DoProcessCDCClusterTabletDeletion(
-    const cdc::CDCRequestSource request_source) {
+Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
   std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> hidden_tablets;
   {
     SharedLock lock(mutex_);
-    hidden_tablets = (request_source == cdc::CDCSDK) ? retained_by_cdcsdk_ : retained_by_xcluster_;
+    if (retained_by_cdcsdk_.empty()) {
+      return Status::OK();
+    }
+    hidden_tablets = retained_by_cdcsdk_;
   }
 
-  if (!hidden_tablets.empty()) {
-    std::unordered_set<TabletId> tablets_to_delete;
+  std::unordered_set<TabletId> tablets_to_delete;
+  std::vector<cdc::CDCStateTableEntry> entries_to_update;
+  std::vector<cdc::CDCStateTableKey> entries_to_delete;
 
-    // Check cdc_state table to see if the children tablets being polled.
-    client::TableHandle cdc_state_table;
-    const client::YBTableName cdc_state_table_name(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    auto ybclient = master_->cdc_state_client_initializer().client();
-    if (!ybclient) {
-      return STATUS(IllegalState, "Client not initialized or shutting down");
+  // Check cdc_state table to see if the children tablets are being polled.
+  for (auto& [tablet_id, hidden_tablet] : hidden_tablets) {
+    // If our parent tablet is still around, need to process that one first.
+    const auto& parent_tablet_id = hidden_tablet.parent_tablet_id_;
+    if (!parent_tablet_id.empty() && hidden_tablets.contains(parent_tablet_id)) {
+      continue;
     }
-    RETURN_NOT_OK(cdc_state_table.Open(cdc_state_table_name, ybclient));
-    std::shared_ptr<client::YBSession> session = ybclient->NewSession();
 
-    for (auto& [tablet_id, hidden_tablet] : hidden_tablets) {
-      // If our parent tablet is still around, need to process that one first.
-      const auto parent_tablet_id = hidden_tablet.parent_tablet_id_;
-      if (!parent_tablet_id.empty() && hidden_tablets.contains(parent_tablet_id)) {
+    // For each hidden tablet, check if for each stream we have an entry in the mapping for them.
+    const auto stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
+
+    size_t count_tablet_streams_to_delete = 0;
+    size_t count_streams_already_deleted = 0;
+    vector<CDCStreamId> streams_where_parent_unpolled;
+
+    for (const auto& stream_id : stream_ids) {
+      // Check parent entry, if it doesn't exist, then it was already deleted.
+      // If the entry for the tablet does not exist, then we can go ahead with deletion of the
+      // tablet.
+      auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+          {tablet_id, stream_id},
+          cdc::CDCStateTableEntrySelector().IncludeCheckpoint().IncludeLastReplicationTime()));
+
+      // This means we already deleted the entry for this stream in a previous iteration.
+      if (!entry_opt) {
+        VLOG(2) << "Did not find an entry corresponding to the tablet: " << tablet_id
+                << ", and stream: " << stream_id << ", in the cdc_state table";
+        ++count_streams_already_deleted;
         continue;
       }
 
-      // For each hidden tablet, check if for each stream we have an entry in the mapping for them.
-      const auto streams = (request_source == cdc::CDCSDK)
-                               ? GetCDCSDKStreamsForTable(hidden_tablet.table_id_)
-                               : GetCdcStreamsForProducerTable(hidden_tablet.table_id_);
+      // We check if there is any stream where the CDCSDK client has started streaming from the
+      // hidden tablet, if not we can delete the tablet. There are two ways to verify that the
+      // client has not started streaming:
+      // 1. The checkpoint is -1.-1 (which is the case when a stream is bootstrapped)
+      // 2. The checkpoint is 0.0 and 'CdcLastReplicationTime' is Null (when the tablet was a
+      // result of a tablet split, and was added to the cdc_state table when the tablet split is
+      // initiated.)
+      if (entry_opt->checkpoint) {
+        auto& checkpoint = *entry_opt->checkpoint;
 
-      vector<CDCStreamId> streams_to_delete;
-      vector<CDCStreamId> streams_already_deleted;
-      vector<CDCStreamId> streams_where_parent_unpolled;
-      for (const auto& stream : streams) {
-        // Check parent entry, if it doesn't exist, then it was already deleted.
-        // If the entry for the tablet does not exist, then we can go ahead with deletion of the
-        // tablet.
-        auto row = VERIFY_RESULT(cdc::FetchOptionalCdcStreamInfo(
-            &cdc_state_table, session.get(), tablet_id, stream,
-            {master::kCdcLastReplicationTime, master::kCdcCheckpoint}));
-
-        // This means we already deleted the entry for this stream in a previous iteration.
-        if (!row) {
-          VLOG(2) << "Did not find an entry corresponding to the tablet: " << tablet_id
-                  << ", and stream: " << stream << ", in the cdc_state table";
-          streams_already_deleted.push_back(stream);
+        if (checkpoint == OpId::Invalid() ||
+            (checkpoint == OpId::Min() && !entry_opt->last_replication_time)) {
+          VLOG(2) << "The stream: " << stream_id << ", is not active for tablet: " << tablet_id;
+          count_tablet_streams_to_delete++;
+          streams_where_parent_unpolled.push_back(stream_id);
           continue;
         }
-        if (request_source == cdc::XCLUSTER) {
-          if (row->column(0).IsNull()) {
-            // Still haven't processed this tablet since timestamp is null, no need to check
-            // children.
-            break;
-          }
-        } else if (request_source == cdc::CDCSDK) {
-          // We check if there is any stream where the CDCSDK client has started streaming from the
-          // hidden tablet, if not we can delete the tablet. There are two ways to verify that the
-          // client has not started streaming:
-          // 1. The checkpoint is -1.-1 (which is the case when a stream is bootstrapped)
-          // 2. The checkpoint is 0.0 and 'CdcLastReplicationTime' is Null (when the tablet was a
-          // result of a tablet split, and was added to the cdc_state table when the tablet split is
-          // initiated.)
-          auto checkpoint_result = OpId::FromString(row->column(1).string_value());
-          if (checkpoint_result.ok()) {
-            OpId checkpoint = *checkpoint_result;
-
-            if (checkpoint == OpId::Invalid() ||
-                (checkpoint == OpId::Min() && row->column(0).IsNull())) {
-              VLOG(2) << "The stream: " << stream << ", is not active for tablet: " << tablet_id;
-              streams_to_delete.push_back(stream);
-              streams_where_parent_unpolled.push_back(stream);
-              continue;
-            }
-          } else {
-            LOG(WARNING) << "Read invalid op id " << row->column(1).string_value()
-                         << " for tablet " << tablet_id << ": " << checkpoint_result.status()
-                         << "from cdc_state table.";
-          }
-        }
-
-        // This means there was an active stream for the source tablet. In which case if we see
-        // that all children tablet entries have started streaming, we can delete the parent
-        // tablet.
-        bool found_all_children = true;
-        for (auto& child_tablet : hidden_tablet.split_tablets_) {
-          auto row = VERIFY_RESULT(cdc::FetchOptionalCdcStreamInfo(
-              &cdc_state_table, session.get(), child_tablet, stream,
-              {master::kCdcLastReplicationTime}));
-
-          if (!row) {
-            // This tablet stream still hasn't been found yet.
-            found_all_children = false;
-            break;
-          }
-
-          const auto& last_replicated_time = row->column(0);
-          // Check checkpoint to ensure that there has been a poll for this tablet, or if the
-          // split has been reported.
-          if (last_replicated_time.IsNull()) {
-            // No poll yet, so do not delete the parent tablet for now.
-            VLOG(2) << "The stream: " << stream
-                    << ", has not started polling for the child tablet: " << child_tablet
-                    << ".Hence we will not delete the hidden parent tablet: " << tablet_id;
-            found_all_children = false;
-            break;
-          }
-        }
-        if (found_all_children) {
-          streams_to_delete.push_back(stream);
-        }
       }
 
-      // Set the checkpoint as -1.-1 for child entries on whose parent's we have not started polling
-      // yet, to prevent unnecessary retention of intents for the children tablets.
-      if (request_source == cdc::CDCSDK) {
-        for (auto& child_tablet : hidden_tablet.split_tablets_) {
-          for (const auto& stream : streams_where_parent_unpolled) {
-            const auto update_op = cdc_state_table.NewUpdateOp();
-            auto* const update_req = update_op->mutable_request();
-            QLAddStringHashValue(update_req, child_tablet);
-            QLAddStringRangeValue(update_req, stream);
+      // This means there was an active stream for the source tablet. In which case if we see
+      // that all children tablet entries have started streaming, we can delete the parent
+      // tablet.
+      bool found_all_children = true;
+      for (auto& child_tablet_id : hidden_tablet.split_tablets_) {
+        auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+            {child_tablet_id, stream_id},
+            cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
 
-            auto* condition = update_req->mutable_if_expr()->mutable_condition();
-            condition->set_op(QL_OP_EXISTS);
-            QLAddStringCondition(
-                condition, Schema::first_column_id() + master::kCdcCheckpointIdx, QL_OP_EQUAL,
-                OpId::Min().ToString());
-
-            cdc_state_table.AddStringColumnValue(
-                update_req, master::kCdcCheckpoint, OpId::Invalid().ToString());
-            session->Apply(update_op);
-            LOG(INFO) << "Resetting checkpoint of child tablet: " << child_tablet << " to -1.-1 ."
-                      << "Reason: Consumer has not started polling on these tablets yet";
-          }
+        // Check CdcLastReplicationTime to ensure that there has been a poll for this tablet, or if
+        // the split has been reported.
+        if (!entry_opt || !entry_opt->last_replication_time) {
+          VLOG(2) << "The stream: " << stream_id
+                  << ", has not started polling for the child tablet: " << child_tablet_id
+                  << ".Hence we will not delete the hidden parent tablet: " << tablet_id;
+          found_all_children = false;
+          break;
         }
       }
-
-      // Also delete the parent tablet from cdc_state for all completed streams.
-      for (const auto& stream : streams_to_delete) {
-        const auto delete_op = cdc_state_table.NewDeleteOp();
-        auto* delete_req = delete_op->mutable_request();
-
-        QLAddStringHashValue(delete_req, tablet_id);
-        QLAddStringRangeValue(delete_req, stream);
-        session->Apply(delete_op);
-        LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream
+      if (found_all_children) {
+        LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
                   << ". Reason: Consumer finished processing parent tablet after split.";
-      }
 
-      // Flush all the delete operations.
-      // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-      Status s = session->TEST_Flush();
-      if (!s.ok()) {
-        LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
-        return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
-      }
-
-      if (streams_to_delete.size() + streams_already_deleted.size() == streams.size()) {
-        tablets_to_delete.insert(tablet_id);
+        // Also delete the parent tablet from cdc_state for all completed streams.
+        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+        count_tablet_streams_to_delete++;
       }
     }
 
-    // Delete tablets from retained_by_cdcsdk_, CleanupHiddenTablets will do the
-    // actual tablet deletion.
-    {
-      LockGuard lock(mutex_);
-      for (const auto& tablet_to_delete : tablets_to_delete) {
-        if (request_source == cdc::CDCSDK) {
-          retained_by_cdcsdk_.erase(tablet_to_delete);
-        } else if (request_source == cdc::XCLUSTER) {
-          retained_by_xcluster_.erase(tablet_to_delete);
+    // Set the checkpoint as -1.-1 for child entries on whose parent's we have not started polling
+    // yet, to prevent unnecessary retention of intents for the children tablets.
+    for (auto& child_tablet_id : hidden_tablet.split_tablets_) {
+      for (const auto& stream_id : streams_where_parent_unpolled) {
+        cdc::CDCStateTableEntry entry(child_tablet_id, stream_id);
+        entry.checkpoint = OpId::Invalid();
+        entries_to_update.push_back(std::move(entry));
+        LOG(INFO) << "Resetting checkpoint of child tablet: " << child_tablet_id << " in stream "
+                  << stream_id << " to -1.-1 ."
+                  << "Reason: Consumer has not started polling on these tablets yet";
+      }
+    }
+
+    if (count_tablet_streams_to_delete + count_streams_already_deleted == stream_ids.size()) {
+      tablets_to_delete.insert(tablet_id);
+    }
+  }
+
+  Status s = cdc_state_table_->UpdateEntries(entries_to_update);
+  if (!s.ok()) {
+    LOG(ERROR) << "Unable to flush operations to update cdc streams: " << s;
+    return s.CloneAndPrepend("Error updating cdc stream rows from cdc_state table");
+  }
+
+  s = cdc_state_table_->DeleteEntries(entries_to_delete);
+  if (!s.ok()) {
+    LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
+    return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
+  }
+
+  // Delete tablets from retained_by_cdcsdk_, CleanupHiddenTablets will do the
+  // actual tablet deletion.
+  {
+    LockGuard lock(mutex_);
+    for (const auto& tablet_id : tablets_to_delete) {
+      retained_by_cdcsdk_.erase(tablet_id);
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::DoProcessXClusterTabletDeletion() {
+  std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> hidden_tablets;
+  {
+    SharedLock lock(mutex_);
+    if (retained_by_xcluster_.empty()) {
+      return Status::OK();
+    }
+    hidden_tablets = retained_by_xcluster_;
+  }
+
+  std::unordered_set<TabletId> tablets_to_delete;
+  std::vector<cdc::CDCStateTableKey> entries_to_delete;
+
+  // Check cdc_state table to see if the children tablets being polled.
+  for (auto& [tablet_id, hidden_tablet] : hidden_tablets) {
+    // If our parent tablet is still around, need to process that one first.
+    const auto parent_tablet_id = hidden_tablet.parent_tablet_id_;
+    if (!parent_tablet_id.empty() && hidden_tablets.contains(parent_tablet_id)) {
+      continue;
+    }
+
+    // For each hidden tablet, check if for each stream we have an entry in the mapping for them.
+    const auto stream_ids = GetXClusterStreamsForProducerTable(hidden_tablet.table_id_);
+
+    vector<CDCStreamId> tablet_streams_to_delete;
+    size_t count_streams_already_deleted = 0;
+    for (const auto& stream_id : stream_ids) {
+      const cdc::CDCStateTableKey entry_key{tablet_id, stream_id};
+
+      // Check parent entry, if it doesn't exist, then it was already deleted.
+      // If the entry for the tablet does not exist, then we can go ahead with deletion of the
+      // tablet.
+      auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+          entry_key, cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
+
+      // This means we already deleted the entry for this stream in a previous iteration.
+      if (!entry_opt) {
+        VLOG(2) << "Did not find an entry corresponding to the tablet: " << tablet_id
+                << ", and stream: " << stream_id << ", in the cdc_state table";
+        ++count_streams_already_deleted;
+        continue;
+      }
+
+      if (!entry_opt->last_replication_time) {
+        // Still haven't processed this tablet since timestamp is null, no need to check
+        // children.
+        break;
+      }
+
+      // This means there was an active stream for the source tablet. In which case if we see
+      // that all children tablet entries have started streaming, we can delete the parent
+      // tablet.
+      bool found_all_children = true;
+      for (auto& child_tablet_id : hidden_tablet.split_tablets_) {
+        auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+            {child_tablet_id, stream_id},
+            cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
+
+        if (!entry_opt || !entry_opt->last_replication_time) {
+          // Check checkpoint to ensure that there has been a poll for this tablet, or if the
+          // split has been reported.
+          VLOG(2) << "The stream: " << stream_id
+                  << ", has not started polling for the child tablet: " << child_tablet_id
+                  << ".Hence we will not delete the hidden parent tablet: " << tablet_id;
+          found_all_children = false;
+          break;
         }
       }
+      if (found_all_children) {
+        LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
+                  << ". Reason: Consumer finished processing parent tablet after split.";
+        tablet_streams_to_delete.push_back(stream_id);
+        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+      }
+    }
+
+    if (tablet_streams_to_delete.size() + count_streams_already_deleted == stream_ids.size()) {
+      tablets_to_delete.insert(tablet_id);
+    }
+  }
+
+  Status s = cdc_state_table_->DeleteEntries(entries_to_delete);
+  if (!s.ok()) {
+    LOG(ERROR) << "Unable to delete xCluster streams: " << s;
+    return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
+  }
+
+  // Delete tablets from retained_by_xcluster_, CleanupHiddenTablets will do the
+  // actual tablet deletion.
+  {
+    LockGuard lock(mutex_);
+    for (const auto& tablet_id : tablets_to_delete) {
+      retained_by_xcluster_.erase(tablet_id);
     }
   }
 

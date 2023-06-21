@@ -478,9 +478,9 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
       num_peers_split +=
           tablet_data_state == tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
     }
-    VLOG(1) << "num_peers_running: " << num_peers_running;
-    VLOG(1) << "num_peers_split: " << num_peers_split;
-    VLOG(1) << "num_peers_leader_ready: " << num_peers_leader_ready;
+    VLOG(0) << "num_peers_running: " << num_peers_running;
+    VLOG(0) << "num_peers_split: " << num_peers_split;
+    VLOG(0) << "num_peers_leader_ready: " << num_peers_leader_ready;
 
     return num_peers_running == num_replicas_online * expected_total_tablets &&
            num_peers_split == num_replicas_online * expected_split_tablets &&

@@ -368,7 +368,12 @@ Status YBSession::ApplyAndFlushSync(const std::vector<YBOperationPtr>& ops) {
 
   auto future_status = future.wait_until(deadline);
   SCHECK(future_status == std::future_status::ready, TimedOut, "Timed out waiting for Flush");
-  return future.get().status;
+  auto flush_status = future.get();
+  for (auto& error : flush_status.errors) {
+    VLOG(2) << "Flush of operation " << error->failed_op().ToString()
+            << " failed: " << error->status();
+  }
+  return flush_status.status;
 }
 
 Status YBSession::ApplyAndFlushSync(YBOperationPtr ops) {
