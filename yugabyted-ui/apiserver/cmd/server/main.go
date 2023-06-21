@@ -184,6 +184,9 @@ func main() {
         // GetClusterMetric - Get a metric for a cluster
         e.GET("/api/metrics", c.GetClusterMetric)
 
+        // GetClusterActivities - Get activity data of a cluster
+        e.GET("/api/activities", c.GetClusterActivities)
+
         // GetClusterNodes - Get the nodes for a cluster
         e.GET("/api/nodes", c.GetClusterNodes)
 
