@@ -27,6 +27,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
   @JsonDeserialize(converter = RebootNodeInUniverse.Converter.class)
   public static class Params extends NodeTaskParams {
     public boolean isHardReboot = false;
+    public boolean skipWaitingForMasterLeader = false;
   }
 
   public static class Converter
@@ -46,6 +47,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
   public void run() {
     NodeDetails currentNode;
     boolean isHardReboot = taskParams().isHardReboot;
+    boolean skipWaitingForMasterLeader = taskParams().skipWaitingForMasterLeader;
 
     try {
       checkUniverseVersion();
@@ -108,8 +110,10 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
         if (masterAlive) {
           createStopMasterTasks(Collections.singleton(currentNode))
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createWaitForMasterLeaderTask()
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          if (!skipWaitingForMasterLeader) {
+            createWaitForMasterLeaderTask()
+                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          }
         }
       }
 
