@@ -62,12 +62,12 @@ inline uint32_t GetFixed32Element(const char* base, size_t offset) {
 }  // namespace
 
 // Iterator to iterate IndexedTable
-class PlainTableIterator : public InternalIterator {
+class PlainTableIterator final : public InternalIterator {
  public:
   explicit PlainTableIterator(PlainTableReader* table, bool use_prefix_seek);
   ~PlainTableIterator();
 
-  bool Valid() const override;
+  const KeyValueEntry& Entry() const override;
 
   void SeekToFirst() override;
 
@@ -75,13 +75,9 @@ class PlainTableIterator : public InternalIterator {
 
   void Seek(const Slice& target) override;
 
-  void Next() override;
+  const KeyValueEntry& Next() override;
 
   void Prev() override;
-
-  Slice key() const override;
-
-  Slice value() const override;
 
   Status status() const override;
 
@@ -91,8 +87,7 @@ class PlainTableIterator : public InternalIterator {
   bool use_prefix_seek_;
   uint32_t offset_;
   uint32_t next_offset_;
-  Slice key_;
-  Slice value_;
+  KeyValueEntry entry_;
   Status status_;
   // No copying allowed
   PlainTableIterator(const PlainTableIterator&) = delete;
@@ -630,9 +625,12 @@ PlainTableIterator::PlainTableIterator(PlainTableReader* table,
 PlainTableIterator::~PlainTableIterator() {
 }
 
-bool PlainTableIterator::Valid() const {
-  return offset_ < table_->file_info_.data_end_offset &&
-         offset_ >= table_->data_start_offset_;
+const KeyValueEntry& PlainTableIterator::Entry() const {
+  if (offset_ < table_->file_info_.data_end_offset &&
+      offset_ >= table_->data_start_offset_ ) {
+    return entry_;
+  }
+  return KeyValueEntry::Invalid();
 }
 
 void PlainTableIterator::SeekToFirst() {
@@ -705,31 +703,23 @@ void PlainTableIterator::Seek(const Slice& target) {
   }
 }
 
-void PlainTableIterator::Next() {
+const KeyValueEntry& PlainTableIterator::Next() {
   offset_ = next_offset_;
   if (offset_ < table_->file_info_.data_end_offset) {
     Slice tmp_slice;
     ParsedInternalKey parsed_key;
-    status_ =
-        table_->Next(&decoder_, &next_offset_, &parsed_key, &key_, &value_);
+    status_ = table_->Next(
+        &decoder_, &next_offset_, &parsed_key, &entry_.key, &entry_.value);
     if (!status_.ok()) {
       offset_ = next_offset_ = table_->file_info_.data_end_offset;
     }
   }
+
+  return Entry();
 }
 
 void PlainTableIterator::Prev() {
   assert(false);
-}
-
-Slice PlainTableIterator::key() const {
-  assert(Valid());
-  return key_;
-}
-
-Slice PlainTableIterator::value() const {
-  assert(Valid());
-  return value_;
 }
 
 Status PlainTableIterator::status() const {

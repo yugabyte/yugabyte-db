@@ -26,7 +26,7 @@
 namespace yb {
 namespace docdb {
 
-class BoundedRocksDbIterator : public rocksdb::Iterator {
+class BoundedRocksDbIterator final : public rocksdb::Iterator {
  public:
   BoundedRocksDbIterator() = default;
 
@@ -41,7 +41,7 @@ class BoundedRocksDbIterator : public rocksdb::Iterator {
 
   bool Initialized() const { return iterator_ != nullptr; }
 
-  bool Valid() const override;
+  const rocksdb::KeyValueEntry& Entry() const override;
 
   void SeekToFirst() override;
 
@@ -49,13 +49,9 @@ class BoundedRocksDbIterator : public rocksdb::Iterator {
 
   void Seek(const Slice& target) override;
 
-  void Next() override;
+  const rocksdb::KeyValueEntry& Next() override;
 
   void Prev() override;
-
-  Slice key() const override;
-
-  Slice value() const override;
 
   Status status() const override;
 

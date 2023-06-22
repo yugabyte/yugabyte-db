@@ -4751,7 +4751,6 @@ class ModelDB: public DB {
     ~ModelIter() {
       if (owned_) delete map_;
     }
-    bool Valid() const override { return iter_ != map_->end(); }
     void SeekToFirst() override { iter_ = map_->begin(); }
     void SeekToLast() override {
       if (map_->empty()) {
@@ -4763,7 +4762,10 @@ class ModelDB: public DB {
     void Seek(const Slice& k) override {
       iter_ = map_->lower_bound(k.ToString());
     }
-    void Next() override { ++iter_; }
+    const KeyValueEntry& Next() override {
+      ++iter_;
+      return Entry();
+    }
     void Prev() override {
       if (iter_ == map_->begin()) {
         iter_ = map_->end();
@@ -4772,14 +4774,24 @@ class ModelDB: public DB {
       --iter_;
     }
 
-    Slice key() const override { return iter_->first; }
-    Slice value() const override { return iter_->second; }
+    const KeyValueEntry& Entry() const override {
+      if (iter_ == map_->end()) {
+        return KeyValueEntry::Invalid();
+      }
+      entry_ = {
+        .key = iter_->first,
+        .value = iter_->second,
+      };
+      return entry_;
+    }
+
     Status status() const override { return Status::OK(); }
 
    private:
     const KVMap* const map_;
     const bool owned_;  // Do we own map_
     KVMap::const_iterator iter_;
+    mutable KeyValueEntry entry_;
   };
   const Options options_;
   KVMap map_;

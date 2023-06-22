@@ -106,29 +106,24 @@ class HashSkipListRep : public MemTableRep {
       }
     }
 
-    // Returns true iff the iterator is positioned at a valid node.
-    bool Valid() const override {
-      return list_ != nullptr && iter_.Valid();
-    }
-
-    // Returns the key at the current position.
-    // REQUIRES: Valid()
-    const char* key() const override {
-      assert(Valid());
-      return iter_.key();
+    // Return current entry, NULL if iterator is invalid.
+    const char* Entry() const override {
+      return list_ != nullptr ? iter_.Entry() : nullptr;
     }
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    void Next() override {
-      assert(Valid());
+    // Returns the same value as would be returned by Entry after this method is invoked.
+    const char* Next() override {
+      assert(Entry() != nullptr);
       iter_.Next();
+      return Entry();
     }
 
     // Advances to the previous position.
     // REQUIRES: Valid()
     void Prev() override {
-      assert(Valid());
+      assert(Entry() != nullptr);
       iter_.Prev();
     }
 
@@ -218,12 +213,13 @@ class HashSkipListRep : public MemTableRep {
     // instantiating an empty bucket over which to iterate.
    public:
     EmptyIterator() { }
-    bool Valid() const override { return false; }
-    const char* key() const override {
+    const char* Entry() const override {
       assert(false);
       return nullptr;
     }
-    void Next() override {}
+    const char* Next() override {
+      return nullptr;
+    }
     void Prev() override {}
     virtual void Seek(const Slice& internal_key,
                       const char* memtable_key) override {}
@@ -298,9 +294,11 @@ void HashSkipListRep::Get(const LookupKey& k, void* callback_args,
   auto bucket = GetBucket(transformed);
   if (bucket != nullptr) {
     Bucket::Iterator iter(bucket);
-    for (iter.Seek(k.memtable_key().cdata());
-         iter.Valid() && callback_func(callback_args, iter.key());
-         iter.Next()) {
+    for (iter.Seek(k.memtable_key().cdata());; iter.Next()) {
+      const auto* entry = iter.Entry();
+      if (!entry || !callback_func(callback_args, entry)) {
+        break;
+      }
     }
   }
 }
@@ -313,8 +311,12 @@ MemTableRep::Iterator* HashSkipListRep::GetIterator(Arena* arena) {
     auto bucket = GetBucket(i);
     if (bucket != nullptr) {
       Bucket::Iterator itr(bucket);
-      for (itr.SeekToFirst(); itr.Valid(); itr.Next()) {
-        list->Insert(itr.key());
+      for (itr.SeekToFirst();; itr.Next()) {
+        const auto* entry = itr.Entry();
+        if (!entry) {
+          break;
+        }
+        list->Insert(entry);
       }
     }
   }

@@ -519,18 +519,20 @@ typedef std::map<std::string, std::string> KVMap;
 class KVIter : public Iterator {
  public:
   explicit KVIter(const KVMap* map) : map_(map), iter_(map_->end()) {}
-  virtual bool Valid() const { return iter_ != map_->end(); }
-  virtual void SeekToFirst() { iter_ = map_->begin(); }
-  virtual void SeekToLast() {
+  void SeekToFirst() override { iter_ = map_->begin(); }
+  void SeekToLast() override {
     if (map_->empty()) {
       iter_ = map_->end();
     } else {
       iter_ = map_->find(map_->rbegin()->first);
     }
   }
-  virtual void Seek(const Slice& k) { iter_ = map_->lower_bound(k.ToString()); }
-  virtual void Next() { ++iter_; }
-  virtual void Prev() {
+  void Seek(const Slice& k) override { iter_ = map_->lower_bound(k.ToString()); }
+  const KeyValueEntry& Next() override {
+    ++iter_;
+    return Entry();
+  }
+  void Prev() override {
     if (iter_ == map_->begin()) {
       iter_ = map_->end();
       return;
@@ -538,13 +540,23 @@ class KVIter : public Iterator {
     --iter_;
   }
 
-  virtual Slice key() const { return iter_->first; }
-  virtual Slice value() const { return iter_->second; }
-  virtual Status status() const { return Status::OK(); }
+  const KeyValueEntry& Entry() const override {
+    if (iter_ == map_->end()) {
+      return KeyValueEntry::Invalid();
+    }
+    entry_ = {
+      .key = iter_->first,
+      .value = iter_->second,
+    };
+    return entry_;
+  }
+
+  Status status() const override { return Status::OK(); }
 
  private:
   const KVMap* const map_;
   KVMap::const_iterator iter_;
+  mutable KeyValueEntry entry_;
 };
 
 void AssertIter(Iterator* iter, const std::string& key,

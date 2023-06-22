@@ -60,7 +60,7 @@ class VectorRep : public MemTableRep {
 
   ~VectorRep() override { }
 
-  class Iterator : public MemTableRep::Iterator {
+  class Iterator final : public MemTableRep::Iterator {
     class VectorRep* vrep_;
     std::shared_ptr<std::vector<const char*>> bucket_;
     std::vector<const char*>::const_iterator mutable cit_;
@@ -76,18 +76,14 @@ class VectorRep : public MemTableRep {
     // Initialize an iterator over the specified collection.
     // The returned iterator is not valid.
     // explicit Iterator(const MemTableRep* collection);
-    ~Iterator() override { };
+    ~Iterator() override = default;
 
-    // Returns true iff the iterator is positioned at a valid node.
-    bool Valid() const override;
-
-    // Returns the key at the current position.
-    // REQUIRES: Valid()
-    const char* key() const override;
+    const char* Entry() const override;
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    void Next() override;
+    // Returns the same value as would be returned by Entry after this method is invoked.
+    const char* Next() override;
 
     // Advances to the previous position.
     // REQUIRES: Valid()
@@ -182,27 +178,21 @@ void VectorRep::Iterator::DoSort() const {
   assert(vrep_ == nullptr || vrep_->sorted_);
 }
 
-// Returns true iff the iterator is positioned at a valid node.
-bool VectorRep::Iterator::Valid() const {
+const char* VectorRep::Iterator::Entry() const {
   DoSort();
-  return cit_ != bucket_->end();
-}
-
-// Returns the key at the current position.
-// REQUIRES: Valid()
-const char* VectorRep::Iterator::key() const {
-  assert(sorted_);
-  return *cit_;
+  return cit_ != bucket_->end() ? *cit_ : nullptr;
 }
 
 // Advances to the next position.
 // REQUIRES: Valid()
-void VectorRep::Iterator::Next() {
+// Returns the same value as would be returned by Entry after this method is invoked.
+const char* VectorRep::Iterator::Next() {
   assert(sorted_);
   if (cit_ == bucket_->end()) {
-    return;
+    return nullptr;
   }
   ++cit_;
+  return Entry();
 }
 
 // Advances to the previous position.
@@ -265,8 +255,11 @@ void VectorRep::Get(const LookupKey& k, void* callback_args,
   VectorRep::Iterator iter(vector_rep, immutable_ ? bucket_ : bucket, compare_);
   rwlock_.ReadUnlock();
 
-  for (iter.Seek(k.user_key(), k.memtable_key().cdata());
-       iter.Valid() && callback_func(callback_args, iter.key()); iter.Next()) {
+  for (iter.Seek(k.user_key(), k.memtable_key().cdata());; iter.Next()) {
+    auto entry = iter.Entry();
+    if (!entry || !callback_func(callback_args, entry)) {
+      break;
+    }
   }
 }
 
