@@ -1,8 +1,10 @@
 import React from 'react';
 import clsx from 'clsx';
 
-import styles from './ReplicationParticipantCard.module.scss';
 import { YBLoadingCircleIcon } from '../common/indicators';
+import { usePillStyles } from '../configRedesign/providerRedesign/utils';
+
+import styles from './ReplicationParticipantCard.module.scss';
 
 interface ReplicationParticipantCardProps {
   clusterName: string;
@@ -17,13 +19,14 @@ export const ReplicationParticipantCard = ({
   isLoading,
   isSource
 }: ReplicationParticipantCardProps) => {
+  const pillClasses = usePillStyles();
   return (
     <div
       className={clsx(styles.replicationParticipant, isCurrentUniverse && styles.isCurrentUniverse)}
     >
       {!isLoading ? (
         <>
-          <div className={styles.label}>{isSource ? 'Source' : 'Target'}</div>
+          <div className={pillClasses.pill}>{isSource ? 'Source' : 'Target'}</div>
           <div className={styles.participantName}>{clusterName}</div>
         </>
       ) : (

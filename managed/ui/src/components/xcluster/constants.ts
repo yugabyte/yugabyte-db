@@ -61,6 +61,11 @@ export const XClusterConfigType = {
 } as const;
 export type XClusterConfigType = typeof XClusterConfigType[keyof typeof XClusterConfigType];
 
+export const XClusterConfigTypeLabel = {
+  [XClusterConfigType.BASIC]: 'Basic',
+  [XClusterConfigType.TXN]: 'Transactional'
+} as const;
+
 //------------------------------------------------------------------------------------
 // Table Selection Constants
 
