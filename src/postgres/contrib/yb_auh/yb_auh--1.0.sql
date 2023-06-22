@@ -4,8 +4,11 @@
 CREATE FUNCTION pg_active_universe_history(
     OUT auh_sample_time timestamptz,
     OUT top_level_request_id text,
+    OUT request_id INTEGER,
+    OUT wait_event_class text,
     OUT wait_event text
 )
+
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_active_universe_history'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;

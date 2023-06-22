@@ -35,12 +35,13 @@
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_universe_history);
 
-#define PG_ACTIVE_UNIVERSE_HISTORY_COLS        3
+#define PG_ACTIVE_UNIVERSE_HISTORY_COLS        5
 
 typedef struct ybauhEntry {
   TimestampTz auh_sample_time;
   char top_level_request_id[16];
-  char wait_event[8];
+  int request_id;
+  uint32 wait_event;
 } ybauhEntry;
 
 /* counters */
@@ -50,6 +51,8 @@ typedef struct circularBufferIndex
 } circularBufferIndex;
 
 ybauhEntry *AUHEntryArray = NULL;
+LWLock *auh_entry_array_lock;
+
 circularBufferIndex *CircularBufferIndexArray = NULL;
 static int circular_buf_size = 1000;
 static int auh_sampling_interval = 1;
@@ -65,8 +68,9 @@ static void pg_active_universe_history_internal(FunctionCallInfo fcinfo);
 
 
 static void auh_entry_store(TimestampTz auh_time,
-                              const char* top_level_request_id,
-                              const char *wait_event);
+                            const char* top_level_request_id,
+                            int request_id,
+                            uint32 wait_event);
 
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
@@ -134,8 +138,22 @@ yb_auh_main(Datum main_arg) {
     auh_sample_time = GetCurrentTimestamp();
 
     MemoryContext oldcxt = MemoryContextSwitchTo(uppercxt);
+    LWLockAcquire(ProcArrayLock, LW_SHARED);
+    LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
 
-    auh_entry_store(auh_sample_time, "123", "WAITING");
+    int		procCount = ProcGlobal->allProcCount;
+    for (int i = 0; i < procCount; i++)
+    {
+      PGPROC *proc = &ProcGlobal->allProcs[i];
+
+      if (proc != NULL && proc->pid != 0)
+      {
+        auh_entry_store(auh_sample_time, "abc", proc->pid, proc->wait_event_info);
+      }
+    }
+    LWLockRelease(auh_entry_array_lock);
+    LWLockRelease(ProcArrayLock);
+
 
     MemoryContextSwitchTo(oldcxt);
     /* No problems, so clean exit */
@@ -206,7 +224,8 @@ yb_auh_circularBufferIndexSize(void)
 
 static void auh_entry_store(TimestampTz auh_time,
                             const char* top_level_request_id,
-                            const char *wait_event)
+                            int request_id,
+                            uint32 wait_event)
 {
   int inserted;
   if (!AUHEntryArray) { return; }
@@ -215,7 +234,8 @@ static void auh_entry_store(TimestampTz auh_time,
   inserted = CircularBufferIndexArray[0].index - 1;
 
   AUHEntryArray[inserted].auh_sample_time = auh_time;
-  memcpy(AUHEntryArray[inserted].wait_event, wait_event, Min(strlen(wait_event) + 1, 8));
+  AUHEntryArray[inserted].wait_event = wait_event;
+  AUHEntryArray[inserted].request_id = request_id;
   memcpy(AUHEntryArray[inserted].top_level_request_id, top_level_request_id,
          Min(strlen(top_level_request_id) + 1, 15));
 }
@@ -234,6 +254,7 @@ ybauh_startup_hook(void)
   CircularBufferIndexArray = ShmemInitStruct("auh_circular_buffer_array",
                                        sizeof(struct circularBufferIndex) * 1,
                                        &found);
+  auh_entry_array_lock = &(GetNamedLWLockTranche("auh_entry_array"))->lock;
 }
 
 static void
@@ -277,12 +298,14 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
   rsinfo->setDesc = tupdesc;
 
   MemoryContextSwitchTo(oldcontext);
+  LWLockAcquire(auh_entry_array_lock, LW_SHARED);
 
   for (i = 0; i < circular_buf_size; i++)
   {
     Datum           values[PG_ACTIVE_UNIVERSE_HISTORY_COLS];
     bool            nulls[PG_ACTIVE_UNIVERSE_HISTORY_COLS];
     int                     j = 0;
+    const char *event_type, *event;
 
     memset(values, 0, sizeof(values));
     memset(nulls, 0, sizeof(nulls));
@@ -299,17 +322,29 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
     else
       nulls[j++] = true;
 
-    // wait event
-    if (AUHEntryArray[i].wait_event[0] != '\0')
-      values[j++] = CStringGetTextDatum(AUHEntryArray[i].wait_event);
+    // request id
+    if (AUHEntryArray[i].request_id)
+      values[j++] = Int64GetDatum(AUHEntryArray[i].request_id);
+    else
+      nulls[j++] = true;
+    event_type = pgstat_get_wait_event_type(AUHEntryArray[i].wait_event);
+    event = pgstat_get_wait_event(AUHEntryArray[i].wait_event);
+    if (event_type)
+      values[j++] = CStringGetTextDatum(event_type);
+    else
+      nulls[j++] = true;
+
+    if (event)
+      values[j++] = CStringGetTextDatum(event);
     else
       nulls[j++] = true;
 
     tuplestore_putvalues(tupstore, tupdesc, values, nulls);
   }
-
   /* clean up and return the tuplestore */
   tuplestore_donestoring(tupstore);
+  LWLockRelease(auh_entry_array_lock);
+
 }
 
 Datum
