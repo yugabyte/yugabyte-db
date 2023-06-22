@@ -180,6 +180,13 @@ public class CommonUtils {
         : value.replaceAll(maskRegex, "*");
   }
 
+  public static String getEmptiableMaskedValue(String key, String value) {
+    if (StringUtils.isBlank(value)) {
+      return "";
+    }
+    return getMaskedValue(key, value);
+  }
+
   public static JsonNode getMaskedValue(JsonNode value, List<String> toMaskKeys) {
     if (value == null) {
       return value;
