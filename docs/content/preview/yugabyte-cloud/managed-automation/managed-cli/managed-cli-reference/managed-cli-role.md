@@ -28,12 +28,20 @@ List roles in YugabyteDB Managed:
 ybm role list
 ```
 
-List AWS instance types in us-west-2:
+Describe the Admin role:
 
 ```sh
-ybm region instance list \
-  --cloud-provider AWS \
-  --region us-west-2
+ybm role describe --role-name admin
+```
+
+You can use this command to view all the available permissions.
+
+Create a role:
+
+```sh
+ybm role create --role-name backuprole \
+  --permissions resource-type=BACKUP,operation-group=CREATE \
+  --permissions resource-type=BACKUP,operation-group=DELETE \
 ```
 
 ## Commands
@@ -45,7 +53,7 @@ Create a custom role.
 | Flag | Description |
 | :--- | :--- |
 | --role-name | Required. Name for the role. |
-| --permissions | Required. Permissions for the role, provided as key value pairs. <br>Arguments:<ul><li>resource-type=<resource-type></li><li>operation-group=<operation-group></li></ul>Both resource-type and operation-group are mandatory. Information about multiple permissions can be specified by using multiple --permissions arguments. |
+| --permissions | Required. Permissions for the role, provided as key value pairs. Permissions are made up of a resource type and an operation group.<br>Arguments:<ul><li>resource-type - the resource to which the permission applies</li><li>operation-group - the operation that the permission allows on the resource</li></ul>Both resource-type and operation-group are mandatory. Specify multiple permissions by using multiple --permissions arguments. Use `ybm role describe --role-name admin` to view a list of all permissions. |
 | --description | Description for the role. |
 
 ### delete
@@ -58,7 +66,7 @@ Delete a specified custom role.
 
 ### describe
 
-Fetch detailed information about a specified role.
+Fetch detailed information about a specified role, including its permissions (name, description, resource type, and operation group), and users and API keys that are assigned to the role.
 
 | Flag | Description |
 | :--- | :--- |
@@ -66,7 +74,7 @@ Fetch detailed information about a specified role.
 
 ### list
 
-List the roles available for the specified cluster.
+List the roles in your YugabyteDB Managed account.
 
 | Flag | Description |
 | :--- | :--- |
@@ -80,5 +88,6 @@ Update the specified custom role.
 | Flag | Description |
 | :--- | :--- |
 | --role-name | Required. Name of the role. |
-| --permissions | Required. Permissions for the role, provided as key value pairs. resource-type=<resource-type>,operation-group=<operation-group> as the value. Both resource-type and operation-group are mandatory. Information about multiple permissions can be specified by using multiple --permissions arguments. |
+| --permissions | Required. Permissions for the role, provided as key value pairs. Permissions are made up of a resource type and an operation group.<br>Arguments:<ul><li>resource-type - the resource to which the permission applies</li><li>operation-group - the operation that the permission allows on the resource</li></ul>Both resource-type and operation-group are mandatory. Specify multiple permissions by using multiple --permissions arguments. Use `ybm role describe --role-name admin` to view a list of all permissions. |
+| --description | Description for the role. |
 | --new-name | New name for the updated role. |
