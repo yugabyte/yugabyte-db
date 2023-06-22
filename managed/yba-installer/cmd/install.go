@@ -29,6 +29,13 @@ var installCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		state, err := ybactlstate.Initialize()
+		if err != nil {
+			log.Fatal("failed to initialize state " + err.Error())
+		}
+		if err := ybaCtl.Install(); err != nil {
+			log.Fatal("failed to install yba-ctl: " + err.Error())
+		}
 
 		// Install the license if it is provided.
 		if licensePath != "" {
@@ -50,8 +57,12 @@ var installCmd = &cobra.Command{
 				"rerun the command with --skip_preflight <check name1>,<check name2>")
 		}
 
-		// Run install
-		ybaCtl.MarkYBAInstallStart()
+		// Mark install start.
+		state.CurrentStatus = ybactlstate.InstallingStatus
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("failed to write state: " + err.Error())
+		}
+
 		common.Install(common.GetVersion())
 
 		for _, name := range serviceOrder {
@@ -61,12 +72,10 @@ var installCmd = &cobra.Command{
 			}
 			log.Info("Completed installing component " + name)
 		}
-		if err := ybaCtl.Install(); err != nil {
-			log.Fatal("failed to install yba-ctl: " + err.Error())
-		}
-		state := ybactlstate.New()
+
+		state.CurrentStatus = ybactlstate.InstalledStatus
 		if err := ybactlstate.StoreState(state); err != nil {
-			log.Fatal("failed to write state: " + err.Error())
+			log.Fatal("after full install, failed to update state: " + err.Error())
 		}
 		common.WaitForYBAReady()
 

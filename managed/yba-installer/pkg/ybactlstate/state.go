@@ -17,6 +17,7 @@ type State struct {
 	Username        string        `json:"username"`
 	Postgres        PostgresState `json:"postgres"`
 	Ybdb            YbdbState     `json:"ybdb"`
+	CurrentStatus   status        `json:"current_status"`
 	_internalFields internalFields
 }
 
@@ -37,6 +38,7 @@ func New() *State {
 		Ybdb: YbdbState{
 			IsEnabled: viper.GetBool("ybdb.install.enabled"),
 		},
+		CurrentStatus: UninstalledStatus,
 		_internalFields: internalFields{
 			ChangeID:      0,
 			SchemaVersion: schemaVersion,
