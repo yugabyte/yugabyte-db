@@ -50,7 +50,7 @@ typedef BinaryHeap<IteratorWrapper*, MinIteratorComparator> MergerMinIterHeap;
 
 const size_t kNumIterReserve = 4;
 
-class MergingIterator : public InternalIterator {
+class MergingIterator final : public InternalIterator {
  public:
   MergingIterator(const Comparator* comparator, InternalIterator** children,
                   int n, bool is_arena_mode)
@@ -91,8 +91,6 @@ class MergingIterator : public InternalIterator {
       child.DeleteIter(is_arena_mode_);
     }
   }
-
-  bool Valid() const override { return (current_ != nullptr); }
 
   void SeekToFirst() override {
     ClearHeaps();
@@ -169,7 +167,7 @@ class MergingIterator : public InternalIterator {
     }
   }
 
-  void Next() override {
+  const KeyValueEntry& Next() override {
     assert(Valid());
 
     // Ensure that all children are positioned after key().
@@ -180,13 +178,21 @@ class MergingIterator : public InternalIterator {
       // Otherwise, advance the non-current children.  We advance current_
       // just after the if-block.
       ClearHeaps();
+      Slice key = current_->key();
       for (auto& child : children_) {
-        if (&child != current_) {
-          child.Seek(key());
-          if (child.Valid() && comparator_->Equal(key(), child.key())) {
-            child.Next();
-          }
+        if (&child == current_) {
+          minHeap_.push(&child);
+          continue;
         }
+        child.Seek(key);
+        if (!child.Valid()) {
+          continue;
+        }
+        if (!comparator_->Equal(key, child.key())) {
+          minHeap_.push(&child);
+          continue;
+        }
+        child.Next();
         if (child.Valid()) {
           minHeap_.push(&child);
         }
@@ -203,6 +209,7 @@ class MergingIterator : public InternalIterator {
     // As current_ points to the current record, move the iterator forward.
     current_->Next();
     UpdateHeapAfterCurrentAdvancement();
+    return Entry();
   }
 
   void Prev() override {
@@ -258,14 +265,8 @@ class MergingIterator : public InternalIterator {
     current_ = CurrentReverse();
   }
 
-  Slice key() const override {
-    assert(Valid());
-    return current_->key();
-  }
-
-  Slice value() const override {
-    assert(Valid());
-    return current_->value();
+  const KeyValueEntry& Entry() const override {
+    return current_ ? current_->Entry() : KeyValueEntry::Invalid();
   }
 
   Status status() const override {

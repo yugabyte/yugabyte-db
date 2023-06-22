@@ -52,18 +52,11 @@ class TwoLevelIterator : public InternalIterator {
   void Seek(const Slice& target) override;
   void SeekToFirst() override;
   void SeekToLast() override;
-  void Next() override;
+  const KeyValueEntry& Next() override;
   void Prev() override;
 
-  bool Valid() const override { return second_level_iter_.Valid(); }
-  Slice key() const override {
-    assert(Valid());
-    return second_level_iter_.key();
-  }
-  Slice value() const override {
-    assert(Valid());
-    return second_level_iter_.value();
-  }
+  const KeyValueEntry& Entry() const override { return second_level_iter_.Entry(); }
+
   Status status() const override {
     // It'd be nice if status() returned a const Status& instead of a Status
     if (!first_level_iter_.status().ok()) {
@@ -75,6 +68,7 @@ class TwoLevelIterator : public InternalIterator {
       return status_;
     }
   }
+
   Status PinData() override { return second_level_iter_.PinData(); }
   Status ReleasePinnedData() override {
     return second_level_iter_.ReleasePinnedData();
@@ -145,10 +139,11 @@ void TwoLevelIterator::SeekToLast() {
   SkipEmptyDataBlocksBackward();
 }
 
-void TwoLevelIterator::Next() {
+const KeyValueEntry& TwoLevelIterator::Next() {
   assert(Valid());
   second_level_iter_.Next();
   SkipEmptyDataBlocksForward();
+  return Entry();
 }
 
 void TwoLevelIterator::Prev() {

@@ -78,9 +78,11 @@ class SkipListRep : public MemTableRep {
                                          const char* entry)) override {
     SkipListRep::Iterator iter(&skip_list_);
     Slice dummy_slice;
-    for (iter.Seek(dummy_slice, k.memtable_key().cdata());
-         iter.Valid() && callback_func(callback_args, iter.key());
-         iter.Next()) {
+    for (iter.Seek(dummy_slice, k.memtable_key().cdata());; iter.Next()) {
+      auto entry = iter.Entry();
+      if (!entry || !callback_func(callback_args, entry)) {
+        break;
+      }
     }
   }
 
@@ -107,21 +109,15 @@ class SkipListRep : public MemTableRep {
 
     ~Iterator() override { }
 
-    // Returns true iff the iterator is positioned at a valid node.
-    bool Valid() const override {
-      return iter_.Valid();
-    }
-
-    // Returns the key at the current position.
-    // REQUIRES: Valid()
-    const char* key() const override {
-      return iter_.key();
+    const char* Entry() const override {
+      return iter_.Entry();
     }
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    void Next() override {
-      iter_.Next();
+    // Returns the same value as would be returned by Entry after this method is invoked.
+    const char* Next() override {
+      return iter_.Next();
     }
 
     // Advances to the previous position.
@@ -159,29 +155,26 @@ class SkipListRep : public MemTableRep {
   // previously visited node. In Seek(), it examines a few nodes after it
   // first, falling back to O(log n) search from the head of the list only if
   // the target key hasn't been found.
-  class LookaheadIterator : public MemTableRep::Iterator {
+  class LookaheadIterator final : public MemTableRep::Iterator {
    public:
     explicit LookaheadIterator(const SkipListRep& rep) :
         rep_(rep), iter_(&rep_.skip_list_), prev_(iter_) {}
 
     ~LookaheadIterator() override {}
 
-    bool Valid() const override {
-      return iter_.Valid();
+    const char *Entry() const override {
+      return iter_.Entry();
     }
 
-    const char *key() const override {
-      assert(Valid());
-      return iter_.key();
-    }
-
-    void Next() override {
-      assert(Valid());
+    const char* Next() override {
+      auto entry = iter_.Entry();
+      assert(entry != nullptr);
 
       bool advance_prev = true;
-      if (prev_.Valid()) {
-        auto k1 = rep_.UserKey(prev_.key());
-        auto k2 = rep_.UserKey(iter_.key());
+      auto prev_key = prev_.Entry();
+      if (prev_key) {
+        auto k1 = rep_.UserKey(prev_key);
+        auto k2 = rep_.UserKey(entry);
 
         if (k1.compare(k2) == 0) {
           // same user key, don't move prev_
@@ -198,10 +191,11 @@ class SkipListRep : public MemTableRep {
         prev_ = iter_;
       }
       iter_.Next();
+      return Entry();
     }
 
     void Prev() override {
-      assert(Valid());
+      assert(Entry() != nullptr);
       iter_.Prev();
       prev_ = iter_;
     }
@@ -212,14 +206,19 @@ class SkipListRep : public MemTableRep {
         (memtable_key != nullptr) ?
             memtable_key : EncodeKey(&tmp_, internal_key);
 
-      if (prev_.Valid() && rep_.cmp_(encoded_key, prev_.key()) >= 0) {
+      auto prev_entry = prev_.Entry();
+      if (prev_entry && rep_.cmp_(encoded_key, prev_entry) >= 0) {
         // prev_.key() is smaller or equal to our target key; do a quick
         // linear search (at most lookahead_ steps) starting from prev_
         iter_ = prev_;
 
         size_t cur = 0;
-        while (cur++ <= rep_.lookahead_ && iter_.Valid()) {
-          if (rep_.cmp_(encoded_key, iter_.key()) <= 0) {
+        while (cur++ <= rep_.lookahead_) {
+          auto entry = iter_.Entry();
+          if (!entry) {
+            break;
+          }
+          if (rep_.cmp_(encoded_key, entry) <= 0) {
             return;
           }
           Next();

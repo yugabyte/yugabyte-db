@@ -161,8 +161,6 @@ class VectorIterator : public InternalIterator {
     assert(keys_.size() == values_.size());
   }
 
-  virtual bool Valid() const override { return current_ < keys_.size(); }
-
   virtual void SeekToFirst() override { current_ = 0; }
   virtual void SeekToLast() override { current_ = keys_.size() - 1; }
 
@@ -171,11 +169,23 @@ class VectorIterator : public InternalIterator {
                keys_.begin();
   }
 
-  virtual void Next() override { current_++; }
+  virtual const KeyValueEntry& Next() override {
+    current_++;
+    return Entry();
+  }
+
   virtual void Prev() override { current_--; }
 
-  virtual Slice key() const override { return Slice(keys_[current_]); }
-  virtual Slice value() const override { return Slice(values_[current_]); }
+  virtual const KeyValueEntry& Entry() const override {
+    if (current_ >= keys_.size()) {
+      return KeyValueEntry::Invalid();
+    }
+    entry_ = KeyValueEntry {
+      .key = Slice(keys_[current_]),
+      .value = Slice(values_[current_]),
+    };
+    return entry_;
+  }
 
   virtual Status status() const override { return Status::OK(); }
 
@@ -183,7 +193,9 @@ class VectorIterator : public InternalIterator {
   std::vector<std::string> keys_;
   std::vector<std::string> values_;
   size_t current_;
+  mutable KeyValueEntry entry_;
 };
+
 extern WritableFileWriter* GetWritableFileWriter(WritableFile* wf);
 
 extern RandomAccessFileReader* GetRandomAccessFileReader(RandomAccessFile* raf);

@@ -453,7 +453,7 @@ namespace {
 // is the largest key that occurs in the file, and value() is an
 // 16-byte value containing the file number and file size, both
 // encoded using EncodeFixed64.
-class LevelFileNumIterator : public InternalIterator {
+class LevelFileNumIterator final : public InternalIterator {
  public:
   LevelFileNumIterator(const InternalKeyComparator& icmp,
                        const LevelFilesBrief* flevel)
@@ -463,7 +463,19 @@ class LevelFileNumIterator : public InternalIterator {
         current_value_(0, 0, 0, 0) {  // Marks as invalid
   }
 
-  bool Valid() const override { return index_ < flevel_->num_files; }
+  const KeyValueEntry& Entry() const override {
+    if (index_ >= flevel_->num_files) {
+      return KeyValueEntry::Invalid();
+    }
+
+    auto file_meta = flevel_->files[index_];
+    current_value_ = file_meta.fd;
+    entry_ = KeyValueEntry {
+      .key = file_meta.largest.key,
+      .value = Slice(reinterpret_cast<const char*>(&current_value_), sizeof(FileDescriptor)),
+    };
+    return entry_;
+  }
 
   void Seek(const Slice& target) override {
     index_ = FindFile(icmp_, *flevel_, target);
@@ -477,9 +489,10 @@ class LevelFileNumIterator : public InternalIterator {
                  : static_cast<uint32_t>(flevel_->num_files) - 1;
   }
 
-  void Next() override {
+  const KeyValueEntry& Next() override {
     assert(Valid());
     index_++;
+    return Entry();
   }
 
   void Prev() override {
@@ -491,20 +504,6 @@ class LevelFileNumIterator : public InternalIterator {
     }
   }
 
-  Slice key() const override {
-    assert(Valid());
-    return flevel_->files[index_].largest.key;
-  }
-
-  Slice value() const override {
-    assert(Valid());
-
-    auto file_meta = flevel_->files[index_];
-    current_value_ = file_meta.fd;
-    return Slice(reinterpret_cast<const char*>(&current_value_),
-                 sizeof(FileDescriptor));
-  }
-
   Status status() const override { return Status::OK(); }
 
  private:
@@ -512,6 +511,7 @@ class LevelFileNumIterator : public InternalIterator {
   const LevelFilesBrief* flevel_;
   uint32_t index_;
   mutable FileDescriptor current_value_;
+  mutable KeyValueEntry entry_;
 };
 
 class LevelFileIteratorState : public TwoLevelIteratorState {

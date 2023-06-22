@@ -150,18 +150,15 @@ class MemTableRep {
     // Initialize an iterator over the specified collection.
     // The returned iterator is not valid.
     // explicit Iterator(const MemTableRep* collection);
-    virtual ~Iterator() {}
+    virtual ~Iterator() = default;
 
-    // Returns true iff the iterator is positioned at a valid node.
-    virtual bool Valid() const = 0;
-
-    // Returns the key at the current position.
-    // REQUIRES: Valid()
-    virtual const char* key() const = 0;
+    // Returns the entry at the current position. Null if iterator is not valid.
+    virtual const char* Entry() const = 0;
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    virtual void Next() = 0;
+    // Returns the same value as would be returned by Entry after this method is invoked.
+    virtual const char* Next() = 0;
 
     // Advances to the previous position.
     // REQUIRES: Valid()

@@ -130,9 +130,10 @@ static inline const char* DecodeRestartEntry(
   FATAL_INVALID_ENUM_VALUE(KeyValueEncodingFormat, key_value_encoding_format);
 }
 
-void BlockIter::Next() {
+const KeyValueEntry& BlockIter::Next() {
   assert(Valid());
   ParseNextKey();
+  return Entry();
 }
 
 void BlockIter::Prev() {
@@ -253,7 +254,7 @@ ScanForwardResult BlockIter::ScanForward(
     }
 
     if (!skip_key) {
-      if (!(*scan_callback)(user_key, value_)) {
+      if (!(*scan_callback)(user_key, entry_.value)) {
         result.reached_upperbound = false;
         return result;
       }
@@ -284,7 +285,7 @@ void BlockIter::SetError(const Status& error) {
   restart_index_ = num_restarts_;
   status_ = error;
   key_.Clear();
-  value_.clear();
+  entry_.Reset();
 }
 
 void BlockIter::CorruptionError(const std::string& error_details) {
@@ -386,15 +387,19 @@ bool BlockIter::ParseNextKey() {
         // This key share `shared` bytes with prev key, we need to decode it
         key_.TrimAppend(shared, p, non_shared);
       }
-      value_ = Slice(p + non_shared, value_length);
+      entry_ = KeyValueEntry {
+        .key = key_.GetKey(),
+        .value = Slice(p + non_shared, value_length),
+      };
       break;
     }
     case KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts: {
       valid_encoding_type = true;
-      if (!ParseNextKeyThreeSharedParts(p, limit, data_, &key_, &value_)) {
+      if (!ParseNextKeyThreeSharedParts(p, limit, data_, &key_, &entry_.value)) {
         CorruptionError("ParseNextKeyThreeSharedParts failed");
         return false;
       }
+      entry_.key = key_.GetKey();
       break;
     }
   }

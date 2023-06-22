@@ -251,7 +251,6 @@ class KeyConvertingIterator : public InternalIterator {
       delete iter_;
     }
   }
-  bool Valid() const override { return iter_->Valid(); }
   void Seek(const Slice& target) override {
     ParsedInternalKey ikey(target, kMaxSequenceNumber, kTypeValue);
     std::string encoded;
@@ -260,20 +259,30 @@ class KeyConvertingIterator : public InternalIterator {
   }
   void SeekToFirst() override { iter_->SeekToFirst(); }
   void SeekToLast() override { iter_->SeekToLast(); }
-  void Next() override { iter_->Next(); }
+
+  const KeyValueEntry& Next() override {
+    iter_->Next();
+    return Entry();
+  }
+
   void Prev() override { iter_->Prev(); }
 
-  Slice key() const override {
-    assert(Valid());
+  const KeyValueEntry& Entry() const override {
+    const auto& res = iter_->Entry();
+    if (!res) {
+      return KeyValueEntry::Invalid();
+    }
     ParsedInternalKey parsed_key;
     if (!ParseInternalKey(iter_->key(), &parsed_key)) {
       status_ = STATUS(Corruption, "malformed internal key");
-      return Slice("corrupted key");
+      entry_.key = Slice("corrupted key");
+    } else {
+      entry_.key = parsed_key.user_key;
     }
-    return parsed_key.user_key;
+    entry_.value = res.value;
+    return entry_;
   }
 
-  Slice value() const override { return iter_->value(); }
   Status status() const override {
     return status_.ok() ? iter_->status() : status_;
   }
@@ -282,6 +291,7 @@ class KeyConvertingIterator : public InternalIterator {
   mutable Status status_;
   InternalIterator* iter_;
   bool arena_mode_;
+  mutable KeyValueEntry entry_;
 
   // No copying allowed
   KeyConvertingIterator(const KeyConvertingIterator&);
@@ -465,18 +475,30 @@ class MemTableConstructor: public Constructor {
 class InternalIteratorFromIterator : public InternalIterator {
  public:
   explicit InternalIteratorFromIterator(Iterator* it) : it_(it) {}
-  bool Valid() const override { return it_->Valid(); }
   void Seek(const Slice& target) override { it_->Seek(target); }
   void SeekToFirst() override { it_->SeekToFirst(); }
   void SeekToLast() override { it_->SeekToLast(); }
-  void Next() override { it_->Next(); }
+
+  const KeyValueEntry& Next() override {
+    it_->Next();
+    return Entry();
+  }
+
   void Prev() override { it_->Prev(); }
-  Slice key() const override { return it_->key(); }
-  Slice value() const override { return it_->value(); }
+
+  const KeyValueEntry& Entry() const override {
+    const auto& entry = it_->Entry();
+    if (!entry) {
+      return KeyValueEntry::Invalid();
+    }
+    return entry_ = entry;
+  }
+
   Status status() const override { return it_->status(); }
 
  private:
   unique_ptr<Iterator> it_;
+  mutable KeyValueEntry entry_;
 };
 
 class DBConstructor: public Constructor {
