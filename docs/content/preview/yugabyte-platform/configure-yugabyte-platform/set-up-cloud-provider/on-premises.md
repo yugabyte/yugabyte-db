@@ -289,12 +289,12 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag, as follows:
 
     ```bash
-    sudo useradd -s /bin/bash --create-home --home-dir <yugabyte-home-set-in-the-ui> yugabyte  # (add user yugabyte and create /home/yugabyte)
+    sudo useradd -s /bin/bash --create-home --home-dir <yugabyte-home> yugabyte  # (add user yugabyte and create /home/yugabyte)
     sudo passwd yugabyte   # (add a password to the yugabyte user)
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    `yugabyte-home-set-in-the-ui` is the path to the Yugabyte home directory. You can omit this flag if you are using the default `/home/yugabyte`.
+    `yugabyte-home` is the path to the Yugabyte home directory. You can omit this flag if you are using the default `/home/yugabyte`.
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
