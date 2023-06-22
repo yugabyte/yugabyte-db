@@ -732,8 +732,6 @@ record_send(PG_FUNCTION_ARGS)
 		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
 		ColumnIOData *column_info = &my_extra->columns[i];
 		Oid			column_type = att->atttypid;
-		Datum		attr;
-		bytea	   *outputbytes;
 
 		/* Ignore dropped columns in datatype */
 		if (att->attisdropped)
@@ -761,11 +759,7 @@ record_send(PG_FUNCTION_ARGS)
 			column_info->column_type = column_type;
 		}
 
-		attr = values[i];
-		outputbytes = SendFunctionCall(&column_info->proc, attr);
-		pq_sendint32(&buf, VARSIZE(outputbytes) - VARHDRSZ);
-		pq_sendbytes(&buf, VARDATA(outputbytes),
-					 VARSIZE(outputbytes) - VARHDRSZ);
+		StringInfoSendFunctionCall(&buf, &column_info->proc, values[i]);
 	}
 
 	pfree(values);

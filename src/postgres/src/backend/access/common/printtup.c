@@ -450,12 +450,7 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 		else
 		{
 			/* Binary output */
-			bytea	   *outputbytes;
-
-			outputbytes = SendFunctionCall(&thisState->finfo, attr);
-			pq_sendint32(buf, VARSIZE(outputbytes) - VARHDRSZ);
-			pq_sendbytes(buf, VARDATA(outputbytes),
-						 VARSIZE(outputbytes) - VARHDRSZ);
+			StringInfoSendFunctionCall(buf, &thisState->finfo, attr);
 		}
 	}
 
@@ -710,18 +705,13 @@ printtup_internal_20(TupleTableSlot *slot, DestReceiver *self)
 	for (i = 0; i < natts; ++i)
 	{
 		PrinttupAttrInfo *thisState = myState->myinfo + i;
-		Datum		attr = slot->tts_values[i];
-		bytea	   *outputbytes;
 
 		if (slot->tts_isnull[i])
 			continue;
 
 		Assert(thisState->format == 1);
 
-		outputbytes = SendFunctionCall(&thisState->finfo, attr);
-		pq_sendint32(buf, VARSIZE(outputbytes) - VARHDRSZ);
-		pq_sendbytes(buf, VARDATA(outputbytes),
-					 VARSIZE(outputbytes) - VARHDRSZ);
+		StringInfoSendFunctionCall(buf, &thisState->finfo, slot->tts_values[i]);
 	}
 
 	pq_endmessage_reuse(buf);
