@@ -1,9 +1,8 @@
-import React, { FC, useEffect, useState } from 'react';
+import React, { FC, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, MenuItem, Paper, Typography } from '@material-ui/core';
 import { YBSelect, YBTable } from '@app/components';
-import { useGetClusterNodesQuery } from '@app/api/src';
-import axios from 'axios';
+import { useGetClusterNodesQuery, useGetGflagsQuery } from '@app/api/src';
 
 const useStyles = makeStyles((theme) => ({
   paperContainer: {
@@ -27,21 +26,19 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
+type UpstreamGflagResponseType = {
+  masterFlags: {
+    flags: UpstreamFlagType[],
+  },
+  tserverFlags: {
+    flags: UpstreamFlagType[],
+  }
+}
+
 type UpstreamFlagType = {
   name: string,
   value: string,
   type: string,
-}
-
-type FlagData = {
-  flag: string,
-  master?: string,
-  tserver: string,
-}
-
-type GFlagData = {
-  nodeInfoFlags: FlagData[],
-  customFlags: FlagData[],
 }
 
 interface GFlagsOverviewProps {
@@ -63,86 +60,38 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDr
     }
   }, [nodesResponse])
 
-  const [masterNodes, setMasterNodes] = React.useState<string[]>([]);
-  React.useEffect(() => {
-    if (!nodesResponse || !currentNode) {
-      return;
+  const { data } = useGetGflagsQuery<UpstreamGflagResponseType>({ node_address: currentNode || "" });
+  const gflagData = useMemo(() => {
+    const masterFlags = {
+      nodeInfoFlags: data?.masterFlags?.flags.filter(flag => flag.type === "NodeInfo"),
+      customFlags: data?.masterFlags?.flags.filter(flag => flag.type === "Custom")
+    };
+    const tserverFlags = {
+      nodeInfoFlags: data?.tserverFlags?.flags.filter(flag => flag.type === "NodeInfo"),
+      customFlags: data?.tserverFlags?.flags.filter(flag => flag.type === "Custom")
+    };
+
+    const nodeInfoFlagList = new Set<string>()
+    masterFlags?.nodeInfoFlags?.forEach(f => nodeInfoFlagList.add(f.name));
+    tserverFlags?.nodeInfoFlags?.forEach(f => nodeInfoFlagList.add(f.name));
+
+    const customFlagList = new Set<string>()
+    masterFlags?.customFlags?.forEach(f => customFlagList.add(f.name));
+    tserverFlags?.customFlags?.forEach(f => customFlagList.add(f.name));
+
+    return {
+      nodeInfoFlags: Array.from(nodeInfoFlagList).map(flag => ({
+        flag,
+        master: masterFlags?.nodeInfoFlags?.find(f => f.name === flag)?.value ?? '-',
+        tserver: tserverFlags?.nodeInfoFlags?.find(f => f.name === flag)?.value ?? '-',
+      })),
+      customFlags: Array.from(customFlagList).map(flag => ({
+        flag,
+        master: masterFlags?.customFlags?.find(f => f.name === flag)?.value ?? '-',
+        tserver: tserverFlags?.customFlags?.find(f => f.name === flag)?.value ?? '-',
+      }))
     }
-
-    const populateMasterNodes = async () => {
-
-      const getMasterNodes = async (nodeName: string) => {
-        try {
-          const cpu = await axios.get(`http://${nodeName}:9000/api/v1/masters`)
-            .then(({ data }) => data.master_server_and_type.map((l: any) => l.master_server.substring(0, l.master_server.indexOf(':'))))
-            .catch(err => { console.error(err); return undefined; })
-          return cpu;
-        } catch (err) {
-          console.error(err);
-          return undefined;
-        }
-      }
-
-      const masterNodes = await getMasterNodes(currentNode) as string[] | undefined;
-      if (masterNodes) {
-        setMasterNodes(masterNodes);
-      }
-    }
-
-    populateMasterNodes();
-  }, [nodesResponse, currentNode])
-
-  const [gflagData, setGflagData] = React.useState<GFlagData>();
-  useEffect(() => {
-    if (!currentNode) {
-      setGflagData(undefined);
-      return;
-    }
-
-    const populateFlagData = async () => {
-      const getFlags = async (nodeHost: string) => {
-        try {
-          const { data } = await axios.get<{ flags: UpstreamFlagType[] }>(`http://${nodeHost}/api/v1/varz`);
-          const nodeInfoFlags = data.flags.filter(flag => flag.type === "NodeInfo")
-          const customFlags = data.flags.filter(flag => flag.type === "Custom")
-          return { nodeInfoFlags, customFlags };
-        } catch (err) {
-          console.error(err);
-          return undefined;
-        }
-      }
-
-      const masterFlags = masterNodes.includes(currentNode) ? await getFlags(`${currentNode}:7000`) : undefined;
-      const tserverFlags = await getFlags(`${currentNode}:9000`);
-
-      const nodeInfoFlagList = new Set<string>()
-      masterFlags?.nodeInfoFlags.forEach(f => nodeInfoFlagList.add(f.name));
-      tserverFlags?.nodeInfoFlags.forEach(f => nodeInfoFlagList.add(f.name));
-
-      const customFlagList = new Set<string>()
-      masterFlags?.customFlags.forEach(f => customFlagList.add(f.name));
-      tserverFlags?.customFlags.forEach(f => customFlagList.add(f.name));
-
-      setGflagData({
-        nodeInfoFlags: Array.from(nodeInfoFlagList).map(flag => ({
-          flag,
-          ...(masterNodes.includes(currentNode) &&
-            { master: masterFlags?.nodeInfoFlags.find(f => f.name === flag)?.value ?? '-' }
-          ),
-          tserver: tserverFlags?.nodeInfoFlags.find(f => f.name === flag)?.value ?? '-',
-        })),
-        customFlags: Array.from(customFlagList).map(flag => ({
-          flag,
-          ...(masterNodes.includes(currentNode) &&
-            { master: masterFlags?.customFlags.find(f => f.name === flag)?.value ?? '-' }
-          ),
-          tserver: tserverFlags?.customFlags.find(f => f.name === flag)?.value ?? '-',
-        }))
-      });
-    }
-
-    populateFlagData();
-  }, [masterNodes, currentNode])
+  }, [data])
 
   const gflagColumns = [
     {
@@ -170,10 +119,6 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDr
       }
     },
   ];
-
-  if (!currentNode || !masterNodes.includes(currentNode)) {
-    gflagColumns.splice(1, 1);
-  }
 
   return (
     <Paper className={classes.paperContainer}>
