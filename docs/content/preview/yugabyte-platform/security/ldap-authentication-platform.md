@@ -47,7 +47,7 @@ The first host-based authentication (HBA) rule `host all yugabyte 127.0.0.1/0 pa
 
 The second HBA rule configures LDAP authentication for all other user-host pairs using a [search+bind](../../../secure/authentication/ldap-authentication/#search-bind-mode) configuration. The YB-TServer binds to the LDAP directory using a fixed user name and password specified with `ldapbinddn` and `ldapbindpasswd`. The search is performed over the subtree at `ldapbasedn` and tries to find an exact match of the attribute specified in `ldapsearchattribute`.
 
-Once the user is found, to verify that the login is correct, the server disconnects and rebinds to the directory as this user using the password specified by the client.
+After the user is found, to verify that the login is correct, the server disconnects and rebinds to the directory as this user using the password specified by the client.
 
 For more information on the `ysql_hba_conf_csv` flag, refer to [--ysql_hba_conf_csv flag](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv). For more information on HBA, refer to [Host-based authentication](../../../secure/authentication/host-based-authentication/).
 
