@@ -27,28 +27,40 @@ func (yc *YbaCtlComponent) Setup() error {
 }
 
 // Install yba-ctl to the install dir (/opt/yba-ctl for root installs).
+// This installs yba-ctl and the version file into /opt/yba-ctl, in addition to symlinking to
+// /usr/bin/yba-ctl.
 func (yc *YbaCtlComponent) Install() error {
 	log.Info("Installing yba-ctl")
-	// Symlink at /usr/bin/yba-ctl -> /opt/yba-ctl/yba-ctl -> actual yba-ctl
 
-	common.CreateSymlink(common.GetInstallerSoftwareDir(), common.YbactlInstallDir(),
-		common.GoBinaryName)
-
-	if common.HasSudoAccess() {
-		common.CreateSymlink(common.YbactlInstallDir(), "/usr/bin", common.GoBinaryName)
-	} else {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.Fatal("unable to get user home directory: " + err.Error())
+	for _, file := range []string{common.GoBinaryName, common.VersionMetadataJSON} {
+		if err := common.Copy(file, common.YbactlInstallDir(), false, true); err != nil {
+			return fmt.Errorf("failed to copy %s during yba-ctl install: %w", file, err)
 		}
-		usrBin := filepath.Join(home, "bin")
-		common.MkdirAll(usrBin, 0755)
-		common.CreateSymlink(common.YbactlInstallDir(), usrBin, common.GoBinaryName)
+	}
+
+	// Symlink yba-ctl into a bin directory that should be in the path
+	if common.HasSudoAccess() {
+		err := common.CreateSymlink(common.YbactlInstallDir(), "/usr/bin", common.GoBinaryName)
+		if err != nil {
+			return fmt.Errorf("could not create symlink: %w", err)
+		}
+	} else {
+
+		// Create the home bin directory
+		usrBin, err := createHomeBinDir()
+		if err != nil {
+			return fmt.Errorf("install failed to setup home bin directory: %w", err)
+		}
+
+		// Create the symlink
+		err = common.CreateSymlink(common.YbactlInstallDir(), usrBin, common.GoBinaryName)
+		if err != nil {
+			return fmt.Errorf("could not create symlink: %w", err)
+		}
 		log.Info("Installed yba-ctl at " + usrBin + ". Please ensure this is in your PATH env, or " +
 			"move yba-ctl into a directory that is already in your path.")
 	}
 
-	yc.MarkYBAInstallDone()
 	return nil
 }
 
@@ -99,4 +111,16 @@ func (yc *YbaCtlComponent) MarkYBAInstallDone() error {
 	}
 	common.RenameOrFail(common.YbaInstallingMarker(), common.YbaInstalledMarker())
 	return nil
+}
+
+func createHomeBinDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("could not determine home directory: %w", err)
+	}
+	usrBin := filepath.Join(home, ".local", "bin")
+	if err := common.MkdirAll(usrBin, 0755); err != nil {
+		return usrBin, fmt.Errorf("could not create directory '%s': %w", usrBin, err)
+	}
+	return usrBin, nil
 }
