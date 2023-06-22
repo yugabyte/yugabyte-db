@@ -29,6 +29,8 @@ This section describes how to configure a YugabyteDB Anywhere universe to use an
 
 For more information on LDAP in YugabyteDB, refer to [LDAP authentication](../../../secure/authentication/ldap-authentication/).
 
+For information on using LDAP for authentication with YugabyteDB Anywhere, refer to [Enable YugabyteDB Anywhere authentication via LDAP](../../administer-yugabyte-platform/ldap-authentication/).
+
 ## Bind to the LDAP server using TLS
 
 To bind to the LDAP server using TLS, you set the `ldaptls=1` option and the `ysql_hba_conf_csv` flag to the following value:
