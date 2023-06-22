@@ -60,6 +60,10 @@ You can use the YugabyteDB Anywhere UI to enable LDAP authentication for Yugabyt
 
   - The **Bind DN** field value represents the distinguished name (DN) used for searching and binding.
 
+  - You can map LDAP groups to [YugabyteDB Anywhere roles](../../security/authorization-platform/#roles) by enabling group mapping. See [Role management](#role-management).
+
+  - Optionally, enter your LDAP service account credentials. If you are using group mapping, these credentials are required.
+
 ### Use the YugabyteDB Anywhere API
 
 To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a number of runtime configurations to specify the following:
