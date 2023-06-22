@@ -290,6 +290,21 @@ DROP FUNCTION show_list_use_vle;
 
 SELECT drop_graph('mygraph', true);
 
+-- invalid reuse of VLE
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p]-()-[p *]-() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-()-[p]-() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH (p)-[p *]-() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-(p) RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH p=()-[p *]-() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-()-[p *]-() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p]-() MATCH ()-[p *]-() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH ()-[p]-() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH ()-[p *]-() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH (p) MATCH ()-[p *]-() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH (p) RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH p=() MATCH ()-[p *]-() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH p=() RETURN p $$)as (p agtype);
+
 --
 -- Clean up
 --

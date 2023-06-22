@@ -761,6 +761,59 @@ NOTICE:  graph "mygraph" has been dropped
  
 (1 row)
 
+-- invalid reuse of VLE
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p]-()-[p *]-() RETURN p $$)as (p agtype);
+ERROR:  variable 'p' is for an edge
+LINE 1: ...CT * FROM cypher('cypher_vle', $$ MATCH ()-[p]-()-[p *]-() R...
+                                                             ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-()-[p]-() RETURN p $$)as (p agtype);
+ERROR:  variable 'p' is for a VLE edge
+LINE 1: ... * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-()-[p]-() RET...
+                                                             ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH (p)-[p *]-() RETURN p $$)as (p agtype);
+ERROR:  variable 'p' is for a vertex
+LINE 1: SELECT * FROM cypher('cypher_vle', $$ MATCH (p)-[p *]-() RET...
+                                                        ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-(p) RETURN p $$)as (p agtype);
+ERROR:  variable 'p' is for a VLE edge
+LINE 1: ...CT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-(p) RETURN ...
+                                                             ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH p=()-[p *]-() RETURN p $$)as (p agtype);
+ERROR:  variable "p" is for a path
+LINE 1: SELECT * FROM cypher('cypher_vle', $$ MATCH p=()-[p *]-() RE...
+                                                         ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-()-[p *]-() RETURN p $$)as (p agtype);
+ERROR:  duplicate variable 'p'
+LINE 1: ... * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-()-[p *]-() R...
+                                                             ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p]-() MATCH ()-[p *]-() RETURN p $$)as (p agtype);
+ERROR:  variable 'p' is for an edge
+LINE 1: ... cypher('cypher_vle', $$ MATCH ()-[p]-() MATCH ()-[p *]-() R...
+                                                             ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH ()-[p]-() RETURN p $$)as (p agtype);
+ERROR:  variable 'p' is for a VLE edge
+LINE 1: ...ypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH ()-[p]-() RET...
+                                                             ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH ()-[p *]-() RETURN p $$)as (p agtype);
+ERROR:  duplicate variable 'p'
+LINE 1: ...ypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH ()-[p *]-() R...
+                                                             ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH (p) MATCH ()-[p *]-() RETURN p $$)as (p agtype);
+ERROR:  variable 'p' is for a vertex
+LINE 1: ...* FROM cypher('cypher_vle', $$ MATCH (p) MATCH ()-[p *]-() R...
+                                                             ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH (p) RETURN p $$)as (p agtype);
+ERROR:  variable 'p' is for a VLE edge
+LINE 1: ... cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH (p) RETURN ...
+                                                             ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH p=() MATCH ()-[p *]-() RETURN p $$)as (p agtype);
+ERROR:  variable 'p' already exists
+LINE 1: ... FROM cypher('cypher_vle', $$ MATCH p=() MATCH ()-[p *]-() R...
+                                                             ^
+SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH p=() RETURN p $$)as (p agtype);
+ERROR:  variable "p" already exists
+LINE 1: ...M cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH p=() RETUR...
+                                                             ^
 --
 -- Clean up
 --

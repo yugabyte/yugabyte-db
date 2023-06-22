@@ -945,6 +945,21 @@ SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[b]->()-[b:knows]->(a) RETUR
 SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[b]->()-[b]->(a) RETURN p $$)as (p agtype);
 SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[b:knows]->()-[b:knows]->(a) RETURN p $$)as (p agtype);
 SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[b:knows]->()-[b]->(a) RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(p) RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(p)-[]->() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH p=()-[p]->() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH p=() MATCH (p) RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH p=() MATCH (p)-[]->() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH p=() MATCH ()-[p]->() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH (p) MATCH p=() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH ()-[p]->() MATCH p=() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH ()-[p *]-()-[p]-() RETURN 0 $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ CREATE (p) WITH p MATCH p=() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ CREATE p=() WITH p MATCH (p) RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ CREATE ()-[p:knows]->() WITH p MATCH p=() RETURN p $$)as (p agtype);
+SELECT * FROM cypher('cypher_match', $$ CREATE p=() WITH p MATCH ()-[p]->() RETURN p $$)as (p agtype);
+
+
 
 --
 -- Default alias check (issue #883)

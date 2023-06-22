@@ -766,7 +766,7 @@ LINE 2:         MATCH (r0)-[]->() MATCH ()-[r0]->() RETURN r0
 SELECT * FROM cypher('cypher_match', $$
         MATCH ()-[r0]->() MATCH ()-[]->(r0) RETURN r0
 $$) AS (r0 agtype);
-ERROR:  variable 'r0' is for a edge
+ERROR:  variable 'r0' is for an edge
 LINE 2:         MATCH ()-[r0]->() MATCH ()-[]->(r0) RETURN r0
                                                 ^
 SELECT * FROM cypher('cypher_match', $$
@@ -2051,6 +2051,58 @@ LINE 1: ...pher('cypher_match', $$ MATCH p=(a)-[b:knows]->()-[b:knows]-...
 SELECT * FROM cypher('cypher_match', $$ MATCH p=(a)-[b:knows]->()-[b]->(a) RETURN p $$)as (p agtype);
 ERROR:  duplicate edge variable 'b' within a clause
 LINE 1: ...pher('cypher_match', $$ MATCH p=(a)-[b:knows]->()-[b]->(a) R...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(p) RETURN p $$)as (p agtype);
+ERROR:  variable "p" is for a path
+LINE 1: SELECT * FROM cypher('cypher_match', $$ MATCH p=(p) RETURN p...
+                                                         ^
+SELECT * FROM cypher('cypher_match', $$ MATCH p=(p)-[]->() RETURN p $$)as (p agtype);
+ERROR:  variable "p" is for a path
+LINE 1: SELECT * FROM cypher('cypher_match', $$ MATCH p=(p)-[]->() R...
+                                                         ^
+SELECT * FROM cypher('cypher_match', $$ MATCH p=()-[p]->() RETURN p $$)as (p agtype);
+ERROR:  variable "p" is for a path
+LINE 1: ...ELECT * FROM cypher('cypher_match', $$ MATCH p=()-[p]->() RE...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ MATCH p=() MATCH (p) RETURN p $$)as (p agtype);
+ERROR:  variable 'p' already exists
+LINE 1: ... FROM cypher('cypher_match', $$ MATCH p=() MATCH (p) RETURN ...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ MATCH p=() MATCH (p)-[]->() RETURN p $$)as (p agtype);
+ERROR:  variable 'p' already exists
+LINE 1: ... FROM cypher('cypher_match', $$ MATCH p=() MATCH (p)-[]->() ...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ MATCH p=() MATCH ()-[p]->() RETURN p $$)as (p agtype);
+ERROR:  variable 'p' already exists
+LINE 1: ...ROM cypher('cypher_match', $$ MATCH p=() MATCH ()-[p]->() RE...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ MATCH (p) MATCH p=() RETURN p $$)as (p agtype);
+ERROR:  variable "p" already exists
+LINE 1: ... * FROM cypher('cypher_match', $$ MATCH (p) MATCH p=() RETUR...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ MATCH ()-[p]->() MATCH p=() RETURN p $$)as (p agtype);
+ERROR:  variable "p" already exists
+LINE 1: ... cypher('cypher_match', $$ MATCH ()-[p]->() MATCH p=() RETUR...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ MATCH ()-[p *]-()-[p]-() RETURN 0 $$)as (p agtype);
+ERROR:  variable 'p' is for a VLE edge
+LINE 1: ... FROM cypher('cypher_match', $$ MATCH ()-[p *]-()-[p]-() RET...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ CREATE (p) WITH p MATCH p=() RETURN p $$)as (p agtype);
+ERROR:  variable "p" already exists
+LINE 1: ...cypher('cypher_match', $$ CREATE (p) WITH p MATCH p=() RETUR...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ CREATE p=() WITH p MATCH (p) RETURN p $$)as (p agtype);
+ERROR:  variable 'p' already exists
+LINE 1: ...pher('cypher_match', $$ CREATE p=() WITH p MATCH (p) RETURN ...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ CREATE ()-[p:knows]->() WITH p MATCH p=() RETURN p $$)as (p agtype);
+ERROR:  variable "p" already exists
+LINE 1: ...r_match', $$ CREATE ()-[p:knows]->() WITH p MATCH p=() RETUR...
+                                                             ^
+SELECT * FROM cypher('cypher_match', $$ CREATE p=() WITH p MATCH ()-[p]->() RETURN p $$)as (p agtype);
+ERROR:  variable 'p' already exists
+LINE 1: ...er('cypher_match', $$ CREATE p=() WITH p MATCH ()-[p]->() RE...
                                                              ^
 --
 -- Default alias check (issue #883)

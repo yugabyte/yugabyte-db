@@ -3559,6 +3559,7 @@ static Node *create_property_constraints(cypher_parsestate *cpstate,
 static List *transform_match_path(cypher_parsestate *cpstate, Query *query,
                                   cypher_path *path)
 {
+    ParseState *pstate = (ParseState *)cpstate;
     List *qual = NIL;
     List *entities = NIL;
     FuncCall *duplicate_edge_qual;
@@ -3571,6 +3572,15 @@ static List *transform_match_path(cypher_parsestate *cpstate, Query *query,
     if (path->var_name != NULL)
     {
         TargetEntry *path_te;
+
+        if (findTarget(query->targetList, path->var_name) != NULL)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_DUPLICATE_ALIAS),
+                    errmsg("variable \"%s\" already exists",
+                            path->var_name),
+                    parser_errposition(pstate, path->location)));
+        }
 
         path_te = transform_match_create_path_variable(cpstate, path,
                                                        entities);
@@ -3649,13 +3659,51 @@ static transform_entity *transform_VLE_edge_entity(cypher_parsestate *cpstate,
 
     /*
      * If we have a variable name (rel name), make the target entry. Otherwise,
-     * there isn't a reason to create one.
+     * there isn't a reason to create one. Additionally, verify that it is not
+     * reused.
      */
     if (rel->name != NULL)
     {
         FuncExpr *fexpr;
         List *args = list_make1(var);
         Oid func_oid = InvalidOid;
+        transform_entity *entity = NULL;
+
+        te = findTarget(query->targetList, rel->name);
+        entity = find_variable(cpstate, rel->name);
+
+        /* If the variable already exists, error out */
+        if (te && entity)
+        {
+            if (entity->type == ENT_VERTEX)
+            {
+                ereport(ERROR,
+                       (errcode(ERRCODE_DUPLICATE_ALIAS),
+                        errmsg("variable '%s' is for a vertex", rel->name),
+                        parser_errposition(pstate, rel->location)));
+            }
+            else if (entity->type == ENT_EDGE)
+            {
+                ereport(ERROR,
+                       (errcode(ERRCODE_DUPLICATE_ALIAS),
+                        errmsg("variable '%s' is for an edge", rel->name),
+                        parser_errposition(pstate, rel->location)));
+            }
+            else
+            {
+                ereport(ERROR,
+                       (errcode(ERRCODE_DUPLICATE_ALIAS),
+                        errmsg("duplicate variable '%s'", rel->name),
+                        parser_errposition(pstate, rel->location)));
+            }
+        }
+        else if (te && !entity)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_DUPLICATE_ALIAS),
+                     errmsg("variable '%s' already exists", rel->name),
+                     parser_errposition(pstate, rel->location)));
+        }
 
         /*
          * Get the oid for the materialize function that returns a list of
@@ -3803,11 +3851,22 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
              */
             if (node->name != NULL)
             {
+                Node *expr;
+
+                if (path->var_name && strcmp(node->name, path->var_name) == 0)
+                {
+                    ereport(ERROR,
+                           (errcode(ERRCODE_DUPLICATE_ALIAS),
+                            errmsg("variable \"%s\" is for a path",
+                                    node->name),
+                            parser_errposition(pstate, node->location)));
+                }
+                
                 /*
                  * Checks the previous clauses to see if the variable already
                  * exists.
                  */
-                Node *expr = colNameToVar(pstate, node->name, false,
+                expr = colNameToVar(pstate, node->name, false,
                                           node->location);
                 if (expr != NULL)
                 {
@@ -3909,6 +3968,16 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
             cypher_relationship *rel = NULL;
 
             rel = lfirst(lc);
+
+            if (rel->name && path->var_name &&
+                strcmp(rel->name, path->var_name) == 0)
+            {
+                ereport(ERROR,
+                       (errcode(ERRCODE_DUPLICATE_ALIAS),
+                        errmsg("variable \"%s\" is for a path",
+                                rel->name),
+                        parser_errposition(pstate, rel->location)));
+            }
 
             /*
              * There are 2 edge cases - 1) a regular edge and 2) a VLE edge.
@@ -4326,11 +4395,29 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
         }
 
         /* If the variable already exists, verify that it is for an edge */
-        if (refs_var && entity->type != ENT_EDGE)
+        if (refs_var)
+        {
+            if (entity->type == ENT_VERTEX)
+            {
+                ereport(ERROR,
+                       (errcode(ERRCODE_DUPLICATE_ALIAS),
+                        errmsg("variable '%s' is for a vertex", rel->name),
+                        parser_errposition(pstate, rel->location)));
+            }
+            else if (entity->type == ENT_VLE_EDGE)
+            {
+                ereport(ERROR,
+                       (errcode(ERRCODE_DUPLICATE_ALIAS),
+                        errmsg("variable '%s' is for a VLE edge", rel->name),
+                        parser_errposition(pstate, rel->location)));
+            }
+        }
+
+        else if (te && !entity)
         {
             ereport(ERROR,
-                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg("variable '%s' is for a vertex", rel->name),
+                    (errcode(ERRCODE_DUPLICATE_ALIAS),
+                     errmsg("variable '%s' already exists", rel->name),
                      parser_errposition(pstate, rel->location)));
         }
     }
@@ -4393,7 +4480,7 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
     if (expr == NULL && refs_var)
     {
         ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                (errcode(ERRCODE_DUPLICATE_ALIAS),
                  errmsg("duplicate edge variable '%s' within a clause",
                         rel->name),
                  parser_errposition(pstate, rel->location)));
@@ -4545,11 +4632,32 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
         }
 
         /* If the variable already exists, verify that it is for a vertex */
-        if (refs_var && entity->type != ENT_VERTEX)
+        if (refs_var)
+        {
+            if (entity->type == ENT_EDGE)
+            {
+                ereport(ERROR,
+                       (errcode(ERRCODE_DUPLICATE_ALIAS),
+                        errmsg("variable '%s' is for an edge", node->name),
+                        parser_errposition(pstate, node->location)));
+            }
+            else if (entity->type == ENT_VLE_EDGE)
+            {
+                ereport(ERROR,
+                       (errcode(ERRCODE_DUPLICATE_ALIAS),
+                        errmsg("variable '%s' is for a VLE edge", node->name),
+                        parser_errposition(pstate, node->location)));
+            }
+        }
+
+        /* If their is a te but no entity, it implies that their is
+         * some variable that exists but not an edge,vle or a vertex
+         */
+        else if (te && !entity)
         {
             ereport(ERROR,
-                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg("variable '%s' is for a edge", node->name),
+                    (errcode(ERRCODE_DUPLICATE_ALIAS),
+                     errmsg("variable '%s' already exists", node->name),
                      parser_errposition(pstate, node->location)));
         }
     }
