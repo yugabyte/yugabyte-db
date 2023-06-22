@@ -45,7 +45,7 @@ var aptList = []string{"Ubuntu", "Debian"}
 
 const GoBinaryName = "yba-ctl"
 
-const versionMetadataJSON = "version_metadata.json"
+const VersionMetadataJSON = "version_metadata.json"
 
 const javaBinaryGlob = "yba_installer-*linux*/OpenJDK17U-jdk_x64_linux_*.tar.gz"
 
@@ -60,7 +60,7 @@ func GetVersion() string {
 	// locate the version metadata json file in the same dir as the yba-ctl
 	// binary
 	var configViper = viper.New()
-	configViper.SetConfigName(versionMetadataJSON)
+	configViper.SetConfigName(VersionMetadataJSON)
 	configViper.SetConfigType("json")
 	configViper.AddConfigPath(GetBinaryDir())
 
