@@ -401,8 +401,7 @@ public class LdapUtil {
           }
         } catch (Exception e) {
           log.debug(
-              String.format(
-                  "LDAP query failed with {} Defaulting to ReadOnly role. %s", e.getMessage()));
+              String.format("LDAP query for yugabytePlatformRole failed with %s", e.getMessage()));
         }
       }
 
@@ -429,27 +428,47 @@ public class LdapUtil {
         Role roleFromGroupMappings =
             getRoleFromGroupMappings(
                 userEntry, email, connection, ldapConfiguration, users.getCustomerUUID());
+
+        if (roleFromGroupMappings == null) {
+          log.warn("No role mappings from LDAP group membership of user: " + email);
+        }
+
         if (role.isEmpty()) {
           if (roleFromGroupMappings != null) {
             role = roleFromGroupMappings.toString();
+            log.info(
+                "No role found from yugabytePlatformRole, "
+                    + "using role {} found from LDAP group mappings for user: {}",
+                role,
+                email);
+          } else {
+            log.warn(
+                "No role found from either yugabytePlatformRole or "
+                    + "LDAP group mapping for LDAP user: {}",
+                email);
           }
         } else {
           try {
             Role roleEnum = Role.valueOf(role);
             role = Role.union(roleEnum, roleFromGroupMappings).toString();
+            log.info(
+                "Roles from yugabytePlatformRole and LDAP group memberships for LDAP user: "
+                    + "{} combined to assign {}",
+                email,
+                role);
           } catch (IllegalArgumentException e) {
             if (roleFromGroupMappings != null) {
               log.error(
                   "Invalid role: {} obtained from yugabytePlatformRole,"
                       + " attempting to use role mapped to LDAP groups: {}",
                   role,
-                  roleFromGroupMappings.toString());
+                  roleFromGroupMappings);
               role = roleFromGroupMappings.toString();
             } else {
               log.error(
                   "Invalid role: \"{}\" obtained from yugabytePlatformRole, "
-                      + "role mapped to LDAP groups is also null, defaulting to ReadOnly.");
-              role = "ReadOnly";
+                      + "role mapped to LDAP groups is also null.",
+                  role);
             }
           }
         }
