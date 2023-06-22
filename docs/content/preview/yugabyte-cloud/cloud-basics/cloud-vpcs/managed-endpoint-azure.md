@@ -1,9 +1,9 @@
 ---
 title: Connect VPCs using Azure Private Link
-headerTitle: Connect VPCs
-linkTitle: Connect VPCs
-description: Connect to a VPC in Azure using Private Link.
-headcontent: Connect your cluster VPC with a VPC in Azure using Private Link
+headerTitle: Set up private link
+linkTitle: Set up private link
+description: Connect to a VNet in Azure using Private Link.
+headcontent: Connect your endpoints using Private Link
 menu:
   preview_yugabyte-cloud:
     identifier: managed-endpoint-1-azure
@@ -33,14 +33,13 @@ type: docs
 To use Azure Private Link, you need the following:
 
 - An Azure user account with an active subscription.
-- An Azure service that supports private endpoints.
-- The [subscription ID](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id) of the service to which to grant access to the endpoint.
+- The [subscription ID](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id#find-your-azure-subscription) of the service to which to grant access to the cluster endpoint.
 
-Make sure that default security group in your application VPC allows internal connectivity. Otherwise, your application may not be able to reach the endpoint.
+Make sure that default security group in your application Azure Virtual Network (VNet) allows internal connectivity. Otherwise, your application may not be able to reach the endpoint.
 
 ## Create a PSE for Azure Private Link using ybm CLI
 
-To use Private Link to connect your cluster to a VPC that hosts your application, first create a PSE on your cluster, then create an endpoint in Azure.
+To use Private Link to connect your cluster to an VNet that hosts your application, first create a PSE on your cluster, then create an endpoint in Azure.
 
 ### Create a PSE in YugabyteDB Managed
 
@@ -78,7 +77,7 @@ To create a PSE, do the following:
     ybm cluster network endpoint describe --cluster-name <yugabytedb_cluster> --endpoint-id <endpoint_id>
     ```
 
-    Note the service name of the endpoint you want to link to your client application VPC in Azure.
+    Note the service name of the endpoint you want to link to your client application VNet in Azure.
 
 ### Create the private endpoint in Azure
 
@@ -98,23 +97,23 @@ To create the private endpoint and connect it to your YBM PSE (called a private 
 
 ```sh
 az network private-endpoint create \
---connection-name <private_link_service_connection_name> \
---name <private_endpoint_name> \
---private-connection-resource-id <pse_resource_id> \
---resource-group <resource_group_name> \
---subnet <subnet_id> \
---vnet-name <private_endpoint_vnet_name> \
-–-location <private_endpoint_region_name>
+    --connection-name <private_link_service_connection_name> \
+    --name <private_endpoint_name> \
+    --private-connection-resource-id <pse_resource_id> \
+    --resource-group <resource_group_name> \
+    --subnet <subnet_name> \
+    --vnet-name <private_endpoint_vnet_name> \
+    –-location <private_endpoint_region_name>
 ```
 
 Replace values as follows:
 
 - `private_link_service_connection_name` - provide a name for the private link connection from the private endpoint to the private link service.
 - `private_endpoint_name` - provide a name for the private endpoint.
-- `pse_resource_id` - a property of your YBM PSE; for example, "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/MyResourceGroup/providers/Microsoft.Network/privateLinkServices/MyPLS".
+- `pse_resource_id` - a property of your YBM PSE; you can find this on the cluster **Settings** tab under **Network Access**.
 - `resource_group_name` - the resource group in which the private endpoint will be created.
-- `subnet_id` - the ID of the subnet in the resource group in which the private endpoint will be created.
-- `private_endpoint_vnet_name` - the name of the Azure Virtual Network (VNet) where the private endpoint will be created.
+- `subnet_name` - the name of the subnet in the resource group in which the private endpoint will be created.
+- `private_endpoint_vnet_name` - the name of the VNet where the private endpoint will be created.
 - `private_endpoint_region_name` - the Azure region in which the private endpoint and VNet are present.
 
 To ensure no change to your application settings and connect using sslmode=verify-full, create a private DNS zone in the same resource group and VNet as the private endpoint, and add an A record pointing to the IP address of the private endpoint.
@@ -131,16 +130,6 @@ To ensure no change to your application settings and connect using sslmode=verif
 
     - `cluster_id` - the cluster ID of the cluster with the PSE; the cluster ID is displayed on the cluster **Settings** tab in YBM.
     - `resource_group_name` - the resource group in which the private endpoint was created.
-
-1. To obtain the ipv4 address of the private endpoint, enter the following command:
-
-    ```sh
-    az network private-endpoint show \
-    --name <private_endpoint_name> \
-    --resource-group <resource_group_name>
-    ```
-
-    This command returns the following ipv4 address of the private endpoint (`private_endpoint_ipv4_address` in the following commands) that you use to link the private DNS zone to the VNET.
 
 1. To link the private DNS zone to the VNet containing the private endpoint, enter the following command:
 
@@ -161,14 +150,39 @@ To ensure no change to your application settings and connect using sslmode=verif
     - `private_endpoint_vnet_name` - the name of VNet in which the private endpoint was created.
     - `cluster_id` - the cluster ID of the cluster with the PSE; the cluster ID is displayed on the cluster **Settings** tab in YBM.
 
+1. To obtain the Network Interface (NIC) resource ID for the private endpoint, enter the following command:
+
+    ```sh
+    az network private-endpoint show \
+        --name <private_endpoint_name> \
+        --resource-group <resource_group_name>
+    ```
+
+    Replace values as follows:
+
+    - `private_endpoint_name` - the name of the private endpoint.
+    - `resource_group_name` - the resource group in which the private endpoint was created.
+
+    This command returns the NIC resource ID of the private endpoint (`private_endpoint_nic_resource_id` in the following command).
+
+1. To obtain the ipv4 address of the private endpoint, enter the following command:
+
+    ```sh
+    az network nic show \
+        --ids <private_endpoint_nic_resource_id> \
+        --query "ipConfigurations[0].privateIPAddress"
+    ```
+
+    This command returns the ipv4 address of the private endpoint (`private_endpoint_ipv4_address` in the following command).
+
 1. To create an A record in the private DNS zone, enter the following command:
 
     ```sh
     az network private-dns record-set a add-record \
-    --ipv4-address <private_endpoint_ipv4_address> \
-    --record-set-name <record_set_name> \
-    --resource-group <resource_group_name> \
-    --zone-name <private_dns_zone_name>
+        --ipv4-address <private_endpoint_ipv4_address> \
+        --record-set-name <record_set_name> \
+        --resource-group <resource_group_name> \
+        --zone-name <private_dns_zone_name>
     ```
 
     Replace values as follows:

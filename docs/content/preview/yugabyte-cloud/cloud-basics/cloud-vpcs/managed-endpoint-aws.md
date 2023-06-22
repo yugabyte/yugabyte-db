@@ -1,9 +1,9 @@
 ---
 title: Connect VPCs using AWS PrivateLink
-headerTitle: Connect VPCs
-linkTitle: Connect VPCs
+headerTitle: Set up private link
+linkTitle: Set up private link
 description: Connect to a VPC in AWS using PrivateLink.
-headcontent: Connect your cluster VPC with a VPC in AWS using PrivateLink
+headcontent: Connect your endpoints using PrivateLink
 menu:
   preview_yugabyte-cloud:
     identifier: managed-endpoint-1-aws

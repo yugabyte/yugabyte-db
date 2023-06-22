@@ -16,7 +16,7 @@ A private service endpoint (PSE) can be used to connect a YugabyteDB Managed clu
 
 You must create a VPC and deploy your cluster before you can configure a PSE.
 
-- To learn how to connect VPCs over a private link using endpoints, refer to [Connect VPCs](../managed-endpoint-aws/).
+- To learn how to connect your cluster to an application over a private link using endpoints, refer to [Set up private link](../managed-endpoint-aws/).
 
 ## Limitations
 
