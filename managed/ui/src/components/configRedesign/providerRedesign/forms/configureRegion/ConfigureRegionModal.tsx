@@ -59,10 +59,12 @@ export interface ConfigureRegionFormValues {
   fieldId: string;
   regionData: { value: { code: string; zoneOptions: string[] }; label: string };
   zones: Zones;
+
+  instanceTemplate?: string;
   securityGroupId?: string;
+  sharedSubnet?: string;
   vnet?: string;
   ybImage?: string;
-  sharedSubnet?: string;
 }
 export type CloudVendorRegionField = Omit<ConfigureRegionFormValues, 'regionData' | 'zones'> & {
   code: string;
@@ -116,15 +118,17 @@ export const ConfigureRegionModal = ({
         : providerCode === ProviderCode.AZU
         ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
         : 'Custom Machine Image ID (Optional)',
-    sharedSubnet: 'Shared Subnet'
+    sharedSubnet: 'Shared Subnet',
+    instanceTemplate: 'Instance Template'
   };
   const shouldExposeField: Record<keyof ConfigureRegionFormValues, boolean> = {
     fieldId: false,
+    instanceTemplate: providerCode === ProviderCode.GCP,
     regionData: true,
-    vnet: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
     securityGroupId: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
-    ybImage: providerCode !== ProviderCode.AWS || ybImageType === YBImageType.CUSTOM_AMI,
     sharedSubnet: providerCode === ProviderCode.GCP,
+    vnet: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
+    ybImage: providerCode !== ProviderCode.AWS || ybImageType === YBImageType.CUSTOM_AMI,
     zones: providerCode !== ProviderCode.GCP
   };
   const validationSchema = object().shape({
@@ -306,6 +310,18 @@ export const ConfigureRegionModal = ({
             <YBInputField
               control={formMethods.control}
               name="sharedSubnet"
+              placeholder="Enter..."
+              disabled={isFormDisabled}
+              fullWidth
+            />
+          </div>
+        )}
+        {shouldExposeField.instanceTemplate && (
+          <div className={classes.formField}>
+            <div>{fieldLabel.instanceTemplate}</div>
+            <YBInputField
+              control={formMethods.control}
+              name="instanceTemplate"
               placeholder="Enter..."
               disabled={isFormDisabled}
               fullWidth

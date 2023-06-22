@@ -259,7 +259,10 @@ export const GCPProviderCreateForm = ({
         details: {
           cloudInfo: {
             [ProviderCode.GCP]: {
-              ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
+              ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage }),
+              ...(regionFormValues.instanceTemplate && {
+                instanceTemplate: regionFormValues.instanceTemplate
+              })
             }
           }
         },

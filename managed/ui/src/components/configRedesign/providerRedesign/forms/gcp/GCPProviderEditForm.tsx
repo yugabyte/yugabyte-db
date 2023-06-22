@@ -591,6 +591,7 @@ const constructDefaultFormValues = (
     code: region.code,
     fieldId: generateLowerCaseAlphanumericId(),
     name: region.name,
+    instanceTemplate: region.details.cloudInfo.gcp.instanceTemplate ?? '',
     sharedSubnet: region.zones?.[0]?.subnet ?? '',
     ybImage: region.details.cloudInfo.gcp.ybImage ?? '',
     zones: region.zones.map<GCPAvailabilityZoneMutation>((zone) => ({
@@ -712,7 +713,10 @@ const constructProviderPayload = async (
           details: {
             cloudInfo: {
               [ProviderCode.GCP]: {
-                ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
+                ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage }),
+                ...(regionFormValues.instanceTemplate && {
+                  instanceTemplate: regionFormValues.instanceTemplate
+                })
               }
             }
           },
