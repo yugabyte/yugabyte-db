@@ -2643,7 +2643,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     }
 
     // If its not been 60s since the last peer update, continue.
-    if (!FLAGS_enable_log_retention_by_op_idx ||
+    if (!GetAtomicFlag(&FLAGS_enable_log_retention_by_op_idx) ||
         (time_since_update_peers != MonoTime::kUninitialized &&
          MonoTime::Now() - time_since_update_peers <
              MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_update_min_cdc_indices_interval_secs)))) {
