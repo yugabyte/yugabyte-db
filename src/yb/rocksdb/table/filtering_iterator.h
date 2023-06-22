@@ -40,8 +40,8 @@ class FilteringIterator : public InternalIterator {
       : iterator_(iterator, PossibleArenaDeleter(arena_mode)) {}
 
  private:
-  bool Valid() const override {
-    return iterator_->Valid();
+  const KeyValueEntry& Entry() const override {
+    return iterator_->Entry();
   }
 
   void SeekToFirst() override {
@@ -59,22 +59,15 @@ class FilteringIterator : public InternalIterator {
     ApplyFilter(/* backward = */ false);
   }
 
-  void Next() override {
+  const KeyValueEntry& Next() override {
     iterator_->Next();
     ApplyFilter(/* backward = */ false);
+    return Entry();
   }
 
   void Prev() override {
     iterator_->Prev();
     ApplyFilter(/* backward = */ true);
-  }
-
-  Slice key() const override {
-    return iterator_->key();
-  }
-
-  Slice value() const override {
-    return iterator_->value();
   }
 
   Status status() const override {

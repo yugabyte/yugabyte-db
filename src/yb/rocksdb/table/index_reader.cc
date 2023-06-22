@@ -133,7 +133,7 @@ Result<std::string> HashIndexReader::GetMiddleKey() const {
   return index_block_->GetMiddleKey(kIndexBlockKeyValueEncodingFormat);
 }
 
-class MultiLevelIterator : public InternalIterator {
+class MultiLevelIterator final : public InternalIterator {
  public:
   static constexpr auto kIterChainInitialCapacity = 4;
 
@@ -171,11 +171,12 @@ class MultiLevelIterator : public InternalIterator {
     DoSeek(std::bind(&IteratorWrapper::SeekToLast, std::placeholders::_1));
   }
 
-  void Next() override {
+  const KeyValueEntry& Next() override {
     DoMove(
         std::bind(&IteratorWrapper::Next, std::placeholders::_1),
         std::bind(&IteratorWrapper::SeekToFirst, std::placeholders::_1)
     );
+    return Entry();
   }
 
   void Prev() override {
@@ -185,18 +186,12 @@ class MultiLevelIterator : public InternalIterator {
     );
   }
 
-  bool Valid() const override {
-    return bottommost_positioned_iter_ == bottom_level_iter_ && bottom_level_iter_->Valid();
-  }
+  const KeyValueEntry& Entry() const override {
+    if (bottommost_positioned_iter_ == bottom_level_iter_) {
+      return bottom_level_iter_->Entry();
+    }
 
-  Slice key() const override {
-    DCHECK(Valid());
-    return bottom_level_iter_->key();
-  }
-
-  Slice value() const override {
-    DCHECK(Valid());
-    return bottom_level_iter_->value();
+    return KeyValueEntry::Invalid();
   }
 
   Status status() const override {

@@ -54,7 +54,9 @@ class MockTableReader : public TableReader {
 
   bool IsSplitSst() const override { return false; }
 
-  void SetDataFileReader(std::unique_ptr<RandomAccessFileReader>&& data_file) override { assert(false); }
+  void SetDataFileReader(std::unique_ptr<RandomAccessFileReader>&& data_file) override {
+    assert(false);
+  }
 
   InternalIterator* NewIterator(const ReadOptions&, Arena* arena,
                                 bool skip_filters = false) override;
@@ -82,8 +84,6 @@ class MockTableIterator : public InternalIterator {
     itr_ = table_.end();
   }
 
-  bool Valid() const override { return itr_ != table_.end(); }
-
   void SeekToFirst() override { itr_ = table_.begin(); }
 
   void SeekToLast() override {
@@ -96,7 +96,10 @@ class MockTableIterator : public InternalIterator {
     itr_ = table_.lower_bound(str_target);
   }
 
-  void Next() override { ++itr_; }
+  const KeyValueEntry& Next() override {
+    ++itr_;
+    return Entry();
+  }
 
   void Prev() override {
     if (itr_ == table_.begin()) {
@@ -106,15 +109,23 @@ class MockTableIterator : public InternalIterator {
     }
   }
 
-  Slice key() const override { return Slice(itr_->first); }
-
-  Slice value() const override { return Slice(itr_->second); }
+  const KeyValueEntry& Entry() const override {
+    if (itr_ == table_.end()) {
+      return KeyValueEntry::Invalid();
+    }
+    entry_ = {
+      .key = Slice(itr_->first),
+      .value = Slice(itr_->second),
+    };
+    return entry_;
+  }
 
   Status status() const override { return Status::OK(); }
 
  private:
   const stl_wrappers::KVMap& table_;
   stl_wrappers::KVMap::const_iterator itr_;
+  mutable KeyValueEntry entry_;
 };
 
 class MockTableBuilder : public TableBuilder {

@@ -25,8 +25,8 @@ class DBIteratorWrapper : public Iterator {
 
   virtual ~DBIteratorWrapper() {}
 
-  bool Valid() const override {
-    return wrapped_->Valid();
+  const KeyValueEntry& Entry() const override {
+    return wrapped_->Entry();
   }
 
   void SeekToFirst() override {
@@ -41,20 +41,12 @@ class DBIteratorWrapper : public Iterator {
     wrapped_->Seek(target);
   }
 
-  void Next() override {
-    wrapped_->Next();
+  const KeyValueEntry& Next() override {
+    return wrapped_->Next();
   }
 
   void Prev() override {
     wrapped_->Prev();
-  }
-
-  Slice key() const override {
-    return wrapped_->key();
-  }
-
-  Slice value() const override {
-    return wrapped_->value();
   }
 
   Status status() const override {
@@ -91,7 +83,7 @@ class TransitionLoggingIteratorWrapper : public DBIteratorWrapper {
   void SeekToFirst() override;
   void SeekToLast() override;
   void Seek(const Slice& target) override;
-  void Next() override;
+  const KeyValueEntry& Next() override;
   void Prev() override;
 
  private:
