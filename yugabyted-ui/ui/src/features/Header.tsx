@@ -166,7 +166,7 @@ export const Header: FC = () => {
           <Badge
             badgeContent={
               deadNodes.length > 0 ? (
-                <Link component={RouterLink} to="?tab=tabNodes&filter=down">
+                <Link component={RouterLink} to="/?tab=tabNodes&filter=down">
                   <AlertGreenIcon />
                 </Link>
               ) : undefined
@@ -178,10 +178,10 @@ export const Header: FC = () => {
         <Typography variant="h4" color="inherit">
           {clusterName}
         </Typography>
-        {hasReadReplica && (
+        {!hasReadReplica && (
           <Link
             component={RouterLink}
-            to="?tab=tabNodes&node=readreplica"
+            to="/?tab=tabNodes&node=readreplica"
             className={classes.noDecoLink}
           >
             <Box className={classes.badge}>{t("clusterDetail.nodes.readReplicaEnabled")}</Box>
