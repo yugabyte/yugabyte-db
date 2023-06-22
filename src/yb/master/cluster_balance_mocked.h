@@ -11,15 +11,15 @@ namespace master {
 
 class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
  public:
-  explicit ClusterLoadBalancerMocked(Options* options) : ClusterLoadBalancer(nullptr)  {
+  ClusterLoadBalancerMocked() : ClusterLoadBalancer(nullptr)  {
     const int kHighNumber = 100;
-    options->kMaxConcurrentAdds = kHighNumber;
-    options->kMaxConcurrentRemovals = kHighNumber;
-    options->kAllowLimitStartingTablets = false;
-    options->kAllowLimitOverReplicatedTablets = false;
+    options_.kMaxConcurrentAdds = kHighNumber;
+    options_.kMaxConcurrentRemovals = kHighNumber;
+    options_.kAllowLimitStartingTablets = false;
+    options_.kAllowLimitOverReplicatedTablets = false;
 
     auto table_state = std::make_unique<PerTableLoadState>(global_state_.get());
-    table_state->options_ = options;
+    table_state->options_ = &options_;
     state_ = table_state.get();
     per_table_states_[""] = std::move(table_state);
     ResetOptions();
@@ -108,6 +108,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
 
   void ResetOptions() { SetOptions(LIVE, ""); }
 
+  Options options_;
   TSDescriptorVector ts_descs_;
   std::vector<AffinitizedZonesSet> affinitized_zones_;
   TabletInfoMap tablet_map_;
