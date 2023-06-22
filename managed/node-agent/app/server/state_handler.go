@@ -19,7 +19,7 @@ func HandleUpgradeState(
 ) error {
 	util.FileLogger().Info(ctx, "Starting the node agent upgrade process")
 	// Delete the certs from past failures.
-	err := cleanUpConfigAfterIncompleteUpdate(ctx, config)
+	err := cleanUpConfigAfterIncompleteUpdate(ctx, config, upgradeInfo)
 	if err != nil {
 		util.FileLogger().Errorf(ctx,
 			"Error in deleting certs - %s from past failures",
@@ -70,16 +70,16 @@ func HandleRestart(ctx context.Context, config *util.Config) error {
 			config.Update(util.PlatformVersionKey, updatedVersion)
 			config.Remove(util.PlatformVersionUpdateKey)
 		}
+		// Remove previous releases if any and report error to retry.
+		if err := removeReleasesExceptCurrent(ctx); err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in cleaning up the releases directory - %s", err.Error())
+			return err
+		}
 	} else {
 		// Continue to restart as the state in the platform is not known until it polls.
 		util.FileLogger().
 			Infof(ctx, "Node Agent was not upgraded, thus continuing the restart")
-	}
-	// Remove previous releases if any and report error to retry.
-	if err := removeReleasesExceptCurrent(ctx); err != nil {
-		util.FileLogger().
-			Errorf(ctx, "Error in cleaning up the releases directory - %s", err.Error())
-		return err
 	}
 	return config.Remove(util.NodeAgentRestartKey)
 }
@@ -100,7 +100,7 @@ func cleanUpConfigAfterUpdate(ctx context.Context, config *util.Config) error {
 	upgradeCertDir := config.String(util.PlatformCertsUpgradeKey)
 	if upgradeCertDir != "" && upgradeCertDir != certDir {
 		util.FileLogger().Infof(ctx, "Starting config clean up after update")
-		err := util.DeleteCertsExcept(ctx, upgradeCertDir)
+		err := util.DeleteCertsExcept(ctx, []string{upgradeCertDir})
 		if err != nil {
 			util.FileLogger().Errorf(
 				ctx,
@@ -115,12 +115,13 @@ func cleanUpConfigAfterUpdate(ctx context.Context, config *util.Config) error {
 	return nil
 }
 
-func cleanUpConfigAfterIncompleteUpdate(ctx context.Context, config *util.Config) error {
+func cleanUpConfigAfterIncompleteUpdate(
+	ctx context.Context, config *util.Config, upgradeInfo *pb.UpgradeInfo) error {
 	certDir := config.String(util.PlatformCertsKey)
 	upgradeCertDir := config.String(util.PlatformCertsUpgradeKey)
 	if upgradeCertDir != "" && upgradeCertDir != certDir {
 		util.FileLogger().Infof(ctx, "Starting config clean up after incomplete update")
-		err := util.DeleteCertsExcept(ctx, certDir)
+		err := util.DeleteCertsExcept(ctx, []string{certDir, upgradeInfo.CertDir})
 		if err != nil {
 			util.FileLogger().Errorf(
 				ctx,
