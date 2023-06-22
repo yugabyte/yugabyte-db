@@ -212,7 +212,7 @@ To map LDAP groups to YugabyteDB Anywhere roles, do the following:
 1. Choose how to look up LDAP group membership:
 
     - Select **User Attribute** and set the name of the LDAP user attribute to use to find the groups that users belong to.
-    - Select **Group Search Filter** and enter a search filter to use get a list of groups.
+    - Select **Group Search Filter** and enter an LDAP search filter to search for membership in group member listings. To specify a YugabyteDB Anywhere user in the filter, use the string `{username}`. For all occurrences of this string in the query filter, YBA will replace those with the actual username used to log in to YugabyteDB Anywhere. Enter a group search base DN to use for the group search. Use the scope option to set the scope of the search; there are three levels - SUBTREE, ONELEVEL, and OBJECT.
 
 1. Click **Create Mappings** (or, if you have existing mappings, **Edit**) to display the **Create Mapping** dialog.
 
@@ -221,6 +221,22 @@ To map LDAP groups to YugabyteDB Anywhere roles, do the following:
 1. Click **Confirm**.
 
 1. Click **Save** when you are done.
+
+When a LDAP user logs in to YugabyteDB Anywhere, the system handles role assignment as follows:
+
+- If group mapping is enabled:
+
+  - The YugabyteDB Anywhere admin can't set the role for this user in the **User Management** tab.
+  - If YugabyteDB Anywhere can obtain a valid role from the LDAP server (via `yugabytePlatformRole` and group mappings), the system assigns the role to the user. Otherwise, the user is assigned the ReadOnly role.
+
+- If group mapping is disabled:
+
+  - If YugabyteDB Anywhere can obtain a valid role from `yugabytePlatformRole`, it assigns the role to the user and the YugabyteDB Anywhere admin can't set the role for this user in the **User Management** tab.
+  - If YugabyteDB Anywhere is unable to obtain a valid role from `yugabytePlatformRole`, the YugabyteDB Anywhere admin can set the role for the user in the **User Management** tab.
+
+    Further, if this is a returning a user, YugabyteDB Anywhere assumes that the user's role was previously set by the administrator, regardless of whether the user's role was actually settable by the administrator or not. For this reason, if you plan to upgrade to a version of YugabyteDB Anywhere that supports group mapping (v2.18.1 or later), you should enable group mapping.
+
+    If the user is new, they are assigned the ReadOnly role.
 
 ### Define the YugabyteDB Anywhere role
 
