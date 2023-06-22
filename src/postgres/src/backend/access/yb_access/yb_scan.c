@@ -720,22 +720,28 @@ YbGetLengthOfKey(ScanKey *key_ptr)
 }
 
 /*
- * Check whether the conditions lead to empty result regardless of the values
- * in the index because of always FALSE or UNKNOWN conditions.
- * Return true if the combined key conditions are unsatisfiable.
+ * Return whether the given conditions are unsatisfiable regardless of the
+ * values in the index because of always FALSE or UNKNOWN conditions.
  */
 static bool
-YbIsEmptyResultCondition(int nkeys, ScanKey keys[])
+YbIsUnsatisfiableCondition(int nkeys, ScanKey keys[])
 {
-	for (int i = 0; i < nkeys; i++)
+	for (int i = 0; i < nkeys; ++i)
 	{
 		ScanKey key = keys[i];
 
-		if (!((key->sk_flags & SK_ROW_MEMBER) && YbIsRowHeader(keys[i - 1])) ||
-			key->sk_strategy == BTEqualStrategyNumber)
+		/*
+		 * Look for two cases:
+		 * - = null
+		 * - row(a, b, c) op row(null, e, f)
+		 */
+		if ((key->sk_strategy == BTEqualStrategyNumber ||
+			 (i > 0 && YbIsRowHeader(keys[i - 1]) &&
+			  key->sk_flags & SK_ROW_MEMBER)) &&
+			YbIsNeverTrueNullCond(key))
 		{
-			if (YbIsNeverTrueNullCond(key))
-				return true;
+			elog(DEBUG1, "skipping a scan due to unsatisfiable condition");
+			return true;
 		}
 	}
 	return false;
@@ -1979,7 +1985,7 @@ ybcBeginScan(Relation relation,
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
 	ybcSetupScanKeys(ybScan, &scan_plan);
 
-	if (!YbIsEmptyResultCondition(ybScan->nkeys, ybScan->keys) &&
+	if (!YbIsUnsatisfiableCondition(ybScan->nkeys, ybScan->keys) &&
 	    YbBindScanKeys(ybScan, &scan_plan) &&
 	    YbBindHashKeys(ybScan))
 	{
