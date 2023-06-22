@@ -49,7 +49,7 @@ tcmalloc::Profile GetAllocationProfile(int seconds, int64_t sample_freq_bytes) {
   auto prev_sample_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
   tcmalloc::MallocExtension::SetProfileSamplingRate(sample_freq_bytes);
   tcmalloc::MallocExtension::AllocationProfilingToken token;
-  token = tcmalloc::MallocExtension::StartLifetimeProfiling();
+  token = tcmalloc::MallocExtension::StartLifetimeProfiling(/* seed_with_live_allocs= */ false);
 
   LOG(INFO) << Format("Sleeping for $0 seconds while profile is collected.", seconds);
   SleepFor(MonoDelta::FromSeconds(seconds));
