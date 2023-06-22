@@ -26,7 +26,7 @@
 #include <gperftools/heap-profiler.h>
 #endif
 
-using yb::operator"" _MB;
+using yb::operator"" _KB;
 
 DEFINE_NON_RUNTIME_int64(server_tcmalloc_max_total_thread_cache_bytes, -1,
     "Total number of bytes to use for the thread cache for tcmalloc across all threads in the "
@@ -37,7 +37,13 @@ DEFINE_NON_RUNTIME_int32(tcmalloc_max_per_cpu_cache_bytes, -1,
     "Sets the maximum cache size per CPU cache if Google TCMalloc is being used. If this is zero "
     "or less, it has no effect.");
 
-DEFINE_NON_RUNTIME_bool(enable_process_lifetime_heap_profiling, false, "Enables heap "
+DEFINE_NON_RUNTIME_bool(enable_process_lifetime_heap_profiling,
+#if YB_GOOGLE_TCMALLOC
+    true,
+#else
+    false,
+#endif
+    "Enables heap "
     "profiling for the lifetime of the process. If gperftools TCMalloc is being used, profile "
     "output will be stored in the directory specified by -heap_profile_path, and enabling this "
     "option will disable the on-demand profiling in /pprof/heap. If Google TCMalloc is being used, "
@@ -51,7 +57,7 @@ DEFINE_RUNTIME_string(heap_profile_path, "",
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
 
-DEFINE_NON_RUNTIME_int64(profiler_sample_freq_bytes, 10_MB, "The frequency at which Google "
+DEFINE_NON_RUNTIME_int64(profiler_sample_freq_bytes, 100_KB, "The frequency at which Google "
     "TCMalloc should sample allocations (if enable_process_lifetime_heap_profiling is set to "
     "true).");
 
