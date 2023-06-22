@@ -30,9 +30,11 @@ typedef struct
 	bool		strict;			/* T if function is "strict" */
 	bool		retset;			/* T if function returns a set */
 	PGFunction	func;			/* pointer to compiled function */
+	void*       alt_func;       /* alternative function implementation for
+                                 * special cases */
 } FmgrBuiltin;
 
-extern const FmgrBuiltin fmgr_builtins[];
+extern FmgrBuiltin fmgr_builtins[];
 
 extern const int fmgr_nbuiltins;	/* number of entries in table */
 

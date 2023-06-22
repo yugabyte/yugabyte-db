@@ -1653,13 +1653,7 @@ array_send(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			bytea	   *outputbytes;
-
-			outputbytes = SendFunctionCall(&my_extra->proc, itemvalue);
-			pq_sendint32(&buf, VARSIZE(outputbytes) - VARHDRSZ);
-			pq_sendbytes(&buf, VARDATA(outputbytes),
-						 VARSIZE(outputbytes) - VARHDRSZ);
-			pfree(outputbytes);
+			StringInfoSendFunctionCall(&buf, &my_extra->proc, itemvalue);
 		}
 	}
 
