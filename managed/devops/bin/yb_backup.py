@@ -69,14 +69,14 @@ YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
-SNAPSHOT_DIR_GLOB = '*' + ROCKSDB_PATH_PREFIX + '/table-*/tablet-*.snapshots/*'
+SNAPSHOT_DIR_GLOB = '*/table-*/tablet-*.snapshots/*'
 SNAPSHOT_DIR_SUFFIX_RE = re.compile(
     '^.*/tablet-({})[.]snapshots/({})$'.format(UUID_RE_STR, UUID_RE_STR))
 
-TABLE_PATH_PREFIX_TEMPLATE = ROCKSDB_PATH_PREFIX + '/table-{}'
+TABLE_PATH_PREFIX_TEMPLATE = '*/table-{}'
 
 TABLET_MASK = 'tablet-????????????????????????????????'
-TABLET_DIR_GLOB = '*' + TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
+TABLET_DIR_GLOB = TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
 
 MANIFEST_FILE_NAME = 'Manifest'
 METADATA_FILE_NAME = 'SnapshotInfoPB'
@@ -2364,9 +2364,11 @@ class YBBackup:
                 tablet_dirs = tserver_ip_to_tablet_dirs[tserver_ip]
 
                 for data_dir in data_dirs:
+                    ts_data_dir = data_dir
+                    rocksdb_data_dir = strip_dir(ts_data_dir) + ROCKSDB_PATH_PREFIX
                     # Find all tablets for this table on this TS in this data_dir:
                     output = self.run_ssh_cmd(
-                        ['find', data_dir] +
+                        ['find', rocksdb_data_dir] +
                         ([] if self.args.mac else ['!', '-readable', '-prune', '-o']) +
                         ['-name', TABLET_MASK,
                          '-and',
@@ -2475,8 +2477,10 @@ class YBBackup:
                     if tserver_ip not in tservers_processed:
                         data_dirs = data_dir_by_tserver[tserver_ip]
                         if len(data_dirs) > 0:
-                            data_dir = data_dirs[0]
-                            parallel_find_snapshots.add_args(data_dir, snapshot_id, tserver_ip)
+                            ts_data_dir = data_dir = data_dirs[0]
+                            rocksdb_data_dir = strip_dir(ts_data_dir) + ROCKSDB_PATH_PREFIX
+                            parallel_find_snapshots.add_args(rocksdb_data_dir,
+                                                             snapshot_id, tserver_ip)
                             data_dirs.remove(data_dir)
 
                             if len(data_dirs) == 0:
