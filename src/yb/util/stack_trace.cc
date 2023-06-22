@@ -30,6 +30,10 @@
 #include "yb/util/result.h"
 #include "yb/util/thread.h"
 
+#if YB_GOOGLE_TCMALLOC
+#include <tcmalloc/malloc_extension.h>
+#endif
+
 using namespace std::literals;
 
 #if defined(__APPLE__)
@@ -159,8 +163,9 @@ struct ThreadStackHelper {
 
   void RecordStackTrace(const StackTrace& stack_trace) {
     auto* entry = allocated.Pop();
+    // If entry is nullptr, that means there are not enough allocated entries. In that case, don't
+    // write a log message since we are in a signal handler.
     if (entry) {
-      // Not enough allocated entries, don't write log since we are in signal handler.
       entry->tid = Thread::CurrentThreadIdForStack();
       entry->stack = stack_trace;
       collected.Push(entry);
@@ -180,6 +185,14 @@ ThreadStackHelper thread_stack_helper;
 void HandleStackTraceSignal(int signum) {
   int old_errno = errno;
   StackTrace stack_trace;
+#if YB_GOOGLE_TCMALLOC
+  // TODO(#17889): retry in this case. For now, just produce an empty stack trace.
+  if (tcmalloc::MallocExtension::IsCurThreadInAllocDealloc()) {
+    thread_stack_helper.RecordStackTrace(stack_trace);
+    errno = old_errno;
+    return;
+  }
+#endif
   stack_trace.Collect(2);
 
   thread_stack_helper.RecordStackTrace(stack_trace);
