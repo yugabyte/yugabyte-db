@@ -67,16 +67,15 @@ class RpcClient(object):
         assert self.port is not None, 'RPC port is required'
         assert self.cert_path is not None, 'RPC cert_path is required'
         assert self.auth_token is not None, 'RPC api_token is required'
+        with open(self.cert_path, mode='rb') as file:
+            self.root_certs = file.read()
 
     def connect(self):
         """
         Create GRPC connection to the node agent.
         :return: None
         """
-
-        with open(self.cert_path, mode='rb') as file:
-            root_certs = file.read()
-        cert_creds = ssl_channel_credentials(root_certificates=root_certs)
+        cert_creds = ssl_channel_credentials(root_certificates=self.root_certs)
         auth_creds = metadata_call_credentials(
                 AuthTokenCallback(self.auth_token), name='auth_creds')
         credentials = composite_channel_credentials(cert_creds, auth_creds)
