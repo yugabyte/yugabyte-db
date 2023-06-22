@@ -207,8 +207,8 @@ The following is the runtime configuration to specify:
 
 You can manage LDAP roles in YugabyteDB Anywhere using a combination of the following:
 
-- Defining group mappings
-- Setting the `yugabytePlatformRole` annotation on the LDAP server
+- Define group mappings
+- Set the `yugabytePlatformRole` annotation on the LDAP server
 
 ### Group mapping
 
