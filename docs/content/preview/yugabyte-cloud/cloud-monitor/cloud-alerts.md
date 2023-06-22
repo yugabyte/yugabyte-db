@@ -74,6 +74,8 @@ When you receive a cluster alert, the first step is to review the chart for the 
 
 | Alert | Chart |
 | :--- | :--- |
+| Node Disk Throughput | Disk IOPS |
+| Node Disk IOPS | Disk IOPS |
 | Node Free Storage | Disk Usage |
 | Memory Use | Memory Usage |
 | Cluster Queues Overflow | RPC Queue Size |
@@ -90,6 +92,30 @@ You can view the metrics on the cluster **Performance** tab. Refer to [Performan
 If you get frequent cluster alerts on a Sandbox cluster, you may have reached the performance limits for Sandbox clusters. Consider upgrading to a Dedicated cluster.
 
 {{< /note >}}
+
+#### Fix throughput alerts
+
+YugabyteDB Managed sends a notification when the disk throughput on any node in the cluster exceeds the threshold, as follows:
+
+- Node disk throughput utilization exceeded 80% (Warning).
+- Node disk throughput utilization reached 100% (Severe).
+
+Once disk throughput exceeds 80% for any node, consider adding vCPUs if they are the bottleneck. For clusters deployed on AWS, you can increase IOPS per node. As disk IOPS is capped by vCPU and memory, your vCPU and IOPS should be scaled together. Low IOPS with high throughput is not supported.
+
+For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+#### Fix IOPS alerts
+
+YugabyteDB Managed sends a notification when the disk input output (I/O) operations per second (IOPS) on any node in the cluster exceeds the threshold, as follows:
+
+- Node disk IOPS utilization exceeded 80% (Warning).
+- Node disk IOPS utilization reached 100% (Severe).
+
+For large datasets or clusters with high concurrent transactions, higher IOPS is recommended.
+
+Once disk IOPS exceeds 80% for any node, increase disk IOPS (IOPS can only be scaled on clusters deployed on AWS). As disk IOPS is capped by vCPU and memory, your vCPU and IOPS should be scaled together.
+
+For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 #### Fix storage alerts
 

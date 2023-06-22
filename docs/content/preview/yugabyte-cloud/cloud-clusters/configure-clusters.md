@@ -62,7 +62,7 @@ To scale a single-region cluster:
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 
-1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the cluster.
+1. Enter the number of nodes, vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only) for the cluster.
 
     Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
