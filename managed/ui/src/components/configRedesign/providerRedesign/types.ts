@@ -426,6 +426,7 @@ interface AZURegionCloudInfo extends AZURegionCloudInfoBase {
 }
 
 interface GCPRegionCloudInfoBase {
+  instanceTemplate?: string;
   ybImage?: string;
 }
 type GCPRegionCloudInfoMutation = GCPRegionCloudInfoBase;
