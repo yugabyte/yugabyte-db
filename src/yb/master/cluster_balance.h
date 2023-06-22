@@ -367,7 +367,7 @@ class ClusterLoadBalancer {
 
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
 
-  template <class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
+  friend class LoadBalancerMockedBase;
 
  private:
   // Returns true if at least one member in the tablet's configuration is transitioning into a
