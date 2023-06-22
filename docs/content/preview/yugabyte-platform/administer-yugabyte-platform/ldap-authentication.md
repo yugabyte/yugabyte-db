@@ -226,26 +226,26 @@ To map LDAP groups to YugabyteDB Anywhere roles, do the following:
 
 1. Click **Save** when you are done.
 
-When a LDAP user logs in to YugabyteDB Anywhere, the system handles role assignment as follows:
-
-- If group mapping is enabled:
-
-  - The YugabyteDB Anywhere admin can't set the role for this user in the **User Management** tab.
-  - If YugabyteDB Anywhere can obtain a valid role from the LDAP server (via `yugabytePlatformRole` and group mappings), the system assigns the role to the user. Otherwise, the user is assigned the ReadOnly role.
-
-- If group mapping is disabled:
-
-  - If YugabyteDB Anywhere can obtain a valid role from `yugabytePlatformRole`, it assigns the role to the user and the YugabyteDB Anywhere admin can't set the role for this user in the **User Management** tab.
-  - If YugabyteDB Anywhere is unable to obtain a valid role from `yugabytePlatformRole`, the YugabyteDB Anywhere admin can set the role for the user in the **User Management** tab.
-
-    Further, if this is a returning a user, YugabyteDB Anywhere assumes that the user's role was previously set by the administrator, regardless of whether the user's role was actually settable by the administrator or not. For this reason, if you plan to upgrade to a version of YugabyteDB Anywhere that supports group mapping (v2.18.1 or later), you should enable group mapping.
-
-    If the user is new, they are assigned the ReadOnly role.
-
 ### Define the YugabyteDB Anywhere role
 
-You need to define a YugabyteDB Anywhere-specific role for each user on your LDAP server by setting the `yugabytePlatformRole` annotation. The value set for this annotation is read during the YugabyteDB Anywhere login. Note that if the value is modified on the LDAP server, the change is propagated to YugabyteDB Anywhere and automatically updated during login. Password updates are also automatically handled.
+You need to define a YugabyteDB Anywhere-specific role for each user on your LDAP server by setting the `yugabytePlatformRole` annotation on the LDAP server. The value set for this annotation is read during the YugabyteDB Anywhere login. Note that if the value is modified on the LDAP server, the change is propagated to YugabyteDB Anywhere and automatically updated during login. Password updates are also automatically handled.
 
 If the role is not specified, users are created with ReadOnly privileges by default, which can be modified by the local super admin.
 
 When LDAP is set up on a Windows Active Directory (AD) server, the user is expected to have permissions to query the user's properties from that server. If the permissions have not been granted, YugabyteDB Anywhere defaults its role to ReadOnly, which can later be modified by the local super admin.
+
+When a LDAP user logs in to YugabyteDB Anywhere, the system handles role assignment as follows:
+
+- If group mapping is enabled:
+
+  - If YugabyteDB Anywhere can obtain a valid role from the LDAP server (via `yugabytePlatformRole` and group mappings), the system assigns the role to the user. Otherwise, the user is assigned the ReadOnly role.
+  - The local super admin can't set the role for this user in the **User Management** tab.
+
+- If group mapping is disabled:
+
+  - If YugabyteDB Anywhere can obtain a valid role from `yugabytePlatformRole`, it assigns the role to the user and the local super admin can't set the role for this user in the **User Management** tab.
+  - If YugabyteDB Anywhere is unable to obtain a valid role from `yugabytePlatformRole`, the local super admin can set the role for the user in the **User Management** tab.
+
+    Further, if this is a returning a user, YugabyteDB Anywhere assumes that the user's role was previously set by the administrator, regardless of whether the user's role was actually settable by the administrator or not. For this reason, if you plan to upgrade to a version of YugabyteDB Anywhere that supports group mapping (v2.18.1 or later), you should enable group mapping.
+
+    If the user is new, they are assigned the ReadOnly role.
