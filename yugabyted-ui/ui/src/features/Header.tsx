@@ -178,7 +178,7 @@ export const Header: FC = () => {
         <Typography variant="h4" color="inherit">
           {clusterName}
         </Typography>
-        {!hasReadReplica && (
+        {hasReadReplica && (
           <Link
             component={RouterLink}
             to="/?tab=tabNodes&node=readreplica"
