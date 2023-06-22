@@ -1,6 +1,8 @@
 import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
+import { Box, useTheme } from '@material-ui/core';
+
 import { XClusterConfig } from '../XClusterTypes';
 import { getMasterNodeAddress } from '../ReplicationUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
@@ -12,6 +14,7 @@ export function ReplicationOverview({
   replication: XClusterConfig;
   destinationUniverse: any;
 }) {
+  const theme = useTheme();
   const {
     universeDetails: { nodeDetailsSet }
   } = destinationUniverse;
@@ -19,21 +22,26 @@ export function ReplicationOverview({
   return (
     <>
       <Row className="replication-overview">
-        <Col lg={12}>
+        <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
+          <Row>
+            <Col lg={2} className="noLeftPadding replication-label">
+              Replication Type
+            </Col>
+            <Col lg={2}>{replication.type}</Col>
+          </Row>
           <Row>
             <Col lg={2} className="noLeftPadding replication-label">
               Replication started
             </Col>
             <Col lg={2}>{ybFormatDate(replication.createTime)}</Col>
           </Row>
-          <div className="replication-divider" />
           <Row>
             <Col lg={2} className="noLeftPadding replication-label">
               Replication last modified
             </Col>
             <Col lg={2}>{ybFormatDate(replication.modifyTime)}</Col>
           </Row>
-        </Col>
+        </Box>
       </Row>
       <div className="replication-divider" />
       <Row style={{ paddingLeft: '20px' }}>
