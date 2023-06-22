@@ -252,10 +252,10 @@ When a LDAP user logs in to YugabyteDB Anywhere, the system handles role assignm
 - If group mapping is disabled:
 
   - If YugabyteDB Anywhere can obtain a valid role from `yugabytePlatformRole`, it assigns the role to the user. You can't subsequently change the role for this user in the **User Management** tab.
-  - If YugabyteDB Anywhere is unable to obtain a valid role from `yugabytePlatformRole` the system assigns roles depending on the following:
+  - If YugabyteDB Anywhere is unable to obtain a valid role from `yugabytePlatformRole`, it assigns roles depending on whether the user is new or returning.
 
-    - If this is a returning a user, YugabyteDB Anywhere assumes that the user's role was previously set by the administrator, regardless of whether the user's role was actually settable by the administrator or not. For this reason, if you plan to upgrade to a version of YugabyteDB Anywhere that supports group mapping (v2.18.1 or later), you should enable group mapping.
+    New users are assigned the ReadOnly role.
 
-    - If the user is new, they are assigned the ReadOnly role.
+    For a returning a user, YugabyteDB Anywhere assumes that the user's role was previously set by the administrator (regardless of whether the user's role was actually settable by the administrator), and retains that role. For this reason, if you use LDAP and plan to upgrade to a version of YugabyteDB Anywhere that supports group mapping (v2.18.1 or later), you should enable group mapping.
 
-    In either case, the local admin can set the role for the user in the **User Management** tab.
+    In either case, you can subsequently change the role for the user in the **User Management** tab.
