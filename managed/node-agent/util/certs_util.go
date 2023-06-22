@@ -56,11 +56,23 @@ func SaveCerts(ctx context.Context, config *Config, cert string, key string, sub
 	return nil
 }
 
-// DeleteCertsExcept deletes all the certs except the given cert directory.
-func DeleteCertsExcept(ctx context.Context, certDir string) error {
+// DeleteCertsExcept deletes all the certs except the given cert directories.
+func DeleteCertsExcept(ctx context.Context, certDirs []string) error {
+	certDirsMap := map[string]struct{}{}
+	for _, certDir := range certDirs {
+		certDirsMap[certDir] = struct{}{}
+	}
 	return ScanDir(CertsDir(), func(fInfo os.FileInfo) (bool, error) {
 		name := fInfo.Name()
-		if name != certDir && fInfo.IsDir() {
+		delete := false
+		if fInfo.IsDir() {
+			if certDirs == nil {
+				delete = true
+			} else if _, ok := certDirsMap[name]; !ok {
+				delete = true
+			}
+		}
+		if delete {
 			if err := DeleteCerts(ctx, name); err != nil {
 				return false, err
 			}
