@@ -728,14 +728,14 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
 Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
                                       DeleteSnapshotResponsePB* resp,
                                       RpcContext* rpc) {
-  LOG(INFO) << "Servicing DeleteSnapshot request: " << req->ShortDebugString();
-
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (txn_snapshot_id) {
+    LOG(INFO) << "Servicing DeleteSnapshot request. id: " << txn_snapshot_id
+              << ", request: " << req->ShortDebugString();
     return snapshot_coordinator_.Delete(
         txn_snapshot_id, leader_ready_term(), rpc->GetClientDeadline());
   }
-
+  LOG(INFO) << "Servicing DeleteSnapshot request: " << req->ShortDebugString();
   return DeleteNonTransactionAwareSnapshot(req->snapshot_id());
 }
 
