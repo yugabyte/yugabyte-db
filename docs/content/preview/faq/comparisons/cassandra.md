@@ -96,4 +96,4 @@ A few blog posts that highlight how YugabyteDB differs from Apache Cassandra are
 ## Learn more
 
 - [YCQL API](../../../api/ycql/)
-- [YCQL - Cassandra 3.4 compatibility](../../../api/ycql/cassandra-compatibility)
+- [YCQL - Cassandra 3.4 compatibility](../../../explore/ycql-language/cassandra-feature-support)
