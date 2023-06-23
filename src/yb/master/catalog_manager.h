@@ -1012,6 +1012,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     return HybridTime();
   }
 
+  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
+      const TablespaceId& tablespace_id);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1434,9 +1437,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void StartTablespaceBgTaskIfStopped();
 
   std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
-
-  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
-      const TablespaceId& tablespace_id);
 
   // Report metrics.
   void ReportMetrics();
