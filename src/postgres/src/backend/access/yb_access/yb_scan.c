@@ -1658,7 +1658,7 @@ HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *r
 	if (ybScan->quit_scan)
 		return NULL;
 
-	bool recheck_index = (ybScan->index)
+	bool tuple_recheck_required = (ybScan->index)
 		? is_index_functional(ybScan->index)
 		: false;
 
@@ -1668,16 +1668,22 @@ HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *r
 	 */
 	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, is_forward_scan)))
 	{
-		if (heaptuple_matches_key(tup, ybScan->target_desc, nkeys, key, sk_attno, recheck))
+		if (tuple_recheck_required)
+			break;
+
+		bool recheck = false;
+		if (heaptuple_matches_key(tup, ybScan->target_desc, nkeys, key, sk_attno, &recheck))
 		{
-			*recheck |= recheck_index;
-			return tup;
+			tuple_recheck_required = recheck;
+			break;
 		}
 
 		heap_freetuple(tup);
 	}
 
-	*recheck |= recheck_index;
+	Assert(!tuple_recheck_required || recheck);
+	if (recheck)
+		*recheck = tuple_recheck_required;
 	return tup;
 }
 
