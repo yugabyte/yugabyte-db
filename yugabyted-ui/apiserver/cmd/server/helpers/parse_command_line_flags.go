@@ -16,6 +16,7 @@ var (
     SslRootCert   string
     MasterUIPort  string
     TserverUIPort string
+    Warnings      string
 )
 
 func init() {
@@ -38,5 +39,6 @@ func init() {
         "Master UI port.")
     flag.StringVar(&TserverUIPort, "tserver_ui_port", "9000",
         "Tserver UI port.")
+    flag.StringVar(&Warnings, "warnings", "", "Warnings from the Pre-reqs check by the CLI.")
     flag.Parse()
 }

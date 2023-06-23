@@ -214,6 +214,9 @@ func main() {
         // GetIsLoadBalancerIdle - Check if cluster load balancer is idle
         e.GET("/api/gflags", c.GetGflagsJson)
 
+        // GetClusterAlerts - Get list of any current cluster alerts
+        e.GET("/api/alerts", c.GetClusterAlerts)
+
         render_htmls := templates.NewTemplate()
 
         // Code for rendering UI Without embedding the files

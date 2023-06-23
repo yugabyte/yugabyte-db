@@ -246,6 +246,20 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
+/alerts:
+  get:
+    summary: Get any alerts for the cluster
+    description: Get any alerts for the cluster
+    operationId: getClusterAlerts
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/AlertsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
 '/cluster':
   get:
     summary: Get a cluster
