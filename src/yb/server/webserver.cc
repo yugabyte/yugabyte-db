@@ -105,8 +105,14 @@ TAG_FLAG(webserver_compression_threshold_kb, runtime);
 DEFINE_bool(webserver_redirect_http_to_https, false,
             "Redirect HTTP requests to the embedded webserver to HTTPS if HTTPS is enabled.");
 
-DEFINE_test_flag(bool, mini_cluster_mode, false,
-                 "Enable special fixes for MiniCluster test cluster.");
+DEFINE_RUNTIME_bool(
+    webserver_strict_transport_security, false,
+    "Header is cached by the browser for the specified 'max-age' and forces it to redirect any "
+    "http request to https to avoid man-in-the-middle attacks. The original http request is never "
+    "sent.");
+
+DEFINE_test_flag(
+    bool, mini_cluster_mode, false, "Enable special fixes for MiniCluster test cluster.");
 
 namespace yb {
 
@@ -637,23 +643,25 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
     }
   }
 
+  // Generating headers and response.
   string str = output->str();
-  // Without styling, render the page as plain text
-  if (!use_style) {
-    sq_printf(connection, "HTTP/1.1 200 OK\r\n"
-              "Content-Type: text/plain\r\n"
-              "Content-Length: %zd\r\n"
-              "%s"
-              "Access-Control-Allow-Origin: *\r\n"
-              "\r\n", str.length(), is_compressed ? "Content-Encoding: gzip\r\n" : "");
-  } else {
-    sq_printf(connection, "HTTP/1.1 200 OK\r\n"
-              "Content-Type: text/html\r\n"
-              "Content-Length: %zd\r\n"
-              "%s"
-              "Access-Control-Allow-Origin: *\r\n"
-              "\r\n", str.length(), is_compressed ? "Content-Encoding: gzip\r\n" : "");
-  }
+  auto content_type = use_style ? "text/html" : "text/plain";
+  auto content_encoding = is_compressed ? "Content-Encoding: gzip\r\n" : "";
+  auto hsts = IsSecure() && FLAGS_webserver_strict_transport_security
+                  ? "Strict-Transport-Security: max-age=31536000\r\n"
+                  : "";
+
+  sq_printf(
+      connection,
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Type: %s\r\n"
+      "Content-Length: %zd\r\n"
+      "X-Content-Type-Options: nosniff\r\n"
+      "%s"
+      "%s"
+      "Access-Control-Allow-Origin: *\r\n"
+      "\r\n",
+      content_type, str.length(), content_encoding, hsts);
 
   // Make sure to use sq_write for printing the body; sq_printf truncates at 8kb
   sq_write(connection, str.c_str(), str.length());
