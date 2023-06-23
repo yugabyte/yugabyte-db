@@ -21,33 +21,20 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 ## Data types
 
 ### Primitive Types
-|       |                     Primitive Type                     | Details |
-| :------------: | :----------------------------------------------------- | ------- |
-| {{<icon/yes>}} | [BIGINT](../../../api/ycql/type_int)                   |         |
-| {{<icon/yes>}} | [BLOB](../../../api/ycql/type_blob)                    |         |
-| {{<icon/yes>}} | [BOOLEAN](../../../api/ycql/type_bool)                 |         |
-| {{<icon/yes>}} | [COUNTER](../../../api/ycql/type_int)                  |         |
-| {{<icon/yes>}} | [DATE](../../../api/ycql/type_datetime/)               |         |
-| {{<icon/yes>}} | [DECIMAL](../../../api/ycql/type_number)               |         |
-| {{<icon/yes>}} | [DOUBLE](../../../api/ycql/type_number)                |         |
-| {{<icon/yes>}} | [FLOAT](../../../api/ycql/type_number)                 |         |
-| {{<icon/yes>}} | [FROZEN](../../../api/ycql/type_frozen)                |         |
-| {{<icon/yes>}} | [INET](../../../api/ycql/type_inet)                    |         |
-| {{<icon/yes>}} | [INT, INTEGER](../../../api/ycql/type_int)             |         |
-| {{<icon/yes>}} | [JSONB](../../../api/ycql/type_jsonb)                  |         |
-| {{<icon/yes>}} | [LIST](../../../api/ycql/type_collection)              |         |
-| {{<icon/yes>}} | [MAP](../../../api/ycql/type_collection)               |         |
-| {{<icon/yes>}} | [SET](../../../api/ycql/type_collection)               |         |
-| {{<icon/yes>}} | [SMALLINT](../../../api/ycql/type_int)                 |         |
-| {{<icon/yes>}} | [TEXT, VARCHAR](../../../api/ycql/type_text)           |         |
-| {{<icon/yes>}} | [TIME](../../../api/ycql/type_datetime/)               |         |
-| {{<icon/yes>}} | [TIMESTAMP](../../../api/ycql/type_datetime/)          |         |
-| {{<icon/yes>}} | [TIMEUUID](../../../api/ycql/type_uuid)                |         |
-| {{<icon/yes>}} | [TINYINT](../../../api/ycql/type_int)                  |         |
-| {{<icon/yes>}} | [User defined Type](../../../api/ycql/ddl_create_type) |         |
-| {{<icon/yes>}} | [UUID](../../../api/ycql/type_uuid)                    |         |
-| {{<icon/yes>}} | [VARINT](../../../api/ycql/type_int)                   |         |
-| {{<icon/no>}}  | TUPLE                                                  |         |
+
+|                |   Category   |                                            Types                                             |
+| :------------: | ------------ | :------------------------------------------------------------------------------------------- |
+| {{<icon/yes>}} | Integers     | [BIGINT , COUNTER, INT, INTEGER, SMALLINT, TINYINT, VARINT](../../../api/ycql/type_int)      |
+| {{<icon/yes>}} | Numbers      | [DECIMAL, DOUBLE, FLOAT](../../../api/ycql/type_number)                                      |
+| {{<icon/yes>}} | Binary data  | [BLOB](../../../api/ycql/type_blob)                                                          |
+| {{<icon/yes>}} | Boolean      | [BOOLEAN](../../../api/ycql/type_bool)                                                       |
+| {{<icon/yes>}} | Date/Time    | [DATE, TIME, TIMESTAMP](../../../api/ycql/type_datetime/)                                    |
+| {{<icon/yes>}} | Collections  | [FROZEN](../../../api/ycql/type_frozen), [LIST, MAP, SET](../../../api/ycql/type_collection) |
+| {{<icon/yes>}} | IP Addresses | [INET](../../../api/ycql/type_inet)                                                          |
+| {{<icon/yes>}} | Json         | [JSONB](../../../api/ycql/type_jsonb)                                                        |
+| {{<icon/yes>}} | String       | [TEXT, VARCHAR](../../../api/ycql/type_text)                                                 |
+| {{<icon/yes>}} | UUID         | [TIMEUUID, UUID](../../../api/ycql/type_uuid)                                                |
+| {{<icon/no>}}  | TUPLE        |                                                                                              |
 {.sno-1}
 
 ### User defined data types
