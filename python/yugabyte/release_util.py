@@ -242,14 +242,15 @@ class ReleaseUtil:
         """
         components: List[str] = [
             self.base_version,
-            self.commit,
-            self.build_type
+            self.commit
         ]
+        if self.build_type != 'release':
+            components.append(self.build_type)
         compiler_type = get_compiler_type_from_build_root(self.build_root)
         # Make Clang-based release packages the default, and append the compiler type for all other
         # compiler types so we can still use them with the appropriate support from the downstream
         # tooling.
-        if compiler_type not in ['clang12', 'clang13']:
+        if not compiler_type.startswith('clang'):
             components.append(compiler_type)
         release_name = "-".join(components)
 
