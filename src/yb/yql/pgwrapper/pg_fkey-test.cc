@@ -133,7 +133,7 @@ Status PrepareTablesForMultipleFKs(PGConn* conn) {
 } // namespace
 
 // Test checks the number of RPC in case adding foreign key constraint to non empty table.
-TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(AddFKConstraintRPCCount)) {
+TEST_F(PgFKeyTest, AddFKConstraintRPCCount) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(PrepareTables(&conn));
   const auto add_fk_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta([&conn]() {
@@ -145,7 +145,7 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(AddFKConstraintRPCCount)) {
 // Test checks the number of RPC in case adding foreign key constraint with delayed validation
 // to non empty table.
 TEST_F(PgFKeyTest,
-       YB_DISABLE_TEST_IN_TSAN(AddFKConstraintDelayedValidationRPCCount)) {
+       AddFKConstraintDelayedValidationRPCCount) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(PrepareTables(&conn));
   const auto add_fk_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta([&conn]() {
@@ -169,7 +169,7 @@ TEST_F(PgFKeyTest,
 
 // Test checks FK correctness in case of FK check requires type casting.
 // In this case RPC optimization can't be used.
-TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(AddFKConstraintWithTypeCast)) {
+TEST_F(PgFKeyTest, AddFKConstraintWithTypeCast) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(PrepareTables(&conn,
                           Options {
@@ -186,19 +186,19 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(AddFKConstraintWithTypeCast)) {
 }
 
 // Test checks FK check correctness with respect to internal buffering
-TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(AddFKCorrectness)) {
+TEST_F(PgFKeyTest, AddFKCorrectness) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(CheckAddFKCorrectness(&conn, false /* temp_tables */));
 }
 
 // Test checks FK check correctness on temp tables (no optimizations is used in this case)
-TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(AddFKCorrectnessOnTempTables)) {
+TEST_F(PgFKeyTest, AddFKCorrectnessOnTempTables) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(CheckAddFKCorrectness(&conn, true /* temp_tables */));
 }
 
 // Test checks the number of RPC in case of multiple FK on same table.
-TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(MultipleFKConstraintRPCCount)) {
+TEST_F(PgFKeyTest, MultipleFKConstraintRPCCount) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(PrepareTablesForMultipleFKs(&conn));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0_1 VALUES(11), (12), (13);"
@@ -216,7 +216,7 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(MultipleFKConstraintRPCCount)) {
 }
 
 // Test checks that insertion into table with large number of foreign keys doesn't fail.
-TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(InsertWithLargeNumberOfFK)) {
+TEST_F(PgFKeyTest, InsertWithLargeNumberOfFK) {
   auto conn = ASSERT_RESULT(Connect());
   constexpr size_t fk_count = 3;
   constexpr size_t insert_count = 100;
@@ -248,7 +248,7 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(InsertWithLargeNumberOfFK)) {
 
 // Test checks rows written by buffered write operations are read successfully while
 // performing FK constraint check.
-TEST_F_EX(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(BufferedWriteOfReferencedRows), PgFKeyTestNoFKCache) {
+TEST_F_EX(PgFKeyTest, BufferedWriteOfReferencedRows, PgFKeyTestNoFKCache) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(PrepareTablesForMultipleFKs(&conn));
   ASSERT_OK(conn.ExecuteFormat(

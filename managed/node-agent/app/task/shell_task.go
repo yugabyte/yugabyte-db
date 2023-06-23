@@ -206,14 +206,16 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 	cmd.Stderr = s.stderr
 	if util.FileLogger().IsDebugEnabled() {
 		redactedArgs := s.redactCommandArgs(s.args...)
-		util.FileLogger().Infof(ctx, "Running command %s with args %v", s.cmd, redactedArgs)
+		util.FileLogger().Debugf(ctx, "Running command %s with args %v", s.cmd, redactedArgs)
 	}
 	err = cmd.Run()
 	if err == nil {
 		taskStatus.Info = s.stdout
 		taskStatus.ExitStatus.Code = 0
-		util.FileLogger().
-			Debugf(ctx, "Command %s executed successfully - %s", s.name, s.stdout.String())
+		if util.FileLogger().IsDebugEnabled() {
+			util.FileLogger().
+				Debugf(ctx, "Command %s executed successfully - %s", s.name, s.stdout.String())
+		}
 	} else {
 		taskStatus.ExitStatus.Error = s.stderr
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -350,6 +352,7 @@ func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []s
 	} else {
 		options = append(options, "provision")
 	}
+	options = append(options, "--node_agent_mode")
 	options = append(options, "--yb_home_dir", "'"+handler.param.YbHomeDir+"'")
 	if handler.param.SshPort != 0 {
 		options = append(

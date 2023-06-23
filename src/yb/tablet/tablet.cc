@@ -4221,12 +4221,15 @@ Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
 }
 
 Status PopulateLockInfoFromIntent(
-    Slice key, Slice val, const SchemaPtr& schema, LockInfoPB* lock_info) {
+    Slice key, Slice val, const SchemaPtr& schema,
+    ::google::protobuf::Map<std::string, TabletLockInfoPB_TransactionLockInfoPB>* txn_locks) {
   auto parsed_intent = VERIFY_RESULT(docdb::ParseIntentKey(key, val));
   auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
       val, nullptr /* verify_transaction_id_slice */, HasStrong(parsed_intent.types)));
 
-  return docdb::PopulateLockInfoFromParsedIntent(parsed_intent, decoded_value, schema, lock_info);
+  auto& lock_entry = (*txn_locks)[decoded_value.transaction_id.ToString()];
+  return docdb::PopulateLockInfoFromParsedIntent(
+      parsed_intent, decoded_value, schema, lock_entry.add_locks());
 }
 
 Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
@@ -4264,7 +4267,7 @@ Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
       }
 
       RETURN_NOT_OK(PopulateLockInfoFromIntent(
-          key, intent_iter->value(), schema(), tablet_lock_info->add_locks()));
+          key, intent_iter->value(), schema(), tablet_lock_info->mutable_transaction_locks()));
 
       intent_iter->Next();
     }
@@ -4315,7 +4318,8 @@ Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
       DCHECK_EQ(intent_iter->key(), key);
 
       auto val = intent_iter->value();
-      RETURN_NOT_OK(PopulateLockInfoFromIntent(key, val, schema(), tablet_lock_info->add_locks()));
+      RETURN_NOT_OK(PopulateLockInfoFromIntent(
+          key, val, schema(), tablet_lock_info->mutable_transaction_locks()));
     }
   }
 

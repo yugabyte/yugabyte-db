@@ -653,16 +653,16 @@ using IntentTypesContainer = std::map<KeyBuffer, IntentData>;
 
 class IntentProcessor {
  public:
-  IntentProcessor(IntentTypesContainer* container, const IntentTypeSet& intent_types)
-      : container_(*container),
-        intent_types_(intent_types),
-        weak_intent_types_(MakeWeak(intent_types_))
+  explicit IntentProcessor(IntentTypesContainer* container)
+      : container_(*container)
   {}
 
-  void Process(dockv::AncestorDocKey ancestor_doc_key,
-               dockv::FullDocKey full_doc_key,
-               KeyBytes* intent_key) {
-    const auto& intent_type_set = ancestor_doc_key ? weak_intent_types_ : intent_types_;
+  void Process(
+      dockv::AncestorDocKey ancestor_doc_key,
+      dockv::FullDocKey full_doc_key,
+      const KeyBytes* const intent_key,
+      IntentTypeSet intent_types) {
+    const auto& intent_type_set = ancestor_doc_key ? MakeWeak(intent_types) : intent_types;
     auto i = container_.find(intent_key->data());
     if (i == container_.end()) {
       container_.emplace(intent_key->data(),
@@ -702,8 +702,6 @@ class IntentProcessor {
 
  private:
   IntentTypesContainer& container_;
-  const IntentTypeSet intent_types_;
-  const IntentTypeSet weak_intent_types_;
 };
 
 class StrongConflictChecker {
@@ -948,9 +946,10 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     buffer.Reserve(kKeyBufferInitialSize);
     const auto row_mark = GetRowMarkTypeFromPB(write_batch_);
     IntentTypesContainer container;
-    IntentProcessor write_processor(
-        &container,
-        GetIntentTypeSet(metadata_.isolation, dockv::OperationKind::kWrite, row_mark));
+    IntentTypeSet intent_types =
+        GetIntentTypeSet(metadata_.isolation, dockv::OperationKind::kWrite, row_mark);
+
+    IntentProcessor intent_processor(&container);
     for (const auto& doc_op : doc_ops()) {
       paths.clear();
       IsolationLevel ignored_isolation_level;
@@ -963,9 +962,10 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
         RETURN_NOT_OK(EnumerateIntents(
             path.as_slice(),
             /* intent_value */ Slice(),
-            [&write_processor](
-                auto strength, dockv::FullDocKey full_doc_key, auto, auto intent_key, auto) {
-              write_processor.Process(strength, full_doc_key, intent_key);
+            [&intent_processor, intent_types](
+                auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key,
+                auto) {
+              intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
               return Status::OK();
             },
             &buffer,
@@ -974,15 +974,13 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     }
 
     const auto& pairs = write_batch_.read_pairs();
+    intent_types = GetIntentTypeSet(metadata_.isolation, dockv::OperationKind::kRead, row_mark);
     if (!pairs.empty()) {
-      IntentProcessor read_processor(
-          &container,
-          GetIntentTypeSet(metadata_.isolation, dockv::OperationKind::kRead, row_mark));
       RETURN_NOT_OK(EnumerateIntents(
           pairs,
-          [&read_processor] (
-              auto strength, dockv::FullDocKey full_doc_key, auto, auto intent_key, auto) {
-            read_processor.Process(strength, full_doc_key, intent_key);
+          [&intent_processor, intent_types] (
+              auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key, auto) {
+            intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
             return Status::OK();
           },
           resolver->partial_range_key_intents()));
@@ -1132,14 +1130,8 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
 
     IntentTypeSet intent_types;
 
-    dockv::EnumerateIntentsCallback callback = [&intent_types, resolver](
-        dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey, Slice,
-        KeyBytes* encoded_key_buffer, dockv::LastKey) {
-      return resolver->ReadIntentConflicts(
-          ancestor_doc_key ? MakeWeak(intent_types) : intent_types,
-          encoded_key_buffer);
-    };
-
+    IntentTypesContainer container;
+    IntentProcessor intent_processor(&container);
     for (const auto& doc_op : doc_ops()) {
       doc_paths.clear();
       IsolationLevel isolation;
@@ -1152,9 +1144,26 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
         VLOG_WITH_PREFIX_AND_FUNC(4)
             << "Doc path: " << SubDocKey::DebugSliceToString(doc_path.as_slice());
         RETURN_NOT_OK(EnumerateIntents(
-            doc_path.as_slice(), Slice(), callback, &encoded_key_buffer,
-            PartialRangeKeyIntents::kTrue));
+            doc_path.as_slice(),
+            /* intent_value */ Slice(),
+            [&intent_processor, intent_types](
+                auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key,
+                auto) {
+              intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
+              return Status::OK();
+            },
+            &encoded_key_buffer,
+            resolver->partial_range_key_intents()));
       }
+    }
+
+    if (container.empty()) {
+      return Status::OK();
+    }
+
+    for (const auto& [key, intent_data] : container) {
+      encoded_key_buffer.Reset(key.AsSlice());
+      RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_data.types, &encoded_key_buffer));
     }
 
     return Status::OK();
@@ -1354,7 +1363,6 @@ Status PopulateLockInfoFromParsedIntent(
     lock_info->set_column_id(subdoc_key.last_subkey().GetColumnId());
   }
 
-  lock_info->set_transaction_id(decoded_value.transaction_id.ToString());
   lock_info->set_subtransaction_id(decoded_value.subtransaction_id);
   lock_info->set_is_explicit(
       decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock));

@@ -72,6 +72,8 @@ Status GetChangesForCDCSDK(
     uint64_t* commit_timestamp,
     SchemaDetailsMap* cached_schema_details,
     OpId* last_streamed_op_id,
+    const int64_t& safe_hybrid_time_req,
+    const int& wal_segment_index_req,
     int64_t* last_readable_opid_index = nullptr,
     const TableId& colocated_table_id = "",
     const CoarseTimePoint deadline = CoarseTimePoint::max());
@@ -83,7 +85,6 @@ Status GetChangesForXCluster(
     const std::string& tablet_id,
     const OpId& op_id,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    const client::YBSessionPtr& session,
     UpdateOnSplitOpFunc update_on_split_op_func,
     const std::shared_ptr<MemTracker>& mem_tracker,
     const CoarseTimePoint& deadline,

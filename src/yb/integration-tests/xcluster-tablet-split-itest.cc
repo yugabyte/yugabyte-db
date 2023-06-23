@@ -181,6 +181,7 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
 class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest> {
  public:
   void SetUp() override {
+    google::SetVLOGLevel("cdc*", 4);
     FLAGS_cdc_state_table_num_tablets = 1;
     // Set before creating tests so that the first run doesn't wait 30s.
     // Lowering to 5s here to speed up tests.
@@ -587,6 +588,7 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
 }
 
 TEST_F(XClusterTabletSplitITest, MultipleSplitsDuringPausedReplication) {
+  google::SetVLOGLevel("cdc*", 4);
   // Simulate network partition with paused replication, then perform multiple splits on producer
   // before re-enabling replication. Should be able to handle all of the splits.
 
@@ -895,7 +897,7 @@ class XClusterAutomaticTabletSplitITest : public XClusterTabletSplitITest {
 
 // This test is very flaky in TSAN as we spend a long time waiting for children tablets to be
 // ready, and will often then time out.
-TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_IN_TSAN(AutomaticTabletSplitting)) {
+TEST_F(XClusterAutomaticTabletSplitITest, AutomaticTabletSplitting) {
   constexpr auto num_active_tablets = 6;
 
   // Setup a new thread for continuous writing to producer.

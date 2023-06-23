@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.config;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import com.yugabyte.yw.models.Users.Role;
 import java.time.Duration;
 import java.util.List;
 import org.apache.directory.api.ldap.model.message.SearchScope;
@@ -314,6 +315,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC client timeout in milliseconds for operations",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> customCAStoreEnabled =
+      new ConfKeyInfo<>(
+          "yb.customCATrustStore.enabled",
+          ScopeType.GLOBAL,
+          "Enable YBA's custom CA trust-store",
+          "Enable YBA's custom CA trust-store",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> javaxNetSslTrustStore =
       new ConfKeyInfo<>(
           "yb.wellKnownCA.trustStore.path",
@@ -552,6 +561,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Hidden because this key has dedicated UI",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<Role> ldapDefaultRole =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_default_role",
+          ScopeType.GLOBAL,
+          "Which role to use in case role cannot be discerned via LDAP",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.LdapDefaultRoleEnum,
+          ImmutableList.of(ConfKeyTags.UIDriven));
   public static ConfKeyInfo<Boolean> enableDetailedLogs =
       new ConfKeyInfo<>(
           "yb.security.enable_detailed_logs",
@@ -772,7 +789,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.node_agent.client.token_lifetime",
           ScopeType.GLOBAL,
           "Node Agent Token Lifetime",
-          "Lifetime oftoken used by node agent clients",
+          "Lifetime of token used by node agent clients",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> nodeAgentServerPort =
@@ -808,4 +825,23 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "are watched. Requires restart to take effect",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Duration> waitForClockSyncMaxAcceptableClockSkew =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.max_acceptable_clock_skew",
+          ScopeType.GLOBAL,
+          "Max acceptable clock skew on the DB nodes",
+          "The maximum clock skew on the DB nodes before the tserver or master process can"
+              + "start",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> waitForClockSyncTimeout =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.timeout",
+          ScopeType.GLOBAL,
+          "Timeout for the waitForClockSync subtask",
+          "The amount of time that the waitForClockSync subtask waits for the clocks of the "
+              + "DB nodes to sync; if the sync does not happen within this the time specified in "
+              + "this config value, the subtask will fail",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

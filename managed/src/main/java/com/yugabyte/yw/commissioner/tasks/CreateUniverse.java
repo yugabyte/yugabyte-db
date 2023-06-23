@@ -154,6 +154,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
 
+      // Make sure clock skew is low enough.
+      createWaitForClockSyncTasks(universe, taskParams().nodeDetailsSet)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
       // Get the new masters from the node list.
       Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);
 

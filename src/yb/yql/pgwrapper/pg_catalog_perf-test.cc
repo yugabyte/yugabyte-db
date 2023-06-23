@@ -17,14 +17,13 @@
 #include <thread>
 #include <unordered_map>
 
-#include <gflags/gflags.h>
-
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -252,7 +251,7 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithCachePerfTest {
 // As a result number of RPCs has huge difference.
 // Note: Also subsequent connections doesn't preload the cache. This maybe changed in future.
 //       Number of RPCs in all the tests are not the constants and they can be changed in future.
-TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(StartupRPCCount)) {
+TEST_F(PgCatalogPerfTest, StartupRPCCount) {
   const auto connector = [this] {
     RETURN_NOT_OK(Connect());
     return static_cast<Status>(Status::OK());
@@ -265,13 +264,13 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(StartupRPCCount)) {
 }
 
 // Test checks number of RPC in case of cache refresh without partitioned tables.
-TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithoutPartitionTables)) {
+TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithoutPartitionTables) {
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
   ASSERT_EQ(cache_refresh_rpc_count, 3);
 }
 
 // Test checks number of RPC in case of cache refresh with partitioned tables.
-TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithPartitionTables)) {
+TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithPartitionTables) {
   auto conn = ASSERT_RESULT(Connect());
   for (size_t ti = 0; ti < 3; ++ti) {
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0 (r INT, v INT) PARTITION BY RANGE(r)", ti));
@@ -294,22 +293,22 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithPartit
   ASSERT_EQ(cache_refresh_rpc_count, 6);
 }
 
-TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnInsert)) {
+TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnInsert) {
   TestAfterCacheRefreshRPCCountOnInsert(/*expected_master_rpc_count=*/ 1);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
-          YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnInsertMinPreload),
+          AfterCacheRefreshRPCCountOnInsertMinPreload,
           PgCatalogMinPreloadTest) {
   TestAfterCacheRefreshRPCCountOnInsert(/*expected_master_rpc_count=*/ 6);
 }
 
-TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnSelect)) {
+TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
   TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 3);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
-          YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnSelectMinPreload),
+          AfterCacheRefreshRPCCountOnSelectMinPreload,
           PgCatalogMinPreloadTest) {
   TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 11);
 }
@@ -317,7 +316,7 @@ TEST_F_EX(PgCatalogPerfTest,
 // The test checks number of hits in response cache in case of multiple connections and aggressive
 // sys catalog changes. Which causes catalog cache refresh in each established connection.
 TEST_F_EX(PgCatalogPerfTest,
-          YB_DISABLE_TEST_IN_TSAN(ResponseCacheEfficiency),
+          ResponseCacheEfficiency,
           PgCatalogWithCachePerfTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (r INT PRIMARY KEY)"));
@@ -363,7 +362,7 @@ TEST_F_EX(PgCatalogPerfTest,
 }
 
 TEST_F_EX(PgCatalogPerfTest,
-          YB_DISABLE_TEST_IN_TSAN(ResponseCacheEfficiencyInConnectionStart),
+          ResponseCacheEfficiencyInConnectionStart,
           PgCatalogWithCachePerfTest) {
   auto conn = ASSERT_RESULT(Connect());
   auto metrics = ASSERT_RESULT(MetricDeltas([this] {
@@ -387,7 +386,7 @@ TEST_F_EX(PgCatalogPerfTest,
 //     send read request to a Master
 //   - Master responds with 'Snapshot too old' error on attempt to read at really old read time T1
 TEST_F_EX(PgCatalogPerfTest,
-          YB_DISABLE_TEST_IN_TSAN(ResponseCacheWithTooOldSnapshot),
+          ResponseCacheWithTooOldSnapshot,
           PgCatalogWithStaleResponseCacheTest) {
   auto connector = [this] {
     RETURN_NOT_OK(Connect());

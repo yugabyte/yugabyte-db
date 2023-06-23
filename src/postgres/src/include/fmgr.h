@@ -64,6 +64,8 @@ typedef struct FmgrInfo
 	void	   *fn_extra;		/* extra space for use by handler */
 	MemoryContext fn_mcxt;		/* memory context to store fn_extra in */
 	fmNodePtr	fn_expr;		/* expression parse tree for call, or NULL */
+	void       *fn_alt;         /* alternative function implementation for
+                                 * special cases */
 } FmgrInfo;
 
 /*
@@ -657,6 +659,8 @@ extern Datum ReceiveFunctionCall(FmgrInfo *flinfo, fmStringInfo buf,
 extern Datum OidReceiveFunctionCall(Oid functionId, fmStringInfo buf,
 					   Oid typioparam, int32 typmod);
 extern bytea *SendFunctionCall(FmgrInfo *flinfo, Datum val);
+extern void StringInfoSendFunctionCall(fmStringInfo buf, FmgrInfo *flinfo,
+					   Datum val);
 extern bytea *OidSendFunctionCall(Oid functionId, Datum val);
 
 

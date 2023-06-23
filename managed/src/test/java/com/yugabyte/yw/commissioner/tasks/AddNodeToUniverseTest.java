@@ -31,6 +31,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -99,6 +100,24 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+          .thenReturn(
+              ShellResponse.create(
+                  ShellResponse.ERROR_CODE_SUCCESS,
+                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
+                      + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
+                      + "    Stratum         : 3\n"
+                      + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
+                      + "    System time     : 0.000000003 seconds slow of NTP time\n"
+                      + "    Last offset     : +0.000019514 seconds\n"
+                      + "    RMS offset      : 0.000011283 seconds\n"
+                      + "    Frequency       : 99.154 ppm slow\n"
+                      + "    Residual freq   : +0.009 ppm\n"
+                      + "    Skew            : 0.106 ppm\n"
+                      + "    Root delay      : 0.000162946 seconds\n"
+                      + "    Root dispersion : 0.000101734 seconds\n"
+                      + "    Update interval : 32.3 seconds\n"
+                      + "    Leap status     : Normal"));
     } catch (Exception e) {
       fail();
     }
@@ -191,6 +210,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // Gflags - master
           TaskType.AnsibleConfigureServers, // Gflags - tServer
           TaskType.SetNodeStatus, // ToJoinCluster
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // start process
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
@@ -209,6 +229,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()), // provisioned
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -236,6 +257,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // Gflags - master
           TaskType.AnsibleConfigureServers, // Gflags - tServer
           TaskType.SetNodeStatus, // ToJoinCluster
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // start process (master/tServer)
           TaskType.UpdateNodeProcess, // update process name in DB
           TaskType.WaitForServer, // wait for process to come up
@@ -248,6 +270,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> ADD_NODE_TASK_DECOMISSIONED_NODE_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -282,6 +305,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // GFlags master
           TaskType.AnsibleConfigureServers, // Gflags tServer
           TaskType.SetNodeStatus, // To join cluster
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.ChangeMasterConfig, // master done
           TaskType.UpdateNodeProcess,
@@ -304,6 +328,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Adding")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

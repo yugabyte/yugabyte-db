@@ -120,3 +120,6 @@ managed/devops/pex/pexEnv/
 
 *.bad_clang_tidy_output.*
 *.compiler_errors.txt
+
+# jenv local version
+**/.java-version

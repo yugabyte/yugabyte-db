@@ -4,9 +4,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.controllers.SessionController;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.LdapDnToYbaRole;
@@ -14,12 +14,15 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import io.ebean.DuplicateKeyException;
 import java.nio.charset.Charset;
+import java.security.KeyStore;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
@@ -39,17 +42,15 @@ import org.apache.directory.api.ldap.model.message.SearchScope;
 import org.apache.directory.ldap.client.api.LdapConnectionConfig;
 import org.apache.directory.ldap.client.api.LdapNetworkConnection;
 import org.apache.directory.ldap.client.api.NoVerificationTrustManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @Slf4j
 public class LdapUtil {
-
-  public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
   public static final String windowsAdUserDoesNotExistErrorCode = "data 2030";
   public static final String USERNAME_KEYWORD = "{username}";
 
   @Inject private RuntimeConfGetter confGetter;
+
+  @Inject private CustomCAStoreManager customCAStoreManager;
 
   @Getter
   @Setter
@@ -73,6 +74,7 @@ public class LdapUtil {
     String ldapGroupMemberOfAttribute;
     boolean ldapGroupUseQuery;
     boolean ldapGroupUseRoleMapping;
+    Role ldapDefaultRole;
   }
 
   public Users loginWithLdap(CustomerLoginFormData data) throws LdapException {
@@ -85,7 +87,7 @@ public class LdapUtil {
     boolean ldapUseSsl = confGetter.getGlobalConf(GlobalConfKeys.enableLdap);
     boolean ldapUseTls = confGetter.getGlobalConf(GlobalConfKeys.enableLdapStartTls);
     boolean useLdapSearchAndBind = confGetter.getGlobalConf(GlobalConfKeys.ldapUseSearchAndBind);
-    String serviceAccountDistiguishedName =
+    String serviceAccountDistinguishedName =
         confGetter.getGlobalConf(GlobalConfKeys.ldapServiceAccountDistinguishedName);
     String serviceAccountPassword =
         confGetter.getGlobalConf(GlobalConfKeys.ldapServiceAccountPassword);
@@ -100,6 +102,7 @@ public class LdapUtil {
     boolean ldapGroupUseRoleMapping =
         confGetter.getGlobalConf(GlobalConfKeys.ldapGroupUseRoleMapping);
     String ldapGroupSearchBaseDn = confGetter.getGlobalConf(GlobalConfKeys.ldapGroupSearchBaseDn);
+    Role ldapDefaultRole = confGetter.getGlobalConf(GlobalConfKeys.ldapDefaultRole);
 
     LdapConfiguration ldapConfiguration =
         new LdapConfiguration(
@@ -111,7 +114,7 @@ public class LdapUtil {
             ldapUseSsl,
             ldapUseTls,
             useLdapSearchAndBind,
-            serviceAccountDistiguishedName,
+            serviceAccountDistinguishedName,
             serviceAccountPassword,
             ldapSearchAttribute,
             enabledDetailedLogs,
@@ -120,7 +123,8 @@ public class LdapUtil {
             ldapGroupSearchBaseDn,
             ldapGroupMemberOfAttribute,
             ldapGroupUseQuery,
-            ldapGroupUseRoleMapping);
+            ldapGroupUseRoleMapping,
+            ldapDefaultRole);
     Users user = authViaLDAP(data.getEmail(), data.getPassword(), ldapConfiguration);
 
     if (user == null) {
@@ -142,27 +146,27 @@ public class LdapUtil {
       return oldUser.getCustomerUUID();
     }
 
-    Customer cust = null;
+    Customer customer = null;
     if (!ldapCustomerUUID.equals("")) {
       try {
-        UUID custUUID = UUID.fromString(ldapCustomerUUID);
-        cust = Customer.get(custUUID);
+        UUID customerUUID = UUID.fromString(ldapCustomerUUID);
+        customer = Customer.get(customerUUID);
       } catch (Exception e) {
         throw new PlatformServiceException(
-            BAD_REQUEST, "Customer UUID Specified is invalid. " + e.getMessage());
+            BAD_REQUEST, "Customer UUID specified is invalid. " + e.getMessage());
       }
     }
 
-    if (cust == null) {
+    if (customer == null) {
       List<Customer> allCustomers = Customer.getAll();
       if (allCustomers.size() != 1) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Please specify ldap_customeruuid in Multi-Tenant Setup.");
       }
-      cust = allCustomers.get(0);
+      customer = allCustomers.get(0);
     }
 
-    return cust.getUuid();
+    return customer.getUuid();
   }
 
   private void deleteUserAndThrowException(String email) {
@@ -321,7 +325,23 @@ public class LdapUtil {
       config.setLdapHost(ldapConfiguration.getLdapUrl());
       config.setLdapPort(ldapConfiguration.getLdapPort());
       if (ldapConfiguration.isLdapUseSsl() || ldapConfiguration.isLdapUseTls()) {
-        config.setTrustManagers(new NoVerificationTrustManager());
+
+        boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
+        if (customCAUploaded && customCAStoreManager.isEnabled()) {
+          log.debug("Using YBA's custom trust-store manager along-with Java defaults");
+          KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+          TrustManagerFactory trustFactory =
+              TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+          trustFactory.init(ybaJavaKeyStore);
+          TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
+          config.setTrustManagers(ybaJavaTrustManagers);
+        } else {
+          if (customCAUploaded) {
+            log.warn("Skipping to use YBA's custom trust-store as the feature is disabled");
+          }
+          config.setTrustManagers(new NoVerificationTrustManager());
+        }
+
         if (ldapConfiguration.isLdapUseSsl()) {
           config.setUseSsl(true);
         } else {
@@ -490,8 +510,8 @@ public class LdapUtil {
           roleToAssign = Users.Role.ReadOnly;
           break;
         default:
-          roleToAssign = Users.Role.ReadOnly;
-          log.warn("No valid role could be ascertained, defaulting to ReadOnly.");
+          roleToAssign = ldapConfiguration.getLdapDefaultRole();
+          log.warn("No valid role could be ascertained, defaulting to {}.", roleToAssign);
           if (!ldapConfiguration.isLdapGroupUseRoleMapping()) {
             users.setLdapSpecifiedRole(false);
           }
@@ -519,13 +539,11 @@ public class LdapUtil {
         users.setRole(roleToAssign);
       }
     } catch (LdapException e) {
-      LOG.error("LDAP error while attempting to auth email {}", email);
-      LOG.debug(e.getMessage());
+      log.error(String.format("LDAP error while attempting to auth email %s", email), e);
       String errorMessage = "LDAP parameters are not configured correctly. " + e.getMessage();
       throw new PlatformServiceException(BAD_REQUEST, errorMessage);
     } catch (Exception e) {
-      LOG.error("Failed to authenticate with LDAP for email {}", email);
-      LOG.debug(e.getMessage());
+      log.error(String.format("Failed to authenticate with LDAP for email %s", email), e);
       String errorMessage = "Invalid LDAP credentials. " + e.getMessage();
       throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
     } finally {

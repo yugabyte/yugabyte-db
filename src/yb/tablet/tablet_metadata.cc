@@ -133,7 +133,7 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 
 TableInfo::TableInfo(const std::string& log_prefix_, TableType table_type, PrivateTag)
     : log_prefix(log_prefix_),
-      doc_read_context(new docdb::DocReadContext(log_prefix, table_type)),
+      doc_read_context(new docdb::DocReadContext(log_prefix, table_type, docdb::Index::kFalse)),
       index_map(std::make_shared<IndexMap>()) {
   CompleteInit();
 }
@@ -156,7 +156,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
       doc_read_context(std::make_shared<docdb::DocReadContext>(
-          log_prefix, table_type, schema, schema_version)),
+          log_prefix, table_type, docdb::Index(index_info.has_value()), schema,
+          schema_version)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),

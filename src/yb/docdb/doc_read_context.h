@@ -19,14 +19,16 @@
 
 #include "yb/dockv/schema_packing.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
+
+YB_STRONGLY_TYPED_BOOL(Index);
 
 struct DocReadContext {
-  explicit DocReadContext(const std::string& log_prefix, TableType table_type);
+  DocReadContext(
+      const std::string& log_prefix, TableType table_type, Index is_index);
 
   DocReadContext(
-      const std::string& log_prefix, TableType table_type, const Schema& schema,
+      const std::string& log_prefix, TableType table_type, Index is_index, const Schema& schema,
       SchemaVersion schema_version);
 
   DocReadContext(const DocReadContext& rhs, const Schema& schema, SchemaVersion schema_version);
@@ -85,7 +87,8 @@ struct DocReadContext {
   }
 
   static DocReadContext TEST_Create(const Schema& schema) {
-    return DocReadContext("TEST: ", TableType::YQL_TABLE_TYPE, schema, 0);
+    return DocReadContext(
+        "TEST: ", TableType::YQL_TABLE_TYPE, Index::kFalse, schema, 0);
   }
 
   dockv::SchemaPackingStorage schema_packing_storage;
@@ -99,6 +102,7 @@ struct DocReadContext {
     return log_prefix_;
   }
 
+  Index is_index_;
   Schema schema_;
 
   // The data about key prefix shared by all entries of this table.
@@ -121,5 +125,4 @@ struct DocReadContext {
   std::string log_prefix_;
 };
 
-} // namespace docdb
-} // namespace yb
+} // namespace yb::docdb

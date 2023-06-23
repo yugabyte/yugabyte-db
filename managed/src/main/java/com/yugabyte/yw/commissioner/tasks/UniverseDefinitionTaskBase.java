@@ -1089,9 +1089,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createSetupServerTasks(
       Collection<NodeDetails> nodes, Consumer<AnsibleSetupServer.Params> paramsCustomizer) {
-    // Create preprovision hooks
-    HookInserter.addHookTrigger(TriggerType.PreNodeProvision, this, taskParams(), nodes);
-
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleSetupServer");
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -1109,10 +1106,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       subTaskGroup.addSubTask(ansibleSetupServer);
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
-
-    // Create postprovision hooks
-    HookInserter.addHookTrigger(TriggerType.PostNodeProvision, this, taskParams(), nodes);
-
     return subTaskGroup;
   }
 
@@ -1832,6 +1825,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Creates the hook tasks (pre/post NodeProvision) based on the triggerType specified.
+   *
+   * @param nodes a collection of nodes to be processed.
+   * @param triggerType triggerType for the nodes.
+   */
+  public void createHookProvisionTask(Collection<NodeDetails> nodes, TriggerType triggerType) {
+    HookInserter.addHookTrigger(triggerType, this, taskParams(), nodes);
+  }
+
+  /**
    * Creates subtasks to create a set of server nodes. As the tasks are not idempotent, node states
    * are checked to determine if some tasks must be run or skipped. This state checking is ignored
    * if ignoreNodeStatus is true.
@@ -1899,10 +1902,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createWaitForNodeAgentTasks(nodesToBeCreated)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              createHookProvisionTask(filteredNodes, TriggerType.PreNodeProvision);
               createSetupServerTasks(
                       filteredNodes, p -> p.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             });
+
+    isNextFallThrough =
+        applyOnNodesWithStatus(
+            universe,
+            nodesToBeCreated,
+            isNextFallThrough,
+            NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
+            filteredNodes -> {
+              createHookProvisionTask(filteredNodes, TriggerType.PostNodeProvision);
+            });
+
     return isNextFallThrough;
   }
 

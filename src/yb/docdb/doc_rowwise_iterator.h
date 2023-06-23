@@ -51,7 +51,7 @@ class ScanChoices;
 YB_DEFINE_ENUM(DocMode, (kGeneric)(kFlat)(kAny));
 
 // An SQL-mapped-to-document-DB iterator.
-class DocRowwiseIterator : public DocRowwiseIteratorBase {
+class DocRowwiseIterator final : public DocRowwiseIteratorBase {
  public:
   DocRowwiseIterator(const dockv::ReaderProjection &projection,
                      std::reference_wrapper<const DocReadContext> doc_read_context,

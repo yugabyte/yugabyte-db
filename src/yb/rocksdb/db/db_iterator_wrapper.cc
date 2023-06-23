@@ -46,8 +46,9 @@ void TransitionLoggingIteratorWrapper::Seek(const Slice& target) {
       [this, target]() { DBIteratorWrapper::Seek(target); });
 }
 
-void TransitionLoggingIteratorWrapper::Next() {
+const KeyValueEntry& TransitionLoggingIteratorWrapper::Next() {
   LogBeforeAndAfter(__func__, [this]() { DBIteratorWrapper::Next(); });
+  return DBIteratorWrapper::Entry();
 }
 
 void TransitionLoggingIteratorWrapper::Prev() {

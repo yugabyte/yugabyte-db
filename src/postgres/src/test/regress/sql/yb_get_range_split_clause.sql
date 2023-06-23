@@ -439,6 +439,54 @@ CREATE TABLE tbl_with_include_clause (
 SELECT yb_get_range_split_clause('tbl_with_include_clause'::regclass);
 DROP TABLE tbl_with_include_clause;
 
+-- Test index SPLIT AT with INCLUDE clause
+CREATE TABLE test_tbl (
+  a TEXT,
+  b DOUBLE PRECISION,
+  PRIMARY KEY (a ASC)
+) SPLIT AT VALUES(('11'));
+CREATE INDEX test_idx on test_tbl(
+  b ASC
+) INCLUDE (a) SPLIT AT VALUES ((1.1));
+SELECT yb_get_range_split_clause('test_idx'::regclass);
+DROP INDEX test_idx;
+DROP TABLE test_tbl;
+
+-- Test index SPLIT AT with INCLUDE clause
+CREATE TABLE test_tbl (
+  a INT,
+  b TEXT,
+  c CHAR,
+  d BOOLEAN,
+  e REAL,
+  PRIMARY KEY (a ASC, b ASC)
+) SPLIT AT VALUES((1, '111'));
+CREATE INDEX test_idx on test_tbl(
+  a ASC,
+  b ASC,
+  c ASC
+) INCLUDE (d, e) SPLIT AT VALUES ((1, '11', '1'));
+SELECT yb_get_range_split_clause('test_idx'::regclass);
+DROP INDEX test_idx;
+DROP TABLE test_tbl;
+
+-- Test index SPLIT AT with INCLUDE clause
+CREATE TABLE test_tbl (
+  a INT,
+  b INT,
+  c INT,
+  d INT,
+  e INT,
+  PRIMARY KEY (a DESC, b ASC)
+) SPLIT AT VALUES((1, 1));
+CREATE INDEX test_idx on test_tbl(
+  a ASC,
+  b DESC
+) INCLUDE (c, d, e) SPLIT AT VALUES ((1, 1));
+SELECT yb_get_range_split_clause('test_idx'::regclass);
+DROP INDEX test_idx;
+DROP TABLE test_tbl;
+
 -- Test secondary index with duplicate columns and backwards order columns
 CREATE TABLE test_tbl (
   k1 INT,

@@ -4391,12 +4391,14 @@ class DocDBPerfTest : public DocDBTest {
       unique_ptr<rocksdb::Iterator> iter(rocksdb()->NewIterator(read_opts));
       auto start = Env::Default()->NowNanos();
       iter->SeekToFirst();
-      ASSERT_EQ(expected_num_keys, f(iter.get()));
-      ASSERT_OK(iter->status());
+      auto result = f(iter.get());
       auto time_taken = (Env::Default()->NowNanos() - start);
+      ASSERT_EQ(expected_num_keys, result.first);
+      ASSERT_OK(iter->status());
       auto current_block_cache_miss = statistics->getTickerCount(rocksdb::BLOCK_CACHE_MISS);
-      LOG(INFO) << "Test - " << perf_test_string << ", time_taken (in us) - " << (time_taken / 1000)
-                << ", Cache miss - " << (current_block_cache_miss - initial_block_cache_miss);
+      LOG(INFO) << "Test - " << perf_test_string << ", time taken (in us) - " << (time_taken / 1000)
+                << ", cache miss - " << (current_block_cache_miss - initial_block_cache_miss)
+                << ", total size: " << result.second;
       initial_block_cache_miss = current_block_cache_miss;
     }
   }
@@ -4406,11 +4408,13 @@ class DocDBPerfTest : public DocDBTest {
       Slice upperbound) {
     TestScanPerformance(
         expected_num_keys, perf_test_string,
-        [use_key_filter_callback, upperbound](auto* iter) -> size_t {
+        [use_key_filter_callback, upperbound](auto* iter) -> std::pair<size_t, size_t> {
           size_t scanned_keys = 0;
-          rocksdb::ScanCallback scan_callback = [&scanned_keys](
+          size_t total_size = 0;
+          rocksdb::ScanCallback scan_callback = [&scanned_keys, &total_size](
                                                     const Slice& key, const Slice& value) -> bool {
             scanned_keys++;
+            total_size += key.size() + value.size();
             return true;
           };
 
@@ -4423,21 +4427,25 @@ class DocDBPerfTest : public DocDBTest {
           auto key_filter_callback = use_key_filter_callback ? &kf_callback : nullptr;
           EXPECT_TRUE(iter->ScanForward(upperbound, key_filter_callback, &scan_callback));
 
-          return scanned_keys;
+          return {scanned_keys, total_size};
         });
   }
 
   void TestScanNext(
       size_t expected_num_keys, const std::string& perf_test_string, bool use_fast_next = false) {
-    TestScanPerformance(expected_num_keys, perf_test_string, [use_fast_next](auto* iter) -> size_t {
+    TestScanPerformance(
+        expected_num_keys, perf_test_string,
+        [use_fast_next](auto* iter) -> std::pair<size_t, size_t> {
       size_t scanned_keys = 0;
+      size_t total_size = 0;
       iter->UseFastNext(use_fast_next);
-      for (; iter->Valid(); iter->Next()) {
-        /*const auto k =*/iter->key();
-        /*const auto v =*/iter->value();
+      const auto* entry = &iter->Entry();
+      while (*entry) {
+        total_size += entry->TotalSize();
         ++scanned_keys;
+        entry = &iter->Next();
       }
-      return scanned_keys;
+      return {scanned_keys, total_size};
     });
   }
 };

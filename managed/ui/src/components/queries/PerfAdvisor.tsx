@@ -20,6 +20,7 @@ import {
   SortDirection,
   LastRunData
 } from '../../redesign/utils/dtos';
+import { UniverseState, getUniverseStatus } from '../universes/helpers/universeHelpers';
 import { YBSelect } from '../../redesign/components';
 import dbSettingsIcon from './images/db-settings.svg';
 import documentationIcon from './images/documentation.svg';
@@ -87,7 +88,9 @@ export const PerfAdvisor: FC = () => {
   // Get universe UUID and check status of Universe
   const currentUniverse = useSelector((state: any) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
-  const isUniversePaused: boolean = currentUniverse?.data?.universeDetails?.universePaused;
+  const universeStatus = getUniverseStatus(currentUniverse?.data);
+  const isUniversePaused = universeStatus.state === UniverseState.PAUSED;
+  const isUniverseUpdating = universeStatus.state === UniverseState.PENDING;
 
   const { isFetched: isLastRunFetched, data: lastRunData, refetch: lastRunRefetch } = useQuery(
     QUERY_KEY.fetchPerfLastRun,
@@ -345,10 +348,16 @@ export const PerfAdvisor: FC = () => {
                   </p>
                   <Button
                     bsClass="btn btn-orange rescanBtn"
-                    disabled={!!isUniversePaused}
+                    disabled={isUniversePaused || isUniverseUpdating}
                     onClick={handleScan}
                     data-placement="left"
-                    title={isUniversePaused ? 'Universe Paused' : ''}
+                    title={
+                      isUniversePaused
+                        ? 'Universe Paused'
+                        : isUniverseUpdating
+                        ? 'Universe Updating'
+                        : ''
+                    }
                   >
                     <i className="fa fa-search-minus" aria-hidden="true"></i>
                     {t('clusterDetail.performance.advisor.ScanBtn')}
@@ -393,10 +402,16 @@ export const PerfAdvisor: FC = () => {
                   </p>
                   <Button
                     bsClass="btn btn-orange rescanBtn"
-                    disabled={!!isUniversePaused}
+                    disabled={isUniversePaused || isUniverseUpdating}
                     onClick={handleScan}
                     data-placement="left"
-                    title={isUniversePaused ? 'Universe Paused' : ''}
+                    title={
+                      isUniversePaused
+                        ? 'Universe Paused'
+                        : isUniverseUpdating
+                        ? 'Universe Updating'
+                        : ''
+                    }
                   >
                     <i className="fa fa-search-minus" aria-hidden="true"></i>
                     {t('clusterDetail.performance.advisor.ReScanBtn')}
@@ -432,12 +447,14 @@ export const PerfAdvisor: FC = () => {
             </p>
             <YBButton
               btnClass="btn btn-orange rescanBtnRecPage"
-              disabled={!!isUniversePaused}
+              disabled={isUniversePaused || isUniverseUpdating}
               btnText="Re-Scan"
               btnIcon="fa fa-search-minus"
               onClick={handleScan}
               data-placement="left"
-              title={isUniversePaused ? 'Universe Paused' : ''}
+              title={
+                isUniversePaused ? 'Universe Paused' : isUniverseUpdating ? 'Universe Updating' : ''
+              }
             />
           </div>
           <div className="perfAdvisor__containerRecommendationFlex">

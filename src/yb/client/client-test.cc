@@ -2844,7 +2844,7 @@ class ColocationClientTest: public ClientTest {
 // There should be only one lookup RPC asking for colocated tables tablet locations.
 // When we ask for tablet lookup for other tables colocated with the first one we asked, MetaCache
 // should be able to respond without sending RPCs to master again.
-TEST_F(ColocationClientTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablesLookupTablet)) {
+TEST_F(ColocationClientTest, ColocatedTablesLookupTablet) {
   const auto kTabletLookupTimeout = 10s;
   const auto kNumTables = 10;
 

@@ -60,7 +60,8 @@ Status ApplyWriteRequest(
     docdb::DocWriteBatch* write_batch) {
   const std::string kLogPrefix = "restored tablet: ";
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(
-      kLogPrefix, TableType::YQL_TABLE_TYPE, schema, write_request.schema_version());
+      kLogPrefix, TableType::YQL_TABLE_TYPE, docdb::Index::kFalse, schema,
+      write_request.schema_version());
   docdb::DocOperationApplyData apply_data{
       .doc_write_batch = write_batch,
       .read_operation_data = {},

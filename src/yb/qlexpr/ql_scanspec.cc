@@ -60,7 +60,7 @@ struct ColumnValue {
 
 template <class Col>
 auto GetColumnValue(const Col& col) {
-  CHECK_EQ(col.size(), 2);
+  CHECK_EQ(col.size(), 2) << yb::ToString(col);
   auto it = col.begin();
   using ResultType = ColumnValue<typename std::remove_reference<decltype(it->value())>::type>;
   if (it->expr_case() == decltype(it->expr_case())::kColumnId) {

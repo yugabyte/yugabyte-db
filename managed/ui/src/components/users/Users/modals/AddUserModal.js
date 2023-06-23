@@ -12,7 +12,8 @@ const MIN_PASSWORD_LENGTH = 8;
 export const userRoles = [
   { value: 'Admin', label: 'Admin' },
   { value: 'BackupAdmin', label: 'BackupAdmin' },
-  { value: 'ReadOnly', label: 'ReadOnly' }
+  { value: 'ReadOnly', label: 'ReadOnly' },
+  { value: 'ConnectOnly', label: 'ConnectOnly' }
 ];
 
 export const AddUserModal = (props) => {

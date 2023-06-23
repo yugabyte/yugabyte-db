@@ -368,18 +368,18 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
   helper.Report();
 }
 
-TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(OnConflict)) {
+TEST_F(PgOnConflictTest, OnConflict) {
   TestOnConflict(false /* kill_master */, 120s);
 }
 
-TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(OnConflictWithKillMaster)) {
+TEST_F(PgOnConflictTest, OnConflictWithKillMaster) {
   TestOnConflict(true /* kill_master */, 180s);
 }
 
 // When auto-commit fails block state switched to TBLOCK_ABORT.
 // But correct state in this case is TBLOCK_DEFAULT.
 // https://github.com/YugaByte/yugabyte-db/commit/73e966e5735efc21bf2ad43f9d961a488afbe050
-TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {
+TEST_F(PgOnConflictTest, NoTxnOnConflict) {
   constexpr int kWriters = 5;
   constexpr int kKeys = 20;
   auto conn = ASSERT_RESULT(Connect());
@@ -411,7 +411,7 @@ TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {
   LogResult(ASSERT_RESULT(conn.Fetch("SELECT * FROM test ORDER BY k")).get());
 }
 
-TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(ValidSessionAfterTxnCommitConflict)) {
+TEST_F(PgOnConflictTest, ValidSessionAfterTxnCommitConflict) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (k int PRIMARY KEY)"));
   ASSERT_OK(conn.Execute("BEGIN"));

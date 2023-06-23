@@ -165,7 +165,7 @@ static Result<PgOid> GetTablegroupOid(PGConn* conn, const std::string& tablegrou
       Format("SELECT oid FROM pg_yb_tablegroup WHERE grpname = '$0'", tablegroup_name));
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
+TEST_F(PgLibPqTest, Simple) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
@@ -198,7 +198,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
 //
 // The described procedure is repeated multiple times to increase probability of catching bug,
 // w/o running test multiple times.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
+TEST_F(PgLibPqTest, SerializableColoring) {
   constexpr auto kKeys = RegularBuildVsSanitizers(10, 20);
   constexpr auto kColors = 2;
   constexpr auto kIterations = 20;
@@ -305,7 +305,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
   }
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadWriteConflict)) {
+TEST_F(PgLibPqTest, SerializableReadWriteConflict) {
   const auto kKeys = RegularBuildVsSanitizers(20, 5);
   const auto kNumTries = RegularBuildVsSanitizers(4, 1);
   auto tries = 1;
@@ -366,7 +366,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadWriteConflict)) {
   ASSERT_LE(tries, kNumTries);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
+TEST_F(PgLibPqTest, ReadRestart) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
 
@@ -428,7 +428,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
 }
 
 // Concurrently insert records into tables with foreign key relationship while truncating both.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertTruncateForeignKey)) {
+TEST_F(PgLibPqTest, ConcurrentInsertTruncateForeignKey) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS t2"));
@@ -472,7 +472,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertTruncateForeignKey))
 }
 
 // Concurrently insert records to table with index.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
+TEST_F(PgLibPqTest, ConcurrentIndexInsert) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute(
@@ -513,7 +513,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
 
 // Concurrently insert records followed by deletes to tables with a foreign key relationship with
 // on-delete cascade. https://github.com/yugabyte/yugabyte-db/issues/14471
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertAndDeleteOnTablesWithForeignKey)) {
+TEST_F(PgLibPqTest, ConcurrentInsertAndDeleteOnTablesWithForeignKey) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
   const auto num_iterations = 50;
@@ -760,7 +760,7 @@ class PgLibPqFailoverDuringInitDb : public LibPqTestBase {
   }
 };
 
-TEST_F(PgLibPqFailoverDuringInitDb, YB_DISABLE_TEST_IN_TSAN(CreateTable)) {
+TEST_F(PgLibPqFailoverDuringInitDb, CreateTable) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
@@ -776,22 +776,22 @@ class PgLibPqSmallClockSkewTest : public PgLibPqTest {
   }
 };
 
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot),
+TEST_F_EX(PgLibPqTest, MultiBankAccountSnapshot,
           PgLibPqSmallClockSkewTest) {
   TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
 TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshotWithColocation),
+    PgLibPqTest, MultiBankAccountSnapshotWithColocation,
     PgLibPqSmallClockSkewTest) {
   TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION, true /* colocation */);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSerializable)) {
+TEST_F(PgLibPqTest, MultiBankAccountSerializable) {
   TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSerializableWithColocation)) {
+TEST_F(PgLibPqTest, MultiBankAccountSerializableWithColocation) {
   TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION, true /* colocation */);
 }
 
@@ -850,11 +850,11 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
   }
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestParallelCounterSerializable)) {
+TEST_F(PgLibPqTest, TestParallelCounterSerializable) {
   TestParallelCounter(IsolationLevel::SERIALIZABLE_ISOLATION);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestParallelCounterRepeatableRead)) {
+TEST_F(PgLibPqTest, TestParallelCounterRepeatableRead) {
   TestParallelCounter(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
@@ -888,15 +888,15 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
   ASSERT_EQ(row_val, kThreads * kIncrements);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestConcurrentCounterSerializable)) {
+TEST_F(PgLibPqTest, TestConcurrentCounterSerializable) {
   TestConcurrentCounter(IsolationLevel::SERIALIZABLE_ISOLATION);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestConcurrentCounterRepeatableRead)) {
+TEST_F(PgLibPqTest, TestConcurrentCounterRepeatableRead) {
   TestConcurrentCounter(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
+TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
   constexpr int kThreads = 4;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -945,7 +945,7 @@ void AssertRows(PGConn *conn, int expected_num_rows) {
   ASSERT_EQ(PQntuples(res.get()), expected_num_rows);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(InTxnDelete)) {
+TEST_F(PgLibPqTest, InTxnDelete) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE test (pk int PRIMARY KEY)"));
@@ -969,7 +969,7 @@ class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
   }
 };
 
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(StaleMasterReads), PgLibPqReadFromSysCatalogTest) {
+TEST_F_EX(PgLibPqTest, StaleMasterReads, PgLibPqReadFromSysCatalogTest) {
   auto conn = ASSERT_RESULT(Connect());
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
@@ -986,7 +986,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(StaleMasterReads), PgLibPqReadFro
   }
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
+TEST_F(PgLibPqTest, CompoundKeyColumnOrder) {
   const string namespace_name = "yugabyte";
   const string table_name = "test";
   auto conn = ASSERT_RESULT(Connect());
@@ -1012,7 +1012,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
   }
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(BulkCopy)) {
+TEST_F(PgLibPqTest, BulkCopy) {
   const std::string kTableName = "customer";
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat(
@@ -1061,7 +1061,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(BulkCopy)) {
   }
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CatalogManagerMapsTest)) {
+TEST_F(PgLibPqTest, CatalogManagerMapsTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
   {
@@ -1099,7 +1099,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CatalogManagerMapsTest)) {
   ASSERT_EQ(table_info->schema.Column(0).name(), "b");
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
+TEST_F(PgLibPqTest, TestSystemTableRollback) {
   auto conn1 = ASSERT_RESULT(Connect());
   ASSERT_OK(conn1.Execute("CREATE TABLE pktable (ptest1 int PRIMARY KEY);"));
   Status s = conn1.Execute("CREATE TABLE fktable (ftest1 inet REFERENCES pktable);");
@@ -1391,7 +1391,7 @@ void PgLibPqTest::TestTableColocation(GetParentTableTabletLocation getParentTabl
       30s, "Drop colocated database"));
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
+TEST_F(PgLibPqTest, TableColocation) {
   TestTableColocation(GetColocatedDbDefaultTablegroupTabletLocations);
 }
 
@@ -1496,7 +1496,7 @@ void PgLibPqTest::TestTableColocationEnabledByDefault(
 }
 
 TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocationEnabledByDefault),
+    PgLibPqTest, TableColocationEnabledByDefault,
     PgLibPqTableColocationEnabledByDefaultTest) {
   TestTableColocationEnabledByDefault(GetColocatedDbDefaultTablegroupTabletLocations);
 }
@@ -1553,7 +1553,7 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
 
 // Test for ensuring that transaction conflicts work as expected for colocated tables.
 // Related to https://github.com/yugabyte/yugabyte-db/issues/3251.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
+TEST_F(PgLibPqTest, TxnConflictsForColocatedTables) {
   auto conn = ASSERT_RESULT(Connect());
   const string database_name = "test_db";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
@@ -1561,7 +1561,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
 }
 
 // Test for ensuring that transaction conflicts work as expected for Tablegroups.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForTablegroups)) {
+TEST_F(PgLibPqTest, TxnConflictsForTablegroups) {
   auto conn = ASSERT_RESULT(Connect());
   CreateDatabaseWithTablegroup(
       "test_db" /* database_name */, "test_tgroup" /* tablegroup_name */, &conn);
@@ -1653,7 +1653,7 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
 
 // Ensure tablet bootstrap doesn't crash when replaying change metadata operations
 // for a deleted colocated table. This is a regression test for #6096.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDB)) {
+TEST_F(PgLibPqTest, ReplayDeletedTableInColocatedDB) {
   const string database_name = "test_db";
   {
     PGConn conn = ASSERT_RESULT(Connect());
@@ -1666,7 +1666,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDB)) {
 
 // Ensure tablet bootstrap doesn't crash when replaying change metadata operations
 // for a deleted colocated table after an upgrade from older versions.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDBPostUpgrade)) {
+TEST_F(PgLibPqTest, ReplayDeletedTableInColocatedDBPostUpgrade) {
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_invalidate_last_change_metadata_op", "true"));
   const string database_name = "test_db";
   {
@@ -1680,7 +1680,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDBPostU
 
 // Ensure tablet bootstrap doesn't crash when replaying change metadata operations
 // for a deleted tabelgroup.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInTablegroups)) {
+TEST_F(PgLibPqTest, ReplayDeletedTableInTablegroups) {
   PGConn conn = ASSERT_RESULT(Connect());
   CreateDatabaseWithTablegroup(
       "test_db" /* database_name */, "test_tgroup" /* tablegroup_name */, &conn);
@@ -1802,7 +1802,7 @@ class PgLibPqTest3Masters: public PgLibPqTest {
   }
 };
 
-TEST_F(PgLibPqTest3Masters, YB_DISABLE_TEST_IN_TSAN(TabletBootstrapReplayChangeMetadataOp)) {
+TEST_F(PgLibPqTest3Masters, TabletBootstrapReplayChangeMetadataOp) {
   const std::string kDatabaseName = "testdb";
 
   // Get details about a master that is not the leader.
@@ -1853,7 +1853,7 @@ class PgLibPqTablegroupTest : public PgLibPqTest {
   }
 };
 
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCreateTables),
+TEST_F_EX(PgLibPqTest, TablegroupCreateTables,
           PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -1884,7 +1884,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCreateTables),
   cluster_->AssertNoCrashes();
 }
 
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupBasics),
+TEST_F_EX(PgLibPqTest, TablegroupBasics,
           PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -2106,7 +2106,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupBasics),
 }
 
 TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupTruncateTable),
+    PgLibPqTest, TablegroupTruncateTable,
     PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -2187,7 +2187,7 @@ TEST_F_EX(
 }
 
 TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupDDLs),
+    PgLibPqTest, TablegroupDDLs,
     PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -2255,7 +2255,7 @@ TEST_F_EX(
 }
 
 TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCreationFailure),
+    PgLibPqTest, TablegroupCreationFailure,
     PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -2298,7 +2298,7 @@ TEST_F_EX(
 }
 
 TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCreationFailureWithRestart),
+    PgLibPqTest, TablegroupCreationFailureWithRestart,
     PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -2329,7 +2329,7 @@ TEST_F_EX(
 }
 
 TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupAccessMethods),
+    PgLibPqTest, TablegroupAccessMethods,
     PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -2446,7 +2446,7 @@ class PgLibPqTestRF1: public PgLibPqTest {
 // See https://github.com/yugabyte/yugabyte-db/issues/3049
 // Test uses RF1 cluster to avoid possible relelections which affects the number of RPCs received
 // by a master.
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs), PgLibPqTestRF1) {
+TEST_F_EX(PgLibPqTest, NumberOfInitialRpcs, PgLibPqTestRF1) {
   auto get_master_inbound_rpcs_created = [this]() -> Result<int64_t> {
     int64_t m_in_created = 0;
     for (const auto* master : this->cluster_->master_daemons()) {
@@ -2530,7 +2530,7 @@ Status CheckFetch(PGConn* conn, const T& in, const std::string& type) {
 
 } // namespace
 
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Fetch), PgLibPqTestRF1) {
+TEST_F_EX(PgLibPqTest, Fetch, PgLibPqTestRF1) {
   constexpr auto kPgTypeBool = "bool";
   constexpr auto kPgTypeInt2 = "int2";
   constexpr auto kPgTypeInt4 = "int4";
@@ -2587,7 +2587,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Fetch), PgLibPqTestRF1) {
   ASSERT_OK(CheckFetch<PGUint64>(&conn, std::numeric_limits<int64_t>::max(), kPgTypeInt8));
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
+TEST_F(PgLibPqTest, RangePresplit) {
   const string kDatabaseName ="yugabyte";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
@@ -2719,7 +2719,7 @@ void PgLibPqTest::TestLoadBalanceSingleColocatedDB(
 // Test that adding a tserver and removing a tserver causes the colocation tablet of a colocation
 // database to adjust raft configuration off the old tserver and onto the new tserver.
 TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleColocatedDB),
+          LoadBalanceSingleColocatedDB,
           PgLibPqTestSmallTSTimeout) {
   TestLoadBalanceSingleColocatedDB(GetColocatedDbDefaultTablegroupTabletLocations);
 }
@@ -2727,7 +2727,7 @@ TEST_F_EX(PgLibPqTest,
 // Test that adding a tserver and removing a tserver causes the tablegroup tablet to adjust raft
 // configuration off the old tserver and onto the new tserver.
 TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleTablegroup), PgLibPqTestSmallTSTimeout) {
+    PgLibPqTest, LoadBalanceSingleTablegroup, PgLibPqTestSmallTSTimeout) {
   const std::string database_name = "test_db";
   const string tablegroup_name = "test_tgroup";
   const auto timeout = 60s;
@@ -2860,11 +2860,11 @@ void PgLibPqTest::TestLoadBalanceMultipleColocatedDB(
 
 // Test that adding a tserver causes colocation tablets of colocation databases to offload
 // tablet-peers to the new tserver.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
+TEST_F(PgLibPqTest, LoadBalanceMultipleColocatedDB) {
   TestLoadBalanceMultipleColocatedDB(GetColocatedDbDefaultTablegroupTabletLocations);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleTablegroups)) {
+TEST_F(PgLibPqTest, LoadBalanceMultipleTablegroups) {
   constexpr int num_databases = 3;
   const auto timeout = 60s;
   const std::string database_prefix = "test_db";
@@ -2973,12 +2973,12 @@ void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
 }
 
 TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(CacheRefreshRetryDisabled),
+          CacheRefreshRetryDisabled,
           PgLibPqTestNoRetry) {
   TestCacheRefreshRetry(true /* is_retry_disabled */);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRetryEnabled)) {
+TEST_F(PgLibPqTest, CacheRefreshRetryEnabled) {
   TestCacheRefreshRetry(false /* is_retry_disabled */);
 }
 
@@ -2991,7 +2991,7 @@ class PgLibPqTestEnumType: public PgLibPqTest {
 
 // Make sure that enum type backfill works.
 TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(EnumType),
+          EnumType,
           PgLibPqTestEnumType) {
   const string kDatabaseName ="yugabyte";
   const string kTableName ="enum_table";
@@ -3130,7 +3130,7 @@ class PgLibPqLargeOidTest: public PgLibPqTest {
   const Oid kOidAdjustment = 2147483648U - kPgFirstNormalObjectId; // 2^31 - 16384
 };
 TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(LargeOid),
+          LargeOid,
           PgLibPqLargeOidTest) {
   // Test large OID with enum type which had Postgres Assert failure.
   const string kDatabaseName ="yugabyte";
@@ -3234,7 +3234,7 @@ class CoordinatedRunner {
 
 } // namespace
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
+TEST_F(PgLibPqTest, PagingReadRestart) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
   ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 5000)"));
@@ -3260,7 +3260,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
   ASSERT_FALSE(runner.HasError());
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CollationRangePresplit)) {
+TEST_F(PgLibPqTest, CollationRangePresplit) {
   const string kDatabaseName ="yugabyte";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
@@ -3314,7 +3314,7 @@ class PgLibPqYSQLBackendCrash: public PgLibPqTest {
 };
 
 TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(TestLWPgBackendKillAfterLWLockAcquire),
+          TestLWPgBackendKillAfterLWLockAcquire,
           PgLibPqYSQLBackendCrash) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
@@ -3324,7 +3324,7 @@ TEST_F_EX(PgLibPqTest,
 
 #ifdef __linux__
 TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(TestOomScoreAdjPGBackend),
+          TestOomScoreAdjPGBackend,
           PgLibPqYSQLBackendCrash) {
 
   auto conn = ASSERT_RESULT(Connect());
@@ -3351,7 +3351,7 @@ class PgLibPqRefreshMatviewFailure: public PgLibPqTest {
 // Test that an orphaned table left after a failed refresh on a materialized view is cleaned up
 // by transaction GC.
 TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(TestRefreshMatviewFailure),
+          TestRefreshMatviewFailure,
           PgLibPqRefreshMatviewFailure) {
 
   const string kDatabaseName = "yugabyte";
@@ -3387,7 +3387,7 @@ TEST_F_EX(PgLibPqTest,
   }, MonoDelta::FromSeconds(40), "Verify Table was removed by Transaction GC"));
 }
 
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(YbTableProperties), PgLibPqTestRF1) {
+TEST_F_EX(PgLibPqTest, YbTableProperties, PgLibPqTestRF1) {
   const string kDatabaseName = "yugabyte";
   const string kTableName ="test";
 
@@ -3441,7 +3441,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(YbTableProperties), PgLibPqTestRF
   ASSERT_EQ(row_str, "SPLIT AT VALUES ((49))");
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(AggrSystemColumn)) {
+TEST_F(PgLibPqTest, AggrSystemColumn) {
   const string kDatabaseName = "yugabyte";
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
 
@@ -3480,7 +3480,7 @@ class PgLibPqLegecyColocatedDBTest : public PgLibPqTest {
   }
 };
 
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LegacyColocatedDBTableColocation),
+TEST_F_EX(PgLibPqTest, LegacyColocatedDBTableColocation,
           PgLibPqLegecyColocatedDBTest) {
   TestTableColocation(GetLegacyColocatedDBTabletLocations);
 }
@@ -3488,7 +3488,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LegacyColocatedDBTableColocation)
 // Test for ensuring that transaction conflicts work as expected for colocated tables in a legacy
 // colocated database.
 TEST_F_EX(PgLibPqTest,
-    YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTablesInLegacyColocatedDB),
+    TxnConflictsForColocatedTablesInLegacyColocatedDB,
     PgLibPqLegecyColocatedDBTest) {
   auto conn = ASSERT_RESULT(Connect());
   const string database_name = "test_db";
@@ -3499,7 +3499,7 @@ TEST_F_EX(PgLibPqTest,
 // Ensure tablet bootstrap doesn't crash when replaying change metadata operations
 // for a deleted colocated table in a legacy colocated database.
 TEST_F_EX(PgLibPqTest,
-    YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInLegacyColocatedDB), PgLibPqLegecyColocatedDBTest) {
+    ReplayDeletedTableInLegacyColocatedDB, PgLibPqLegecyColocatedDBTest) {
   PGConn conn = ASSERT_RESULT(Connect());
   const string database_name = "test_db";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
@@ -3522,14 +3522,14 @@ class PgLibPqLegacyColocatedDBTestSmallTSTimeout : public PgLibPqTestSmallTSTime
 
 // Test that adding a tserver and removing a tserver causes the colocation tablet of a legacy
 // database to adjust raft configuration off the old tserver and onto the new tserver.
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleLegacyColocatedDB),
+TEST_F_EX(PgLibPqTest, LoadBalanceSingleLegacyColocatedDB,
     PgLibPqLegacyColocatedDBTestSmallTSTimeout) {
   TestLoadBalanceSingleColocatedDB(GetLegacyColocatedDBTabletLocations);
 }
 
 // Test that adding a tserver causes colocation tablets of legacy colocated databases to offload
 // tablet-peers to the new tserver.
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleLegacyColocatedDB),
+TEST_F_EX(PgLibPqTest, LoadBalanceMultipleLegacyColocatedDB,
     PgLibPqLegecyColocatedDBTest) {
   TestLoadBalanceMultipleColocatedDB(GetLegacyColocatedDBTabletLocations);
 }
@@ -3543,7 +3543,7 @@ class PgLibPqLegacyColocatedDBTableColocationEnabledByDefaultTest
 };
 
 TEST_F_EX(PgLibPqTest,
-    YB_DISABLE_TEST_IN_TSAN(LegacyColocatedDBTableColocationEnabledByDefault),
+    LegacyColocatedDBTableColocationEnabledByDefault,
     PgLibPqLegacyColocatedDBTableColocationEnabledByDefaultTest) {
   TestTableColocationEnabledByDefault(GetLegacyColocatedDBTabletLocations);
 }

@@ -56,15 +56,13 @@ class ManagedIterator : public Iterator {
                   ColumnFamilyData* cfd);
   virtual ~ManagedIterator();
 
-  virtual void SeekToLast() override;
-  virtual void Prev() override;
-  virtual bool Valid() const override;
+  void SeekToLast() override;
+  void Prev() override;
+  const KeyValueEntry& Entry() const override;
   void SeekToFirst() override;
-  virtual void Seek(const Slice& target) override;
-  virtual void Next() override;
-  virtual Slice key() const override;
-  virtual Slice value() const override;
-  virtual Status status() const override;
+  void Seek(const Slice& target) override;
+  const KeyValueEntry& Next() override;
+  Status status() const override;
   void ReleaseIter(bool only_old);
   void SetDropOld(bool only_old) {
     only_drop_old_ = read_options_.tailing || only_old;
@@ -87,8 +85,8 @@ class ManagedIterator : public Iterator {
   std::unique_ptr<Iterator> mutable_iter_;
   // internal iterator status
   Status status_;
-  bool valid_;
 
+  KeyValueEntry entry_;
   IterKey cached_key_;
   IterKey cached_value_;
 

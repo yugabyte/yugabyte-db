@@ -835,15 +835,22 @@ set_test_log_url_prefix() {
 determine_test_timeout() {
   expect_num_args 0 "$@"
   expect_vars_to_be_set rel_test_binary
+  local -r build_root_basename=${BUILD_ROOT##*/}
   if [[ -n ${YB_TEST_TIMEOUT:-} ]]; then
     timeout_sec=$YB_TEST_TIMEOUT
   else
-    if [[ $rel_test_binary == "tests-pgwrapper/create_initial_sys_catalog_snapshot" || \
-          $rel_test_binary == "tests-pgwrapper/pg_libpq-test" || \
-          $rel_test_binary == "tests-pgwrapper/pg_libpq_err-test" || \
-          $rel_test_binary == "tests-pgwrapper/pg_mini-test" || \
-          $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" || \
-          $rel_test_binary == "tests-tools/yb-admin-snapshot-schedule-test" ]]; then
+    if [[ ( $rel_test_binary == "tests-pgwrapper/create_initial_sys_catalog_snapshot" || \
+            $rel_test_binary == "tests-pgwrapper/pg_libpq-test" || \
+            $rel_test_binary == "tests-pgwrapper/pg_libpq_err-test" || \
+            $rel_test_binary == "tests-pgwrapper/pg_mini-test" || \
+            $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" || \
+            $rel_test_binary == "tests-tools/yb-admin-snapshot-schedule-test" ) ||
+          ( $build_root_basename =~ ^tsan && \
+            ( $rel_test_binary == "tests-pgwrapper/geo_transactions-test" || \
+              $rel_test_binary == "tests-pgwrapper/pg_ddl_atomicity-test" || \
+              $rel_test_binary == "tests-pgwrapper/pg_mini-test" || \
+              $rel_test_binary == "tests-pgwrapper/pg_wait_on_conflict-test" || \
+              $rel_test_binary == "tests-pgwrapper/colocation-test" ) ) ]]; then
       timeout_sec=$INCREASED_TEST_TIMEOUT_SEC
     else
       timeout_sec=$DEFAULT_TEST_TIMEOUT_SEC

@@ -33,6 +33,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
@@ -83,6 +84,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForClockSync;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForFollowerLag;
@@ -3092,6 +3094,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  protected void createNodePrecheckTasks(
+      NodeDetails node, Set<ServerType> processTypes, SubTaskGroupType subGroupType) {
+
+    createCheckUnderReplicatedTabletsTask().setSubTaskGroupType(subGroupType);
+
+    // TODO: Add follower lag tablet level check.
+  }
+  /**
+   * Checks whether cluster contains any under replicated tablets before proceeding.
+   *
+   * @return the created task group.
+   */
+  protected SubTaskGroup createCheckUnderReplicatedTabletsTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUnderReplicatedTables");
+    Duration maxWaitTime =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.underReplicatedTabletsTimeout);
+    CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.maxWaitTime = maxWaitTime;
+
+    CheckUnderReplicatedTablets checkUnderReplicatedTablets =
+        createTask(CheckUnderReplicatedTablets.class);
+    checkUnderReplicatedTablets.initialize(params);
+    subTaskGroup.addSubTask(checkUnderReplicatedTablets);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /**
    * Creates a task list to add/remove nodes from load balancer.
    *
@@ -3815,6 +3845,38 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return processType == ServerType.MASTER
         ? taskParams().sleepAfterMasterRestartMillis
         : taskParams().sleepAfterTServerRestartMillis;
+  }
+
+  protected SubTaskGroup createWaitForClockSyncTasks(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      long acceptableClockSkewNs,
+      long subtaskTimeoutMs) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForClockSync");
+    for (NodeDetails node : nodes) {
+      WaitForClockSync.Params waitForClockSyncParams = new WaitForClockSync.Params();
+      waitForClockSyncParams.setUniverseUUID(universe.getUniverseUUID());
+      waitForClockSyncParams.nodeName = node.nodeName;
+      waitForClockSyncParams.acceptableClockSkewNs = acceptableClockSkewNs;
+      waitForClockSyncParams.subtaskTimeoutMs = subtaskTimeoutMs;
+
+      WaitForClockSync waitForClockSyncTask = createTask(WaitForClockSync.class);
+      waitForClockSyncTask.initialize(waitForClockSyncParams);
+      subTaskGroup.addSubTask(waitForClockSyncTask);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createWaitForClockSyncTasks(
+      Universe universe, Collection<NodeDetails> nodes) {
+    return createWaitForClockSyncTasks(
+        universe,
+        nodes,
+        this.confGetter
+            .getGlobalConf(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew)
+            .toNanos(),
+        this.confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toMillis());
   }
 
   // XCluster: All the xCluster related code resides in this section.

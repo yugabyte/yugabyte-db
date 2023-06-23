@@ -46,7 +46,6 @@ class KVIter : public Iterator {
  public:
   explicit KVIter(const stl_wrappers::KVMap* map)
       : map_(map), iter_(map_->end()) {}
-  bool Valid() const override { return iter_ != map_->end(); }
   void SeekToFirst() override { iter_ = map_->begin(); }
   void SeekToLast() override {
     if (map_->empty()) {
@@ -58,7 +57,10 @@ class KVIter : public Iterator {
   void Seek(const Slice& k) override {
     iter_ = map_->lower_bound(k.ToString());
   }
-  void Next() override { ++iter_; }
+  const KeyValueEntry& Next() override {
+    ++iter_;
+    return Entry();
+  }
   void Prev() override {
     if (iter_ == map_->begin()) {
       iter_ = map_->end();
@@ -67,13 +69,23 @@ class KVIter : public Iterator {
     --iter_;
   }
 
-  Slice key() const override { return iter_->first; }
-  Slice value() const override { return iter_->second; }
+  const KeyValueEntry& Entry() const override {
+    if (iter_ == map_->end()) {
+      return KeyValueEntry::Invalid();
+    }
+    entry_ = {
+      .key = iter_->first,
+      .value = iter_->second,
+    };
+    return entry_;
+  }
+
   Status status() const override { return Status::OK(); }
 
  private:
   const stl_wrappers::KVMap* const map_;
   stl_wrappers::KVMap::const_iterator iter_;
+  mutable KeyValueEntry entry_;
 };
 
 void AssertItersEqual(Iterator* iter1, Iterator* iter2) {

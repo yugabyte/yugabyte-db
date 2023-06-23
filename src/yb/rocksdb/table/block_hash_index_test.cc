@@ -39,8 +39,6 @@ class MapIterator : public InternalIterator {
  public:
   explicit MapIterator(const Data& data) : data_(data), pos_(data_.end()) {}
 
-  bool Valid() const override { return pos_ != data_.end(); }
-
   void SeekToFirst() override { pos_ = data_.begin(); }
 
   void SeekToLast() override {
@@ -52,19 +50,30 @@ class MapIterator : public InternalIterator {
     pos_ = data_.find(target.ToString());
   }
 
-  void Next() override { ++pos_; }
+  const KeyValueEntry& Next() override {
+    ++pos_;
+    return Entry();
+  }
 
   void Prev() override { --pos_; }
 
-  Slice key() const override { return pos_->first; }
-
-  Slice value() const override { return pos_->second; }
+  const KeyValueEntry& Entry() const override {
+    if (pos_ == data_.end()) {
+      return KeyValueEntry::Invalid();
+    }
+    entry_ = KeyValueEntry {
+      .key = pos_->first,
+      .value = pos_->second,
+    };
+    return entry_;
+  }
 
   Status status() const override { return Status::OK(); }
 
  private:
   const Data& data_;
   Data::const_iterator pos_;
+  mutable KeyValueEntry entry_;
 };
 
 class BlockTest : public RocksDBTest {};

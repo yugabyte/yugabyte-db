@@ -28,10 +28,6 @@ BoundedRocksDbIterator::BoundedRocksDbIterator(
   VLOG(3) << "key_bounds_ = " << AsString(key_bounds_);
 }
 
-bool BoundedRocksDbIterator::Valid() const {
-  return iterator_->Valid() && key_bounds_->IsWithinBounds(key());
-}
-
 void BoundedRocksDbIterator::SeekToFirst() {
   if (!key_bounds_->lower.empty()) {
     iterator_->Seek(key_bounds_->lower);
@@ -67,20 +63,20 @@ void BoundedRocksDbIterator::Seek(const Slice& target) {
   }
 }
 
-void BoundedRocksDbIterator::Next() {
-  iterator_->Next();
+const rocksdb::KeyValueEntry& BoundedRocksDbIterator::Next() {
+  return iterator_->Next();
 }
 
 void BoundedRocksDbIterator::Prev() {
   iterator_->Prev();
 }
 
-Slice BoundedRocksDbIterator::key() const {
-  return iterator_->key();
-}
-
-Slice BoundedRocksDbIterator::value() const {
-  return iterator_->value();
+const rocksdb::KeyValueEntry& BoundedRocksDbIterator::Entry() const {
+  const auto& entry = iterator_->Entry();
+  if (!entry || !key_bounds_->IsWithinBounds(entry.key)) {
+    return rocksdb::KeyValueEntry::Invalid();
+  }
+  return entry;
 }
 
 Status BoundedRocksDbIterator::status() const {

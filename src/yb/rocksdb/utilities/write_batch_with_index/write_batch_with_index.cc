@@ -41,7 +41,7 @@ namespace rocksdb {
 // * current_at_base_ <=> base_iterator < delta_iterator
 // always:
 // * equal_keys_ <=> base_iterator == delta_iterator
-class BaseDeltaIterator : public Iterator {
+class BaseDeltaIterator final : public Iterator {
  public:
   BaseDeltaIterator(Iterator* base_iterator, WBWIIterator* delta_iterator,
                     const Comparator* comparator)
@@ -55,8 +55,11 @@ class BaseDeltaIterator : public Iterator {
 
   virtual ~BaseDeltaIterator() {}
 
-  bool Valid() const override {
-    return current_at_base_ ? BaseValid() : DeltaValid();
+  const KeyValueEntry& Entry() const override {
+    if (current_at_base_) {
+      return base_iterator_->Entry();
+    }
+    return delta_iterator_->Entry();
   }
 
   void SeekToFirst() override {
@@ -80,7 +83,7 @@ class BaseDeltaIterator : public Iterator {
     UpdateCurrent();
   }
 
-  void Next() override {
+  const KeyValueEntry& Next() override {
     if (!Valid()) {
       status_ = STATUS(NotSupported, "Next() on invalid iterator");
     }
@@ -113,6 +116,7 @@ class BaseDeltaIterator : public Iterator {
       }
     }
     Advance();
+    return Entry();
   }
 
   void Prev() override {
@@ -149,16 +153,6 @@ class BaseDeltaIterator : public Iterator {
     }
 
     Advance();
-  }
-
-  Slice key() const override {
-    return current_at_base_ ? base_iterator_->key()
-                            : delta_iterator_->Entry().key;
-  }
-
-  Slice value() const override {
-    return current_at_base_ ? base_iterator_->value()
-                            : delta_iterator_->Entry().value;
   }
 
   Status status() const override {
@@ -315,12 +309,11 @@ class WBWIIteratorImpl : public WBWIIterator {
   virtual ~WBWIIteratorImpl() {}
 
   bool Valid() const override {
-    if (!skip_list_iter_.Valid()) {
+    const WriteBatchIndexEntry* iter_entry = skip_list_iter_.Entry();
+    if (!iter_entry) {
       return false;
     }
-    const WriteBatchIndexEntry* iter_entry = skip_list_iter_.key();
-    return (iter_entry != nullptr &&
-            iter_entry->column_family == column_family_id_);
+    return iter_entry->column_family == column_family_id_;
   }
 
   void SeekToFirst() override {
@@ -333,7 +326,7 @@ class WBWIIteratorImpl : public WBWIIterator {
     WriteBatchIndexEntry search_entry(WriteBatchIndexEntry::kFlagMin,
                                       column_family_id_ + 1);
     skip_list_iter_.Seek(&search_entry);
-    if (!skip_list_iter_.Valid()) {
+    if (!skip_list_iter_.Entry()) {
       skip_list_iter_.SeekToLast();
     } else {
       skip_list_iter_.Prev();
@@ -349,13 +342,15 @@ class WBWIIteratorImpl : public WBWIIterator {
 
   void Prev() override { skip_list_iter_.Prev(); }
 
-  WriteEntry Entry() const override {
-    WriteEntry ret;
-    Slice blob;
-    const WriteBatchIndexEntry* iter_entry = skip_list_iter_.key();
+  const WriteEntry& Entry() const override {
+    const WriteBatchIndexEntry* iter_entry = skip_list_iter_.Entry();
     // this is guaranteed with Valid()
-    assert(iter_entry != nullptr &&
-           iter_entry->column_family == column_family_id_);
+    auto& ret = write_entry_;
+    if (iter_entry == nullptr || iter_entry->column_family != column_family_id_) {
+      ret.Reset();
+      return ret;
+    }
+    Slice blob;
     auto s = write_batch_->GetEntryFromDataOffset(iter_entry->offset, &ret.type,
                                                   &ret.key, &ret.value, &blob);
     assert(s.ok());
@@ -371,13 +366,14 @@ class WBWIIteratorImpl : public WBWIIterator {
   }
 
   const WriteBatchIndexEntry* GetRawEntry() const {
-    return skip_list_iter_.key();
+    return skip_list_iter_.Entry();
   }
 
  private:
   uint32_t column_family_id_;
   WriteBatchEntrySkipList::Iterator skip_list_iter_;
   const ReadableWriteBatch* write_batch_;
+  mutable WriteEntry write_entry_;
 };
 
 struct WriteBatchWithIndex::Rep {

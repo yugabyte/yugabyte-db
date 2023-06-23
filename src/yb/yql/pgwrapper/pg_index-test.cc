@@ -23,8 +23,8 @@
 
 #include "yb/util/async_util.h"
 
-#include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 using std::string;
 
@@ -36,14 +36,13 @@ namespace {
 constexpr auto kDatabaseName = "yugabyte";
 constexpr auto kIndexName = "ginidx";
 constexpr auto kTableName = "gintab";
-const client::YBTableName kYBTableName(YQLDatabase::YQL_DATABASE_PGSQL, kDatabaseName, kTableName);
 
 } // namespace
 
-class PgGinIndexTest : public LibPqTestBase {
+class PgIndexTest : public PgMiniTestBase {
  public:
   void SetUp() override {
-    LibPqTestBase::SetUp();
+    PgMiniTestBase::SetUp();
 
     conn_ = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
   }
@@ -53,7 +52,7 @@ class PgGinIndexTest : public LibPqTestBase {
 };
 
 // Test creating a ybgin index on an array whose element type is unsupported for primary key.
-TEST_F(PgGinIndexTest, YB_DISABLE_TEST_IN_TSAN(UnsupportedArrayElementType)) {
+TEST_F(PgIndexTest, UnsupportedArrayElementType) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a tsvector[])", kTableName));
   auto status = conn_->ExecuteFormat("CREATE INDEX $0 ON $1 USING ybgin (a)",
                                      kIndexName, kTableName);
@@ -79,7 +78,7 @@ TEST_F(PgGinIndexTest, YB_DISABLE_TEST_IN_TSAN(UnsupportedArrayElementType)) {
 }
 
 // Test SPLIT option.
-TEST_F(PgGinIndexTest, YB_DISABLE_TEST_IN_TSAN(SplitOption)) {
+TEST_F(PgIndexTest, SplitOption) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (v tsvector)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ('ab bc'), ('cd ef gh')", kTableName));
 
@@ -129,6 +128,16 @@ TEST_F(PgGinIndexTest, YB_DISABLE_TEST_IN_TSAN(SplitOption)) {
   }
 
   // Hash partitioning is currently not possible, so we can't test hash splitting.
+}
+
+TEST_F(PgIndexTest, NullKey) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE usc_asc(k int, v int)"));
+  ASSERT_OK(conn_->Execute("CREATE UNIQUE INDEX ON usc_asc(v ASC NULLS FIRST)"));
+  ASSERT_OK(conn_->Execute(
+      "INSERT INTO usc_asc VALUES (44, NULL),(22, 20),(33, 30),(11, 10),(44, NULL)"));
+  auto all = ASSERT_RESULT(conn_->FetchAllAsString(
+      "SELECT * FROM usc_asc ORDER BY v DESC NULLS LAST"));
+  ASSERT_EQ(all, "33, 30; 22, 20; 11, 10; 44, NULL; 44, NULL");
 }
 
 } // namespace pgwrapper

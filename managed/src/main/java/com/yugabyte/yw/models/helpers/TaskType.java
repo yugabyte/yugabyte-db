@@ -237,6 +237,9 @@ public enum TaskType {
 
   ModifyBlackList(com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList.class),
 
+  CheckUnderReplicatedTablets(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets.class),
+
   ManipulateDnsRecordTask(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask.class),
 
@@ -290,6 +293,8 @@ public enum TaskType {
   InstanceActions(com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions.class),
 
   WaitForServerReady(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady.class),
+
+  WaitForClockSync(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForClockSync.class),
 
   RunExternalScript(com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript.class),
 

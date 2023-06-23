@@ -52,7 +52,7 @@ YB_DEFINE_ENUM(SeekIntentIterNeeded, (kNoNeed)(kSeek)(kSeekForward));
 //
 // KeyBytes/Slice passed to Seek* methods should not contain hybrid time.
 // HybridTime of subdoc_key in Seek* methods would be ignored.
-class IntentAwareIterator : public IntentAwareIteratorIf {
+class IntentAwareIterator final : public IntentAwareIteratorIf {
  public:
   IntentAwareIterator(
       const DocDB& doc_db,

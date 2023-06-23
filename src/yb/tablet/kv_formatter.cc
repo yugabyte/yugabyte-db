@@ -37,7 +37,8 @@ Status KVFormatter::ProcessArgument(const std::string& argument) {
     RETURN_NOT_OK(RaftGroupMetadata::ReadSuperBlockFromDisk(
         Env::Default(), path, &superblock));
     auto& table_info = superblock.kv_store().tables(0);
-    docdb::DocReadContext doc_read_context("sst_dump: ", table_info.table_type());
+    docdb::DocReadContext doc_read_context(
+        "sst_dump: ", table_info.table_type(), docdb::Index::kFalse);
     RETURN_NOT_OK(doc_read_context.LoadFromPB(table_info));
     schema_packing_storage_ = doc_read_context.schema_packing_storage;
     return Status::OK();

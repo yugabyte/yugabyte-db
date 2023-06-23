@@ -74,20 +74,17 @@ namespace {
 class EmptyIterator : public Iterator {
  public:
   explicit EmptyIterator(const Status& s) : status_(s) { }
-  bool Valid() const override { return false; }
+  const KeyValueEntry& Entry() const override { return KeyValueEntry::Invalid(); }
   void Seek(const Slice& target) override {}
   void SeekToFirst() override {}
   void SeekToLast() override {}
-  void Next() override { assert(false); }
+
+  const KeyValueEntry& Next() override {
+    assert(false);
+    return KeyValueEntry::Invalid();
+  }
+
   void Prev() override { assert(false); }
-  Slice key() const override {
-    assert(false);
-    return Slice();
-  }
-  Slice value() const override {
-    assert(false);
-    return Slice();
-  }
   Status status() const override { return status_; }
 
  private:
@@ -97,20 +94,15 @@ class EmptyIterator : public Iterator {
 class EmptyInternalIterator : public InternalIterator {
  public:
   explicit EmptyInternalIterator(const Status& s) : status_(s) {}
-  bool Valid() const override { return false; }
+  const KeyValueEntry& Entry() const override { return KeyValueEntry::Invalid(); }
   void Seek(const Slice& target) override {}
   void SeekToFirst() override {}
   void SeekToLast() override {}
-  void Next() override { assert(false); }
+  const KeyValueEntry& Next() override {
+    assert(false);
+    return KeyValueEntry::Invalid();
+  }
   void Prev() override { assert(false); }
-  Slice key() const override {
-    assert(false);
-    return Slice();
-  }
-  Slice value() const override {
-    assert(false);
-    return Slice();
-  }
   Status status() const override { return status_; }
 
  private:

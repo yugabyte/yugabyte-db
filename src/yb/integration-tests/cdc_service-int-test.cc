@@ -89,6 +89,7 @@ DECLARE_double(cdc_get_changes_free_rpc_ratio);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_uint64(transaction_manager_workers_limit);
 DECLARE_bool(cdc_populate_end_markers_transactions);
+DECLARE_string(vmodule);
 
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
@@ -119,6 +120,7 @@ CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
 class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
   void SetUp() override {
+    CHECK_OK(SET_FLAG(vmodule, "cdc*=4"));
     YBMiniClusterTestBase::SetUp();
 
     MiniClusterOptions opts;

@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-Adding and modifying configuration flags for your YB-Master and YB-TServer nodes in a YugabyteDB universe allows you to resolve issues, improve performance, and customize functionality.
+Adding and modifying configuration flags for your YB-Master and YB-TServer nodes in a YugabyteDB universe allows you to resolve issues, improve performance, and customize functionality. If your universe includes a read replica cluster, you can also add or modify configuration flags for the YB-TServer nodes in the read replica cluster.
 
 For more information about the available configuration flags, see the following:
 
@@ -26,6 +26,8 @@ For more information about the available configuration flags, see the following:
 You can add and edit configuration flags by opening the universe in the YugabyteDB Anywhere UI and clicking **Actions > Edit Flags** to open the **G-Flags** dialog shown in the following illustration:
 
 ![Modify configuration flags](/images/ee/edit-config-2.png)
+
+To customize flags of the read replica of a universe that has a read replica cluster, deselect the **Apply the same Flags to primary cluster and Read Replica** option. (This option is only available for universes with a read replica.) This displays the **Read Replica** tab. [Add](#add-flags) and [modify](#edit-flags) flags as you would for the primary cluster. Note that read replicas only have YB-TServers.
 
 Depending on the flag, the universe may need to be restarted to apply the changes. You can apply changes as follows:
 

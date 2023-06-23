@@ -2449,10 +2449,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
 }
 
-
 TEST_P(XClusterTest, ApplyOperationsRandomFailures) {
-  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
-
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   // Use unequal table count so we have M:N mapping and output to multiple tablets.
   auto tables = ASSERT_RESULT(SetUpWithParams({3}, {5}, replication_factor));
@@ -2473,6 +2470,8 @@ TEST_P(XClusterTest, ApplyOperationsRandomFailures) {
   // After creating the cluster, make sure all producer tablets are being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 5));
   ASSERT_OK(CorrectlyPollingAllTablets(producer_cluster(), 3));
+
+  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
 
   // Write 1000 entries to each cluster.
   std::thread t1([&]() { WriteWorkload(0, 1000, producer_client(), tables[0]->name()); });
@@ -3348,25 +3347,25 @@ TEST_P(XClusterTestWaitForReplicationDrain, TestProducerChange) {
   ASSERT_OK(drain_api_future.get());
 }
 
-TEST_P(XClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPrematureLogGC)) {
+TEST_P(XClusterTest, TestPrematureLogGC) {
   // Allow WAL segments to be garbage collected regardless of their lifetime.
-  FLAGS_TEST_disable_wal_retention_time = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
 
   // Set a small WAL segment to ensure that we create many segments in this test.
-  FLAGS_log_segment_size_bytes = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 500;
 
   // Allow the maximum number of WAL segments to be considered for garbage collection.
-  FLAGS_log_min_segments_to_retain = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
 
   // Don't cache any of the WAL segments.
-  FLAGS_log_cache_size_limit_mb = 0;
-  FLAGS_global_log_cache_size_limit_mb = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_cache_size_limit_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_log_cache_size_limit_mb) = 0;
 
   // Increase the frequency of the metrics heartbeat.
-  FLAGS_tserver_heartbeat_metrics_interval_ms = 250;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 250;
 
   // Disable the disk space GC policy.
-  FLAGS_log_stop_retaining_min_disk_mb = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_stop_retaining_min_disk_mb) = 0;
 
   constexpr int kNTabletsPerTable = 1;
   constexpr int kReplicationFactor = 1;
@@ -3390,14 +3389,15 @@ TEST_P(XClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPrematureLogGC)) {
 
   // Disable polling on the consumer so that we can forcefully GC the wal segments without racing
   // against the replication poll.
-  FLAGS_TEST_cdc_skip_replication_poll = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_replication_poll) = true;
 
   // Sleep long enough to ensure the last consumer poll completes.
   SleepFor(MonoDelta::FromSeconds(5));
 
   // Set a large minimum disk space policy so that all WAL segments will be garbage collected for
   // violating the disk space policy.
-  FLAGS_log_stop_retaining_min_disk_mb = std::numeric_limits<int64_t>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_stop_retaining_min_disk_mb) =
+    std::numeric_limits<int64_t>::max();
 
   // Write another batch of records.
   WriteWorkload(kNumWriteRecords, 2 * kNumWriteRecords, producer_client(), producer_table->name());
@@ -3413,7 +3413,7 @@ TEST_P(XClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPrematureLogGC)) {
   ASSERT_OK(producer_cluster()->CleanTabletLogs());
 
   // Re-enable the replication poll and wait long enough for multiple cycles to run.
-  FLAGS_TEST_cdc_skip_replication_poll = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_replication_poll) = false;
   SleepFor(MonoDelta::FromSeconds(3));
 
   // Verify that at least one of the recently written records failed to replicate.

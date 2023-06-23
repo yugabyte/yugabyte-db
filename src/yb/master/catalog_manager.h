@@ -116,9 +116,9 @@ class AtomicGauge;
       if (!__result.ok()) { return SetupError((resp)->mutable_error(), __result.status()); });
 
 namespace pgwrapper {
-class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted));
-class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet));
-class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables));
+class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, DropDBMarkDeleted);
+class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, DropDBUpdateSysTablet);
+class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, DropDBWithTables);
 }
 
 class CALL_GTEST_TEST_CLASS_NAME_(MasterPartitionedTest, VerifyOldLeaderStepsDown);
@@ -130,6 +130,10 @@ struct TableInfo;
 enum RaftGroupStatePB;
 
 }
+
+namespace cdc {
+class CDCStateTable;
+}  // namespace cdc
 
 namespace master {
 
@@ -227,6 +231,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateTable(const CreateTableRequestPB* req,
                      CreateTableResponsePB* resp,
                      rpc::RpcContext* rpc) override;
+
+  Status CreateTableIfNotFound(
+      const std::string& namespace_name, const std::string& table_name,
+      std::function<Result<CreateTableRequestPB>()> generate_request, CreateTableResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   // Create a new transaction status table.
   Status CreateTransactionStatusTable(const CreateTransactionStatusTableRequestPB* req,
@@ -1314,13 +1323,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void GetValidTabletsAndDroppedTablesForStream(
       const scoped_refptr<CDCStreamInfo> stream, std::set<TabletId>* tablets_with_streams,
       std::set<TableId>* dropped_tables);
-
-  Result<std::shared_ptr<client::TableHandle>> GetCDCStateTable();
-
-  Status DeleteFromCDCStateTable(
-      std::shared_ptr<yb::client::TableHandle> cdc_state_table_result,
-      std::shared_ptr<client::YBSession> session, const TabletId& tablet_id,
-      const CDCStreamId& stream_id);
 
   // Remove deleted xcluster stream IDs from producer stream Id map.
   Status RemoveStreamFromXClusterProducerConfig(const std::vector<CDCStreamInfo*>& streams);
@@ -2480,14 +2482,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   static void SetTabletSnapshotsState(
       SysSnapshotEntryPB::State state, SysSnapshotEntryPB* snapshot_pb);
 
-  // Create the cdc_state table if needed (i.e. if it does not exist already).
-  //
-  // This is called at the end of CreateCDCStream.
-  Status CreateCdcStateTableIfNeeded(rpc::RpcContext* rpc);
-
-  // Check if cdc_state table creation is done.
-  Status IsCdcStateTableCreated(IsCreateTableDoneResponsePB* resp);
-
   // Return all CDC streams.
   void GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
@@ -2642,7 +2636,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       bool* const bootstrap_required);
 
   // Get the set of CDC streams for a given table, or an empty set if this is not a producer.
-  std::unordered_set<CDCStreamId> GetCdcStreamsForProducerTable(const TableId& table_id) const;
+  std::unordered_set<CDCStreamId> GetXClusterStreamsForProducerTable(const TableId& table_id) const;
 
   std::unordered_set<CDCStreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const;
 
@@ -2690,7 +2684,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void ProcessCDCParentTabletDeletionPeriodically();
 
-  Status DoProcessCDCClusterTabletDeletion(const cdc::CDCRequestSource request_source);
+  Status DoProcessXClusterTabletDeletion();
+  Status DoProcessCDCSDKTabletDeletion();
 
   void LoadCDCRetainedTabletsSet() REQUIRES(mutex_);
 
@@ -2938,6 +2933,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   mutable MutexType heartbeat_pg_catalog_versions_cache_mutex_;
   std::optional<DbOidToCatalogVersionMap> heartbeat_pg_catalog_versions_cache_
     GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_);
+
+  std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

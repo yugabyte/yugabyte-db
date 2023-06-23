@@ -65,8 +65,12 @@ void YBSession::RestartNonTxnReadPoint(const Restart restart) {
   }
 }
 
-void YBSession::SetReadPoint(const ReadHybridTime& read_time) {
-  read_point()->SetReadTime(read_time, {} /* local_limits */);
+void YBSession::SetReadPoint(const ReadHybridTime& read_time, const TabletId& tablet_id) {
+  ConsistentReadPoint::HybridTimeMap local_limits;
+  if (!tablet_id.empty()) {
+    local_limits.emplace(tablet_id, read_time.local_limit);
+  }
+  read_point()->SetReadTime(read_time, std::move(local_limits));
 }
 
 bool YBSession::IsRestartRequired() {
@@ -364,7 +368,12 @@ Status YBSession::ApplyAndFlushSync(const std::vector<YBOperationPtr>& ops) {
 
   auto future_status = future.wait_until(deadline);
   SCHECK(future_status == std::future_status::ready, TimedOut, "Timed out waiting for Flush");
-  return future.get().status;
+  auto flush_status = future.get();
+  for (auto& error : flush_status.errors) {
+    VLOG(2) << "Flush of operation " << error->failed_op().ToString()
+            << " failed: " << error->status();
+  }
+  return flush_status.status;
 }
 
 Status YBSession::ApplyAndFlushSync(YBOperationPtr ops) {

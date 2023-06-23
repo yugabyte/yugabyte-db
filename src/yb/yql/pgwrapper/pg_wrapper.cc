@@ -988,6 +988,7 @@ Status PgSupervisor::ReloadConfig() {
   return Status::OK();
 }
 
+
 Status PgSupervisor::UpdateAndReloadConfig() {
   // See GHI #16055. TSAN detects that Start() and UpdateAndReloadConfig each acquire M0 and M1 in
   // inverse order which may run into a deadlock. However, Start() is always called first and will
