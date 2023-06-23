@@ -75,6 +75,47 @@ Use the following procedure to upgrade a YB-TServer:
 
 1. Pause for approximately 60 seconds before upgrading the next YB-TServer.
 
+## Promote AutoFlags
+A lot of new Yugabyte features require changes to the format of data that is sent over the wire or stored on disk. During the upgrade process, these features have to be turned off to prevent sending the new data formats to nodes that are still running the older version. Once all Yugabyte processes have been upgraded to the new version, these features can be safely enabled.
+
+[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) help facilitate this transition without requiring you to worry about identifying these features, finding their corresponding flags, or determining the values to set them to. All new AutoFlags can be easily promoted to their desired target value using a simple command.
+
+Use the [yb-admin](../../admin/yb-admin/) utility to promote the new AutoFlags, as follows:
+
+```sh
+./bin/yb-admin \
+    -master_addresses <master-addresses> \
+    promote_auto_flags
+```
+
+The promotion of AutoFlags is an online operation that does not require stopping a running cluster or any process restarts. It is also an idempotent process, meaning it can be run multiple times without any side effects.
+
+Please note that it may take up to twice the value of `FLAGS_heartbeat_interval_ms` in milliseconds for the new AutoFlags to be fully propagated to all processes in the cluster.
+
+{{< note title="Note" >}}
+Make sure all Yugaybte processes in the cluster have been upgraded to the new version before promoting AutoFlags. If any process running an older version tries to connect to the cluster after the AutoFlags have been promoted, that process may fail to do so.
+{{< /note >}}
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    promote_auto_flags
+```
+
+If the operation is successful you will receive a output similar to the following:
+
+```output
+PromoteAutoFlags status: 
+New AutoFlags were promoted. Config version: 2
+``````
+OR
+```output
+PromoteAutoFlags status: 
+No new AutoFlags to promote
+``````
+
 ## Upgrade the YSQL system catalog
 
 Similarly to PostgreSQL, YugabyteDB stores YSQL system metadata, referred to as the YSQL system catalog, in special tables. The metadata includes information about tables, columns, functions, users, and so on. The tables are stored separately, one for each database in the cluster.
@@ -90,7 +131,9 @@ YSQL system catalog upgrades apply to clusters with YugabyteDB version 2.8 or la
 After completing the YugabyteDB upgrade process, use the [yb-admin](../../admin/yb-admin/) utility to upgrade the YSQL system catalog, as follows:
 
 ```sh
-./bin/yb-admin upgrade_ysql
+./bin/yb-admin \
+    -master_addresses <master-addresses> \
+    upgrade_ysql
 ```
 
 Expect to see the following output:
@@ -102,7 +145,10 @@ YSQL successfully upgraded to the latest version
 In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. If this happens, run the following command with a greater timeout value:
 
 ```sh
-./bin/yb-admin -timeout_ms 180000 upgrade_ysql
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    -timeout_ms 180000 \
+    upgrade_ysql
 ```
 
 Upgrading the YSQL system catalog is an online operation and does not require stopping a running cluster. `upgrade_ysql` is idempotent and can be run multiple times without any side effects.

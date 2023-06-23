@@ -59,7 +59,7 @@ To display the online help, run `yb-admin --help` from the YugabyteDB home direc
 * [xCluster replication](#xcluster-replication-commands)
 * [Decommissioning](#decommissioning-commands)
 * [Rebalancing](#rebalancing-commands)
-* [Upgrade YSQL system catalog](#upgrade-ysql-system-catalog)
+* [Upgrade](#upgrade)
 
 ---
 
@@ -2257,7 +2257,48 @@ yb-admin \
 
 ---
 
-### Upgrade YSQL system catalog
+
+### Upgrade
+
+Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a Yugabyte universe.
+
+#### promote_auto_flags
+
+[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) protect new features that modify the format of data sent over the wire or stored on-disk. Once all Yugabyte processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    promote_auto_flags \
+    [<max_flags_class> [<promote_non_runtime_flags> [force]]]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *max_flags_class*: The maximum AutoFlag class to promote. Allowed values are `kLocalVolatile`, `kLocalPersisted`, `kExternal`, `kNewInstallsOnly`. Default value is `kExternal`.
+* *promote_non_runtime_flags*: Weather to promote non-runtime flags. Allowed values are `true` and `false`. Default value is `true`.
+* *force*: Forces the generation of a new AutoFlag config and sends it to all Yugabyte processes even if there is no new AutoFlags to promote.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    promote_auto_flags kLocalPersisted
+```
+
+If the operation is successful you will receive a output similar to the following:
+
+```output
+PromoteAutoFlags status: 
+New AutoFlags were promoted. Config version: 2
+```
+OR
+```output
+PromoteAutoFlags status: 
+No new AutoFlags to promote
+```
 
 #### upgrade_ysql
 
@@ -2295,5 +2336,3 @@ Running the above command is an online operation and doesn't require stopping a 
 {{< note title="Note" >}}
 Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
 {{< /note >}}
-
-Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about YB-Master and YB-Tserver upgrades, followed by YSQL system catalog upgrades.
