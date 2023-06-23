@@ -825,9 +825,9 @@ namespace cdc {
   void CDCSDKYsqlTest::PrepareChangeRequest(
       GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const int tablet_idx, int64 index, int64 term, std::string key,
-      int32_t write_id, int64 snapshot_time, const TableId table_id,
-      int64 safe_hybrid_time) {
+      const int tablet_idx, int64 index, int64 term, std::string key, int32_t write_id,
+      int64 snapshot_time, const TableId table_id, int64 safe_hybrid_time,
+      int32_t wal_segment_index) {
     change_req->set_stream_id(stream_id);
     change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_index(index);
@@ -835,6 +835,7 @@ namespace cdc {
     change_req->mutable_from_cdc_sdk_checkpoint()->set_key(key);
     change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(write_id);
     change_req->mutable_from_cdc_sdk_checkpoint()->set_snapshot_time(snapshot_time);
+    change_req->set_wal_segment_index(wal_segment_index);
     if (!table_id.empty()) {
       change_req->set_table_id(table_id);
     }
@@ -858,7 +859,7 @@ namespace cdc {
       GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const CDCSDKCheckpointPB& cp, const int tablet_idx, const TableId table_id,
-      int64 safe_hybrid_time) {
+      int64 safe_hybrid_time, int32_t wal_segment_index) {
     change_req->set_stream_id(stream_id);
     change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_term(cp.term());
@@ -869,6 +870,7 @@ namespace cdc {
       change_req->set_table_id(table_id);
     }
     change_req->set_safe_hybrid_time(safe_hybrid_time);
+    change_req->set_wal_segment_index(wal_segment_index);
   }
 
   void CDCSDKYsqlTest::PrepareChangeRequest(
@@ -1301,15 +1303,19 @@ namespace cdc {
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const CDCSDKCheckpointPB* cp,
       int tablet_idx,
-      int64 safe_hybrid_time) {
+      int64 safe_hybrid_time,
+      int wal_segment_index) {
     GetChangesRequestPB change_req;
     GetChangesResponsePB change_resp;
 
     if (cp == nullptr) {
       PrepareChangeRequest(
-          &change_req, stream_id, tablets, tablet_idx, 0, 0, "", 0, 0, "", safe_hybrid_time);
+          &change_req, stream_id, tablets, tablet_idx, 0, 0, "", 0, 0, "", safe_hybrid_time,
+          wal_segment_index);
     } else {
-      PrepareChangeRequest(&change_req, stream_id, tablets, *cp, tablet_idx, "", safe_hybrid_time);
+      PrepareChangeRequest(
+          &change_req, stream_id, tablets, *cp, tablet_idx, "", safe_hybrid_time,
+          wal_segment_index);
     }
 
     // Retry only on LeaderNotReadyToServe or NotFound errors
@@ -2869,37 +2875,71 @@ namespace cdc {
     return expected_row;
   }
 
-  void CDCSDKYsqlTest::UpdateRecordCount(
-      google::protobuf::RepeatedPtrField<CDCSDKProtoRecordPB> records, int* record_count) {
+  void CDCSDKYsqlTest::UpdateRecordCount(const CDCSDKProtoRecordPB& record, int* record_count) {
+    switch (record.row_message().op()) {
+      case RowMessage::DDL: {
+        record_count[0]++;
+      } break;
+      case RowMessage::INSERT: {
+        record_count[1]++;
+      } break;
+      case RowMessage::UPDATE: {
+        record_count[2]++;
+      } break;
+      case RowMessage::DELETE: {
+        record_count[3]++;
+      } break;
+      case RowMessage::READ: {
+        record_count[4]++;
+      } break;
+      case RowMessage::TRUNCATE: {
+        record_count[5]++;
+      } break;
+      case RowMessage::BEGIN:
+        record_count[6]++;
+        break;
+      case RowMessage::COMMIT:
+        record_count[7]++;
+        break;
+      default:
+        ASSERT_FALSE(true);
+        break;
+    }
+  }
+
+  void CDCSDKYsqlTest::CheckRecordsConsistency(const std::vector<CDCSDKProtoRecordPB>& records) {
+    uint64_t prev_commit_time = 0;
+    uint64_t prev_record_time = 0;
+    bool in_transaction = false;
+    bool first_record_in_transaction = false;
     for (auto& record : records) {
-      switch (record.row_message().op()) {
-        case RowMessage::DDL: {
-          record_count[0]++;
-        } break;
-        case RowMessage::INSERT: {
-          record_count[1]++;
-        } break;
-        case RowMessage::UPDATE: {
-          record_count[2]++;
-        } break;
-        case RowMessage::DELETE: {
-          record_count[3]++;
-        } break;
-        case RowMessage::READ: {
-          record_count[4]++;
-        } break;
-        case RowMessage::TRUNCATE: {
-          record_count[5]++;
-        } break;
-        case RowMessage::BEGIN:
-          record_count[6]++;
-          break;
-        case RowMessage::COMMIT:
-          record_count[7]++;
-          break;
-        default:
-          ASSERT_FALSE(true);
-          break;
+      if (record.row_message().op() == RowMessage::BEGIN) {
+        in_transaction = true;
+        first_record_in_transaction = true;
+        ASSERT_TRUE(record.row_message().commit_time() >= prev_commit_time);
+        prev_commit_time = record.row_message().commit_time();
+      }
+
+      if (record.row_message().op() == RowMessage::COMMIT) {
+        in_transaction = false;
+        ASSERT_TRUE(record.row_message().commit_time() >= prev_commit_time);
+        prev_commit_time = record.row_message().commit_time();
+      }
+
+      if (record.row_message().op() == RowMessage::INSERT ||
+          record.row_message().op() == RowMessage::UPDATE ||
+          record.row_message().op() == RowMessage::DELETE) {
+        ASSERT_TRUE(record.row_message().commit_time() >= prev_commit_time);
+        prev_commit_time = record.row_message().commit_time();
+
+        if (in_transaction) {
+          if (!first_record_in_transaction) {
+            ASSERT_TRUE(record.row_message().record_time() >= prev_record_time);
+          }
+
+          first_record_in_transaction = false;
+          prev_record_time = record.row_message().record_time();
+        }
       }
     }
   }
@@ -2915,7 +2955,9 @@ namespace cdc {
       CDCSDKCheckpointPB checkpoint = tablets[i].second;
 
       auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablet_id, &checkpoint));
-      UpdateRecordCount(change_resp.cdc_sdk_proto_records(), record_count);
+      for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+        UpdateRecordCount(record, record_count);
+      }
       (*total_records) += change_resp.cdc_sdk_proto_records_size();
 
       auto change_result_2 =
@@ -2936,6 +2978,58 @@ namespace cdc {
         }
       }
     }
+  }
+
+  void CDCSDKYsqlTest::PerformSingleAndMultiShardInserts(
+      const int& num_batches, const int& inserts_per_batch, int apply_update_latency,
+      const int& start_index) {
+    for (int i = 0; i < num_batches; i++) {
+      int multi_shard_inserts = inserts_per_batch / 2;
+      int curr_start_id = start_index + i * inserts_per_batch;
+
+      FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms = apply_update_latency;
+      ASSERT_OK(WriteRowsHelper(
+          curr_start_id, curr_start_id + multi_shard_inserts, &test_cluster_, true));
+
+      FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms = 0;
+      ASSERT_OK(WriteRows(
+          curr_start_id + multi_shard_inserts, curr_start_id + inserts_per_batch, &test_cluster_));
+    }
+  }
+
+  void CDCSDKYsqlTest::PerformSingleAndMultiShardQueries(
+      const int& num_batches, const int& queries_per_batch, const string& query,
+      int apply_update_latency, const int& start_index) {
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+    for (int i = 0; i < num_batches; i++) {
+      int multi_shard_queries = queries_per_batch / 2;
+      int curr_start_id = start_index + i * queries_per_batch;
+
+      FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms = apply_update_latency;
+      ASSERT_OK(conn.Execute("BEGIN"));
+      for (int i = 0; i < multi_shard_queries; i++) {
+        ASSERT_OK(conn.ExecuteFormat(query, curr_start_id + i + 1));
+      }
+      ASSERT_OK(conn.Execute("COMMIT"));
+
+      FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms = 0;
+      for (int i = 0; i < (queries_per_batch - multi_shard_queries); i++) {
+        ASSERT_OK(conn.ExecuteFormat(query, curr_start_id + multi_shard_queries + i + 1));
+      }
+    }
+  }
+
+  OpId CDCSDKYsqlTest::GetHistoricalMaxOpId(
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const int& tablet_idx) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        if (peer->tablet_id() == tablets[tablet_idx].tablet_id()) {
+          return peer->tablet()->transaction_participant()->GetHistoricalMaxOpId();
+        }
+      }
+    }
+    return OpId::Invalid();
   }
 
   TableId CDCSDKYsqlTest::GetColocatedTableId(const std::string& req_table_name) {
