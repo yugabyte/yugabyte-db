@@ -30,6 +30,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
@@ -614,6 +615,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
             // Add stopped master to the quorum.
             createChangeConfigTask(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
           }
+          // If there are no universe keys on the universe, it will have no effect.
+          if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+            createSetActiveUniverseKeysTask()
+                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          }
         }
 
         // Start the tserver process on this node.
@@ -677,6 +683,12 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       createWaitForServersTasks(nodeList, processType).setSubTaskGroupType(subGroupType);
       createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
           .setSubTaskGroupType(subGroupType);
+
+      // If there are no universe keys on the universe, it will have no effect.
+      if (processType == ServerType.MASTER
+          && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+        createSetActiveUniverseKeysTask().setSubTaskGroupType(subGroupType);
+      }
       createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
 
       // Update node state to Live
@@ -808,6 +820,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               createWaitForServersTasks(new HashSet<NodeDetails>(nodeList), processType);
               createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
                   .setSubTaskGroupType(subGroupType);
+              // If there are no universe keys on the universe, it will have no effect.
+              if (processType == ServerType.MASTER
+                  && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+                createSetActiveUniverseKeysTask().setSubTaskGroupType(subGroupType);
+              }
             });
         createWaitForKeyInMemoryTask(node);
 
@@ -872,6 +889,12 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         if (isActiveProcess) {
           createWaitForServersTasks(nodes, processType)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          // If there are no universe keys on the universe, it will have no effect.
+          if (processType == ServerType.MASTER
+              && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+            createSetActiveUniverseKeysTask()
+                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          }
         }
         break;
       case NON_RESTART_UPGRADE:
@@ -932,6 +955,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(subGroupType);
       createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
           .setSubTaskGroupType(subGroupType);
+      if (processType == ServerType.MASTER
+          && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+        // If there are no universe keys on the universe, it will have no effect.
+        createSetActiveUniverseKeysTask().setSubTaskGroupType(subGroupType);
+      }
       createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
     }
     createSetNodeStateTask(node, NodeDetails.NodeState.Live).setSubTaskGroupType(subGroupType);
