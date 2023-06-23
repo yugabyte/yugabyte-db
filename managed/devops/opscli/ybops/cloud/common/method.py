@@ -1788,7 +1788,10 @@ class RebootInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Could not find host {} to reboot".format(
                 args.search_pattern))
-        if not host_info.get('is_running'):
+        # If key exists in dictionary, it means not an on-prem reboot.
+        # If key doesn't exist in dict, manually provisioned on-prem reboots are
+        # disallowed at the API layer.
+        if 'is_running' in host_info.keys() and not host_info.get('is_running'):
             raise YBOpsRuntimeError("Host must be running to be rebooted, currently in '{}' state"
                                     .format(host_info.get('instance_state')))
         logging.info("Rebooting instance {}".format(args.search_pattern))
