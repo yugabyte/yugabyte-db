@@ -274,7 +274,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         {isAlertsEnabled && (
           <NavLinkWithDisable
             disabled={isDisabled}
-            to={`/alerts`}
+            to={`/alerts/tabNotifications`}
             isActive={(_, location) => /^\/alerts/.test(location.pathname)}
             className={classes.link}
             activeClassName={classes.linkActive}

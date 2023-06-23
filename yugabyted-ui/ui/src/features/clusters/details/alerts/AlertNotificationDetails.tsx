@@ -5,7 +5,6 @@ import { YBTable, YBLoadingBox, YBCheckbox } from "@app/components";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import type { TFunction } from "i18next";
 import clsx from "clsx";
-import type { MUISortOptions } from "mui-datatables";
 
 const useStyles = makeStyles((theme) => ({
   sectionWrapper: {
@@ -73,6 +72,14 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
+type Notification = {
+  title: string,
+  description: string,
+  status: BadgeVariant,
+  triggerTime: string,
+  duration: string,
+}
+
 const SevIndicator: React.FC<{ status: BadgeVariant; smIndicator?: boolean }> = ({
   status,
   smIndicator,
@@ -99,7 +106,9 @@ const SevIndicator: React.FC<{ status: BadgeVariant; smIndicator?: boolean }> = 
   );
 };
 
-const NotificationComponent = (classes: ReturnType<typeof useStyles>) => (notification: any) => {
+const NotificationComponent = (classes: ReturnType<typeof useStyles>, notifications: Notification[]) => (dataIndex: number) => {
+  const notification = notifications[dataIndex];
+
   return (
     <Box className={classes.notificationWrapper}>
       <SevIndicator status={notification.status}>
@@ -134,34 +143,25 @@ export const AlertNotificationDetails: FC = () => {
   const [severeFilter, setSevereFilter] = React.useState<boolean>(false);
   const [warningFilter, setWarningFilter] = React.useState<boolean>(false);
 
-  const notificationData = useMemo(
+  const notificationData = useMemo<Notification[]>(
     () => [
       {
-        notification: {
-          title: "CPU Utilization",
-          description: "Cluster CPU utilization exceeded 90% for 5 min",
-          status: BadgeVariant.Error,
-        },
+        title: "CPU Utilization",
+        description: "Cluster CPU utilization exceeded 90% for 5 min",
         status: BadgeVariant.Error,
         triggerTime: "May 23, 2:27 PST",
         duration: "12m",
       },
       {
-        notification: {
-          title: "Free Storage",
-          description: "Node free storage is below 25%",
-          status: BadgeVariant.Error,
-        },
+        title: "Free Storage",
+        description: "Node free storage is below 25%",
         status: BadgeVariant.Error,
         triggerTime: "May 23, 1:03pm PST",
         duration: "3h 16m",
       },
       {
-        notification: {
-          title: "YSQL Connection Limit",
-          description: "Cluster exceeded 60% YSQL connection limit",
-          status: BadgeVariant.Warning,
-        },
+        title: "YSQL Connection Limit",
+        description: "Cluster exceeded 60% YSQL connection limit",
         status: BadgeVariant.Warning,
         triggerTime: "May 23, 11:45am PST",
         duration: "24m",
@@ -183,20 +183,12 @@ export const AlertNotificationDetails: FC = () => {
 
   const notificationColumns = [
     {
-      name: "notification",
+      name: "title",
       label: t("clusterDetail.alerts.notification.name"),
       options: {
-        customBodyRender: NotificationComponent(classes),
+        customBodyRenderLite: NotificationComponent(classes, filteredNotificationData),
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-      customColumnSort: (order: MUISortOptions["direction"]) => {
-        return (obj1: { data: any }, obj2: { data: any }) => {
-          let val1 = obj1.data.title;
-          let val2 = obj2.data.title;
-          let compareResult = val2 < val1 ? 1 : val2 == val1 ? 0 : -1;
-          return compareResult * (order === "asc" ? 1 : -1);
-        };
       },
     },
     {

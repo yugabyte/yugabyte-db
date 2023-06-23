@@ -4,6 +4,64 @@ import { useTranslation } from "react-i18next";
 import { YBTable, YBLoadingBox, YBToggle } from "@app/components";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import type { TFunction } from "i18next";
+import { useLocalStorage } from "react-use";
+import { alertConfigurationsKey } from "./alerts";
+
+type AlertConfiguration = {
+  name: string;
+  enabled: boolean;
+};
+
+const alerts = [
+  {
+    name: "Cluster CPU utilization exceeded 75% for 5 min",
+    status: BadgeVariant.Warning,
+  },
+  {
+    name: "Cluster CPU utilization exceeded 90% for 5 min",
+    status: BadgeVariant.Error,
+  },
+  {
+    name: "Cluster storage utilization exceeded 75%",
+    status: BadgeVariant.Warning,
+  },
+  {
+    name: "Cluster storage utilization exceeds 90%",
+    status: BadgeVariant.Error,
+  },
+  {
+    name: "Cluster memory utilization exceeded 75% for 10 min",
+    status: BadgeVariant.Warning,
+  },
+  {
+    name: "Cluster memory utilization exceeded 90% for 10 min",
+    status: BadgeVariant.Error,
+  },
+  {
+    name: "Cluster exceeded 60% YSQL connection limit",
+    status: BadgeVariant.Warning,
+  },
+  {
+    name: "Cluster exceeded 85% YSQL connection limit",
+    status: BadgeVariant.Error,
+  },
+  {
+    name: "Memory utilization exceeded 75% for 5 min",
+    status: BadgeVariant.Warning,
+  },
+  {
+    name: "Memory utilization exceeded 90% for 5 min",
+    status: BadgeVariant.Error,
+  },
+  {
+    name: "More than 34% of all primary nodes in the cluster are reporting as down",
+    status: BadgeVariant.Warning,
+  },
+  {
+    name: "More than 66% of all primary nodes in the cluster are reporting as down",
+    status: BadgeVariant.Error,
+  },
+];
 
 const StatusComponent = (t: TFunction) => (status: BadgeVariant) => {
   const badgeText =
@@ -23,70 +81,19 @@ const StatusComponent = (t: TFunction) => (status: BadgeVariant) => {
 export const AlertConfigurations: FC = () => {
   const { t } = useTranslation();
 
+  const [config, setConfig] = useLocalStorage<AlertConfiguration[]>(alertConfigurationsKey);
+
   const configurationData = useMemo(
-    () => [
-      {
-        name: "Cluster CPU utilization exceeded 75% for 5 min",
-        status: BadgeVariant.Warning,
-        enabled: true,
-      },
-      {
-        name: "Cluster CPU utilization exceeded 90% for 5 min",
-        status: BadgeVariant.Error,
-        enabled: true,
-      },
-      {
-        name: "Cluster storage utilization exceeded 75%",
-        status: BadgeVariant.Warning,
-        enabled: true,
-      },
-      {
-        name: "Cluster storage utilization exceeds 90%",
-        status: BadgeVariant.Error,
-        enabled: true,
-      },
-      {
-        name: "Cluster memory utilization exceeded 75% for 10 min",
-        status: BadgeVariant.Warning,
-        enabled: true,
-      },
-      {
-        name: "Cluster memory utilization exceeded 90% for 10 min",
-        status: BadgeVariant.Error,
-        enabled: true,
-      },
-      {
-        name: "Cluster exceeded 60% YSQL connection limit",
-        status: BadgeVariant.Warning,
-        enabled: true,
-      },
-      {
-        name: "Cluster exceeded 85% YSQL connection limit",
-        status: BadgeVariant.Error,
-        enabled: true,
-      },
-      {
-        name: "Memory utilization exceeded 75% for 5 min",
-        status: BadgeVariant.Warning,
-        enabled: true,
-      },
-      {
-        name: "Memory utilization exceeded 90% for 5 min",
-        status: BadgeVariant.Error,
-        enabled: true,
-      },
-      {
-        name: "More than 34% of all primary nodes in the cluster are reporting as down",
-        status: BadgeVariant.Warning,
-        enabled: true,
-      },
-      {
-        name: "More than 66% of all primary nodes in the cluster are reporting as down",
-        status: BadgeVariant.Error,
-        enabled: true,
-      },
-    ],
-    []
+    () =>
+      alerts.map(({ name, status }) => {
+        const configItem = config?.find((item) => item.name === name);
+        return {
+          name,
+          status,
+          enabled: configItem?.enabled ?? true,
+        };
+      }),
+    [config]
   );
 
   const configurationColumns = [
@@ -111,13 +118,22 @@ export const AlertConfigurations: FC = () => {
       name: "enabled",
       label: t("clusterDetail.alerts.configuration.status"),
       options: {
-        customBodyRender: (enabled: boolean) => (
+        sort: false,
+        customBodyRenderLite: (dataIndex: number) => (
           <YBToggle
-            defaultChecked={enabled}
+            checked={configurationData[dataIndex].enabled}
             label={
-              enabled
+              configurationData[dataIndex].enabled
                 ? t("clusterDetail.alerts.configuration.enabled")
                 : t("clusterDetail.alerts.configuration.disabled")
+            }
+            onChange={(e) =>
+              setConfig(
+                configurationData.map((c, index) => ({
+                  name: c.name,
+                  enabled: index === dataIndex ? e.target.checked : c.enabled,
+                }))
+              )
             }
           />
         ),
