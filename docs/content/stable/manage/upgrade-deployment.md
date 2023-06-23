@@ -76,10 +76,9 @@ Use the following procedure to upgrade a YB-TServer:
 1. Pause for approximately 60 seconds before upgrading the next YB-TServer.
 
 ## Promote AutoFlags
+A lot of new Yugabyte features require changes to the format of data that is sent over the wire or stored on disk. During the upgrade process, these features have to be turned off to prevent sending the new data formats to nodes that are still running the older version. Once all Yugabyte processes have been upgraded to the new version, these features can be safely enabled.
 
-New YugabyteDB features may require changes to the format of data that is sent over the wire or stored on disk. During the upgrade process, these features have to be turned off to prevent sending the new data formats to nodes that are still running the older version. After all YugabyteDB processes have been upgraded to the new version, these features can be safely enabled.
-
-[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) simplify this process so that you don't need to identify these features, find their corresponding flags, or determine what values to set them to. All new AutoFlags can be promoted to their desired target value using a single command.
+[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) help facilitate this transition without requiring you to worry about identifying these features, finding their corresponding flags, or determining the values to set them to. All new AutoFlags can be easily promoted to their desired target value using a simple command.
 
 Use the [yb-admin](../../admin/yb-admin/) utility to promote the new AutoFlags, as follows:
 
@@ -91,10 +90,10 @@ Use the [yb-admin](../../admin/yb-admin/) utility to promote the new AutoFlags, 
 
 The promotion of AutoFlags is an online operation that does not require stopping a running cluster or any process restarts. It is also an idempotent process, meaning it can be run multiple times without any side effects.
 
-Note that it may take up to twice the value of `FLAGS_heartbeat_interval_ms` in milliseconds for the new AutoFlags to be fully propagated to all processes in the cluster.
+Please note that it may take up to twice the value of `FLAGS_heartbeat_interval_ms` in milliseconds for the new AutoFlags to be fully propagated to all processes in the cluster.
 
 {{< note title="Note" >}}
-Before promoting AutoFlags, ensure that all YugabyteDB processes in the cluster have been upgraded to the new version. If any process running an older version attempts to connect to the cluster after the AutoFlags have been promoted, it may fail to do so.
+Make sure all Yugaybte processes in the cluster have been upgraded to the new version before promoting AutoFlags. If any process running an older version tries to connect to the cluster after the AutoFlags have been promoted, that process may fail to do so.
 {{< /note >}}
 
 **Example**
@@ -105,19 +104,17 @@ Before promoting AutoFlags, ensure that all YugabyteDB processes in the cluster 
     promote_auto_flags
 ```
 
-If the operation is successful you should see output similar to the following:
+If the operation is successful you will receive a output similar to the following:
 
 ```output
 PromoteAutoFlags status: 
 New AutoFlags were promoted. Config version: 2
-```
-
+``````
 OR
-
 ```output
 PromoteAutoFlags status: 
 No new AutoFlags to promote
-```
+``````
 
 ## Upgrade the YSQL system catalog
 
