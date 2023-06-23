@@ -52,6 +52,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -346,6 +347,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     destroyMiniCluster();
 
     createMiniCluster(additionalMasterFlags, additionalTserverFlags);
+    pgInitialized = false;
+    initPostgresBefore();
+  }
+
+  public void restartClusterWithClusterBuilder(
+    Consumer<MiniYBClusterBuilder> customize) throws Exception {
+    destroyMiniCluster();
+
+    createMiniCluster(customize);
     pgInitialized = false;
     initPostgresBefore();
   }
