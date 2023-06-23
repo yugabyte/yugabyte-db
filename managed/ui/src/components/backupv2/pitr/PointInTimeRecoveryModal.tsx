@@ -50,17 +50,22 @@ const DURATION_OPTIONS = [
   {
     label: 'Day',
     value: 'DAY',
-    seconds: 24 * 60 * 60 * 1000 //milli-secs in a day
+    milliSeconds: 24 * 60 * 60 * 1000 //milli-secs in a day
   },
   {
     label: 'Hour',
     value: 'HOUR',
-    seconds: 60 * 60 * 1000 //milli-secs in an hour
+    milliSeconds: 60 * 60 * 1000 //milli-secs in an hour
   },
   {
     label: 'Minute',
     value: 'MINUTE',
-    seconds: 60 * 1000 //milli-secs in a minute
+    milliSeconds: 60 * 1000 //milli-secs in a minute
+  },
+  {
+    label: 'Second',
+    value: 'SECOND',
+    milliSeconds: 1000 //milli-secs in a sec
   }
 ];
 
@@ -125,7 +130,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
     if (recovery_time_mode === RECOVERY_MODE.RELATIVE) {
       const secsInSelectedDuration = DURATION_OPTIONS.find(
         (duration: any) => duration.value === recovery_duration.value
-      )?.seconds;
+      )?.milliSeconds;
       const currentTimeStamp = moment.now();
 
       if (secsInSelectedDuration) {
