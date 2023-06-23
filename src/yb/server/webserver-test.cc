@@ -59,6 +59,7 @@ using strings::Substitute;
 DECLARE_int32(webserver_max_post_length_bytes);
 DECLARE_uint64(webserver_compression_threshold_kb);
 DECLARE_string(webserver_ca_certificate_file);
+DECLARE_bool(webserver_strict_transport_security);
 
 namespace yb {
 
@@ -111,6 +112,26 @@ TEST_F(WebserverTest, TestIndexPage) {
   ASSERT_STR_CONTAINS(buf_.ToString(), "Home");
 }
 
+TEST_F(WebserverTest, TestHSTSOnHttp) {
+  // Default behaviour should not included HSTS flag.
+  curl_.set_return_headers(true);
+  ASSERT_OK(curl_.FetchURL(url_, &buf_));
+
+  // Check expected headers.
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
+  ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Strict-Transport-Security: max-age=31536000");
+
+  // Turning on HSTS flag shouldn't work on HTTP.
+  FLAGS_webserver_strict_transport_security = true;
+  curl_.set_return_headers(true);
+
+  ASSERT_OK(curl_.FetchURL(url_, &buf_));
+
+  // Check expected headers.
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
+  ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Strict-Transport-Security: max-age=31536000");
+}
+
 TEST_F(WebserverTest, TestHttpCompression) {
   std::ostringstream oss;
   string decoded_str;
@@ -132,13 +153,15 @@ TEST_F(WebserverTest, TestHttpCompression) {
   ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec,
                           {"Accept-Encoding: deflate, megaturbogzip,  gzip , br"}));
   ASSERT_STR_CONTAINS(buf_.ToString(), "Content-Encoding: gzip");
-
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
 
   // Curl with compression disabled.
   curl_.set_return_headers(true);
   ASSERT_OK(curl_.FetchURL(url_, &buf_));
+
   // Check expected header.
   ASSERT_STR_CONTAINS(buf_.ToString(), "Content-Type:");
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
 
   // Check unexpected header.
   ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Content-Encoding: gzip");
@@ -150,8 +173,9 @@ TEST_F(WebserverTest, TestHttpCompression) {
   curl_.set_return_headers(true);
   ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec,
                            {"Accept-Encoding: megaturbogzip, deflate, xz"}));
-  // Check expected header.
+  // Check expected headers.
   ASSERT_STR_CONTAINS(buf_.ToString(), "HTTP/1.1 200 OK");
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
 
   // Check unexpected header.
   ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Content-Encoding: gzip");
@@ -290,6 +314,23 @@ class WebserverSecureTest : public WebserverTest {
 // Test HTTPS endpoint.
 TEST_F(WebserverSecureTest, TestIndexPage) {
   ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */));
+}
+
+// Test HSTS behaviour.
+TEST_F(WebserverSecureTest, TestStrictTransportSecurity) {
+  // Check that HSTS should not be present by default.
+  curl_.set_return_headers(true);
+
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */));
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
+  ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Strict-Transport-Security: max-age=31536000");
+
+  // Turn on HSTS GFlag and check headers.
+  FLAGS_webserver_strict_transport_security = true;
+  curl_.set_return_headers(true);
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */));
+  ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
+  ASSERT_STR_CONTAINS(buf_.ToString(), "Strict-Transport-Security: max-age=31536000");
 }
 
 } // namespace yb
