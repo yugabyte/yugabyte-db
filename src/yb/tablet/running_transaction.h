@@ -89,6 +89,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return last_known_status_hybrid_time_;
   }
 
+  const TransactionStatus last_known_status() const { return last_known_status_; }
+
   const IsExternalTransaction external_transaction() const {
     return metadata_.external_transaction;
   }
