@@ -1,24 +1,25 @@
 package handlers
 
 import (
-        "apiserver/cmd/server/helpers"
-        "apiserver/cmd/server/logger"
-        "apiserver/cmd/server/models"
-        "context"
-        "encoding/json"
-        "errors"
-        "fmt"
-        "math"
-        "net"
-        "net/http"
-        "sort"
-        "strconv"
-        "strings"
-        "time"
+    "apiserver/cmd/server/helpers"
+    "apiserver/cmd/server/logger"
+    "apiserver/cmd/server/models"
+    "context"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "math"
+    "net"
+    "net/http"
+    "runtime"
+    "sort"
+    "strconv"
+    "strings"
+    "time"
 
-        "github.com/jackc/pgx/v4/pgxpool"
-        "github.com/labstack/echo/v4"
-        "github.com/yugabyte/gocql"
+    "github.com/jackc/pgx/v4/pgxpool"
+    "github.com/labstack/echo/v4"
+    "github.com/yugabyte/gocql"
 )
 
 const SLOW_QUERY_STATS_SQL string = "SELECT a.rolname, t.datname, t.queryid, " +
@@ -48,6 +49,25 @@ const READ_SUM_METRIC = "handler_latency_yb_tserver_TabletServerService_Read_sum
 const WRITE_SUM_METRIC = "handler_latency_yb_tserver_TabletServerService_Write_sum"
 
 const GRANULARITY_NUM_INTERVALS = 120
+
+var OS_NAME = runtime.GOOS
+
+var MAX_PROC = map[string]int{
+    "Linux" : 12000,
+    "Darwin" : 2500,
+}
+var WARNING_MSGS = map[string]string{
+    "open_files" :"open files ulimits value set low. Please set soft and hard limits to 1048576.",
+    "max_user_processes" :fmt.Sprintf("max user processes ulimits value set low." +
+        " Please set soft and hard limits to %d", MAX_PROC[OS_NAME]),
+    "transparent_hugepages" :"Transparent hugepages disabled. Please enable transparent_hugepages.",
+    "ntp/chrony" :"ntp/chrony package is missing for clock synchronization. For centos 7, " +
+        "we recommend installing either ntp or chrony package and for centos 8, " +
+        "we recommend installing chrony package.",
+    "insecure" :"Cluster started in an insecure mode without " +
+        "authentication and encryption enabled. For non-production use only, " +
+        "not to be used without firewalls blocking the internet traffic.",
+}
 
 type SlowQueriesFuture struct {
     Items []*models.SlowQueryResponseYsqlQueryItem
@@ -1262,4 +1282,25 @@ func (c *Container) GetGflagsJson(ctx echo.Context) error {
         TserverFlags: tserverFlagsJson,
     })
 
+}
+
+// GetClusterAlerts - Get all cluster alerts info (If Any)
+func (c *Container) GetClusterAlerts(ctx echo.Context) error {
+
+    alertsResponse := models.AlertsResponse {
+        Data: []models.AlertsInfo{},
+    }
+
+    if helpers.Warnings != "" {
+        warnings := strings.Split(helpers.Warnings, "|")
+
+        for _, warning := range warnings {
+            alertsResponse.Data = append(alertsResponse.Data, models.AlertsInfo{
+                Name: warning,
+                Info: WARNING_MSGS[warning],
+            })
+        }
+    }
+
+    return ctx.JSON(http.StatusOK, alertsResponse)
 }

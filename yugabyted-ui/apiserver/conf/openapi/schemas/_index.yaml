@@ -352,6 +352,20 @@ ActivityData:
   required:
     - name
     - data
+AlertsInfo:
+  title: Alerts Info
+  description: Alerts Info
+  type: object
+  properties:
+    name:
+      description: Name of alert
+      type: string
+    info:
+      description: Array of alerts
+      type: string
+  required:
+    - name
+    - info
 ClusterTableData:
   title: Cluster Table Data
   description: List of cluster tables

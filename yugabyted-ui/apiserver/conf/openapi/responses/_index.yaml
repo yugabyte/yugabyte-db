@@ -134,3 +134,17 @@ GflagsResponse:
         required:
           - masterFlags
           - tserverFlags
+AlertsResponse:
+  description: Alerts information
+  content:
+    application/json:
+      schema:
+        title: Alerts Response
+        type: object
+        properties:
+          data:
+            type: array
+            items:
+              $ref: '../schemas/_index.yaml#/AlertsInfo'
+        required:
+          - data
