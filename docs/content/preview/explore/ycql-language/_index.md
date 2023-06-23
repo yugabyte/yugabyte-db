@@ -21,7 +21,7 @@ A large portion of the documentation and examples written for Cassandra would wo
 
 ## Cassandra features in YCQL
 
-The following table lists the most important YCQL features which you would find familiar if you have worked with PostgreYCQL.
+The following table lists the most important YCQL features which you would find familiar if you have worked with Cassandra.
 
 | YCQL Feature | Description |
 | :----------- | :---------- |
