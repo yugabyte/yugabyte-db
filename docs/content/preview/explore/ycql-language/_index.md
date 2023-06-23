@@ -13,7 +13,7 @@ menu:
 type: indexpage
 showRightNav: true
 ---
-YugabyteDB's [YCQL API](../../api/ycql/) has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html) and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YCQL to support most Cassandra features, such as data types, queries, expressions, operators and so on and at the same providing seamless scalability and reilience.
+YugabyteDB's [YCQL API](../../api/ycql/) has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html) and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YCQL to support most Cassandra features, such as data types, queries, expressions, operators and so on and at the same providing seamless scalability and resilience.
 
 {{< tip title="Tip" >}}
 A large portion of the documentation and examples written for Cassandra would work against YCQL.
@@ -39,12 +39,12 @@ YCQL has a number of features that are not present in Cassandra, as summarized i
 | YCQL Feature | Description |
 | :----------- | :---------- |
 | [Strongly consistent with RAFT replication](../../architecture/docdb-replication/replication/#raft-replication) | Enables strong consistency across replicas |
-| [Fast transactions](../../architecture/transactions/distributed-txns/) | Single round-trip transactions |
-| [Native JSONB support](going-beyond-YCQL/follower-reads-yYCQL/)| Enables document data modelling like MongoDB |
+| [Fast transactions](../../architecture/transactions/distributed-txns/) | Single round-trip distributed transactions |
+| [Native JSONB support](../../api/ycql/type_jsonb)| Enables document data modelling like MongoDB |
 | Fast and consistent Secondary Indexes | Immediately consistent indexes with point lookups (no fan-out) |
 
 ## Learn more
 
 - [Comparison with Apache Cassandra](../../faq/comparisons/cassandra)
 - [YCQL command reference](../../api/ycql/)
-- [Cassandra 3.4 feature parity](cassandra-feature-support)
+- [Cassandra 3.4 Feature parity](cassandra-feature-support)

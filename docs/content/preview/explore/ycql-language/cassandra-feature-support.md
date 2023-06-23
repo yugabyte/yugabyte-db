@@ -2,7 +2,7 @@
 title: Cassandra feature support
 linkTitle: Cassandra feature support
 description: Summary of YugabyteDB's parity to Cassandra features
-headcontent: YugabyteDB supports most standard Cassandra features.
+headcontent: YugabyteDB supports most standard Cassandra features
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -24,7 +24,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 
 |                |   Category   |                                            Types                                             |
 | :------------: | ------------ | :------------------------------------------------------------------------------------------- |
-| {{<icon/yes>}} | Integers     | [BIGINT , COUNTER, INT, INTEGER, SMALLINT, TINYINT, VARINT](../../../api/ycql/type_int)      |
+| {{<icon/yes>}} | Integers     | [BIGINT, COUNTER, INT, INTEGER, SMALLINT, TINYINT, VARINT](../../../api/ycql/type_int)      |
 | {{<icon/yes>}} | Numbers      | [DECIMAL, DOUBLE, FLOAT](../../../api/ycql/type_number)                                      |
 | {{<icon/yes>}} | Binary data  | [BLOB](../../../api/ycql/type_blob)                                                          |
 | {{<icon/yes>}} | Boolean      | [BOOLEAN](../../../api/ycql/type_bool)                                                       |
@@ -42,7 +42,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 |                |    Operation    |                     Details                      |
 | :------------: | :-------------- | ------------------------------------------------ |
 | {{<icon/yes>}} | Create new type | [CREATE TYPE](../../../api/ycql/ddl_create_type) |
-| {{<icon/yes>}} | Delete types    | [DROP TYPE](../../../api/ycql/ddl_create_type)   |
+| {{<icon/yes>}} | Delete types    | [DROP TYPE](../../../api/ycql/ddl_drop_type)   |
 | {{<icon/no>}}  | Alter types     |                                                  |
 {.sno-1}
 
@@ -91,7 +91,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Conditional select with `[NOT] IN` clause | [SELECT ... WHERE key IN ...](../../../api/ycql/dml_select#where-clause) |
 | {{<icon/yes>}} | Conditional select with `IF` clause       | [SELECT ... IF ...](../../../api/ycql/dml_select#if-clause)              |
 | {{<icon/no>}}  | Select using `CONTAINS [KEY]`             | {{<issue 3620 "Tracked">}}                                               |
-| {{<icon/no>}}  | `SELECT JSON`                             | But [JSONB](../../../api/ycql/type_jsonb/) is supported as a native type |
+| {{<icon/no>}}  | `SELECT JSON`                             | [JSONB](../../../api/ycql/type_jsonb/) is supported as a native type |
 | {{<icon/no>}}  | Select with `PER PARTITION LIMIT`         |                                                                          |
 | {{<icon/no>}}  | Grouping results with `GROUP BY`          |                                                                          |
 {.sno-1}
@@ -123,7 +123,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 |                |   Operation    |                                 Details                                  |
 | :------------: | :------------- | :----------------------------------------------------------------------- |
 | {{<icon/yes>}} | Adding columns | [INSERT ... INTO ...](../../../api/ycql/dml_insert/)                     |
-| {{<icon/no>}}  | `INSERT JSON`  | But [JSONB](../../../api/ycql/type_jsonb/) is supported as a native type |
+| {{<icon/no>}}  | `INSERT JSON`  | [JSONB](../../../api/ycql/type_jsonb/) is supported as a native type |
 {.sno-1}
 
 ## Transactions
@@ -142,7 +142,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | :------------: | :----------- | :----------------------------------------------------------------------------- |
 | {{<icon/yes>}} | Roles        | [Manage users and roles](../../../secure/authorization/create-roles-ycql/)     |
 | {{<icon/yes>}} | Permissions  | [Grant privileges](../../../secure/authorization/ycql-grant-permissions/)      |
-| {{<icon/no>}}  | Users        | Legacy Cassandra feature (_CREATE, DROP, ALTER,LIST_)                          |
+| {{<icon/no>}}  | Users        | Legacy Cassandra feature (_CREATE, DROP, ALTER, LIST_)                          |
 | {{<icon/no>}}  | `LIST ROLES` | But can be done using [query](../../../secure/authorization/create-roles-ycql) |
 | {{<icon/no>}}  | `LIST PERMISSIONS` | But can be done using [query](../../secure/authorization/ycql-grant-permissions/#2-list-permissions-for-roles) |
 {.sno-1}
@@ -163,5 +163,5 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 
 ## Learn more
 
-- [Comparison with Apache Cassandra](../../faq/comparisons/cassandra)
-- [YCQL command reference](../../api/ycql/)
+- [Comparison with Apache Cassandra](../../../faq/comparisons/cassandra)
+- [YCQL command reference](../../../api/ycql/)

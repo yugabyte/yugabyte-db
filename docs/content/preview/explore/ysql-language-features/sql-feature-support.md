@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-To understand which standard SQL features we support, refer to the following tables:
+This page highlights the important differences in feature support between YSQL and SQL.
 
 ### Data types
 
