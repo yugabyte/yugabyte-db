@@ -93,7 +93,7 @@ The promotion of AutoFlags is an online operation that does not require stopping
 Note that it may take up to twice the value of `FLAGS_heartbeat_interval_ms` in milliseconds for the new AutoFlags to be fully propagated to all processes in the cluster.
 
 {{< note title="Note" >}}
-Before promoting AutoFlags, ensure that all Yugabyte processes in the cluster have been upgraded to the new version. If any process running an older version attempts to connect to the cluster after the AutoFlags have been promoted, it may fail to do so.
+Before promoting AutoFlags, ensure that all YugabyteDB processes in the cluster have been upgraded to the new version. If any process running an older version attempts to connect to the cluster after the AutoFlags have been promoted, it may fail to do so.
 {{< /note >}}
 
 **Example**
