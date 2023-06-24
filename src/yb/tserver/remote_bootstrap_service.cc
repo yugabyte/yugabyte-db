@@ -523,15 +523,16 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
       Substitute("Tablet is not running yet: $0", req->tablet_id()));
 
+  const auto requested_log_index = req->op_id().index();
   int64_t min_available_log_index = tablet_peer->log()->GetLogReader()->GetMinReplicateIndex();
   if (min_available_log_index == -1) {
     min_available_log_index = tablet_peer->log()->GetMinReplicateIndex();
   }
 
-  if (req->log_index() < min_available_log_index) {
+  if (requested_log_index < min_available_log_index) {
     RPC_RETURN_APP_ERROR(
         RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
-        Substitute("Cannot register LogAnchor for index $0", req->log_index()),
+        Substitute("Cannot register LogAnchor for index $0", requested_log_index),
         STATUS(NotSupported, "Not Supported: Requested LogAnchor index < MinReplicateIndex"));
   }
 
@@ -543,7 +544,7 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
     if (it == log_anchors_map_.end()) {
       std::shared_ptr<log::LogAnchor> log_anchor_ptr(new log::LogAnchor());
       tablet_peer->log_anchor_registry()->Register(
-          req->log_index(), req->owner_info(), log_anchor_ptr.get());
+          requested_log_index, req->owner_info(), log_anchor_ptr.get());
       std::shared_ptr<LogAnchorSessionData> anchor_session_data(
           new LogAnchorSessionData(tablet_peer, log_anchor_ptr));
       log_anchors_map_[req->owner_info()] = anchor_session_data;
@@ -553,11 +554,11 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       it->second->ResetExpiration();
       RPC_RETURN_NOT_OK(
           tablet_peer->log_anchor_registry()->UpdateRegistration(
-              req->log_index(), log_anchor_ptr.get()),
+              requested_log_index, log_anchor_ptr.get()),
           RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
           Substitute(
               "Cannot Update LogAnchor for tablet $0 to index $1", tablet_peer->tablet_id(),
-              req->log_index()));
+              requested_log_index));
     }
   }
 
@@ -575,16 +576,17 @@ void RemoteBootstrapServiceImpl::UpdateLogAnchor(
         STATUS(IllegalState, "Cannot Update Log Anchor without Registering for one"));
   }
 
+  const auto requested_log_index = req->op_id().index();
   std::shared_ptr<tablet::TabletPeer> tablet_peer(it->second->tablet_peer_);
   std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
   it->second->ResetExpiration();
   RPC_RETURN_NOT_OK(
       tablet_peer->log_anchor_registry()->UpdateRegistration(
-          req->log_index(), log_anchor_ptr.get()),
+          requested_log_index, log_anchor_ptr.get()),
       RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
       Substitute(
           "Cannot Update LogAnchor for tablet $0 to $1", tablet_peer->tablet_id(),
-          req->log_index()));
+          requested_log_index));
 
   context.RespondSuccess();
 }
