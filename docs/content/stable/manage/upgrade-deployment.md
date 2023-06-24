@@ -78,7 +78,7 @@ Use the following procedure to upgrade a YB-TServer:
 ## Promote AutoFlags
 New YugabyteDB features may require changes to the format of data that is sent over the wire or stored on disk. During the upgrade process, these features have to be turned off to prevent sending the new data formats to nodes that are still running the older version. After all YugabyteDB processes have been upgraded to the new version, these features can be safely enabled.
 
-[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) help facilitate this transition without requiring you to worry about identifying these features, finding their corresponding flags, or determining the values to set them to. All new AutoFlags can be easily promoted to their desired target value using a simple command.
+[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) simplify this process so that you don't need to identify these features, find their corresponding flags, or determine what values to set them to. All new AutoFlags can be promoted to their desired target value using a single command.
 
 Use the [yb-admin](../../admin/yb-admin/) utility to promote the new AutoFlags, as follows:
 
