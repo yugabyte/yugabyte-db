@@ -90,7 +90,7 @@ Use the [yb-admin](../../admin/yb-admin/) utility to promote the new AutoFlags, 
 
 The promotion of AutoFlags is an online operation that does not require stopping a running cluster or any process restarts. It is also an idempotent process, meaning it can be run multiple times without any side effects.
 
-Please note that it may take up to twice the value of `FLAGS_heartbeat_interval_ms` in milliseconds for the new AutoFlags to be fully propagated to all processes in the cluster.
+Note that it may take up to twice the value of `FLAGS_heartbeat_interval_ms` in milliseconds for the new AutoFlags to be fully propagated to all processes in the cluster.
 
 {{< note title="Note" >}}
 Before promoting AutoFlags, ensure that all Yugabyte processes in the cluster have been upgraded to the new version. If any process running an older version attempts to connect to the cluster after the AutoFlags have been promoted, it may fail to do so.
