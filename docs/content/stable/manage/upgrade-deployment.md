@@ -76,6 +76,7 @@ Use the following procedure to upgrade a YB-TServer:
 1. Pause for approximately 60 seconds before upgrading the next YB-TServer.
 
 ## Promote AutoFlags
+
 New YugabyteDB features may require changes to the format of data that is sent over the wire or stored on disk. During the upgrade process, these features have to be turned off to prevent sending the new data formats to nodes that are still running the older version. After all YugabyteDB processes have been upgraded to the new version, these features can be safely enabled.
 
 [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) simplify this process so that you don't need to identify these features, find their corresponding flags, or determine what values to set them to. All new AutoFlags can be promoted to their desired target value using a single command.
@@ -104,17 +105,19 @@ Before promoting AutoFlags, ensure that all YugabyteDB processes in the cluster 
     promote_auto_flags
 ```
 
-If the operation is successful you will receive a output similar to the following:
+If the operation is successful you should see output similar to the following:
 
 ```output
 PromoteAutoFlags status: 
 New AutoFlags were promoted. Config version: 2
-``````
+```
+
 OR
+
 ```output
 PromoteAutoFlags status: 
 No new AutoFlags to promote
-``````
+```
 
 ## Upgrade the YSQL system catalog
 
@@ -124,7 +127,7 @@ When new features are added to YugabyteDB, objects such as new tables and functi
 
 However, the YugabyteDB upgrade process only upgrades binaries, and doesn't affect the YSQL system catalog of an existing cluster - it remains in the same state as before the upgrade. To derive the benefits of the latest YSQL features when upgrading, you need to manually upgrade the YSQL system catalog.
 
-The YSQL system catalog is accessible through the YSQL API and is required for YSQL functionality. YSQL system catalog upgrades are not required for clusters where [YSQL is not enabled](../../reference/configuration/yb-tserver/#ysql-flags).
+The YSQL system catalog is accessible through the YSQL API and is required for YSQL functionality. YSQL system catalog upgrades are not required for clusters where [YSQL is not enabled](../../reference/configuration/yb-tserver/#ysql).
 
 YSQL system catalog upgrades apply to clusters with YugabyteDB version 2.8 or later.
 
@@ -164,10 +167,10 @@ Use the following procedure to upgrade clusters involved in xCluster replication
 1. Pause xCluster replication on the clusters involved in replication. If the replication setup is bi-directional, ensure that replication is paused in both directions.
 
     ```sh
-    yb-admin 
-    -master_addresses <master_ips> 
-    -certs_dir_name <cert_dir> \
-    set_universe_replication_enabled <replication_group_name> 0
+    ./bin/yb-admin \
+        -master_addresses <master-addresses> \
+        -certs_dir_name <cert_dir> \
+        set_universe_replication_enabled <replication_group_name> 0
     ```
 
     Expect to see the following output:
@@ -180,10 +183,10 @@ Use the following procedure to upgrade clusters involved in xCluster replication
 3. Resume replication on all the clusters involved using yb-admin.
 
     ```sh
-    yb-admin 
-    -master_addresses <master_ips> 
-    -certs_dir_name <cert_dir> \
-    set_universe_replication_enabled <replication_group_name> 1
+    ./bin/yb-admin \
+        -master_addresses <master-addresses> \
+        -certs_dir_name <cert_dir> \
+        set_universe_replication_enabled <replication_group_name> 1
     ```
 
     Expect to see the following output:

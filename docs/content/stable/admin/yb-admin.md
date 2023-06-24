@@ -2257,10 +2257,9 @@ yb-admin \
 
 ---
 
-
 ### Upgrade
 
-Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a Yugabyte cluster.
+Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a YugabyteDB cluster.
 
 #### promote_auto_flags
 
@@ -2288,13 +2287,15 @@ yb-admin \
     promote_auto_flags kLocalPersisted
 ```
 
-If the operation is successful you will receive a output similar to the following:
+If the operation is successful you should see output similar to the following:
 
 ```output
 PromoteAutoFlags status: 
 New AutoFlags were promoted. Config version: 2
 ```
+
 OR
+
 ```output
 PromoteAutoFlags status: 
 No new AutoFlags to promote
@@ -2303,18 +2304,23 @@ No new AutoFlags to promote
 #### upgrade_ysql
 
 Upgrades the YSQL system catalog after a successful [YugabyteDB cluster upgrade](../../manage/upgrade-deployment/).
+
 YSQL upgrades are not required for clusters where [YSQL is not enabled](../../reference/configuration/yb-tserver/#ysql-flags).
 
 **Syntax**
 
 ```sh
-yb-admin upgrade_ysql
+yb-admin \
+    -master_addresses <master-addresses> \
+    upgrade_ysql
 ```
 
 **Example**
 
 ```sh
-./bin/yb-admin upgrade_ysql
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    upgrade_ysql
 ```
 
 A successful upgrade returns the following message:
@@ -2327,8 +2333,9 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 ```sh
 ./bin/yb-admin \
-      -timeout_ms 180000 \
-      upgrade_ysql
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    -timeout_ms 180000 \
+    upgrade_ysql
 ```
 
 Running the above command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
