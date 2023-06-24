@@ -2264,7 +2264,7 @@ Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about
 
 #### promote_auto_flags
 
-[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) protect new features that modify the format of data sent over the wire or stored on-disk. Once all Yugabyte processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
+[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) protect new features that modify the format of data sent over the wire or stored on-disk. After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
 
 **Syntax**
 
