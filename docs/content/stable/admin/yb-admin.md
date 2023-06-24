@@ -2257,7 +2257,6 @@ yb-admin \
 
 ---
 
-
 ### Upgrade
 
 Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a Yugabyte cluster.
@@ -2288,13 +2287,15 @@ yb-admin \
     promote_auto_flags kLocalPersisted
 ```
 
-If the operation is successful you will receive a output similar to the following:
+If the operation is successful you should see output similar to the following:
 
 ```output
 PromoteAutoFlags status: 
 New AutoFlags were promoted. Config version: 2
 ```
+
 OR
+
 ```output
 PromoteAutoFlags status: 
 No new AutoFlags to promote
