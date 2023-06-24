@@ -98,7 +98,10 @@ Status DoDecodeValue(
   auto original_start = slice.data();
 
   const auto value_type = static_cast<ValueEntryType>(slice.consume_byte());
-  if (value_type == ValueEntryType::kNullLow) {
+  if (value_type == ValueEntryType::kNullLow ||
+      // Need to check tombstone case since we could have data from old releases that don't convert
+      // tombstone records to null during compaction.
+      value_type == ValueEntryType::kTombstone) {
     *is_null = true;
     return Status::OK();
   }
