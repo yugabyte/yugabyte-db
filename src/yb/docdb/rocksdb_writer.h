@@ -298,7 +298,8 @@ class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
  private:
   const LWKeyValueWriteBatchPB& put_batch_;
   HybridTime hybrid_time_;
-  rocksdb::DB* intents_db_;
+  BoundedRocksDbIterator intents_db_iter_;
+  Slice intents_db_iter_upperbound_;
   rocksdb::WriteBatch* intents_write_batch_;
   ExternalTxnIntentsState* external_txns_intents_state_;
 };
