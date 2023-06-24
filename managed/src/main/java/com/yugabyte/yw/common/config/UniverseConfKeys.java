@@ -677,4 +677,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls the max time out when performing the checkUnderReplicatedTablets subtask",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> checkMemoryTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.dbmem.checks.timeout",
+          ScopeType.UNIVERSE,
+          "Memory check timeout",
+          "Timeout for memory check in secs",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
