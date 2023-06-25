@@ -126,12 +126,12 @@ func (s *ShellTask) command(ctx context.Context, name string, arg ...string) (*e
 		if err != nil {
 			return nil, err
 		}
-		util.FileLogger().Infof(ctx, "Using user: %s, uid: %d, gid: %d",
+		util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 			userAcc.Username, uid, gid)
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 		cmd.SysProcAttr.Credential = &syscall.Credential{
-			Uid: uint32(uid),
-			Gid: uint32(gid),
+			Uid: uid,
+			Gid: gid,
 		}
 	}
 	pwd := userAcc.HomeDir
