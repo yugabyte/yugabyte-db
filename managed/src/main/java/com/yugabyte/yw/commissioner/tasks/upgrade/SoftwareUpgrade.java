@@ -87,7 +87,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           // No need to run the check if the minimum allowed is 0.
           if (memAvailableLimit > 0) {
             createAvailabeMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
-              .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+                .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
           }
 
           if (!universe
