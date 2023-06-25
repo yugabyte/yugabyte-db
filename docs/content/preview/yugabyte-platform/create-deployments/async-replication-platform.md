@@ -157,7 +157,7 @@ This page allows you to do the following:
 
   ![Alert](/images/yp/asynch-replication-61.png)
 
-If for any reason the source universe is no longer accessible, you can pause or delete the replication configuration. This is especially useful for unplanned failover. Refer to [Unplanned failover](../../../deploy/multi-dc/async-replication-transactional/#unplanned-failover).
+If for any reason the source universe is no longer accessible, you can pause or delete the replication configuration. This is especially beneficial for unplanned failover. Refer to [Unplanned failover](../../../deploy/multi-dc/async-replication-transactional/#unplanned-failover).
 
 Make sure to select the **Ignore errors and force delete** option when you delete the configuration in such cases.
 
