@@ -396,7 +396,7 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
-		util.FileLogger().Infof(ctx, "Using user: %s, uid: %d, gid: %d",
+		util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 			userAcc.Username, uid, gid)
 		changeOwner = true
 	}
