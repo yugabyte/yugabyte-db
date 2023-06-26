@@ -189,7 +189,7 @@ public class TaskExecutor {
           "parent task"); 
 
    // This writes the waiting time metric and the parent of the task.
-  private void writeTaskWaitMetric(
+  private static void writeTaskWaitMetric(
       TaskType taskType, Instant scheduledTime, Instant startTime, TaskType parenTaskType) {
     COMMISSIONER_TASK_WAITING_SEC_
         .labels(taskType.name(), parenTaskType.name())
@@ -197,7 +197,7 @@ public class TaskExecutor {
   }
 
   // This writes the execution time metric and the parent of the task.
-  private void writeTaskStateMetric(
+  private static void writeTaskStateMetric(
       TaskType taskType, Instant startTime, Instant endTime, State state, TaskType parenTaskType) {
     COMMISSIONER_TASK_EXECUTION_SEC_
         .labels(taskType.name(), state.name(), parenTaskType.name())
@@ -205,7 +205,7 @@ public class TaskExecutor {
   } 
 
   // This writes the waiting time metric.
-  private void writeTaskWaitMetric(
+  private static void writeTaskWaitMetric(
       TaskType taskType, Instant scheduledTime, Instant startTime) {
     COMMISSIONER_TASK_WAITING_SEC
         .labels(taskType.name())
@@ -213,7 +213,7 @@ public class TaskExecutor {
   }
 
   // This writes the execution time metric.
-  private void writeTaskStateMetric(
+  private static void writeTaskStateMetric(
       TaskType taskType, Instant startTime, Instant endTime, State state) {
     COMMISSIONER_TASK_EXECUTION_SEC
         .labels(taskType.name(), state.name())
