@@ -495,7 +495,7 @@ message PgsqlReadRequestPB {
   // false the row is skipped.
   repeated PgsqlExpressionPB where_clauses = 33;
 
-  // Columns refereced by this write operation.
+  // Columns referenced by this write operation.
   // Provides mapping between DocDB and Postgres identifiers, and provides Postgres type information
   // to convert between DocDB and Postgres formats.
   // One entry per column referenced.
