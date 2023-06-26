@@ -418,6 +418,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
 
+  Result<size_t> GetSegmentCounts(ExternalTabletServer* ts);
+
   Result<tserver::GetTabletStatusResponsePB> GetTabletStatus(
       const ExternalTabletServer& ts, const yb::TabletId& tablet_id);
 
