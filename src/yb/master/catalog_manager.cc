@@ -997,7 +997,7 @@ Status CatalogManager::Init() {
   metric_num_tablet_servers_dead_ =
     METRIC_num_tablet_servers_dead.Instantiate(master_->metric_entity_cluster(), 0);
 
-  cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(&master_->async_client_initializer());
+  cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(&master_->cdc_state_client_initializer());
 
   RETURN_NOT_OK(xcluster_safe_time_service_->Init());
 
