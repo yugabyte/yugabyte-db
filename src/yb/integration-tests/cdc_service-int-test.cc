@@ -54,6 +54,7 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using namespace std::chrono_literals;
 using std::string;
 
 DECLARE_bool(TEST_record_segments_violate_max_time_policy);
@@ -2172,7 +2173,7 @@ class CDCServiceTestThreeServers : public CDCServiceTest {
     // We don't want the tablets to move in the middle of the test.
     FLAGS_enable_load_balancing = false;
     FLAGS_leader_failure_max_missed_heartbeat_periods = 12.0;
-    FLAGS_update_min_cdc_indices_interval_secs = 5;
+    FLAGS_update_min_cdc_indices_interval_secs = 2;
     FLAGS_enable_log_retention_by_op_idx = true;
     FLAGS_client_read_write_timeout_ms = 20 * 1000 * kTimeMultiplier;
 
@@ -2387,11 +2388,11 @@ TEST_F(CDCServiceTestThreeServers, TestCheckpointIsMinOverMultipleStreams) {
   constexpr int kGettingLeaderTimeoutSecs = 20;
   TabletId tablet_id;
   // Index of the TS that is the leader for the selected tablet_id.
-  ssize_t leader_idx = -1;
-  GetFirstTabletIdAndLeaderPeer(&tablet_id, &leader_idx, kGettingLeaderTimeoutSecs);
+  ssize_t initial_leader_idx = -1;
+  GetFirstTabletIdAndLeaderPeer(&tablet_id, &initial_leader_idx, kGettingLeaderTimeoutSecs);
   ASSERT_FALSE(tablet_id.empty());
-  ASSERT_GE(leader_idx, 0);
-  const auto& proxy = cluster_->mini_tablet_server(leader_idx)->server()->proxy();
+  ASSERT_GE(initial_leader_idx, 0);
+  const auto& proxy = cluster_->mini_tablet_server(initial_leader_idx)->server()->proxy();
 
   std::vector<std::pair<GetChangesRequestPB, GetChangesResponsePB>> get_changes_req_resps;
   for (size_t i = 0; i < stream_ids.size(); ++i) {
@@ -2430,68 +2431,71 @@ TEST_F(CDCServiceTestThreeServers, TestCheckpointIsMinOverMultipleStreams) {
     }
   }
 
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
   // Check that the checkpoint is correct for each tablet peer.
-  auto verify_checkpoints = [this, &tablet_id, &tablet_peer, &get_changes_req_resps,
-                             &leader_idx](bool is_leader_shutdown) {
+  auto verify_checkpoints = [this, &tablet_id, &get_changes_req_resps,
+                             &initial_leader_idx](bool is_leader_shutdown) -> Status {
+    SleepFor(FLAGS_update_min_cdc_indices_interval_secs * 3s);
+
     // Lowest checkpoint is at the back of get_changes_req_resps, check that
-    // cdc_min_replicated_index
-    // is less than the lowest checkpoint out of all the streams.
+    // cdc_min_replicated_index is less than the lowest checkpoint out of all the streams.
+    auto lowest_checkpoint = get_changes_req_resps.back().second.checkpoint().op_id().index();
     for (int idx = 0; idx < server_count(); idx++) {
-      if (is_leader_shutdown && idx == leader_idx) {
+      if (is_leader_shutdown && idx == initial_leader_idx) {
         continue;
       }
-      auto new_tablet_peer =
+      auto tablet_peer =
           cluster_->mini_tablet_server(idx)->server()->tablet_manager()->LookupTablet(tablet_id);
-      if (new_tablet_peer) {
-        tablet_peer = new_tablet_peer;
-        ASSERT_LE(
-            tablet_peer->log()->cdc_min_replicated_index(),
-            get_changes_req_resps.back().second.checkpoint().op_id().index());
-        ASSERT_LE(
-            tablet_peer->tablet_metadata()->cdc_min_replicated_index(),
-            get_changes_req_resps.back().second.checkpoint().op_id().index());
+      if (tablet_peer) {
+        SCHECK_LE(
+            tablet_peer->log()->cdc_min_replicated_index(), lowest_checkpoint, IllegalState,
+            Format("Peer on node $0 has invalid log::cdc_min_replicated_index", idx + 1));
+        SCHECK_LE(
+            tablet_peer->tablet_metadata()->cdc_min_replicated_index(), lowest_checkpoint,
+            IllegalState,
+            Format(
+                "Peer on node $0 has invalid tablet_metadata::cdc_min_replicated_index", idx + 1));
       }
     }
+
+    return Status::OK();
   };
 
-  verify_checkpoints(false /* is_leader_shutdown */);
+  ASSERT_OK(verify_checkpoints(false /* is_leader_shutdown */));
 
   // Kill the tablet leader tserver so that another tserver becomes the leader.
-  cluster_->mini_tablet_server(leader_idx)->Shutdown();
-  LOG(INFO) << "tserver " << leader_idx << " was shutdown";
+  cluster_->mini_tablet_server(initial_leader_idx)->Shutdown();
+  LOG(INFO) << "tserver " << initial_leader_idx + 1 << " was shutdown";
 
   // CDC Proxy is pinned to the first TServer, so we need to update the proxy if we kill that one.
-  if (leader_idx == 0) {
+  if (initial_leader_idx == 0) {
     cdc_proxy_ = std::make_unique<CDCServiceProxy>(
         &client_->proxy_cache(),
         HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(1)->bound_rpc_addr()));
   }
 
-  ASSERT_OK(WaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [&]() {
         for (int idx = 0; idx < server_count(); idx++) {
-          if (idx == leader_idx) {
+          if (idx == initial_leader_idx) {
             // This TServer is shutdown for now.
             continue;
           }
-          tablet_peer = cluster_->mini_tablet_server(idx)->server()->tablet_manager()->LookupTablet(
-              tablet_id);
+          auto tablet_peer =
+              cluster_->mini_tablet_server(idx)->server()->tablet_manager()->LookupTablet(
+                  tablet_id);
           if (tablet_peer &&
               tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
-            LOG(INFO) << "Found new leader for tablet " << tablet_id << " in TS " << idx;
+            LOG(INFO) << "Found new leader for tablet " << tablet_id << " in TS " << idx + 1;
             return true;
           }
         }
         return false;
       },
-      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait until tablet has a leader."));
+      30s * kTimeMultiplier, "Wait until tablet has a leader."));
 
-  SleepFor(MonoDelta::FromSeconds((FLAGS_update_min_cdc_indices_interval_secs * 3)));
+  ASSERT_OK(verify_checkpoints(true /* is_leader_shutdown */));
 
-  verify_checkpoints(true /* is_leader_shutdown */);
-
-  ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(initial_leader_idx)->Start());
   ASSERT_OK(client_->DeleteCDCStream(stream_id1));
   ASSERT_OK(client_->DeleteCDCStream(stream_id2));
 }

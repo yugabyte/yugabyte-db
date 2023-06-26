@@ -2442,9 +2442,9 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
   auto current_term = tablet_info->cdc_op_id.term;
   auto s = tablet_peer->set_cdc_min_replicated_index(min_index);
   WARN_NOT_OK(
-      tablet_peer->set_cdc_min_replicated_index(min_index),
-      "Unable to set cdc min index for tablet peer " + tablet_peer->permanent_uuid() +
-          " and tablet: " + tablet_peer->tablet_id());
+      s, Format(
+             "Unable to set cdc min index for tablet $0 peer $1", tablet_peer->tablet_id(),
+             tablet_peer->permanent_uuid()));
   RETURN_NOT_OK(s);
 
   auto result = tablet_peer->GetCDCSDKIntentRetainTime(tablet_info->cdc_sdk_latest_active_time);
