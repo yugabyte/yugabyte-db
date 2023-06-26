@@ -776,7 +776,7 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 	_outNestLoop(str, &node->nl);
 	WRITE_NODE_FIELD(hashOps);
 	WRITE_NODE_FIELD(innerHashAttNos);
-	WRITE_NODE_FIELD(outerParamExprs);
+	WRITE_NODE_FIELD(outerParamNos);
 }
 
 static void

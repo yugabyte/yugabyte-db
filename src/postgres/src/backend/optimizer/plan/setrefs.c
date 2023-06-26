@@ -1685,7 +1685,7 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 				elog(ERROR, "NestLoopParam was not reduced to a simple Var");
 		}
 		List *innerAttNos = NIL;
-		List *outerParamExprs = NIL;
+		List *outerParamNos = NIL;
 
 		ListCell *l;
 		if (IsA(join, YbBatchedNestLoop))
@@ -1702,41 +1702,36 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 					Assert(IsA(clause, OpExpr));
 					OpExpr *opexpr = (OpExpr *) clause;
 					Assert(list_length(opexpr->args) == 2);
+					Assert(IsA(lsecond(opexpr->args), Var));
 					Expr *leftArg = linitial(opexpr->args);
 					Expr *rightArg = lsecond(opexpr->args);
 
-
-					Var *innerArg;
-					Expr *outerArg;
-
-					if (IsA((Expr*) leftArg, Var) &&
-						((Var*) leftArg)->varno == INNER_VAR)
-					{
-						innerArg = (Var *) leftArg;
-						outerArg = rightArg;
-					}
-					else
-					{
-						outerArg = leftArg;
-						innerArg = (Var *) rightArg;
-					}
+					Var *innerArg =
+						(Var*) (((Var*) leftArg)->varno == INNER_VAR
+								? leftArg
+								: rightArg);
+					Var *outerArg =
+						(Var*) (((Var*) leftArg)->varno == INNER_VAR
+								 ? rightArg
+								 : leftArg);
+					Assert(IsA((Expr*) outerArg, Var));
 					
 					Assert(innerArg->varno = INNER_VAR);
 
 					innerAttNos =
 						lappend_int(innerAttNos,
 									((Var *) innerArg)->varattno);
-					outerParamExprs =
-						lappend(outerParamExprs, outerArg);
+					outerParamNos =
+						lappend_int(outerParamNos, outerArg->varattno);
 				} else {
 					innerAttNos =
 						lappend_int(innerAttNos, InvalidOid);
-					outerParamExprs =
-						lappend(outerParamExprs, NULL);
+					outerParamNos =
+						lappend_int(outerParamNos, InvalidOid);
 				}
 			}
 			batchednl->innerHashAttNos = innerAttNos;
-			batchednl->outerParamExprs =  outerParamExprs;
+			batchednl->outerParamNos =  outerParamNos;
 		}
 
 	}

@@ -6602,7 +6602,7 @@ make_YbBatchedNestLoop(List *tlist,
 	node->nl.nestParams = nestParams;
 	node->hashOps = hashOps;
 	node->innerHashAttNos = NULL;
-	node->outerParamExprs = NULL;
+	node->outerParamNos = NULL;
 
 	return node;
 }
