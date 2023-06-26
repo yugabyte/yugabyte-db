@@ -80,5 +80,12 @@ Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
 }
 
+void LibPqTestBase::BumpCatalogVersion(int num_versions, PGConn* conn) {
+  LOG(INFO) << "Do " << num_versions << " breaking catalog version bumps";
+  for (int i = 0; i < num_versions; ++i) {
+    ASSERT_OK(conn->Execute("ALTER ROLE yugabyte SUPERUSER"));
+  }
+}
+
 } // namespace pgwrapper
 } // namespace yb
