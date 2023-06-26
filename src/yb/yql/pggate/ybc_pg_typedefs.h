@@ -360,7 +360,6 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_read_request_caching;
   const bool*     ysql_enable_profile;
   const bool*     ysql_disable_global_impact_ddl_statements;
-  const bool*     ysql_disable_per_tuple_memory_context_in_update_relattrs;
   const bool*     ysql_minimal_catalog_caches_preload;
 } YBCPgGFlagsAccessor;
 
