@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -336,6 +337,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           }
           createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
               .setSubTaskGroupType(subGroupType);
+          // If there are no universe keys on the universe, it will have no effect.
+          if (processType == ServerType.MASTER
+              && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+            createSetActiveUniverseKeysTask().setSubTaskGroupType(subGroupType);
+          }
         }
         createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
       }
@@ -464,6 +470,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(subGroupType);
         createWaitForYbcServerTask(new HashSet<NodeDetails>(nodes))
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
+      // If there are no universe keys on the universe, it will have no effect.
+      if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+        createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
     }
     if (context.postAction != null) {

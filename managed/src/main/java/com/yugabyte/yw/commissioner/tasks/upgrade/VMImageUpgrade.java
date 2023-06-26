@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
@@ -205,6 +206,11 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               createWaitForServersTasks(new HashSet<>(nodeList), processType);
               createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
                   .setSubTaskGroupType(getTaskSubGroupType());
+              // If there are no universe keys on the universe, it will have no effect.
+              if (processType == ServerType.MASTER
+                  && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+                createSetActiveUniverseKeysTask().setSubTaskGroupType(getTaskSubGroupType());
+              }
             }
           });
 

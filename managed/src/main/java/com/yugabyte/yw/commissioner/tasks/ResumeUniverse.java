@@ -18,7 +18,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -97,10 +96,6 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
       }
 
       createStartMasterProcessTasks(masterNodeList);
-
-      if (EncryptionAtRestUtil.getNumUniverseKeys(universe.getUniverseUUID()) > 0) {
-        createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
 
       createStartTServerTasks(tserverNodeList)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
