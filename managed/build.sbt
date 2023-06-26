@@ -91,6 +91,7 @@ lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console settin
 lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
 lazy val buildVenv = taskKey[Int]("Build venv")
+lazy val generateCrdObjects = taskKey[Int]("Generating CRD classes..")
 lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
@@ -99,6 +100,7 @@ lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
 lazy val cleanModules = taskKey[Int]("Clean modules")
+lazy val cleanCrd = taskKey[Int]("Clean CRD")
 
 
 lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
@@ -194,6 +196,8 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client-api" % "6.4.1",
   "io.fabric8" % "kubernetes-model" % "4.9.2",
   "io.fabric8" % "kubernetes-api" % "3.0.12",
+  "org.modelmapper" % "modelmapper" % "2.4.4",
+
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
@@ -306,6 +310,7 @@ externalResolvers := {
 (Compile / compilePlatform) := {
   (Compile / compile).value
   Def.sequential(
+      generateCrdObjects,
       buildVenv,
       releaseModulesLocally
     ).value
@@ -316,6 +321,7 @@ externalResolvers := {
 cleanPlatform := {
   clean.value
   (swagger / clean).value
+  cleanCrd.value
   cleanVenv.value
   cleanUI.value
   cleanModules.value
@@ -359,7 +365,14 @@ releaseModulesLocally := {
 
 buildDependentArtifacts := {
   ybLog("Building dependencies...")
+  generateCrdObjects.value
   val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
+  status
+}
+
+generateCrdObjects := {
+  ybLog("Generating crd classes...")
+  val status = Process("mvn generate-sources", baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
   status
 }
 
@@ -389,6 +402,12 @@ cleanVenv := {
   ybLog("Cleaning virtual env...")
   val venvDir: String = get_venv_dir()
   val status = Process("rm -rf " + venvDir, baseDirectory.value / "devops").!
+  status
+}
+
+cleanCrd := {
+  ybLog("Cleaning CRD generated code...")
+  val status = Process("mvn clean", baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
   status
 }
 
