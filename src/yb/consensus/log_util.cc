@@ -883,8 +883,7 @@ WritableLogSegment::WritableLogSegment(string path,
     : path_(std::move(path)),
       writable_file_(std::move(writable_file)),
       is_header_written_(false),
-      is_footer_written_(false),
-      written_offset_(0) {}
+      is_footer_written_(false) {}
 
 Status WritableLogSegment::WriteHeaderAndOpen(const LogSegmentHeaderPB& new_header) {
   DCHECK(!IsHeaderWritten()) << "Can only call WriteHeader() once";
@@ -902,8 +901,8 @@ Status WritableLogSegment::WriteHeaderAndOpen(const LogSegmentHeaderPB& new_head
 
   header_.CopyFrom(new_header);
   first_entry_offset_ = buf.size();
-  written_offset_ = first_entry_offset_;
   is_header_written_ = true;
+  DCHECK_EQ(written_offset(), first_entry_offset_);
 
   return Status::OK();
 }
@@ -928,8 +927,6 @@ Status WritableLogSegment::WriteFooterAndClose(const LogSegmentFooterPB& footer)
   is_footer_written_ = true;
 
   RETURN_NOT_OK(writable_file_->Close());
-
-  written_offset_ += buf.size();
 
   return Status::OK();
 }
@@ -959,7 +956,6 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
 
   // Write the header to the file, followed by the batch data itself.
   RETURN_NOT_OK(writable_file_->AppendSlices(slices.data(), slices.size()));
-  written_offset_ += sizeof(header_buf) + data.size();
 
   return Status::OK();
 }

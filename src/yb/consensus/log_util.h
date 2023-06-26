@@ -438,7 +438,7 @@ class WritableLogSegment {
   }
 
   int64_t written_offset() const {
-    return written_offset_;
+    return writable_file_->Size();
   }
 
  private:
@@ -463,9 +463,6 @@ class WritableLogSegment {
 
   // the offset of the first entry in the log
   int64_t first_entry_offset_;
-
-  // The offset where the last written entry ends.
-  int64_t written_offset_;
 
   DISALLOW_COPY_AND_ASSIGN(WritableLogSegment);
 };
