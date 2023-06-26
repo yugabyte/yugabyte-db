@@ -5,6 +5,8 @@ import { YBTable, YBLoadingBox, YBCheckbox } from "@app/components";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import type { TFunction } from "i18next";
 import clsx from "clsx";
+import { useLocalStorage } from "react-use";
+import { AlertConfiguration, alertConfigurationsKey, alertList, useCPUAlert } from "./alerts";
 
 const useStyles = makeStyles((theme) => ({
   sectionWrapper: {
@@ -42,12 +44,16 @@ const useStyles = makeStyles((theme) => ({
   notificationContent: {
     display: "flex",
     flexDirection: "column",
-    gap: theme.spacing(1),
+    margin: theme.spacing(0.5, 0),
+    gap: theme.spacing(0.5),
   },
   notificationTitle: {
-    color: theme.palette.primary[600],
+    color: theme.palette.grey[800],
     fontWeight: 600,
     fontSize: "13px",
+    "&:first-letter": {
+      textTransform: "uppercase",
+    },
   },
   notificationDescription: {
     color: theme.palette.grey[600],
@@ -55,16 +61,16 @@ const useStyles = makeStyles((theme) => ({
     fontSize: "12px",
   },
   sevIndicator: {
-    height: theme.spacing(6),
+    padding: theme.spacing(3, 0),
     width: theme.spacing(0.65),
+    minWidth: theme.spacing(0.65),
     borderRadius: theme.shape.borderRadius,
   },
   sevIndicatorSm: {
-    height: theme.spacing(2.5),
+    padding: theme.spacing(1.2, 0),
   },
   sevIndicatorWrapper: {
     display: "flex",
-    alignItems: "center",
     gap: theme.spacing(1),
   },
   checkbox: {
@@ -73,12 +79,11 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 type Notification = {
-  title: string,
-  description: string,
-  status: BadgeVariant,
-  triggerTime: string,
-  duration: string,
-}
+  key: string;
+  title?: string;
+  info: string;
+  status: BadgeVariant;
+};
 
 const SevIndicator: React.FC<{ status: BadgeVariant; smIndicator?: boolean }> = ({
   status,
@@ -106,20 +111,21 @@ const SevIndicator: React.FC<{ status: BadgeVariant; smIndicator?: boolean }> = 
   );
 };
 
-const NotificationComponent = (classes: ReturnType<typeof useStyles>, notifications: Notification[]) => (dataIndex: number) => {
-  const notification = notifications[dataIndex];
+const NotificationComponent =
+  (classes: ReturnType<typeof useStyles>, notifications: Notification[]) => (dataIndex: number) => {
+    const notification = notifications[dataIndex];
 
-  return (
-    <Box className={classes.notificationWrapper}>
-      <SevIndicator status={notification.status}>
-        <Box className={classes.notificationContent}>
-          <Box className={classes.notificationTitle}>{notification.title}</Box>
-          <Box className={classes.notificationDescription}>{notification.description}</Box>
-        </Box>
-      </SevIndicator>
-    </Box>
-  );
-};
+    return (
+      <Box className={classes.notificationWrapper}>
+        <SevIndicator status={notification.status}>
+          <Box className={classes.notificationContent}>
+            <Box className={classes.notificationTitle}>{notification.title}</Box>
+            <Box className={classes.notificationDescription}>{notification.info}</Box>
+          </Box>
+        </SevIndicator>
+      </Box>
+    );
+  };
 
 const StatusComponent = (t: TFunction) => (status: BadgeVariant) => {
   const badgeText =
@@ -143,43 +149,74 @@ export const AlertNotificationDetails: FC = () => {
   const [severeFilter, setSevereFilter] = React.useState<boolean>(false);
   const [warningFilter, setWarningFilter] = React.useState<boolean>(false);
 
-  const notificationData = useMemo<Notification[]>(
+  const cpuAlerts = useCPUAlert();
+
+  const [config] = useLocalStorage<AlertConfiguration[]>(alertConfigurationsKey);
+
+  const upstreamNotificationData = useMemo(
     () => [
       {
-        title: "CPU Utilization",
-        description: "Cluster CPU utilization exceeded 90% for 5 min",
-        status: BadgeVariant.Error,
-        triggerTime: "May 23, 2:27 PST",
-        duration: "12m",
+        name: "ntp/chrony",
+        info: "ntp/chrony package is missing for clock synchronization. For centos 7, we recommend installing either ntp or chrony package and for centos 8, we recommend installing chrony package.",
       },
       {
-        title: "Free Storage",
-        description: "Node free storage is below 25%",
-        status: BadgeVariant.Error,
-        triggerTime: "May 23, 1:03pm PST",
-        duration: "3h 16m",
-      },
-      {
-        title: "YSQL Connection Limit",
-        description: "Cluster exceeded 60% YSQL connection limit",
-        status: BadgeVariant.Warning,
-        triggerTime: "May 23, 11:45am PST",
-        duration: "24m",
+        name: "insecure",
+        info: "Cluster started in an insecure mode without authentication and encryption enabled. For non-production use only, not to be used without firewalls blocking the internet traffic.",
       },
     ],
     []
   );
 
-  const filteredNotificationData = useMemo(
-    () =>
-      notificationData.filter(
-        (notification) =>
-          (severeFilter && notification.status === BadgeVariant.Error) ||
-          (warningFilter && notification.status === BadgeVariant.Warning) ||
-          (!severeFilter && !warningFilter)
-      ),
-    [notificationData, severeFilter, warningFilter]
-  );
+  const notificationData = useMemo<Notification[]>(() => {
+    const cpuNotifications = [];
+    if (cpuAlerts.cpu_90) {
+      const alert = alertList.find((alert) => alert.key === Object.keys(cpuAlerts)[0])!;
+      cpuNotifications.push({
+        key: alert.key,
+        title: "CPU Utilization",
+        info: alert.name,
+        status: BadgeVariant.Error,
+      });
+    } else if (cpuAlerts.cpu_75) {
+      const alert = alertList.find((alert) => alert.key === Object.keys(cpuAlerts)[1])!;
+      cpuNotifications.push({
+        key: alert.key,
+        title: "CPU Utilization",
+        info: alert.name,
+        status: BadgeVariant.Warning,
+      });
+    }
+
+    const apiNotifications = upstreamNotificationData.map((notificationData) => ({
+      key: notificationData.name,
+      title:
+        alertList.find((alert) => alert.key === notificationData.name)?.name ||
+        BadgeVariant.Warning,
+      info: notificationData.info,
+      status: BadgeVariant.Warning,
+    }));
+
+    return [...cpuNotifications, ...apiNotifications];
+  }, [upstreamNotificationData, cpuAlerts]);
+
+  const filteredNotificationData = useMemo(() => {
+    let filteredNotifications: typeof notificationData;
+
+    /* Sev filter */
+    filteredNotifications = notificationData.filter(
+      (notification) =>
+        (severeFilter && notification.status === BadgeVariant.Error) ||
+        (warningFilter && notification.status === BadgeVariant.Warning) ||
+        (!severeFilter && !warningFilter)
+    );
+
+    /* Conf filter */
+    filteredNotifications = filteredNotifications.filter(
+      (notification) => config?.find((config) => config.key === notification.key)?.enabled ?? true
+    );
+
+    return filteredNotifications;
+  }, [notificationData, severeFilter, warningFilter, config]);
 
   const notificationColumns = [
     {
@@ -197,23 +234,7 @@ export const AlertNotificationDetails: FC = () => {
       options: {
         customBodyRender: StatusComponent(t),
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "triggerTime",
-      label: t("clusterDetail.alerts.notification.triggertime"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "duration",
-      label: t("clusterDetail.alerts.notification.duration"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px", minWidth: 150 } }),
       },
     },
   ];
@@ -259,10 +280,10 @@ export const AlertNotificationDetails: FC = () => {
       <Box className={classes.notificationsSection}>
         <Box className={classes.sectionHeading}>
           {t("clusterDetail.alerts.notification.xnotifications", {
-            count: notificationData.length,
+            count: filteredNotificationData.length,
           })}
         </Box>
-        {notificationData.length ? (
+        {filteredNotificationData.length ? (
           <Box pb={4} pt={1}>
             <YBTable
               data={filteredNotificationData}
