@@ -391,6 +391,8 @@ message CDCSDKProtoRecordPB {
 
   // Op id information to identify duplicate entries
   optional CDCSDKOpIdPB cdc_sdk_op_id = 2;
+
+  optional CDCSDKOpIdPB from_op_id = 3;
 }
 
 message GetChangesResponsePB {

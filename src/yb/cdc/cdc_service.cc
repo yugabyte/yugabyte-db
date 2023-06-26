@@ -754,10 +754,8 @@ Status DoUpdateCDCConsumerOpId(
 }
 
 bool UpdateCheckpointRequired(
-    const StreamMetadata& record, const CDCSDKCheckpointPB& cdc_sdk_op_id, bool* force_update,
-    bool* is_snapshot) {
+    const StreamMetadata& record, const CDCSDKCheckpointPB& cdc_sdk_op_id, bool* is_snapshot) {
   *is_snapshot = false;
-  *force_update = false;
   switch (record.GetSourceType()) {
     case XCLUSTER:
       return true;
@@ -768,11 +766,6 @@ bool UpdateCheckpointRequired(
       }
       if (CDCServiceImpl::IsCDCSDKSnapshotRequest(cdc_sdk_op_id)) {
         *is_snapshot = true;
-        if (CDCServiceImpl::IsCDCSDKSnapshotBootstrapRequest(cdc_sdk_op_id)) {
-          // CDC should do a force update of checkpoint in cdc_state table as a part snapshot
-          // bootstrap.
-          *force_update = true;
-        }
         // CDC should update the stream active time in cdc_state table, during snapshot operation to
         // avoid stream expiry.
         return true;
@@ -1698,7 +1691,8 @@ void CDCServiceImpl::GetChanges(
     status = GetChangesForCDCSDK(
         req->stream_id(), req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
         *enum_map_result, *composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp,
-        &cached_schema_details, &last_streamed_op_id, &last_readable_index,
+        &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
+        req->wal_segment_index(), &last_readable_index,
         tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline);
     // This specific error from the docdb_pgapi layer is used to identify enum cache entry is
     // out of date, hence we need to repopulate.
@@ -1726,7 +1720,8 @@ void CDCServiceImpl::GetChanges(
       status = GetChangesForCDCSDK(
           req->stream_id(), req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
           *enum_map_result, *composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp,
-          &cached_schema_details, &last_streamed_op_id, &last_readable_index,
+          &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
+          req->wal_segment_index(), &last_readable_index,
           tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline);
     }
     // This specific error indicates that a tablet split occured on the tablet.
@@ -1777,13 +1772,15 @@ void CDCServiceImpl::GetChanges(
                        .commit_time()
                  : 0);
 
+  bool snapshot_bootstrap = IsCDCSDKSnapshotBootstrapRequest(cdc_sdk_from_op_id);
   if (record.GetCheckpointType() == IMPLICIT ||
-      (record.GetCheckpointType() == EXPLICIT && got_explicit_checkpoint_from_request)) {
+      (record.GetCheckpointType() == EXPLICIT &&
+       (got_explicit_checkpoint_from_request || snapshot_bootstrap))) {
     bool is_snapshot = false;
-    bool snapshot_bootstrap = false;
     bool is_colocated = tablet_peer->tablet_metadata()->colocated();
     OpId snapshot_op_id = OpId::Invalid();
     std::string snapshot_key = "";
+
     // If snapshot operation or before image is enabled, don't allow compaction.
     HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
     if (record.GetRecordType() == CDCRecordType::ALL || cdc_sdk_from_op_id.write_id() == -1) {
@@ -1796,7 +1793,7 @@ void CDCServiceImpl::GetChanges(
       }
     }
 
-    if (UpdateCheckpointRequired(record, cdc_sdk_from_op_id, &snapshot_bootstrap, &is_snapshot)) {
+    if (UpdateCheckpointRequired(record, cdc_sdk_from_op_id, &is_snapshot)) {
       // This is the snapshot bootstrap operation, so taking the checkpoint from the resp.
       if (is_snapshot) {
         snapshot_op_id =
@@ -2646,7 +2643,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     }
 
     // If its not been 60s since the last peer update, continue.
-    if (!FLAGS_enable_log_retention_by_op_idx ||
+    if (!GetAtomicFlag(&FLAGS_enable_log_retention_by_op_idx) ||
         (time_since_update_peers != MonoTime::kUninitialized &&
          MonoTime::Now() - time_since_update_peers <
              MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_update_min_cdc_indices_interval_secs)))) {

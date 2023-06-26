@@ -62,6 +62,7 @@ set(INTEGRATION_TESTS_SRCS
   yb_table_test_base.cc
   xcluster_test_base.cc
   cdcsdk_test_base.cc
+  cdcsdk_ysql_test_base.cc
   xcluster_ysql_test_base.cc
   xcluster_ycql_test_base.cc
 )
@@ -191,6 +192,7 @@ ADD_YB_TEST(cdc_service-txn-test)
 ADD_YB_TEST(cdcsdk_stream-test)
 ADD_YB_TEST(cdcsdk_ysql-test)
 ADD_YB_TEST(cdcsdk_before_image-test)
+ADD_YB_TEST(cdcsdk_consistent_stream-test)
 ADD_YB_TEST(cdcsdk_snapshot-test)
 ADD_YB_TEST(cdcsdk_tablet_split-test)
 ADD_YB_TEST(xcluster_ysql-test)

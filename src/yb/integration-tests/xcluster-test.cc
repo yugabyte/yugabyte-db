@@ -3609,10 +3609,10 @@ TEST_P(XClusterTest, LeaderFailoverTest) {
   // GC log on producer.
   // Note: Ideally cdc checkpoint should advance but we do not see that with our combination of
   // flags so disable FLAGS_enable_log_retention_by_op_idx for the duration of the flush instead.
-  FLAGS_enable_log_retention_by_op_idx = false;
+  SetAtomicFlag(false, &FLAGS_enable_log_retention_by_op_idx);
   SleepFor(2s * kTimeMultiplier);
   ASSERT_OK(FlushProducerTabletsAndGCLog());
-  FLAGS_enable_log_retention_by_op_idx = true;
+  SetAtomicFlag(true, &FLAGS_enable_log_retention_by_op_idx);
 
   // Failback to old tserver.
   ASSERT_OK(itest::LeaderStepDown(new_ts, tablet_id, old_ts, kTimeout));

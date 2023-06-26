@@ -96,7 +96,7 @@ TEST_F(SamplingProfilerTest, AllocationProfile) {
   const int64_t alloc_size = 30_MB;
 
   tcmalloc::MallocExtension::AllocationProfilingToken token;
-  token = tcmalloc::MallocExtension::StartLifetimeProfiling();
+  token = tcmalloc::MallocExtension::StartLifetimeProfiling(/* seed_with_live_allocs= */ false);
 
   // We expect to find this allocation in the profile if and only if only_growth is false, since
   // it is not deallocated before we stop profiling.
