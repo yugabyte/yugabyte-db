@@ -16,6 +16,18 @@ On this page:
 
 ## Releases
 
+### June 26, 2023
+
+**New Features**
+
+- Support for using a customer managed key (CMK) in Google Cloud Key Management Service (KMS) to encrypt a dedicated cluster (preview release). When YugabyteDB encryption at rest is enabled, your can now encrypt your cluster using your own CMK residing in Google Cloud KMS or AWS KMS.
+
+### June 8, 2023
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.17.3](../../releases/release-notes/v2.17/#v2.17.3.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
 ### June 7, 2023
 
 **New Features**
