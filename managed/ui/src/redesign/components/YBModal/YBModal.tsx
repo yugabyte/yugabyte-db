@@ -68,9 +68,13 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     width: ({ overrideWidth }) => overrideWidth ?? 480,
     height: ({ overrideHeight }) => overrideHeight ?? 272
   },
-  dialogXl: {
+  dialogLg: {
     width: ({ overrideWidth }) => overrideWidth ?? 800,
     height: ({ overrideHeight }) => overrideHeight ?? 800
+  },
+  dialogXl: {
+    width: ({ overrideWidth }) => overrideWidth ?? 1125,
+    height: ({ overrideHeight }) => overrideHeight ?? 900
   },
   form: {
     display: 'flex',
@@ -178,6 +182,9 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     case 'xs':
       dialogClasses = classes.dialogXs;
       dialogTitle = classes.dialogTitleXs;
+      break;
+    case 'lg':
+      dialogClasses = classes.dialogLg;
       break;
     case 'xl':
       dialogClasses = classes.dialogXl;

@@ -511,6 +511,8 @@ class UniverseDetail extends Component {
                   universe={universe}
                   currentCustomer={currentCustomer}
                   currentUser={currentUser}
+                  closeModal={closeModal}
+                  visibleModal={visibleModal}
                 />
               </Tab.Pane>
             )
