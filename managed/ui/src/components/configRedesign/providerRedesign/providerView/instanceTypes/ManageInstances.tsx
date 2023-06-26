@@ -30,7 +30,7 @@ import {
 import { InstanceType } from '../../../../../redesign/helpers/dtos';
 import { OnPremProvider } from '../../types';
 import { NodeAgentStatusModal } from './NodeAgentStatusModal';
-import { SortDirection, NodeAgentStatusList } from '../../../../../redesign/utils/dtos';
+import { SortDirection } from '../../../../../redesign/utils/dtos';
 import { NodeAgentAPI, QUERY_KEY } from '../../../../../redesign/features/NodeAgent/api';
 import { isNonEmptyArray } from '../../../../../utils/ObjectUtils';
 import { formatNumberToText } from '../../../../../utils/Formatters';
@@ -111,8 +111,7 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
         const nodeAgentOnPremNodes = data.entities;
         const numNodeAgentsFailed =
           nodeAgentOnPremNodes?.filter(
-            (nodeAgentOnPremNode: any) =>
-              nodeAgentOnPremNode.state === NodeAgentStatusList.REGISTERING
+            (nodeAgentOnPremNode: any) => !nodeAgentOnPremNode?.reachable
           ) ?? [];
         setNumNodesHealthDown(numNodeAgentsFailed.length);
         setIsNodeAgentHealthDown(isNonEmptyArray(numNodeAgentsFailed));
