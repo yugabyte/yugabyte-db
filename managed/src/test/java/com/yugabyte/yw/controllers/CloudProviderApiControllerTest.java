@@ -1550,6 +1550,56 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testOnPremProviderNameValidation() {
+    // create provider body
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "onprem");
+    bodyJson.put("name", "onprem-Provider");
+    ObjectNode region = Json.newObject();
+    ObjectNode az1 = Json.newObject().put("name", "us-west-2a").put("code", "us-west-2a");
+    ObjectNode az2 = Json.newObject().put("name", "us-west-2b").put("code", "us-west-2b");
+    ArrayNode zonesList = Json.newArray();
+    zonesList.add(az1).add(az2);
+    region.put("zones", zonesList);
+    region.put("code", "us-west-2");
+    ArrayNode regionsList = Json.newArray();
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenReturn(UUID.randomUUID());
+    // Test validation pass
+    Result result = createProvider(bodyJson);
+    assertOk(result);
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testOnPremProviderNameValidationFail() {
+    // create provider body
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "onprem");
+    bodyJson.put("name", "onprem-Provider");
+    ObjectNode region = Json.newObject();
+    ObjectNode az1 = Json.newObject().put("name", "us-west&s2a").put("code", "us-west-2a");
+    ObjectNode az2 = Json.newObject().put("name", "us-westS*D2b").put("code", "us-west-2b");
+    ArrayNode zonesList = Json.newArray();
+    zonesList.add(az1).add(az2);
+    region.put("zones", zonesList);
+    region.put("code", "us-west-2");
+    ArrayNode regionsList = Json.newArray();
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+
+    Result result = assertPlatformException(() -> createProvider(bodyJson));
+    assertEquals(BAD_REQUEST, result.status());
+    assertBadRequestValidationResult(
+        result,
+        "data.ZONE.0",
+        "Zone name cannot contain any special characters except '-' and '_'.");
+  }
+
+  @Test
   public void testGCPProviderCreateWithImageBundle() {
     when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
         .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));

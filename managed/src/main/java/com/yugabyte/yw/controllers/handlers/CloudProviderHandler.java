@@ -99,7 +99,6 @@ import play.libs.Json;
 @Singleton
 public class CloudProviderHandler {
   public static final String YB_FIREWALL_TAGS = "YB_FIREWALL_TAGS";
-  public static final String SKIP_KEYPAIR_VALIDATION_KEY = "yb.provider.skip_keypair_validation";
   private static final Logger LOG = LoggerFactory.getLogger(CloudProviderHandler.class);
   private static final JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE =
       Json.parse("{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.5, \"memSizeGB\": 1.5}");
@@ -771,8 +770,6 @@ public class CloudProviderHandler {
   public UUID bootstrap(Customer customer, Provider provider, CloudBootstrap.Params taskParams) {
     // Set the top-level provider info.
     taskParams.providerUUID = provider.getUuid();
-    taskParams.skipKeyPairValidate =
-        runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
 
     // If the regionList is still empty by here, then we need to list the regions available.
     if (taskParams.perRegionMetadata == null) {
@@ -922,6 +919,7 @@ public class CloudProviderHandler {
       throw new PlatformServiceException(BAD_REQUEST, "Changing provider type is not supported!");
     }
     CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
+
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     UUID taskUUID = null;
@@ -1065,8 +1063,6 @@ public class CloudProviderHandler {
     // for the provider yet.
     if (provider.getAllAccessKeys() != null && provider.getAllAccessKeys().size() > 0) {
       taskParams.keyPairName = AccessKey.getLatestKey(provider.getUuid()).getKeyCode();
-      taskParams.skipKeyPairValidate =
-          runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
     }
     taskParams.providerUUID = provider.getUuid();
     String destVpcId = null;

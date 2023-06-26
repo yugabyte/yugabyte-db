@@ -10,8 +10,10 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.configs.validators.AWSProviderValidator;
+import com.yugabyte.yw.models.configs.validators.OnPremValidator;
 import com.yugabyte.yw.models.configs.validators.ProviderFieldsValidator;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
 import java.util.HashMap;
@@ -28,6 +30,8 @@ public class ProviderValidator extends BaseBeanValidator {
     this.providerValidatorMap.put(
         CloudType.aws.toString(),
         new AWSProviderValidator(beanValidator, awsCloudImpl, runtimeConfGetter));
+    this.providerValidatorMap.put(
+        CloudType.onprem.toString(), new OnPremValidator(beanValidator, runtimeConfGetter));
   }
 
   public void validate(Provider provider) {
@@ -42,6 +46,13 @@ public class ProviderValidator extends BaseBeanValidator {
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
       }
       throw e;
+    }
+  }
+
+  public void validate(AvailabilityZone zone, String providerCode) {
+    ProviderFieldsValidator providerFieldsValidator = providerValidatorMap.get(providerCode);
+    if (providerFieldsValidator != null) {
+      providerFieldsValidator.validate(zone);
     }
   }
 }
