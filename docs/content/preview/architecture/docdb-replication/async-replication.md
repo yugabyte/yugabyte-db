@@ -173,7 +173,7 @@ replication lag.  This means, for example, if we write at 2 PM in the
 source universe and read at 2:01 PM in the sink universe and replication
 lag is say five minutes then the read will read as of 1:56 PM and will
 not see the write.  We won't be able to see the write until 2:06 PM in
-the sink.
+the sink assuming replication lag remains at five minutes.
 
 If the source universe dies, then we can discard all the incomplete
 information in the sink universe by rewinding it to the latest xCluster
@@ -320,11 +320,6 @@ periodic background task checks for committed transactions that are
 missing apply Raft entries and generates such entries for them; this
 helps xCluster safe time advance faster.
 
-Note: a previous implementation (pre-2.18) of this mode replicated Raft
-entries for the transaction coordinators instead of replicating the
-application Raft entries.  This was found to have much greater
-complexity than the current implementation.
-
 
 ## Schema differences
 
@@ -344,9 +339,8 @@ done.
 Because of this restriction, xCluster does not need to do a deep
 translation of row contents (e.g., dropping columns or translating
 column IDs inside of keys and values) as rows are replicated between
-universes.  Only one shallow translation is done: packing schema
-versions are translated.  Avoiding deep translation simplifies the code
-and reduces the cost of replication.
+universes.  Avoiding deep translation simplifies the code and reduces
+the cost of replication.
 
 ### Supporting schema changes
 
@@ -428,7 +422,7 @@ The multi-master deployment is built internally using two source-sink
 unidirectional replication streams using non-transactional mode. Special
 care is taken to ensure that the timestamps are assigned to guarantee
 last-writer-wins semantics and the data arriving from the replication
-stream is not rereplicated.
+stream is not re-replicated.
 
 The following is the architecture diagram:
 
@@ -499,11 +493,10 @@ In the future, it may be possible to detect such unsafe constraints and
 issue a warning, potentially by default.  This is tracked in
 [#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
 
-### Non-transactional mode consistency issues
+### Non-transactional&ndash;mode consistency issues
 
 When interacting with data replicated from another universe using
 non-transactional mode:
-- it can take a while for data to arrive from the other universe
 - reads are only eventually consistent
 - last writer wins for writes
 - transactions are limited to isolation level SQL-92 READ COMMITTED
@@ -511,12 +504,11 @@ non-transactional mode:
 After losing one universe, the other universe may be left with torn
 transactions.
 
-### Transactional mode limitations
+### Transactional-mode limitations
 
 With transactional mode,
 - active-active is not supported
 - YCQL is not yet supported
-- it can take a while for data to arrive from the other universe
 - no writes are allowed in the sink universe
 
 ### Bootstrapping replication
@@ -558,7 +550,7 @@ With transactional mode,
   able to communicate by directly referencing the pods in the other
   universe.  In practice, this either means that the two universes must
   be part of the same Kubernetes cluster or that two Kubernetes clusters
-  must have DNS and routing properly setup amongst themselves.
+  must have DNS and routing properly set up amongst themselves.
 - Being able to have two YugabyteDB universes, each in their own
   standalone Kubernetes cluster, communicating with each other via a
   load balancer, is not currently supported, as per
