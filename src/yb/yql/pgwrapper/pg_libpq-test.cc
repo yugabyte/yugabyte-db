@@ -157,13 +157,6 @@ class PgLibPqTest : public LibPqTestBase {
 
   Status TestDuplicateCreateTableRequest(PGConn conn);
 
-  void BumpCatalogVersion(int num_versions, PGConn* conn) {
-    LOG(INFO) << "Do " << num_versions << " breaking catalog version bumps";
-    for (int i = 0; i < num_versions; ++i) {
-      ASSERT_OK(conn->Execute("ALTER ROLE yugabyte SUPERUSER"));
-    }
-  }
-
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
 };
