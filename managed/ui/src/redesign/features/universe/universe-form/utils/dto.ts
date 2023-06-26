@@ -171,6 +171,7 @@ export interface NodeDetails {
   nodeUuid: string | null;
   placementUuid: string;
   state: NodeState;
+  cloudInfo?: CloudInfo;
 }
 
 export interface EncryptionAtRestConfig {
@@ -356,6 +357,9 @@ export interface Cluster {
 
 export interface CloudInfo {
   assignPublicIP: boolean;
+  private_ip?: string;
+  az?: string;
+  region?: string;
 }
 
 export interface NodeDetails {

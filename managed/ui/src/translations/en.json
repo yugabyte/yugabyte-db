@@ -463,6 +463,22 @@
       "variableName": "Variable Name:",
       "variableValUpdateSuccess": "variable updated successfully for policy \"{{policy_name}}\""
     },
+    "nodeAgent": {
+      "title": "Node Agents",
+      "assignedNodesTitle": "Assigned Nodes",
+      "unassignedNodesTitle": "Unassigned Nodes",
+      "viewDetailsButton": "View Details",
+      "unreachableInstanceAgents": "Instance agents are unreachable",
+      "contactSupport": "Contact Support"
+    },
+    "universeSelector": {
+      "all": "All Universes",
+      "errorMessage": "Failed to fetch list of universes"
+    },
+    "providerSelector": {
+      "all": "All Providers",
+      "errorMessage": "Failed to fetch list of providers"
+    },
     "customCACerts": {
       "listing": {
         "header": "Trusted CA Certificates",

@@ -199,3 +199,48 @@ export interface LastRunData {
   universeUUID: string;
   uuid: string;
 }
+
+export interface NodeAgentEntities {
+  archType: string;
+  config: any;
+  customerUuid: string;
+  home: string;
+  ip: string;
+  name: string;
+  osType: string;
+  port: number;
+  reachable: boolean;
+  state: string;
+  updatedAt: string;
+  uuid: string;
+  version: string;
+  versionMatched: boolean;
+}
+
+export enum NodeAgentStatusList {
+  READY = 'READY',
+  REGISTERING = 'REGISTERING',
+  UPGRADE = 'UPGRADE',
+  UPGRADED = 'UPGRADED'
+}
+
+export interface NodeListDetails {
+  instanceName: string;
+  instanceType: string;
+  ip: string;
+  nodeName: string;
+  region: string;
+  sshUser: string;
+  zone: string;
+}
+
+export interface ProviderNode {
+  details: NodeListDetails;
+  detailsJson: any;
+  inUse: boolean;
+  instanceName: string;
+  instanceTypeCode: string;
+  nodeName: string;
+  nodeUuid: string
+  zoneUuid: string
+}
