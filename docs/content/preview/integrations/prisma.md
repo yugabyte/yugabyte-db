@@ -59,7 +59,7 @@ To set up a Prisma project, named `prisma-yb`, run the following command:
 prisma init prisma-yb
 ```
 
-In order to quickly explore using Prisma with YugabyteDB, use the default database and user in the PostgreSQL-compatible YugabyteDB.
+To quickly explore using Prisma with YugabyteDB, use the default database and user in the PostgreSQL-compatible YugabyteDB.
 
 When prompted, enter or select the following values:
 
@@ -132,59 +132,59 @@ For details on writing data with the Prisma client, see [Writing Data (JavaScrip
 
 1. Create a user Jane with three postings:
 
-```graphql
-mutation {
-  createUser(data: {
-    name: "Jane Doe"
-    handle: "jane"
-    posts: {
-      create: [
-        {
-           text: "Jane's First Post"
-           views: 10
-        },
-        {
-           text:"Jane's Second Post"
-           views: 80
-        },
-        {
-           text:"Jane's Third Post"
-           views: 25
+    ```graphql
+    mutation {
+      createUser(data: {
+        name: "Jane Doe"
+        handle: "jane"
+        posts: {
+          create: [
+            {
+              text: "Jane's First Post"
+              views: 10
+            },
+            {
+              text:"Jane's Second Post"
+              views: 80
+            },
+            {
+              text:"Jane's Third Post"
+              views: 25
+            }
+          ]
         }
-      ]
+      }) {
+        id
+      }
     }
-  }) {
-    id
-  }
-}
-```
+    ```
 
 1. Create a user John with two postings:
 
-```graphql
-mutation {
-  createUser(data: {
-    name: "John Doe"
-    handle: "john"
-    posts: {
-      create: [
-        {
-           text: "John's First Post"
-           views: 15
-        },
-        {
-           text:"John's Second Post"
-           views: 20
+    ```graphql
+    mutation {
+      createUser(data: {
+        name: "John Doe"
+        handle: "john"
+        posts: {
+          create: [
+            {
+              text: "John's First Post"
+              views: 15
+            },
+            {
+              text:"John's Second Post"
+              views: 20
+            }
+          ]
         }
-      ]
+      }) {
+        id
+      }
     }
-  }) {
-    id
-  }
-}
-```
+    ```
 
-![Create user John with two postings](/images/develop/graphql/prisma/create-user-john.png)
+    ![Create user John with two postings](/images/develop/graphql/prisma/create-user-john.png)
 
 ## 6. Query the data
 
