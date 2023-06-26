@@ -72,10 +72,10 @@ Alerts can have two severity levels: Warning or Severe. The nodes down alert has
 
 When you receive a cluster alert, the first step is to review the chart for the metric over time (if available) to evaluate trends and monitor your progress.
 
-| Alert | Review |
+| Alert | Metric |
 | :--- | :--- |
-| Node Disk Throughput | Disk IOPS |
-| Node Disk IOPS | Disk IOPS |
+| [Node Disk Throughput](#fix-throughput-alerts) | Disk IOPS |
+| [Node Disk IOPS](#fix-iops-alerts) | Disk IOPS |
 | [Node Free Storage](#fix-storage-alerts) | Disk Usage metric |
 | [Nodes down](#fix-nodes-reporting-as-down-alerts) | Go to the cluster **Nodes** tab to see which nodes are down |
 | [Memory Use](#fix-memory-alerts) | Memory Usage metric |
