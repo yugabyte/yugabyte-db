@@ -174,8 +174,39 @@ public class TaskExecutor {
         .register(CollectorRegistry.defaultRegistry);
   }
 
+  private static final Summary COMMISSIONER_TASK_WAITING_SEC_ =
+      buildSummary(
+          COMMISSIONER_TASK_WAITING_SEC_METRIC,
+          "Duration between task creation and execution",
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          "parent task");
+
+  private static final Summary COMMISSIONER_TASK_EXECUTION_SEC_ =
+      buildSummary(
+          COMMISSIONER_TASK_EXECUTION_SEC_METRIC,
+          "Duration of task execution",
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          KnownAlertLabels.RESULT.labelName(),
+          "parent task"); 
+
+   // This writes the waiting time metric and the parent of the task.
+  private void writeTaskWaitMetric(
+      TaskType taskType, Instant scheduledTime, Instant startTime, TaskType parenTaskType) {
+    COMMISSIONER_TASK_WAITING_SEC_
+        .labels(taskType.name(), parenTaskType.name())
+        .observe(getDurationSeconds(scheduledTime, startTime));
+  }
+
+  // This writes the execution time metric and the parent of the task.
+  private void writeTaskStateMetric(
+      TaskType taskType, Instant startTime, Instant endTime, State state, TaskType parenTaskType) {
+    COMMISSIONER_TASK_EXECUTION_SEC_
+        .labels(taskType.name(), state.name(), parenTaskType.name())
+        .observe(getDurationSeconds(startTime, endTime));
+  } 
+
   // This writes the waiting time metric.
-  private static void writeTaskWaitMetric(
+  private void writeTaskWaitMetric(
       TaskType taskType, Instant scheduledTime, Instant startTime) {
     COMMISSIONER_TASK_WAITING_SEC
         .labels(taskType.name())
@@ -183,7 +214,7 @@ public class TaskExecutor {
   }
 
   // This writes the execution time metric.
-  private static void writeTaskStateMetric(
+  private void writeTaskStateMetric(
       TaskType taskType, Instant startTime, Instant endTime, State state) {
     COMMISSIONER_TASK_EXECUTION_SEC
         .labels(taskType.name(), state.name())
@@ -738,6 +769,8 @@ public class TaskExecutor {
    * started running. Synchronization is on the this object for taskInfo.
    */
   public abstract class AbstractRunnableTask implements Runnable {
+    RunnableTask parentTask;     
+    TaskInfo parentTaskInfo;
     final ITask task;
     final TaskInfo taskInfo;
     // Timeout limit for this task.
@@ -800,7 +833,14 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
-        writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime);
+        //writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime);
+        if(parentTask==null){
+          writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime);
+        }
+        else{
+          writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime, parentTaskInfo.getTaskType());
+        }
+
         publishBeforeTask();
         if (getAbortTime() != null) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
@@ -834,10 +874,21 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
-        writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
+        //writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
+        if(parentTask==null){
+          writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
+        }
+        else{
+          writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState(), parentTaskInfo.getTaskType());
+        }
         task.terminate();
         publishAfterTask(t);
       }
+    }
+
+    private void setParentForSubtask(RunnableTask parentTask){
+      this.parentTask= parentTask;
+      parentTaskInfo.setParentUuid(parentTask.getTaskUUID());
     }
 
     public synchronized boolean isTaskRunning() {
@@ -1259,6 +1310,7 @@ public class TaskExecutor {
       taskInfo.setParentUuid(parentRunnableTask.getTaskUUID());
       taskInfo.setPosition(position);
       taskInfo.save();
+      super.setParentForSubtask(parentRunnableTask);
     }
   }
 }
