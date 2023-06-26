@@ -5,10 +5,6 @@ linkTitle: Integrations
 description: Integrate popular third party tools with YugabyteDB, including Presto, Prisma, Sequelize, Spring, Flyway, Django, Hasura, Kafka.
 headcontent: Use YugabyteDB with popular third-party integrations
 image: /images/section_icons/develop/api-icon.png
-aliases:
-  - /develop/client-drivers/
-  - /preview/develop/client-drivers/
-  - /preview/quick-start/build-apps/
 type: indexpage
 ---
 
