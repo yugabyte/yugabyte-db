@@ -469,6 +469,16 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
       ysql_ddl_txn_verifier_state().contains_create_table_op();
   }
 
+  std::vector<std::string> cols_marked_for_deletion() const {
+    std::vector<std::string> columns;
+    for (const auto& col : pb.schema().columns()) {
+      if (col.marked_for_deletion()) {
+        columns.push_back(col.name());
+      }
+    }
+    return columns;
+  }
+
   Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;
 
   const std::string& state_name() const {

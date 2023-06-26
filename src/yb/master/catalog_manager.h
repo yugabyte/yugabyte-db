@@ -411,6 +411,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status YsqlDdlTxnCompleteCallbackInternal(
       TableInfo *table, const TransactionId& txn_id, bool success);
 
+  Status HandleSuccessfulYsqlDdlTxn(TableInfo *table, TableInfo::WriteLock* l);
+
+  Status HandleAbortedYsqlDdlTxn(TableInfo *table, TableInfo::WriteLock* l);
+
+  Status ClearYsqlDdlTxnState(TableInfo *table, TableInfo::WriteLock* l);
+
+  Status YsqlDdlTxnAlterTableHelper(TableInfo *table,
+                                    TableInfo::WriteLock* l,
+                                    const std::vector<DdlLogEntry>& ddl_log_entries,
+                                    const std::string& new_table_name);
+
+  Status YsqlDdlTxnDropTableHelper(TableInfo *table, TableInfo::WriteLock *l);
+
   // Get the information about the specified table.
   Status GetTableSchema(const GetTableSchemaRequestPB* req,
                         GetTableSchemaResponsePB* resp) override;
