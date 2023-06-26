@@ -292,7 +292,7 @@ export const AlertNotificationDetails: FC = () => {
             />
           </Box>
         ) : (
-          <YBLoadingBox>{t("clusterDetail.alerts.notification.nonotification")}</YBLoadingBox>
+          <YBLoadingBox>{t("clusterDetail.alerts.notification.nonotifications")}</YBLoadingBox>
         )}
       </Box>
     </Box>
