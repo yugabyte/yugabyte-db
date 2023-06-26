@@ -86,6 +86,7 @@
 #include "fmgr.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
+#include "pgstat.h"
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -637,6 +638,8 @@ YBInitPostgresBackend(
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
+		callbacks.SignalWaitStart = &pgstat_report_wait_start;
+		callbacks.SignalWaitEnd = &pgstat_report_wait_end;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 

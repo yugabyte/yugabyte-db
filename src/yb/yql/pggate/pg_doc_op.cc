@@ -213,11 +213,11 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocResponse::PgDocResponse(PerformFuture future)
-    : holder_(std::move(future)) {}
+PgDocResponse::PgDocResponse(PerformFuture future, uint32_t wait_event)
+    : holder_(std::move(future)), wait_event_(wait_event) {}
 
-PgDocResponse::PgDocResponse(ProviderPtr provider)
-    : holder_(std::move(provider)) {}
+PgDocResponse::PgDocResponse(ProviderPtr provider, uint32_t wait_event)
+    : holder_(std::move(provider)), wait_event_(wait_event) {}
 
 bool PgDocResponse::Valid() const {
   return std::holds_alternative<PerformFuture>(holder_)
@@ -227,6 +227,7 @@ bool PgDocResponse::Valid() const {
 
 Result<PgDocResponse::Data> PgDocResponse::Get() {
   if (std::holds_alternative<PerformFuture>(holder_)) {
+    std::get<PerformFuture>(holder_).SignalWait(wait_event_);
     return std::get<PerformFuture>(holder_).Get();
   }
 
@@ -465,7 +466,7 @@ Result<PgDocResponse> PgDocOp::DefaultSender(
     PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
     HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable) {
   return PgDocResponse(VERIFY_RESULT(session->RunAsync(
-      ops, ops_count, table, in_txn_limit, force_non_bufferable)));
+      ops, ops_count, table, in_txn_limit, force_non_bufferable)), ops->get()->getWaitEvent());
 }
 
 //-------------------------------------------------------------------------------------------------

@@ -43,6 +43,7 @@ class PerformFuture {
   bool Valid() const;
   bool Ready() const;
   Result<Data> Get();
+  void SignalWait(uint32_t wait_event);
 
  private:
   std::future<PerformResult> future_;
