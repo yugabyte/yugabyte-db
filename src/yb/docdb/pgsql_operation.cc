@@ -42,6 +42,7 @@
 #include "yb/dockv/partition.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value_util.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/qlexpr/ql_expr_util.h"
 
@@ -230,6 +231,44 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
   }
 
   return std::move(result);
+}
+
+template <class ColumnIds>
+Status VerifyNoColsMarkedForDeletion(const TableId& table_id,
+                                     const Schema& schema,
+                                     ColumnIds&& column_refs) {
+  for (const auto& col : column_refs) {
+    const auto& id = dockv::GetColumnId(col);
+    int idx = schema.find_column_by_id(id);
+    if (idx == -1) {
+      return STATUS_FORMAT(IllegalState, "Column not found: $0 in table $1", id, table_id);
+    }
+    SCHECK(!schema.IsColMarkedForDeletion(idx),
+           InvalidArgument,
+           "Column with id $0 marked for deletion in table $1",
+           id, table_id);
+  }
+  return Status::OK();
+}
+
+template<class PB>
+Status VerifyNoRefColsMarkedForDeletion(const Schema& schema, const PB& request) {
+  if (!request.col_refs().empty()) {
+    RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(request.table_id(), schema, request.col_refs()));
+  }
+  // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
+  return VerifyNoColsMarkedForDeletion(request.table_id(), schema, request.column_refs().ids());
+}
+
+Status VerifyNoColsMarkedForDeletion(const Schema& schema, const PgsqlWriteRequestPB& request) {
+  // Verify that the request does not refer any columns marked for deletion.
+  RETURN_NOT_OK(VerifyNoRefColsMarkedForDeletion(schema, request));
+  // Verify columns being updated are not marked for deletion.
+  RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(request.table_id(),
+                                              schema,
+                                              request.column_new_values()));
+  // Verify columns being inserted are not marked for deletion.
+  return VerifyNoColsMarkedForDeletion(request.table_id(), schema, request.column_values());
 }
 
 template<class PB>
@@ -639,6 +678,8 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
 
 Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   VLOG(4) << "Write, read time: " << data.read_time() << ", txn: " << txn_op_context_;
+
+  RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(doc_read_context_->schema(), request_));
 
   auto scope_exit = ScopeExit([this] {
     if (write_buffer_) {
@@ -1217,6 +1258,9 @@ Result<size_t> PgsqlReadOperation::Execute(
     WriteBuffer* result_buffer,
     HybridTime* restart_read_ht,
     const DocDBStatistics* statistics) {
+  // Verify that this request references no columns marked for deletion.
+  RETURN_NOT_OK(VerifyNoRefColsMarkedForDeletion(doc_read_context.schema(),
+                                                 request_));
   size_t fetched_rows = 0;
   auto num_rows_pos = result_buffer->Position();
   // Reserve space for fetched rows count.
