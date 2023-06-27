@@ -23,6 +23,8 @@
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
 
+#include "yb/yql/pggate/util/ybc_stat.h"
+
 namespace yb {
 namespace pggate {
 
@@ -83,6 +85,8 @@ class PgsqlOp {
 
   virtual Status InitPartitionKey(const PgTableDesc& table) = 0;
 
+  virtual uint32 getWaitEvent() const = 0;
+
  private:
   virtual std::string RequestToString() const = 0;
 
@@ -119,6 +123,8 @@ class PgsqlReadOp : public PgsqlOp {
   PgsqlOpPtr DeepCopy(const std::shared_ptr<void>& shared_ptr) const;
 
   std::string RequestToString() const override;
+
+  uint32_t getWaitEvent() const override { return YB_PG_WAIT_EVENT_DML_READ; }
 
  private:
   Status InitPartitionKey(const PgTableDesc& table) override;
@@ -160,6 +166,8 @@ class PgsqlWriteOp : public PgsqlOp {
   }
 
   std::string RequestToString() const override;
+
+  uint32_t getWaitEvent() const override { return YB_PG_WAIT_EVENT_DML_WRITE; }
 
  private:
   Status InitPartitionKey(const PgTableDesc& table) override;
