@@ -889,8 +889,16 @@ public class TaskExecutor {
     private void setParentForSubtask(RunnableTask parentTask){
       if(parentTask != null){
         this.parentTask= parentTask;
-        this.parentTaskInfo = taskInfo;
-        this.parentTaskInfo.setParentUuid(parentTask.getTaskUUID());
+        UUID parentTaskUUID = parentTask.getTaskUUID();
+        Optional<TaskInfo> taskInfoOptional = TaskInfo.maybeGet(parentTaskUUID);
+        if (taskInfoOptional.isPresent()) {
+            this.parentTaskInfo = taskInfoOptional.get();
+            // Use the taskInfo object as needed
+        } else {
+            this.parentTask = null;
+        }
+        //this.parentTaskInfo = taskInfo.get(taskInfo.getParentUuid());
+        //this.parentTaskInfo.setUuid(parentTask.getTaskUUID());
       }
     }
 
