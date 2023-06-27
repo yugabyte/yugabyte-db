@@ -249,7 +249,7 @@ class CpuSankeyLink extends Component<any, any> {
       return null;
     }
       
-    const { isReadReplica } = payload;
+    const { isReadReplica } = payload.target;
 
     const gradientID = `linkGradient${index}`;
     const fill = this.state?.fill ?? `url(#${gradientID})`;

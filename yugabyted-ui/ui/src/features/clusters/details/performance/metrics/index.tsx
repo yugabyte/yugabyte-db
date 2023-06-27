@@ -124,6 +124,7 @@ export const Metrics: FC = () => {
   const [relativeInterval, setRelativeInterval] = useState<string>(queryParams.interval);
 
   const { data: nodesResponse, isLoading: isClusterNodesLoading } = useGetClusterNodesQuery();
+  const hasReadReplica = !!nodesResponse?.data.find((node) => node.is_read_replica);
 
   const nodesNamesList = useMemo(() => [
     ALL_NODES,
@@ -219,26 +220,30 @@ export const Metrics: FC = () => {
         setVisibility={setIsMetricsOptionsModalOpen}
   />*/}
     <Box className={classes.tablesRow}>
-        <YBButton
-          className={
-              clsx(classes.clusterButton, tab === 'PRIMARY' && classes.selected)
-          }
-          onClick={() => handleTabChange('PRIMARY')}
-        >
-          <Typography variant="body2" className={classes.buttonText}>
-            {t('clusterDetail.performance.metrics.primaryCluster')}
-          </Typography>
-        </YBButton>
-        <YBButton
-          className={
-              clsx(classes.clusterButton, tab === 'READ_REPLICA' && classes.selected)
-          }
-          onClick={() => handleTabChange('READ_REPLICA')}
-        >
-          <Typography variant="body2" className={classes.buttonText}>
-          {t('clusterDetail.performance.metrics.readReplicas')}
-          </Typography>
-        </YBButton>
+      {hasReadReplica &&
+        <>
+          <YBButton
+            className={
+                clsx(classes.clusterButton, tab === 'PRIMARY' && classes.selected)
+            }
+            onClick={() => handleTabChange('PRIMARY')}
+          >
+            <Typography variant="body2" className={classes.buttonText}>
+              {t('clusterDetail.performance.metrics.primaryCluster')}
+            </Typography>
+          </YBButton>
+          <YBButton
+            className={
+                clsx(classes.clusterButton, tab === 'READ_REPLICA' && classes.selected)
+            }
+            onClick={() => handleTabChange('READ_REPLICA')}
+          >
+            <Typography variant="body2" className={classes.buttonText}>
+            {t('clusterDetail.performance.metrics.readReplicas')}
+            </Typography>
+          </YBButton>
+        </>
+      }
       </Box>
       {clusterData?.data &&
         <VCpuUsagePanel cluster={clusterData.data} />

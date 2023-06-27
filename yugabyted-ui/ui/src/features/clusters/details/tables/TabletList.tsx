@@ -73,6 +73,7 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
     .find(tablet => tablet.table_name === selectedTable)?.table_uuid as string : undefined, [selectedTable, tablets])
 
   const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery({ query: { refetchOnMount: 'always' }});
+  const hasReadReplica = !!nodesResponse?.data.find((node) => node.is_read_replica);
   const nodeNames = useMemo(() => nodesResponse?.data.map(node => node.name), [nodesResponse])
 
   const [nodes, setNodes] = React.useState<string[]>(nodeNames ?? []);
@@ -179,62 +180,74 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
   }, [tabletList, tabletID]);
 
 
-  const columns = [
-    {
-      name: 'id',
-      label: t('clusterDetail.databases.tabletID'),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px' }}),
-      }
-    },
-    {
-      name: 'range',
-      label: t('clusterDetail.databases.tabletRange'),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px' }}),
-      }
-    },
-    {
-      name: 'leaderNode',
-      label: t('clusterDetail.databases.leaderNode'),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px' }}),
-      }
-    },
-    {
-      name: 'followerNodes',
-      label: t('clusterDetail.databases.followerNodes'),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px' }}),
-      }
-    },
-    {
-      name: 'readReplicaNodes',
-      label: t('clusterDetail.databases.readReplicaNodes'),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px' }}),
-      }
-    },
-    {
-      name: 'status',
-      label: '',
-      options: {
-        sort: false,
-        hideHeader: true,
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px' }}),
-        customBodyRender: (status: string) => status && 
-          <YBBadge variant={status === "Under-replicated" ? BadgeVariant.Warning : BadgeVariant.Error} 
-            text={status === "Under-replicated" ? t('clusterDetail.databases.underReplicated') : 
-              t('clusterDetail.databases.unavailable')} />,
-      }
-    },
-  ];
+  const columns = useMemo(() => {
+    const columns = [
+      {
+        name: 'id',
+        label: t('clusterDetail.databases.tabletID'),
+        options: {
+          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+          setCellProps: () => ({ style: { padding: '8px 16px' }}),
+        }
+      },
+      {
+        name: 'range',
+        label: t('clusterDetail.databases.tabletRange'),
+        options: {
+          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+          setCellProps: () => ({ style: { padding: '8px 16px' }}),
+        }
+      },
+      {
+        name: 'leaderNode',
+        label: t('clusterDetail.databases.leaderNode'),
+        options: {
+          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+          setCellProps: () => ({ style: { padding: '8px 16px' }}),
+        }
+      },
+      {
+        name: 'followerNodes',
+        label: t('clusterDetail.databases.followerNodes'),
+        options: {
+          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+          setCellProps: () => ({ style: { padding: '8px 16px' }}),
+        }
+      },
+      {
+        name: 'readReplicaNodes',
+        label: t('clusterDetail.databases.readReplicaNodes'),
+        options: {
+          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+          setCellProps: () => ({ style: { padding: '8px 16px' }}),
+        }
+      },
+      {
+        name: 'status',
+        label: '',
+        options: {
+          sort: false,
+          hideHeader: true,
+          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+          setCellProps: () => ({ style: { padding: '8px 16px' }}),
+          customBodyRender: (status: string) => status && 
+            <YBBadge variant={status === "Under-replicated" ? BadgeVariant.Warning : BadgeVariant.Error} 
+              text={status === "Under-replicated" ? t('clusterDetail.databases.underReplicated') : 
+                t('clusterDetail.databases.unavailable')} />,
+        }
+      },
+    ];
+
+    if (nodesResponse && nodesResponse.data.length < 2) {
+      columns.splice(columns.findIndex(col => col.name === "followerNodes"), 1);
+    }
+
+    if (!hasReadReplica) {
+      columns.splice(columns.findIndex(col => col.name === "readReplicaNodes"), 1);
+    }
+
+    return columns;
+  }, [nodesResponse, hasReadReplica]);
 
   if (isFetchingNodes || isFetchingHealth || isFetchingTablets || isLoading) {
     return (
