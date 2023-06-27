@@ -71,7 +71,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
   @Before
   public void setup() {
-    awsCloudImpl = spy(new AWSCloudImpl());
+    awsCloudImpl = spy(new AWSCloudImpl(null));
     mockEC2Client = mock(AmazonEC2.class);
     mockRoute53Client = mock(AmazonRoute53.class);
     mockSTSService = mock(AWSSecurityTokenService.class);
