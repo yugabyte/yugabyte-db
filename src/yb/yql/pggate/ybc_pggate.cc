@@ -365,8 +365,14 @@ YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
 }
 
 YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
-  *consumption = GetTCMallocActualHeapSizeBytes();
-  return YBCStatusOK();
+#ifdef YB_TCMALLOC_ENABLED
+    // Use GetRootMemTrackerConsumption instead of directly accessing TCMalloc to avoid excess
+    // calls to TCMalloc on every memory allocation.
+    *consumption = pgapi ? pgapi->GetRootMemTrackerConsumption() : 0;
+#else
+    *consumption = 0;
+#endif
+    return YBCStatusOK();
 }
 
 bool YBCTryMemConsume(int64_t bytes) {
