@@ -832,8 +832,8 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
-        //writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime);
-        if(parentTask==null){
+        writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime, parentTask == null? null:parentTaskInfo.getTaskType());
+        /*if(parentTask==null){
           writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime);
         }
         else{
@@ -873,8 +873,8 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
-        //writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
-        if(parentTask==null){
+        writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState(), parentTaskInfo == null? null:parentTaskInfo.getTaskType());
+        /*if(parentTask==null){
           writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
         }
         else{
@@ -886,8 +886,10 @@ public class TaskExecutor {
     }
 
     private void setParentForSubtask(RunnableTask parentTask){
-      this.parentTask= parentTask;
-      parentTaskInfo.setParentUuid(parentTask.getTaskUUID());
+      if(parentTask != null){
+        this.parentTask= parentTask;
+        parentTaskInfo.setParentUuid(parentTask.getTaskUUID());
+      }
     }
 
     public synchronized boolean isTaskRunning() {
