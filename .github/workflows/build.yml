@@ -77,6 +77,12 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Maximize build space
+        # Use a specific commit for predictability and security.
+        uses: easimon/maximize-build-space@6ae56c86ea8db291ae39f62352a412c36ab8179b
+        with:
+          remove-dotnet: 'true'
+
       - name: Build YugabyteDB
         run: |
           echo "OSTYPE (outside Docker): $OSTYPE"
