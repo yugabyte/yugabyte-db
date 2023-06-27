@@ -372,9 +372,7 @@ Status GetChangesForXCluster(
 
   consensus::ReadOpsResult read_ops;
   {
-    auto consensus = tablet_peer->shared_consensus();
-    SCHECK(consensus, NotFound, Format("Tablet id $0 not found", tablet_id));
-
+    auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
     read_ops = VERIFY_RESULT(
         consensus->ReadReplicatedMessagesForCDC(from_op_id, last_readable_opid_index, deadline));
   }

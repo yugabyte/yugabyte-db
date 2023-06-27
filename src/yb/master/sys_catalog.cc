@@ -407,13 +407,14 @@ void SysCatalogTable::SysCatalogStateChanged(
     const string& tablet_id,
     std::shared_ptr<StateChangeContext> context) {
   CHECK_EQ(tablet_id, tablet_peer()->tablet_id());
-  shared_ptr<consensus::Consensus> consensus = tablet_peer()->shared_consensus();
-  if (!consensus) {
+  auto consensus_result = tablet_peer()->GetConsensus();
+  if (!consensus_result) {
     LOG_WITH_PREFIX(WARNING) << "Received notification of tablet state change "
                              << "but tablet no longer running. Tablet ID: "
                              << tablet_id << ". Reason: " << context->ToString();
     return;
   }
+  auto& consensus = consensus_result.get();
 
   // We use the active config, in case there is a pending one with this peer becoming the voter,
   // that allows its role to be determined correctly as the LEADER and so loads the sys catalog.

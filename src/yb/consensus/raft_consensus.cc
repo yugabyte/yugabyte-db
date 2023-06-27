@@ -290,8 +290,8 @@ class NonTrackedRoundCallback : public ConsensusRoundCallback {
 
   void ReplicationFinished(
       const Status& status, int64_t leader_term, OpIds* applied_op_ids) override {
-    down_cast<RaftConsensus*>(round_->consensus())->NonTrackedRoundReplicationFinished(
-        round_, callback_, status);
+    down_cast<RaftConsensus*>(round_->consensus())
+        ->NonTrackedRoundReplicationFinished(round_, callback_, status);
   }
 
  private:
@@ -1380,9 +1380,8 @@ void RaftConsensus::UpdateMajorityReplicated(
   s = state_->UpdateMajorityReplicatedUnlocked(
       majority_replicated_data.op_id, committed_op_id, &committed_index_changed,
       last_applied_op_id);
-  auto leader_state = state_->GetLeaderStateUnlocked();
-  if (leader_state.ok() && leader_state.status == LeaderStatus::LEADER_AND_READY) {
-    state_->context()->MajorityReplicated();
+  if (s.ok() && state_->GetLeaderStateUnlocked().ok()) {
+    s = state_->context()->MajorityReplicated();
   }
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Format("Unable to mark committed up to $0: $1", majority_replicated_data.op_id, s);

@@ -194,7 +194,7 @@ class TsTabletManagerTest : public YBTest {
     RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(
           MonoDelta::FromMilliseconds(kConsensusRunningWaitMs)));
 
-    return tablet_peer->consensus()->EmulateElection();
+    return VERIFY_RESULT(tablet_peer->GetConsensus())->EmulateElection();
   }
 
   void Reload() {
@@ -432,11 +432,12 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     auto replicate_ptr = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
     replicate_ptr->set_op_type(consensus::NO_OP);
     replicate_ptr->set_hybrid_time(peer->clock().Now().ToUint64());
-    ConsensusRoundPtr round(new ConsensusRound(peer->consensus(), std::move(replicate_ptr)));
+    auto consensus = ASSERT_RESULT(peer->GetConsensus());
+    ConsensusRoundPtr round(new ConsensusRound(consensus.get(), std::move(replicate_ptr)));
     consensus_rounds.emplace_back(round);
-    round->BindToTerm(peer->raft_consensus()->TEST_LeaderTerm());
+    round->BindToTerm(ASSERT_RESULT(peer->GetRaftConsensus())->TEST_LeaderTerm());
     round->SetCallback(consensus::MakeNonTrackedRoundCallback(round.get(), [](const Status&){}));
-    ASSERT_OK(peer->consensus()->TEST_Replicate(round));
+    ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->TEST_Replicate(round));
   }
 
   for (int i = 0; i < kNumRestarts; ++i) {

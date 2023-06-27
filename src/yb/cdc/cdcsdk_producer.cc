@@ -1481,9 +1481,9 @@ Status GetConsistentWALRecords(
           << ", consistent_safe_time: " << consistent_safe_time
           << ", last_seen_op_id: " << last_seen_op_id->ToString()
           << ", historical_max_op_id: " << historical_max_op_id;
+  auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
   do {
-    consensus::ReadOpsResult read_ops;
-    read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
+    auto read_ops = VERIFY_RESULT(consensus->ReadReplicatedMessagesForCDC(
         *last_seen_op_id, *last_readable_opid_index, deadline));
 
     if (read_ops.messages.empty()) {
@@ -1553,8 +1553,8 @@ Status GetWALRecords(
     const int64_t& safe_hybrid_time, const CoarseTimePoint& deadline, bool skip_intents,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* wal_records,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints) {
-  consensus::ReadOpsResult read_ops;
-  read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
+  auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
+  auto read_ops = VERIFY_RESULT(consensus->ReadReplicatedMessagesForCDC(
       *last_seen_op_id, *last_readable_opid_index, deadline));
 
   if (read_ops.messages.empty()) {
@@ -1807,8 +1807,7 @@ Status GetChangesForCDCSDK(
       VLOG(1) << "The first snapshot term " << data.op_id.term << "index  " << data.op_id.index
               << "time " << data.log_ht.ToUint64();
       // Update the CDCConsumerOpId.
-      std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
-      shared_consensus->UpdateCDCConsumerOpId(data.op_id);
+      VERIFY_RESULT(tablet_peer->GetConsensus())->UpdateCDCConsumerOpId(data.op_id);
 
       LOG(INFO) << "CDC snapshot initialization is started, by setting checkpoint as: "
                 << data.op_id << ", for tablet_id: " << tablet_id << " stream_id: " << stream_id;

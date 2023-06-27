@@ -206,7 +206,7 @@ class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
 
     return WaitFor(
         [&]() -> Result<bool> {
-          auto applied_op_id = leader_peer->raft_consensus()->GetAllAppliedOpId();
+          auto applied_op_id = VERIFY_RESULT(leader_peer->GetRaftConsensus())->GetAllAppliedOpId();
           return applied_op_id >= last_op_id;
         },
         kTimeout,

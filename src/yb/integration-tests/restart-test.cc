@@ -194,9 +194,13 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
   int64_t new_index = 1;
   PutKeyValue("key_1", "value_1");
   new_index++;
-  ASSERT_OK(WaitFor([&] {
-    return tablet_peer->raft_consensus()->GetLastCommittedOpId().index == new_index;
-  }, 10s, Format("the write $0 is replicated", new_index)));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(tablet_peer->GetRaftConsensus())->GetLastCommittedOpId().index ==
+               new_index;
+      },
+      10s,
+      Format("the write $0 is replicated", new_index)));
 
   if (wait_file_to_expire) {
     ASSERT_OK(RollLog(tablet_peer));
@@ -205,9 +209,13 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
     SetAtomicFlag(false, &FLAGS_enable_flush_retryable_requests);
     PutKeyValue("key_1", "value_1");
     new_index++;
-    ASSERT_OK(WaitFor([&] {
-      return tablet_peer->raft_consensus()->GetLastCommittedOpId().index == new_index;
-    }, 10s, Format("the write $0 is replicated", new_index)));
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          return VERIFY_RESULT(tablet_peer->GetRaftConsensus())->GetLastCommittedOpId().index ==
+                 new_index;
+        },
+        10s,
+        Format("the write $0 is replicated", new_index)));
     ASSERT_OK(RollLog(tablet_peer));
 
     // Sleep for enough time to make the persisted file old enough.
@@ -215,9 +223,13 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
     SleepFor((FLAGS_retryable_request_timeout_secs + 1) * 1s);
     SetAtomicFlag(true, &FLAGS_enable_flush_retryable_requests);
 
-    ASSERT_OK(WaitFor([&] {
-      return tablet_peer->shared_raft_consensus()->MinRetryableRequestOpId() == OpId::Max();
-    }, 10s, "retryable requests get GCed"));
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          return VERIFY_RESULT(tablet_peer->GetRaftConsensus())->MinRetryableRequestOpId() ==
+                 OpId::Max();
+        },
+        10s,
+        "retryable requests get GCed"));
   }
 
 #ifndef NDEBUG
@@ -238,9 +250,13 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
     PutKeyValue("key_0", "value_0");
   });
 
-  ASSERT_OK(WaitFor([&] {
-    return tablet_peer->raft_consensus()->GetLastCommittedOpId().index == new_index;
-  }, 10s, Format("the write $0 is replicated", new_index)));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(tablet_peer->GetRaftConsensus())->GetLastCommittedOpId().index ==
+               new_index;
+      },
+      10s,
+      Format("the write $0 is replicated", new_index)));
 
   if (!wait_file_to_expire) {
     ASSERT_OK(RollLog(tablet_peer));

@@ -2623,11 +2623,11 @@ int64_t CatalogManager::LeaderTerm() {
   if (!peer) {
     return -1;
   }
-  auto consensus = peer->shared_consensus();
-  if (!consensus) {
+  auto consensus_result = peer->GetConsensus();
+  if (!consensus_result) {
     return -1;
   }
-  return consensus->GetLeaderState(/* allow_stale= */ true).term;
+  return consensus_result.get()->GetLeaderState(/* allow_stale= */ true).term;
 }
 
 void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) {

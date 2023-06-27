@@ -239,11 +239,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // Returns false if it is preferable to don't apply write operation.
   bool ShouldApplyWrite() override;
 
-  consensus::Consensus* consensus() const;
-  consensus::RaftConsensus* raft_consensus() const;
-
-  std::shared_ptr<consensus::Consensus> shared_consensus() const;
-  std::shared_ptr<consensus::RaftConsensus> shared_raft_consensus() const;
+  // Returns valid shared pointer to the consensus. Returns a not OK status if the consensus is not
+  // in a valid state.
+  Result<std::shared_ptr<consensus::Consensus>> GetConsensus() const EXCLUDES(lock_);
+  Result<std::shared_ptr<consensus::RaftConsensus>> GetRaftConsensus() const EXCLUDES(lock_);
 
   std::shared_ptr<RetryableRequestsFlusher> shared_retryable_requests_flusher() const;
 
@@ -274,9 +273,6 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   }
 
   TabletDataState data_state() const;
-
-  // Returns the current Raft configuration.
-  consensus::RaftConfigPB RaftConfig() const;
 
   TabletStatusListener* status_listener() const {
     return status_listener_.get();
@@ -364,7 +360,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   consensus::LeaderStatus LeaderStatus(bool allow_stale = false) const;
   Result<HybridTime> LeaderSafeTime() const override;
 
-  HybridTime HtLeaseExpiration() const override;
+  Result<HybridTime> HtLeaseExpiration() const override;
 
   const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry() const {
     return log_anchor_registry_;
@@ -499,7 +495,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   TabletWeakPtr tablet_weak_;
   std::atomic<TabletObjectState> tablet_obj_state_{TabletObjectState::kUninitialized};
 
-  std::shared_ptr<consensus::RaftConsensus> consensus_;
+  std::shared_ptr<consensus::RaftConsensus> consensus_ GUARDED_BY(lock_);
   std::unique_ptr<TabletStatusListener> status_listener_;
   simple_spinlock prepare_replicate_lock_;
 
@@ -553,7 +549,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   Result<FixedHybridTimeLease> HybridTimeLease(HybridTime min_allowed, CoarseTimePoint deadline);
   Result<HybridTime> PreparePeerRequest() override;
-  void MajorityReplicated() override;
+  Status MajorityReplicated() override;
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;
   uint64_t NumSSTFiles() override;
   void ListenNumSSTFilesChanged(std::function<void()> listener) override;
@@ -570,6 +566,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool IsLeader() override {
     return LeaderTerm() != OpId::kUnknownTerm;
   }
+
+  // Returns the consensus. Can be nullptr.
+  std::shared_ptr<consensus::RaftConsensus> GetRaftConsensusUnsafe() const EXCLUDES(lock_);
 
   TabletSplitter* tablet_splitter_;
 
