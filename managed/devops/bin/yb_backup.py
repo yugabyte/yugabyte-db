@@ -1315,6 +1315,9 @@ class YBBackup:
 
                 host_base_cfg = 'host_base = ' + host_base + '\n' \
                                 'host_bucket = ' + bucket + '\n'
+
+                if host_base.startswith("http://"):
+                    host_base_cfg += 'use_https = false \n'
             else:
                 host_base_cfg = ''
             if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
