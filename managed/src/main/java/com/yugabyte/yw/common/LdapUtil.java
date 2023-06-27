@@ -327,14 +327,18 @@ public class LdapUtil {
       if (ldapConfiguration.isLdapUseSsl() || ldapConfiguration.isLdapUseTls()) {
 
         boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
-        if (customCAUploaded && customCAStoreManager.isEnabled()) {
-          log.debug("Using YBA's custom trust-store manager along-with Java defaults");
-          KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
-          TrustManagerFactory trustFactory =
-              TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-          trustFactory.init(ybaJavaKeyStore);
-          TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
-          config.setTrustManagers(ybaJavaTrustManagers);
+        if (customCAStoreManager.isEnabled()) {
+          if (customCAUploaded) {
+            log.debug("Using YBA's custom trust-store manager along-with Java defaults");
+            KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+            TrustManagerFactory trustFactory =
+                TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustFactory.init(ybaJavaKeyStore);
+            TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
+            config.setTrustManagers(ybaJavaTrustManagers);
+          } else {
+            log.debug("Using Java default trust managers");
+          }
         } else {
           if (customCAUploaded) {
             log.warn("Skipping to use YBA's custom trust-store as the feature is disabled");
