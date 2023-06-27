@@ -81,7 +81,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
 
 
   // Test that config.cluster_uuid gets set to the value that we specify through flag cluster_uuid.
-  FLAGS_cluster_uuid = Uuid::Generate().ToString();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cluster_uuid) = Uuid::Generate().ToString();
   ASSERT_OK(mini_master->Start());
   auto master = mini_master->master();
   ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
@@ -99,7 +99,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   ASSERT_OK(Env::Default()->CreateDir(dir));
   mini_master =
       std::make_unique<MiniMaster>(Env::Default(), dir, AllocateFreePort(), AllocateFreePort(), 0);
-  FLAGS_cluster_uuid = "";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cluster_uuid) = "";
   ASSERT_OK(mini_master->Start());
   master = mini_master->master();
   ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());

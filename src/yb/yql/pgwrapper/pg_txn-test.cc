@@ -45,7 +45,7 @@ class PgTxnTest : public PgMiniTestBase {
 };
 
 TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(EmptyUpdate)) {
-  FLAGS_TEST_fail_in_apply_if_no_metadata = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_in_apply_if_no_metadata) = true;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -96,7 +96,7 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(ShowEffectiveYBIsolationLevel)) 
   AssertEffectiveIsolationLevel(&conn, "serializable");
   ASSERT_OK(conn.Execute("ROLLBACK"));
 
-  FLAGS_yb_enable_read_committed_isolation = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
   ASSERT_OK(RestartCluster());
 
   conn = ASSERT_RESULT(Connect());

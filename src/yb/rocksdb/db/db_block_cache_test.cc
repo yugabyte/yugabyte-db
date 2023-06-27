@@ -137,7 +137,7 @@ TEST_F(DBBlockCacheTest, TestWithoutCompressedBlockCache) {
   auto options = GetOptions(table_options);
   InitTable(options);
 
-  FLAGS_cache_overflow_single_touch = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_single_touch) = false;
   std::shared_ptr<Cache> cache = NewLRUCache(0, 0, false);
   table_options.block_cache = cache;
   options.table_factory.reset(new BlockBasedTableFactory(table_options));
@@ -174,7 +174,7 @@ TEST_F(DBBlockCacheTest, TestWithoutCompressedBlockCache) {
     CheckCacheCounters(options, 0, 1, 0, 0);
     iterators[i].reset(iter);
   }
-  FLAGS_cache_overflow_single_touch = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_single_touch) = true;
 }
 
 #ifdef SNAPPY
@@ -185,7 +185,7 @@ TEST_F(DBBlockCacheTest, TestWithCompressedBlockCache) {
   options.compression = CompressionType::kSnappyCompression;
   InitTable(options);
 
-  FLAGS_cache_overflow_single_touch = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_single_touch) = false;
   std::shared_ptr<Cache> cache = NewLRUCache(0, 0, false);
   std::shared_ptr<Cache> compressed_cache = NewLRUCache(0, 0, false);
   table_options.block_cache = cache;
@@ -213,7 +213,7 @@ TEST_F(DBBlockCacheTest, TestWithCompressedBlockCache) {
   ASSERT_LT(0, compressed_usage);
   // Compressed block cache cannot be pinned.
   ASSERT_EQ(0, compressed_cache->GetPinnedUsage());
-  FLAGS_cache_overflow_single_touch = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_single_touch) = true;
 }
 #endif
 

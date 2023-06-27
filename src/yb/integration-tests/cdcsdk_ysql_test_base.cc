@@ -726,7 +726,7 @@ namespace cdc {
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>
     CDCSDKYsqlTest::SetUpCluster() {
-    FLAGS_enable_single_record_update = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = false;
     RETURN_NOT_OK(SetUpWithParams(3, 1, false));
     auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -736,7 +736,7 @@ namespace cdc {
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>
   CDCSDKYsqlTest::SetUpClusterMultiColumnUsecase(uint32_t num_cols) {
-    FLAGS_enable_single_record_update = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = true;
     RETURN_NOT_OK(SetUpWithParams(3, 1, false));
     auto table = EXPECT_RESULT(CreateTable(
         &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public",
@@ -1496,10 +1496,10 @@ namespace cdc {
       const uint32_t cdc_intent_retention_ms,
       const bool extend_expiration) {
     if (set_flag_to_a_smaller_value) {
-      FLAGS_cdc_intent_retention_ms = cdc_intent_retention_ms;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = cdc_intent_retention_ms;
     }
-    FLAGS_enable_update_local_peer_min_index = false;
-    FLAGS_update_min_cdc_indices_interval_secs = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
 
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
@@ -2175,7 +2175,7 @@ namespace cdc {
   }
 
   void CDCSDKYsqlTest::CDCSDKDropColumnsWithRestartTServer(bool packed_row) {
-    FLAGS_enable_load_balancing = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     const int num_tservers = 3;
     ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
@@ -2520,7 +2520,7 @@ namespace cdc {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
     ASSERT_EQ(tablets.size(), num_tablets);
-    FLAGS_timestamp_history_retention_interval_sec = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
     // Insert some records in transaction.
     ASSERT_OK(WriteRows(1 /* start */, 6 /* end */, &test_cluster_, {kValue2ColumnName}));
@@ -2592,7 +2592,7 @@ namespace cdc {
   void CDCSDKYsqlTest::CDCSDKMultipleAlterWithTabletLeaderSwitch(bool packed_row) {
     const int num_tservers = 3;
     ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
-    FLAGS_enable_load_balancing = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
     const uint32_t num_tablets = 1;
     auto table =
@@ -2601,7 +2601,7 @@ namespace cdc {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
     ASSERT_EQ(tablets.size(), num_tablets);
-    FLAGS_timestamp_history_retention_interval_sec = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
     // Create CDC stream.
     CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
@@ -2750,9 +2750,9 @@ namespace cdc {
 
   void CDCSDKYsqlTest::CDCSDKIntentsBatchReadWithAlterAndTabletLeaderSwitch(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_enable_load_balancing = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
-    FLAGS_cdc_max_stream_intent_records = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
     const uint32_t num_tablets = 1;
     auto table =
@@ -2804,7 +2804,7 @@ namespace cdc {
     if (!FLAGS_vmodule.empty()) {
       FLAGS_vmodule += Format(",$0=$1", module, level);
     } else {
-      FLAGS_vmodule = Format("$0=$1", module, level);
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = Format("$0=$1", module, level);
     }
   }
 
@@ -2987,11 +2987,13 @@ namespace cdc {
       int multi_shard_inserts = inserts_per_batch / 2;
       int curr_start_id = start_index + i * inserts_per_batch;
 
-      FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms = apply_update_latency;
+      ANNOTATE_UNPROTECTED_WRITE(
+          FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) = apply_update_latency;
       ASSERT_OK(WriteRowsHelper(
           curr_start_id, curr_start_id + multi_shard_inserts, &test_cluster_, true));
 
-      FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms = 0;
+      ANNOTATE_UNPROTECTED_WRITE(
+          FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) = 0;
       ASSERT_OK(WriteRows(
           curr_start_id + multi_shard_inserts, curr_start_id + inserts_per_batch, &test_cluster_));
     }
@@ -3005,14 +3007,16 @@ namespace cdc {
       int multi_shard_queries = queries_per_batch / 2;
       int curr_start_id = start_index + i * queries_per_batch;
 
-      FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms = apply_update_latency;
+      ANNOTATE_UNPROTECTED_WRITE(
+          FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) = apply_update_latency;
       ASSERT_OK(conn.Execute("BEGIN"));
       for (int i = 0; i < multi_shard_queries; i++) {
         ASSERT_OK(conn.ExecuteFormat(query, curr_start_id + i + 1));
       }
       ASSERT_OK(conn.Execute("COMMIT"));
 
-      FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms = 0;
+      ANNOTATE_UNPROTECTED_WRITE(
+          FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) = 0;
       for (int i = 0; i < (queries_per_batch - multi_shard_queries); i++) {
         ASSERT_OK(conn.ExecuteFormat(query, curr_start_id + multi_shard_queries + i + 1));
       }

@@ -55,7 +55,7 @@ class SequentialFileReader;
 class RocksDBTest : public ::testing::Test {
  public:
   RocksDBTest() {
-    FLAGS_never_fsync = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = true;
   }
 };
 

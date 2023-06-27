@@ -657,8 +657,8 @@ TEST_F(CreateTableITest, TestNumTabletsFlags) {
   const string kTableName3 = "test-table3";
 
   // Set the value of the flags.
-  FLAGS_ycql_num_tablets = 1;
-  FLAGS_yb_num_shards_per_tserver = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_num_tablets) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 3;
   // Start an RF3.
   ASSERT_NO_FATALS(StartCluster({}, {}, kNumReplicas));
 
@@ -699,7 +699,7 @@ TEST_F(CreateTableITest, TestNumTabletsFlags) {
   ASSERT_EQ(tablets.size(), 1);
 
   // Reset the value of the flag.
-  FLAGS_ycql_num_tablets = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_num_tablets) = -1;
 
   // Test 3: Create a table without explicit tablet count.
   YBTableName table_name3(kNamespaceType, kNamespaceName, kTableName3);

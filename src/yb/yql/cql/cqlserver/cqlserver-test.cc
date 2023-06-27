@@ -435,7 +435,7 @@ TEST_F(TestCQLService, TestSchemaChangeEvent) {
 class TestCQLServiceWithGFlag : public TestCQLService {
  public:
   void SetUp() override {
-    FLAGS_cql_server_always_send_events = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_server_always_send_events) = true;
     TestCQLService::SetUp();
   }
 };
@@ -475,7 +475,7 @@ TEST_F(TestCQLService, TestReadSystemTable) {
 class TestCQLServiceWithCassAuth : public TestCQLService {
  public:
   void SetUp() override {
-    FLAGS_use_cassandra_authentication = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = true;
     TestCQLService::SetUp();
   }
 };
@@ -608,7 +608,7 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
 }
 
 TEST_F(TestCQLService, TestCQLDumpStatementLimit) {
-  FLAGS_cql_dump_statement_metrics_limit = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_dump_statement_metrics_limit) = 1;
   shared_ptr<CQLServiceImpl> cql_service = server()->TEST_cql_service();
   std::vector<shared_ptr<StatementMetrics>> metrics;
   QLEnv ql_env(cql_service->client(),

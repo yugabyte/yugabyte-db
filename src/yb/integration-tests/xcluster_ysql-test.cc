@@ -159,7 +159,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
  public:
   void SetUp() override {
     XClusterYsqlTestBase::SetUp();
-    FLAGS_ysql_legacy_colocated_database_creation = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_legacy_colocated_database_creation) = false;
   }
 
   void ValidateRecordsXClusterWithCDCSDK(bool update_min_cdc_indices_interval = false,
@@ -929,21 +929,22 @@ class XClusterYSqlTestConsistentTransactionsWithAutomaticTabletSplitTest
     : public XClusterYSqlTestConsistentTransactionsTest {
  public:
   void SetUp() override {
-    FLAGS_cleanup_split_tablets_interval_sec = 1;
-    FLAGS_enable_automatic_tablet_splitting = true;
-    FLAGS_db_block_size_bytes = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 2_KB;
     // We set other block sizes to be small for following test reasons:
     // 1) To have more granular change of SST file size depending on number of rows written.
     // This helps to do splits earlier and have faster tests.
     // 2) To don't have long flushes when simulating slow compaction/flush. This way we can
     // test compaction abort faster.
-    FLAGS_db_filter_block_size_bytes = 2_KB;
-    FLAGS_db_index_block_size_bytes = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_filter_block_size_bytes) = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_index_block_size_bytes) = 2_KB;
     // Split size threshold less than memstore size is not effective, because splits are triggered
     // based on flushed SST files size.
-    FLAGS_db_write_buffer_size = 100_KB;
-    FLAGS_tablet_force_split_threshold_bytes = 1_KB;
-    FLAGS_tablet_split_low_phase_size_threshold_bytes = FLAGS_tablet_force_split_threshold_bytes;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 100_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 1_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) =
+        FLAGS_tablet_force_split_threshold_bytes;
     XClusterYSqlTestConsistentTransactionsTest::SetUp();
   }
 
@@ -1010,9 +1011,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsOpt)
   // This flag produces important information for interpreting the results of this test when it
   // fails.  It is also turned on here to make sure we don't have a regression where the flag causes
   // crashes (this has happened before).
-  FLAGS_TEST_docdb_log_write_batches = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
   // Workaround for issue #16665
-  FLAGS_TEST_dcheck_for_missing_schema_packing = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
   const auto [producer_table, consumer_table] = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
@@ -1049,9 +1050,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsNoOp
   // This flag produces important information for interpreting the results of this test when it
   // fails.  It is also turned on here to make sure we don't have a regression where the flag causes
   // crashes (this has happened before).
-  FLAGS_TEST_docdb_log_write_batches = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
   // Workaround for issue #16665
-  FLAGS_TEST_dcheck_for_missing_schema_packing = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
   const auto [producer_table, consumer_table] = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
@@ -1286,7 +1287,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, AddServerIntraTransaction) {
 
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, RefreshCheckpointAfterRestart) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
-  FLAGS_TEST_force_get_checkpoint_from_cdc_state = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_get_checkpoint_from_cdc_state) = true;
   auto producer_table = tables_pair.first;
   auto consumer_table = tables_pair.second;
 
@@ -1447,7 +1448,7 @@ TEST_F(
 }
 
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensusMaxBatchSize) {
-  FLAGS_consensus_max_batch_size_bytes = 8_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = 8_KB;
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
   auto producer_table = tables_pair.first;
   auto consumer_table = tables_pair.second;
@@ -1516,8 +1517,8 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransact
   ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
 
   // Trigger a compaction and ensure that the transaction has been cleaned up on the participant.
-  FLAGS_aborted_intent_cleanup_ms = 0;
-  FLAGS_external_intent_cleanup_secs = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_intent_cleanup_secs) = 0;
   ASSERT_OK(consumer_cluster()->FlushTablets());
   ASSERT_OK(consumer_cluster()->CompactTablets());
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
@@ -1580,8 +1581,8 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
 
 class XClusterYSqlTestStressTest : public XClusterYSqlTestConsistentTransactionsTest {
   void SetUp() override {
-    FLAGS_rpc_workers_limit = 8;
-    FLAGS_tablet_server_svc_queue_length = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 8;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_server_svc_queue_length) = 10;
     XClusterYSqlTestConsistentTransactionsTest::SetUp();
   }
 };
@@ -1593,7 +1594,7 @@ TEST_F(XClusterYSqlTestStressTest, ApplyTranasctionThrottling) {
   // sufficient throttling on the coordinator to prevent RPC bottlenecks in this situation.
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
   // Pause replication to allow unreplicated data to accumulate.
-  FLAGS_TEST_cdc_skip_replication_poll = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_replication_poll) = true;
   auto producer_table = tables_pair.first;
   auto consumer_table = tables_pair.second;
   auto table_name_str =  GetCompleteTableName(producer_table->name());
@@ -1608,7 +1609,7 @@ TEST_F(XClusterYSqlTestStressTest, ApplyTranasctionThrottling) {
     key += step;
   }
   // Enable replication and ensure that the coordinator can handle 30s worth of data all at once.
-  FLAGS_TEST_cdc_skip_replication_poll = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_replication_poll) = false;
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
 }
@@ -1722,7 +1723,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithYbAdmin) {
 void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
     std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
     uint32_t num_tablet_servers, bool range_partitioned) {
-  FLAGS_ysql_enable_packed_row = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   constexpr auto kNumRecords = 1000;
   auto tables = ASSERT_RESULT(SetUpWithParams(
@@ -1839,7 +1840,7 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
 
   // 10. Re-enable Packed Columns and add a column and drop it so that schema stays the same but the
   // schema_version is different on the Producer and Consumer
-  FLAGS_ysql_enable_packed_row = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   {
     string new_col = "dummy";
     auto tbl = consumer_tables[0]->name();
@@ -1891,7 +1892,7 @@ TEST_F(XClusterYsqlTest, SimpleReplicationWithRangedPartitionsAndUnevenTabletCou
 
 TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
-  FLAGS_ysql_enable_packed_row = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   string new_column = "contact_name";
 
   constexpr auto kRecordBatch = 5;
@@ -2134,7 +2135,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
 
 TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
-  FLAGS_ysql_disable_index_backfill = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = false;
   string new_column = "alt";
   constexpr auto kIndexName = "TestIndex";
 
@@ -2361,32 +2362,32 @@ TEST_F(XClusterYsqlTest, ColocatedDatabaseReplication) {
 }
 
 TEST_F(XClusterYsqlTest, LegacyColocatedDatabaseReplication) {
-  FLAGS_ysql_legacy_colocated_database_creation = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_legacy_colocated_database_creation) = true;
   TestColocatedDatabaseReplication();
 }
 
 TEST_F(XClusterYsqlTest, ColocatedDatabaseReplicationWithPacked) {
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
   TestColocatedDatabaseReplication();
 }
 
 TEST_F(XClusterYsqlTest, ColocatedDatabaseReplicationWithPackedAndCompact) {
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
   TestColocatedDatabaseReplication(/* compact = */ true);
 }
 
 TEST_F(XClusterYsqlTest, PackedColocatedDatabaseReplicationWithTransactions) {
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
   TestColocatedDatabaseReplication(/* compact= */ true, /* use_transaction = */ true);
 }
 
 TEST_F(XClusterYsqlTest, LegacyColocatedDatabaseReplicationWithPacked) {
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
-  FLAGS_ysql_legacy_colocated_database_creation = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_legacy_colocated_database_creation) = true;
   TestColocatedDatabaseReplication(/*compact=*/true);
 }
 
@@ -2745,11 +2746,11 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
 
 // Checks that with missing logs, replication will require bootstrapping
 TEST_F(XClusterYsqlTest, IsBootstrapRequiredFlushed) {
-  FLAGS_enable_load_balancing = false;
-  FLAGS_log_cache_size_limit_mb = 1;
-  FLAGS_log_segment_size_bytes = 5_KB;
-  FLAGS_log_min_segments_to_retain = 1;
-  FLAGS_log_min_seconds_to_retain = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_cache_size_limit_mb) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 5_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
 
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable};
@@ -3082,8 +3083,8 @@ TEST_F(XClusterYsqlTest, SetupReplicationWithMaterializedViews) {
 }
 
 void XClusterYsqlTest::TestReplicationWithPackedColumns(bool colocated, bool bootstrap) {
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1, 1, colocated));
@@ -3220,8 +3221,8 @@ TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndBootstrapColocated) {
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithDefaultProducerSchemaVersion) {
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   const auto namespace_name = "demo";
   const auto table_name = "test_table";
@@ -3375,7 +3376,7 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(bool update_min_cdc_ind
     // Intent should not be cleaned up, even if updatepeers thread keeps updating the
     // minimum checkpoint op_id to all the tablet peers every second, because the
     // intents are still not consumed by the clients.
-    FLAGS_update_min_cdc_indices_interval_secs = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   }
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -3543,24 +3544,24 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(bool update_min_cdc_ind
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKEnabled) {
-  FLAGS_ysql_enable_packed_row = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ValidateRecordsXClusterWithCDCSDK(false, false, false);
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKPackedRowsEnabled) {
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_packed_row_size_limit = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
   ValidateRecordsXClusterWithCDCSDK(false, false, false);
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKExplictTransaction) {
-  FLAGS_ysql_enable_packed_row = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ValidateRecordsXClusterWithCDCSDK(false, true, true);
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKExplictTranPackedRows) {
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_packed_row_size_limit = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
   ValidateRecordsXClusterWithCDCSDK(false, true, true);
 }
 
@@ -3659,7 +3660,8 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
 
   auto schema_name = [](int i) { return Format("test_schema_$0", i); };
 
-  FLAGS_TEST_create_table_with_empty_pgschema_name = GetParam().empty_schema_name_on_producer;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_create_table_with_empty_pgschema_name) = GetParam().empty_schema_name_on_producer;
   // Create 3 producer tables with the same name but different schema-name.
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
   std::vector<YBTableName> producer_table_names;
@@ -3676,7 +3678,8 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
     producer_tables.push_back(producer_table);
   }
 
-  FLAGS_TEST_create_table_with_empty_pgschema_name = GetParam().empty_schema_name_on_consumer;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_create_table_with_empty_pgschema_name) = GetParam().empty_schema_name_on_consumer;
   // Create 3 consumer tables with similar setting but in reverse order to complicate the test.
   std::vector<YBTableName> consumer_table_names;
   consumer_table_names.reserve(kNumTables);

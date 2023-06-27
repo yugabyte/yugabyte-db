@@ -2028,9 +2028,9 @@ class RemoteBootstrapMiniClusterITest: public YBMiniClusterTestBase<MiniCluster>
 class PersistRetryableRequestsRBSITest: public RemoteBootstrapMiniClusterITest {
  public:
   void SetUp() override {
-    FLAGS_enable_flush_retryable_requests = true;
-    FLAGS_enable_load_balancing = false;
-    FLAGS_retryable_request_timeout_secs = 20;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 20;
     RemoteBootstrapMiniClusterITest::SetUp();
   }
 

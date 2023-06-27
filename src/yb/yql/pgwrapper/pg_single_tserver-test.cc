@@ -168,16 +168,16 @@ constexpr int kScanReads = 3;
 }
 
 TEST_F_EX(PgSingleTServerTest, Scan, PgMiniBigPrefetchTest) {
-  FLAGS_ysql_enable_packed_row = false;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
   Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
 }
 
 TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
   constexpr int kNumColumns = 10;
 
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   std::string create_cmd = "CREATE TABLE t (a int PRIMARY KEY";
   std::string insert_cmd = "INSERT INTO t VALUES (generate_series($0, $1)";
@@ -201,8 +201,8 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipPK, PgMiniBigPrefetchTest) {
   constexpr auto kNumRows = kScanRows / 2;
   constexpr int kNumKeyColumns = 5;
 
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   std::string create_cmd = "CREATE TABLE t (";
   std::string pk = "";
@@ -227,8 +227,8 @@ TEST_F_EX(PgSingleTServerTest, ScanBigPK, PgMiniBigPrefetchTest) {
   constexpr auto kNumRows = kScanRows / 4;
   constexpr auto kNumRepetitions = 10;
 
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   std::string create_cmd = "CREATE TABLE t (k TEXT PRIMARY KEY, value INT)";
   std::string insert_cmd = "INSERT INTO t (k, value) VALUES (";
@@ -249,8 +249,8 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipValues, PgMiniBigPrefetchTest) {
   constexpr auto kNumRows = kScanRows / 4;
   constexpr auto kNumExtraColumns = 10;
 
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   std::string create_cmd = "CREATE TABLE t (k INT PRIMARY KEY, value INT";
   std::string insert_cmd = "INSERT INTO t (k, value";
@@ -390,8 +390,8 @@ TEST_F_EX(
 // https://github.com/yugabyte/benchbase/blob/main/config/yugabyte/scan_workloads/yb_colocated/
 // scanG7_colo_pkey_rangescan_fullTableScan_increasingColumn.yaml
 TEST_F(PgSingleTServerTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns)) {
-    FLAGS_ysql_enable_packed_row = true;
-    FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   constexpr auto kDatabaseName = "testdb";
   constexpr auto kNumColumns = 100;
@@ -660,7 +660,7 @@ TEST_F_EX(PgSingleTServerTest,
 
 // Repro for https://github.com/yugabyte/yugabyte-db/issues/17558.
 TEST_F(PgSingleTServerTest, PagingSelectWithDelayedIntentsApply) {
-  FLAGS_TEST_inject_sleep_before_applying_intents_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_sleep_before_applying_intents_ms) = 100;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (v INT) SPLIT INTO 2 TABLETS"));
   for (int i = 0; i != 20; ++i) {

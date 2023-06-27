@@ -883,7 +883,7 @@ TEST_F(BootstrapTest, RandomizedInput) {
 
   // This is to avoid non-deterministic time-based behavior in "bootstrap optimizer"
   // (skip_wal_rewrite mode).
-  FLAGS_retryable_request_timeout_secs = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 0;
 
   const auto kNumIter = NonTsanVsTsan(400, 150);
   const auto kNumEntries = NonTsanVsTsan(1500, 500);

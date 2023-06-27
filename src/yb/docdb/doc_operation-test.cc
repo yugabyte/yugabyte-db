@@ -450,7 +450,7 @@ SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
 }
 
 TEST_F(DocOperationTest, WritePackedNulls) {
-  FLAGS_ycql_enable_packed_row = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_packed_row) = true;
   TestWriteNulls();
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
@@ -1268,8 +1268,8 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
 
   WaitCompactionsDone(rocksdb());
 
-  FLAGS_rocksdb_level0_slowdown_writes_trigger = 2;
-  FLAGS_rocksdb_level0_stop_writes_trigger = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_slowdown_writes_trigger) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_stop_writes_trigger) = 1;
   ASSERT_OK(ReinitDBOptions());
 
   std::vector<rocksdb::LiveFileMetaData> files;

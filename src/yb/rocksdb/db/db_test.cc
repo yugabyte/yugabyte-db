@@ -8509,14 +8509,15 @@ TEST_F(DBTest, WalFilterTestWithChangeBatchExtraKeys) {
 // Test for https://github.com/yugabyte/yugabyte-db/issues/8919.
 // Schedules flush after CancelAllBackgroundWork call.
 TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
-  FLAGS_use_priority_thread_pool_for_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_compactions) = true;
   constexpr auto kMaxBackgroundCompactions = 1;
   constexpr auto kWriteBufferSize = 64_KB;
   constexpr auto kValueSize = 2_KB;
 
   for (const auto use_priority_thread_pool_for_flushes : {false, true}) {
     LOG(INFO) << "use_priority_thread_pool_for_flushes: " << use_priority_thread_pool_for_flushes;
-    FLAGS_use_priority_thread_pool_for_flushes = use_priority_thread_pool_for_flushes;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_flushes) =
+        use_priority_thread_pool_for_flushes;
 
     yb::PriorityThreadPool thread_pool(kMaxBackgroundCompactions);
     Options options = CurrentOptions();

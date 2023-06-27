@@ -2999,7 +2999,7 @@ TEST_F_EX(DocDBTest, BoundaryValuesMultiFiles, DocDBTestBoundaryValues) {
 
 TEST_P(DocDBTestWrapper, BloomFilterTest) {
   // Turn off "next instead of seek" optimization, because this test rely on DocDB to do seeks.
-  FLAGS_max_nexts_to_avoid_seek = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_nexts_to_avoid_seek) = 0;
   // Write batch and flush options.
   auto dwb = MakeDocWriteBatch();
   ASSERT_OK(FlushRocksDbAndWait());
@@ -3166,7 +3166,7 @@ TEST_P(DocDBTestWrapper, MergingIterator) {
   // Test for the case described in https://yugabyte.atlassian.net/browse/ENG-1677.
 
   // Turn off "next instead of seek" optimization, because this test rely on DocDB to do seeks.
-  FLAGS_max_nexts_to_avoid_seek = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_nexts_to_avoid_seek) = 0;
 
   HybridTime ht;
   ASSERT_OK(ht.FromUint64(1000));
@@ -3749,7 +3749,7 @@ std::string EncodeValue(const QLValuePB& value) {
 }
 
 TEST_P(DocDBTestWrapper, CompactionWithTransactions) {
-  FLAGS_TEST_docdb_sort_weak_intents = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_sort_weak_intents) = true;
 
   const auto doc_key = MakeDocKey("mydockey", kIntKey1);
   KeyBytes encoded_doc_key(doc_key.Encode());

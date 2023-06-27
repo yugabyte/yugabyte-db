@@ -99,22 +99,22 @@ class LogSyncTest : public RestartTest {
  protected:
   void BeforeStartCluster() override {
     // setting the flag immaterial of the default value
-    FLAGS_log_enable_background_sync = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_enable_background_sync) = true;
   }
 };
 
 TEST_F(RestartTest, WalFooterProperlyInitialized) {
-  FLAGS_TEST_simulate_abrupt_server_restart = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
   // Disable reuse unclosed segment feature to prevent log from reusing
   // the last segment and skipping building footer.
-  FLAGS_reuse_unclosed_segment_threshold_bytes = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) = -1;
   auto timestamp_before_write = GetCurrentTimeMicros();
   PutKeyValue("key", "value");
   auto timestamp_after_write = GetCurrentTimeMicros();
 
   auto* tablet_server = mini_cluster()->mini_tablet_server(0);
   ASSERT_OK(tablet_server->Restart());
-  FLAGS_TEST_simulate_abrupt_server_restart = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = false;
 
   string tablet_id;
   ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
@@ -159,8 +159,8 @@ TEST_F(LogSyncTest, BackgroundSync) {
 class PersistRetryableRequestsTest : public RestartTest {
  protected:
   void BeforeStartCluster() override {
-    FLAGS_enable_flush_retryable_requests = true;
-    FLAGS_retryable_request_timeout_secs = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 10;
   }
 
   size_t num_tablet_servers() override { return 1; }
@@ -289,17 +289,17 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
 
 
 TEST_F(PersistRetryableRequestsTest, TestRetryableWriteAfterRestart) {
-  FLAGS_enable_flush_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
   return TestRetryableWrite(/* wait_file_to_expire */ false);
 }
 
 TEST_F(PersistRetryableRequestsTest, TestRetryableWriteWithoutPersistence) {
-  FLAGS_enable_flush_retryable_requests = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = false;
   return TestRetryableWrite(/* wait_file_to_expire */ false);
 }
 
 TEST_F(PersistRetryableRequestsTest, TestRetryableRequestsFileTooOld) {
-  FLAGS_enable_flush_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
   return TestRetryableWrite(/* wait_file_to_expire */ true);
 }
 

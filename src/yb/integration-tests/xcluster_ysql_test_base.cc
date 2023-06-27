@@ -53,7 +53,7 @@ Status XClusterYsqlTestBase::Initialize(uint32_t replication_factor, uint32_t nu
   // In this test, the tservers in each cluster share the same postgres proxy. As each tserver
   // initializes, it will overwrite the auth key for the "postgres" user. Force an identical key
   // so that all tservers can authenticate as "postgres".
-  FLAGS_TEST_pg_auth_key = RandomUniformInt<uint64_t>();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_auth_key) = RandomUniformInt<uint64_t>();
 
   MiniClusterOptions opts;
   opts.num_tablet_servers = replication_factor;
@@ -65,16 +65,16 @@ Status XClusterYsqlTestBase::Initialize(uint32_t replication_factor, uint32_t nu
 }
 
 Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
-  FLAGS_replication_factor = static_cast<int>(opts.num_tablet_servers);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = static_cast<int>(opts.num_tablet_servers);
   // Disable tablet split for regular tests, see xcluster-tablet-split-itest for those tests.
-  FLAGS_enable_tablet_split_of_xcluster_replicated_tables = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = false;
 
   // Init postgres.
   master::SetDefaultInitialSysCatalogSnapshotFlags();
-  FLAGS_enable_ysql = true;
-  FLAGS_hide_pg_catalog_table_creation_logs = true;
-  FLAGS_master_auto_run_initdb = true;
-  FLAGS_pggate_rpc_timeout_secs = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
 
   auto producer_opts = opts;
   producer_opts.cluster_id = "producer";
@@ -87,7 +87,8 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
   // The 'pgsql_proxy_bind_address' flag must be set before starting the producer cluster. Each
   // tserver will store this address when it starts.
   const uint16_t producer_pg_port = producer_cluster_.mini_cluster_->AllocateFreePort();
-  FLAGS_pgsql_proxy_bind_address = Format("$0:$1", pg_addr, producer_pg_port);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) =
+      Format("$0:$1", pg_addr, producer_pg_port);
 
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
@@ -100,7 +101,8 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   // Use a new pg proxy port for the consumer cluster.
   const uint16_t consumer_pg_port = consumer_cluster_.mini_cluster_->AllocateFreePort();
-  FLAGS_pgsql_proxy_bind_address = Format("$0:$1", pg_addr, consumer_pg_port);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) =
+      Format("$0:$1", pg_addr, consumer_pg_port);
 
   {
     TEST_SetThreadPrefixScoped prefix_se("C");
@@ -149,7 +151,8 @@ Status XClusterYsqlTestBase::InitPostgres(
           pg_ts->server()->GetSharedMemoryFd()));
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
-  FLAGS_pgsql_proxy_webserver_port = cluster->mini_cluster_->AllocateFreePort();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
+      cluster->mini_cluster_->AllocateFreePort();
 
   LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
             << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir

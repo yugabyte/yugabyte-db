@@ -47,7 +47,7 @@ namespace {
 class PgTableSizeTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    FLAGS_tserver_heartbeat_metrics_interval_ms = 500;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
     PgMiniTestBase::SetUp();
   }
 };

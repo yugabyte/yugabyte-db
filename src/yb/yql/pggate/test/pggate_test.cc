@@ -110,7 +110,7 @@ struct varlena* PggateTestCStringToTextWithLen(const char* c, int size) {
 // Starting and ending routines.
 
 void PggateTest::SetUp() {
-  FLAGS_test_leave_files = "always";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_test_leave_files) = "always";
   YBTest::SetUp();
 }
 
@@ -158,7 +158,7 @@ Status PggateTest::Init(const char *test_name,
     CHECK_EQ(resp.data().size(), sizeof(*tserver_shared_object_));
     memcpy(pointer_cast<char*>(&*tserver_shared_object_), resp.data().c_str(), resp.data().size());
   }
-  FLAGS_pggate_tserver_shm_fd = tserver_shared_object_.GetFd();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shm_fd) = tserver_shared_object_.GetFd();
 
   YBCInitPgGate(type_table, count, callbacks);
 
@@ -182,7 +182,7 @@ Status PggateTest::CreateCluster(int num_tablet_servers, int replication_factor)
   CHECK_OK(cluster_->Start());
 
   // Setup master address to construct YBClient.
-  FLAGS_pggate_master_addresses = cluster_->GetMasterAddresses();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_master_addresses) = cluster_->GetMasterAddresses();
 
   // Sleep to make sure the cluster is ready before accepting client messages.
   sleep(1);

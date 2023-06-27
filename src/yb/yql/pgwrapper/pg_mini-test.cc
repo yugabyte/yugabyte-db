@@ -169,8 +169,8 @@ class PgMiniTestSingleNode : public PgMiniTest {
 class PgMiniPgClientServiceCleanupTest : public PgMiniTestSingleNode {
  public:
   void SetUp() override {
-    FLAGS_pg_client_session_expiration_ms = 5000;
-    FLAGS_pg_client_heartbeat_interval_ms = 2000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = 5000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) = 2000;
     PgMiniTestBase::SetUp();
   }
 };
@@ -599,7 +599,7 @@ class PgMiniLargeClockSkewTest : public PgMiniTest {
  public:
   void SetUp() override {
     server::SkewedClock::Register();
-    FLAGS_time_source = server::SkewedClock::kName;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
     SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
     PgMiniTestBase::SetUp();
   }
@@ -718,7 +718,7 @@ TEST_F(PgMiniTest, SelectModifySelect) {
 class PgMiniSmallWriteBufferTest : public PgMiniTest {
  public:
   void SetUp() override {
-    FLAGS_db_write_buffer_size = 256_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 256_KB;
     PgMiniTest::SetUp();
   }
 };
@@ -729,7 +729,7 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
   // When using bloom filter, it might fail to find the table tombstone because it's stored in
   // a different sst file than the key is currently seeking.
 
-  FLAGS_rocksdb_disable_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("create tablegroup tg1"));
   ASSERT_OK(conn.Execute("create table t1(k int primary key) tablegroup tg1"));
@@ -1030,7 +1030,7 @@ TEST_F(PgMiniTest, MoveMaster) {
 
 TEST_F(PgMiniTest, DDLWithRestart) {
   SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability);
-  FLAGS_TEST_force_master_leader_resolution = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_master_leader_resolution) = true;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -1048,7 +1048,7 @@ TEST_F(PgMiniTest, DDLWithRestart) {
 }
 
 TEST_F(PgMiniTest, CreateDatabase) {
-  FLAGS_flush_rocksdb_on_shutdown = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
   auto conn = ASSERT_RESULT(Connect());
   const std::string kDatabaseName = "testdb";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
@@ -1057,7 +1057,7 @@ TEST_F(PgMiniTest, CreateDatabase) {
 
 void PgMiniTest::TestBigInsert(bool restart) {
   constexpr int64_t kNumRows = RegularBuildVsSanitizers(100000, 10000);
-  FLAGS_txn_max_apply_batch_records = kNumRows / 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = kNumRows / 10;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
@@ -1137,14 +1137,14 @@ TEST_F(PgMiniTest, BigInsert) {
 }
 
 TEST_F(PgMiniTest, BigInsertWithRestart) {
-  FLAGS_apply_intents_task_injected_delay_ms = 200;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_apply_intents_task_injected_delay_ms) = 200;
   TestBigInsert(/* restart= */ true);
 }
 
 TEST_F(PgMiniTest, BigInsertWithDropTable) {
   constexpr int kNumRows = 10000;
-  FLAGS_txn_max_apply_batch_records = kNumRows / 10;
-  FLAGS_apply_intents_task_injected_delay_ms = 200;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = kNumRows / 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_apply_intents_task_injected_delay_ms) = 200;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t(id int) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(conn.ExecuteFormat(
@@ -1214,7 +1214,7 @@ TEST_F(PgMiniTest, CatalogVersionUpdateIfNeeded) {
 // Test that we don't sequential restart read on the same table if intents were written
 // after the first read. GH #6972.
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoRestartSecondRead)) {
-  FLAGS_max_clock_skew_usec = 1000000000LL * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 1000000000LL * kTimeMultiplier;
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
   ASSERT_OK(conn1.Execute("CREATE TABLE t (a int PRIMARY KEY, b int) SPLIT INTO 1 TABLETS"));
@@ -1247,7 +1247,7 @@ YB_DEFINE_ENUM(KeyColumnType, (kHash)(kAsc)(kDesc));
 class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
  protected:
   void SetUp() override {
-    FLAGS_TEST_index_read_multiple_partitions = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_index_read_multiple_partitions) = true;
     PgMiniTest::SetUp();
   }
 
@@ -1358,19 +1358,21 @@ TEST_F_EX(
 class PgMiniTabletSplitTest : public PgMiniTest {
  public:
   void SetUp() override {
-    FLAGS_yb_num_shards_per_tserver = 1;
-    FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
-    FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
-    FLAGS_tablet_split_low_phase_shard_count_per_node = 0;
-    FLAGS_tablet_split_high_phase_shard_count_per_node = 0;
-    FLAGS_tablet_force_split_threshold_bytes = 30_KB;
-    FLAGS_db_write_buffer_size = FLAGS_tablet_force_split_threshold_bytes / 4;
-    FLAGS_db_block_size_bytes = 2_KB;
-    FLAGS_db_filter_block_size_bytes = 2_KB;
-    FLAGS_db_index_block_size_bytes = 2_KB;
-    FLAGS_heartbeat_interval_ms = 1000;
-    FLAGS_tserver_heartbeat_metrics_interval_ms = 1000;
-    FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms = 4000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 30_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) =
+        FLAGS_tablet_force_split_threshold_bytes / 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_filter_block_size_bytes) = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_index_block_size_bytes) = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms) = 4000;
     PgMiniTest::SetUp();
   }
 
@@ -1596,12 +1598,12 @@ void PgMiniTest::RunManyConcurrentReadersTest() {
 }
 
 TEST_F(PgMiniTest, BigInsertWithAbortedIntentsAndRestart) {
-  FLAGS_apply_intents_task_injected_delay_ms = 200;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_apply_intents_task_injected_delay_ms) = 200;
 
   constexpr int64_t kRowNumModToAbort = 7;
   constexpr int64_t kNumBatches = 10;
   constexpr int64_t kNumRows = RegularBuildVsSanitizers(10000, 1000);
-  FLAGS_txn_max_apply_batch_records = kNumRows / kNumBatches;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = kNumRows / kNumBatches;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
@@ -1650,7 +1652,7 @@ TEST_F(
     YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithApplyDelay)) {
   ASSERT_OK(cluster_->WaitForAllTabletServers());
   std::this_thread::sleep_for(10s);
-  FLAGS_apply_intents_task_injected_delay_ms = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_apply_intents_task_injected_delay_ms) = 10000;
   RunManyConcurrentReadersTest();
 }
 
@@ -1659,7 +1661,7 @@ TEST_F(
     YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithResponseDelay)) {
   ASSERT_OK(cluster_->WaitForAllTabletServers());
   std::this_thread::sleep_for(10s);
-  FLAGS_TEST_inject_random_delay_on_txn_status_response_ms = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_random_delay_on_txn_status_response_ms) = 30;
   RunManyConcurrentReadersTest();
 }
 
@@ -1668,7 +1670,7 @@ TEST_F(
     YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithUpdateDelay)) {
   ASSERT_OK(cluster_->WaitForAllTabletServers());
   std::this_thread::sleep_for(10s);
-  FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) = 30;
   RunManyConcurrentReadersTest();
 }
 
@@ -1725,8 +1727,8 @@ void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, const int num_table
 }
 
 TEST_F(PgMiniTest, ColocatedCompaction) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
 
   const std::string kDatabaseName = "testdb";
   const auto kNumTables = 3;
@@ -1776,8 +1778,8 @@ void PgMiniTest::CreateDBWithTablegroupAndTables(
 }
 
 TEST_F(PgMiniTest, TablegroupCompaction) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
 
   PGConn conn = ASSERT_RESULT(Connect());
   CreateDBWithTablegroupAndTables(
@@ -1791,8 +1793,8 @@ TEST_F(PgMiniTest, TablegroupCompaction) {
 
 // Ensure that after restart, there is no data loss in compaction.
 TEST_F(PgMiniTest, TablegroupCompactionWithRestart) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
   const auto num_tables = 3;
   constexpr int keys = 100;
 
@@ -1833,9 +1835,9 @@ TEST_F(PgMiniTest, CompactionAfterDBDrop) {
   ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact(
       rocksdb::CompactionReason::kManualCompaction));
 
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_timestamp_syscatalog_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
 
   ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact(
       rocksdb::CompactionReason::kManualCompaction));

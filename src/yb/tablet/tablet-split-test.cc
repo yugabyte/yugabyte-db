@@ -51,8 +51,8 @@ class TabletSplitTest : public YBTabletTest {
                                             ColumnSchema("val", DataType::STRING) })) {}
 
   void SetUp() override {
-    FLAGS_db_write_buffer_size = 1_MB;
-    FLAGS_rocksdb_level0_file_num_compaction_trigger = -1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 1_MB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
     YBTabletTest::SetUp();
     writer_.reset(new LocalTabletWriter(tablet()));
   }

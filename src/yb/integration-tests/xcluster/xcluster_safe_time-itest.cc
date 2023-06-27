@@ -65,9 +65,9 @@ class XClusterSafeTimeTest : public XClusterTestBase {
  public:
   void SetUp() override {
     // Disable LB as we dont want tablets moving during the test.
-    FLAGS_enable_load_balancing = false;
-    FLAGS_xcluster_safe_time_log_outliers_interval_secs = 10;
-    FLAGS_xcluster_safe_time_slow_tablet_delta_secs = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_safe_time_log_outliers_interval_secs) = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_safe_time_slow_tablet_delta_secs) = 10;
     super::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = kMasterCount;

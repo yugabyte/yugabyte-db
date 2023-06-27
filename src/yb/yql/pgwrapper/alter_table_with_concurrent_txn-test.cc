@@ -37,7 +37,7 @@ class AlterTableWithConcurrentTxnTest : public PgMiniTestBase {
     // AsyncAlterTable::HandleResponse(). This flag will slow down async
     // alter table rpc's send request and response handler. This will result
     // in a heartbeat delay on the TServer and thus trigger ProcessTabletReport().
-    FLAGS_TEST_slowdown_alter_table_rpcs_ms = 5000; // 5 seconds
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_alter_table_rpcs_ms) = 5000; // 5 seconds
     PgMiniTestBase::SetUp();
   }
 

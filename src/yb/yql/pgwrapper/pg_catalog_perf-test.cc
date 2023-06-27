@@ -81,10 +81,13 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
  protected:
   void SetUp() override {
     auto config = GetConfig();
-    FLAGS_ysql_enable_read_request_caching = config.enable_read_request_caching();
-    FLAGS_ysql_minimal_catalog_caches_preload = config.minimal_catalog_caches_preload();
-    FLAGS_pg_response_cache_size_percentage = 0;
-    FLAGS_pg_response_cache_size_bytes = config.response_cache_size_bytes().value_or(0);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_read_request_caching) =
+        config.enable_read_request_caching();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_minimal_catalog_caches_preload) =
+        config.minimal_catalog_caches_preload();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_response_cache_size_percentage) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_response_cache_size_bytes) =
+        config.response_cache_size_bytes().value_or(0);
     PgMiniTestBase::SetUp();
     metrics_.emplace(
         *cluster_->mini_master()->master(), *cluster_->mini_tablet_server(0)->server());
@@ -267,11 +270,13 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
  protected:
   void SetUp() override {
     constexpr uint64_t kHistoryCutoffInitialValue = 10000000;
-    FLAGS_TEST_committed_history_cutoff_initial_value_usec = kHistoryCutoffInitialValue;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_TEST_committed_history_cutoff_initial_value_usec) = kHistoryCutoffInitialValue;
     // Substitute catalog_read_time in cached responses with value lower than history cutoff to
     // get 'Snapshot too old' error on attempt to read at this read time.
-    FLAGS_TEST_pg_response_cache_catalog_read_time_usec = kHistoryCutoffInitialValue - 1;
-    FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_TEST_pg_response_cache_catalog_read_time_usec) = kHistoryCutoffInitialValue - 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms) = 1000;
     PgCatalogWithUnlimitedCachePerfTest::SetUp();
   }
 };

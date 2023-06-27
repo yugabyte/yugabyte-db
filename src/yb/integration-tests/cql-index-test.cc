@@ -83,7 +83,7 @@ TEST_F(CqlIndexTest, Simple) {
 }
 
 TEST_F(CqlIndexTest, MultipleIndex) {
-  FLAGS_disable_index_backfill = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_index_backfill) = false;
   auto session1 = ASSERT_RESULT(EstablishSession(driver_.get()));
   auto session2 = ASSERT_RESULT(EstablishSession(driver_.get()));
 
@@ -111,8 +111,8 @@ TEST_F(CqlIndexTest, MultipleIndex) {
 class CqlIndexSmallWorkersTest : public CqlIndexTest {
  public:
   void SetUp() override {
-    FLAGS_rpc_workers_limit = 4;
-    FLAGS_transaction_manager_workers_limit = 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_manager_workers_limit) = 4;
     CqlIndexTest::SetUp();
   }
 };
@@ -123,9 +123,9 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
   constexpr cass_int32_t kValues = kKeys;
   constexpr int kNumInserts = kThreads * 5;
 
-  FLAGS_client_read_write_timeout_ms = 10000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 10000 * kTimeMultiplier;
   SetAtomicFlag(1000, &FLAGS_TEST_inject_txn_get_status_delay_ms);
-  FLAGS_transaction_abort_check_interval_ms = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_abort_check_interval_ms) = 100000;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
 
@@ -193,7 +193,7 @@ int64_t GetFailedBatchLockNum(MiniCluster* cluster)  {
 }
 
 TEST_F(CqlIndexTest, WriteQueryStuckAndUpdateOnSameKey) {
-  FLAGS_TEST_writequery_stuck_from_callback_leak = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_writequery_stuck_from_callback_leak) = true;
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
       "CREATE TABLE t(id INT PRIMARY KEY, s TEXT) WITH transactions = { 'enabled' : true };"));
@@ -213,7 +213,7 @@ TEST_F(CqlIndexTest, WriteQueryStuckAndUpdateOnSameKey) {
 }
 
 TEST_F(CqlIndexTest, WriteQueryStuckAndVerifyTxnCleanup) {
-  FLAGS_TEST_writequery_stuck_from_callback_leak = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_writequery_stuck_from_callback_leak) = true;
   const size_t kNumTxns = 100;
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -251,7 +251,7 @@ TEST_F(CqlIndexTest, TestSaturatedWorkers) {
 
    * TODO: when switching to a fully asynchronous model, this failure will disappear.
    */
-  FLAGS_cql_prepare_child_threshold_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_prepare_child_threshold_ms) = 1;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -317,21 +317,21 @@ void CqlIndexTest::TestTxnCleanup(size_t max_remaining_txns_per_tablet) {
 
 // Test proactive aborted transactions cleanup.
 TEST_F(CqlIndexTest, TxnCleanup) {
-  FLAGS_transactions_poll_check_aborted = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transactions_poll_check_aborted) = false;
 
   TestTxnCleanup(/* max_remaining_txns_per_tablet= */ 5);
 }
 
 // Test poll based aborted transactions cleanup.
 TEST_F(CqlIndexTest, TxnPollCleanup) {
-  FLAGS_TEST_disable_proactive_txn_cleanup_on_abort = true;
-  FLAGS_transaction_abort_check_interval_ms = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_proactive_txn_cleanup_on_abort) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_abort_check_interval_ms) = 1000;
 
   TestTxnCleanup(/* max_remaining_txns_per_tablet= */ 0);
 }
 
 void CqlIndexTest::TestConcurrentModify2Columns(const std::string& expr) {
-  FLAGS_allow_index_table_read_write = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_index_table_read_write) = true;
 
   constexpr int kKeys = RegularBuildVsSanitizers(50, 10);
 

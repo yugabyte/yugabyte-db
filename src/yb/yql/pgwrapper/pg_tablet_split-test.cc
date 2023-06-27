@@ -210,7 +210,7 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
   constexpr auto kScanAfterSplitDuration = 65s;
   constexpr auto kNumRows = 1000;
 
-  FLAGS_ysql_enable_packed_row = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   FLAGS_ysql_client_read_write_timeout_ms =
       narrow_cast<int32_t>(ToMilliseconds(kScanAfterSplitDuration + 60s));
 

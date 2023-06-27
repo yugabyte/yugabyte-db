@@ -289,7 +289,7 @@ TYPED_TEST_CASE(VerifyRowsTabletTest, TabletTestHelperTypes);
 TYPED_TEST(VerifyRowsTabletTest, DoTestAllAtOnce) {
   if (1000 == FLAGS_inserts_per_thread) {
     if (AllowSlowTests()) {
-      FLAGS_inserts_per_thread = 50000;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_inserts_per_thread) = 50000;
     }
   }
 
