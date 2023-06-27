@@ -633,7 +633,7 @@ public class CloudProviderHelper {
   }
 
   public String getRegionNameFromCode(String code, String cloudProviderCode) {
-    log.info("Code is:", code);
+    log.info("Code is: {}", code);
     ConfigHelper.ConfigType kubernetesConfigType = getKubernetesConfigType(cloudProviderCode);
     if (kubernetesConfigType == null) {
       return code;
@@ -645,7 +645,7 @@ public class CloudProviderHelper {
     }
 
     JsonNode metadata = Json.toJson(k8sRegionMetadata.get(code));
-    return metadata.get(code).asText();
+    return metadata.get("name").asText();
   }
 
   public String getKubernetesImageRepository() {
