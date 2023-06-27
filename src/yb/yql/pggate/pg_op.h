@@ -124,7 +124,7 @@ class PgsqlReadOp : public PgsqlOp {
 
   std::string RequestToString() const override;
 
-  uint32_t getWaitEvent() const override { return YB_WAIT_EVENT_DML_READ; }
+  uint32_t getWaitEvent() const override { return YB_PG_WAIT_EVENT_DML_READ; }
 
  private:
   Status InitPartitionKey(const PgTableDesc& table) override;
@@ -167,7 +167,7 @@ class PgsqlWriteOp : public PgsqlOp {
 
   std::string RequestToString() const override;
 
-  uint32_t getWaitEvent() const override { return YB_WAIT_EVENT_DML_WRITE; }
+  uint32_t getWaitEvent() const override { return YB_PG_WAIT_EVENT_DML_WRITE; }
 
  private:
   Status InitPartitionKey(const PgTableDesc& table) override;

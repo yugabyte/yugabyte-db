@@ -75,6 +75,8 @@
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
 
+#include "yb/yql/pggate/util/ybc_stat.h"
+
 /* ----------
  * Timer definitions.
  * ----------
@@ -3622,6 +3624,10 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 			break;
 		default:
 			event_type = "???";
+			if (IsYugaByteEnabled() && classId > PG_WAIT_IO)
+			{
+				event_type = ybcstat_get_wait_event_type(wait_event_info);
+			}
 			break;
 	}
 
@@ -3699,6 +3705,10 @@ pgstat_get_wait_event(uint32 wait_event_info)
 			}
 		default:
 			event_name = "unknown wait event";
+			if (IsYugaByteEnabled() && classId > PG_WAIT_IO)
+			{
+				event_name = ybcstat_get_wait_event(wait_event_info);
+			}
 			break;
 	}
 

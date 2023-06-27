@@ -27,7 +27,7 @@ extern "C" {
  * YB AUH Wait Classes
  * ----------
  */
-#define YB_WAIT_PERFORM					0xFE000000U
+#define YB_PG_WAIT_PERFORM					0xFE000000U
 
 /* ----------
  * Wait Events - PERFORM
@@ -36,9 +36,12 @@ extern "C" {
  * ----------
  */
 typedef enum {
-    YB_WAIT_EVENT_DML_READ = YB_WAIT_PERFORM,
-    YB_WAIT_EVENT_DML_WRITE
-} YBWaitEventPerform;
+    YB_PG_WAIT_EVENT_DML_READ = YB_PG_WAIT_PERFORM,
+    YB_PG_WAIT_EVENT_DML_WRITE
+} YBPgWaitEventPerform;
+
+extern const char *ybcstat_get_wait_event(uint32_t wait_event_info);
+extern const char *ybcstat_get_wait_event_type(uint32_t wait_event_info);
 
 #ifdef __cplusplus
 } // extern "C"
