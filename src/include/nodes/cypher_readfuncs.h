@@ -32,7 +32,7 @@
 
  *
  * All functions are dependent on the pg_strtok function. We do not
- * setup pg_strtok. That is for the the caller to do. By default that
+ * setup pg_strtok. That is for the caller to do. By default that
  * is the responsibility of Postgres' nodeRead function. We assume
  * that was setup correctly.
  */

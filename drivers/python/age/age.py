@@ -113,7 +113,7 @@ def execCypher(conn:ext.connection, graphName:str, cypherStmt:str, cols:list=Non
         raise _EXCEPTION_NoConnection
 
     cursor = conn.cursor()
-    #clean up the string for mogrificiation
+    #clean up the string for mogrification
     cypherStmt = cypherStmt.replace("\n", "")
     cypherStmt = cypherStmt.replace("\t", "")
     cypher = str(cursor.mogrify(cypherStmt, params))
@@ -146,7 +146,7 @@ def execCypher(conn:ext.connection, graphName:str, cypherStmt:str, cols:list=Non
 
 
 def cypher(cursor:ext.cursor, graphName:str, cypherStmt:str, cols:list=None, params:tuple=None) -> ext.cursor :
-    #clean up the string for mogrificiation
+    #clean up the string for mogrification
     cypherStmt = cypherStmt.replace("\n", "")
     cypherStmt = cypherStmt.replace("\t", "")
     cypher = str(cursor.mogrify(cypherStmt, params))

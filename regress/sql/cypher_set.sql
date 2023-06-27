@@ -126,7 +126,7 @@ SELECT set_test();
 SELECT set_test();
 
 --
--- Updating multiple fieds
+-- Updating multiple fields
 --
 SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = 3, n.j = 5 RETURN n $$) AS (a agtype);
 
@@ -247,7 +247,7 @@ SELECT * FROM cypher('cypher_set_1', $$
     RETURN p
 $$) AS (p agtype);
 
--- test assigning non-map to an enitity
+-- test assigning non-map to an entity
 SELECT * FROM cypher('cypher_set_1', $$
     MATCH (p {name: 'Peter'})
     SET p = "Peter"

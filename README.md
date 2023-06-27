@@ -128,7 +128,7 @@ sudo apt-get install build-essential libreadline-dev zlib1g-dev flex bison
 Apache AGE is intended to be simple to install and run. It can be installed with Docker and other traditional ways. 
 
 <h4><a><img width="20" src="/img/pg.svg"></a>
-&nbsp;Install PosgtreSQL
+&nbsp;Install PostgreSQL
 </h4>
 
 You will need to install an AGE compatible version of Postgres<a>, for now AGE supports Postgres 11, 12 & 13. Supporting the latest versions is on AGE roadmap. 

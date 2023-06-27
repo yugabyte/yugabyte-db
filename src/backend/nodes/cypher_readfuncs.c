@@ -36,11 +36,11 @@
         int  length;
 
 /*
- * The READ_*_FIELD defines first skips the :fildname token (key) part of the string
+ * The READ_*_FIELD defines first skips the :fldname token (key) part of the string
  * and then converts the next token (value) to the correct data type.
  *
  * pg_strtok will split the passed string by whitespace, skipping whitespace in
- * strings. We do not setup pg_strtok. That is for the the caller to do. By default
+ * strings. We do not setup pg_strtok. That is for the caller to do. By default
  * that is the responsibility of Postgres' nodeRead function. We assume that was setup
  * correctly.
  */

@@ -80,7 +80,7 @@ SELECT * FROM cypher('cypher_merge', $$MATCH (n) RETURN n$$) AS (n agtype);
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
 
 /*
- * test 5: Prev clause has results, path does not exist (differnt property name)
+ * test 5: Prev clause has results, path does not exist (different property name)
  */
 --data setup
 SELECT * FROM cypher('cypher_merge', $$CREATE ({i: "Hello Merge"}) $$) AS (a agtype);
@@ -216,7 +216,7 @@ SELECT count(*) FROM cypher('cypher_merge', $$MATCH (n) RETURN n$$) AS (n agtype
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
 
 /*
- * test 13: edge doesn't exists (differnt label), using MATCH
+ * test 13: edge doesn't exists (different label), using MATCH
  */
 -- setup
 SELECT * FROM cypher('cypher_merge', $$CREATE ()-[:e]->() $$) AS (a agtype);

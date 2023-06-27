@@ -145,7 +145,7 @@ List *parse_cypher(const char *s)
         return NIL;
 
     /*
-     * Append the extra node node regardless of its value. Currently the extra
+     * Append the extra node regardless of its value. Currently the extra
      * node is only used by EXPLAIN
     */
     return lappend(extra.result, extra.extra);

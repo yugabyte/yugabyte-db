@@ -633,7 +633,7 @@ static void rescan_cypher_set(CustomScanState *node)
 
      ereport(ERROR,
              (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                      errmsg("cypher %s clause cannot be rescaned",
+                      errmsg("cypher %s clause cannot be rescanned",
                              clause_name),
                       errhint("its unsafe to use joins in a query with a Cypher %s clause", clause_name)));
 }

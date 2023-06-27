@@ -192,7 +192,7 @@ uint32 get_agtype_length(const agtype_container *agtc, int index)
 }
 
 /*
- * Helper function to generate the sort priorty of a type. Larger
+ * Helper function to generate the sort priority of a type. Larger
  * numbers have higher priority.
  */
 static int get_type_sort_priority(enum agtype_value_type type)

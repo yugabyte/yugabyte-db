@@ -104,7 +104,7 @@ if ! command -v go >/dev/null 2>&1 || { [ $(go version | grep -o -E '[0-9]+\.[0-
 	 		sudo open -w golang.pkg
 		  
 	  elif [[ "$os" == "Linux" ]]; then
-		  mdkir -p ~/tmp/go1.20.2
+		  mkdir -p ~/tmp/go1.20.2
 		  cd ~/tmp/go1.20.2
 		  if [[ "$arch" == "x86_64" ]]; then
 		  	curl "https://go.dev/dl/go1.20.2.linux-amd64.tar.gz" -o go1.20.2.tar.gz

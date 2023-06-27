@@ -43,18 +43,18 @@ SELECT * FROM cypher('cypher_delete', $$MATCH()-[e]->() DELETE e RETURN e$$) AS 
 --Cleanup
 SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agtype);
 
---Test 4: DETACH DELECT a vertex
+--Test 4: DETACH DELETE a vertex
 SELECT * FROM cypher('cypher_delete', $$CREATE (:v)-[:e]->(:v)$$) AS (a agtype);
 SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DETACH DELETE n1 RETURN e$$) AS (a agtype);
 
 --Cleanup
 SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
 
---Test 4: DETACH DELECT two vertices tied to the same edge
+--Test 4: DETACH DELETE two vertices tied to the same edge
 SELECT * FROM cypher('cypher_delete', $$CREATE (:v)-[:e]->(:v)$$) AS (a agtype);
 SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DETACH DELETE n1, n2 RETURN e$$) AS (a agtype);
 
---Test 4: DETACH DELECT a vertex
+--Test 4: DETACH DELETE a vertex
 SELECT * FROM cypher('cypher_delete', $$CREATE (:v)-[:e]->(:v)$$) AS (a agtype);
 SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DETACH DELETE n1, n2 RETURN e$$) AS (a agtype);
 

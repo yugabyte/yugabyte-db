@@ -49,7 +49,7 @@ SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD squirt$$) as (sqrt agt
 
 /* qualified name */
 SELECT * FROM cypher('cypher_call', $$CALL call_stmt_test.add_agtype(1,2)$$) as (sqrt agtype);
-/* non-existent schema should fail */
+/* nonexistent schema should fail */
 SELECT * FROM cypher('cypher_call', $$CALL ag_catalog.add_agtype(1,2)$$) as (sqrt agtype);
 
 /* CALL YIELD WHERE, should fail */

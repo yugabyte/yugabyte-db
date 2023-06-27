@@ -239,7 +239,7 @@ PG_FUNCTION_INFO_V1(age_create_barbell_graph);
  *                                     n int, 
  *                                     vertex_label_name Name DEFAULT = NULL,
  *                                     vertex_properties agtype DEFAULT = NULL,
- *                                     edge_label_name Name DEAULT = NULL,
+ *                                     edge_label_name Name DEFAULT = NULL,
  *                                     edge_properties agtype DEFAULT = NULL)
  * Input:
  * 

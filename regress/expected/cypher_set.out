@@ -358,7 +358,7 @@ SELECT set_test();
 (10 rows)
 
 --
--- Updating multiple fieds
+-- Updating multiple fields
 --
 SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = 3, n.j = 5 RETURN n $$) AS (a agtype);
                                                          a                                                         
@@ -768,7 +768,7 @@ $$) AS (p agtype);
  {"id": 1970324836974593, "label": "Juan", "properties": {}}::vertex
 (1 row)
 
--- test assigning non-map to an enitity
+-- test assigning non-map to an entity
 SELECT * FROM cypher('cypher_set_1', $$
     MATCH (p {name: 'Peter'})
     SET p = "Peter"

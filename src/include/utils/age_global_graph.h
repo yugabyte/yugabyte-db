@@ -29,7 +29,7 @@
  * age_global_graph.c
  */
 
-/* vertex entry for the vertex_hastable */
+/* vertex entry for the vertex_hashtable */
 typedef struct vertex_entry vertex_entry;
 
 /* edge entry for the edge_hashtable */

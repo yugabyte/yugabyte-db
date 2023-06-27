@@ -543,7 +543,7 @@ MATCH (n:Person) WHERE n.name =~ 'J.*' RETURN n
 $$) AS r(result agtype);
 
 --
---Coearce to Postgres 3 int types (smallint, int, bigint)
+--Coerce to Postgres 3 int types (smallint, int, bigint)
 --
 SELECT create_graph('type_coercion');
 SELECT * FROM cypher('type_coercion', $$
@@ -698,7 +698,7 @@ SELECT * FROM cypher('expr', $$
 RETURN ''::int
 $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
-RETURN 'falze'::int
+RETURN 'false_'::int
 $$) AS r(result agtype);
 --
 -- Test from an agtype value to agtype int
@@ -715,7 +715,7 @@ SELECT * FROM cypher('expr', $$
 RETURN ''::bool
 $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
-RETURN 'falze'::bool
+RETURN 'false_'::bool
 $$) AS r(result agtype);
 -- Test from an agtype value to an agtype numeric
 --
@@ -1256,7 +1256,7 @@ SELECT * FROM cypher('expr', $$
 $$) AS (toBoolean agtype);
 -- should return null
 SELECT * FROM cypher('expr', $$
-    RETURN toBoolean("falze")
+    RETURN toBoolean("false_")
 $$) AS (toBoolean agtype);
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean(null)
@@ -1286,7 +1286,7 @@ SELECT * FROM cypher('expr', $$
 $$) AS (toFloat agtype);
 -- should return null
 SELECT * FROM cypher('expr', $$
-    RETURN toFloat("falze")
+    RETURN toFloat("false_")
 $$) AS (toFloat agtype);
 SELECT * FROM cypher('expr', $$
     RETURN toFloat(null)
@@ -1316,7 +1316,7 @@ SELECT * FROM cypher('expr', $$
 $$) AS (toInteger agtype);
 -- should return null
 SELECT * FROM cypher('expr', $$
-    RETURN toInteger("falze")
+    RETURN toInteger("false_")
 $$) AS (toInteger agtype);
 SELECT * FROM cypher('expr', $$
     RETURN toInteger(null)
@@ -2385,7 +2385,7 @@ AS (gpa1 agtype, gpa2 agtype);
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN collect(u.zip), collect(u.zip) $$)
 AS (zip1 agtype, zip2 agtype);
 SELECT * FROM cypher('UCSC', $$ RETURN collect(5) $$) AS (result agtype);
--- should return an empty aray
+-- should return an empty array
 SELECT * FROM cypher('UCSC', $$ RETURN collect(NULL) $$) AS (empty agtype);
 SELECT * FROM cypher('UCSC', $$ MATCH (u) WHERE u.name =~ "doesn't exist" RETURN collect(u.name) $$) AS (name agtype);
 

@@ -304,7 +304,7 @@ static void end_cypher_create(CustomScanState *node)
 static void rescan_cypher_create(CustomScanState *node)
 {
     ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                    errmsg("cypher create clause cannot be rescaned"),
+                    errmsg("cypher create clause cannot be rescanned"),
                     errhint("its unsafe to use joins in a query with a Cypher CREATE clause")));
 }
 

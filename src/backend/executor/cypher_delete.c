@@ -212,7 +212,7 @@ static void rescan_cypher_delete(CustomScanState *node)
 {
      ereport(ERROR,
              (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                      errmsg("cypher DELETE clause cannot be rescaned"),
+                      errmsg("cypher DELETE clause cannot be rescanned"),
                       errhint("its unsafe to use joins in a query with a Cypher DELETE clause")));
 }
 
@@ -484,7 +484,7 @@ static void find_connected_edges(CustomScanState *node, char *graph_name,
      * any edges attached to it.
      *
      * XXX: If we implement an on-disc graph storage system. Such as
-     * an adjacency matrix, the performace of this check can be massively
+     * an adjacency matrix, the performance of this check can be massively
      * improved. However, right now we have to scan every edge to see if
      * one has this vertex as a start or end vertex.
      */

@@ -153,15 +153,15 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
     case T_NullTest:
     {
         NullTest *n = (NullTest *)expr;
-        NullTest *tranformed_expr = makeNode(NullTest);
+        NullTest *transformed_expr = makeNode(NullTest);
 
-        tranformed_expr->arg = (Expr *)transform_cypher_expr_recurse(cpstate,
+        transformed_expr->arg = (Expr *)transform_cypher_expr_recurse(cpstate,
                                                          (Node *)n->arg);
-        tranformed_expr->nulltesttype = n->nulltesttype;
-        tranformed_expr->argisrow = type_is_rowtype(exprType((Node *)tranformed_expr->arg));
-        tranformed_expr->location = n->location;
+        transformed_expr->nulltesttype = n->nulltesttype;
+        transformed_expr->argisrow = type_is_rowtype(exprType((Node *)transformed_expr->arg));
+        transformed_expr->location = n->location;
 
-        return (Node *) tranformed_expr;
+        return (Node *) transformed_expr;
     }
     case T_CaseExpr:
         return transform_CaseExpr(cpstate, (CaseExpr *) expr);

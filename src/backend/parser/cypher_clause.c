@@ -805,7 +805,7 @@ transform_cypher_union_tree(cypher_parsestate *cpstate, cypher_clause *clause,
 
         /*
          * If we find ourselves processing a recursive CTE here something
-         * went horribly wrong. That is an SQL contruct with no parallel in
+         * went horribly wrong. That is an SQL construct with no parallel in
          * cypher.
          */
         if (isTopLevel &&
@@ -1523,7 +1523,7 @@ cypher_update_information *transform_cypher_remove_item_list(
         {
             ereport(ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg("REMOVE clause does not support adding propereties from maps"),
+                     errmsg("REMOVE clause does not support adding properties from maps"),
                      parser_errposition(pstate, set_item->location)));
         }
         set_item->is_add = false;
@@ -2961,7 +2961,7 @@ static void transform_match_pattern(cypher_parsestate *cpstate, Query *query,
         {
             /*
              * coerce the WHERE clause to a boolean before AND with the property
-             * contraints, otherwise there could be evaluation issues.
+             * constraints, otherwise there could be evaluation issues.
              */
             where_qual = (Expr *)coerce_to_boolean(pstate, (Node *)where_qual,
                                                    "WHERE");
@@ -3141,7 +3141,7 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
          * When the previous node is not in the join tree, but there is a vle
          * edge before that join, then we need to compare this vle's start node
          * against the previous vle's end node. No need to check the next edge,
-         * because that would be redundent.
+         * because that would be redundant.
          */
         if (!prev_node->in_join_tree &&
             prev_edge != NULL &&
@@ -3500,9 +3500,9 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
 }
 
 /*
- * Creates the Contains operator to process property contraints for a vertex/
+ * Creates the Contains operator to process property constraints for a vertex/
  * edge in a MATCH clause. creates the agtype @> with the entity's properties
- * on the right and the contraints in the MATCH clause on the left.
+ * on the right and the constraints in the MATCH clause on the left.
  */
 static Node *create_property_constraints(cypher_parsestate *cpstate,
                                          transform_entity *entity,
@@ -3887,8 +3887,8 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                                            expr);
 
             /*
-             * We want to add tranformed entity to entities before tranforming props
-             * so that props referncing currently transformed entity can be resolved.
+             * We want to add transformed entity to entities before transforming props
+             * so that props referencing currently transformed entity can be resolved.
              */
             cpstate->entities = lappend(cpstate->entities, entity);
             entities = lappend(entities, entity);
@@ -4017,8 +4017,8 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                                                expr);
 
                 /*
-                 * We want to add tranformed entity to entities before tranforming props
-                 * so that props referncing currently transformed entity can be resolved.
+                 * We want to add transformed entity to entities before transforming props
+                 * so that props referencing currently transformed entity can be resolved.
                  */
                 cpstate->entities = lappend(cpstate->entities, entity);
                 entities = lappend(entities, entity);
@@ -4096,7 +4096,7 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
 
                 /*
                  * Check to see if the previous node was originally created
-                 * in a predecessing clause. If it was, then remove the id field
+                 * in a preceding clause. If it was, then remove the id field
                  * from the column ref. Just reference the agtype vertex
                  * variable that the prev clause created and the vle will handle
                  * extracting the id.
@@ -5759,7 +5759,7 @@ static TargetEntry *findTarget(List *targetList, char *resname)
 
 /*
  * Wrap the expression with a volatile function, to prevent the optimizer from
- * elimating the expression.
+ * eliminating the expression.
  */
 static Expr *add_volatile_wrapper(Expr *node)
 {
@@ -5851,7 +5851,7 @@ Query *cypher_parse_sub_analyze(Node *parseTree,
  * The second query will be for the path that this MERGE clause defines. The
  * two subqueries will be joined together using a LATERAL LEFT JOIN with the
  * previous query on the left and the MERGE path subquery on the right. Like
- * case 1 the targetList will have all the decalred variables and a FuncExpr
+ * case 1 the targetList will have all the declared variables and a FuncExpr
  * that represents the MERGE clause with its needed metadata information, that
  * will be caught in the planner phase and converted into a path.
  *

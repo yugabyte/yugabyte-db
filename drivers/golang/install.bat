@@ -39,7 +39,7 @@ if not exist "%ProgramFiles%\ANTLR" (
 
 echo ANTLR installation complete.
 
-rem Checking Compatablity for Golang
+rem Checking Compatibility for Golang
 echo Checking if current version of Golang >= Go 1.18.....
 set "minimum_version=1.18"
 set "installed_version="

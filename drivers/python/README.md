@@ -19,7 +19,7 @@ AGType parser and driver support for [Apache AGE](https://age.apache.org/), grap
 
 ### Features
 * Unmarshal AGE result data(AGType) to Vertex, Edge, Path
-* Cypher query support for Psycopg2 PostreSQL driver (enables to use cypher queries directly)
+* Cypher query support for Psycopg2 PostgreSQL driver (enables to use cypher queries directly)
 
 ### Prerequisites
 * over Python 3.9
@@ -58,7 +58,7 @@ python setup.py install
 
 ### For more information about [Apache AGE](https://age.apache.org/)
 * Apache Age : https://age.apache.org/
-* Github : https://github.com/apache/age
+* GitHub : https://github.com/apache/age
 * Document : https://age.apache.org/age-manual/master/index.html
 
 ### Check AGE loaded on your PostgreSQL

@@ -41,7 +41,7 @@
 
 /* internal data structures implementation */
 
-/* vertex entry for the vertex_hastable */
+/* vertex entry for the vertex_hashtable */
 typedef struct vertex_entry
 {
     graphid vertex_id;             /* vertex id, it is also the hash key */
@@ -110,7 +110,7 @@ static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
 
 /*
  * Helper function to determine validity of the passed GRAPH_global_context.
- * This is based off of the current active snaphot, to see if the graph could
+ * This is based off of the current active snapshot, to see if the graph could
  * have been modified. Ideally, we should find a way to more accurately know
  * whether the particular graph was modified.
  */

@@ -31,7 +31,7 @@ Check [latest version](https://github.com/apache/age/releases)
 
 ### For more information about [Apache AGE](https://age.apache.org/)
 * Apache Age : https://age.apache.org/
-* Github : https://github.com/apache/age
+* GitHub : https://github.com/apache/age
 * Document : https://age.apache.org/docs/
 
 ### Check AGE loaded on your PostgreSQL

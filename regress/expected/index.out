@@ -254,7 +254,7 @@ SELECT * FROM cypher('cypher_index', $$
         (us)<-[:has_city]-(:City {city_id: 3, name:"Los Angeles", west_coast: true, country_code:"US"}),
         (us)<-[:has_city]-(:City {city_id: 4, name:"Seattle", west_coast: true, country_code:"US"}),
         (ca)<-[:has_city]-(:City {city_id: 5, name:"Vancouver", west_coast: true, country_code:"CA"}),
-        (ca)<-[:has_city]-(:City {city_id: 6, name:"Toroto", west_coast: false, country_code:"CA"}),
+        (ca)<-[:has_city]-(:City {city_id: 6, name:"Toronto", west_coast: false, country_code:"CA"}),
         (ca)<-[:has_city]-(:City {city_id: 7, name:"Montreal", west_coast: false, country_code:"CA"}),
         (mx)<-[:has_city]-(:City {city_id: 8, name:"Mexico City", west_coast: false, country_code:"MX"}),
         (mx)<-[:has_city]-(:City {city_id: 9, name:"Monterrey", west_coast: false, country_code:"MX"}),

@@ -3934,7 +3934,7 @@ Datum agtype_hash_cmp(PG_FUNCTION_ARGS)
     PG_RETURN_INT16(hash);
 }
 
-// Comparision function for btree Indexes
+// Comparison function for btree Indexes
 PG_FUNCTION_INFO_V1(agtype_btree_cmp);
 
 Datum agtype_btree_cmp(PG_FUNCTION_ARGS)
@@ -8598,10 +8598,10 @@ agtype_value *alter_property_value(agtype_value *properties, char *var_name,
             tok = agtype_iterator_next(&it, r, true);
 
             /*
-             * If the the new agtype is scalar, push the agtype_value to the
+             * If the new agtype is scalar, push the agtype_value to the
              * parse state. If the agtype is an object or array convert the
              * agtype to a binary agtype_value to pass to the parse_state.
-             * This will save uncessary deserialization and serialization
+             * This will save unnecessary deserialization and serialization
              * logic from running.
              */
             if (AGTYPE_CONTAINER_IS_SCALAR(&new_v->root))
@@ -8636,10 +8636,10 @@ agtype_value *alter_property_value(agtype_value *properties, char *var_name,
             &parse_state, WAGT_KEY, key);
 
         /*
-         * If the the new agtype is scalar, push the agtype_value to the
+         * If the new agtype is scalar, push the agtype_value to the
          * parse state. If the agtype is an object or array convert the
          * agtype to a binary agtype_value to pass to the parse_state.
-         * This will save uncessary deserialization and serialization
+         * This will save unnecessary deserialization and serialization
          * logic from running.
          */
         if (AGTYPE_CONTAINER_IS_SCALAR(&new_v->root))

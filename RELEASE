@@ -24,7 +24,7 @@ Apache AGE 1.3.0 - Release Notes
     Implement plus-equal operator in SET clause. (#638)
     Implement CI test for python driver. (#587)
     Move from travis CI to github actions for build. (#673)
-    Update all driver CIs to Github actions.
+    Update all driver CIs to GitHub actions.
     Fix build warnings.
     Fix golang driver workflow (#563)
     Updated Readme for drivers folder. (#642)

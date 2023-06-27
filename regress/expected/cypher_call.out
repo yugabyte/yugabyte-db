@@ -75,7 +75,7 @@ SELECT * FROM cypher('cypher_call', $$CALL call_stmt_test.add_agtype(1,2)$$) as 
  3
 (1 row)
 
-/* non-existent schema should fail */
+/* nonexistent schema should fail */
 SELECT * FROM cypher('cypher_call', $$CALL ag_catalog.add_agtype(1,2)$$) as (sqrt agtype);
 ERROR:  function ag_catalog.add_agtype(agtype, agtype) does not exist
 LINE 2: ...cypher('cypher_call', $$CALL ag_catalog.add_agtype(1,2)$$) a...

@@ -148,7 +148,7 @@ static void handle_cypher_delete_clause(PlannerInfo *root, RelOptInfo *rel,
 
     cp = create_cypher_delete_path(root, rel, custom_private);
 
-    // Discard any pre-existing paths
+    // Discard any preexisting paths
     rel->pathlist = NIL;
     rel->partial_pathlist = NIL;
 
@@ -176,7 +176,7 @@ static void handle_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
 
     cp = create_cypher_create_path(root, rel, custom_private);
 
-    // Discard any pre-existing paths, they should be under the cp path
+    // Discard any preexisting paths, they should be under the cp path
     rel->pathlist = NIL;
     rel->partial_pathlist = NIL;
 
@@ -201,7 +201,7 @@ static void handle_cypher_set_clause(PlannerInfo *root, RelOptInfo *rel,
 
     cp = create_cypher_set_path(root, rel, custom_private);
 
-    // Discard any pre-existing paths
+    // Discard any preexisting paths
     rel->pathlist = NIL;
     rel->partial_pathlist = NIL;
 
@@ -225,7 +225,7 @@ static void handle_cypher_merge_clause(PlannerInfo *root, RelOptInfo *rel,
 
     cp = create_cypher_merge_path(root, rel, custom_private);
 
-    // Discard any pre-existing paths
+    // Discard any preexisting paths
     rel->pathlist = NIL;
     rel->partial_pathlist = NIL;
 

@@ -138,7 +138,7 @@ char *get_next_default_alias(cypher_parsestate *cpstate)
 
     /*
      * Every clause transformed as a subquery has its own cpstate which is being
-     * freed after it is tranformed. The root cpstate is the one that has the
+     * freed after it is transformed. The root cpstate is the one that has the
      * default alias number initialized. So we need to reach the root cpstate to
      * get the next correct default alias number.
      */
@@ -147,7 +147,7 @@ char *get_next_default_alias(cypher_parsestate *cpstate)
         return get_next_default_alias(parent_cpstate);
     }
 
-    /* get the length of the combinded string */
+    /* get the length of the combined string */
     nlen = snprintf(NULL, 0, "%s%d", AGE_DEFAULT_ALIAS_PREFIX,
                     cpstate->default_alias_num);
 

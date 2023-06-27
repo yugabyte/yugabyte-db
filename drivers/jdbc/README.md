@@ -94,5 +94,5 @@ Vertex : Country, 	Props : {name=US}
 ## For more information about [Apache AGE](https://age.apache.org/)
 
 - Apache Age : [https://age.apache.org/](https://age.apache.org/)
-- Github : [https://github.com/apache/age](https://github.com/apache/age)
+- GitHub : [https://github.com/apache/age](https://github.com/apache/age)
 - Document : [https://age.apache.org/age-manual/master/index.html](https://age.apache.org/age-manual/master/index.html)

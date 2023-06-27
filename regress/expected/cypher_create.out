@@ -538,7 +538,7 @@ cypher('cypher_create', $$
 	CREATE (b)
 	RETURN b
 $$) as t(b agtype);
-ERROR:  cypher create clause cannot be rescaned
+ERROR:  cypher create clause cannot be rescanned
 HINT:  its unsafe to use joins in a query with a Cypher CREATE clause
 -- column definition list for CREATE clause must contain a single agtype
 -- attribute
