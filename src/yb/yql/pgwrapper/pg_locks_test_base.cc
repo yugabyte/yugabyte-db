@@ -59,8 +59,8 @@ using tserver::TabletServerServiceProxy;
 
 void PgLocksTestBase::SetUp() {
   // Enable wait-queues and deadlock detection.
-  FLAGS_enable_wait_queues = true;
-  FLAGS_enable_deadlock_detection = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
 
   PgMiniTestBase::SetUp();
   InitTSProxies();

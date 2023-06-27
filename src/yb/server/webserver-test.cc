@@ -122,7 +122,7 @@ TEST_F(WebserverTest, TestHSTSOnHttp) {
   ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Strict-Transport-Security: max-age=31536000");
 
   // Turning on HSTS flag shouldn't work on HTTP.
-  FLAGS_webserver_strict_transport_security = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_strict_transport_security) = true;
   curl_.set_return_headers(true);
 
   ASSERT_OK(curl_.FetchURL(url_, &buf_));
@@ -135,7 +135,7 @@ TEST_F(WebserverTest, TestHSTSOnHttp) {
 TEST_F(WebserverTest, TestHttpCompression) {
   std::ostringstream oss;
   string decoded_str;
-  FLAGS_webserver_compression_threshold_kb = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_compression_threshold_kb) = 0;
 
   // Curl with gzip compression enabled.
   ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec,
@@ -261,7 +261,7 @@ TEST_F(WebserverTest, TestPprofPaths) {
 // Send a POST request with too much data. It should reject
 // the request with the correct HTTP error code.
 TEST_F(WebserverTest, TestPostTooBig) {
-  FLAGS_webserver_max_post_length_bytes = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_max_post_length_bytes) = 10;
   string req(10000, 'c');
   Status s = curl_.PostToURL(strings::Substitute("http://$0/pprof/symbol", ToString(addr_)),
                              req, &buf_);
@@ -299,7 +299,8 @@ class WebserverSecureTest : public WebserverTest {
     const auto certs_dir = GetCertsDir();
     opts.certificate_file = JoinPathSegments(certs_dir, Format("node.$0.crt", opts.bind_interface));
     opts.private_key_file = JoinPathSegments(certs_dir, Format("node.$0.key", opts.bind_interface));
-    FLAGS_webserver_ca_certificate_file = JoinPathSegments(certs_dir, "ca.crt");
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_ca_certificate_file) =
+        JoinPathSegments(certs_dir, "ca.crt");
     return opts;
   }
 
@@ -326,7 +327,7 @@ TEST_F(WebserverSecureTest, TestStrictTransportSecurity) {
   ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Strict-Transport-Security: max-age=31536000");
 
   // Turn on HSTS GFlag and check headers.
-  FLAGS_webserver_strict_transport_security = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_strict_transport_security) = true;
   curl_.set_return_headers(true);
   ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */));
   ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");

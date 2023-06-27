@@ -37,7 +37,8 @@ class CqlBackupTest : public CqlTestBase<MiniCluster> {
   virtual ~CqlBackupTest() = default;
 
   void SetUp() override {
-    FLAGS_TEST_mini_cluster_mode = true; // Provide correct '--fs_data_dirs' via TS Web UI.
+    // Provide correct '--fs_data_dirs' via TS Web UI.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_mode) = true;
     CqlTestBase<MiniCluster>::SetUp();
 
     backup_dir_ = GetTempDir("backup");

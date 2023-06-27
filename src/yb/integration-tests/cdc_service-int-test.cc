@@ -527,7 +527,7 @@ TEST_F(CDCServiceTest, TestCreateCDCStream) {
 
 TEST_F(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
   // Set default WAL retention time to 10 hours.
-  FLAGS_cdc_wal_retention_time_secs = 36000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 36000;
 
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
@@ -542,7 +542,7 @@ TEST_F(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
 }
 
 TEST_F(CDCServiceTest, TestDeleteCDCStream) {
-  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
   NamespaceId ns_id;
@@ -849,7 +849,7 @@ TEST_F(CDCServiceTest, TestGetChanges) {
 }
 
 TEST_F(CDCServiceTest, TestGetChangesWithDeadline) {
-  FLAGS_cdc_populate_end_markers_transactions = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_end_markers_transactions) = false;
   docdb::DisableYcqlPackedRow();
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
@@ -1640,7 +1640,7 @@ TEST_F(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
 // in case the consumer does not send from checkpoint.
 TEST_F(CDCServiceTest, TestCheckpointUpdate) {
   docdb::DisableYcqlPackedRow();
-  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
@@ -1745,17 +1745,17 @@ class CDCServiceTestMaxRentionTime : public CDCServiceTest {
  public:
   void SetUp() override {
     // Immediately write any index provided by a GetChanges request to cdc_state table.
-    FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-    FLAGS_log_min_segments_to_retain = 1;
-    FLAGS_log_min_seconds_to_retain = 1;
-    FLAGS_cdc_wal_retention_time_secs = 1;
-    FLAGS_enable_log_retention_by_op_idx = true;
-    FLAGS_log_max_seconds_to_retain = kMaxSecondsToRetain;
-    FLAGS_TEST_record_segments_violate_max_time_policy = true;
-    FLAGS_update_min_cdc_indices_interval_secs = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_max_seconds_to_retain) = kMaxSecondsToRetain;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_record_segments_violate_max_time_policy) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
 
     // This will rollover log segments a lot faster.
-    FLAGS_log_segment_size_bytes = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
     CDCServiceTest::SetUp();
   }
   const int kMaxSecondsToRetain = 30;
@@ -1819,9 +1819,9 @@ class CDCServiceTestDurableMinReplicatedIndex : public CDCServiceTest {
  public:
   void SetUp() override {
     // Immediately write any index provided by a GetChanges request to cdc_state table.
-    FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-    FLAGS_update_min_cdc_indices_interval_secs = 1;
-    FLAGS_enable_log_retention_by_op_idx = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
     CDCServiceTest::SetUp();
   }
 };
@@ -1943,19 +1943,19 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestLogCDCMinReplicatedIndexIsDu
 class CDCServiceTestMinSpace : public CDCServiceTest {
  public:
   void SetUp() override {
-    FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-    FLAGS_log_min_segments_to_retain = 1;
-    FLAGS_log_min_seconds_to_retain = 1;
-    FLAGS_cdc_wal_retention_time_secs = 1;
-    FLAGS_enable_log_retention_by_op_idx = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
     // We want the logs to be GCed because of space, not because they exceeded the maximum time to
     // be retained.
-    FLAGS_log_max_seconds_to_retain = 10 * 3600; // 10 hours.
-    FLAGS_log_stop_retaining_min_disk_mb = 1;
-    FLAGS_TEST_record_segments_violate_min_space_policy = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_max_seconds_to_retain) = 10 * 3600; // 10 hours.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_stop_retaining_min_disk_mb) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_record_segments_violate_min_space_policy) = true;
 
     // This will rollover log segments a lot faster.
-    FLAGS_log_segment_size_bytes = 500;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 500;
     CDCServiceTest::SetUp();
   }
 };
@@ -2016,10 +2016,10 @@ class CDCLogAndMetaIndex : public CDCServiceTest {
  public:
   void SetUp() override {
     // Immediately write any index provided by a GetChanges request to cdc_state table.
-    FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-    FLAGS_update_min_cdc_indices_interval_secs = 1;
-    FLAGS_cdc_min_replicated_index_considered_stale_secs = 5;
-    FLAGS_enable_log_retention_by_op_idx = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
     CDCServiceTest::SetUp();
   }
 };
@@ -2028,7 +2028,7 @@ TEST_F(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
   constexpr int kNStreams = 5;
 
   // This will rollover log segments a lot faster.
-  FLAGS_log_segment_size_bytes = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
 
   CDCStreamId stream_id[kNStreams];
 
@@ -2082,9 +2082,9 @@ TEST_F(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
 class CDCLogAndMetaIndexReset : public CDCLogAndMetaIndex {
  public:
   void SetUp() override {
-    FLAGS_cdc_min_replicated_index_considered_stale_secs = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
     // This will rollover log segments a lot faster.
-    FLAGS_log_segment_size_bytes = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
     CDCLogAndMetaIndex::SetUp();
   }
 };
@@ -2095,7 +2095,7 @@ TEST_F(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
   constexpr int kNStreams = 5;
 
   // This will rollover log segments a lot faster.
-  FLAGS_log_segment_size_bytes = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
 
   CDCStreamId stream_id[kNStreams];
 
@@ -2171,16 +2171,17 @@ class CDCServiceTestThreeServers : public CDCServiceTest {
  public:
   void SetUp() override {
     // We don't want the tablets to move in the middle of the test.
-    FLAGS_enable_load_balancing = false;
-    FLAGS_leader_failure_max_missed_heartbeat_periods = 12.0;
-    FLAGS_update_min_cdc_indices_interval_secs = 2;
-    FLAGS_enable_log_retention_by_op_idx = true;
-    FLAGS_client_read_write_timeout_ms = 20 * 1000 * kTimeMultiplier;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 12.0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 20 * 1000 * kTimeMultiplier;
 
     // Always update cdc_state table.
-    FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
-    FLAGS_follower_unavailable_considered_failed_sec = 20 * kTimeMultiplier;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_follower_unavailable_considered_failed_sec) =
+        20 * kTimeMultiplier;
 
     CDCServiceTest::SetUp();
   }
@@ -2313,10 +2314,10 @@ TEST_F(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
 class CDCServiceLowRpc: public CDCServiceTest {
  public:
   void SetUp() override {
-    FLAGS_rpc_workers_limit = 4;
-    FLAGS_transaction_manager_workers_limit = 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_manager_workers_limit) = 4;
     // Uncommenting below causes test to timeout. We stop throttling with a negative ratio.
-    // FLAGS_cdc_get_changes_free_rpc_ratio = -.5;
+    // ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_get_changes_free_rpc_ratio) = -.5;
 
     CDCServiceTest::SetUp();
   }

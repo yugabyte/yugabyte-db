@@ -50,13 +50,13 @@ void PgMiniTestBase::DoTearDown() {
 void PgMiniTestBase::SetUp() {
   HybridTime::TEST_SetPrettyToString(true);
 
-  FLAGS_client_read_write_timeout_ms = 120000 * kTimeMultiplier;
-  FLAGS_enable_ysql = true;
-  FLAGS_hide_pg_catalog_table_creation_logs = true;
-  FLAGS_master_auto_run_initdb = true;
-  FLAGS_pggate_rpc_timeout_secs = 120;
-  FLAGS_ysql_disable_index_backfill = true;
-  FLAGS_ysql_num_shards_per_tserver = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 120000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_shards_per_tserver) = 1;
 
 
   master::SetDefaultInitialSysCatalogSnapshotFlags();
@@ -76,7 +76,7 @@ void PgMiniTestBase::SetUp() {
 
   auto port = cluster_->AllocateFreePort();
   auto pg_process_conf = ASSERT_RESULT(CreatePgProcessConf(port));
-  FLAGS_pgsql_proxy_webserver_port = cluster_->AllocateFreePort();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
 
   LOG(INFO) << "Starting PostgreSQL server listening on "
             << pg_process_conf.listen_addresses << ":" << pg_process_conf.pg_port << ", data: "
@@ -169,8 +169,8 @@ std::vector<tserver::TabletServerOptions> PgMiniTestBase::ExtraTServerOptions() 
 }
 
 void PgMiniTestBase::FlushAndCompactTablets() {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
   const auto compaction_start = MonoTime::Now();
   ASSERT_OK(cluster_->CompactTablets());

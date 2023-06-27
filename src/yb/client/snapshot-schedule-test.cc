@@ -50,9 +50,9 @@ namespace client {
 class SnapshotScheduleTest : public TransactionTestBase<MiniCluster> {
  public:
   void SetUp() override {
-    FLAGS_enable_history_cutoff_propagation = true;
-    FLAGS_snapshot_coordinator_poll_interval_ms = 250;
-    FLAGS_history_cutoff_propagation_interval_ms = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 250;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 100;
     num_tablets_ = 1;
     TransactionTestBase<MiniCluster>::SetUp();
     snapshot_util_ = std::make_unique<SnapshotTestUtil>();
@@ -93,7 +93,7 @@ TEST_F(SnapshotScheduleTest, Create) {
 }
 
 TEST_F(SnapshotScheduleTest, Snapshot) {
-  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kTimeMultiplier;
 
   ASSERT_NO_FATALS(WriteData());
   auto schedule_id = ASSERT_RESULT(
@@ -145,7 +145,7 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
 }
 
 TEST_F(SnapshotScheduleTest, GC) {
-  FLAGS_snapshot_coordinator_cleanup_delay_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 100;
   // When retention matches snapshot interval we expect at most 3 snapshots for schedule.
   ASSERT_RESULT(snapshot_util_->CreateSchedule(
       table_, kTableName.namespace_type(), kTableName.namespace_name(), kSnapshotInterval,
@@ -233,7 +233,7 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
 }
 
 TEST_F(SnapshotScheduleTest, Index) {
-  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kTimeMultiplier;
 
   auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
     table_, kTableName.namespace_type(), kTableName.namespace_name()));

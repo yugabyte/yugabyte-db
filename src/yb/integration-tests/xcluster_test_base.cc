@@ -71,9 +71,9 @@ Result<std::unique_ptr<XClusterTestBase::Cluster>> XClusterTestBase::CreateClust
 }
 
 Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
-  FLAGS_replication_factor = static_cast<int>(opts.num_tablet_servers);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = static_cast<int>(opts.num_tablet_servers);
   // Disable tablet split for regular tests, see xcluster-tablet-split-itest for those tests.
-  FLAGS_enable_tablet_split_of_xcluster_replicated_tables = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = false;
 
   auto producer_opts = opts;
   producer_opts.cluster_id = "producer";

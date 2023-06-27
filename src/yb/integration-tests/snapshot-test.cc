@@ -110,9 +110,9 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
 
-    FLAGS_log_min_seconds_to_retain = 5;
-    FLAGS_TEST_tablet_verify_flushed_frontier_after_modifying = true;
-    FLAGS_enable_ysql = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_verify_flushed_frontier_after_modifying) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;

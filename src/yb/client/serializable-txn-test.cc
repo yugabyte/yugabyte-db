@@ -238,7 +238,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
 // serializable isolation.
 // With retries the resulting value should be equal to number of increments.
 void SerializableTxnTest::TestIncrements(bool transactional) {
-  FLAGS_transaction_rpc_timeout_ms = MonoDelta(1min).ToMilliseconds();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_rpc_timeout_ms) = MonoDelta(1min).ToMilliseconds();
 
   const auto kThreads = RegularBuildVsSanitizers(3, 2);
 
@@ -389,7 +389,7 @@ TEST_F(SerializableTxnTest, Coloring) {
 }
 
 TEST_F(SerializableTxnTest, ColoringWithLongApply) {
-  FLAGS_txn_max_apply_batch_records = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 3;
   TestColoring();
 }
 

@@ -183,7 +183,7 @@ TEST_F(CqlPackedRowTest, WriteTime) {
 
 TEST_F(CqlPackedRowTest, RetainPacking) {
   // Set retention interval to 0, to repack all recently flushed entries.
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
 
@@ -208,7 +208,7 @@ TEST_F(CqlPackedRowTest, RetainPacking) {
 }
 
 TEST_F(CqlPackedRowTest, NonFullInsert) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
 
@@ -271,7 +271,7 @@ TEST_F(CqlPackedRowTest, TimestampOverExpired) {
 }
 
 TEST_F(CqlPackedRowTest, CompactUpdateToNull) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
 

@@ -137,10 +137,10 @@ class TsTabletManagerTest : public YBTest {
 
     // Disable AutoFlags management as we dont have a master. AutoFlags will be enabled based on
     // FLAGS_TEST_promote_all_auto_flags in test_main.cc.
-    FLAGS_disable_auto_flags_management = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
 
     // Disallow encryption at rest as there is no master.
-    FLAGS_allow_encryption_at_rest = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
 
     mini_server_ = std::make_unique<MiniTabletServer>(paths, paths, 0, *options_result, 0);
   }
@@ -414,7 +414,7 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
 
 TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
   FlagSaver flag_saver;
-  FLAGS_TEST_pretend_memory_exceeded_enforce_flush = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pretend_memory_exceeded_enforce_flush) = true;
 
   const int kNumTablets = 2;
   const int kNumRestarts = 3;

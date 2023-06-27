@@ -80,7 +80,7 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
   }
 
   void SetUp() override {
-    FLAGS_load_balancer_max_concurrent_tablet_remote_bootstraps = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_tablet_remote_bootstraps) = 1;
 
     YBTableTestBase::SetUp();
   }
@@ -158,8 +158,8 @@ TEST_P(EncryptionTest, BasicWriteRead) {
   if (GetParam()) {
     // If testing with counter overflow, make sure we set counter to a value that will overflow
     // for sst files.
-    FLAGS_encryption_counter_min = kCounterOverflowDefault;
-    FLAGS_encryption_counter_max = kCounterOverflowDefault;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_encryption_counter_min) = kCounterOverflowDefault;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_encryption_counter_max) = kCounterOverflowDefault;
   }
 
   WriteWorkload(0, kNumKeys);

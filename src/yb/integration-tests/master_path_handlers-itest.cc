@@ -146,7 +146,7 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
   void InitCluster() override {
     MiniClusterOptions opts;
     // Set low heartbeat timeout.
-    FLAGS_tserver_unresponsive_timeout_ms = 5000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
     opts.num_tablet_servers = kNumTablets;
     opts.num_masters = num_masters();
     cluster_.reset(new MiniCluster(opts));
@@ -534,7 +534,7 @@ TEST_F(MasterPathHandlersItest, TestTablesJsonEndpoint) {
 
 TEST_F(MasterPathHandlersItest, TestTabletUnderReplicationEndpoint) {
   // Set test specific flag
-  FLAGS_follower_unavailable_considered_failed_sec = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_follower_unavailable_considered_failed_sec) = 30;
 
   auto table = CreateTestTable();
 
@@ -604,7 +604,8 @@ class MultiMasterPathHandlersItest : public MasterPathHandlersItest {
 };
 
 TEST_F_EX(MasterPathHandlersItest, Forward, MultiMasterPathHandlersItest) {
-  FLAGS_TEST_master_extra_list_host_port = RandomHumanReadableString(16) + ".com";
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_master_extra_list_host_port) = RandomHumanReadableString(16) + ".com";
   EasyCurl curl;
   faststring content;
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
@@ -617,8 +618,8 @@ TEST_F_EX(MasterPathHandlersItest, Forward, MultiMasterPathHandlersItest) {
 class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
  public:
   void SetUp() override {
-    FLAGS_cleanup_split_tablets_interval_sec = 1;
-    FLAGS_enable_automatic_tablet_splitting = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     MasterPathHandlersItest::SetUp();
   }
 };
@@ -677,7 +678,7 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
   void InitCluster() override {
     ExternalMiniClusterOptions opts;
     // Set low heartbeat timeout.
-    FLAGS_tserver_unresponsive_timeout_ms = 5000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
     opts.num_tablet_servers = kNumTablets;
     opts.num_masters = num_masters();
     cluster_.reset(new ExternalMiniCluster(opts));

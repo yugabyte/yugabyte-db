@@ -107,15 +107,16 @@ void DisableTransactionTimeout() {
 
 template <class MiniClusterType>
 void TransactionTestBase<MiniClusterType>::SetUp() {
-  FLAGS_TEST_combine_batcher_errors = true;
-  FLAGS_transaction_status_tablet_log_segment_size_bytes = log_segment_size_bytes();
-  FLAGS_log_min_seconds_to_retain = 5;
-  FLAGS_intents_flush_max_delay_ms = 250;
-  FLAGS_export_intentdb_metrics = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_combine_batcher_errors) = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_transaction_status_tablet_log_segment_size_bytes) = log_segment_size_bytes();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_intents_flush_max_delay_ms) = 250;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_export_intentdb_metrics) = true;
 
   server::SkewedClock::Register();
-  FLAGS_time_source = server::SkewedClock::kName;
-  FLAGS_load_balancer_max_concurrent_adds = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_adds) = 100;
   ASSERT_NO_FATALS(KeyValueTableTest<MiniClusterType>::SetUp());
 
   if (create_table_) {

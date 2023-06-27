@@ -261,7 +261,7 @@ class AllTypesItest : public YBTest {
  public:
   AllTypesItest() {
     if (AllowSlowTests()) {
-      FLAGS_num_rows_per_tablet = 10000;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_rows_per_tablet) = 10000;
     }
     setup_ = TestSetup();
   }

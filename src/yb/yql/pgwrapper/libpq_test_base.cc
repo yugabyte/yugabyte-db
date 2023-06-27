@@ -31,7 +31,7 @@ namespace pgwrapper {
 void LibPqTestBase::SetUp() {
   // YSQL has very verbose logging in case of conflicts
   // TODO: reduce the verbosity of that logging.
-  FLAGS_external_mini_cluster_max_log_bytes = 512_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_mini_cluster_max_log_bytes) = 512_MB;
   PgWrapperTestBase::SetUp();
 }
 

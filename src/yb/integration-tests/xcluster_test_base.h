@@ -104,15 +104,15 @@ class XClusterTestBase : public YBTest {
 
     // We normally disable setting up transactional replication for CQL tables because the
     // implementation isn't quite complete yet.  It's fine to use it in tests, however.
-    FLAGS_allow_ycql_transactional_xcluster = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_ycql_transactional_xcluster) = true;
 
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
-    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
-    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = (kRpcTimeout / 2) * 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_write_rpc_timeout_ms) = (kRpcTimeout / 2) * 1000;
     // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
-    FLAGS_TEST_check_broadcast_address = false;
-    FLAGS_flush_rocksdb_on_shutdown = false;
-    FLAGS_xcluster_safe_time_update_interval_secs = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_safe_time_update_interval_secs) = 1;
     propagation_timeout_ = MonoDelta::FromSeconds(30 * kTimeMultiplier);
   }
 

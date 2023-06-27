@@ -23,7 +23,7 @@ template<IsolationLevel level>
 class PgExplicitLockTest : public PgMiniTestBase {
  protected:
   void BeforePgProcessStart() override {
-    FLAGS_ysql_sleep_before_retry_on_txn_conflict = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sleep_before_retry_on_txn_conflict) = false;
   }
 
   void TestRowLockInJoin() {

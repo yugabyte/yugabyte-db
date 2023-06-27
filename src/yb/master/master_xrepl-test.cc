@@ -193,7 +193,7 @@ TEST_F(MasterTestXRepl, TestCreateCDCStream) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
   CDCStreamId stream_id;
-  FLAGS_cdc_state_table_num_tablets = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   ASSERT_OK(CreateCDCStream(table_id, &stream_id));
 
   GetCDCStreamResponsePB resp;
@@ -206,7 +206,7 @@ TEST_F(MasterTestXRepl, TestDeleteCDCStream) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
   CDCStreamId stream_id;
-  FLAGS_cdc_state_table_num_tablets = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   ASSERT_OK(CreateCDCStream(table_id, &stream_id));
 
   GetCDCStreamResponsePB resp;
@@ -226,7 +226,7 @@ TEST_F(MasterTestXRepl, TestDeleteTableWithCDCStream) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
   CDCStreamId stream_id;
-  FLAGS_cdc_state_table_num_tablets = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   ASSERT_OK(CreateCDCStream(table_id, &stream_id));
 
   GetCDCStreamResponsePB resp;
@@ -247,7 +247,7 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForce
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
   CDCStreamId stream_id;
-  FLAGS_cdc_state_table_num_tablets = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   // CreateCDCStream, simulating a fully-created XCluster configuration.
   {
     CreateCDCStreamRequestPB req;
@@ -284,7 +284,7 @@ TEST_F(MasterTestXRepl, TestListCDCStreams) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
   CDCStreamId stream_id;
-  FLAGS_cdc_state_table_num_tablets = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   ASSERT_OK(CreateCDCStream(table_id, &stream_id));
 
   ListCDCStreamsResponsePB resp;

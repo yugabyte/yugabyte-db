@@ -182,10 +182,10 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
  public:
   void SetUp() override {
     google::SetVLOGLevel("cdc*", 4);
-    FLAGS_cdc_state_table_num_tablets = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
     // Set before creating tests so that the first run doesn't wait 30s.
     // Lowering to 5s here to speed up tests.
-    FLAGS_cdc_parent_tablet_deletion_task_retry_secs = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 5;
     TabletSplitITest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
@@ -485,7 +485,7 @@ class xClusterTabletMapTest : public XClusterTabletSplitITest,
   void SetUp() override {}
 
   void RunSetUp(int producer_tablet_count, int consumer_tablet_count) {
-    FLAGS_cdc_state_table_num_tablets = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
 
     {
       TEST_SetThreadPrefixScoped prefix_se("P");
