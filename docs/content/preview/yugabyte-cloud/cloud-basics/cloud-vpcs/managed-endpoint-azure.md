@@ -59,7 +59,7 @@ To create a PSE, do the following:
 
     - `yugabytedb_cluster` - name of your cluster.
     - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed (for example, `us-west-2`), and preferably match the region where your application is deployed.
-    - `subscription_ids` - comma-separated list of the subscription IDs of services that you want to grant access.
+    - `subscription_ids` - comma-separated list of the subscription IDs of Azure subscriptions that you want to grant access.
 
 1. Note the endpoint ID in the response.
 

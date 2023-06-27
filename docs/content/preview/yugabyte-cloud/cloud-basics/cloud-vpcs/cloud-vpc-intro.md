@@ -31,7 +31,7 @@ Deploying your cluster in a VPC has the following advantages:
 
 There's no additional charge for using a VPC, peering, or private service endpoints. In most cases, using a VPC network will reduce your data transfer costs. VPCs are not supported for Sandbox clusters.
 
-Note that using a private service endpoint with [AWS PrivateLink](https://aws.amazon.com/privatelink/) or [Azure Private Link](https://azure.microsoft.com/en-us/products/private-link/) does incur charges from the cloud provider. See [AWS PrivateLink pricing](https://aws.amazon.com/privatelink/pricing/) or [Azure Private Link pricing](https://azure.microsoft.com/en-us/pricing/details/private-link/).
+Note that using a private service endpoint with [AWS PrivateLink](https://aws.amazon.com/privatelink/) or [Azure Private Link](https://azure.microsoft.com/en-us/products/private-link/) does incur charges from the cloud provider in your own account. See [AWS PrivateLink pricing](https://aws.amazon.com/privatelink/pricing/) or [Azure Private Link pricing](https://azure.microsoft.com/en-us/pricing/details/private-link/).
 
 ## Limitations
 
