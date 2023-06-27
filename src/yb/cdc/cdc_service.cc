@@ -743,13 +743,7 @@ Status DoUpdateCDCConsumerOpId(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const OpId& checkpoint,
     const TabletId& tablet_id) {
-  std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
-
-  if (shared_consensus == nullptr) {
-    return STATUS_FORMAT(InternalError, "Failed to get tablet $0 peer consensus", tablet_id);
-  }
-
-  shared_consensus->UpdateCDCConsumerOpId(checkpoint);
+  VERIFY_RESULT(tablet_peer->GetConsensus())->UpdateCDCConsumerOpId(checkpoint);
   return Status::OK();
 }
 

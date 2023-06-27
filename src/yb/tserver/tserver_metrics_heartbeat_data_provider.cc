@@ -96,11 +96,11 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
           storage_metadata->set_may_have_orphaned_post_split_data(
                 tablet->MayHaveOrphanedPostSplitData());
           if (FLAGS_tserver_heartbeat_metrics_add_leader_info) {
-            auto consensus = tablet_peer->shared_raft_consensus();
-            if (consensus) {
+            auto consensus_result = tablet_peer->GetRaftConsensus();
+            if (consensus_result) {
               MicrosTime ht_lease_exp;
               consensus::LeaderLeaseStatus leader_lease_status =
-                  consensus->GetLeaderLeaseStatusIfLeader(&ht_lease_exp);
+                  consensus_result.get()->GetLeaderLeaseStatusIfLeader(&ht_lease_exp);
               auto leader_info = req->add_leader_info();
               leader_info->set_tablet_id(tablet_peer->tablet_id());
               leader_info->set_leader_lease_status(leader_lease_status);

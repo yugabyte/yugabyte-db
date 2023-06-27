@@ -200,7 +200,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
     SCOPED_TRACE(Substitute("Iter: $0", i));
     int new_leader_idx = rand_r(&seed) % 2;
     LOG(INFO) << "Electing peer " << new_leader_idx << "...";
-    consensus::Consensus* con = CHECK_NOTNULL(tablet_peers[new_leader_idx]->consensus());
+    auto con = CHECK_RESULT(tablet_peers[new_leader_idx]->GetConsensus());
     ASSERT_OK(con->EmulateElection());
     LOG(INFO) << "Waiting for servers to agree...";
     ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(5),

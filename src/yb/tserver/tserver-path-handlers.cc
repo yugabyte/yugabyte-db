@@ -278,14 +278,14 @@ void HandleConsensusStatusPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
-  if (!consensus) {
+  auto consensus_result = peer->GetConsensus();
+  if (!consensus_result) {
     *output << "Tablet " << EscapeForHtmlToString(tablet_id) << " not running";
     return;
   }
 
   *output << "<h1>Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>\n";
-  consensus->DumpStatusHtml(*output);
+  consensus_result.get()->DumpStatusHtml(*output);
 }
 
 void HandleTransactionsPage(
@@ -596,10 +596,10 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
       continue;
     }
 
-    auto consensus = peer->shared_consensus();
+    auto consensus_result = peer->GetConsensus();
     auto raft_role = PeerRole::UNKNOWN_ROLE;
-    if (consensus) {
-      raft_role = consensus->role();
+    if (consensus_result) {
+      raft_role = consensus_result.get()->role();
     } else if (status.tablet_data_state() == TabletDataState::TABLET_DATA_COPYING) {
       raft_role = PeerRole::LEARNER;
     }
@@ -729,7 +729,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
 
     // TODO: would be nice to include some other stuff like memory usage
-    shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
+    auto consensus_result = peer->GetConsensus();
     (*output) << Format(
         // Namespace, Table name, UUID of table, tablet id, partition
         "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
@@ -744,8 +744,9 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
         status.is_hidden(),                                 // $6
         num_sst_files,                                      // $7
         tablets_disk_size_html,                             // $8
-        consensus ? ConsensusStatePBToHtml(consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
-                  : "",                                // $9
+        consensus_result ? ConsensusStatePBToHtml(
+                               consensus_result.get()->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
+                         : "",                         // $9
         EscapeForHtmlToString(status.last_status()));  // $10
   }
   *output << "</table>\n";

@@ -106,8 +106,11 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
   }
 
   // Check if the catalog manager is the leader.
-  Consensus* consensus = catalog_->sys_catalog_->tablet_peer()->consensus();
-  ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+  ConsensusStatePB cstate;
+  auto consensus_result = catalog_->sys_catalog_->tablet_peer()->GetConsensus();
+  if (consensus_result) {
+    cstate = consensus_result.get()->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+  }
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
     leader_status_ = STATUS_FORMAT(IllegalState,
                                    "Not the leader. Local UUID: $0, Consensus state: $1",
@@ -115,7 +118,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     return;
   }
   // TODO: deduplicate the leadership check above and below (one is committed, one is active).
-  const Status s = consensus->CheckIsActiveLeaderAndHasLease();
+  const Status s = consensus_result.get()->CheckIsActiveLeaderAndHasLease();
   if (!s.ok()) {
     leader_status_ = s;
     return;

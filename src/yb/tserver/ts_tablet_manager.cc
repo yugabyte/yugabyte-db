@@ -976,12 +976,12 @@ Status TSTabletManager::ApplyTabletSplit(
                         << " apply started";
 
   auto tablet_peer = VERIFY_RESULT(GetTablet(tablet_id));
-  auto* raft_consensus = tablet_peer->raft_consensus();
   if (raft_log == nullptr) {
-    raft_log = DCHECK_NOTNULL(raft_consensus)->log().get();
+    raft_log = VERIFY_RESULT(tablet_peer->GetRaftConsensus())->log().get();
   }
   if (!committed_raft_config) {
-    committed_raft_config = DCHECK_NOTNULL(raft_consensus)->CommittedConfigUnlocked();
+    committed_raft_config =
+        VERIFY_RESULT(tablet_peer->GetRaftConsensus())->CommittedConfigUnlocked();
   }
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_in_split_before_log_flushed);
@@ -1319,7 +1319,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
       tablet_peer->error(), tablet_peer, meta, fs_manager_->uuid(),
       "Remote bootstrap: OpenTablet() failed", this));
 
-  auto status = rb_client->VerifyChangeRoleSucceeded(tablet_peer->shared_consensus());
+  auto status = rb_client->VerifyChangeRoleSucceeded(VERIFY_RESULT(tablet_peer->GetConsensus()));
   if (!status.ok()) {
     // If for some reason this tserver wasn't promoted (e.g. from PRE-VOTER to VOTER), the leader
     // will find out and do the CHANGE_CONFIG.
@@ -1407,12 +1407,12 @@ Status TSTabletManager::DeleteTablet(
   // restarting the tablet if the local replica committed a higher config
   // change op during that time, or potentially something else more invasive.
   if (cas_config_opid_index_less_or_equal && !tablet_deleted && !tablet_failed) {
-    shared_ptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
-    if (!consensus) {
+    auto consensus_result = tablet_peer->GetConsensus();
+    if (!consensus_result) {
       *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
-      return STATUS(IllegalState, "Consensus not available. Tablet shutting down");
+      return consensus_result.status();
     }
-    RaftConfigPB committed_config = consensus->CommittedConfig();
+    RaftConfigPB committed_config = consensus_result.get()->CommittedConfig();
     if (committed_config.opid_index() > *cas_config_opid_index_less_or_equal) {
       *error_code = TabletServerErrorPB::CAS_FAILED;
       return STATUS(IllegalState, Substitute("Request specified cas_config_opid_index_less_or_equal"
@@ -2221,10 +2221,10 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
   reported_tablet->set_fs_data_dir(tablet_peer->tablet_metadata()->data_root_dir());
 
   // We cannot get consensus state information unless the TabletPeer is running.
-  shared_ptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
-  if (consensus) {
+  auto consensus_result = tablet_peer->GetConsensus();
+  if (consensus_result) {
     *reported_tablet->mutable_committed_consensus_state() =
-        consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
+        consensus_result.get()->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
   }
 
   // Set the hide status of the tablet.

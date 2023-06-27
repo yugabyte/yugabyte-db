@@ -744,7 +744,7 @@ TEST_F(PgLeaderChangeWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(StepDownOneServer))
     consensus::LeaderStepDownRequestPB req;
     req.set_tablet_id(peer->tablet_id());
     consensus::LeaderStepDownResponsePB resp;
-    ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+    ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->StepDown(&req, &resp));
   }
 
   UnblockWaitersAndValidate(&conn, kNumWaiters);

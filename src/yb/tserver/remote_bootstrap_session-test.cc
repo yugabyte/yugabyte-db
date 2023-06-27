@@ -152,7 +152,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
     if (FLAGS_quick_leader_election_on_create) {
       return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
     }
-    RETURN_NOT_OK(tablet_peer_->consensus()->EmulateElection());
+    RETURN_NOT_OK(VERIFY_RESULT(tablet_peer_->GetConsensus())->EmulateElection());
     return true;
   }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
                                        "leader, otherwise emulate."));

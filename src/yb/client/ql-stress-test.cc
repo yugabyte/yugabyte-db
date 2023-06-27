@@ -282,7 +282,7 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
       continue;
     }
     const auto tablet_entries = EXPECT_RESULT(peer->tablet()->TEST_CountRegularDBRecords());
-    auto raft_consensus = down_cast<consensus::RaftConsensus*>(peer->consensus());
+    auto raft_consensus = EXPECT_RESULT(peer->GetRaftConsensus());
     auto request_counts = raft_consensus->TEST_CountRetryableRequests();
     LOG(INFO) << "T " << peer->tablet()->tablet_id() << " P " << peer->permanent_uuid()
               << ", entries: " << tablet_entries
@@ -559,15 +559,16 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
   tablet::TabletPeerPtr temp_leader = followers[0];
   tablet::TabletPeerPtr always_follower = followers[1];
 
-  ASSERT_OK(WaitFor([old_leader, always_follower]() -> Result<bool> {
-    auto leader_op_id = old_leader->consensus()->GetLastReceivedOpId();
-    auto follower_op_id = always_follower->consensus()->GetLastReceivedOpId();
-    return follower_op_id == leader_op_id;
-  }, 5s, "Follower catch up"));
+  ASSERT_OK(WaitFor(
+      [old_leader, always_follower]() -> Result<bool> {
+        auto leader_op_id = VERIFY_RESULT(old_leader->GetConsensus())->GetLastReceivedOpId();
+        auto follower_op_id = VERIFY_RESULT(always_follower->GetConsensus())->GetLastReceivedOpId();
+        return follower_op_id == leader_op_id;
+      },
+      5s, "Follower catch up"));
 
   for (const auto& follower : followers) {
-    down_cast<consensus::RaftConsensus*>(follower->consensus())->TEST_RejectMode(
-        consensus::RejectMode::kAll);
+    ASSERT_RESULT(follower->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kAll);
   }
 
   InsertRow(session, 1, "value1");
@@ -585,12 +586,10 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
 
   ASSERT_OK(StepDown(old_leader, temp_leader->permanent_uuid(), ForceStepDown::kFalse));
 
-  down_cast<consensus::RaftConsensus*>(old_leader->consensus())->TEST_RejectMode(
-      consensus::RejectMode::kAll);
-  down_cast<consensus::RaftConsensus*>(temp_leader->consensus())->TEST_RejectMode(
-      consensus::RejectMode::kNone);
-  down_cast<consensus::RaftConsensus*>(always_follower->consensus())->TEST_RejectMode(
-      consensus::RejectMode::kNonEmpty);
+  ASSERT_RESULT(old_leader->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kAll);
+  ASSERT_RESULT(temp_leader->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
+  ASSERT_RESULT(always_follower->GetRaftConsensus())
+      ->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
 
   ASSERT_OK(WaitForLeaderOfSingleTablet(
       cluster_.get(), temp_leader, 20s, "Waiting for new leader"));
@@ -609,8 +608,7 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
   ASSERT_OK(WaitForLeaderOfSingleTablet(
       cluster_.get(), old_leader, 20s, "Waiting old leader to restore leadership"));
 
-  down_cast<consensus::RaftConsensus*>(always_follower->consensus())->TEST_RejectMode(
-      consensus::RejectMode::kNone);
+  ASSERT_RESULT(always_follower->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
 
   ASSERT_OK(WriteRow(session, 3, "value3"));
 
@@ -754,14 +752,14 @@ TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
   ASSERT_EQ(peers.size(), 2);
 
-  down_cast<consensus::RaftConsensus*>(peers[0]->consensus())->TEST_DelayUpdate(20s);
+  ASSERT_RESULT(peers[0]->GetRaftConsensus())->TEST_DelayUpdate(20s);
 
   TestThreadHolder thread_holder;
   AddWriter(std::string(100_KB, 'X'), &key, &thread_holder, 100ms);
 
   thread_holder.WaitAndStop(30s);
 
-  down_cast<consensus::RaftConsensus*>(peers[0]->consensus())->TEST_DelayUpdate(0s);
+  ASSERT_RESULT(peers[0]->GetRaftConsensus())->TEST_DelayUpdate(0s);
 
   int64_t max_peak_consumption = 0;
   for (size_t i = 1; i <= cluster_->num_tablet_servers(); ++i) {
@@ -916,10 +914,11 @@ void QLStressTest::TestWriteRejection() {
     auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
     OpId first_op_id;
     for (const auto& peer : peers) {
-      if (!peer->consensus()) {
+      auto consensus_result = peer->GetConsensus();
+      if (!consensus_result) {
         return false;
       }
-      auto current = peer->consensus()->GetLastCommittedOpId();
+      auto current = consensus_result.get()->GetLastCommittedOpId();
       if (!first_op_id) {
         first_op_id = current;
       } else if (current != first_op_id) {
@@ -1006,12 +1005,12 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
   ASSERT_OK(WaitAllReplicasHaveIndex(cluster_.get(), key.load(std::memory_order_acquire), 40s));
   LOG(INFO) << "All replicas ready";
 
-  ASSERT_OK(WaitFor([this] {
+  ASSERT_OK(WaitFor([this]()->Result<bool> {
     bool result = true;
     auto followers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
     LOG(INFO) << "Num followers: " << followers.size();
     for (const auto& peer : followers) {
-      auto log_cache_size = peer->raft_consensus()->LogCacheSize();
+      auto log_cache_size = VERIFY_RESULT(peer->GetRaftConsensus())->LogCacheSize();
       LOG(INFO) << "T " << peer->tablet_id() << " P " << peer->permanent_uuid()
                 << ", log cache size: " << log_cache_size;
       if (log_cache_size != 0) {
@@ -1168,7 +1167,7 @@ TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
   // Reject all non empty update consensuses, to activate consensus exponential backoff,
   // and get into situation where leader sends empty request.
   for (const auto& peer : peers) {
-    peer->raft_consensus()->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
   }
 
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -1181,7 +1180,7 @@ TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
   std::this_thread::sleep_for(5s * kTimeMultiplier);
 
   for (const auto& peer : peers) {
-    peer->raft_consensus()->TEST_RejectMode(consensus::RejectMode::kNone);
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
   }
 
   // Wait all writes to complete.

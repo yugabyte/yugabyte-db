@@ -609,7 +609,7 @@ void WriteQuery::NonTransactionalConflictsResolved(HybridTime now, HybridTime re
 void WriteQuery::TransactionalConflictsResolved() {
   auto status = DoTransactionalConflictsResolved();
   if (!status.ok()) {
-    LOG(DFATAL) << status;
+    LOG(WARNING) << status;
     ExecuteDone(status);
   }
 }

@@ -134,15 +134,8 @@ Status RemoteBootstrapSession::ChangeRole() {
 }
 
 Status RemoteBootstrapSession::SetInitialCommittedState() {
-  shared_ptr <consensus::Consensus> consensus = tablet_peer_->shared_consensus();
-  if (!consensus) {
-    tablet::RaftGroupStatePB tablet_state = tablet_peer_->state();
-    return STATUS(IllegalState,
-                  Substitute("Unable to initialize remote bootstrap session "
-                             "for tablet $0. Consensus is not available. Tablet state: $1 ($2)",
-                             tablet_peer_->tablet_id(), tablet::RaftGroupStatePB_Name(tablet_state),
-                             tablet_state));
-  }
+  auto consensus = VERIFY_RESULT_PREPEND(
+      tablet_peer_->GetConsensus(), "Unable to initialize remote bootstrap session");
   initial_committed_cstate_ = consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
   return Status::OK();
 }
