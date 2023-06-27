@@ -833,6 +833,7 @@ public class TaskExecutor {
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
         writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime, parentTask == null? null:parentTaskInfo.getTaskType());
+       // writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime, parentTask == null? null:parentTaskInfo.getTaskType());
         /*if(parentTask==null){
           writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime);
         }
@@ -884,10 +885,11 @@ public class TaskExecutor {
         publishAfterTask(t);
       }
     }
-
+// here error is happening, because you have to set parentTaskInfo to something first, also parentTask info is not task info  
     private void setParentForSubtask(RunnableTask parentTask){
       if(parentTask != null){
         this.parentTask= parentTask;
+        this.parentTaskInfo = taskInfo;
         this.parentTaskInfo.setParentUuid(parentTask.getTaskUUID());
       }
     }
