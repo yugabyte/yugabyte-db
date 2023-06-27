@@ -15,6 +15,8 @@
 
 #include "postgres.h"
 
+#include <pthread.h>
+
 #include "access/tuptoaster.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
@@ -107,12 +109,8 @@ fmgr_isbuiltin(Oid id)
 	if (id >= FirstBootstrapObjectId)
 		return NULL;
 
-	static bool initialized = false;
-	if (!initialized)
-	{
-		initialized = true;
-		fmgr_init_direct_send();
-	}
+	static pthread_once_t initialized = PTHREAD_ONCE_INIT;
+	pthread_once(&initialized, &fmgr_init_direct_send);
 
 	/*
 	 * Lookup function data. If there's a miss in that range it's likely a
