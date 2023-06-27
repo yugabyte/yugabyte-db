@@ -507,6 +507,8 @@ Result<FetchedEntry> IntentAwareIterator::Fetch() {
     max_seen_ht_.MakeAtLeast(resolved_intent_txn_dht_);
   }
 
+  DCHECK_GE(result.key[0], KeyEntryTypeAsChar::kGroupEnd);
+
   VLOG(4) << "Fetched key " << DebugDumpKeyToStr(result.key)
           << ", kind: " << (result.same_transaction ? 'S' : (IsEntryRegular() ? 'R' : 'I'))
           << ", with time: " << result.write_time.ToString()
