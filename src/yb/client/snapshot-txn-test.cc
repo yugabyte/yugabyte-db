@@ -959,7 +959,8 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
       if (peer->TEST_table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
         return false;
       }
-      return peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+      return CHECK_RESULT(peer->GetConsensus())->GetLeaderStatus() ==
+             consensus::LeaderStatus::LEADER_AND_READY;
     });
     ASSERT_EQ(peers.size(), 1);
     auto peer = peers[0];

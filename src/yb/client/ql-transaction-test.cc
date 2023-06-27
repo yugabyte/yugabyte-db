@@ -1443,15 +1443,15 @@ TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
-        if (peer->consensus() &&
-            peer->consensus()->GetLeaderStatus() !=
-                consensus::LeaderStatus::NOT_LEADER &&
+        auto consensus_result = peer->GetConsensus();
+        if (consensus_result &&
+            consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER &&
             peer->tablet()->transaction_coordinator() &&
             peer->tablet()->transaction_coordinator()->test_count_transactions()) {
           consensus::LeaderStepDownRequestPB req;
           req.set_tablet_id(peer->tablet_id());
           consensus::LeaderStepDownResponsePB resp;
-          ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+          ASSERT_OK(consensus_result.get()->StepDown(&req, &resp));
         }
       }
     }

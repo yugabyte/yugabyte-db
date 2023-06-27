@@ -695,7 +695,8 @@ void VerifyLogIndicies(MiniCluster* cluster) {
 
     for (const auto& peer : peers) {
       int64_t index = ASSERT_RESULT(peer->GetEarliestNeededLogIndex());
-      ASSERT_EQ(peer->consensus()->GetLastCommittedOpId().index, index);
+      auto consensus = ASSERT_RESULT(peer->GetConsensus());
+      ASSERT_EQ(consensus->GetLastCommittedOpId().index, index);
     }
   }
 }
@@ -1019,7 +1020,7 @@ TEST_F(QLTabletTest, LeaderChange) {
         stepdown_request.set_tablet_id(peer->tablet_id());
         stepdown_request.set_new_leader_uuid(leader_id);
         consensus::LeaderStepDownResponsePB resp;
-        ASSERT_OK(peer->consensus()->StepDown(&stepdown_request, &resp));
+        ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->StepDown(&stepdown_request, &resp));
         found = true;
         break;
       }
@@ -1331,7 +1332,8 @@ void VerifyHistoryCutoff(MiniCluster* cluster, HybridTime* prev_committed,
         complete = false;
         break;
       }
-      if (peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+      if (ASSERT_RESULT(peer->GetConsensus())->GetLeaderStatus() ==
+          consensus::LeaderStatus::LEADER_AND_READY) {
         complete = true;
       }
     }
@@ -1516,7 +1518,7 @@ namespace {
 std::vector<OpId> GetLastAppliedOpIds(const std::vector<tablet::TabletPeerPtr>& peers) {
   std::vector<OpId> last_applied_op_ids;
   for (auto& peer : peers) {
-    const auto last_applied_op_id = peer->consensus()->GetLastAppliedOpId();
+    const auto last_applied_op_id = CHECK_RESULT(peer->GetConsensus())->GetLastAppliedOpId();
     VLOG(1) << "Peer: " << AsString(peer->permanent_uuid())
             << ", last applied op ID: " << AsString(last_applied_op_id);
     last_applied_op_ids.push_back(last_applied_op_id);
@@ -1527,7 +1529,7 @@ std::vector<OpId> GetLastAppliedOpIds(const std::vector<tablet::TabletPeerPtr>& 
 Result<OpId> GetAllAppliedOpId(const std::vector<tablet::TabletPeerPtr>& peers) {
   for (auto& peer : peers) {
     if (peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
-      return peer->raft_consensus()->GetAllAppliedOpId();
+      return VERIFY_RESULT(peer->GetRaftConsensus())->GetAllAppliedOpId();
     }
   }
   return STATUS(NotFound, "No leader found");
@@ -1669,7 +1671,7 @@ TEST_F(QLTabletTest, ElectUnsynchronizedFollower) {
     consensus::LeaderStepDownResponsePB resp;
 
     FLAGS_leader_failure_max_missed_heartbeat_periods = 10000;
-    ASSERT_OK(peers.front()->raft_consensus()->StepDown(&req, &resp));
+    ASSERT_OK(ASSERT_RESULT(peers.front()->GetRaftConsensus())->StepDown(&req, &resp));
     ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
   }
 
@@ -1696,7 +1698,8 @@ TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
     LOG(INFO) << "Follower: "  << follower->permanent_uuid();
     auto follower_peers = follower->tablet_manager()->GetTabletPeers();
     for (const auto& peer : follower_peers) {
-      peer->raft_consensus()->TEST_DelayUpdate(FLAGS_raft_heartbeat_interval_ms / 2 * 1ms);
+      ASSERT_RESULT(peer->GetRaftConsensus())
+          ->TEST_DelayUpdate(FLAGS_raft_heartbeat_interval_ms / 2 * 1ms);
     }
 
     SetValue(session, 2, -2, table);

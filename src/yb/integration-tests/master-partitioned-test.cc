@@ -161,7 +161,7 @@ void MasterPartitionedTest::CreateTable(const YBTableName& table_name, int num_t
 }
 
 OpId LastReceivedOpId(master::MiniMaster* master) {
-  auto consensus = master->tablet_peer()->consensus();
+  auto consensus = CHECK_RESULT(master->tablet_peer()->GetConsensus());
   return consensus->GetLastReceivedOpId();
 }
 

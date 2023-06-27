@@ -283,15 +283,15 @@ bool TransactionTestBase<MiniCluster>::HasTransactions() {
     auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
     auto peers = tablet_manager->GetTabletPeers();
     for (const auto& peer : peers) {
-      if (!peer->consensus()) {
-        return true; // Report true, since we could have transactions on this non ready peer.
+      auto consensus_result = peer->GetConsensus();
+      if (!consensus_result) {
+        return true;  // Report true, since we could have transactions on this non ready peer.
       }
-      if (peer->consensus()->GetLeaderStatus() !=
-              consensus::LeaderStatus::NOT_LEADER &&
-          peer->tablet()->transaction_coordinator() &&
-          peer->tablet()->transaction_coordinator()->test_count_transactions()) {
+        if (consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER &&
+            peer->tablet()->transaction_coordinator() &&
+            peer->tablet()->transaction_coordinator()->test_count_transactions()) {
         return true;
-      }
+        }
     }
   }
   return false;

@@ -747,7 +747,8 @@ TEST_F_EX(TabletSplitITest, SplitClientRequestsClean, TabletSplitITestSlowMainen
   for (int i = 0; i < 2; ++i) {
     for (auto& leader_peer : leader_peers) {
       LOG(INFO) << leader_peer->LogPrefix() << "MinRetryableRequestOpId(): "
-                << AsString(leader_peer->raft_consensus()->MinRetryableRequestOpId());
+                << AsString(
+                       ASSERT_RESULT(leader_peer->GetRaftConsensus())->MinRetryableRequestOpId());
       // Delay to make RetryableRequests::CleanExpiredReplicatedAndGetMinOpId (called by
       // MinRetryableRequestOpId) do delayed cleanup.
       SleepFor(kRetryableRequestTimeoutSecs * 1s);
@@ -2456,9 +2457,12 @@ void TabletSplitSingleServerITest::TestRetryableWrite() {
   });
 
   // Wait for 1.4 is replicated.
-  ASSERT_OK(WaitFor([&] {
-    return peer->raft_consensus()->GetLastCommittedOpId().index == kNumRows + 2;
-  }, 10s, "the third row is replicated"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(peer->GetRaftConsensus())->GetLastCommittedOpId().index ==
+               kNumRows + 2;
+      },
+      10s, "the third row is replicated"));
 
   TEST_SYNC_POINT("TabletSplitSingleServerITest::TestRetryableWrite:WaitForSetTimedOut");
 
@@ -3068,7 +3072,8 @@ TEST_F(TabletSplitITest, ParentRemoteBootstrapAfterWritesToChildren) {
   for (auto& ts : cluster_->mini_tablet_servers()) {
     const auto* tablet_manager = ts->server()->tablet_manager();
     const auto peer = ASSERT_RESULT(tablet_manager->GetTablet(source_tablet_id));
-    if (peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
+    if (ASSERT_RESULT(peer->GetConsensus())->GetLeaderStatus() !=
+        consensus::LeaderStatus::NOT_LEADER) {
       continue;
     }
     LOG(INFO) << Format(

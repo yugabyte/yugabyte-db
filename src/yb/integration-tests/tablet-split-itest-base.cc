@@ -458,8 +458,8 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
     size_t num_peers_leader_ready = 0;
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet();
-      const auto consensus = peer->shared_consensus();
-      if (!tablet || !consensus) {
+      const auto consensus_result = peer->GetConsensus();
+      if (!tablet || !consensus_result) {
         break;
       }
       if (tablet->metadata()->table_name() != table.table_name() ||
@@ -468,7 +468,7 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
       }
       const auto raft_group_state = peer->state();
       const auto tablet_data_state = tablet->metadata()->tablet_data_state();
-      const auto leader_status = consensus->GetLeaderStatus(/* allow_stale =*/true);
+      const auto leader_status = consensus_result.get()->GetLeaderStatus(/* allow_stale =*/true);
       if (raft_group_state == tablet::RaftGroupStatePB::RUNNING) {
         ++num_peers_running;
       } else {
@@ -489,8 +489,8 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
   if (!s.ok()) {
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet();
-      const auto consensus = peer->shared_consensus();
-      if (!tablet || !consensus) {
+      const auto consensus_result = peer->GetConsensus();
+      if (!tablet || !consensus_result) {
         LOG(INFO) << consensus::MakeTabletLogPrefix(peer->tablet_id(), peer->permanent_uuid())
                   << "no tablet";
         continue;
@@ -499,11 +499,10 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
         continue;
       }
       LOG(INFO) << consensus::MakeTabletLogPrefix(peer->tablet_id(), peer->permanent_uuid())
-                << "raft_group_state: " << AsString(peer->state())
-                << " tablet_data_state: "
+                << "raft_group_state: " << AsString(peer->state()) << " tablet_data_state: "
                 << TabletDataState_Name(tablet->metadata()->tablet_data_state())
                 << " leader status: "
-                << AsString(consensus->GetLeaderStatus(/* allow_stale =*/true));
+                << AsString(consensus_result.get()->GetLeaderStatus(/* allow_stale =*/true));
     }
     if (core_dump_on_failure) {
       LOG(INFO) << "Tablet splitting did not complete. Crashing test with core dump. "
@@ -719,7 +718,8 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
 
   std::unordered_map<TabletId, OpId> last_on_leader;
   for (auto peer : active_leader_peers) {
-    last_on_leader[peer->tablet_id()] = peer->shared_consensus()->GetLastReceivedOpId();
+      last_on_leader[peer->tablet_id()] =
+          VERIFY_RESULT(peer->GetConsensus())->GetLastReceivedOpId();
   }
 
   const auto active_peers = ListTableActiveTabletPeers(this->cluster_.get(), test_table_id);
@@ -729,24 +729,25 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
   const auto key_column_id = this->table_.ColumnId(this->kKeyColumn);
   const auto value_column_id = this->table_.ColumnId(this->kValueColumn);
   for (auto peer : active_peers) {
-    RETURN_NOT_OK(LoggedWaitFor(
-        [&] {
-          return peer->shared_consensus()->GetLastAppliedOpId() >=
-                 last_on_leader[peer->tablet_id()];
-        },
-        15s * kTimeMultiplier,
-        Format(
-             "Waiting for tablet replica $0 to apply all ops from leader ...", peer->LogPrefix())));
-    LOG(INFO) << "Last applied op id for " << peer->LogPrefix() << ": "
-              << AsString(peer->shared_consensus()->GetLastAppliedOpId());
+      RETURN_NOT_OK(LoggedWaitFor(
+          [&]() -> Result<bool> {
+            return VERIFY_RESULT(peer->GetConsensus())->GetLastAppliedOpId() >=
+                   last_on_leader[peer->tablet_id()];
+          },
+          15s * kTimeMultiplier,
+          Format(
+              "Waiting for tablet replica $0 to apply all ops from leader ...",
+              peer->LogPrefix())));
+      LOG(INFO) << "Last applied op id for " << peer->LogPrefix() << ": "
+                << AsString(VERIFY_RESULT(peer->GetConsensus())->GetLastAppliedOpId());
 
-    const auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
-    const SchemaPtr schema = tablet->metadata()->schema();
-    dockv::ReaderProjection projection(*schema);
-    auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection));
-    qlexpr::QLTableRow row;
-    std::unordered_set<size_t> tablet_keys;
-    while (VERIFY_RESULT(iter->FetchNext(&row))) {
+      const auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+      const SchemaPtr schema = tablet->metadata()->schema();
+      dockv::ReaderProjection projection(*schema);
+      auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection));
+      qlexpr::QLTableRow row;
+      std::unordered_set<size_t> tablet_keys;
+      while (VERIFY_RESULT(iter->FetchNext(&row))) {
       auto key_opt = row.GetValue(key_column_id);
       SCHECK(key_opt.is_initialized(), InternalError, "Key is not initialized");
       SCHECK_EQ(key_opt, row.GetValue(value_column_id), InternalError, "Wrong value for key");
@@ -761,7 +762,7 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
           InternalError,
           Format("Extra key $0 in tablet $1", key, tablet->tablet_id()));
       key_replicas[key - 1].push_back(peer->LogPrefix());
-    }
+      }
   }
   for (size_t key = 1; key <= num_rows; ++key) {
     const auto key_missing_in_replicas = keys[key - 1];

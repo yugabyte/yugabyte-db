@@ -144,16 +144,16 @@ void SetupError(TabletServerErrorPB* error, const Status& s) {
 }
 
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
-  std::shared_ptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
-  if (!consensus) {
+  auto consensus_result = tablet_peer.GetConsensus();
+  if (!consensus_result) {
     auto state = tablet_peer.state();
     if (state != tablet::RaftGroupStatePB::SHUTDOWN) {
       // Should not happen.
-      return STATUS(IllegalState, "Tablet peer does not have consensus, but in $0 state",
-                    tablet::RaftGroupStatePB_Name(state));
+      return consensus_result.status();
     }
     return STATUS(Aborted, "Tablet peer was closed");
   }
+  auto& consensus = consensus_result.get();
   auto leader_state = consensus->GetLeaderState();
 
   VLOG(1) << Format(
@@ -224,11 +224,10 @@ Result<LeaderTabletPeer> LookupLeaderTablet(
 
 Status CheckPeerIsReady(
     const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet) {
-  auto consensus = tablet_peer.shared_consensus();
-  if (!consensus) {
-    return STATUS(
-        IllegalState, Format("Consensus not available for tablet $0.", tablet_peer.tablet_id()),
-        Slice(), TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
+  auto consensus_result = tablet_peer.GetConsensus();
+  if (!consensus_result) {
+    return consensus_result.status().CloneAndAddErrorCode(
+        TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
   }
 
   Status s = tablet_peer.CheckRunning();
@@ -342,7 +341,6 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     // than FLAGS_max_stale_read_bound_time_ms.
     if (PREDICT_FALSE(!s.ok())) {
       if (FLAGS_max_stale_read_bound_time_ms > 0) {
-        auto consensus = tablet_peer->shared_consensus();
         // TODO(hector): This safe time could be reused by the read operation.
         auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
         auto safe_time_micros = tablet->mvcc_manager()->SafeTimeForFollower(
@@ -424,7 +422,8 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
     return STATUS(ServiceUnavailable, msg);
   }
 
-  const uint64_t num_sst_files = tablet_peer->raft_consensus()->MajorityNumSSTFiles();
+  const uint64_t num_sst_files =
+      VERIFY_RESULT(tablet_peer->GetRaftConsensus())->MajorityNumSSTFiles();
   const auto sst_files_soft_limit = FLAGS_sst_files_soft_limit;
   const int64_t sst_files_used_delta = num_sst_files - sst_files_soft_limit;
   if (sst_files_used_delta >= 0) {

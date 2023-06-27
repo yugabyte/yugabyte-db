@@ -232,7 +232,7 @@ TEST_F(CqlTest, Timeout) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    peer->raft_consensus()->TEST_DelayUpdate(100ms);
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_DelayUpdate(100ms);
   }
 
   auto prepared =

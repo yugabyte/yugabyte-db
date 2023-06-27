@@ -155,7 +155,7 @@ Status TabletServerTestBase::WaitForTabletRunning(const char *tablet_id) {
   // Sometimes the disk can be really slow and hence we need a high timeout to wait for consensus.
   RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(60)));
 
-  RETURN_NOT_OK(tablet_peer->consensus()->EmulateElection());
+  RETURN_NOT_OK(VERIFY_RESULT(tablet_peer->GetConsensus())->EmulateElection());
 
   return WaitFor([tablet_manager, tablet_peer, tablet_id]() {
         if (tablet_manager->IsTabletInTransition(tablet_id)) {
