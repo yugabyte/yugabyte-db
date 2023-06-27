@@ -944,7 +944,8 @@ namespace cdc {
                 get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
 
             if (get_checkpoint_resp.has_error() &&
-                (get_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND)) {
+                get_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND &&
+                get_checkpoint_resp.error().code() != CDCErrorPB::LEADER_NOT_READY) {
               return STATUS_FORMAT(
                   InternalError, "Response had error: $0", get_checkpoint_resp.DebugString());
             }
