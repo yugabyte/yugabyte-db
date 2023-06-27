@@ -396,7 +396,7 @@ Result<TxnSnapshotId> SnapshotTestUtil::PickSuitableSnapshot(
     auto prev_ht = HybridTime::FromPB(snapshot.entry().previous_snapshot_hybrid_time());
     auto cur_ht = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
     auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
-    if (hybrid_time > prev_ht && hybrid_time <= cur_ht) {
+    if ((prev_ht == HybridTime::kInvalid || hybrid_time > prev_ht) && hybrid_time <= cur_ht) {
       return id;
     }
     LOG(INFO) << __func__ << " rejected " << id << " (" << prev_ht << "-" << cur_ht << "] for "
