@@ -7,6 +7,7 @@ import type { TFunction } from "i18next";
 import clsx from "clsx";
 import { useLocalStorage } from "react-use";
 import { AlertConfiguration, alertConfigurationsKey, alertList, useCPUAlert } from "./alerts";
+import { useGetClusterAlertsQuery } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
   sectionWrapper: {
@@ -153,19 +154,8 @@ export const AlertNotificationDetails: FC = () => {
 
   const [config] = useLocalStorage<AlertConfiguration[]>(alertConfigurationsKey);
 
-  const upstreamNotificationData = useMemo(
-    () => [
-      {
-        name: "ntp/chrony",
-        info: "ntp/chrony package is missing for clock synchronization. For centos 7, we recommend installing either ntp or chrony package and for centos 8, we recommend installing chrony package.",
-      },
-      {
-        name: "insecure",
-        info: "Cluster started in an insecure mode without authentication and encryption enabled. For non-production use only, not to be used without firewalls blocking the internet traffic.",
-      },
-    ],
-    []
-  );
+  const { data: alertData } = useGetClusterAlertsQuery();
+  const upstreamNotificationData = useMemo(() => alertData?.data || [], [alertData]);
 
   const notificationData = useMemo<Notification[]>(() => {
     const cpuNotifications = [];
