@@ -2,7 +2,7 @@ import React, { FC, useEffect, useMemo } from 'react';
 import { makeStyles, Box, Typography, MenuItem, LinearProgress } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { YBButton, YBCheckbox, YBDropdown, YBInput, YBLoadingBox, YBSelect, YBTable } from '@app/components';
-import { useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterTabletsQuery } from '@app/api/src';
+import { NodeData, useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterTabletsQuery } from '@app/api/src';
 import SearchIcon from '@app/assets/search.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
 import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
@@ -105,15 +105,14 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
     if (!nodesResponse || !tableID || !healthCheckData) {
       return;
     }
-
     const populateTablets = async () => {
-      let nodes = nodesResponse.data;
+      let nodeList: NodeData[];
       if (nodes.length > 0) {
-        nodes = nodes.filter(n => nodes.find(node => node.name === n.name))
+        nodeList = nodesResponse.data.filter(n => nodes.find(node => node === n.name))
       } else {
-        nodes = [];
+        nodeList = [];
       }
-      const nodeHosts = nodes.map(node => node.host);
+      const nodeHosts = nodeList.map(node => node.host);
       if (!nodeHosts) {
         return;
       }
