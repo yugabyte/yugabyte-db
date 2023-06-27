@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -1543,9 +1544,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               NodeDetails nodeInUniverse = nodesInUniverseMap.get(nodeName);
               if (nodeInUniverse == null) {
                 log.warn(
-                    "Node {} is not found in the Universe {}",
-                    nodeName,
-                    universe.getUniverseUUID());
+                    "Node {} is not found in the Universe {}", nodeName, universe.universeUUID);
               }
               return nodeInUniverse;
             })
@@ -1954,6 +1953,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Wait for new masters to be responsive.
     createWaitForServersTasks(nodesToBeStarted, ServerType.MASTER)
         .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
+    // If there are no universe keys on the universe, it will have no effect.
+    if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().universeUUID) > 0) {
+      createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+    }
   }
 
   /**

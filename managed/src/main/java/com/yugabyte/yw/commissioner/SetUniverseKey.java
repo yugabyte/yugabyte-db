@@ -42,6 +42,8 @@ public class SetUniverseKey {
 
   private static final int YB_SET_UNIVERSE_KEY_INTERVAL = 2;
 
+  private static final int KEY_IN_MEMORY_TIMEOUT_MS = 500;
+
   @Inject
   public SetUniverseKey(
       EncryptionAtRestManager keyManager,
@@ -70,6 +72,23 @@ public class SetUniverseKey {
       String encodedKeyRef = Base64.getEncoder().encodeToString(keyRef);
       if (!client.hasUniverseKeyInMemory(encodedKeyRef, masterAddr)) {
         client.addUniverseKeys(ImmutableMap.of(encodedKeyRef, keyVal), masterAddr);
+        log.info(
+            "Sent universe key to universe '{}' and DB node '{}' with key ID: '{}'.",
+            u.getUniverseUUID(),
+            masterAddr,
+            encodedKeyRef);
+        // Wait for the masters to get the universe key.
+        if (!client.waitForMasterHasUniverseKeyInMemory(
+            KEY_IN_MEMORY_TIMEOUT_MS, encodedKeyRef, masterAddr)) {
+          throw new RuntimeException(
+              "Timeout occurred waiting for universe encryption key to be set in memory");
+        }
+      } else {
+        log.info(
+            "DB node '{}' from universe '{}' already has universe key in memory with key ID: '{}'.",
+            masterAddr,
+            u.getUniverseUUID(),
+            encodedKeyRef);
       }
     } catch (Exception e) {
       String errMsg =
@@ -100,6 +119,8 @@ public class SetUniverseKey {
             String.format(
                 "Setting universe encryption key for universe %s", u.universeUUID.toString()));
 
+        // Need to set only the active universe key.
+        // Masters take care of seeding the rest.
         KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(u.universeUUID);
         if (activeKey == null
             || activeKey.uuid.keyRef == null
@@ -115,6 +136,10 @@ public class SetUniverseKey {
         Arrays.stream(u.getMasterAddresses().split(","))
             .map(HostAndPort::fromString)
             .forEach(addr -> setKeyInMaster(u, addr, keyRef, keyVal));
+      } else if (EncryptionAtRestUtil.getNumUniverseKeys(u.getUniverseUUID()) == 0) {
+        log.info(
+            "Skipping setting universe keys as {} does not have EAR enabled.",
+            u.getUniverseUUID().toString());
       }
     } catch (Exception e) {
       String errMsg =
