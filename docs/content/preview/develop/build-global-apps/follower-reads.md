@@ -26,7 +26,9 @@ There are a few scenarios where reading from the leader is not necessary. For ex
 
 If a little staleness for reads is okay for the app running in the other regions, then **Follower Reads** is the pattern to adopt. Let's look into how this can be beneficial for your application.
 
-## Initial setup
+## Overview
+
+{{<cluster-setup-tabs>}}
 
 Let's say you have a [Global Database](./global-database) set up across 3 regions `us-east`, `us-central`, `us-west` with leader preference set to `us-east`. Let's say that you want to run apps in all the 3 regions. Then the read latencies would be similar to the following illustration.
 

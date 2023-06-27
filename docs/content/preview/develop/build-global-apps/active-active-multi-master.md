@@ -14,9 +14,11 @@ type: docs
 
 For a highly available system, it is typical to opt for a [Global database](../global-database) that spans multiple regions with preferred leaders set to a specific region. This is great for apps that run in a single region.
 
-For apps that have to be run in multiple regions, you can adopt the **Active-Active Multi-Master** design pattern with which you can setup 2 clusters in different regions where both clusters actively take responsibility for the local reads and writes and populate one another **asynchronously**. Let us understand this in more detail.
+For apps that have to be run in multiple regions, you can adopt the **Active-Active Multi-Master** design pattern with which you can set up 2 clusters in different regions where both clusters actively take responsibility for the local reads and writes and populate one another **asynchronously**. Let us understand this in more detail.
 
-## Initial setup
+## Overview
+
+{{<cluster-setup-tabs>}}
 
 Let's say you have your `RF3` cluster and apps deployed in `us-west`.
 
@@ -28,7 +30,7 @@ This will ensure that the reads and writes are within the same region. Notice th
 
 You can set up another cluster in a different region say `us-east` using [xCluster](../../../explore/multi-region-deployments/asynchronous-replication-ysql/#configure-bidirectional-replication).
 
-![Active-Active Multi Master](/images/develop/global-apps/aa-multi-master-setup.png)
+![Active-Active Multi-Master](/images/develop/global-apps/aa-multi-master-setup.png)
 
 The `us-east` cluster is independent of the primary cluster in `us-west` and the data will be populated by **asynchronous replication** between each other. This means that the read and write latencies of each cluster will not be affected by the other but at the same time, the data in each cluster will not be immediately consistent with each other. You can use this pattern to reduce latencies for local users by writing and reading from the closest cluster.
 

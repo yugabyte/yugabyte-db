@@ -35,72 +35,62 @@ When designing today's applications (eg. email, e-commerce websites, or broadcas
 
 Running applications in multiple data centers with data split across them is not a trivial task. YugabyteDB can be deployed in various configurations like single-region multi-zone or multi-region multi-zone configuration with ease. You can leverage some of our battle-tested design paradigms, which offer solutions to common problems faced in these scenarios. These proven paradigms offer solutions that can significantly accelerate your application development by saving time and resources that would otherwise be spent reinventing the wheel.
 
-Let's look at a few application design patterns that you can adopt with YugabyteDB.
+We can classify these patterns based on how multiple instances of the application operate on parts of the data or whether the application follows the workload or if the application operates on local data or only reads from local followers. For example,
 
-|                | Follow the Application | Geo-Local Data |
-| -------------- | ---------------------- | -------------- |
-| **Single Active**  | [Global database](./global-database)    |      N/A |
-| **Multi Active**   | [Duplicate indexes](./duplicate-indexes) | [Active-active multi master](./active-active-multi-master) |
+1. **Single Active** - The application is active in one region.
+1. **Multi-Active**  - Applications run in different regions and operate on all the cluster data.
+1. **Partitioned Multi-Active** - Multiple applications run in multiple regions and operate on just the local data.
+1. **Follow the workload** - Applications run closer to the leaders.
+1. **Geo-local dataset** - Applications read from geographically placed local data.
+1. **Data Access** - Applications just read from local replicas or do strongly consistent reads.
+
+Let's look at some of these application design patterns.
+<!--
+|         Pattern Type         |                         Follow the Workload                          |                              Geo-Local Data                               |
+| ---------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **Single Active**            | [Global database](./global-database)                                    | N/A                                                                       |
+| **Multi Active**             | [Duplicate indexes](./duplicate-indexes)                                | [Active-active multi master](./active-active-multi-master)                |
 | **Partitioned Multi Active** | [Latency-optimized geo-partitioning](./latency-optimized-geo-partition) | [Locality-optimized geo-partitioning](./locality-optimized-geo-partition) |
+| **Access only**              | [Follower Reads](./follower-reads), [Read Replicas](./read-replicas)    | N/A                                                                       |
 
-| Data Access Architectures |
-| ------------------------- |
-| [Follower Reads](./follower-reads) |
+Let's look at a quick overview of each of these patterns.
+-->
+{{<table>}}
 
-### Global database - Single cluster spread across multiple regions
+| Pattern | Category | Description |
+| ------- | -------- | ----------- |
+| [Global database](./global-database) | **Single Active**, _Follow the Workload_ |
+{{<header Level="6">}} Single cluster spread across multiple regions {{</header>}}
+A cluster with replicas spread across multiple regions/zones. On failure, a replica in another region/zone will be promoted to leader in seconds, without any loss of data.|
 
-You can set up your cluster across different regions/zones with multiple replicas (typically 3 or 5) such that the replicas are in different regions/zones. When a node fails in a region or an entire region/zone fails, a replica in another region/zone will be promoted to leader in seconds, without any loss of data. This is possible because of the [synchronous replication using the raft consensus protocol](../../architecture/docdb-replication/replication).
+|[Active&#8209;Active Multi&#8209;Master](./active-active-multi-master)| **Multi Active**, _Geo-Local Data_ |
+{{<header Level="6">}} Two clusters serving data together {{</header>}}
+Set up two separate clusters which would both handle reads and writes. Data is replicated asynchronously between the clusters|
 
-{{<tip>}}
-For more information, see  [Global database](./global-database)
-{{</tip>}}
+|[Active&#8209;Active Single&#8209;Master](./active-active-single-master)| **Single Active**, Follow the Workload |
+{{<header Level="6">}} Standby cluster {{</header>}}
+Set up a second cluster that gets populated asynchronously and can start serving data in case the primary fails. Can also be used for [blue/green](https://en.wikipedia.org/wiki/Blue-green_deployment) deployment testing|
 
-### Active-active multi-master - Two clusters serving data together
+|[Duplicate indexes](./duplicate-indexes)| **Multi Active**, _Follow the Workload_ |
+{{<header Level="6">}} Consistent data everywhere {{</header>}}
+Set up covering indexes with schema the same as the table in multiple regions to read immediately consistent data locally|
 
-Set up two separate clusters which would both handle reads and writes. Data is replicated asynchronously between the clusters.
+|[Locality&#8209;optimized geo&#8209;partitioning](./locality-optimized-geo-partition)| **Multi Active**, _Geo-Local Data_ |
+{{<header Level="6">}} Local law compliance {{</header>}}
+Partition your data and place them in a manner that the rows belonging to different users will be located in their respective countries|
 
-{{<tip>}}
-For more information, see  [Active-Active Multi-Master](./active-active-multi-master)
-{{</tip>}}
+|[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition)| Single Active, Follow the Workload |
+{{<header Level="6">}} Fast local access {{</header>}}
+Partition your data and place them in a manner that the data belonging to nearby users can be accessed faster|
 
-### Active-Active Single-Master - Standby cluster
+|[Follower Reads](./follower-reads) | Single Active, Follow the Workload |
+{{<header Level="6">}} Fast, stale reads {{</header>}}
+Read from local followers instead of going to the leaders in a different region|
 
-Set up a second cluster that gets populated asynchronously and can start serving data in case the primary fails. Can also be used for [blue/green](https://en.wikipedia.org/wiki/Blue-green_deployment) deploy testing.
+|[Read Replicas](./read-replicas) | Single Active, Follow the Workload |
+{{<header Level="6">}} Fast, stale reads {{</header>}}
+Set up a separate cluster of just followers to perform local reads instead of going to the leaders in a different region|
 
-{{<tip>}}
-For more information, see  [Active-Active Single-Master](./active-active-single-master)
-{{</tip>}}
-
-### Duplicate indexes - Consistent data everywhere
-
-Setup covering indexes with schema the same as the table in multiple regions to read immediately consistent data locally.
-
-{{<tip>}}
-For more information, see  [Duplicate indexes](./duplicate-indexes)
-{{</tip>}}
-
-### Locality-optimized geo-partitioning - For compliance
-
-Partition your data and place them in a manner that the rows belonging to different users will be located in their respective countries.
-
-{{<tip>}}
-For more details, see  [Locality-optimized geo-partitioning](./locality-optimized-geo-partition)
-{{</tip>}}
-
-### Latency-optimized geo-partitioning - For fast local access
-
-Partition your data and place them in a manner that the data belonging to nearby users can be accessed faster.
-
-{{<tip>}}
-For more details, see  [Latency-optimized geo-partitioning](./latency-optimized-geo-partition)
-{{</tip>}}
-
-### Follower Reads - Fast stale reads
-
-Read from local followers instead of going to the leaders in a different region.
-
-{{<tip>}}
-For more details, see  [Follower Reads](./follower-reads)
-{{</tip>}}
+{{</table>}}
 
 Adopting such design patterns can vastly accelerate your application development. These are proven paradigms that would save time without having to reinvent solutions.

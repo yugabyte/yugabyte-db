@@ -16,7 +16,9 @@ For a highly available system, it is typical to opt for a [Global database](../g
 
 For apps that run in a single region but need a safety net, you can adopt the **Active-Active Single-Master** design pattern with which you can setup 2 clusters in different regions where one cluster actively takes responsibility for all reads and writes and at the same time populates another cluster **asynchronously**. The second cluster can be promoted to primary in the case of a disaster. Let us understand this in more detail.
 
-## Initial setup
+## Overview
+
+{{<cluster-setup-tabs>}}
 
 Let's say you have your `RF3` cluster and apps deployed in `us-west`.
 

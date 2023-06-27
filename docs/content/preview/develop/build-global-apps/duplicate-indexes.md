@@ -16,15 +16,15 @@ When you have your app running in one region, it is typical to set up a [Global 
 
 This is where **Duplicate Indexes** would come in handy. Duplicate Indexes will guarantee immediately consistent reads in multiple regions. Let us look into how your applications can benefit from this pattern and understand the costs associated with it.
 
-## Initial setup
+## Overview
+
+{{<cluster-setup-tabs>}}
 
 Let's consider an RF3 [Global Database](../global-database) that is spread across 3 regions: `us-east`, `us-central`, and `us-west`. Let's say that your app running in `us-east`, so naturally have set up leader preference to `us-east`.
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-global-database.png)
 
-## Apps in other regions
-
-Let us add an app in `us-central`.
+Let us add an app in `us-central`. Note, our goal is to reduce the access latency.
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-central-app.png)
 
@@ -46,7 +46,7 @@ Let us create multiple covering indexes with the schema the same as the table an
       CREATE TABLE users (
           id INTEGER NOT NULL,
           name VARCHAR,
-          city VARCHAR,
+          city VARCHAR
       );
       ```
 
@@ -61,9 +61,9 @@ Even though the leader preference is set to a region, you should place the repli
         replica_placement= '{ 
             "num_replicas" : 3,
             "placement_blocks" : [ 
-                {"cloud":"aws","region":"us-west","zone":"us-west-1a","leader_preference": "1"}
-                {"cloud":"aws","region":"us-east","zone":"us-east-1a"}
-                {"cloud":"aws","region":"us-central","zone":"us-central-1a"}
+                {"cloud":"aws","region":"us-west","zone":"us-west-1a","leader_preference": 1,"min_num_replicas":1},
+                {"cloud":"aws","region":"us-east","zone":"us-east-1a","min_num_replicas":1},
+                {"cloud":"aws","region":"us-central","zone":"us-central-1a","min_num_replicas":1}
         ]}');
 
       --  tablespace for central data
@@ -71,9 +71,9 @@ Even though the leader preference is set to a region, you should place the repli
         replica_placement= '{ 
             "num_replicas" : 3,
             "placement_blocks" : [ 
-                {"cloud":"aws","region":"us-west","zone":"us-west-1a"}
-                {"cloud":"aws","region":"us-east","zone":"us-east-1a",}
-                {"cloud":"aws","region":"us-central","zone":"us-central-1a","leader_preference": "1"}
+                {"cloud":"aws","region":"us-west","zone":"us-west-1a","min_num_replicas":1},
+                {"cloud":"aws","region":"us-east","zone":"us-east-1a","min_num_replicas":1},
+                {"cloud":"aws","region":"us-central","zone":"us-central-1a","leader_preference": 1,"min_num_replicas":1}
         ]}');
 
       --  tablespace for east data
@@ -81,9 +81,9 @@ Even though the leader preference is set to a region, you should place the repli
         replica_placement= '{ 
             "num_replicas" : 3,
             "placement_blocks" : [ 
-                {"cloud":"aws","region":"us-west","zone":"us-west-1a"}
-                {"cloud":"aws","region":"us-east","zone":"us-east-1a","leader_preference": "1"
-                {"cloud":"aws","region":"us-central","zone":"us-central-1a"}
+                {"cloud":"aws","region":"us-west","zone":"us-west-1a","min_num_replicas":1},
+                {"cloud":"aws","region":"us-east","zone":"us-east-1a","leader_preference": 1,"min_num_replicas":1},
+                {"cloud":"aws","region":"us-central","zone":"us-central-1a","min_num_replicas":1}
         ]}');
       ```
 
@@ -101,7 +101,25 @@ This will create three clones of the covering index, with leaders in different r
 
 ## Reduced Read Latency
 
-As you have added all of the columns needed for your queries as part of the covering index, the query executor will not have to go to the tablet leader (in a different region) to fetch the data. The query planner will use the index whose leaders are local to the region when querying.
+Now, let us see the query plan to fetch the `id` and `city` for a user `John Wick` for the app running in `us-west`.
+
+```plpgsql
+explain analyze select id, city from users where name = 'John Wick' ;
+```
+
+```output
+                                                      QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------
+ Index Only Scan using idx_west on users  (cost=0.00..5.12 rows=10 width=36) (actual time=2.274..2.274 rows=1 loops=1)
+   Index Cond: (name = 'John Wick'::text)
+   Heap Fetches: 0
+ Planning Time: 0.225 ms
+ Execution Time: 2.386 ms
+ Peak Memory Usage: 8 kB
+```
+
+As you have added all of the columns needed for your queries as part of the covering index, the query executor will not have to go to the tablet leader (in a different region) to fetch the data. The query planner will use the index(`idx_west`) whose leaders are local to the region when querying. Note that the read latency is just `~2.2ms` instead of the original `~60ms`.
+
 {{<note title="Note">}}
 The query planner optimizations related to picking the right index by taking into consideration the leader preference of the tablespace in which the index lives are available from 2.17.3+ releases.
 {{</note>}}
@@ -117,6 +135,12 @@ Let's take a look at the write latencies.
 ![Duplicate indexes](/images/develop/global-apps/duplicate-indexes-write-latencies.png)
 
 The write latencies have increased because each write has to update the tablet leader, its replicas and 3 index leaders and their replicas. Effectively you are sacrificing the write latency to get highly reduced read latency.
+
+## Automatic failover
+
+In the case of zone/region failures, followers in other regions are elected leaders and the apps connect to the closest region automatically as illustrated below.
+
+![Duplicate indexes failover](/images/develop/global-apps/duplicate-indexes-failover.png)
 
 ## Learn more
 

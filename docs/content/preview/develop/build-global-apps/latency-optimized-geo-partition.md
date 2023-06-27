@@ -16,7 +16,9 @@ For a single-active highly available system, it is typical to opt for a [Global 
 
 For Multi-Active apps that need to be run in multiple regions, you can opt to partition the data per region and place the replicas in nearby regions. This would ensure very low latency for both reads and writes for the local partitions giving a seamless user experience for users close to their partitions. Let us look into this pattern in more detail.
 
-## Initial setup
+## Overview
+
+{{<cluster-setup-tabs>}}
 
 Let's say you want to serve users both in the East and West regions of the US with reduced latency. For this, you should set up an `RF3` cluster with leaders in 2 regions, `us-west-1` and `us-east-1` and place the replicas in close regions, say `us-west-2` and `us-east-2`
 

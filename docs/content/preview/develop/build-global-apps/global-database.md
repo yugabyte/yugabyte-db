@@ -18,15 +18,19 @@ type: docs
 
 For most applications, a single-region multi-zone deployment would suffice. But global applications that are designed to serve users across multiple geographies and be highly available have to be deployed in multiple regions.
 
-To be ready for region failures and be highly available, you can set up YugabyteDB as a cluster that spans multiple regions. This stretch cluster is known as a **Global Database**. Let’s look into how to set this up and understand the benefits of building applications on top of this pattern.
+## Overview
 
-## Replica Placement
+To be ready for region failures and be highly available, you can set up YugabyteDB as a cluster that spans multiple regions. This stretch cluster is known as a **Global Database**. Let’s look into how to set this up and understand the benefits of building applications on top of this pattern.
 
 Let's say that you want to have your cluster be distributed across three regions: `us-east`, `us-central`, and `us-west` and that you are going to run your app in `us-east` with failover set to `us-central`. For this, you have to set up an `RF5` with 2 copies of the data in each of these regions and the last copy in the third region.
 
-{{<note>}}
 Although you can have an **RF3** cluster, you should set it up as an **RF5** cluster so that you will have 2 copies within the preferred regions. When a leader fails, this would allow a local follower to be elected as a leader rather than a follower in a different region.
-{{</note>}}
+
+{{<cluster-setup-tabs>}}
+
+{{<warning title="For local cluster">}}
+This example uses an RF5 cluster setup. When setting up a local cluster make sure you start 5 instances.
+{{</warning>}}
 
 You would get a cluster as shown in the following illustration.
 
@@ -58,7 +62,7 @@ The **Global database** is automatically resilient to a single region failure. W
 
 As we had set up `us-central` to be the second preferred region, when `us-east` fails, the followers in `us-central` are automatically elected to be the leaders. The app also starts communicating with the leaders in `us-central` as we had configured `us-central` to be the first failover region. Notice that the write latency has increased to `40ms` from `30ms`. This is because the first replica is right in `us-central` along with the leader, but the second replica is in `us-west` which is `40ms` away.
 
-## Mitigate latencies with closer regions
+## Improve latencies with closer regions
 
 You can reduce the write latencies further by opting to deploy the cluster across regions that are closer to each other. For instance, instead of choosing `us-east`, `us-central`, and `us-west` which are `30-60 ms` away from each other, we could choose to deploy the cluster across `us-east-1`, `us-central`, and `us-east-2`, which are just `10-40 ms` away.
 
