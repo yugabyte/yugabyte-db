@@ -92,7 +92,6 @@ export const OverviewDetails: FC = () => {
             <Tab
               key={tab.name}
               value={tab.name}
-              disabled={tab.name === 'tabActivity'}
               label={t(`clusterDetail.${tab.name}`)}
               data-testid={tab.testId}
             />
