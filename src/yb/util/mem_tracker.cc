@@ -388,6 +388,10 @@ void MemTracker::SetTCMallocCacheMemory() {
 #endif // defined(YB_TCMALLOC_ENABLED)
 }
 
+void MemTracker::InitRootTrackerOnce() {
+  GoogleOnceInit(&root_tracker_once, &MemTracker::CreateRootTracker);
+}
+
 void MemTracker::CreateRootTracker() {
   int64_t limit = FLAGS_memory_limit_hard_bytes;
   if (limit == 0) {
@@ -610,10 +614,9 @@ bool MemTracker::UpdateConsumption(bool force) {
 
   if (consumption_functor_) {
     auto now = CoarseMonoClock::now();
-    auto interval = std::chrono::microseconds(
-      GetAtomicFlag(&FLAGS_mem_tracker_update_consumption_interval_us));
-    if (force || now > last_consumption_update_ + interval) {
-      last_consumption_update_ = now;
+    if (force || now > next_consumption_update_) {
+      next_consumption_update_ = now + std::chrono::microseconds(GetAtomicFlag(
+          &FLAGS_mem_tracker_update_consumption_interval_us));
       auto value = consumption_functor_();
       VLOG(1) << "Setting consumption of tracker " << id_ << " to " << value
               << "from consumption functor";
@@ -951,8 +954,13 @@ void MemTracker::LogUpdate(bool is_consume, int64_t bytes) const {
   LOG(ERROR) << ss.str();
 }
 
+int64_t MemTracker::GetRootTrackerConsumption() {
+  InitRootTrackerOnce();
+  return root_tracker->consumption();
+}
+
 shared_ptr<MemTracker> MemTracker::GetRootTracker() {
-  GoogleOnceInit(&root_tracker_once, &MemTracker::CreateRootTracker);
+  InitRootTrackerOnce();
   return root_tracker;
 }
 
