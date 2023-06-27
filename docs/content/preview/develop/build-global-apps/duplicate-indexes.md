@@ -18,9 +18,9 @@ This is where **Duplicate Indexes** would come in handy. Duplicate Indexes will 
 
 ## Overview
 
-{{<cluster-setup-tabs>}}
-
 Let's consider an RF3 [Global Database](../global-database) that is spread across 3 regions: `us-east`, `us-central`, and `us-west`. Let's say that your app running in `us-east`, so naturally have set up leader preference to `us-east`.
+
+{{<cluster-setup-tabs>}}
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-global-database.png)
 
@@ -108,9 +108,9 @@ explain analyze select id, city from users where name = 'John Wick' ;
 ```
 
 ```output
-                                                      QUERY PLAN
------------------------------------------------------------------------------------------------------------------------
- Index Only Scan using idx_west on users  (cost=0.00..5.12 rows=10 width=36) (actual time=2.274..2.274 rows=1 loops=1)
+                                QUERY PLAN
+-----------------------------------------------------------------------------------
+ Index Only Scan using idx_west on users (actual time=2.274..2.274 rows=1 loops=1)
    Index Cond: (name = 'John Wick'::text)
    Heap Fetches: 0
  Planning Time: 0.225 ms
@@ -136,7 +136,7 @@ Let's take a look at the write latencies.
 
 The write latencies have increased because each write has to update the tablet leader, its replicas and 3 index leaders and their replicas. Effectively you are sacrificing the write latency to get highly reduced read latency.
 
-## Automatic failover
+## Failover
 
 In the case of zone/region failures, followers in other regions are elected leaders and the apps connect to the closest region automatically as illustrated below.
 

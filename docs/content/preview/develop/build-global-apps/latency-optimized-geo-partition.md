@@ -99,6 +99,12 @@ Similarly, the East app also has low read and write latencies.
 
 ![East app](/images/develop/global-apps/latency-optimized-geo-partition-east-app.png)
 
+## Failover
+
+When any of the regions hosting one of the partition leaders fails, the partition follower in a nearby region would immediately be promoted to leader and the application can continue without any data loss.
+
+![Failover](/images/develop/global-apps/latency-optimized-geo-partition-failover.png)
+
 This pattern will help apps running in different regions to have low read and write latency as they are reading and writing data to nearby partitions.
 
 ## Learn more

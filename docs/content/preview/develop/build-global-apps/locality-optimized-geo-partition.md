@@ -97,7 +97,7 @@ This ensures all the eu-user's data will be located within Europe.
 
 ## Low Latency
 
-Consider the US app for instance. As you have placed the `us` partition's leader in `us-east-1`, it has a low read latency of `2ms`. As this partition has a replica in a nearby region, the write latency is also low (`<10ms`).
+Consider the US app for instance. As you have placed `us` partition's leader in `us-east-1`, it has a low read latency of `2ms`. As this partition has a replica in a nearby region, the write latency is also low (`<10ms`).
 
 ![US app](/images/develop/global-apps/locality-optimized-geo-partition-us-app.png)
 
@@ -105,7 +105,16 @@ Similarly, the Europe app also has low read and write latencies.
 
 ![Europe app](/images/develop/global-apps/locality-optimized-geo-partition-europe-app.png)
 
-This pattern will help apps running in different regions to have low read and write latency as they are reading and writing data to nearby partitions and at the same time, comply to local data protection laws by keeping the citizen's data within the country boundaries.
+This pattern will help apps running in different regions to have low read and write latency as they are reading and writing data to nearby partitions and at the same time, comply with local data protection laws by keeping the citizen's data within the country boundaries.
+
+## Failover
+
+When any of the regions hosting one of the partition leaders fails, the partition follower in another zone would immediately be promoted to leader and the application can continue without any data loss.
+
+![Failover](/images/develop/global-apps/locality-optimized-geo-partition-failover.png)
+
+To survive a region failure, it would be advisable to place all replicas in different regions.
+
 
 ## Learn more
 

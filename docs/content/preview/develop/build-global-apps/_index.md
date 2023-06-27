@@ -59,7 +59,7 @@ Let's look at a quick overview of each of these patterns.
 
 | Pattern | Category | Description |
 | ------- | -------- | ----------- |
-| [Global database](./global-database) | **Single Active**, _Follow the Workload_ |
+| [Global database](./global-database) | **Single/Multi Active**, _Follow the Workload_ |
 {{<header Level="6">}} Single cluster spread across multiple regions {{</header>}}
 A cluster with replicas spread across multiple regions/zones. On failure, a replica in another region/zone will be promoted to leader in seconds, without any loss of data.|
 
@@ -79,15 +79,15 @@ Set up covering indexes with schema the same as the table in multiple regions to
 {{<header Level="6">}} Local law compliance {{</header>}}
 Partition your data and place them in a manner that the rows belonging to different users will be located in their respective countries|
 
-|[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition)| Single Active, Follow the Workload |
+|[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition)| **Single Active**, Follow the Workload |
 {{<header Level="6">}} Fast local access {{</header>}}
 Partition your data and place them in a manner that the data belonging to nearby users can be accessed faster|
 
-|[Follower Reads](./follower-reads) | Single Active, Follow the Workload |
+|[Follower Reads](./follower-reads) | **Single Active**, Follow the Workload |
 {{<header Level="6">}} Fast, stale reads {{</header>}}
 Read from local followers instead of going to the leaders in a different region|
 
-|[Read Replicas](./read-replicas) | Single Active, Follow the Workload |
+|[Read Replicas](./read-replicas) | **Single Active**, Follow the Workload |
 {{<header Level="6">}} Fast, stale reads {{</header>}}
 Set up a separate cluster of just followers to perform local reads instead of going to the leaders in a different region|
 

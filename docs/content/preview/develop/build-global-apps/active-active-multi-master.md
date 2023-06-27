@@ -34,6 +34,12 @@ You can set up another cluster in a different region say `us-east` using [xClust
 
 The `us-east` cluster is independent of the primary cluster in `us-west` and the data will be populated by **asynchronous replication** between each other. This means that the read and write latencies of each cluster will not be affected by the other but at the same time, the data in each cluster will not be immediately consistent with each other. You can use this pattern to reduce latencies for local users by writing and reading from the closest cluster.
 
+## Failover
+
+When one of the clusters fail, say `us-west` fails, the other cluster in `us-east` will be able to handle reads and writes for all applications till the failed region recovers
+
+![Failover](/images/develop/global-apps/aa-multi-master-failover.png)
+
 ## Caveats
 
 The replication happens at the DocDB layer bypassing the query layer, some standard functionality will not work.
