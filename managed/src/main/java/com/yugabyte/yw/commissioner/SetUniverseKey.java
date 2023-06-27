@@ -42,6 +42,8 @@ public class SetUniverseKey {
 
   private static final int YB_SET_UNIVERSE_KEY_INTERVAL = 2;
 
+  private static final int KEY_IN_MEMORY_TIMEOUT_MS = 500;
+
   @Inject
   public SetUniverseKey(
       EncryptionAtRestManager keyManager,
@@ -75,6 +77,12 @@ public class SetUniverseKey {
             u.getUniverseUUID(),
             masterAddr,
             dbKeyId);
+        // Wait for the masters to get the universe key.
+        if (!client.waitForMasterHasUniverseKeyInMemory(
+            KEY_IN_MEMORY_TIMEOUT_MS, dbKeyId, masterAddr)) {
+          throw new RuntimeException(
+              "Timeout occurred waiting for universe encryption key to be set in memory");
+        }
       } else {
         log.info(
             "DB node '{}' from universe '{}' already has universe key in memory with key ID: '{}'.",
@@ -111,6 +119,8 @@ public class SetUniverseKey {
             String.format(
                 "Setting universe encryption key for universe %s", u.getUniverseUUID().toString()));
 
+        // Need to set only the active universe key.
+        // Masters take care of seeding the rest.
         KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(u.getUniverseUUID());
         if (activeKey == null
             || activeKey.getUuid().keyRef == null
@@ -127,6 +137,10 @@ public class SetUniverseKey {
         Arrays.stream(u.getMasterAddresses().split(","))
             .map(HostAndPort::fromString)
             .forEach(addr -> setKeyInMaster(u, addr, keyRef, keyVal));
+      } else if (EncryptionAtRestUtil.getNumUniverseKeys(u.getUniverseUUID()) == 0) {
+        log.info(
+            "Skipping setting universe keys as {} does not have EAR enabled.",
+            u.getUniverseUUID().toString());
       }
     } catch (Exception e) {
       String errMsg =
