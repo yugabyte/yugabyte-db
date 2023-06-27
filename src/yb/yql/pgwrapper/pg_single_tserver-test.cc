@@ -674,4 +674,23 @@ TEST_F(PgSingleTServerTest, PagingSelectWithDelayedIntentsApply) {
   }
 }
 
+TEST_F(PgSingleTServerTest, BoundedRangeScanWithLargeTransaction) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (r1 INT, r2 INT, PRIMARY KEY (r1 ASC, r2 ASC))"));
+  TestThreadHolder holder;
+  for (int i = 0; i != 10; ++i) {
+    holder.AddThreadFunctor([this, &stop = holder.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop) {
+        auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT r2 FROM t WHERE r2 <= 1"));
+        if (!res.empty()) {
+          ASSERT_EQ(res, "1");
+        }
+      }
+    });
+  }
+  ASSERT_OK(conn.Execute("INSERT INTO t (SELECT 1, i FROM GENERATE_SERIES(1, 100000) AS i)"));
+  holder.WaitAndStop(std::chrono::seconds(5));
+}
+
 }  // namespace yb::pgwrapper

@@ -137,7 +137,13 @@ inline void DocRowwiseIterator::Seek(Slice key) {
 
   prev_doc_found_ = DocReaderResult::kNotFound;
   current_entry_.valid = false;
-  if (!key.empty()) {
+
+  // We do not have values before dockv::KeyEntryTypeAsChar::kNullLow, but there is
+  // kLowest = 0 that is used to mark -Inf bound.
+  // Here we could safely interpret any key before kNullLow as empty.
+  // Another option would be changing kLowest value to kNullLow. But there are much more scenarios
+  // that could be affected and should be tested.
+  if (!key.empty() && key[0] >= dockv::KeyEntryTypeAsChar::kNullLow) {
     db_iter_->Seek(key, Full::kTrue);
     return;
   }

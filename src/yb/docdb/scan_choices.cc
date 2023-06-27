@@ -803,10 +803,9 @@ Result<bool> HybridScanChoices::InterestedInRow(
   // Update the target key and iterator and call HasNext again to try the next target.
   if (!VERIFY_RESULT(SkipTargetsUpTo(row))) {
     // SkipTargetsUpTo returns false when it fails to decode the key.
-    if (!VERIFY_RESULT(dockv::IsColocatedTableTombstoneKey(row))) {
-      return STATUS_FORMAT(
-          Corruption, "Key $0 is not table tombstone key.", row.ToDebugHexString());
-    }
+    RSTATUS_DCHECK(
+        VERIFY_RESULT(dockv::IsColocatedTableTombstoneKey(row)), Corruption,
+        "Key $0 is not table tombstone key.", row.ToDebugHexString());
     if (is_forward_scan_) {
       iter->SeekOutOfSubDoc(row_key);
     } else {
