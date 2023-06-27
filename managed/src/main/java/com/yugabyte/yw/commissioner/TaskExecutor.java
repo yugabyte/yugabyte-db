@@ -890,6 +890,7 @@ public class TaskExecutor {
       if(parentTask != null){
         this.parentTask= parentTask;
         UUID parentTaskUUID = parentTask.getTaskUUID();
+        //this.parentTaskInfo = TaskInfo.getOrBadRequest(parentTaskUUID);
         Optional<TaskInfo> taskInfoOptional = TaskInfo.maybeGet(parentTaskUUID);
         if (taskInfoOptional.isPresent()) {
             this.parentTaskInfo = taskInfoOptional.get();
