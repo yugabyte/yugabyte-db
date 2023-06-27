@@ -21,11 +21,24 @@ namespace yb::util {
 
 __thread WaitStateInfo* WaitStateInfo::threadlocal_wait_state_;
 
-WaitStateInfo::WaitStateInfo(AUHMetadata meta) : metadata_(meta), num_updates_(0) {}
+WaitStateInfo::WaitStateInfo(AUHMetadata meta)
+  : metadata_(meta)
+#ifdef TRACK_WAIT_HISTORY
+  , num_updates_(0) 
+#endif 
+  {}
 
 void WaitStateInfo::set_state(WaitStateCode c) {
+  VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c);
   code_ = c;
+  #ifdef TRACK_WAIT_HISTORY
+  {
+    std::lock_guard<simple_spinlock> l(mutex_);
+    // history_.emplace_back(code_);
+    // history_.push_back(code_);
+  }
   num_updates_++;
+  #endif
 }
 
 WaitStateCode WaitStateInfo::get_state() const {
@@ -33,8 +46,17 @@ WaitStateCode WaitStateInfo::get_state() const {
 }
 
 std::string WaitStateInfo::ToString() const {
-  return yb::Format("meta : $0, status: $1, updates: $2", metadata_.ToString(),
-    util::ToString(code_), num_updates_);
+  #ifdef TRACK_WAIT_HISTORY
+  std::vector<WaitStateCode> history;
+  {
+    std::lock_guard<simple_spinlock> l(mutex_);
+    history = history_;
+  }
+  return yb::Format("meta : $0, status: $1, updates: $2, history : $3", metadata_.ToString(),
+    util::ToString(code_), num_updates_, yb::ToString(history));
+  #else
+    return yb::Format("meta : $0, status: $1", metadata_.ToString(), util::ToString(code_));
+  #endif // TRACK_WAIT_HISTORY
 }
 
 WaitStateInfoPtr WaitStateInfo::CurrentWaitState() {

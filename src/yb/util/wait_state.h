@@ -46,6 +46,11 @@
   yb::util::ScopedWaitStatus _scoped_status { (ptr), (state) }
 #define SCOPED_WAIT_STATUS(state) \
   SCOPED_WAIT_STATUS_FOR(yb::util::WaitStateInfo::CurrentWaitState(), (state))
+
+
+// For debugging purposes:
+// Uncomment the following line to track state changes in wait events.
+// #define TRACK_WAIT_HISTORY
 namespace yb {
 namespace util {
 
@@ -102,7 +107,11 @@ class WaitStateInfo {
   const AUHMetadata metadata_;
   WaitStateCode code_ = WaitStateCode::Unused;
 
+#ifdef TRACK_WAIT_HISTORY
   std::atomic_int16_t num_updates_;
+  mutable simple_spinlock mutex_;
+  std::vector<WaitStateCode> history_;
+#endif
 
   // Similar to thread-local trace:
   // The current wait_state_ for this thread.
