@@ -147,15 +147,15 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     server::SkewedClock::Register();
-    FLAGS_time_source = server::SkewedClock::kName;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
     QLDmlTestBase::SetUp();
   }
 
   void CreateTables(uint64_t initial_seqno1, uint64_t initial_seqno2) {
     google::FlagSaver saver;
-    FLAGS_initial_seqno = initial_seqno1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_seqno) = initial_seqno1;
     CreateTable(kTable1Name, &table1_);
-    FLAGS_initial_seqno = initial_seqno2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_seqno) = initial_seqno2;
     CreateTable(kTable2Name, &table2_);
   }
 
@@ -645,17 +645,17 @@ void QLTabletTest::CreateAndVerifyIndexConsistency(const int expected_number_row
 TEST_F(QLTabletTest, VerifyIndexRange) { CreateAndVerifyIndexConsistency(0); }
 
 TEST_F(QLTabletTest, VerifyIndexRangeWithInconsistentTable) {
-  FLAGS_TEST_backfill_sabotage_frequency = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_backfill_sabotage_frequency) = 10;
   const int kRowsDropped = kTotalKeys / FLAGS_TEST_backfill_sabotage_frequency;
   CreateAndVerifyIndexConsistency(kRowsDropped);
 }
 
 // Test expected number of tablets for transactions table - added for #2293.
 TEST_F(QLTabletTest, TransactionsTableTablets) {
-  FLAGS_yb_num_shards_per_tserver = 1;
-  FLAGS_ysql_num_shards_per_tserver = 2;
-  FLAGS_transaction_table_num_tablets = 0;
-  FLAGS_transaction_table_num_tablets_per_tserver = 4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_shards_per_tserver) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets_per_tserver) = 4;
 
   YBSchemaBuilder builder;
   builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
@@ -778,7 +778,8 @@ TEST_F(QLTabletTest, WaitFlush) {
   google::FlagSaver saver;
 
   constexpr int kNumTablets = 1; // Use single tablet to increase chance of bad scenario.
-  FLAGS_db_write_buffer_size = 10; // Use small memtable to induce background flush on each write.
+  // Use small memtable to induce background flush on each write.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 10;
 
   TestWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
@@ -1104,18 +1105,19 @@ TEST_F(QLTabletTest, DeleteByHashAndPartialRangeKey) {
 }
 
 TEST_F(QLTabletTest, ManySstFilesBootstrap) {
-  FLAGS_flush_rocksdb_on_shutdown = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
 
   int key = 0;
   {
     google::FlagSaver flag_saver;
 
     size_t original_rocksdb_level0_stop_writes_trigger = 48;
-    FLAGS_sst_files_hard_limit = std::numeric_limits<uint64_t>::max() / 4;
-    FLAGS_sst_files_soft_limit = FLAGS_sst_files_hard_limit;
-    FLAGS_rocksdb_level0_stop_writes_trigger = 10000;
-    FLAGS_rocksdb_level0_slowdown_writes_trigger = 10000;
-    FLAGS_rocksdb_disable_compactions = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_hard_limit) =
+        std::numeric_limits<uint64_t>::max() / 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_soft_limit) = FLAGS_sst_files_hard_limit;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_stop_writes_trigger) = 10000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_slowdown_writes_trigger) = 10000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
     CreateTable(kTable1Name, &table1_, 1);
 
     auto session = CreateSession();
@@ -1152,8 +1154,8 @@ TEST_F(QLTabletTest, ManySstFilesBootstrap) {
 class QLTabletTestSmallMemstore : public QLTabletTest {
  public:
   void SetUp() override {
-    FLAGS_memstore_size_mb = 1;
-    FLAGS_global_memstore_size_mb_max = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_memstore_size_mb) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_memstore_size_mb_max) = 1;
     QLTabletTest::SetUp();
   }
 };
@@ -1184,7 +1186,7 @@ TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
 }
 
 TEST_F(QLTabletTest, OperationMemTracking) {
-  FLAGS_TEST_log_cache_skip_eviction = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_log_cache_skip_eviction) = true;
 
   constexpr ssize_t kValueSize = 64_KB;
   const auto kWaitInterval = 50ms;
@@ -1196,7 +1198,7 @@ TEST_F(QLTabletTest, OperationMemTracking) {
   TableHandle table;
   ASSERT_OK(table.Create(kTable1Name, CalcNumTablets(3), client_.get(), &builder));
 
-  FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms) = 1000;
 
   const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = op->mutable_request();
@@ -1348,8 +1350,8 @@ void VerifyHistoryCutoff(MiniCluster* cluster, HybridTime* prev_committed,
 
 // Basic check for history cutoff evolution
 TEST_F(QLTabletTest, HistoryCutoff) {
-  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
-  FLAGS_history_cutoff_propagation_interval_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 100;
 
   CreateTable(kTable1Name, &table1_, /* num_tablets= */ 1);
   HybridTime committed_history_cutoff = HybridTime::kMin;
@@ -1428,7 +1430,7 @@ INSTANTIATE_TEST_SUITE_P(, QLTabletRf1TestToggleEnablePackedRow, ::testing::Bool
 // For this test we don't need actually RF3 setup which also makes test flaky because of
 // https://github.com/yugabyte/yugabyte-db/issues/4663.
 TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
-  FLAGS_db_write_buffer_size = 20_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 20_KB;
 
   TestWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
@@ -1620,7 +1622,7 @@ TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
 }
 
 TEST_F(QLTabletTest, SlowPrepare) {
-  FLAGS_TEST_preparer_batch_inject_latency_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_preparer_batch_inject_latency_ms) = 100;
 
   const int kNumTablets = 1;
 
@@ -1670,7 +1672,7 @@ TEST_F(QLTabletTest, ElectUnsynchronizedFollower) {
     req.set_new_leader_uuid(unsynchronized_follower);
     consensus::LeaderStepDownResponsePB resp;
 
-    FLAGS_leader_failure_max_missed_heartbeat_periods = 10000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 10000;
     ASSERT_OK(ASSERT_RESULT(peers.front()->GetRaftConsensus())->StepDown(&req, &resp));
     ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
   }
@@ -1789,8 +1791,8 @@ TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
 }
 
 TEST_F_EX(QLTabletTest, CompactDeletedColumn, QLTabletRf1Test) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
 
   constexpr int kKeys = 100;
   const std::string kStringColumn = "str_column";
@@ -1831,7 +1833,7 @@ TEST_F_EX(QLTabletTest, CompactDeletedColumn, QLTabletRf1Test) {
 }
 
 TEST_F_EX(QLTabletTest, ShortPKCompactionTime, QLTabletRf1Test) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   ActivateCompactionTimeLogging(cluster_.get());
 

@@ -176,10 +176,10 @@ TEST_F(UpdateScanDeltaCompactionTest, TestAll) {
   OverrideFlagForSlowTests("mbs_for_flushes_and_rolls", "8");
   // Setting this high enough that we see the effects of flushes and compactions.
   OverrideFlagForSlowTests("maintenance_manager_polling_interval_ms", "2000");
-  FLAGS_log_segment_size_mb = FLAGS_mbs_for_flushes_and_rolls;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_mb) = FLAGS_mbs_for_flushes_and_rolls;
   if (!AllowSlowTests()) {
     // Make it run more often since it's not a long test.
-    FLAGS_maintenance_manager_polling_interval_ms = 50;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_maintenance_manager_polling_interval_ms) = 50;
   }
 
   ASSERT_NO_FATALS(CreateTable());

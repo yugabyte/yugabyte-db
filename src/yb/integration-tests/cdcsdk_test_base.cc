@@ -121,7 +121,8 @@ Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
           pg_ts->server()->GetSharedMemoryFd()));
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
-  FLAGS_pgsql_proxy_webserver_port = cluster->mini_cluster_->AllocateFreePort();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
+      cluster->mini_cluster_->AllocateFreePort();
 
   LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
             << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
@@ -141,12 +142,12 @@ Status CDCSDKTestBase::SetUpWithParams(
     bool colocated) {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   CDCSDKTestBase::SetUp();
-  FLAGS_enable_ysql = true;
-  FLAGS_master_auto_run_initdb = true;
-  FLAGS_hide_pg_catalog_table_creation_logs = true;
-  FLAGS_pggate_rpc_timeout_secs = 120;
-  FLAGS_replication_factor = replication_factor;
-  FLAGS_ysql_enable_pack_full_row_update = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;

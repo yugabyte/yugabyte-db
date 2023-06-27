@@ -32,7 +32,7 @@
 #include "yb/rocksdb/util/testutil.h"
 
 #ifndef GFLAGS
-const int64_t FLAGS_iters = 100000;
+const int64_t ANNOTATE_UNPROTECTED_WRITE(FLAGS_iters) = 100000;
 #else
 #include "yb/util/flags.h"
 DEFINE_NON_RUNTIME_int64(iters, 100000, "number of pseudo-random operations in each test");

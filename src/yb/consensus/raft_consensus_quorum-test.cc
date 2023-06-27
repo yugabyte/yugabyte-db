@@ -105,7 +105,7 @@ class RaftConsensusQuorumTest : public YBTest {
           METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "raft-test-tablet")),
       schema_(GetSimpleTestSchema()) {
     options_.tablet_id = kTestTablet;
-    FLAGS_enable_leader_failure_detection = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
   }
 
   // Builds an initial configuration of 'num' elements.

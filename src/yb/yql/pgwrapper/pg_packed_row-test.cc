@@ -126,7 +126,7 @@ TEST_F(PgPackedRowTest, AlterTable) {
       "Network error"
   };
 
-  FLAGS_timestamp_history_retention_interval_sec = 1 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 1 * kTimeMultiplier;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -603,7 +603,7 @@ TEST_F(PgPackedRowTest, AddColumn) {
 TEST_F(PgPackedRowTest, PackOverflow) {
   constexpr int kRange = 32;
 
-  FLAGS_ysql_packed_row_size_limit = 128;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 128;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
       "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS"));
@@ -681,9 +681,10 @@ TEST_F(PgPackedRowTest, CoveringIndex) {
 
 TEST_F(PgPackedRowTest, Transaction) {
   // Set retention interval to 0, to repack all recently flushed entries.
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
-  FLAGS_TEST_skip_aborting_active_transactions_during_schema_change = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_skip_aborting_active_transactions_during_schema_change) = true;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -702,7 +703,7 @@ TEST_F(PgPackedRowTest, Transaction) {
 
 TEST_F(PgPackedRowTest, CleanupIntentDocHt) {
   // Set retention interval to 0, to repack all recently flushed entries.
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -731,10 +732,11 @@ TEST_F(PgPackedRowTest, CleanupIntentDocHt) {
 }
 
 void PgPackedRowTest::TestAppliedSchemaVersion(bool colocated) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_rocksdb_level0_file_num_compaction_trigger = 2;
-  FLAGS_rocksdb_universal_compaction_always_include_size_threshold = 1_KB;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_always_include_size_threshold) =
+      1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   auto conn = ASSERT_RESULT(Connect());
   if (colocated) {
@@ -779,7 +781,7 @@ TEST_F(PgPackedRowTest, AppliedSchemaVersionWithColocation) {
 }
 
 TEST_F(PgPackedRowTest, UpdateToNull) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -798,7 +800,7 @@ TEST_F(PgPackedRowTest, UpdateToNull) {
 }
 
 TEST_F(PgPackedRowTest, UpdateToNullWithPK) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS"));
@@ -909,7 +911,7 @@ TEST_F(PgPackedRowTest, SstDump) {
 }
 
 TEST_F(PgPackedRowTest, SstDumpNoMetadata) {
-  FLAGS_TEST_dcheck_for_missing_schema_packing = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
 
   std::string output;
   ASSERT_NO_FATALS(TestSstDump(false, &output));

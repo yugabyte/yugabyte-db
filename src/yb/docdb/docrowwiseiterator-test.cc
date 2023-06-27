@@ -62,7 +62,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   ~DocRowwiseIteratorTest() override {}
 
   void SetUp() override {
-    FLAGS_TEST_docdb_sort_weak_intents = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_sort_weak_intents) = true;
     DocDBTestBase::SetUp();
   }
 

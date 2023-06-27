@@ -97,9 +97,9 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
   YBTables consumer_tables_;
 
   void SetUp() override {
-    FLAGS_enable_ysql = false;
-    FLAGS_transaction_table_num_tablets = 1;
-    FLAGS_yb_num_shards_per_tserver = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
     XClusterYcqlTestBase::SetUp();
   }
 
@@ -356,11 +356,11 @@ TEST_F(XClusterTopologiesTest, TestNToOneReplicationFails) {
 
 class XClusterTopologiesTestClusterFailure : public XClusterTopologiesTest {
   void SetUp() override {
-    FLAGS_cdc_wal_retention_time_secs = 1;
-    FLAGS_log_min_segments_to_retain = 1;
-    FLAGS_log_min_seconds_to_retain = 1;
-    FLAGS_enable_log_retention_by_op_idx = true;
-    FLAGS_log_segment_size_bytes = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
     XClusterTopologiesTest::SetUp();
   }
 };

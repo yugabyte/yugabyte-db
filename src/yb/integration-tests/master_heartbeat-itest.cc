@@ -92,7 +92,7 @@ TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
   // Remove the tablet from the new tserver and let the remote bootstrap proceed.
   ASSERT_OK(itest::RemoveServer(leader_ts, tablet->id(), new_ts, boost::none, timeout));
   ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_uuid, consensus::REMOVE_SERVER));
-  FLAGS_TEST_pause_before_remote_bootstrap = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_remote_bootstrap) = false;
 
   ASSERT_OK(WaitFor([&]() {
     auto replica_locations = tablet->GetReplicaLocations();

@@ -51,7 +51,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void SetUp() override {
-    FLAGS_ht_lease_duration_ms = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 0;
     SetupFlags();
 
     YBMiniClusterTestBase::SetUp();
@@ -113,7 +113,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   virtual void SetupFlags() {
-    FLAGS_time_source = "mock";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = "mock";
   }
 
   std::unique_ptr<client::YBClient> client_;

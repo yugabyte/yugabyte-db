@@ -364,8 +364,8 @@ std::string StrRangeFor(int32_t idx) {
 class QLDmlRangeFilterBase: public QLDmlTest {
  public:
   void SetUp() override {
-    FLAGS_rocksdb_disable_compactions = true;
-    FLAGS_yb_num_shards_per_tserver = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
     QLDmlTest::SetUp();
   }
 };
@@ -429,7 +429,7 @@ TEST_F_EX(QLDmlTest, RangeFilter, QLDmlRangeFilterBase) {
     ASSERT_OK(cluster_->FlushTablets());
     std::this_thread::sleep_for(1s);
   }
-  FLAGS_db_block_cache_size_bytes = -2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = -2;
   ASSERT_OK(cluster_->RestartSync());
   {
     constexpr size_t kTotalProbes = 1000;
@@ -1252,7 +1252,7 @@ TEST_F(QLDmlTest, OpenRecentlyCreatedTable) {
 
 TEST_F(QLDmlTest, ReadFollower) {
   DontVerifyClusterBeforeNextTearDown();
-  FLAGS_flush_rocksdb_on_shutdown = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
   constexpr int kNumRows = RegularBuildVsSanitizers(5000, 1000);
 
   ASSERT_NO_FATALS(InsertRows(kNumRows));
@@ -1283,7 +1283,7 @@ TEST_F(QLDmlTest, ReadFollower) {
   // UpdateConsensus requests to update the safe time. So staleness
   // will keep increasing. Disable staleness for the verification
   // step.
-  FLAGS_max_stale_read_bound_time_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_stale_read_bound_time_ms) = 0;
 
 
   // Check that after restart we don't miss any rows.

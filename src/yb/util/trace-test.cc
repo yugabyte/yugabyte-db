@@ -836,14 +836,14 @@ string FunctionWithSideEffect(bool* b) {
 // Test that, if tracing is not enabled, a VLOG_AND_TRACE doesn't evaluate its
 // arguments.
 TEST_F(TraceTest, TestVLogTraceLazyEvaluation) {
-  FLAGS_v = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_v) = 0;
   bool function_run = false;
   VLOG_AND_TRACE("test", 1) << FunctionWithSideEffect(&function_run);
   ASSERT_FALSE(function_run);
 
   // If we enable verbose logging, we should run the side effect even though
   // trace logging is disabled.
-  FLAGS_v = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_v) = 1;
   VLOG_AND_TRACE("test", 1) << FunctionWithSideEffect(&function_run);
   ASSERT_TRUE(function_run);
 }
@@ -853,7 +853,7 @@ TEST_F(TraceTest, TestVLogAndEchoToConsole) {
   tl->SetEnabled(CategoryFilter(CategoryFilter::kDefaultCategoryFilterString),
                  TraceLog::RECORDING_MODE,
                  TraceLog::ECHO_TO_CONSOLE);
-  FLAGS_v = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_v) = 1;
   VLOG_AND_TRACE("test", 1) << "hello world";
   tl->SetDisabled();
 }

@@ -432,12 +432,12 @@ void QLStressTest::TestRetryWrites(bool restarts) {
 }
 
 TEST_F(QLStressTest, RetryWrites) {
-  FLAGS_detect_duplicates_for_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_detect_duplicates_for_retryable_requests) = true;
   TestRetryWrites(false /* restarts */);
 }
 
 TEST_F(QLStressTest, RetryWritesWithRestarts) {
-  FLAGS_detect_duplicates_for_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_detect_duplicates_for_retryable_requests) = true;
   TestRetryWrites(true /* restarts */);
 }
 
@@ -452,8 +452,8 @@ class QLTransactionalStressTest : public QLStressTest {
   void SetUp() override {
     FLAGS_transaction_rpc_timeout_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(1min).count();
-    FLAGS_transaction_max_missed_heartbeat_periods = 1000000;
-    FLAGS_retryable_request_range_time_limit_secs = 600;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_max_missed_heartbeat_periods) = 1000000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_range_time_limit_secs) = 600;
     ASSERT_NO_FATALS(QLStressTest::SetUp());
   }
 
@@ -463,17 +463,17 @@ class QLTransactionalStressTest : public QLStressTest {
 };
 
 TEST_F_EX(QLStressTest, RetryTransactionalWrites, QLTransactionalStressTest) {
-  FLAGS_detect_duplicates_for_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_detect_duplicates_for_retryable_requests) = true;
   TestRetryWrites(false /* restarts */);
 }
 
 TEST_F_EX(QLStressTest, RetryTransactionalWritesWithRestarts, QLTransactionalStressTest) {
-  FLAGS_detect_duplicates_for_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_detect_duplicates_for_retryable_requests) = true;
   TestRetryWrites(true /* restarts */);
 }
 
 TEST_F(QLStressTest, RetryWritesDisabled) {
-  FLAGS_detect_duplicates_for_retryable_requests = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_detect_duplicates_for_retryable_requests) = false;
   TestRetryWrites(false /* restarts */);
 }
 
@@ -694,7 +694,7 @@ TEST_F_EX(QLStressTest, FlushCompact, QLStressTestSingleTablet) {
 // Restore connectivity.
 // Check that old leader was able to catch up after the partition is healed.
 TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingleTablet) {
-  FLAGS_TEST_combine_batcher_errors = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_combine_batcher_errors) = true;
 
   tablet::TabletPeer* leader_peer = nullptr;
   std::atomic<int> key(0);
@@ -776,12 +776,12 @@ template <int kSoftLimit, int kHardLimit>
 class QLStressTestDelayWrite : public QLStressTestSingleTablet {
  public:
   void SetUp() override {
-    FLAGS_db_write_buffer_size = 1_KB;
-    FLAGS_sst_files_soft_limit = kSoftLimit;
-    FLAGS_sst_files_hard_limit = kHardLimit;
-    FLAGS_rocksdb_level0_file_num_compaction_trigger = 6;
-    FLAGS_rocksdb_universal_compaction_min_merge_width = 2;
-    FLAGS_rocksdb_universal_compaction_size_ratio = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 1_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_soft_limit) = kSoftLimit;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_hard_limit) = kHardLimit;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 6;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_min_merge_width) = 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_size_ratio) = 1000;
     QLStressTestSingleTablet::SetUp();
   }
 
@@ -945,15 +945,15 @@ TEST_F_EX(QLStressTest, WriteStop, QLStressTestDelayWrite_6_6) {
 class QLStressTestLongRemoteBootstrap : public QLStressTestSingleTablet {
  public:
   void SetUp() override {
-    FLAGS_log_cache_size_limit_mb = 1;
-    FLAGS_log_segment_size_bytes = 96_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_cache_size_limit_mb) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 96_KB;
     QLStressTestSingleTablet::SetUp();
   }
 };
 
 TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
-  FLAGS_log_min_seconds_to_retain = 1;
-  FLAGS_remote_bootstrap_rate_limit_bytes_per_sec = 1_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_rate_limit_bytes_per_sec) = 1_MB;
 
   cluster_->mini_tablet_server(0)->Shutdown();
 
@@ -1028,11 +1028,11 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
 class QLStressDynamicCompactionPriorityTest : public QLStressTest {
  public:
   void SetUp() override {
-    FLAGS_allow_preempting_compactions = true;
-    FLAGS_db_write_buffer_size = 16_KB;
-    FLAGS_enable_ondisk_compression = false;
-    FLAGS_rocksdb_max_background_compactions = 1;
-    FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec = 160_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_preempting_compactions) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 16_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ondisk_compression) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = 160_KB;
     QLStressTest::SetUp();
   }
 
@@ -1101,7 +1101,7 @@ class QLStressTestTransactionalSingleTablet : public QLStressTestSingleTablet {
 // Verify that we don't have too many write waiters.
 // Uses FLAGS_TEST_max_write_waiters to fail debug check when there are too many waiters.
 TEST_F_EX(QLStressTest, RemoveIntentsDuringWrite, QLStressTestTransactionalSingleTablet) {
-  FLAGS_TEST_max_write_waiters = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_max_write_waiters) = 5;
 
   constexpr int kWriters = 10;
   constexpr int kKeyBase = 10000;
@@ -1120,7 +1120,7 @@ TEST_F_EX(QLStressTest, RemoveIntentsDuringWrite, QLStressTestTransactionalSingl
 }
 
 TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
-  FLAGS_raft_heartbeat_interval_ms = 100 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 100 * kTimeMultiplier;
   constexpr int kOldLeaderWriteKeys = 100;
   // Should be less than amount of pending operations at the old leader.
   // So it is much smaller than keys written to the old leader.

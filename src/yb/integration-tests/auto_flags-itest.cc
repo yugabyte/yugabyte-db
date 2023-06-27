@@ -265,7 +265,7 @@ TEST_F(AutoFlagsMiniClusterTest, NewCluster) {
 }
 
 TEST_F(AutoFlagsMiniClusterTest, DisableAutoFlagManagement) {
-  FLAGS_disable_auto_flags_management = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
 
   ASSERT_OK(RunSetUp());
   ASSERT_OK(ValidateConfig());
@@ -273,7 +273,7 @@ TEST_F(AutoFlagsMiniClusterTest, DisableAutoFlagManagement) {
 
 TEST_F(AutoFlagsMiniClusterTest, Promote) {
   // Start with an empty config
-  FLAGS_limit_auto_flag_promote_for_new_universe = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) = 0;
   ASSERT_OK(RunSetUp());
   auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
 

@@ -365,26 +365,26 @@ TabletSplitITest::~TabletSplitITest() = default;
 
 void TabletSplitITest::SetUp() {
   ASSERT_OK(EnableVerboseLoggingForModule("tablet_split_manager", 2));
-  FLAGS_cleanup_split_tablets_interval_sec = 1;
-  FLAGS_enable_automatic_tablet_splitting = false;
-  FLAGS_TEST_validate_all_tablet_candidates = true;
-  FLAGS_db_block_size_bytes = kDbBlockSizeBytes;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = kDbBlockSizeBytes;
   // We set other block sizes to be small for following test reasons:
   // 1) To have more granular change of SST file size depending on number of rows written.
   // This helps to do splits earlier and have faster tests.
   // 2) To don't have long flushes when simulating slow compaction/flush. This way we can
   // test compaction abort faster.
-  FLAGS_db_filter_block_size_bytes = 2_KB;
-  FLAGS_db_index_block_size_bytes = 2_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_filter_block_size_bytes) = 2_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_index_block_size_bytes) = 2_KB;
   // Split size threshold less than memstore size is not effective, because splits are triggered
   // based on flushed SST files size.
-  FLAGS_db_write_buffer_size = 100_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 100_KB;
   // Set scheduled full compaction frequency to 0 (disabled) and jitter factor
   // to 0 (for relevant full compaction tests).
   // Auto full compactions disabled.
-  FLAGS_scheduled_full_compaction_frequency_hours = 0;
-  FLAGS_scheduled_full_compaction_jitter_factor_percentage = 0;
-  FLAGS_auto_compact_check_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_jitter_factor_percentage) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_check_interval_sec) = 0;
 
   TabletSplitITestBase<MiniCluster>::SetUp();
   snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();

@@ -41,8 +41,8 @@ std::string GetHost(const std::string& val) {
 }
 
 TEST_F(TabletServerITest, TestCrashBeforeWritingWALHeader) {
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
   BuildAndStart(std::vector<string>{"--log_async_preallocate_segments=false",
       "--log_preallocate_segments=false"});
   auto kTimeout = MonoDelta::FromSeconds(10);
@@ -74,8 +74,8 @@ TEST_F(TabletServerITest, TestCrashBeforeWritingWALHeader) {
 
 TEST_F(TabletServerITest, TestNumberOfSegmentInCrashloop) {
   // Instead of safe shutdown, we will just kill the process to simulate crash.
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
   // Enable reuse log, threshold will be maximized in testing mode.
   BuildAndStart(std::vector<string>{"--reuse_unclosed_segment_threshold_bytes=524288"});
   ExternalTabletServer* ts = cluster_->tablet_server(0);
@@ -108,7 +108,7 @@ TEST_F(TabletServerITest, TestNumberOfSegmentInCrashloop) {
 
 TEST_F(TabletServerITest, TestTServerCrashWithEmptyUUID) {
   // Testing tablet server crash at startup because of empty UUID
-  FLAGS_TEST_simulate_fs_create_with_empty_uuid = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_fs_create_with_empty_uuid) = true;
   auto mini_ts =
       MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
   CHECK_OK(mini_ts);
@@ -118,8 +118,8 @@ TEST_F(TabletServerITest, TestTServerCrashWithEmptyUUID) {
 }
 
 TEST_F(TabletServerITest, TestTserverInitWaitsForMasterLeader) {
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
   CreateCluster("tablet_server-itest-cluster");
   ASSERT_EQ(cluster_->num_tablet_servers(), 1);
   ASSERT_EQ(cluster_->num_masters(), 1);

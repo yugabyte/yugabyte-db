@@ -112,7 +112,7 @@ class GetOldTransactionsValidator {
 class PgGetOldTxnsTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    FLAGS_transaction_table_num_tablets = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 1;
     PgMiniTestBase::SetUp();
 
     ts_proxy_ = std::make_unique<tserver::TabletServerServiceProxy>(
