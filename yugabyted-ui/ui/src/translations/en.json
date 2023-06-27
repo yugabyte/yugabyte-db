@@ -1134,6 +1134,7 @@
         "status": "Status",
         "starttime": "Start time",
         "endtime": "End time",
+        "index": "Index name",
         "noactivity": "There is no activity",
         "createCluster": "Create Cluster",
         "deleteCluster": "Delete Cluster",
@@ -1149,7 +1150,7 @@
         "details": {
           "title": "Activity Details",
           "operationName": "Operation Name",
-          "status": "Operation Status",
+          "status": "Status",
           "jobID": "Job ID",
           "startTime": "Start Time",
           "elapsedTime": "Elapsed Time",
