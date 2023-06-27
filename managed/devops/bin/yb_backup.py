@@ -1469,8 +1469,8 @@ class YBBackup:
             for i in range(len(self.args.region)):
                 self.region_to_location[self.args.region[i]] = self.args.region_location[i]
 
+        live_tservers = self.get_live_tservers()
         if not self.args.disable_checksums:
-            live_tservers = self.get_live_tservers()
             if live_tservers:
                 # Need to check the architecture for only first node, rest
                 # will be same in the cluster.
