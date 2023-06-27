@@ -1350,6 +1350,8 @@ Status PopulateCDCSDKSnapshotRecord(
     ReadHybridTime time,
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map,
+    const CDCSDKCheckpointPB& snapshot_op_id,
+    const std::string& snapshot_record_key,
     bool is_ysql_table) {
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
@@ -1361,6 +1363,10 @@ Status PopulateCDCSDKSnapshotRecord(
   row_message->set_pgschema_name(schema.SchemaName());
   row_message->set_commit_time(time.read.ToUint64());
   row_message->set_record_time(time.read.ToUint64());
+
+  proto_record->mutable_cdc_sdk_op_id()->set_term(snapshot_op_id.term());
+  proto_record->mutable_cdc_sdk_op_id()->set_index(snapshot_op_id.index());
+  proto_record->mutable_cdc_sdk_op_id()->set_write_id_key(snapshot_record_key);
 
   DatumMessagePB* cdc_datum_message = nullptr;
 
@@ -1797,7 +1803,7 @@ Status GetChangesForCDCSDK(
     snapshot_operation = true;
     auto txn_participant = tablet_ptr->transaction_participant();
     ReadHybridTime time;
-    std::string nextKey;
+
     // It is first call in snapshot then take snapshot.
     if ((from_op_id.key().empty()) && (from_op_id.snapshot_time() == 0)) {
       tablet::RemoveIntentsData data;
@@ -1841,7 +1847,7 @@ Status GetChangesForCDCSDK(
       HybridTime ht;
       time = ReadHybridTime::FromUint64(from_op_id.snapshot_time());
       safe_hybrid_time_resp = HybridTime(from_op_id.snapshot_time());
-      nextKey = from_op_id.key();
+      const auto& next_key = from_op_id.key();
       VLOG(1) << "The after snapshot term " << from_op_id.term() << "index  " << from_op_id.index()
               << "key " << from_op_id.key() << "snapshot time " << from_op_id.snapshot_time();
 
@@ -1866,11 +1872,12 @@ Status GetChangesForCDCSDK(
       qlexpr::QLTableRow row;
       dockv::ReaderProjection projection(*schema_details.schema);
       auto iter = VERIFY_RESULT(
-          tablet_ptr->CreateCDCSnapshotIterator(projection, time, nextKey, colocated_table_id));
+          tablet_ptr->CreateCDCSnapshotIterator(projection, time, next_key, colocated_table_id));
       while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {
         RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
             resp, &row, *schema_details.schema, table_name, time, enum_oid_label_map,
-            composite_atts_map, tablet_ptr->table_type() == PGSQL_TABLE_TYPE));
+            composite_atts_map, from_op_id, next_key,
+            tablet_ptr->table_type() == PGSQL_TABLE_TYPE));
         fetched++;
       }
       dockv::SubDocKey sub_doc_key;
