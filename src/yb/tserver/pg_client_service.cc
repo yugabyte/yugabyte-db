@@ -323,6 +323,16 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status GetTServerUUID(
+      const PgGetTServerUUIDRequestPB& req,
+      PgGetTServerUUIDResponsePB* resp,
+      rpc::RpcContext* context) {
+    std::string node_uuid;
+    RETURN_NOT_OK(client().GetTServerUUID(node_uuid));
+    resp->set_node_uuid(node_uuid);
+    return Status::OK();
+  }
+
   Status CreateSequencesDataTable(
       const PgCreateSequencesDataTableRequestPB& req,
       PgCreateSequencesDataTableResponsePB* resp,

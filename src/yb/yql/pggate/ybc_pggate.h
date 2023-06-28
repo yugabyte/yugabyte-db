@@ -669,6 +669,12 @@ YBCStatus YBCPrefetchRegisteredSysTables();
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
+YBCStatus YBCPgSetAUHMetadata(const char* remote_host, int remote_port);
+
+void YBCSetQueryId(uint64_t query_id);
+
+void YBCSetTopLevelRequestId();
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

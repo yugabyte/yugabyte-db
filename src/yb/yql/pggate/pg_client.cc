@@ -434,6 +434,7 @@ class PgClient::Impl {
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
+    req.mutable_options()->mutable_auh_metadata()->set_request_id(reinterpret_cast<uint64_t>(&req));
 
     if (exchange_) {
       PerformData data(&arena, std::move(*operations), callback);
@@ -538,6 +539,15 @@ class PgClient::Impl {
     RETURN_NOT_OK(proxy_->GetCatalogMasterVersion(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.version();
+  }
+
+  Result<std::string> GetTServerUUID() {
+    tserver::PgGetTServerUUIDRequestPB req;
+    tserver::PgGetTServerUUIDResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetTServerUUID(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.node_uuid();     
   }
 
   Status CreateSequencesDataTable() {
@@ -784,6 +794,10 @@ Result<bool> PgClient::IsInitDbDone() {
 
 Result<uint64_t> PgClient::GetCatalogMasterVersion() {
   return impl_->GetCatalogMasterVersion();
+}
+
+Result<std::string> PgClient::GetTServerUUID() {
+  return impl_->GetTServerUUID();
 }
 
 Status PgClient::CreateSequencesDataTable() {
