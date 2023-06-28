@@ -59,7 +59,7 @@ In addition, CDC support for the following features will be added in upcoming re
 
 ## Further reading
 
-* Refer to this [GitHub repo](https://github.com/yugabyte/cdc-examples/tree/main) for CDC usage and pattern examples.
+* Refer to [CDC Examples](https://github.com/yugabyte/cdc-examples/tree/main) for CDC usage and pattern examples.
 * Refer to [Tutorials](../cdc-tutorials/) to deploy in different Kafka environments.
 * Refer to blogs about CDC:
   * [Data Streaming Using YugabyteDB CDC, Kafka, and SnowflakeSinkConnector](https://www.yugabyte.com/blog/data-streaming-using-yugabytedb-cdc-kafka-and-snowflakesinkconnector/)
