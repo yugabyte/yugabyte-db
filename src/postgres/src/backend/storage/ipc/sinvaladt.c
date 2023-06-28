@@ -279,7 +279,7 @@ SharedInvalBackendInit(bool sendOnly)
 
 	if (stateP == NULL)
 	{
-		YBC_LOG_INFO("No inactive slot in procState array. Array is %d / %d full", segP->lastBackend, segP->maxBackends);
+		YBC_LOG_INFO("No inactive slot to reuse in procState array. Array has %d / %d slots used.", segP->lastBackend, segP->maxBackends);
 
 		if (segP->lastBackend < segP->maxBackends)
 		{

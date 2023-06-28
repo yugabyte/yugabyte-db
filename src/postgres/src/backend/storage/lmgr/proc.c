@@ -332,15 +332,9 @@ InitProcess(void)
 
 	if (MyProc != NULL)
 	{
-		PGPROC *iterator = (PGPROC *) *procgloballist;
-		int procgloballist_size = 0;
-		while (iterator) {
-			iterator = (PGPROC *) iterator->links.next;
-			procgloballist_size++;
-		}
-		YBC_LOG_INFO("ProcGlobal->freeProcs has %d free procs.", procgloballist_size);
-
 		*procgloballist = (PGPROC *) MyProc->links.next;
+
+		YBC_LOG_INFO("ProcGlobal->freeProcs has %d free procs.", GetProcListSize(procgloballist));
 		SpinLockRelease(ProcStructLock);
 	}
 	else
@@ -661,6 +655,17 @@ GetStartupBufferPinWaitBufId(void)
 	return procglobal->startupBufferPinWaitBufId;
 }
 
+
+int GetProcListSize(PGPROC *volatile *proclist) {
+	PGPROC *iterator = (PGPROC *) *proclist;
+	int proclist_size = 0;
+	while (iterator) {
+		proclist_size++;
+		iterator = (PGPROC *) iterator->links.next;
+	}
+	return proclist_size;
+}
+
 /*
  * Check whether there are at least N free PGPROC objects.
  *
@@ -691,7 +696,7 @@ HaveNFreeProcs(int n)
 
 	SpinLockRelease(ProcStructLock);
 
-	YBC_LOG_INFO("Have n free procs: %d", (count));
+	YBC_LOG_INFO("Have at least %d free procs", count);
 
 	return (n <= 0);
 }
