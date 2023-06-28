@@ -6576,8 +6576,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnStreamedColoca
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
   }
 
-  auto snapshot_done_resp =
-      ASSERT_RESULT(UpdateSnapshotDone(stream_id, tablets, &change_resp, req_table_id));
+  auto snapshot_done_resp = ASSERT_RESULT(UpdateSnapshotDone(stream_id, tablets, req_table_id));
   auto checkpoint_resp =
       ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_id, tablets[0].tablet_id(), req_table_id));
   ASSERT_TRUE(!checkpoint_resp.has_snapshot_key() || checkpoint_resp.snapshot_key().empty());
@@ -6631,7 +6630,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnAddedColocated
       break;
     }
   }
-  ASSERT_RESULT(UpdateSnapshotDone(stream_id, tablets, &change_resp, req_table_id));
+  ASSERT_RESULT(UpdateSnapshotDone(stream_id, tablets, req_table_id));
   LOG(INFO) << "Streamed snapshot records for table: test1";
 
   for (int i = snapshot_recrods_per_table; i < 2 * snapshot_recrods_per_table; ++i) {
@@ -6700,8 +6699,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnAddedColocated
   }
   ASSERT_EQ(seen_snapshot_records, snapshot_recrods_per_table);
 
-  added_table_change_resp = ASSERT_RESULT(
-      UpdateSnapshotDone(stream_id, tablets, &added_table_change_resp, added_table_id));
+  added_table_change_resp = ASSERT_RESULT(UpdateSnapshotDone(stream_id, tablets, added_table_id));
   added_table_checkpoint_resp =
       ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_id, tablets[0].tablet_id(), added_table_id));
 

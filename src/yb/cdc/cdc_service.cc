@@ -1769,7 +1769,8 @@ void CDCServiceImpl::GetChanges(
   bool snapshot_bootstrap = IsCDCSDKSnapshotBootstrapRequest(cdc_sdk_from_op_id);
   if (record.GetCheckpointType() == IMPLICIT ||
       (record.GetCheckpointType() == EXPLICIT &&
-       (got_explicit_checkpoint_from_request || snapshot_bootstrap))) {
+       ((got_explicit_checkpoint_from_request && explicit_op_id != OpId::Invalid()) ||
+        snapshot_bootstrap))) {
     bool is_snapshot = false;
     bool is_colocated = tablet_peer->tablet_metadata()->colocated();
     OpId snapshot_op_id = OpId::Invalid();
@@ -4022,7 +4023,6 @@ Status CDCServiceImpl::UpdateSnapshotDone(
     entry.cdc_sdk_safe_time =
         !cdc_sdk_checkpoint.has_snapshot_time() ? 0 : cdc_sdk_checkpoint.snapshot_time();
     entry.active_time = current_time;
-    entry.checkpoint = OpId(cdc_sdk_checkpoint.term(), cdc_sdk_checkpoint.index());
     entry.last_replication_time = 0;
     // Insert if row not found, Update if row already exists.
     RETURN_NOT_OK(cdc_state_table_->UpsertEntries({entry}));
