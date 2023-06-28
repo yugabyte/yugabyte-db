@@ -105,7 +105,7 @@ func (pg Postgres) Install() error {
 
 	// First let initdb create its config and data files in the software/pg../conf location
 	if err := pg.runInitDB(); err != nil {
-		return nil
+		return err
 	}
 	// Then copy over data files to the intended data dir location
 	pg.setUpDataDir()
@@ -336,7 +336,7 @@ func (pg Postgres) UpgradeMajorVersion() error {
 		return err
 	}
 	if err := pg.runInitDB(); err != nil {
-		return nil
+		return err
 	}
 	pg.setUpDataDir()
 	pg.modifyPostgresConf()
