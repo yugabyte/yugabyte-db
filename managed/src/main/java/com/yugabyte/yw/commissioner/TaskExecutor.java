@@ -163,7 +163,8 @@ public class TaskExecutor {
           COMMISSIONER_TASK_EXECUTION_SEC_METRIC,
           "Duration of task execution",
           KnownAlertLabels.TASK_TYPE.labelName(),
-          KnownAlertLabels.RESULT.labelName());
+          KnownAlertLabels.RESULT.labelName(),
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName());
 
   private static Summary buildSummary(String name, String description, String... labelNames) {
     return Summary.build(name, description)
@@ -172,37 +173,6 @@ public class TaskExecutor {
         .labelNames(labelNames)
         .register(CollectorRegistry.defaultRegistry);
   }
-
-  private static final Summary COMMISSIONER_TASK_WAITING_SEC_ =
-      buildSummary(
-          COMMISSIONER_TASK_WAITING_SEC_METRIC,
-          "Duration between task creation and execution",
-          KnownAlertLabels.TASK_TYPE.labelName(),
-          "parent task");
-
-  private static final Summary COMMISSIONER_TASK_EXECUTION_SEC_ =
-      buildSummary(
-          COMMISSIONER_TASK_EXECUTION_SEC_METRIC,
-          "Duration of task execution",
-          KnownAlertLabels.TASK_TYPE.labelName(),
-          KnownAlertLabels.RESULT.labelName(),
-          KnownAlertLabels.PARENT.labelName());
-
-   // This writes the waiting time metric and the parent of the task.
-  private static void writeTaskWaitMetric(
-      TaskType taskType, Instant scheduledTime, Instant startTime, TaskType parenTaskType) {
-    COMMISSIONER_TASK_WAITING_SEC_
-        .labels(taskType.name(), parenTaskType.name())
-        .observe(getDurationSeconds(scheduledTime, startTime));
-  }
-
-  // This writes the execution time metric and the parent of the task.
-  private static void writeTaskStateMetric(
-      TaskType taskType, Instant startTime, Instant endTime, State state, TaskType parenTaskType) {
-    COMMISSIONER_TASK_EXECUTION_SEC_
-        .labels(taskType.name(), state.name(), parenTaskType.name())
-        .observe(getDurationSeconds(startTime, endTime));
-  } */
 
   // This writes the waiting time metric.
   private static void writeTaskWaitMetric(
@@ -768,7 +738,6 @@ public class TaskExecutor {
    * started running. Synchronization is on the this object for taskInfo.
    */
   public abstract class AbstractRunnableTask implements Runnable {
-    RunnableTask parentTask;
     TaskInfo parentTaskInfo;
     final ITask task;
     final TaskInfo taskInfo;
@@ -836,15 +805,7 @@ public class TaskExecutor {
             taskType,
             taskScheduledTime,
             taskStartTime,
-            parentTask == null ? null : parentTaskInfo.getTaskType());
-        // writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime, parentTask == null?
-        // null:parentTaskInfo.getTaskType());
-        /*if(parentTask==null){
-          writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime);
-        }
-        else{
-          writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime, parentTaskInfo.getTaskType());
-        }
+            parentTaskInfo == null ? null : parentTaskInfo.getTaskType());
 
         publishBeforeTask();
         if (getAbortTime() != null) {
@@ -884,33 +845,19 @@ public class TaskExecutor {
             taskStartTime,
             taskCompletionTime,
             getTaskState(),
-            parentTask == null ? null : parentTaskInfo.getTaskType());
-        /*if(parentTask==null){
-          writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
-        }
-        else{
-          writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState(), parentTaskInfo.getTaskType());
-        }
+            parentTaskInfo == null ? null : parentTaskInfo.getTaskType());
+
         task.terminate();
         publishAfterTask(t);
       }
     }
-    // here error is happening, because you have to set parentTaskInfo to something first, also
-    // parentTask info is not task info
-    private void setParentForSubtask(RunnableTask parentTask) {
+
+    // This is invoked by subTasks to set parent info
+    private void setParentTaskInfo(RunnableTask parentTask) {
       if (parentTask != null) {
-        this.parentTask = parentTask;
         UUID parentTaskUUID = parentTask.getTaskUUID();
-        // this.parentTaskInfo = TaskInfo.getOrBadRequest(parentTaskUUID);
-        Optional<TaskInfo> taskInfoOptional = TaskInfo.maybeGet(parentTaskUUID);
-        if (taskInfoOptional.isPresent()) {
-          this.parentTaskInfo = taskInfoOptional.get();
-          // Use the taskInfo object as needed
-        } else {
-          this.parentTask = null;
-        }
-        // this.parentTaskInfo = taskInfo.get(taskInfo.getParentUuid());
-        // this.parentTaskInfo.setUuid(parentTask.getTaskUUID());
+        Optional<TaskInfo> parentTaskInfoOptional = TaskInfo.maybeGet(parentTaskUUID);
+        this.parentTaskInfo = parentTaskInfoOptional.isPresent()? parentTaskInfoOptional.get(): null;
       }
     }
 
@@ -1333,7 +1280,7 @@ public class TaskExecutor {
       taskInfo.setParentUuid(parentRunnableTask.getTaskUUID());
       taskInfo.setPosition(position);
       taskInfo.save();
-      super.setParentForSubtask(parentRunnableTask);
+      super.setParentTaskInfo(parentRunnableTask);
     }
   }
 }
