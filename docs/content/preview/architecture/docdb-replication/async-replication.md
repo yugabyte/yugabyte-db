@@ -206,9 +206,9 @@ the past.
 
 At a high level, xCluster replication is implemented by having _pollers_
 in the target universe that poll the source universe tablet servers for
-recent changes.  Each poller works independently and polls one or more
-source tablet servers, distributing the received changes among a set
-of target tablet servers.
+recent changes.  Each poller works independently and polls one source
+tablet server, distributing the received changes among a set of target
+tablet servers.
 
 The polled tablets examine only their Raft logs to determine what
 changes have occurred recently rather than looking at their RocksDB
@@ -234,12 +234,12 @@ boundaries due to tablet splits occurring at different places in the
 past.
 
 This means that each target tablet may need the changes from multiple
-source tablets and multiple target tablets may need changes from the same
-source tablets.  To avoid multiple redundant cross-universe reads to the
-same source tablet, the target master leader assigns only one poller for
-each source tablet; in cases where a source tablet's changes are needed
-by multiple target tablets, the poller assigned to that source tablet
-distributes the changes to the relevant target tablets.
+source tablets and multiple target tablets may need changes from the
+same source tablets.  To avoid multiple redundant cross-universe reads
+to the same source tablet, only one poller reads from each source
+tablet; in cases where a source tablet's changes are needed by multiple
+target tablets, the poller assigned to that source tablet distributes
+the changes to the relevant target tablets.
 
 The following illustrative diagram shows what this looks like:
 
