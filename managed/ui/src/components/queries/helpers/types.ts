@@ -17,10 +17,10 @@ export interface YSQLSlowQuery {
   P99: number | 'NaN';
   query: string;
   queryid: number;
-  rolname: string;
   rows: number;
   stddev_time: number;
   total_time: number;
+  userid: string;
   yb_latency_histogram: HistogramBucket[];
 }
 export type YSQLSlowQueryPrimativeFields = keyof Omit<YSQLSlowQuery, 'yb_latency_histogram'>;
