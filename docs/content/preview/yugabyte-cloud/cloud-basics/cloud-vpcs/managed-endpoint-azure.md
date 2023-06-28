@@ -100,11 +100,11 @@ To create a private endpoint to connect to your cluster PSE, do the following:
 
 1. On the **Basics** page, provide the following details:
 
-    - Select your subscription.
-    - Select the resource group in which the private endpoint will be created.
-    - Enter a name for the endpoint.
-    - Enter a network interface name for the endpoint.
-    - Select the region for the endpoint. This should be the same region where your application resides.
+    - **Subscription** - select your subscription.
+    - **Resource group** - select the resource group in which the private endpoint was created.
+    - **Name** - enter a name for the endpoint.
+    - **Network interface name** - enter a network interface name for the endpoint.
+    - **Region** - select the region for the endpoint. This should be the same region where your application resides.
 
 1. Click **Next: Resource** and set the following values:
 
@@ -128,7 +128,7 @@ To create a private endpoint to connect to your cluster PSE, do the following:
 
     ![Azure private endpoint](/images/yb-cloud/managed-endpoint-azure-2.png)
 
-1. Note the **private IP address** of the endpoint for use in the following steps.
+1. Note the **Private IP** address of the endpoint for use in the following steps.
 
 #### Create a private DNS zone
 
