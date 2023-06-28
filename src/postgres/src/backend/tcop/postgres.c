@@ -5143,8 +5143,6 @@ PostgresMain(int argc, char *argv[],
 		remote_host[0] = '\0';
 		remote_port[0] = '\0';
 
-		ereport(LOG, (errmsg("backend pid: %d ------- my pid: %d", beentry->st_procpid, MyProcPid)));
-
 		if (beentry->st_procpid != MyProcPid)
 			continue;
 		
@@ -5164,15 +5162,11 @@ PostgresMain(int argc, char *argv[],
 				)
 			{
 
-				ereport(LOG, (errmsg("ip: %s ------- port : %s", remote_host, remote_port)));
-
 				int ret = pg_getnameinfo_all(&beentry->st_clientaddr.addr,
 											beentry->st_clientaddr.salen,
 											remote_host, sizeof(remote_host),
 											remote_port, sizeof(remote_port),
 											NI_NUMERICHOST | NI_NUMERICSERV);
-
-				ereport(LOG, (errmsg("ip: %s ------- port : %s", remote_host, remote_port)));
 
 				if (ret == 0)
 				{
@@ -5199,8 +5193,6 @@ PostgresMain(int argc, char *argv[],
 				ereport(LOG, (errmsg("PG client ip and port not found")));
 			}
 		}
-
-		ereport(LOG, (errmsg("ip: %s ------- port : %s", remote_host, remote_port)));
 
 		if (IsYugaByteEnabled())
 			HandleYBStatus(YBCPgSetAUHMetadata(remote_host, atoi(remote_port)));
