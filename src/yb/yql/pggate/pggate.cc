@@ -184,7 +184,7 @@ class PrecastRequestSender {
     if (!collecting_mode_) {
       auto future = VERIFY_RESULT(session->RunAsync(
           ops, ops_count, table, in_txn_limit, force_non_bufferable));
-      return PgDocResponse(std::move(future));
+      return PgDocResponse(std::move(future), ops->get()->getWaitEvent());
     }
     // For now PrecastRequestSender can work only with a new in txn limit set to the current time
     // for each batch of ops. It doesn't use a single in txn limit for all read ops in a statement.
@@ -197,7 +197,7 @@ class PrecastRequestSender {
     if (!provider_state_) {
       provider_state_ = std::make_shared<ResponseProvider::State>();
     }
-    return PgDocResponse(std::make_unique<ResponseProvider>(provider_state_));
+    return PgDocResponse(std::make_unique<ResponseProvider>(provider_state_), ops->get()->getWaitEvent());
   }
 
   Status TransmitCollected(PgSession* session) {

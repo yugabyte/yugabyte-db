@@ -359,6 +359,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   void SetTopLevelRequestId();
 
+  void setWaitEventInfo(uint32_t wait_event) {
+    pg_callbacks_.SignalWaitStart(wait_event);
+  }
+
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);

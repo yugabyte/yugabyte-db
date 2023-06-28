@@ -62,6 +62,12 @@ bool PerformFuture::Ready() const {
   return Valid() && future_.wait_for(0ms) == std::future_status::ready;
 }
 
+void PerformFuture::SignalWait(uint32_t wait_event) {
+  if (session_) {
+    session_->setWaitEventInfo(wait_event);
+  }
+}
+
 Result<PerformFuture::Data> PerformFuture::Get() {
   // Make sure Valid method will return false before thread will be blocked on call future.get()
   // This requirement is not necessary after fixing of #12884.

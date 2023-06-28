@@ -20,6 +20,7 @@ set(PGGATE_UTIL_SRCS
     yb_guc.cc
     ybc_util.cc
     ybc-internal.cc
+    ybc_stat.cpp
     )
 
 set(PGGATE_UTIL_LIBS
