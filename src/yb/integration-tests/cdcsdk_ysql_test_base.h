@@ -108,7 +108,7 @@ DECLARE_bool(tablet_enable_ttl_file_filter);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(cdc_max_stream_intent_records);
 DECLARE_bool(enable_single_record_update);
-DECLARE_bool(enable_delete_truncate_cdcsdk_table);
+DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
