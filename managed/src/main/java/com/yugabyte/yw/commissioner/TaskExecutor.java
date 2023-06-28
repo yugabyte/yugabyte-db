@@ -156,7 +156,8 @@ public class TaskExecutor {
       buildSummary(
           COMMISSIONER_TASK_WAITING_SEC_METRIC,
           "Duration between task creation and execution",
-          KnownAlertLabels.TASK_TYPE.labelName());
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName());
 
   private static final Summary COMMISSIONER_TASK_EXECUTION_SEC =
       buildSummary(
@@ -857,7 +858,8 @@ public class TaskExecutor {
       if (parentTask != null) {
         UUID parentTaskUUID = parentTask.getTaskUUID();
         Optional<TaskInfo> parentTaskInfoOptional = TaskInfo.maybeGet(parentTaskUUID);
-        this.parentTaskInfo = parentTaskInfoOptional.isPresent()? parentTaskInfoOptional.get(): null;
+        this.parentTaskInfo =
+            parentTaskInfoOptional.isPresent() ? parentTaskInfoOptional.get() : null;
       }
     }
 
