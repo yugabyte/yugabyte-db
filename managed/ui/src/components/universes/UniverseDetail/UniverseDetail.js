@@ -670,7 +670,7 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         )}
 
-                      {!universePaused && !this.isRRFlagsEnabled() && (
+                      {!universePaused && (!this.isRRFlagsEnabled() || isKubernetesUniverse) && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsModal}
@@ -682,7 +682,7 @@ class UniverseDetail extends Component {
                           <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-                      {!universePaused && this.isRRFlagsEnabled() && (
+                      {!universePaused && this.isRRFlagsEnabled() && !isKubernetesUniverse && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsNewModal}
@@ -781,9 +781,7 @@ class UniverseDetail extends Component {
                               modal={modal}
                               closeModal={closeModal}
                               button={
-                                <YBMenuItem
-                                  onClick={showSupportBundleModal}
-                                >
+                                <YBMenuItem onClick={showSupportBundleModal}>
                                   <YBLabelWithIcon icon="fa fa-file-archive-o">
                                     Support Bundles
                                   </YBLabelWithIcon>
