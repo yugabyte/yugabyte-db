@@ -15,7 +15,7 @@ rightNav:
 type: docs
 ---
 
-For a highly available system, it is typical to opt for a [Global database](../global-database) that spans multiple regions with preferred leaders set to a specific region. This is great for apps that are running that region as all the reads would go to the leader located locally.
+For a highly available system, it is typical to opt for a [Global database](../global-database) that spans multiple regions with preferred leaders set to a specific region. This is great for apps that are running in that region as all the reads would go to the leader located locally.
 
 But apps running in other regions would have to incur the cross-region latency to read the latest data from the leader even though there is a follower present locally. This is because all followers may not have the latest data at the read time.
 
