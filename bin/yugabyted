@@ -3857,7 +3857,7 @@ class ControlScript(object):
                     "node."+args.advertise_address+".key"]
 
         if args.certs_dir is not None:
-            args.certs_dir = os.path.expanduser(args.certs_path)
+            args.certs_dir = os.path.expanduser(args.certs_dir)
 
             if not os.path.exists(args.certs_dir):
                 # Case Scenario: When the directory provided by the user through
