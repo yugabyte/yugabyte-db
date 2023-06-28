@@ -27,14 +27,15 @@ const statsTextMap = {
   rows: 'Rows',
   stddev_time: 'Stdev Exec Time',
   total_time: 'Total Time',
-  rolname: 'User'
+  rolname: 'User',
+  userid: 'User Id'
 };
 
-export const QueryInfoSidePanel = ({ data, visible, onHide }) => {
+export const LegacyQueryInfoSidePanel = ({ queryData, visible, onHide }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    copy(data.query);
+    copy(queryData.query);
     setCopied(true);
     setTimeout(() => {
       setCopied(false);
@@ -49,9 +50,9 @@ export const QueryInfoSidePanel = ({ data, visible, onHide }) => {
         <div className="side-panel__title">DETAILS</div>
       </div>
       <div className="side-panel__content">
-        {data && (
+        {queryData && (
           <div className="side-panel__query">
-            <Highlighter type="sql" text={data.query} element="pre" />
+            <Highlighter type="sql" text={queryData.query} element="pre" />
           </div>
         )}
         <div className="copy-btn-container">
@@ -62,15 +63,15 @@ export const QueryInfoSidePanel = ({ data, visible, onHide }) => {
           />
         </div>
         <ul className="side-panel__details">
-          {data &&
-            Object.keys(data).map((key) => {
+          {queryData &&
+            Object.keys(queryData).map((key) => {
               if (key !== 'id' && key !== 'queryid' && key !== 'query') {
                 return (
                   <li key={`details-${key}`}>
                     <label>
                       <strong>{statsTextMap[key]}</strong>
                     </label>
-                    <span>{data[key]}</span>
+                    <span>{queryData[key]}</span>
                   </li>
                 );
               }
