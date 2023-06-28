@@ -311,7 +311,7 @@ extern double RetryBackoffMultiplier;
 /*
  * Function Prototypes
  */
-
+extern int  GetProcListSize(PGPROC *volatile *proclist);
 extern int	ProcGlobalSemas(void);
 extern Size ProcGlobalShmemSize(void);
 extern void InitProcGlobal(void);

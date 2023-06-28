@@ -272,12 +272,15 @@ SharedInvalBackendInit(bool sendOnly)
 		if (segP->procState[index].procPid == 0)	/* inactive slot? */
 		{
 			stateP = &segP->procState[index];
+			YBC_LOG_INFO("Found inactive slot %d in procState array", index);
 			break;
 		}
 	}
 
 	if (stateP == NULL)
 	{
+		YBC_LOG_INFO("No inactive slot to reuse in procState array. Array has %d / %d slots used.", segP->lastBackend, segP->maxBackends);
+
 		if (segP->lastBackend < segP->maxBackends)
 		{
 			stateP = &segP->procState[segP->lastBackend];

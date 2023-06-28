@@ -2932,7 +2932,7 @@ reaper(SIGNAL_ARGS)
 			if (proc->ybAnyLockAcquired)
 			{
 				YbCrashWhileLockIntermediateState = true;
-				ereport(LOG,
+				ereport(WARNING,
 						(errmsg("terminating active server processes due to backend crash while "
 						"acquiring LWLock")));
 				break;
@@ -2948,7 +2948,7 @@ reaper(SIGNAL_ARGS)
 				break;
 			}
 
-			YBC_LOG_INFO("Proc %d exit not signaled", pid);
+			YBC_LOG_INFO("Proc %d exited normally", pid);
 		}
 
 		/*
@@ -3407,6 +3407,8 @@ static void CleanupKilledProcess(PGPROC *proc)
 		{
 			PGPROC	   *leader = proc->lockGroupLeader;
 
+			YBC_LOG_INFO("Proc %d has a lockGroupLeader - cleaning up lock group", proc->pid);
+
 			if (leader)
 			{
 				Assert(!dlist_is_empty(&leader->lockGroupMembers));
@@ -3429,6 +3431,7 @@ static void CleanupKilledProcess(PGPROC *proc)
 		}
 
 		procgloballist = proc->procgloballist;
+		int old_proclist_size = GetProcListSize(procgloballist);
 
 		DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
 
@@ -3439,6 +3442,8 @@ static void CleanupKilledProcess(PGPROC *proc)
 		*/
 		if (proc->lockGroupLeader == NULL)
 		{
+			YBC_LOG_INFO("Proc %d has a lockGroupLeader - cleaning up lock group", proc->pid);
+
 			/* Since lockGroupLeader is NULL, lockGroupMembers should be empty. */
 			Assert(dlist_is_empty(&proc->lockGroupMembers));
 
@@ -3446,6 +3451,9 @@ static void CleanupKilledProcess(PGPROC *proc)
 			proc->links.next = (SHM_QUEUE *) *procgloballist;
 			*procgloballist = proc;
 		}
+		int new_proclist_size = GetProcListSize(procgloballist);
+		YBC_LOG_INFO("Cleaning up after proc %d: procgloballist changed size from %d to %d",
+					 proc->pid, old_proclist_size, new_proclist_size);
 	}
 }
 
