@@ -929,7 +929,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnableTruncateTable)) {
   ASSERT_OK(WriteRows(0 /* start */, 1 /* end */, &test_cluster_));
   ASSERT_NOK(TruncateTable(&test_cluster_, {table_id}));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_delete_truncate_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = true;
   ASSERT_OK(TruncateTable(&test_cluster_, {table_id}));
 }
 
@@ -947,7 +947,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTruncateTable)) {
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(set_resp.has_error());
   ASSERT_OK(WriteRows(0 /* start */, 1 /* end */, &test_cluster_));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_delete_truncate_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = true;
   ASSERT_OK(TruncateTable(&test_cluster_, {table_id}));
   ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
 
