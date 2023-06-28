@@ -260,6 +260,8 @@ class PgApiImpl {
 
   Status GetCatalogMasterVersion(uint64_t *version);
 
+  Status CancelTransaction(const unsigned char* transaction_id);
+
   // Load table.
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
 

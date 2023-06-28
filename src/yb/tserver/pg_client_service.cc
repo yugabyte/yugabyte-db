@@ -576,7 +576,7 @@ class PgClientServiceImpl::Impl {
 
     for (size_t i = 0 ; i < remote_tservers.size() ; i++) {
       const auto& proxy = remote_tservers[i]->proxy();
-      std::shared_ptr<rpc::RpcController> controller;
+      auto controller = std::make_shared<rpc::RpcController>();
       status_future.push_back(
           MakeFuture<Status>([&, controller](auto callback) {
             proxy->CancelTransactionAsync(
@@ -586,7 +586,7 @@ class PgClientServiceImpl::Impl {
           }));
     }
 
-    auto status = STATUS_FORMAT(NotFound, "Unable to cancel transaction");
+    auto status = STATUS_FORMAT(NotFound, "Transaction not found.");
     resp->Clear();
     for (size_t i = 0 ; i < status_future.size() ; i++) {
       const auto& s = status_future[i].get();

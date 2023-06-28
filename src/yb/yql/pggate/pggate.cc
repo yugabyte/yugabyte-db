@@ -804,6 +804,10 @@ Status PgApiImpl::GetCatalogMasterVersion(uint64_t *version) {
   return pg_session_->GetCatalogMasterVersion(version);
 }
 
+Status PgApiImpl::CancelTransaction(const unsigned char* transaction_id) {
+  return pg_session_->CancelTransaction(transaction_id);
+}
+
 Result<PgTableDescPtr> PgApiImpl::LoadTable(const PgObjectId& table_id) {
   return pg_session_->LoadTable(table_id);
 }

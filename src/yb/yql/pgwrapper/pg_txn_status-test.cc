@@ -311,5 +311,68 @@ TEST_F(PgGetOldTxnsTest, ReturnsOnlyOldEnoughTransactions) {
                 .WithTablets({s4.first_involved_tablet});
 }
 
+class PgCancelTxnTest : public PgGetOldTxnsTest {};
+
+TEST_F(PgCancelTxnTest, Simple) {
+  auto s = ASSERT_RESULT(InitSession("foo"));
+  ASSERT_OK(s.conn.Execute("UPDATE foo SET v=30 WHERE k=5"));
+  auto cancel_session = ASSERT_RESULT(Connect());
+  ASSERT_TRUE(ASSERT_RESULT(cancel_session.FetchValue<bool>(
+      Format("SELECT yb_cancel_transaction('$0')", s.txn_id.ToString()))));
+  ASSERT_NOK(s.conn.CommitTransaction());
+
+  ASSERT_EQ(0, ASSERT_RESULT(cancel_session.FetchValue<int>("SELECT v FROM foo where k=5")));
+
+  // Cancelling the same transaction again should return false
+  ASSERT_FALSE(ASSERT_RESULT(cancel_session.FetchValue<bool>(
+      Format("SELECT yb_cancel_transaction('$0')", s.txn_id.ToString()))));
+}
+
+TEST_F(PgCancelTxnTest, CancelSelf) {
+  auto s = ASSERT_RESULT(InitSession("foo"));
+  ASSERT_OK(s.conn.Execute("UPDATE foo SET v=30 WHERE k=5"));
+  ASSERT_TRUE(ASSERT_RESULT(s.conn.FetchValue<bool>(
+      Format("SELECT yb_cancel_transaction('$0')", s.txn_id.ToString()))));
+  ASSERT_NOK(s.conn.CommitTransaction());
+
+  ASSERT_EQ(0, ASSERT_RESULT(s.conn.FetchValue<int>("SELECT v FROM foo where k=5")));
+}
+
+TEST_F(PgCancelTxnTest, InvalidArgs) {
+  auto cancel_session = ASSERT_RESULT(Connect());
+  // Null arg should return null result since proisstrict=true
+  auto null_result = ASSERT_RESULT(cancel_session.Fetch("SELECT yb_cancel_transaction(null)"));
+  ASSERT_EQ(ASSERT_RESULT(ToString(null_result.get(), 0, 0)), "NULL");
+  // Non-existent transaction should return false
+  ASSERT_FALSE(ASSERT_RESULT(cancel_session.FetchValue<bool>(
+      "SELECT yb_cancel_transaction('abcdabcd-abcd-abcd-abcd-abcd00000075')")));
+  // Invalid uuid should return error
+  auto invalid_result = cancel_session.FetchValue<bool>("SELECT yb_cancel_transaction('1234')");
+  ASSERT_NOK(invalid_result);
+  ASSERT_STR_CONTAINS(invalid_result.status().ToString(), "invalid input");
+}
+
+TEST_F(PgCancelTxnTest, OnlyAdminAccess) {
+  constexpr auto kUser = "alice";
+  auto admin_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(admin_conn.ExecuteFormat("CREATE USER $0", kUser));
+
+  auto host_port = pg_host_port();
+  auto user_conn = ASSERT_RESULT(PGConnBuilder({
+    .host = host_port.host(),
+    .port = host_port.port(),
+    .user = kUser
+  }).Connect());
+
+  auto dml_session = ASSERT_RESULT(InitSession("foo"));
+  auto cancel_statement = Format("SELECT yb_cancel_transaction('$0')", dml_session.txn_id);
+
+  auto user_result = user_conn.FetchValue<bool>(cancel_statement);
+  ASSERT_NOK(user_result);
+  ASSERT_STR_CONTAINS(user_result.status().ToString(), "permission denied");
+
+  ASSERT_TRUE(ASSERT_RESULT(admin_conn.FetchValue<bool>(cancel_statement)));
+}
+
 } // namespace pgwrapper
 } // namespace yb

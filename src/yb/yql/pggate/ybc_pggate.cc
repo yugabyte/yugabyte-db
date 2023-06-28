@@ -1604,6 +1604,10 @@ YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
   return ToYBCStatus(res.status());
 }
 
+YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id) {
+  return ToYBCStatus(pgapi->CancelTransaction(transaction_id));
+}
+
 } // extern "C"
 
 } // namespace yb::pggate

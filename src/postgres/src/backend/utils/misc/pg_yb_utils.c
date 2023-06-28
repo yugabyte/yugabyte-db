@@ -83,6 +83,7 @@
 #include "utils/rel.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
+#include "utils/uuid.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
@@ -2599,6 +2600,26 @@ Datum
 yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_CSTRING(yb_fetch_effective_transaction_isolation_level());
+}
+
+Datum
+yb_cancel_transaction(PG_FUNCTION_ARGS)
+{
+	if (!IsYbDbAdminUser(GetUserId()))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to cancel transaction")));
+
+	pg_uuid_t *id = PG_GETARG_UUID_P(0);
+	YBCStatus status = YBCPgCancelTransaction(id->data);
+	if (status)
+	{
+		ereport(NOTICE,
+				(errmsg("failed to cancel transaction"),
+				 errdetail("%s", YBCMessageAsCString(status))));
+		PG_RETURN_BOOL(false);
+	}
+	PG_RETURN_BOOL(true);
 }
 
 /*
