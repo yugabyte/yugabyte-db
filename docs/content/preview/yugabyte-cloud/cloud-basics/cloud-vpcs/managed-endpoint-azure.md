@@ -58,7 +58,7 @@ To create a PSE, do the following:
     Replace values as follows:
 
     - `yugabytedb_cluster` - name of your cluster.
-    - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed (for example, `us-west-2`), and preferably match the region where your application is deployed.
+    - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed (for example, `westus3`), and preferably match the region where your application is deployed.
     - `azure_subscription_ids` - comma-separated list of the subscription IDs of Azure subscriptions to which you want to grant access.
 
 1. Note the endpoint ID in the response.
@@ -79,7 +79,7 @@ To create a PSE, do the following:
 
 Note the following values:
 
-- **Host** - The host name of the PSE. You will use this to connect to your cluster. The host name of a PSE for Azure always ends in `azure.ybdb.io`.
+- **Host** - The host name of the PSE. You will use this to connect to your cluster. The host name of a PSE for Azure always ends in `azure.ybdb.io`. The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings** tab under **Connection Parameters**.
 - **Service Name** - The Service Name is also referred to as an alias in Azure. You will use this service name when creating the private endpoint in Azure.
 
 ## Create a private endpoint in Azure
@@ -108,9 +108,9 @@ To create a private endpoint to connect to your cluster PSE, do the following:
 
 1. Click **Next: Resource** and set the following values:
 
-    - Set **Connection method** to **Connect to an Azure resource by resource ID or alias**.
+    - **Connection method** - select **Connect to an Azure resource by resource ID or alias**.
 
-    - In the **Resource ID or alias** field, enter the service name of the PSE you created for your cluster.
+    - **Resource ID or alias** - enter the Service Name (noted when you [created the PSE](#create-a-pse-in-yugabytedb-managed)) of the PSE you created for your cluster.
 
 1. Click **Next: Virtual Network** and set the following values:
 
@@ -144,9 +144,9 @@ To create a private DNS zone:
 
 1. Provide the following details:
 
-    - Select your subscription.
-    - Select the resource group in which the private endpoint was created.
-    - Under **Instance details**, for the name enter `azure.ybdb.io`.
+    - **Subscription** - select your subscription.
+    - **Resource group** - select the resource group in which the private endpoint was created.
+    - **Instance details** - enter a DNS zone name of `azure.ybdb.io`.
 
 1. Click **Next: Tags**, and **Next Review create >**.
 
@@ -164,9 +164,11 @@ To create a private DNS zone:
 
     ![Azure Create Virtual network links](/images/yb-cloud/managed-endpoint-azure-4.png)
 
-1. Enter a link name.
+1. On the **Add virtual network link** page, provide the following details:
 
-1. Select the virtual network where you created the private endpoint.
+    - **Link name** - enter a name for the link.
+    - **Subscription** - select your subscription.
+    - **Virtual network** - select the virtual network where you created the private endpoint.
 
 1. Click **OK**.
 
@@ -182,7 +184,7 @@ The link is listed in the Virtual network links list.
 
 1. Under **Add record set**, set the following values:
 
-    - **Name** - enter the _prefix of the host name_ of the PSE you added to your cluster. This consists of the text _before_ .azure.ybdb.io.
+    - **Name** - enter the _first part_ only of the **Host** name of the cluster PSE (noted when you [created the PSE](#create-a-pse-in-yugabytedb-managed)). This consists of the text _before_ .azure.ybdb.io.
 
         For example, for the host
 
@@ -196,12 +198,14 @@ The link is listed in the Virtual network links list.
         pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a
         ```
 
-    - **Type** - select A - Address record (this is the default).
-    - **IP address** - enter the private IP address of your Azure private endpoint.
+        The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings** tab under **Connection Parameters**.
+
+    - **Type** - select the **A - Address record** option (this is the default).
+    - **IP address** - enter the private IP address of your Azure private endpoint (noted earlier).
 
 1. Click **OK**.
 
-You can now connect to your cluster from your application in Azure using your cluster host address (for example, `pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a.azure.ybdb.io`).
+You can now connect to your cluster from your application in Azure using your cluster PSE host address (for example, `pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a.azure.ybdb.io`).
 
 ### Use Azure CLI
 
