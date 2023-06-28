@@ -329,11 +329,11 @@ The valid *arguments* for import data file are described in the following table:
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
-| [--data-dir](#data-dir) <path> | Path to the directory or S3-prefixed URI of the bucket containing the data files to import. |
+| [--data-dir](#data-dir) <path> | Path to the location of the data files to import; this can be a local directory or a URL for a cloud storage location. |
 | [--delimiter](#delimiter) | Character used as delimiter in rows of the table(s). Default: comma (,) for CSV file format and tab (\t) for TEXT file format. |
 | [--disable-pb](#disable-pb) | Hide progress bars. |
 | [--escape-char](#escape-char) | Escape character (default double quotes `"`) only applicable to CSV file format. |
-| [--file-opts](#file-opts) <string> | Deprecated. Comma-separated string options for CSV file format. |
+| [--file-opts](#file-opts) <string> | **[Deprecated]** Comma-separated string options for CSV file format. |
 | [--null-string](#null-string) | String that represents null value in the data file. |
 | [--file-table-map](#file-table-map) <filename1:tablename1> | Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database. Multiple files can be imported in one table; for example, `foo1.csv:foo,foo2.csv:foo` or `foo*.csv:foo`. |
 | [--format](#format) <format> | One of `CSV` or `text` format of the data file. |
@@ -520,14 +520,7 @@ Default: 20,000
 
 ### --data-dir
 
-Path to the directory containing the data files to import. You can also provide an AWS S3 bucket, GCS bucket, and Azure blob as a path to the data directory. For example:
-
-```sh
-yb-voyager import data file .... \
---data-dir s3://voyager-data
-```
-
-The authentication mechanism for accessing an S3 bucket using yb-voyager is the same as that used by the AWS CLI. Refer to [Configuring the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html) for additional details to set up your S3 bucket.
+Path to the directory containing the data files to import. You can also provide an [AWS S3 bucket](../../migrate-steps/#import-data-file-from-aws-s3), [GCS bucket](../../migrate-steps/#import-data-file-from-gcs-buckets), and [Azure blob](../../migrate-steps/#import-data-file-from-azure-blob-storage-containers) as a path to the data directory.
 
 ### --file-table-map
 
@@ -565,7 +558,7 @@ Default: false; change to true if the CSV file contains column names as a header
 
 ### --file-opts
 
-Deprecated. Comma-separated string options for CSV file format. The options can include the following:
+**[Deprecated]** Comma-separated string options for CSV file format. The options can include the following:
 
 - `escape_char`: escape character
 

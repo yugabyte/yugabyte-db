@@ -346,8 +346,6 @@ yb-voyager import data file .... \
 
 The authentication mechanism for accessing an S3 bucket using yb-voyager is the same as that used by the AWS CLI. Refer to [Configuring the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-cha) for additional details on setting up your S3 bucket.
 
-Refer to [import data file](../reference/yb-voyager-cli/#import-data-file) for additional details on setting up your S3 bucket with yb-voyager.
-
 #### Import data file from GCS buckets
 
 Import data file also allows you to load directly from your data files stored on GCS buckets. The GCS bucket URI can be provided to the `data-dir` flag as follows:
@@ -359,7 +357,7 @@ yb-voyager import data file .... \
 
 The authentication mechanism for accessing a GCS bucket using yb-voyager is the Application Default Credentials (ADC) strategy for GCS. Refer to [Set up Application Default Credentials](https://cloud.google.com/docs/authentication/provide-credentials-adc) for additional details on setting up your GCS buckets.
 
-#### Import data file from Azure blob storage containers
+#### Import data file from Azure blob
 
 Import data file also allows you to load directly from your data files stored on Azure blob storage containers. The Azure container URI can be provided to the `data-dir` flag as follows:
 
