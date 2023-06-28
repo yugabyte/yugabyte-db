@@ -31,7 +31,7 @@ const YSQL_SLOW_QUERY_DETAIL_FIELDS: YSQLSlowQueryPrimativeFields[] = [
   'calls',
   'rows',
   'datname',
-  'rolname',
+  'userid',
   'total_time',
   'max_time',
   'min_time',
