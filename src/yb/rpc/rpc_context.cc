@@ -256,7 +256,7 @@ std::string RpcContext::ToString() const {
   return call_->ToString();
 }
 
-util::WaitStateInfo* RpcContext::wait_state() {
+util::WaitStateInfoPtr RpcContext::wait_state() {
  if (!call_) {
   return nullptr;
  }

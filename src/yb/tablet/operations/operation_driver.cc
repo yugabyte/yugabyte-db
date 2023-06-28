@@ -131,6 +131,7 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
   }
 
   if (term == OpId::kUnknownTerm && operation_) {
+    SET_WAIT_STATUS(util::WaitStateCode::AddedToFollower);
     RETURN_NOT_OK(operation_->AddedToFollower());
   }
 
@@ -444,8 +445,9 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   scoped_refptr<OperationDriver> ref(this);
 
   {
-    SET_WAIT_STATUS(util::WaitStateCode::ReplicationDone);
+    SET_WAIT_STATUS(util::WaitStateCode::Applying);
     auto status = operation_->Replicated(leader_term, WasPending::kTrue);
+    SET_WAIT_STATUS(util::WaitStateCode::ApplyDone);
     LOG_IF_WITH_PREFIX(FATAL, !status.ok())
         << "Apply failed: " << status
         << ", request: " << operation_->request()->ShortDebugString();

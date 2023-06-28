@@ -60,9 +60,10 @@ YB_DEFINE_ENUM(
     // General states for incoming RPCs
     (Created)(Queued)(Handling)(QueueingResponse)(ResponseQueued)
     // Writes
-    (AcquiringLocks)(ConflictResolution)
-      (ExecuteWrite)(SubmittingToRaft)(Applying)
-      (ExecuteAsync)(PrepareAndStart)(SubmittedToPreparer)(AddedToLeader)(HandleFailure)(ReplicationDone)
+    (AcquiringLocks)(ConflictResolution)(ExecuteWrite)(SubmittingToRaft)
+      // OperationDriver
+      (ExecuteAsync)(PrepareAndStart)(SubmittedToPreparer)(AddedToLeader)(AddedToFollower)(HandleFailure)
+      (Applying)(ApplyDone)
     // UpdateConsensus
       (Updating)(UpdateReplica)(DoneUpdate)
     // Debugging
@@ -89,7 +90,8 @@ struct AUHMetadata {
 };
 
 class WaitStateInfo;
-typedef WaitStateInfo* WaitStateInfoPtr;
+// typedef WaitStateInfo* WaitStateInfoPtr;
+typedef std::shared_ptr<WaitStateInfo> WaitStateInfoPtr;
 class WaitStateInfo {
  public:
   WaitStateInfo(AUHMetadata meta);
@@ -115,7 +117,8 @@ class WaitStateInfo {
 
   // Similar to thread-local trace:
   // The current wait_state_ for this thread.
-  static __thread WaitStateInfoPtr threadlocal_wait_state_;
+  // static __thread WaitStateInfoPtr threadlocal_wait_state_;
+  static thread_local WaitStateInfoPtr threadlocal_wait_state_;
   friend class ScopedWaitStatus;
   friend class ScopedWaitState;
 };

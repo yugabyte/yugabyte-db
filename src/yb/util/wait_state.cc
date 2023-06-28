@@ -19,7 +19,8 @@ using yb::util::WaitStateCode;
 
 namespace yb::util {
 
-__thread WaitStateInfo* WaitStateInfo::threadlocal_wait_state_;
+// __thread WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
+thread_local WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 
 WaitStateInfo::WaitStateInfo(AUHMetadata meta)
   : metadata_(meta)
@@ -34,7 +35,7 @@ void WaitStateInfo::set_state(WaitStateCode c) {
   #ifdef TRACK_WAIT_HISTORY
   {
     std::lock_guard<simple_spinlock> l(mutex_);
-    // history_.emplace_back(code_);
+    history_.emplace_back(code_);
     // history_.push_back(code_);
   }
   num_updates_++;

@@ -120,7 +120,7 @@ class WriteQuery {
 
   std::unique_ptr<WriteOperation> PrepareSubmit();
 
-  util::WaitStateInfo* wait_state() {
+  util::WaitStateInfoPtr wait_state() {
     if (!rpc_context_) {
       return nullptr;
     }

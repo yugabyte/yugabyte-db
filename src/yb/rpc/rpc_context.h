@@ -313,7 +313,7 @@ class RpcContext {
 
   std::string ToString() const;
 
-  util::WaitStateInfo* wait_state();
+  util::WaitStateInfoPtr wait_state();
 
  private:
   std::shared_ptr<YBInboundCall> call_;
