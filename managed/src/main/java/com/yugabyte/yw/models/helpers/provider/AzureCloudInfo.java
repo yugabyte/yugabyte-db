@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModelProperty;
@@ -34,10 +35,12 @@ public class AzureCloudInfo implements CloudInfoInterface {
 
   @JsonAlias("AZURE_TENANT_ID")
   @ApiModelProperty
+  @EditableInUseProvider(name = "Azure Tenant ID", allowed = false)
   public String azuTenantId;
 
   @JsonAlias("AZURE_CLIENT_ID")
   @ApiModelProperty
+  @EditableInUseProvider(name = "Azure Client ID", allowed = false)
   public String azuClientId;
 
   @JsonAlias("AZURE_CLIENT_SECRET")
@@ -46,22 +49,27 @@ public class AzureCloudInfo implements CloudInfoInterface {
 
   @JsonAlias("AZURE_SUBSCRIPTION_ID")
   @ApiModelProperty
+  @EditableInUseProvider(name = "Azure Subscription ID", allowed = false)
   public String azuSubscriptionId;
 
   @JsonAlias("AZURE_NETWORK_SUBSCRIPTION_ID")
   @ApiModelProperty
+  @EditableInUseProvider(name = "Azure Network Subscription ID", allowed = false)
   public String azuNetworkSubscriptionId;
 
   @JsonAlias("AZURE_RG")
+  @EditableInUseProvider(name = "Azure Resource Group", allowed = false)
   @ApiModelProperty
   public String azuRG;
 
   @JsonAlias("AZURE_NETWORK_RG")
   @ApiModelProperty
+  @EditableInUseProvider(name = "Azure Network Resource Group", allowed = false)
   public String azuNetworkRG;
 
   @JsonAlias("HOSTED_ZONE_ID")
   @ApiModelProperty
+  @EditableInUseProvider(name = "Azure Hosted Zone ID", allowed = false)
   @ApiParam(value = "Private DNS Zone")
   public String azuHostedZoneId;
 

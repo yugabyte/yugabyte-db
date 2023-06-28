@@ -46,7 +46,8 @@ public interface CloudInfoInterface {
 
   public static enum VPCType {
     EXISTING,
-    NEW
+    NEW,
+    HOSTVPC // in case we want to use the same VPC as that of the host.
   }
 
   public static <T extends CloudInfoInterface> T get(Provider provider) {

@@ -25,7 +25,7 @@
         },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
-          "enum" : [ "EXISTING", "NEW" ],
+          "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
           "readOnly" : true,
           "type" : "string"
         }
@@ -1433,62 +1433,12 @@
       "required" : [ "name" ],
       "type" : "object"
     },
-    "AvailabilityZoneData" : {
-      "description" : "Details of an availability zone, used by the API and UI to validate data against input constraints",
-      "properties" : {
-        "code" : {
-          "description" : "AZ code",
-          "type" : "string"
-        },
-        "name" : {
-          "description" : "AZ name",
-          "type" : "string"
-        },
-        "secondarySubnet" : {
-          "description" : "AZ secondary subnet",
-          "type" : "string"
-        },
-        "subnet" : {
-          "description" : "AZ subnet",
-          "type" : "string"
-        }
-      },
-      "required" : [ "code", "name" ],
-      "type" : "object"
-    },
     "AvailabilityZoneDetails" : {
       "properties" : {
         "cloudInfo" : {
           "$ref" : "#/definitions/AZCloudInfo"
         }
       },
-      "type" : "object"
-    },
-    "AvailabilityZoneEditData" : {
-      "description" : "Model used to edit an availability zone",
-      "properties" : {
-        "secondarySubnet" : {
-          "description" : "AZ secondary subnet",
-          "type" : "string"
-        },
-        "subnet" : {
-          "description" : "AZ subnet",
-          "type" : "string"
-        }
-      },
-      "type" : "object"
-    },
-    "AvailabilityZoneFormData" : {
-      "properties" : {
-        "availabilityZones" : {
-          "description" : "List of availability zones",
-          "items" : {
-            "$ref" : "#/definitions/AvailabilityZoneData"
-          },
-          "type" : "array"
-        }
-      },
-      "required" : [ "availabilityZones" ],
       "type" : "object"
     },
     "AzureCloudInfo" : {
@@ -1519,7 +1469,7 @@
         },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
-          "enum" : [ "EXISTING", "NEW" ],
+          "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
           "readOnly" : true,
           "type" : "string"
         }
@@ -4444,7 +4394,7 @@
         },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
-          "enum" : [ "EXISTING", "NEW" ],
+          "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -5116,6 +5066,7 @@
     "KubernetesInfo" : {
       "properties" : {
         "kubeConfig" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "kubeConfigContent" : {
@@ -5134,6 +5085,7 @@
           "type" : "string"
         },
         "kubernetesPullSecret" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "kubernetesPullSecretContent" : {
@@ -5398,6 +5350,7 @@
           "type" : "string"
         },
         "kubeConfig" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "kubeConfigContent" : {
@@ -5425,6 +5378,7 @@
           "type" : "string"
         },
         "kubernetesPullSecret" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "kubernetesPullSecretContent" : {
@@ -7807,59 +7761,6 @@
       },
       "type" : "object"
     },
-    "RegionEditFormData" : {
-      "properties" : {
-        "securityGroupId" : {
-          "type" : "string"
-        },
-        "vnetName" : {
-          "type" : "string"
-        },
-        "ybImage" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "securityGroupId", "vnetName", "ybImage" ],
-      "type" : "object"
-    },
-    "RegionFormData" : {
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "destVpcId" : {
-          "type" : "string"
-        },
-        "hostVpcId" : {
-          "type" : "string"
-        },
-        "hostVpcRegion" : {
-          "type" : "string"
-        },
-        "latitude" : {
-          "format" : "double",
-          "type" : "number"
-        },
-        "longitude" : {
-          "format" : "double",
-          "type" : "number"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "securityGroupId" : {
-          "type" : "string"
-        },
-        "vnetName" : {
-          "type" : "string"
-        },
-        "ybImage" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "securityGroupId", "vnetName", "ybImage" ],
-      "type" : "object"
-    },
     "RegionLocations" : {
       "properties" : {
         "HOST_BASE" : {
@@ -7873,6 +7774,41 @@
         }
       },
       "required" : [ "HOST_BASE", "LOCATION", "REGION" ],
+      "type" : "object"
+    },
+    "RegionMetadata" : {
+      "properties" : {
+        "regionMetadata" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/RegionMetadataInfo"
+          },
+          "type" : "object"
+        }
+      },
+      "required" : [ "regionMetadata" ],
+      "type" : "object"
+    },
+    "RegionMetadataInfo" : {
+      "properties" : {
+        "availabilityZones" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "latitude" : {
+          "format" : "double",
+          "type" : "number"
+        },
+        "longitude" : {
+          "format" : "double",
+          "type" : "number"
+        },
+        "name" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "availabilityZones", "latitude", "longitude", "name" ],
       "type" : "object"
     },
     "ReleaseFormData" : {
@@ -16574,6 +16510,43 @@
         "tags" : [ "Cloud providers" ]
       }
     },
+    "/api/v1/customers/{cUUID}/providers/region_metadata/{code}" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getRegionMetadata",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "code",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "subType",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RegionMetadata"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Retrieves the region metadata for the cloud providers",
+        "tags" : [ "Cloud providers" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/providers/{pUUID}" : {
       "delete" : {
         "description" : "",
@@ -17637,7 +17610,7 @@
           "name" : "region",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/RegionFormData"
+            "$ref" : "#/definitions/Region"
           }
         } ],
         "responses" : {
@@ -17727,7 +17700,7 @@
           "name" : "region",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/RegionEditFormData"
+            "$ref" : "#/definitions/Region"
           }
         } ],
         "responses" : {
@@ -17816,7 +17789,7 @@
           "name" : "azFormData",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/AvailabilityZoneFormData"
+            "$ref" : "#/definitions/AvailabilityZone"
           }
         } ],
         "responses" : {
@@ -17921,7 +17894,7 @@
           "name" : "azFormData",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/AvailabilityZoneEditData"
+            "$ref" : "#/definitions/AvailabilityZone"
           }
         } ],
         "responses" : {

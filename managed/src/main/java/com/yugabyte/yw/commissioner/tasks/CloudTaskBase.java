@@ -16,9 +16,12 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeySetup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudRegionSetup;
+import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
 import java.util.Map;
 import javax.inject.Inject;
@@ -97,6 +100,17 @@ public abstract class CloudTaskBase extends AbstractTaskBase {
     params.providerUUID = taskParams().providerUUID;
     CloudInitializer task = createTask(CloudInitializer.class);
     task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public TaskExecutor.SubTaskGroup createImageBundleTask(Provider provider, ImageBundle bundle) {
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("Create image bundle task");
+    CloudImageBundleSetup.Params taskParams =
+        ImageBundleHandler.getCloudImageBundleParams(provider, bundle);
+    CloudImageBundleSetup task = createTask(CloudImageBundleSetup.class);
+    task.initialize(taskParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

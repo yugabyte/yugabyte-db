@@ -684,6 +684,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "installation",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowUsedProviderEdit =
+      new ConfKeyInfo<>(
+          "yb.provider.allow_used_provider_edit",
+          ScopeType.GLOBAL,
+          "Allow editing of used providers",
+          "Provider associated with universes can be edited",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> fixDatabaseFullPaths =
       new ConfKeyInfo<>(
           "yb.fixPaths",
@@ -708,5 +716,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node Agent Server Port",
           "Listening port for node agent servers",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> useLegacyPayloadForRegionAndAZs =
+      new ConfKeyInfo<>(
+          "yb.provider.use_legacy_payload_region_zones",
+          ScopeType.GLOBAL,
+          "If required to use v1 api payload for region & az's",
+          "When enabled YBA will expect v1 API payload for region & az's",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

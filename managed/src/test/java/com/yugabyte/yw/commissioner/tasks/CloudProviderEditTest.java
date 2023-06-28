@@ -31,6 +31,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -38,6 +39,8 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.AvailabilityZoneDetails;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
@@ -55,6 +58,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -138,6 +142,14 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
                 "us-west-1", regionMetadata,
                 "us-west-2", regionMetadata,
                 "us-east-1", regionMetadata));
+
+    when(mockConfigHelper.getConfig(ConfigHelper.ConfigType.GKEKubernetesRegionMetadata))
+        .thenReturn(
+            ImmutableMap.of(
+                // GCP regions to use.
+                "us-west1", regionMetadata,
+                "us-west2", regionMetadata,
+                "us-east1", regionMetadata));
     String kubeFile = createTempFile("test2.conf", "test5678");
     when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
         .thenReturn(kubeFile);
@@ -547,7 +559,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     ObjectNode region = Json.newObject();
     region.put("name", "Region 2");
-    region.put("code", "region-2");
+    region.put("code", "us-west2");
 
     ArrayNode zones = Json.newArray();
     ObjectNode zone = Json.newObject();
@@ -568,7 +580,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     p = Provider.getOrBadRequest(p.getUuid());
 
     assertEquals(2, p.getRegions().size());
-    assertEquals("region-2", p.getRegions().get(1).getCode());
+    assertEquals("us-west2", p.getRegions().get(1).getCode());
     assertEquals("zone-2", p.getRegions().get(1).getZones().get(0).getCode());
   }
 
@@ -682,6 +694,36 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertBadRequest(result, "Provider with name aws-2 already exists.");
   }
 
+  @Test
+  public void testImageBundleEditProvider() throws InterruptedException {
+    Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.gcp);
+    Region.create(p, "us-west-1", "us-west-1", "yb-image1");
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setGlobalYbImage("yb_image");
+    ImageBundle.create(p, "ib-1", details, true);
+
+    Result providerRes = getProvider(p.getUuid());
+    JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+    ImageBundle ib = new ImageBundle();
+    ib.setName("ib-2");
+    ib.setProvider(p);
+    ib.setDetails(details);
+
+    List<ImageBundle> ibs = p.getImageBundles();
+    ibs.add(ib);
+    p.setImageBundles(ibs);
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    assertEquals(2, p.getImageBundles().size());
+  }
+
   private Provider createK8sProvider() {
     return createK8sProvider(true);
   }
@@ -703,7 +745,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     ArrayNode regions = mapper.createArrayNode();
     ObjectNode regionJson = Json.newObject();
-    regionJson.put("code", "US-West");
+    regionJson.put("code", "us-west1");
     regionJson.put("name", "US West");
     ArrayNode azs = mapper.createArrayNode();
     ObjectNode azJson = Json.newObject();
