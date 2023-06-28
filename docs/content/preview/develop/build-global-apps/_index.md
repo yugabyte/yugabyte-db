@@ -42,7 +42,7 @@ We can classify these patterns based on how multiple instances of the applicatio
 1. **Partitioned Multi-Active** - Multiple applications run in multiple regions and operate on just the local data.
 1. **Follow the workload** - Applications run closer to the leaders.
 1. **Geo-local dataset** - Applications read from geographically placed local data.
-1. **Data Access** - Applications just read from local replicas or do strongly consistent reads.
+1. **Data Access** - Applications either read from leaders for consistent reads or from local replicas for stale reads.
 
 Let's look at some of these application design patterns.
 <!--
@@ -55,40 +55,41 @@ Let's look at some of these application design patterns.
 
 Let's look at a quick overview of each of these patterns.
 -->
+
 {{<table>}}
 
-| Pattern | Category | Description |
+| Pattern Name | Pattern Type | Description |
 | ------- | -------- | ----------- |
-| [Global database](./global-database) | **Single/Multi Active**, _Follow the Workload_ |
+| [Global database](./global-database) | _Single Active_,<br>_Multi-Active_,<br>_Follow the Workload_ |
 {{<header Level="6">}} Single cluster spread across multiple regions {{</header>}}
 A cluster with replicas spread across multiple regions/zones. On failure, a replica in another region/zone will be promoted to leader in seconds, without any loss of data.|
 
-|[Active&#8209;Active Multi&#8209;Master](./active-active-multi-master)| **Multi Active**, _Geo-Local Data_ |
+|[Active&#8209;Active Multi&#8209;Master](./active-active-multi-master)| _Multi-Active_,<br>_Geo-Local Data_ |
 {{<header Level="6">}} Two clusters serving data together {{</header>}}
 Set up two separate clusters which would both handle reads and writes. Data is replicated asynchronously between the clusters|
 
-|[Active&#8209;Active Single&#8209;Master](./active-active-single-master)| **Single Active**, Follow the Workload |
+|[Active&#8209;Active Single&#8209;Master](./active-active-single-master)| _Single Active_,<br>_Follow the Workload_ |
 {{<header Level="6">}} Standby cluster {{</header>}}
 Set up a second cluster that gets populated asynchronously and can start serving data in case the primary fails. Can also be used for [blue/green](https://en.wikipedia.org/wiki/Blue-green_deployment) deployment testing|
 
-|[Duplicate indexes](./duplicate-indexes)| **Multi Active**, _Follow the Workload_ |
+|[Duplicate indexes](./duplicate-indexes)| _Multi-Active_,<br>_Follow the Workload_ |
 {{<header Level="6">}} Consistent data everywhere {{</header>}}
 Set up covering indexes with schema the same as the table in multiple regions to read immediately consistent data locally|
 
-|[Locality&#8209;optimized geo&#8209;partitioning](./locality-optimized-geo-partition)| **Multi Active**, _Geo-Local Data_ |
+|[Locality&#8209;optimized geo&#8209;partitioning](./locality-optimized-geo-partition)| _Partitioned Multi-Active_,<br>_Geo-Local Data_ |
 {{<header Level="6">}} Local law compliance {{</header>}}
 Partition your data and place them in a manner that the rows belonging to different users will be located in their respective countries|
 
-|[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition)| **Single Active**, Follow the Workload |
+|[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition)| _Partitioned Multi-Active_,<br>_Follow the Workload_ |
 {{<header Level="6">}} Fast local access {{</header>}}
 Partition your data and place them in a manner that the data belonging to nearby users can be accessed faster|
 
-|[Follower Reads](./follower-reads) | **Single Active**, Follow the Workload |
+|[Follower Reads](./follower-reads) | _Data Access_,<br>_Follow the Workload_ |
 {{<header Level="6">}} Fast, stale reads {{</header>}}
 Read from local followers instead of going to the leaders in a different region|
 
-|[Read Replicas](./read-replicas) | **Single Active**, Follow the Workload |
-{{<header Level="6">}} Fast, stale reads {{</header>}}
+|[Read Replicas](./read-replicas) | _Data Access_,<br>_Follow the Workload_ |
+{{<header Level="6">}} Fast reads from a read-only cluster{{</header>}}
 Set up a separate cluster of just followers to perform local reads instead of going to the leaders in a different region|
 
 {{</table>}}
