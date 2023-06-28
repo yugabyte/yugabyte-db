@@ -177,17 +177,17 @@ public class TaskExecutor {
 
   // This writes the waiting time metric.
   private static void writeTaskWaitMetric(
-      TaskType taskType, Instant scheduledTime, Instant startTime) {
+      TaskType taskType, Instant scheduledTime, Instant startTime, TaskType parentTaskType) {
     COMMISSIONER_TASK_WAITING_SEC
-        .labels(taskType.name(), parenTaskType == null ? " " : parenTaskType.name())
+        .labels(taskType.name(), parentTaskType == null ? " " : parentTaskType.name())
         .observe(getDurationSeconds(scheduledTime, startTime));
   }
 
   // This writes the execution time metric.
   private static void writeTaskStateMetric(
-      TaskType taskType, Instant startTime, Instant endTime, State state) {
+      TaskType taskType, Instant startTime, Instant endTime, State state, TaskType parentTaskType) {
     COMMISSIONER_TASK_EXECUTION_SEC
-        .labels(taskType.name(), state.name(), parenTaskType == null ? " " : parenTaskType.name())
+        .labels(taskType.name(), state.name(), parentTaskType == null ? " " : parentTaskType.name())
         .observe(getDurationSeconds(startTime, endTime));
   }
 
