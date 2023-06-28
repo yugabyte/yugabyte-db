@@ -252,7 +252,9 @@ public class BackupGarbageCollector {
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Delete,
-        target);
+        target,
+        null,
+        "Expired Backup Deletion");
   }
 
   public synchronized void deleteBackup(UUID customerUUID, UUID backupUUID) {
