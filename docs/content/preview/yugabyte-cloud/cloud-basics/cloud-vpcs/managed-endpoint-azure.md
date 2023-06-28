@@ -132,6 +132,10 @@ To create a private endpoint to connect to your cluster PSE, do the following:
 
 #### Create a private DNS zone
 
+To be able to connect to your cluster using DNS (rather than the bare IP address), you must create a private DNS zone in the same resource group, link the private DNS zone to the VNet containing the private endpoint, and add an A record pointing to the private IP address of the private endpoint.
+
+To create a private DNS zone:
+
 1. In the [Azure Portal](https://portal.azure.com/), under the **Azure services** heading, select **Private DNS zones**.
 
 1. On the **Private DNS zones** page, click **+ Create** to display the **Create Private DNS zone** wizard.
@@ -188,15 +192,15 @@ You can now use the address `<host-prefix>.azure.ybdb.io` in your application fo
 
 ### Use Azure CLI
 
-You can create the Azure endpoint using the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/).
+#### Create a private endpoint
 
-To create the private endpoint and connect it to your YBM PSE (called a private link service in Azure), enter the following command:
+To create the private endpoint and connect it to your YBM PSE (called a private link service in Azure) using the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/), enter the following command:
 
 ```sh
 az network private-endpoint create \
     --connection-name <private_link_service_connection_name> \
     --name <private_endpoint_name> \
-    --private-connection-resource-id <pse_resource_id> \
+    --private-connection-resource-id <service_name> \
     --resource-group <resource_group_name> \
     --subnet <subnet_name> \
     --vnet-name <private_endpoint_vnet_name> \
@@ -207,13 +211,15 @@ Replace values as follows:
 
 - `private_link_service_connection_name` - provide a name for the private link connection from the private endpoint to the private link service.
 - `private_endpoint_name` - provide a name for the private endpoint.
-- `pse_resource_id` - a property of your YBM PSE; you can find this on the cluster **Settings** tab under **Network Access**.
+- `service_name` - the Service Name of the PSE, which you noted down when creating the PSE.
 - `resource_group_name` - the resource group in which the private endpoint will be created.
 - `subnet_name` - the name of the subnet in the resource group in which the private endpoint will be created.
 - `private_endpoint_vnet_name` - the name of the VNet where the private endpoint will be created.
 - `private_endpoint_region_name` - the Azure region in which the private endpoint and VNet are present.
 
-To be able to connect to your cluster using DNS (rather than the IP address), create a private DNS zone in the same resource group, link it to the VNet containing the private endpoint, and add an A record pointing to the private IP address of the private endpoint.
+#### Map the private endpoint DNS
+
+To be able to connect to your cluster using DNS (rather than the bare IP address), create a private DNS zone in the same resource group, link the private DNS zone to the VNet containing the private endpoint, and add an A record pointing to the private IP address of the private endpoint.
 
 1. To create a private DNS zone, enter the following command:
 
