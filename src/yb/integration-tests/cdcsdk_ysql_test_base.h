@@ -281,12 +281,6 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<GetChangesResponsePB> UpdateSnapshotDone(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const GetChangesResponsePB* change_resp,
-      const TableId table_id = "");
-
-  Result<GetChangesResponsePB> UpdateSnapshotDone(
-      const CDCStreamId& stream_id,
-      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const TableId table_id = "");
 
   Result<GetChangesResponsePB> UpdateCheckpoint(
