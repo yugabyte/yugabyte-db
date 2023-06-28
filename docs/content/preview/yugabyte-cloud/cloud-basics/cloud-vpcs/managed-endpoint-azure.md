@@ -33,7 +33,9 @@ type: docs
 To use Azure Private Link, you need the following:
 
 - An Azure user account with an active subscription.
-- The subscription ID of the service to which to grant access to the cluster endpoint. To find your subscription, follow the instructions in [Find your Azure subscription](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id#find-your-azure-subscription).
+- The subscription ID of the service to which to grant access to the cluster endpoint.
+
+    To find your subscription, follow the instructions in [Find your Azure subscription](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id#find-your-azure-subscription).
 
 Make sure that default security group in your application Azure Virtual Network (VNet) allows internal connectivity. Otherwise, your application may not be able to reach the endpoint.
 
@@ -75,7 +77,10 @@ To create a PSE, do the following:
     ybm cluster network endpoint describe --cluster-name <yugabytedb_cluster> --endpoint-id <endpoint_id>
     ```
 
-    Note the **Service Name** of the PSE. The Service Name is also referred to as an alias in Azure. You will use this service name when creating the private endpoint in Azure.
+Note the following values:
+
+- **Host** - The host name of the PSE. You will use this to connect to your cluster. The host name of a PSE for Azure always ends in `azure.ybdb.io`.
+- **Service Name** - The Service Name is also referred to as an alias in Azure. You will use this service name when creating the private endpoint in Azure.
 
 ## Create a private endpoint in Azure
 
@@ -93,7 +98,7 @@ To create a private endpoint to connect to your cluster PSE, do the following:
 
     ![Azure Create private endpoint](/images/yb-cloud/managed-endpoint-azure-1.png)
 
-1. Provide the following details:
+1. On the **Basics** page, provide the following details:
 
     - Select your subscription.
     - Select the resource group in which the private endpoint will be created.
@@ -107,9 +112,9 @@ To create a private endpoint to connect to your cluster PSE, do the following:
 
     - In the **Resource ID or alias** field, enter the service name of the PSE you created for your cluster.
 
-1. Click **Next: Virtual Network**.
+1. Click **Next: Virtual Network** and set the following values:
 
-1. Select the Azure virtual network and subnet where your application resides.
+    - Select the Azure virtual network and subnet where your application resides.
 
 1. Click **Next: DNS**, **Next: Tags**, and **Next Review + create >**.
 
@@ -137,7 +142,7 @@ To create a private endpoint to connect to your cluster PSE, do the following:
 
     - Select your subscription.
     - Select the resource group in which the private endpoint was created.
-    - Under Instance details, for the name enter `azure.ybdb.io`.
+    - Under **Instance details**, for the name enter `azure.ybdb.io`.
 
 1. Click **Next: Tags**, and **Next Review create >**.
 
@@ -169,13 +174,13 @@ The link is listed in the Virtual network links list.
 
 1. Select **Overview** and click **+ Record set**.
 
-1. Under **Add record set**, set the Name to the prefix of the host name of the PSE you added to your cluster. This consists of the text before .azure.ybdb.io.
-
     ![Azure Add A record](/images/yb-cloud/managed-endpoint-azure-5.png)
 
-1. Set the Type to A - Address record (this is the default).
+1. Under **Add record set**, set the following values:
 
-1. Set **IP address** to the private IP address of your Azure private endpoint.
+    - Set the **Name** field to the prefix of the host name of the PSE you added to your cluster. This consists of the text before .azure.ybdb.io.
+    - Set the Type to A - Address record (this is the default).
+    - Set **IP address** to the private IP address of your Azure private endpoint.
 
 1. Click **OK**.
 
