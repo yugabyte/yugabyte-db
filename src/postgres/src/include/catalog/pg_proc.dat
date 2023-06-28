@@ -10459,4 +10459,10 @@
   prorettype => 'cstring', proargtypes => '',
   prosrc => 'yb_get_effective_transaction_isolation_level' },
 
+{ oid => '8063',
+  descr => 'Cancel/abort the transaction with specified transaction id',
+  proname => 'yb_cancel_transaction', provolatile => 'v', prorettype => 'bool',
+  proargtypes => 'uuid', proargnames => '{txid}',
+  prosrc => 'yb_cancel_transaction' },
+
 ]

@@ -178,6 +178,8 @@ class PgClient {
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DECLARE, ~, YB_PG_CLIENT_SIMPLE_METHODS);
 
+  Status CancelTransaction(const unsigned char* transaction_id);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

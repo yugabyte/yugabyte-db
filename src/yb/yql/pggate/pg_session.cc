@@ -440,6 +440,10 @@ Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
   return Status::OK();
 }
 
+Status PgSession::CancelTransaction(const unsigned char* transaction_id) {
+  return pg_client_.CancelTransaction(transaction_id);
+}
+
 Status PgSession::CreateSequencesDataTable() {
   return pg_client_.CreateSequencesDataTable();
 }
