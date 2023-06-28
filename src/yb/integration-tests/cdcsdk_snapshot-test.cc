@@ -861,7 +861,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckpointUpdatedDuringSnapsh
 
   // Call GetChanges after snapshot done. We should no loner see snapshot key and snasphot save_time
   // in cdc_state table.
-  change_resp_updated = ASSERT_RESULT(UpdateSnapshotDone(stream_id, tablets, &change_resp));
+  change_resp_updated = ASSERT_RESULT(UpdateSnapshotDone(stream_id, tablets));
 
   // We should no longer be able to get the snapshot key and safe_time from 'cdc_state' table.
   ASSERT_NOK(
@@ -1074,7 +1074,7 @@ TEST_F(
       break;
     }
   }
-  ASSERT_RESULT(UpdateSnapshotDone(stream_id, tablets, &change_resp, req_table_id));
+  ASSERT_RESULT(UpdateSnapshotDone(stream_id, tablets, req_table_id));
   LOG(INFO) << "Streamed snapshot records for table: test1";
 
   for (int i = snapshot_recrods_per_table; i < 2 * snapshot_recrods_per_table; ++i) {
