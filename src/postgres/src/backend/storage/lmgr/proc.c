@@ -332,11 +332,21 @@ InitProcess(void)
 
 	if (MyProc != NULL)
 	{
+		PGPROC *iterator = (PGPROC *) *procgloballist;
+		int procgloballist_size = 0;
+		while (iterator) {
+			iterator = (PGPROC *) iterator->links.next;
+			procgloballist_size++;
+		}
+		YBC_LOG_INFO("ProcGlobal->freeProcs has %d free procs.", procgloballist_size);
+
 		*procgloballist = (PGPROC *) MyProc->links.next;
 		SpinLockRelease(ProcStructLock);
 	}
 	else
 	{
+		YBC_LOG_INFO("ProcGlobal->freeProcs has no free procs.");
+
 		/*
 		 * If we reach here, all the PGPROCs are in use.  This is one of the
 		 * possible places to detect "too many backends", so give the standard
@@ -681,7 +691,6 @@ HaveNFreeProcs(int n)
 
 	SpinLockRelease(ProcStructLock);
 
-	
 	YBC_LOG_INFO("Have n free procs: %d", (count));
 
 	return (n <= 0);

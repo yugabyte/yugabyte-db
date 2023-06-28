@@ -282,6 +282,8 @@ ProcArrayAdd(PGPROC *proc)
 
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
+	YBC_LOG_INFO("Attempting to add proc to procArray. It is currently filled %d / %d", arrayP->numProcs, arrayP->maxProcs);
+
 	if (arrayP->numProcs >= arrayP->maxProcs)
 	{
 		/*
@@ -313,6 +315,8 @@ ProcArrayAdd(PGPROC *proc)
 		if ((arrayP->pgprocnos[index] == -1) || (arrayP->pgprocnos[index] > proc->pgprocno))
 			break;
 	}
+
+	YBC_LOG_INFO("Inserting into procArray at position %d", index);
 
 	memmove(&arrayP->pgprocnos[index + 1], &arrayP->pgprocnos[index],
 			(arrayP->numProcs - index) * sizeof(int));
