@@ -33,15 +33,13 @@ type: docs
 To use Azure Private Link, you need the following:
 
 - An Azure user account with an active subscription.
-- The [subscription ID](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id#find-your-azure-subscription) of the service to which to grant access to the cluster endpoint.
+- The subscription ID of the service to which to grant access to the cluster endpoint. To find your subscription, follow the instructions in [Find your Azure subscription](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id#find-your-azure-subscription).
 
 Make sure that default security group in your application Azure Virtual Network (VNet) allows internal connectivity. Otherwise, your application may not be able to reach the endpoint.
 
-## Create a PSE for Azure Private Link using ybm CLI
+To use Private Link to connect your cluster to an Azure VNet that hosts your application, first create a private service endpoint (PSE) on your cluster, then create an endpoint in Azure.
 
-To use Private Link to connect your cluster to an VNet that hosts your application, first create a PSE on your cluster, then create an endpoint in Azure.
-
-### Create a PSE in YugabyteDB Managed
+## Create a PSE in YugabyteDB Managed
 
 To create a PSE, do the following:
 
@@ -59,11 +57,11 @@ To create a PSE, do the following:
 
     - `yugabytedb_cluster` - name of your cluster.
     - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed (for example, `us-west-2`), and preferably match the region where your application is deployed.
-    - `subscription_ids` - comma-separated list of the subscription IDs of Azure subscriptions that you want to grant access.
+    - `subscription_ids` - comma-separated list of the subscription IDs of Azure subscriptions to which you want to grant access.
 
 1. Note the endpoint ID in the response.
 
-    You can also display the endpoint ID by entering the following command:
+    You can also display the PSE endpoint ID by entering the following command:
 
     ```sh
     ybm cluster network endpoint list --cluster-name <yugabytedb_cluster>
@@ -77,19 +75,113 @@ To create a PSE, do the following:
     ybm cluster network endpoint describe --cluster-name <yugabytedb_cluster> --endpoint-id <endpoint_id>
     ```
 
-    Note the service name of the endpoint you want to link to your client application VNet in Azure.
+    Note the **Service Name** of the PSE. The Service Name is also referred to as an alias in Azure. You will use this service name when creating the private endpoint in Azure.
 
-### Create the private endpoint in Azure
+## Create a private endpoint in Azure
 
 You can create the private endpoint using the [Azure Portal](https://portal.azure.com/) or from the command line using the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/).
 
-#### Use the Azure Portal
+### Use the Azure Portal
+
+#### Create the private endpoint
 
 To create a private endpoint to connect to your cluster PSE, do the following:
 
-1. Open the [Azure Portal](https://portal.azure.com/).
+1. In the [Azure Portal](https://portal.azure.com/), under the **Azure services** heading, select **Private endpoints**. If you don't see Private endpoints, use the search box to find it.
 
-#### Use Azure CLI
+1. On the **Private endpoints** page, click **+ Create** to display the **Create a private endpoint** wizard.
+
+    ![Azure Create private endpoint](/images/yb-cloud/managed-endpoint-azure-1.png)
+
+1. Provide the following details:
+
+    - Select your subscription.
+    - Select the resource group in which the private endpoint will be created.
+    - Enter a name for the endpoint.
+    - Enter a network interface name for the endpoint.
+    - Select the region for the endpoint. This should be the same region where your application resides.
+
+1. Click **Next: Resource** and set the following values:
+
+    - Set **Connection method** to **Connect to an Azure resource by resource ID or alias**.
+
+    - In the **Resource ID or alias** field, enter the service name of the PSE you created for your cluster.
+
+1. Click **Next: Virtual Network**.
+
+1. Select the Azure virtual network and subnet where your application resides.
+
+1. Click **Next: DNS**, **Next: Tags**, and **Next Review + create >**.
+
+    You don't need to provide any values on the **DNS** and **Tags** pages.
+
+1. Review the details and click **Create** to create the private endpoint.
+
+    The endpoint will take a minute or two to deploy. When complete, the Connection State will be _Approved_.
+
+1. To verify the status of the endpoint, navigate to **Private endpoints** under the **Azure services** heading.
+
+    ![Azure private endpoint](/images/yb-cloud/managed-endpoint-azure-2.png)
+
+1. Note the private IP address of the endpoint for use in the following steps.
+
+#### Create a private DNS zone
+
+1. In the [Azure Portal](https://portal.azure.com/), under the **Azure services** heading, select **Private DNS zones**.
+
+1. On the **Private DNS zones** page, click **+ Create** to display the **Create Private DNS zone** wizard.
+
+    ![Azure Create private DNS zone](/images/yb-cloud/managed-endpoint-azure-3.png)
+
+1. Provide the following details:
+
+    - Select your subscription.
+    - Select the resource group in which the private endpoint was created.
+    - Under Instance details, for the name enter `azure.ybdb.io`.
+
+1. Click **Next: Tags**, and **Next Review create >**.
+
+1. Review the details and click **Create** to create the private DNS zone.
+
+    The DNS zone will take a minute or two to deploy.
+
+1. To view the private DNS zone, navigate to **Private DNS zones** under the **Azure services** heading.
+
+#### Configure a VNet link in the private DNS zone
+
+1. Navigate to **Private DNS zones** under the **Azure services** heading and select the azure.ybdb.io private DNS zone you created.
+
+1. Under **Settings**, select **Virtual network links** and click **+ Add**.
+
+    ![Azure Create Virtual network links](/images/yb-cloud/managed-endpoint-azure-4.png)
+
+1. Enter a link name.
+
+1. Select the virtual network where you created the private endpoint.
+
+1. Click **OK**.
+
+The link is listed in the Virtual network links list.
+
+#### Configure a private DNS name
+
+1. Navigate to **Private DNS zones** under the **Azure services** heading and select the azure.ybdb.io private DNS zone you created.
+
+1. Select **Overview** and click **+ Record set**.
+
+1. Under **Add record set**, set the Name to the prefix of the host name of the PSE you added to your cluster. This consists of the text before .azure.ybdb.io.
+
+    ![Azure Add A record](/images/yb-cloud/managed-endpoint-azure-5.png)
+
+1. Set the Type to A - Address record (this is the default).
+
+1. Set **IP address** to the private IP address of your Azure private endpoint.
+
+1. Click **OK**.
+
+You can now use the address `<host-prefix>.azure.ybdb.io` in your application for connecting to your cluster.
+
+### Use Azure CLI
 
 You can create the Azure endpoint using the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/).
 
@@ -139,7 +231,7 @@ To ensure no change to your application settings and connect using sslmode=verif
         --registration-enabled true
         --resource-group <resource_group_name>
         --virtual-network <private_endpoint_vnet_name>
-        --zone-name <cluster_id>.azure.ybdb.io
+        --zone-name azure.ybdb.io
         --tags yugabyte
     ```
 
