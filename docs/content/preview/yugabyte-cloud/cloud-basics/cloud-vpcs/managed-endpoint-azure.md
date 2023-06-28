@@ -201,7 +201,7 @@ The link is listed in the Virtual network links list.
 
 1. Click **OK**.
 
-You can now use the address `<host-prefix>.azure.ybdb.io` in your application for connecting to your cluster.
+You can now connect to your cluster from your application in Azure using your cluster host address (for example, `pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a.azure.ybdb.io`).
 
 ### Use Azure CLI
 
