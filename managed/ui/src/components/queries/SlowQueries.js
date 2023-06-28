@@ -27,7 +27,7 @@ const dropdownColKeys = {
     type: 'string'
   },
   User: {
-    value: 'rolname',
+    value: 'userid',
     type: 'string'
   },
   Count: {

@@ -351,13 +351,13 @@
             "P90": "P90 Latency",
             "P95": "P95 Latency",
             "P99": "P99 Latency",
-            "rolname": "User",
             "rows": "Rows",
             "stddev_time": "Stdev Exec Time",
-            "total_time": "Total Time"
+            "total_time": "Total Time",
+            "userid": "User"
           },
           "slowQueryGraph": {
-            "title": "Query count by Response Time"
+            "title": "Query count by Response Time (ms)"
           }
         },
         "typeTag": {
@@ -520,7 +520,7 @@
           "created": "Created",
           "validFrom": "Valid From",
           "validUntil": "Valid Until",
-          "moreActions":{
+          "moreActions": {
             "download": "Download",
             "updateCert": "Update Certificate"
           }
@@ -537,7 +537,7 @@
       "deleteCACertModal": {
         "title": "Delete CA Certificate",
         "info": "TLS connections using this CA Certificate will fail. Are you sure you want to delete your CA Certificate? ",
-        "successMsg" : "Certificate deleted successfully"
+        "successMsg": "Certificate deleted successfully"
       }
     }
   }
