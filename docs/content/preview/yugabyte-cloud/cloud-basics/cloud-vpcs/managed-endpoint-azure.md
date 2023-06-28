@@ -52,14 +52,14 @@ To create a PSE, do the following:
       --cluster-name <yugabytedb_cluster> \
       --region <cluster_region> \
       --accessibility-type PRIVATE_SERVICE_ENDPOINT \
-      --security-principals <subscription_ids>
+      --security-principals <azure_subscription_ids>
     ```
 
     Replace values as follows:
 
     - `yugabytedb_cluster` - name of your cluster.
     - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed (for example, `us-west-2`), and preferably match the region where your application is deployed.
-    - `subscription_ids` - comma-separated list of the subscription IDs of Azure subscriptions to which you want to grant access.
+    - `azure_subscription_ids` - comma-separated list of the subscription IDs of Azure subscriptions to which you want to grant access.
 
 1. Note the endpoint ID in the response.
 
@@ -118,7 +118,7 @@ To create a private endpoint to connect to your cluster PSE, do the following:
 
 1. Click **Next: DNS**, **Next: Tags**, and **Next Review + create >**.
 
-    You don't need to provide any values on the **DNS** and **Tags** pages.
+    You don't need to provide any values on the **DNS** page; **Tags** are optional.
 
 1. Review the details and click **Create** to create the private endpoint.
 
@@ -128,7 +128,7 @@ To create a private endpoint to connect to your cluster PSE, do the following:
 
     ![Azure private endpoint](/images/yb-cloud/managed-endpoint-azure-2.png)
 
-1. Note the private IP address of the endpoint for use in the following steps.
+1. Note the **private IP address** of the endpoint for use in the following steps.
 
 #### Create a private DNS zone
 
@@ -182,9 +182,22 @@ The link is listed in the Virtual network links list.
 
 1. Under **Add record set**, set the following values:
 
-    - Set the **Name** field to the prefix of the host name of the PSE you added to your cluster. This consists of the text before .azure.ybdb.io.
-    - Set the Type to A - Address record (this is the default).
-    - Set **IP address** to the private IP address of your Azure private endpoint.
+    - **Name** - enter the _prefix of the host name_ of the PSE you added to your cluster. This consists of the text _before_ .azure.ybdb.io.
+
+        For example, for the host
+
+        ```sh
+        pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a.azure.ybdb.io
+        ```
+
+        you would enter only
+
+        ```sh
+        pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a
+        ```
+
+    - **Type** - select A - Address record (this is the default).
+    - **IP address** - enter the private IP address of your Azure private endpoint.
 
 1. Click **OK**.
 
