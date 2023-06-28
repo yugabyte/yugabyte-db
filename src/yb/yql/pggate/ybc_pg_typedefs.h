@@ -340,8 +340,6 @@ typedef struct PgCallbacks {
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
-  void (*UpdateAUHMetadata)(const char* top_level_request_id, const char* top_level_node_id,
-                            uint64_t request_id);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
