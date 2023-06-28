@@ -719,6 +719,14 @@ class PgClient::Impl {
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_IMPL, ~, YB_PG_CLIENT_SIMPLE_METHODS);
 
+  Status CancelTransaction(const unsigned char* transaction_id) {
+    tserver::PgCancelTransactionRequestPB req;
+    req.set_transaction_id(transaction_id, kUuidSize);
+    tserver::PgCancelTransactionResponsePB resp;
+    RETURN_NOT_OK(proxy_->CancelTransaction(req, &resp, PrepareController(CoarseTimePoint())));
+    return ResponseStatus(resp);
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -949,6 +957,10 @@ Status PgClient::method( \
 }
 
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DEFINE, ~, YB_PG_CLIENT_SIMPLE_METHODS);
+
+Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
+  return impl_->CancelTransaction(transaction_id);
+}
 
 }  // namespace pggate
 }  // namespace yb

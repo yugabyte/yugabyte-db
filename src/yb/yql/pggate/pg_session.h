@@ -150,6 +150,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Status GetCatalogMasterVersion(uint64_t *version);
 
+  Status CancelTransaction(const unsigned char* transaction_id);
+
   // API for sequences data operations.
   Status CreateSequencesDataTable();
 

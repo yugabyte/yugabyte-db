@@ -687,6 +687,8 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
                                  bool* is_object_part_of_xrepl);
 
+YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
