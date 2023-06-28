@@ -539,8 +539,9 @@ DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
 DEFINE_RUNTIME_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
     "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
 
-DEFINE_RUNTIME_bool(enable_delete_truncate_cdcsdk_table, false,
-    "When set, enables deleting/truncating tables currently part of a CDCSDK Stream");
+DEFINE_RUNTIME_bool(
+    enable_truncate_cdcsdk_table, false,
+    "When set, enables truncating tables currently part of a CDCSDK Stream");
 
 DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
     "When set, it enables automatic tablet splitting for tables that are part of an "
@@ -5527,7 +5528,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   }
   {
     SharedLock lock(mutex_);
-    if (!FLAGS_enable_delete_truncate_cdcsdk_table && IsTablePartOfCDCSDK(*table)) {
+    if (!FLAGS_enable_truncate_cdcsdk_table && IsTablePartOfCDCSDK(*table)) {
         return STATUS(
             NotSupported,
             "Cannot truncate a table in a CDCSDK Stream.",
