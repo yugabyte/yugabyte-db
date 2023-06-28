@@ -262,7 +262,9 @@ public class CreateBackup extends UniverseTaskBase {
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Create,
-        universe.getName());
+        universe.getName(),
+        null,
+        schedule.getScheduleName());
     log.info(
         "Saved task uuid {} in customer tasks table for universe {}:{}",
         taskUUID,
