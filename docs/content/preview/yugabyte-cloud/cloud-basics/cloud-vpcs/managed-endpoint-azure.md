@@ -213,20 +213,21 @@ Replace values as follows:
 - `private_endpoint_vnet_name` - the name of the VNet where the private endpoint will be created.
 - `private_endpoint_region_name` - the Azure region in which the private endpoint and VNet are present.
 
-To ensure no change to your application settings and connect using sslmode=verify-full, create a private DNS zone in the same resource group and VNet as the private endpoint, and add an A record pointing to the IP address of the private endpoint.
+To be able to connect to your cluster using DNS (rather than the IP address), create a private DNS zone in the same resource group, link it to the VNet containing the private endpoint, and add an A record pointing to the private IP address of the private endpoint.
 
 1. To create a private DNS zone, enter the following command:
 
     ```sh
     az network private-dns zone create \
-        --name <cluster_id>.azure.ybdb.io \
+        --name azure.ybdb.io \
         --resource-group <resource_group_name>
     ```
 
     Replace values as follows:
 
-    - `cluster_id` - the cluster ID of the cluster with the PSE; the cluster ID is displayed on the cluster **Settings** tab in YBM.
     - `resource_group_name` - the resource group in which the private endpoint was created.
+
+    All private DNS zones for endpoints that are used with YugabyteDB Managed are named `azure.ybdb.io`.
 
 1. To link the private DNS zone to the VNet containing the private endpoint, enter the following command:
 
@@ -245,7 +246,6 @@ To ensure no change to your application settings and connect using sslmode=verif
     - `private_dns_zone_name` - provide a name for the private DNS zone.
     - `resource_group_name` - the resource group in which the private endpoint was created.
     - `private_endpoint_vnet_name` - the name of VNet in which the private endpoint was created.
-    - `cluster_id` - the cluster ID of the cluster with the PSE; the cluster ID is displayed on the cluster **Settings** tab in YBM.
 
 1. To obtain the Network Interface (NIC) resource ID for the private endpoint, enter the following command:
 
@@ -279,7 +279,7 @@ To ensure no change to your application settings and connect using sslmode=verif
         --ipv4-address <private_endpoint_ipv4_address> \
         --record-set-name <record_set_name> \
         --resource-group <resource_group_name> \
-        --zone-name <private_dns_zone_name>
+        --zone-name azure.ybdb.io
     ```
 
     Replace values as follows:
@@ -287,4 +287,3 @@ To ensure no change to your application settings and connect using sslmode=verif
     - `private_endpoint_ipv4_address` - the IP address of the private endpoint.
     - `record_set_name` - provide a name for the record.
     - `resource_group_name` - the resource group in which the private endpoint was created.
-    - `private_dns_zone_name` - the name of the private DNS zone.
