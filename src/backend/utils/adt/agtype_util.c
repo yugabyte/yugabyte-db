@@ -197,20 +197,42 @@ uint32 get_agtype_length(const agtype_container *agtc, int index)
  */
 static int get_type_sort_priority(enum agtype_value_type type)
 {
-    if (type == AGTV_OBJECT)
+    if (type == AGTV_PATH)
+    {
         return 0;
-    if (type == AGTV_VERTEX)
+    }
+    if (type == AGTV_EDGE)
+    {
         return 1;
-    if (type == AGTV_ARRAY)
+    }
+    if (type == AGTV_VERTEX)
+    {
         return 2;
-    if (type == AGTV_STRING)
+    }
+    if (type == AGTV_OBJECT)
+    {
         return 3;
-    if (type == AGTV_BOOL)
+    }
+    if (type == AGTV_ARRAY)
+    {
         return 4;
-    if (type == AGTV_NUMERIC || type == AGTV_INTEGER || type == AGTV_FLOAT)
+    }
+    if (type == AGTV_STRING)
+    {
         return 5;
-    if (type == AGTV_NULL)
+    }
+    if (type == AGTV_BOOL)
+    {
         return 6;
+    }
+    if (type == AGTV_NUMERIC || type == AGTV_INTEGER || type == AGTV_FLOAT)
+    {
+        return 7;
+    }
+    if (type == AGTV_NULL)
+    {
+        return 8;
+    }
     return -1;
 }
 
@@ -356,6 +378,18 @@ int compare_agtype_containers_orderability(agtype_container *a,
                 break;
             }
 
+            /* Correction step because AGTV_ARRAY might be there just because of the container type */
+            /* Case 1: left side is assigned to an array, right is an object */
+            if(va.type == AGTV_ARRAY && vb.type == AGTV_OBJECT)
+            {
+                ra = agtype_iterator_next(&ita, &va, false);
+            }
+            /* Case 2: left side is an object, right side is assigned to an array */
+            else if(va.type == AGTV_OBJECT && vb.type == AGTV_ARRAY)
+            {
+                rb = agtype_iterator_next(&itb, &vb, false);
+            }
+            
             Assert(va.type != vb.type);
             Assert(va.type != AGTV_BINARY);
             Assert(vb.type != AGTV_BINARY);

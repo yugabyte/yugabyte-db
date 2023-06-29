@@ -403,7 +403,7 @@ SELECT agtype_in('{"bool":true, "null": null}') = agtype_in('{"null":null, "bool
 SELECT agtype_in('{"bool":true}') < agtype_in('{"bool":true, "null": null}');
 
 -- Comparisons between types
--- Object < List < String < Boolean < Integer = Float = Numeric < Null
+-- Path < Edge < Vertex < Object < List < String < Boolean < Integer = Float = Numeric < Null
 SELECT agtype_in('1') < agtype_in('null');
 SELECT agtype_in('NaN') < agtype_in('null');
 SELECT agtype_in('Infinity') < agtype_in('null');
@@ -415,8 +415,17 @@ SELECT agtype_in('[1,3,5,7,9,11]') < agtype_in('"string"');
 SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('[1,3,5,7,9,11]');
 SELECT agtype_in('[1, "string"]') < agtype_in('[1, 1]');
 SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('{"bool":true, "integer":null}');
+SELECT agtype_in('{"id":0, "label": "v", "properties":{"i":0}}::vertex') < agtype_in('{"bool":true, "i":0}');
+SELECT agtype_in('{"id":2, "start_id":0, "end_id":1, "label": "e", "properties":{"i":0}}::edge') < agtype_in('{"id":0, "label": "v", "properties":{"i":0}}::vertex');
+SELECT agtype_in('[{"id": 0, "label": "v", "properties": {"i": 0}}::vertex, {"id": 2, "start_id": 0, "end_id": 1, "label": "e", "properties": {"i": 0}}::edge, {"id": 1, "label": "v", "properties": {"i": 0}}::vertex]::path') < agtype_in('{"id":2, "start_id":0, "end_id":1, "label": "e", "properties":{"i":0}}::edge');
 SELECT agtype_in('1::numeric') < agtype_in('null');
 SELECT agtype_in('true') < agtype_in('1::numeric');
+-- Testing orderability between types
+SELECT * FROM create_graph('orderability_graph');
+SELECT * FROM cypher('orderability_graph', $$ CREATE (:vertex {prop: null}), (:vertex {prop: 1}), (:vertex {prop: 1.01}),(:vertex {prop: true}), (:vertex {prop:"string"}),(:vertex {prop:"string_2"}), (:vertex {prop:[1, 2, 3]}), (:vertex {prop:[1, 2, 3, 4, 5]}), (:vertex {prop:{bool:true, i:0}}), (:vertex {prop:{bool:true, i:null}}), (:vertex {prop: {id:0, label: "v", properties:{i:0}}::vertex}),  (:vertex {prop: {id: 2, start_id: 0, end_id: 1, label: "e", properties: {i: 0}}::edge}), (:vertex {prop: [{id: 0, label: "v", properties: {i: 0}}::vertex, {id: 2, start_id: 0, end_id: 1, label: "e", properties: {i: 0}}::edge, {id: 1, label: "v", properties: {i: 0}}::vertex]::path}) $$)  AS (x agtype);
+SELECT * FROM cypher('orderability_graph', $$ MATCH (n) RETURN n ORDER BY n.prop $$) AS (sorted agtype);
+SELECT * FROM cypher('orderability_graph', $$ MATCH (n) RETURN n ORDER BY n.prop DESC $$) AS (sorted agtype);
+SELECT * FROM drop_graph('orderability_graph', true);
 
 --
 -- Test overloaded agytype any comparison operators =, <>, <, >, <=, >=,
