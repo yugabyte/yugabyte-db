@@ -1223,22 +1223,20 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
       break;
     }
     case GetDocPathsMode::kIntents: {
-      const google::protobuf::RepeatedPtrField<PgsqlColumnValuePB>* column_values = nullptr;
-      if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
-          request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
-        column_values = &request_.column_values();
-      } else if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
-        column_values = &request_.column_new_values();
+      if (request_.stmt_type() != PgsqlWriteRequestPB::PGSQL_UPDATE) {
+        break;
+      }
+      const auto& column_values = request_.column_new_values();
+
+      if (column_values.empty()) {
+        break;
       }
 
-      if (column_values != nullptr && !column_values->empty()) {
-        DocKeyColumnPathBuilder builder(encoded_doc_key_);
-        for (const auto& column_value : *column_values) {
-          paths->push_back(builder.Build(column_value.column_id()));
-        }
-        return Status::OK();
+      DocKeyColumnPathBuilder builder(encoded_doc_key_);
+      for (const auto& column_value : column_values) {
+        paths->push_back(builder.Build(column_value.column_id()));
       }
-      break;
+      return Status::OK();
     }
   }
   // Add row's doc key. Caller code will create strong intent for the whole row in this case.
