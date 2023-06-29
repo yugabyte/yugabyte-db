@@ -61,7 +61,7 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
       SchemaVersion last_compatible_consumer_schema_version,
       rocksdb::RateLimiter* rate_limiter,
       std::function<int64_t(const TabletId&)>
-          ger_leader_term);
+          get_leader_term);
   ~XClusterPoller();
 
   void Shutdown();
