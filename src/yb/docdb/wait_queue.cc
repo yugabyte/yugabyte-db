@@ -28,6 +28,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/shared_lock_manager.h"
@@ -1313,8 +1314,8 @@ class WaitQueue::Impl {
       VLOG_WITH_PREFIX(1) << "Waiter status aborted " << waiter_id;
       waiter->InvokeCallback(
           // We return InternalError so that TabletInvoker does not retry.
-          STATUS_FORMAT(InternalError, "Transaction $0 was aborted while waiting for locks",
-                        waiter_id));
+          STATUS_EC_FORMAT(InternalError, TransactionError(TransactionErrorCode::kConflict),
+                           "Transaction $0 was aborted while waiting for locks", waiter_id));
       return;
     }
     LOG(DFATAL) << "Waiting transaction " << waiter_id
@@ -1332,7 +1333,9 @@ class WaitQueue::Impl {
       //
       // Refer issue: https://github.com/yugabyte/yugabyte-db/issues/16375
       InvokeWaiterCallback(
-          STATUS_FORMAT(Aborted, "Transaction was aborted while waiting for locks $0", waiter->id),
+          STATUS_EC_FORMAT(
+            InternalError, TransactionError(TransactionErrorCode::kConflict),
+            "Transaction was aborted while waiting for locks $0", waiter->id),
           waiter);
     }
     // Need not handle waiter promotion case here as this code path is executed only as a callback

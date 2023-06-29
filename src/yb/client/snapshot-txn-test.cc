@@ -29,6 +29,7 @@
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -191,7 +192,8 @@ void SnapshotTxnTest::TestBankAccountsThread(
     } else {
       ASSERT_TRUE(
           status.IsTryAgain() || status.IsExpired() || status.IsNotFound() || status.IsTimedOut() ||
-          ql::QLError(status) == ql::ErrorCode::RESTART_REQUIRED) << status;
+          ql::QLError(status) == ql::ErrorCode::RESTART_REQUIRED ||
+          TransactionError(status) == TransactionErrorCode::kConflict) << status;
     }
   }
 }
