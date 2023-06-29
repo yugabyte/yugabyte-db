@@ -55,8 +55,8 @@
 using std::string;
 
 DEFINE_UNKNOWN_int32(cdc_consumer_handler_thread_pool_size, 0,
-    "Override the max thread pool size for CDCConsumerHandler, which is used by "
-    "CDCPollers. If set to 0, then the thread pool will use the default size (number of "
+    "Override the max thread pool size for XClusterConsumerHandler, which is used by "
+    "XClusterPoller. If set to 0, then the thread pool will use the default size (number of "
     "cpus on the system).");
 TAG_FLAG(cdc_consumer_handler_thread_pool_size, advanced);
 
@@ -124,7 +124,7 @@ Result<std::unique_ptr<XClusterConsumer>> XClusterConsumer::Create(
 
   auto local_client = std::make_unique<XClusterClient>();
   if (FLAGS_use_node_to_node_encryption) {
-    rpc::MessengerBuilder messenger_builder("cdc-consumer");
+    rpc::MessengerBuilder messenger_builder("xcluster-consumer");
 
     local_client->secure_context = VERIFY_RESULT(server::SetupSecureContext(
         "", "", server::SecureContextType::kInternal, &messenger_builder));
@@ -135,7 +135,7 @@ Result<std::unique_ptr<XClusterConsumer>> XClusterConsumer::Create(
   local_client->client = VERIFY_RESULT(
       client::YBClientBuilder()
           .master_server_addrs(hostport_strs)
-          .set_client_name("CDCConsumerLocal")
+          .set_client_name("XClusterConsumerLocal")
           .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms))
           .Build(local_client->messenger.get()));
 
@@ -148,7 +148,7 @@ Result<std::unique_ptr<XClusterConsumer>> XClusterConsumer::Create(
   RETURN_NOT_OK(yb::Thread::Create(
       "XClusterConsumer", "Poll", &XClusterConsumer::RunThread, xcluster_consumer.get(),
       &xcluster_consumer->run_trigger_poll_thread_));
-  ThreadPoolBuilder cdc_consumer_thread_pool_builder("CDCConsumerHandler");
+  ThreadPoolBuilder cdc_consumer_thread_pool_builder("XClusterConsumerHandler");
   if (FLAGS_cdc_consumer_handler_thread_pool_size > 0) {
     cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_cdc_consumer_handler_thread_pool_size);
   }
@@ -185,7 +185,7 @@ XClusterConsumer::~XClusterConsumer() {
 }
 
 void XClusterConsumer::Shutdown() {
-  LOG_WITH_PREFIX(INFO) << "Shutting down CDC Consumer";
+  LOG_WITH_PREFIX(INFO) << "Shutting down XClusterConsumer";
   {
     std::lock_guard l(should_run_mutex_);
     should_run_ = false;
@@ -328,7 +328,7 @@ void XClusterConsumer::UpdateInMemoryState(
   uuid_master_addrs_.swap(old_uuid_master_addrs);
 
   if (!consumer_registry) {
-    LOG_WITH_PREFIX(INFO) << "Given empty CDC consumer registry: removing Pollers";
+    LOG_WITH_PREFIX(INFO) << "Given empty xCluster consumer registry: removing Pollers";
     consumer_role_ = cdc::XClusterRole::ACTIVE;
     // Clear the tablets list in case users want to increase number of txn status tablets in between
     // having active replication setups.
@@ -337,7 +337,8 @@ void XClusterConsumer::UpdateInMemoryState(
     return;
   }
 
-  LOG_WITH_PREFIX(INFO) << "Updating CDC consumer registry: " << consumer_registry->DebugString();
+  LOG_WITH_PREFIX(INFO) << "Updating xCluster consumer registry: "
+                        << consumer_registry->DebugString();
 
   consumer_role_ = consumer_registry->role();
   streams_with_local_tserver_optimization_.clear();
@@ -360,7 +361,7 @@ void XClusterConsumer::UpdateInMemoryState(
         changed_master_addrs_.insert(cdc::ReplicationGroupId(replication_group_id));
       }
     }
-    // recreate the set of CDCPollers
+    // recreate the set of XClusterPoller
     for (const auto& stream_entry : producer_entry_pb.stream_map()) {
       const auto& stream_entry_pb = stream_entry.second;
       if (stream_entry_pb.local_tserver_optimized()) {
@@ -497,7 +498,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
           auto remote_client = std::make_unique<XClusterClient>();
           std::string dir;
           if (FLAGS_use_node_to_node_encryption) {
-            rpc::MessengerBuilder messenger_builder("cdc-consumer");
+            rpc::MessengerBuilder messenger_builder("xcluster-consumer");
             if (!FLAGS_certs_for_cdc_dir.empty()) {
               dir = JoinPathSegments(
                   FLAGS_certs_for_cdc_dir,
@@ -524,7 +525,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
 
           auto client_result =
               yb::client::YBClientBuilder()
-                  .set_client_name("CDCConsumerRemote")
+                  .set_client_name("XClusterConsumerRemote")
                   .add_master_server_addr(uuid_master_addrs_[replication_group_id])
                   .skip_master_flagfile()
                   .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
