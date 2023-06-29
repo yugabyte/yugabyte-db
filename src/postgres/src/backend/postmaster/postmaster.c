@@ -3415,14 +3415,21 @@ static void CleanupKilledProcess(PGPROC *proc)
 				dlist_delete(&proc->lockGroupLink);
 				if (dlist_is_empty(&leader->lockGroupMembers))
 				{
+					YBC_LOG_INFO("Leader (%d) has no more members, returning it to freeList", leader->pid);
+
 					leader->lockGroupLeader = NULL;
 					if (leader != proc)
 					{
 						procgloballist = leader->procgloballist;
+						int old_proclist_size = GetProcListSize(procgloballist);
 
 						/* Leader exited first; return its PGPROC. */
 						leader->links.next = (SHM_QUEUE *) *procgloballist;
 						*procgloballist = leader;
+
+						int new_proclist_size = GetProcListSize(procgloballist);
+
+						YBC_LOG_INFO("Removing lock group leader increased freeProc size from %d to %d", old_proclist_size, new_proclist_size);
 					}
 				}
 				else if (leader != proc)
