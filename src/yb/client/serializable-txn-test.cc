@@ -29,6 +29,7 @@ using namespace std::literals;
 
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_bool(enable_wait_queues);
 
 namespace yb {
 namespace client {
@@ -37,6 +38,9 @@ class SerializableTxnTest
     : public TransactionCustomLogSegmentSizeTest<0, TransactionTestBase<MiniCluster>> {
  protected:
   void SetUp() override {
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
     SetIsolationLevel(IsolationLevel::SERIALIZABLE_ISOLATION);
     TransactionTestBase::SetUp();
   }

@@ -16,6 +16,8 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_wait_queues);
+
 namespace yb {
 namespace pgwrapper {
 
@@ -102,6 +104,13 @@ class PgExplicitLockTest : public PgMiniTestBase {
 
 class PgExplicitLockTestSerializable
     : public PgExplicitLockTest<IsolationLevel::SERIALIZABLE_ISOLATION> {
+ protected:
+  void BeforePgProcessStart() override {
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    PgExplicitLockTest::BeforePgProcessStart();
+  }
 };
 
 class PgExplicitLockTestSnapshot : public PgExplicitLockTest<IsolationLevel::SNAPSHOT_ISOLATION> {

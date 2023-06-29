@@ -431,10 +431,15 @@ IsYBReadCommitted()
 bool
 YBIsWaitQueueEnabled()
 {
+#ifdef NDEBUG
+  static bool kEnableWaitQueues = false;
+#else
+	static bool kEnableWaitQueues = true;
+#endif
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_wait_queues", false);
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_wait_queues", kEnableWaitQueues);
 	}
 	return IsYugaByteEnabled() && cached_value;
 }
