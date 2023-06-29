@@ -81,11 +81,59 @@ YB_DEFINE_ENUM(
     (GetSafeTime)(GetSubDoc))
 
 struct AUHMetadata {
-  std::string request_id;
-  // TBD: other fields as required.
+  std::string top_level_request_id;
+  std::string top_level_node_id;
+  int64_t query_id = 0;
+  int64_t current_request_id = 0;
+  std::string client_node_ip;
 
   std::string ToString() const {
-	return request_id;
+    return yb::Format("{ top_level_node_id: $0, top_level_request_id: $1, query_id: $2, current_request_id: $3, client_node_ip: $4 }",
+                      top_level_node_id, top_level_request_id, query_id, current_request_id, client_node_ip);
+  }
+
+  template <class PB>
+  void ToPBExceptCurrentRequestId(PB* pb) const {
+    pb->set_top_level_node_id(top_level_node_id);
+    pb->set_top_level_request_id(top_level_request_id);
+    pb->set_query_id(query_id);
+    pb->set_client_node_ip(client_node_ip);
+  }
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    ToPBExceptCurrentRequestId(pb);
+    pb->set_current_request_id(current_request_id);
+  }
+
+  template <class PB>
+  static AUHMetadata FromPBExceptCurrentRequestId(const PB& pb) {
+    return AUHMetadata{
+        .top_level_node_id = pb.top_level_node_id(),
+        .top_level_request_id = pb.top_level_request_id(),
+        .query_id = pb.query_id(),
+        .current_request_id = 0,
+        .client_node_ip = pb.client_node_ip()
+    };
+  }
+
+  template <class PB>
+  static AUHMetadata FromPB(const PB& pb) {
+    return AUHMetadata{
+        .top_level_node_id = pb.top_level_node_id(),
+        .top_level_request_id = pb.top_level_request_id(),
+        .query_id = pb.query_id(),
+        .current_request_id = pb.current_request_id(),
+        .client_node_ip = pb.client_node_ip()
+    };
+  }
+
+  template <class PB>
+  void UpdateFromPBExceptCurrentRequstId(const PB& pb) {
+    top_level_node_id = pb.top_level_node_id();
+    top_level_request_id = pb.top_level_request_id();
+    query_id = pb.query_id();
+    client_node_ip = pb.client_node_ip();
   }
 };
 
@@ -105,8 +153,20 @@ class WaitStateInfo {
   static WaitStateInfoPtr CurrentWaitState();
   static void SetCurrentWaitState(WaitStateInfoPtr);
 
+  template <class PB>
+  static void UpdateCurrentWaitStateFromPBExceptCurrentRequstId(const PB& pb) {
+    auto wait_state = util::WaitStateInfo::CurrentWaitState();
+    if (wait_state && pb.has_auh_metadata()) {
+      auto& auh_metadata = wait_state->metadata();
+      auh_metadata.UpdateFromPBExceptCurrentRequstId(pb.auh_metadata());
+    }
+  }
+  AUHMetadata& metadata() {
+    return metadata_;
+  }
+
  private:
-  const AUHMetadata metadata_;
+  AUHMetadata metadata_;
   WaitStateCode code_ = WaitStateCode::Unused;
 
 #ifdef TRACK_WAIT_HISTORY
