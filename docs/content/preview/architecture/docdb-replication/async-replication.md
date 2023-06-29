@@ -415,9 +415,9 @@ Either transactional or non-transactional mode can be used here, but
 transactional mode is usually preferred because it provides consistency
 if the source universe is lost.
 
-The following diagram shows the active-passive deployment architecture:
+The following diagram shows an example active-passive deployment:
 
-<img src="/images/architecture/replication/2DC-source-sink-deployment.png" style="max-width:750px;"/>
+<img src="/images/architecture/replication/active-standby-deployment-new.png" style="max-width:750px;"/>
 
 ### Active-active
 
@@ -436,9 +436,9 @@ care is taken to ensure that the timestamps are assigned to guarantee
 last-writer-wins semantics and the data arriving from the replication
 stream is not re-replicated.
 
-The following diagram shows the active-active deployment architecture:
+The following diagram shows an example active-active deployment:
 
-<img src="/images/architecture/replication/2DC-multi-master-deployment.png" style="max-width:750px;"/>
+<img src="/images/architecture/replication/active-active-deployment-new.png" style="max-width:750px;"/>
 
 
 ## Not supported deployment scenarios
