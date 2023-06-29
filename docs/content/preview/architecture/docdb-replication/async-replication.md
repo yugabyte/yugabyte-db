@@ -241,9 +241,19 @@ tablet; in cases where a source tablet's changes are needed by multiple
 target tablets, the poller assigned to that source tablet distributes
 the changes to the relevant target tablets.
 
-The following illustrative diagram shows what this looks like:
+The following illustrative diagram shows what this might look like for
+one table:
 
-_diagram showing mapping of tablets and placement of pollers_
+<img src="/images/architecture/replication/distribution-of-pollers.png" style="max-width:750px;"/>
+
+Here, the source universe is on the left with three TServers (the white
+boxes) each containing one tablet of the table (the boxes inside) with
+the shown ranges of the table.  The target universe is on the right with
+one fewer TServer and tablet.  As you can see, the top source tablet's
+data is split among both target tablets by the poller running in the top
+target TServer and the remaining source tablets' data is replicated to
+the second target tablet by the pollers running in the other target
+TServer.
 
 Tablet splitting generates a Raft log entry, which is replicated to the
 target side so that the mapping of pollers to source tablets can be
