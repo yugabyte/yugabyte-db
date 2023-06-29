@@ -19,6 +19,8 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+DECLARE_bool(enable_wait_queues);
+
 using namespace std::literals;
 
 DECLARE_bool(yb_enable_read_committed_isolation);
@@ -28,17 +30,21 @@ namespace yb::pgwrapper {
 YB_DEFINE_ENUM(TestStatement, (kInsert)(kDelete));
 
 class PgRowLockTest : public PgMiniTestBase {
- protected:
-  void SetUp() override {
-    FLAGS_yb_enable_read_committed_isolation = true;
-    PgMiniTestBase::SetUp();
-  }
  public:
   // Test an INSERT/DELETE in a concurrent transaction but before a SELECT  with specified isolation
   // level and row mark.
   void TestStmtBeforeRowLock(
       IsolationLevel isolation, RowMarkType row_mark, TestStatement statement);
   void TestStmtBeforeRowLockImpl(TestStatement statement);
+
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    PgMiniTestBase::SetUp();
+  }
 };
 
 std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type) {

@@ -468,7 +468,8 @@ TEST_F(BackupTxnTest, Consistency) {
         if (!status.ok()) {
           TransactionError txn_error(status);
           ASSERT_TRUE(txn_error == TransactionErrorCode::kConflict ||
-                      txn_error == TransactionErrorCode::kAborted) << status;
+                      txn_error == TransactionErrorCode::kAborted ||
+                      status.IsCombined()) << status;
         } else {
           LOG(INFO) << "Committed: " << txn->id() << ", written: " << v;
         }

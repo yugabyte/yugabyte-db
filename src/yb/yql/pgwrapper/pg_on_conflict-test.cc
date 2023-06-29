@@ -32,6 +32,16 @@ class PgOnConflictTest : public LibPqTestBase {
   void TestOnConflict(bool kill_master, const MonoDelta& duration);
 };
 
+class PgFailOnConflictTest : public PgOnConflictTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgOnConflictTest::UpdateMiniClusterOptions(opts);
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    opts->extra_tserver_flags.push_back("--enable_wait_queues=false");
+  }
+};
+
 namespace {
 
 struct OnConflictKey {
@@ -368,11 +378,11 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
   helper.Report();
 }
 
-TEST_F(PgOnConflictTest, OnConflict) {
+TEST_F_EX(PgOnConflictTest, OnConflict, PgFailOnConflictTest) {
   TestOnConflict(false /* kill_master */, 120s);
 }
 
-TEST_F(PgOnConflictTest, OnConflictWithKillMaster) {
+TEST_F_EX(PgOnConflictTest, OnConflictWithKillMaster, PgFailOnConflictTest) {
   TestOnConflict(true /* kill_master */, 180s);
 }
 
@@ -411,7 +421,7 @@ TEST_F(PgOnConflictTest, NoTxnOnConflict) {
   LogResult(ASSERT_RESULT(conn.Fetch("SELECT * FROM test ORDER BY k")).get());
 }
 
-TEST_F(PgOnConflictTest, ValidSessionAfterTxnCommitConflict) {
+TEST_F_EX(PgOnConflictTest, ValidSessionAfterTxnCommitConflict, PgFailOnConflictTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (k int PRIMARY KEY)"));
   ASSERT_OK(conn.Execute("BEGIN"));

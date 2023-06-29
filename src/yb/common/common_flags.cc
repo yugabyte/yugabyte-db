@@ -45,12 +45,18 @@ DEFINE_UNKNOWN_bool(log_ysql_catalog_versions, false,
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
 DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022");
-DEFINE_UNKNOWN_bool(enable_deadlock_detection, false,
+
+#ifdef NDEBUG
+constexpr bool kEnableWaitOnConflict = false;
+#else
+constexpr bool kEnableWaitOnConflict = true;
+#endif
+DEFINE_NON_RUNTIME_bool(enable_deadlock_detection, kEnableWaitOnConflict,
     "If true, enables distributed deadlock detection.");
 TAG_FLAG(enable_deadlock_detection, advanced);
 TAG_FLAG(enable_deadlock_detection, evolving);
 
-DEFINE_NON_RUNTIME_bool(enable_wait_queues, false,
+DEFINE_NON_RUNTIME_bool(enable_wait_queues, kEnableWaitOnConflict,
     "If true, enable wait queues that help provide Wait-on-Conflict behavior during conflict "
     "resolution whenever required.");
 TAG_FLAG(enable_wait_queues, evolving);

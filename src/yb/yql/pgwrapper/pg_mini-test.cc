@@ -71,6 +71,7 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(enable_wait_queues);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -163,6 +164,16 @@ class PgMiniTest : public PgMiniTestBase {
 class PgMiniTestSingleNode : public PgMiniTest {
   size_t NumTabletServers() override {
     return 1;
+  }
+};
+
+class PgMiniTestFailOnConflict : public PgMiniTest {
+ protected:
+  void SetUp() override {
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    PgMiniTest::SetUp();
   }
 };
 
@@ -615,7 +626,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSnapshot),
   TestReadRestart(false /* deferrable */);
 }
 
-TEST_F(PgMiniTest, SerializableReadOnly) {
+TEST_F_EX(PgMiniTest, SerializableReadOnly, PgMiniTestFailOnConflict) {
   PGConn read_conn = ASSERT_RESULT(Connect());
   PGConn setup_conn = ASSERT_RESULT(Connect());
   PGConn write_conn = ASSERT_RESULT(Connect());
@@ -690,7 +701,7 @@ void AssertAborted(const Status& status) {
   ASSERT_STR_CONTAINS(status.ToString(), "aborted");
 }
 
-TEST_F(PgMiniTest, SelectModifySelect) {
+TEST_F_EX(PgMiniTest, SelectModifySelect, PgMiniTestFailOnConflict) {
   {
     auto read_conn = ASSERT_RESULT(Connect());
     auto write_conn = ASSERT_RESULT(Connect());
