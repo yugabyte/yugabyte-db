@@ -264,6 +264,7 @@ rocksdb::ReadOptions PrepareReadOptions(
     rocksdb::Statistics* statistics) {
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = query_id;
+  read_opts.statistics = statistics;
   if (FLAGS_use_docdb_aware_bloom_filter &&
     bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER) {
     DCHECK(user_key_for_filter);
@@ -272,7 +273,6 @@ rocksdb::ReadOptions PrepareReadOptions(
   }
   read_opts.file_filter = std::move(file_filter);
   read_opts.iterate_upper_bound = iterate_upper_bound;
-  read_opts.statistics = statistics;
   return read_opts;
 }
 
