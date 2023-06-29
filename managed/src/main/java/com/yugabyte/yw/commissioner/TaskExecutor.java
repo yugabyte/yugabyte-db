@@ -187,7 +187,10 @@ public class TaskExecutor {
   private static void writeTaskStateMetric(
       TaskType taskType, Instant startTime, Instant endTime, State state, TaskType parentTaskType) {
     COMMISSIONER_TASK_EXECUTION_SEC
-        .labels(taskType.name(), state.name(), parentTaskType == null ? "No parent " : parentTaskType.name())
+        .labels(
+            taskType.name(),
+            state.name(),
+            parentTaskType == null ? "No parent " : parentTaskType.name())
         .observe(getDurationSeconds(startTime, endTime));
   }
 
@@ -1060,12 +1063,12 @@ public class TaskExecutor {
     }
 
     @Override
-    protected void getTaskWaitMetricLabels(TaskType taskType){
+    protected void getTaskWaitMetricLabels(TaskType taskType) {
       writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime, null);
     }
 
     @Override
-    protected void getTaskStateMetricLabels(TaskType taskType){
+    protected void getTaskStateMetricLabels(TaskType taskType) {
       writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState(), null);
     }
 
@@ -1220,7 +1223,7 @@ public class TaskExecutor {
       }
     }
 
-    private void setParentTaskInfo(){
+    private void setParentTaskInfo() {
       if (parentRunnableTask != null) {
         UUID parentTaskUUID = parentRunnableTask.getTaskUUID();
         Optional<TaskInfo> parentTaskInfoOptional = TaskInfo.maybeGet(parentTaskUUID);
@@ -1256,7 +1259,7 @@ public class TaskExecutor {
     }
 
     @Override
-    protected void getTaskWaitMetricLabels(TaskType taskType){
+    protected void getTaskWaitMetricLabels(TaskType taskType) {
       writeTaskWaitMetric(
           taskType,
           taskScheduledTime,
@@ -1265,7 +1268,7 @@ public class TaskExecutor {
     }
 
     @Override
-    protected void getTaskStateMetricLabels(TaskType taskType){
+    protected void getTaskStateMetricLabels(TaskType taskType) {
       writeTaskStateMetric(
           taskType,
           taskStartTime,
