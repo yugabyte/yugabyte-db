@@ -9153,6 +9153,22 @@ error hint:
 ----+-----
 (0 rows)
 
+set pg_hint_plan.parse_messages to 'ERROR';
+-- Force an error before running the planner hook, when forcing the Set hints.
+/*+ Set(work_mem "foo") */ SELECT 1;
+ERROR:  invalid value for parameter "work_mem": "foo"
+/*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+ id | val 
+----+-----
+(0 rows)
+
 set pg_hint_plan.message_level to 'DEBUG1';
 set pg_hint_plan.parse_messages to 'NOTICE';
 /*+ SeqScan( */ SELECT 1;

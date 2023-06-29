@@ -1163,6 +1163,10 @@ set max_parallel_workers_per_gather to DEFAULT;
 set client_min_messages to 'DEBUG1';
 /*+ SeqScan( */ SELECT 1;
 /*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
+set pg_hint_plan.parse_messages to 'ERROR';
+-- Force an error before running the planner hook, when forcing the Set hints.
+/*+ Set(work_mem "foo") */ SELECT 1;
+/*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
 set pg_hint_plan.message_level to 'DEBUG1';
 set pg_hint_plan.parse_messages to 'NOTICE';
 /*+ SeqScan( */ SELECT 1;

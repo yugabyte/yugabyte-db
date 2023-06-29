@@ -3071,42 +3071,14 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 
 	/*
 	 * Push new hint struct to the hint stack to disable previous hint context.
+	 * There should be no ERROR-level failures until we begin the
+	 * PG_TRY/PG_CATCH block below to ensure a consistent stack handling all
+	 * the time.
 	 */
 	push_hint(hstate);
 
 	/*  Set scan enforcement here. */
 	save_nestlevel = NewGUCNestLevel();
-
-	/* Apply Set hints, then save it as the initial state  */
-	setup_guc_enforcement(current_hint_state->set_hints,
-						   current_hint_state->num_hints[HINT_TYPE_SET],
-						   current_hint_state->context);
-
-	current_hint_state->init_scan_mask = get_current_scan_mask();
-	current_hint_state->init_join_mask = get_current_join_mask();
-	current_hint_state->init_min_para_tablescan_size =
-		min_parallel_table_scan_size;
-	current_hint_state->init_min_para_indexscan_size =
-		min_parallel_index_scan_size;
-	current_hint_state->init_paratup_cost = parallel_tuple_cost;
-	current_hint_state->init_parasetup_cost = parallel_setup_cost;
-
-	/*
-	 * max_parallel_workers_per_gather should be non-zero here if Workers hint
-	 * is specified.
-	 */
-	if (max_hint_nworkers > 0 && max_parallel_workers_per_gather < 1)
-		set_config_int32_option("max_parallel_workers_per_gather",
-								1, current_hint_state->context);
-	current_hint_state->init_nworkers = max_parallel_workers_per_gather;
-
-	if (debug_level > 1)
-	{
-		ereport(pg_hint_plan_debug_message_level,
-				(errhidestmt(msgqno != qno),
-				 errmsg("pg_hint_plan%s: planner", qnostr)));
-		msgqno = qno;
-	}
 
 	/*
 	 * The planner call below may replace current_hint_str. Store and restore
@@ -3119,10 +3091,43 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 
 	/*
 	 * Use PG_TRY mechanism to recover GUC parameters and current_hint_state to
-	 * the state when this planner started when error occurred in planner.
+	 * the state when this planner started when error occurred in planner.  We
+	 * do this here to minimize the window where the hints currently pushed on
+	 * the stack could not be popped out of it.
 	 */
 	PG_TRY();
 	{
+		/* Apply Set hints, then save it as the initial state  */
+		setup_guc_enforcement(current_hint_state->set_hints,
+							   current_hint_state->num_hints[HINT_TYPE_SET],
+							   current_hint_state->context);
+
+		current_hint_state->init_scan_mask = get_current_scan_mask();
+		current_hint_state->init_join_mask = get_current_join_mask();
+		current_hint_state->init_min_para_tablescan_size =
+			min_parallel_table_scan_size;
+		current_hint_state->init_min_para_indexscan_size =
+			min_parallel_index_scan_size;
+		current_hint_state->init_paratup_cost = parallel_tuple_cost;
+		current_hint_state->init_parasetup_cost = parallel_setup_cost;
+
+		/*
+		 * max_parallel_workers_per_gather should be non-zero here if Workers
+		 * hint is specified.
+		 */
+		if (max_hint_nworkers > 0 && max_parallel_workers_per_gather < 1)
+			set_config_int32_option("max_parallel_workers_per_gather",
+								1, current_hint_state->context);
+		current_hint_state->init_nworkers = max_parallel_workers_per_gather;
+
+		if (debug_level > 1)
+		{
+			ereport(pg_hint_plan_debug_message_level,
+					(errhidestmt(msgqno != qno),
+					 errmsg("pg_hint_plan%s: planner", qnostr)));
+			msgqno = qno;
+		}
+
 		if (prev_planner)
 			result = (*prev_planner) (parse, query_string,
 									  cursorOptions, boundParams);
