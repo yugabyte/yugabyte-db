@@ -347,9 +347,9 @@ TEST_F_EX(
 
   constexpr auto kWriteNumIterations = 1000u;
 
-  TestThreadHolder thread_holder;
   CountDownLatch sync_start_latch(2);
   std::atomic<size_t> num_write_iterations{0};
+  TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor(
       [this, &stop = thread_holder.stop_flag(), &num_write_iterations, &sync_start_latch]() {
         auto write_conn = ASSERT_RESULT(Connect());
