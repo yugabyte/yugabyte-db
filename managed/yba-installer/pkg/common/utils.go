@@ -171,6 +171,13 @@ func CreateSymlink(pkgDir string, linkDir string, binary string) error {
 	return out.Error
 }
 
+// Symlink implements a more generic symlink utility.
+func Symlink(src string, dest string) error {
+	out := shell.Run("ln", "-sf", src, dest)
+	out.SucceededOrLog()
+	return out.Error
+}
+
 // Copy will copy the source to the destination
 /*
 	src - source file or directory
@@ -431,6 +438,13 @@ func init() {
 		yugabundleBinary = "yugabundle-" + Version + "-centos-x86_64.tar.gz"
 		currentUser = GetCurrentUser()
 	*/
+}
+
+// UpdateRootInstall will update the yaml files .installRoot entry with what is currently
+// set in viper.
+func UpdateRootInstall(newRoot string) {
+	viper.Set("installRoot", newRoot)
+	setYamlValue(InputFile(), "installRoot", newRoot)
 }
 
 func setYamlValue(filePath string, yamlPath string, value string) {
