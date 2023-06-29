@@ -84,7 +84,7 @@ universes, flows are actually composed of streams between pairs of
 tables, one in each universe, allowing replication of only certain
 namespaces or tables.
 
-xCluster is more flexible than a hypothetical scheme wherein read
+xCluster is more flexible than a hypothetical scheme whereby read
 replicas are promoted to full replicas when primary replicas are lost
 because it does not require the two universes to be tightly coupled.
 With xCluster, for example, the two universes can be running different
@@ -170,10 +170,11 @@ safe to read as of with xCluster transactional replication in order to
 guarantee consistency and atomicity.  xCluster safe time advances as
 replication proceeds but lags behind real-time by the current
 replication lag.  This means, for example, if we write at 2 PM in the
-source universe and read at 2:01 PM in the target universe and replication
-lag is say five minutes then the read will read as of 1:56 PM and will
-not see the write.  We won't be able to see the write until 2:06 PM in
-the target assuming replication lag remains at five minutes.
+source universe and read at 2:01 PM in the target universe and
+replication lag is say five minutes then the read will read as of 1:56
+PM and will not see the write.  We won't be able to see the write until
+2:06 PM in the target assuming the replication lag remains at five
+minutes.
 
 If the source universe dies, then we can discard all the incomplete
 information in the target universe by rewinding it to the latest xCluster
@@ -264,7 +265,7 @@ updated as needed when a source tablet splits.
 These are straightforward: when one of these transaction commits, a
 single Raft log entry is produced containing all of that transaction's
 writes and its commit time.  This entry in turn is used to generate part
-of a changes batch when the poller requests changes.
+of a batch of changes when the poller requests changes.
 
 Upon receiving the changes, the poller examines each write to see what
 key it writes to in order to determine which tablet covers that part of
@@ -393,7 +394,8 @@ to set up replication.
 
 ## Supported deployment scenarios
 
-A number of xCluster deployment scenarios are currently supported.
+xCluster currently supports active-passive and active-active
+deployments.
 
 ### Active-passive
 
@@ -413,7 +415,7 @@ Either transactional or non-transactional mode can be used here, but
 transactional mode is usually preferred because it provides consistency
 if the source universe is lost.
 
-The following diagram shows the source-target deployment architecture:
+The following diagram shows the active-passive deployment architecture:
 
 <img src="/images/architecture/replication/2DC-source-sink-deployment.png" style="max-width:750px;"/>
 
@@ -434,7 +436,7 @@ care is taken to ensure that the timestamps are assigned to guarantee
 last-writer-wins semantics and the data arriving from the replication
 stream is not re-replicated.
 
-The following is the architecture diagram:
+The following diagram shows the active-active deployment architecture:
 
 <img src="/images/architecture/replication/2DC-multi-master-deployment.png" style="max-width:750px;"/>
 
@@ -528,14 +530,14 @@ With transactional mode,
   resume.  In the future, bootstrapping the target universe will be
   automated, which is tracked in
   [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
-- Bootstrap currently relies on the underlying backup and restore (BaR)
+- Bootstrap currently relies on the underlying backup and restore (BAR)
   mechanism of YugabyteDB.  This means it also inherits all of the
-  limitations of BaR.  For YSQL, currently the scope of BaR is at a
-  database level, while the scope of replication is at table level.  This
-  implies that when bootstrapping a target universe, you automatically
-  bring any tables from source database to the target database, even the
-  ones on which you might not plan to actually configure
-  replication.  This is tracked in
+  limitations of BAR.  For YSQL, currently the scope of BAR is at a
+  database level, while the scope of replication is at table level.
+  This implies that when you bootstrap a target universe, you
+  automatically bring any tables from the source database to the target
+  database, even the ones on which you might not plan to actually
+  configure replication.  This is tracked in
   [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
 
 ### DDL changes
