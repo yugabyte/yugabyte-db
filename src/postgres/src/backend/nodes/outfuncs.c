@@ -593,6 +593,7 @@ _outIndexScan(StringInfo str, const IndexScan *node)
 	WRITE_NODE_FIELD(yb_idx_pushdown.colrefs);
 	WRITE_NODE_FIELD(yb_rel_pushdown.quals);
 	WRITE_NODE_FIELD(yb_rel_pushdown.colrefs);
+	WRITE_INT_FIELD(yb_distinct_prefixlen);
 }
 
 static void
@@ -609,6 +610,7 @@ _outIndexOnlyScan(StringInfo str, const IndexOnlyScan *node)
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
 	WRITE_NODE_FIELD(yb_pushdown.quals);
 	WRITE_NODE_FIELD(yb_pushdown.colrefs);
+	WRITE_INT_FIELD(yb_distinct_prefixlen);
 }
 
 static void

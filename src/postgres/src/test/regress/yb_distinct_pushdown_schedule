@@ -3,4 +3,5 @@
 ####################################################################################################
 # Postgres Testsuites: This suite includes tests on distinct pushdown.
 ####################################################################################################
-test: yb_distinct_pushdown
+test: yb_distinct_pushdown_base
+test: yb_distinct_pushdown_pred
