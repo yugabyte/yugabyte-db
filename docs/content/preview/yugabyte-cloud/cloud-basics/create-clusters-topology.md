@@ -161,7 +161,7 @@ To deploy a partition-by-region cluster, refer to [Partition by region](../creat
 -->
 ## Cross-universe
 
-WARNING: This section is somewhat out of date, especially with regards to consistency; see [xCluster replication](../../../architecture/docdb-replication/async-replication/) for up-to-date information.
+WARNING: This section is somewhat out of date, especially with regards to consistency; see [xCluster replication](../../../architecture/docdb-replication/async-replication/) for up-to-date information.  Also, note that YBM  does not use the word "universe" currently.
 
 In situations where applications want to keep data in multiple clouds or in remote regions, YugabyteDB offers xCluster replication across two data centers or cloud regions. This can be either bi-directional in an active-active configuration, or uni-directional in an active-passive configuration.
 
