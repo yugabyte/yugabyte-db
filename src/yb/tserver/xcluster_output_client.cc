@@ -53,7 +53,7 @@
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
 DEFINE_RUNTIME_bool(cdc_force_remote_tserver, false,
-    "Avoid local tserver apply optimization for CDC and force remote RPCs.");
+    "Avoid local tserver apply optimization for xCluster and force remote RPCs.");
 
 DEFINE_RUNTIME_bool(xcluster_enable_packed_rows_support, true,
     "Enables rewriting of packed rows with xcluster consumer schema version");
@@ -890,7 +890,8 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
   }
 
   // Compatible schema version found, update master with the mapping and update local cache also
-  // as there could be some delay in propagation from master to all the cdcconsumer/cdcpollers.
+  // as there could be some delay in propagation from master to all the
+  // XClusterConsumer/XClusterPollers.
   tablet::ChangeMetadataRequestPB meta;
   meta.set_tablet_id(producer_tablet_info_.tablet_id);
   master::UpdateConsumerOnProducerMetadataResponsePB response;
