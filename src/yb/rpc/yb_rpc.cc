@@ -275,6 +275,15 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   Slice source(call_data->data(), call_data->size());
   RETURN_NOT_OK(ParseYBMessage(source, &header_, &serialized_request_));
   DVLOG(4) << "Parsed YBInboundCall header: " << header_.call_id;
+  // having to get rid of the const for metadata_. Is it better to
+  // create the waitstate after parsing?
+  auto wait_state = this->wait_state();
+  if (wait_state) {
+    wait_state->metadata().current_request_id = header_.call_id;
+    wait_state->metadata().client_node_ip = yb::ToString(remote_address());
+  } else {
+    LOG(ERROR) << "Wait state is nullptr for " << ToString();
+  }
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
   request_data_ = std::move(*call_data);
@@ -320,7 +329,12 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
     resp->set_trace_buffer(my_trace->DumpToString(true));
   }
   if (req.get_wait_state()) {
-    resp->set_wait_state(wait_state()->ToString());
+    auto wait_state = this->wait_state();
+    if (wait_state) {
+      resp->set_wait_state(wait_state->ToString());
+    } else {
+      resp->set_wait_state("Not yet initialized");
+    }
   }
   resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(timing_.time_received)
       .ToMicroseconds());

@@ -611,9 +611,9 @@ message PgDatumPB {
 }
 
 message AUHMetadataPB {
-  required string top_level_request_id = 1;
-  required string client_node_ip = 2;
-  required string top_level_node_id = 3;
-  required uint64 request_id = 4;
-  required uint64 query_id = 5;
+  optional string top_level_request_id = 1;
+  optional string client_node_ip = 2;
+  optional string top_level_node_id = 3;
+  optional uint64 current_request_id = 4;
+  optional uint64 query_id = 5;
 }

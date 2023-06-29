@@ -65,10 +65,10 @@ std::string WaitStateInfo::ToString() const {
     std::lock_guard<simple_spinlock> l(mutex_);
     history = history_;
   }
-  return yb::Format("meta : $0, status: $1, updates: $2, history : $3", metadata_.ToString(),
+  return yb::Format("{ meta : $0, status: $1, updates: $2, history : $3}", metadata_.ToString(),
     util::ToString(code_), num_updates_, yb::ToString(history));
   #else
-    return yb::Format("meta : $0, status: $1", metadata_.ToString(), util::ToString(code_));
+    return yb::Format("{ meta : $0, status: $1 }", metadata_.ToString(), util::ToString(code_));
   #endif // TRACK_WAIT_HISTORY
 }
 

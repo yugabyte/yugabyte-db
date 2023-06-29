@@ -70,7 +70,9 @@ InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
                          CallProcessedListener* call_processed_listener)
     : trace_holder_(Trace::MaybeGetNewTrace()),
       trace_(trace_holder_.get()),
-      wait_state_(std::make_shared<util::WaitStateInfo>(util::AUHMetadata{.request_id = "request_id_tbd"})),
+      // TBD: Initialise this in the Parse function instead.
+      wait_state_(std::make_shared<util::WaitStateInfo>(
+          util::AUHMetadata{})),
       conn_(std::move(conn)),
       rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
       call_processed_listener_(call_processed_listener) {

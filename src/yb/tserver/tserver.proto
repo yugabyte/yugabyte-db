@@ -87,6 +87,8 @@ message WriteRequestPB {
   optional uint64 batch_idx = 20;
 
   optional int64 leader_term = 21;
+
+  optional AUHMetadataPB auh_metadata = 22;
 }
 
 message WriteResponsePB {
@@ -222,6 +224,8 @@ message ReadRequestPB {
   optional double rejection_score = 13;
 
   optional uint64 batch_idx = 14;
+
+  optional AUHMetadataPB auh_metadata = 16;
 }
 
 message ReadResponsePB {
