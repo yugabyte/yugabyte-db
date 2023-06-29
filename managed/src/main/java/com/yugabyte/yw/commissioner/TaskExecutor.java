@@ -179,7 +179,7 @@ public class TaskExecutor {
   private static void writeTaskWaitMetric(
       TaskType taskType, Instant scheduledTime, Instant startTime, TaskType parentTaskType) {
     COMMISSIONER_TASK_WAITING_SEC
-        .labels(taskType.name(), parentTaskType == null ? " " : parentTaskType.name())
+        .labels(taskType.name(), parentTaskType == null ? "No parent " : parentTaskType.name())
         .observe(getDurationSeconds(scheduledTime, startTime));
   }
 
@@ -187,7 +187,7 @@ public class TaskExecutor {
   private static void writeTaskStateMetric(
       TaskType taskType, Instant startTime, Instant endTime, State state, TaskType parentTaskType) {
     COMMISSIONER_TASK_EXECUTION_SEC
-        .labels(taskType.name(), state.name(), parentTaskType == null ? " " : parentTaskType.name())
+        .labels(taskType.name(), state.name(), parentTaskType == null ? "No parent " : parentTaskType.name())
         .observe(getDurationSeconds(startTime, endTime));
   }
 
@@ -739,7 +739,6 @@ public class TaskExecutor {
    * started running. Synchronization is on the this object for taskInfo.
    */
   public abstract class AbstractRunnableTask implements Runnable {
-    TaskInfo parentTaskInfo;
     final ITask task;
     final TaskInfo taskInfo;
     // Timeout limit for this task.
@@ -802,12 +801,7 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
-        writeTaskWaitMetric(
-            taskType,
-            taskScheduledTime,
-            taskStartTime,
-            parentTaskInfo == null ? null : parentTaskInfo.getTaskType());
-
+        this.getTaskWaitMetricLabels(taskType);
         publishBeforeTask();
         if (getAbortTime() != null) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
@@ -841,25 +835,9 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
-        writeTaskStateMetric(
-            taskType,
-            taskStartTime,
-            taskCompletionTime,
-            getTaskState(),
-            parentTaskInfo == null ? null : parentTaskInfo.getTaskType());
-
+        this.getTaskStateMetricLabels(taskType);
         task.terminate();
         publishAfterTask(t);
-      }
-    }
-
-    // This is invoked by subTasks to set parent info
-    private void setParentTaskInfo(RunnableTask parentTask) {
-      if (parentTask != null) {
-        UUID parentTaskUUID = parentTask.getTaskUUID();
-        Optional<TaskInfo> parentTaskInfoOptional = TaskInfo.maybeGet(parentTaskUUID);
-        this.parentTaskInfo =
-            parentTaskInfoOptional.isPresent() ? parentTaskInfoOptional.get() : null;
       }
     }
 
@@ -887,6 +865,10 @@ public class TaskExecutor {
       taskInfo.setDetails(taskDetails);
       taskInfo.update();
     }
+
+    protected abstract void getTaskWaitMetricLabels(TaskType taskType);
+
+    protected abstract void getTaskStateMetricLabels(TaskType taskType);
 
     protected abstract Instant getAbortTime();
 
@@ -1078,6 +1060,16 @@ public class TaskExecutor {
     }
 
     @Override
+    protected void getTaskWaitMetricLabels(TaskType taskType){
+      writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime, null);
+    }
+
+    @Override
+    protected void getTaskStateMetricLabels(TaskType taskType){
+      writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState(), null);
+    }
+
+    @Override
     protected Instant getAbortTime() {
       return abortTime;
     }
@@ -1210,6 +1202,7 @@ public class TaskExecutor {
   /** Runnable task for subtasks in a task. */
   public class RunnableSubTask extends AbstractRunnableTask {
     private RunnableTask parentRunnableTask;
+    private TaskInfo parentTaskInfo;
 
     RunnableSubTask(ITask task, TaskInfo taskInfo) {
       super(task, taskInfo);
@@ -1224,6 +1217,14 @@ public class TaskExecutor {
         updateTaskDetailsOnError(TaskInfo.State.Failure, e);
         publishAfterTask(e);
         throw e;
+      }
+    }
+
+    private void setParentTaskInfo(){
+      if (parentRunnableTask != null) {
+        UUID parentTaskUUID = parentRunnableTask.getTaskUUID();
+        Optional<TaskInfo> parentTaskInfoOptional = TaskInfo.maybeGet(parentTaskUUID);
+        parentTaskInfo = parentTaskInfoOptional.isPresent() ? parentTaskInfoOptional.get() : null;
       }
     }
 
@@ -1255,6 +1256,25 @@ public class TaskExecutor {
     }
 
     @Override
+    protected void getTaskWaitMetricLabels(TaskType taskType){
+      writeTaskWaitMetric(
+          taskType,
+          taskScheduledTime,
+          taskStartTime,
+          parentTaskInfo == null ? null : parentTaskInfo.getTaskType());
+    }
+
+    @Override
+    protected void getTaskStateMetricLabels(TaskType taskType){
+      writeTaskStateMetric(
+          taskType,
+          taskStartTime,
+          taskCompletionTime,
+          getTaskState(),
+          parentTaskInfo == null ? null : parentTaskInfo.getTaskType());
+    }
+
+    @Override
     protected synchronized Instant getAbortTime() {
       return parentRunnableTask == null ? null : parentRunnableTask.getAbortTime();
     }
@@ -1282,7 +1302,7 @@ public class TaskExecutor {
       taskInfo.setParentUuid(parentRunnableTask.getTaskUUID());
       taskInfo.setPosition(position);
       taskInfo.save();
-      super.setParentTaskInfo(parentRunnableTask);
+      setParentTaskInfo();
     }
   }
 }
