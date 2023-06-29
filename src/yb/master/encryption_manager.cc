@@ -65,13 +65,17 @@ Status EncryptionManager::GetUniverseKeyRegistry(const GetUniverseKeyRegistryReq
 
 Status EncryptionManager::GetFullUniverseKeyRegistry(const EncryptionInfoPB& encryption_info,
                                                      GetFullUniverseKeyRegistryResponsePB* resp) {
-  // Decrypt the universe key registry.
-  auto universe_key = VERIFY_RESULT(GetLatestUniverseKey(&encryption_info));
-  auto decrypted_registry =
-      VERIFY_RESULT(enterprise::DecryptUniverseKeyRegistry(
-          encryption_info.universe_key_registry_encoded(), Slice(universe_key)));
+  Slice registry(encryption_info.universe_key_registry_encoded());
+  std::string decrypted_registry;
+  if (encryption_info.encryption_enabled()) {
+    // Decrypt the universe key registry.
+    auto universe_key = VERIFY_RESULT(GetLatestUniverseKey(&encryption_info));
+    decrypted_registry =
+        VERIFY_RESULT(enterprise::DecryptUniverseKeyRegistry(registry, Slice(universe_key)));
+    registry = Slice(decrypted_registry);
+  } // Otherwise, the registry should already be in decrypted form.
   auto universe_key_registry =
-      VERIFY_RESULT(pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(decrypted_registry));
+      VERIFY_RESULT(pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(registry));
 
   *resp->mutable_universe_key_registry() = universe_key_registry;
 
@@ -212,6 +216,8 @@ void EncryptionManager::PopulateUniverseKeys(
 
 Result<std::string> EncryptionManager::GetLatestUniverseKey(
     const EncryptionInfoPB* encryption_info) {
+  RSTATUS_DCHECK(encryption_info->encryption_enabled(), IllegalState,
+      "Attempts to fetch the latest universe key under the EAR have been disabled");
   return GetKeyFromParams(encryption_info->key_in_memory(),
                           encryption_info->key_path(),
                           encryption_info->latest_version_id());
