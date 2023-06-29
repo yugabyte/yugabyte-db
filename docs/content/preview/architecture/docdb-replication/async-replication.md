@@ -57,11 +57,11 @@ Asynchronous replication has its own drawbacks, however, including:
 ## xCluster replication
 
 xCluster replication is YugabyteDB's implementation of asynchronous
-replication.  It allows you to set up one or more unidirectional
-replication _flows_ between universes.  Note that xCluster can only be
-used to replicate between primary clusters in two different universes;
-it cannot be used to replicate between clusters in the same universe.
-(See [universe versus
+replication for disaster recovery.  It allows you to set up one or more
+unidirectional replication _flows_ between universes.  Note that
+xCluster can only be used to replicate between primary clusters in two
+different universes; it cannot be used to replicate between clusters in
+the same universe.  (See [universe versus
 cluster](../../concepts/universe#universe-vs-cluster) for more on the
 distinction between universes and clusters.)
 
@@ -100,10 +100,10 @@ Because there is a useful trade-off between how much consistency is lost
 and what transactions are allowed, YugabyteDB provides two different
 modes of asynchronous replication:
 
-- __non-transactional replication__: all transactions are allowed but some
-  consistency is lost
-- __transactional replication__: consistency is preserved but target
-  transactions must be read-only
+- __non-transactional replication__: all transactions are allowed but
+  some consistency is lost
+- __transactional replication__: consistency is preserved but
+  target-universe transactions must be read-only
 
 ### Non-transactional replication
 
@@ -173,8 +173,8 @@ replication lag.  This means, for example, if we write at 2 PM in the
 source universe and read at 2:01 PM in the target universe and
 replication lag is say five minutes then the read will read as of 1:56
 PM and will not see the write.  We won't be able to see the write until
-2:06 PM in the target assuming the replication lag remains at five
-minutes.
+2:06 PM in the target universe assuming the replication lag remains at
+five minutes.
 
 If the source universe dies, then we can discard all the incomplete
 information in the target universe by rewinding it to the latest xCluster
@@ -198,7 +198,7 @@ Accordingly, target writes are not currently permitted when using xCluster
 transactional replication.  This means that the transactional
 replication mode cannot support bidirectional replication.
 
-Target read-only transactions are still permitted; they run at
+Target-universe read-only transactions are still permitted; they run at
 serializable isolation level on a single consistent snapshot taken in
 the past.
 
@@ -208,8 +208,7 @@ the past.
 At a high level, xCluster replication is implemented by having _pollers_
 in the target universe that poll the source universe tablet servers for
 recent changes.  Each poller works independently and polls one source
-tablet server, distributing the received changes among a set of target
-tablet servers.
+tablet, distributing the received changes among a set of target tablets.
 
 The polled tablets examine only their Raft logs to determine what
 changes have occurred recently rather than looking at their RocksDB
@@ -219,9 +218,7 @@ changes and the Raft log entry ID to continue with next time.
 
 Pollers occasionally checkpoint the continue-with Raft ID of the last
 batch of changes they have processed; this ensures each change is
-processed at least once.  Much of the code for responding to polls is
-shared with the [Change data capture (CDC)](../change-data-capture)
-feature.
+processed at least once.
 
 ### The mapping between source and target tablets
 
@@ -236,11 +233,11 @@ past.
 
 This means that each target tablet may need the changes from multiple
 source tablets and multiple target tablets may need changes from the
-same source tablets.  To avoid multiple redundant cross-universe reads
-to the same source tablet, only one poller reads from each source
-tablet; in cases where a source tablet's changes are needed by multiple
-target tablets, the poller assigned to that source tablet distributes
-the changes to the relevant target tablets.
+same source tablet.  To avoid multiple redundant cross-universe reads to
+the same source tablet, only one poller reads from each source tablet;
+in cases where a source tablet's changes are needed by multiple target
+tablets, the poller assigned to that source tablet distributes the
+changes to the relevant target tablets.
 
 The following illustrative diagram shows what this might look like for
 one table:
@@ -254,7 +251,8 @@ one fewer TServer and tablet.  As you can see, the top source tablet's
 data is split among both target tablets by the poller running in the top
 target TServer and the remaining source tablets' data is replicated to
 the second target tablet by the pollers running in the other target
-TServer.
+TServer.  For simplicity, only the tablet leaders are shown here &mdash;
+pollers run at and poll from only leaders.
 
 Tablet splitting generates a Raft log entry, which is replicated to the
 target side so that the mapping of pollers to source tablets can be
@@ -268,11 +266,11 @@ writes and its commit time.  This entry in turn is used to generate part
 of a batch of changes when the poller requests changes.
 
 Upon receiving the changes, the poller examines each write to see what
-key it writes to in order to determine which tablet covers that part of
-the table then forwards the relevant writes to each of the associated
-tablets.  The commit times of the writes are preserved and the writes
-are marked as _external_, which prevents them from being further
-replicated by xCluster.
+key it writes to in order to determine which target tablet covers that
+part of the table then forwards the writes to the appropriate tablets.
+The commit times of the writes are preserved and the writes are marked
+as _external_, which prevents them from being further replicated by
+xCluster.
 
 ### Distributed transactions
 
@@ -312,16 +310,17 @@ lazily.  This means that even though transaction _X_ commits before
 transaction _Y_, _X_'s application Raft entry may occur after _Y_'s
 application Raft entry on some tablets.  If this happens, the writes
 from _X_ can become visible in the target universe after _Y_'s.  This is
-why non-transactional mode reads are only eventually consistent and not
-timeline consistent.
+why non-transactional&ndash;mode reads are only eventually consistent
+and not timeline consistent.
 
 ### Transactional mode
 
-xCluster safe time is computed for each database by the target master
-leader as the minimum _xCluster application time_ any tablet in that
-database has reached.  Pollers determine this time using information from
-the source tablet servers of the form "once you have fully applied all
-the changes before this one, your xCluster application time will be _T_".
+xCluster safe time is computed for each database by the target-universe
+master leader as the minimum _xCluster application time_ any tablet in
+that database has reached.  Pollers determine this time using
+information from the source tablet servers of the form "once you have
+fully applied all the changes before this one, your xCluster application
+time for this tablet will be _T_".
 
 A source tablet server sends such information when it determines that no
 active transaction involving that tablet can commit before _T_ and that
@@ -340,12 +339,11 @@ table to a version of that table missing a column or with a column
 having a different type.
 
 More subtly, this restriction extends to hidden schema metadata like the
-assignment of column IDs to columns.  Just because two tables were
-created using the same `CREATE TABLE` statement does not mean their
-schemas will actually be identical.  Because of this, in practice the
-target table schema needs to be copied from that of the source table; see
-[replication bootstrapping](#replication-bootstrapping) for how this is
-done.
+assignment of column IDs to columns.  Just because two tables show the
+same schema in YSQL does not mean their schemas are actually identical.
+Because of this, in practice the target table schema needs to be copied
+from that of the source table; see [replication
+bootstrapping](#replication-bootstrapping) for how this is done.
 
 Because of this restriction, xCluster does not need to do a deep
 translation of row contents (e.g., dropping columns or translating
@@ -373,8 +371,8 @@ xCluster replication copies changes made on the source universe to the
 target universe.  This is fine if the source universe starts empty but
 what if we want to start replicating a non-empty universe?
 
-We need to bootstrap the replication process by first copying the source
-universe to the target universe.
+In that case, we need to bootstrap the replication process by first
+copying the source universe to the target universe.
 
 Today, this is done by backing up the source universe and restoring it
 to the target universe.  In addition to copying all the data, this copies
@@ -536,8 +534,8 @@ With transactional mode,
   database level, while the scope of replication is at table level.
   This implies that when you bootstrap a target universe, you
   automatically bring any tables from the source database to the target
-  database, even the ones on which you might not plan to actually
-  configure replication.  This is tracked in
+  database, even the ones that you might not plan to actually configure
+  replication on.  This is tracked in
   [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
 
 ### DDL changes
@@ -570,14 +568,14 @@ With transactional mode,
 
 ## Cross-feature interactions
 
-A number of interactions across features is supported.
+A number of interactions across features are supported.
 
 ### Supported
 
 - TLS is supported for both client and internal RPC traffic.  Universes
   can also be configured with different certificates.
 - RPC compression is supported.  Note that both universes must be on a
-  version that supports compression, before a compression algorithm is
+  version that supports compression before a compression algorithm is
   enabled.
 - Encryption at rest is supported.  Note that the universes can
   technically use different Key Management Service (KMS) configurations.
@@ -589,7 +587,7 @@ A number of interactions across features is supported.
   KMS configurations.
 - YSQL colocation is supported.
 - YSQL geo-partitioning is supported.  Note that you must configure
-  replication on all new partitions manually, as DDL changes are not
+  replication on all new partitions manually as DDL changes are not
   replicated automatically.
 - Source and target universes can have different numbers of tablets.
 - Tablet splitting is supported on both source and target universes.
