@@ -158,7 +158,6 @@ To deploy a partition-by-region cluster, refer to [Partition by region](../creat
 - [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
 
 <!--
--->
 ## Cross-universe
 
 WARNING: This section is somewhat out of date, especially with regards to consistency; see [xCluster replication](../../../architecture/docdb-replication/async-replication/) for up-to-date information.  Also, note that YBM  does not use the word "universe" currently.
