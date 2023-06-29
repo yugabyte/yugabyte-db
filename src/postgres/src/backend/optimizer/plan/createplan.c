@@ -876,7 +876,7 @@ yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 		/* If there wasn't a single clause relevant to avail_relids, continue. */
 		if (len == 0)
 			continue;
-		
+
 		if (len == 1)
 		{
 			zipped_exprs = lappend(zipped_exprs, exprcols[0]);
@@ -1310,7 +1310,7 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path)
 															  prmquals,
 															  (Path *) best_path)
           : get_actual_clauses(prmquals);
-			
+
 			prmquals = (List *) replace_nestloop_params(root,
 														(Node *) prmquals);
 
@@ -3468,7 +3468,7 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 												scan_relid,
 												best_path->yb_path_info);
 	else
-		scan_plan = make_seqscan(tlist, local_quals, scan_relid, 
+		scan_plan = make_seqscan(tlist, local_quals, scan_relid,
 								 best_path->yb_path_info);
 
 	copy_generic_path_info(&scan_plan->plan, best_path);
@@ -3823,28 +3823,36 @@ create_indexscan_plan(PlannerInfo *root,
 												best_path->indexscandir);
 		index_only_scan_plan->yb_indexqual_for_recheck =
 			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
+		index_only_scan_plan->yb_distinct_prefixlen =
+			best_path->yb_distinct_prefixlen;
 
 		scan_plan = (Scan *) index_only_scan_plan;
 	}
 	else
-		scan_plan = (Scan *) make_indexscan(tlist,
-											local_quals,
-											rel_colrefs,
-											rel_remote_quals,
-											idx_colrefs,
-											idx_remote_quals,
-											baserelid,
-											indexoid,
-											fixed_indexquals,
-											stripped_indexquals,
-											fixed_indexorderbys,
-											indexorderbys,
-											indexorderbyops,
-											best_path->indexinfo->indextlist,
-											best_path->indexscandir,
-											best_path->estimated_num_nexts,
-											best_path->estimated_num_seeks,
-											best_path->path.yb_path_info);
+	{
+		IndexScan *index_scan_plan;
+		index_scan_plan = make_indexscan(tlist,
+										 local_quals,
+										 rel_colrefs,
+										 rel_remote_quals,
+										 idx_colrefs,
+										 idx_remote_quals,
+										 baserelid,
+										 indexoid,
+										 fixed_indexquals,
+										 stripped_indexquals,
+										 fixed_indexorderbys,
+										 indexorderbys,
+										 indexorderbyops,
+										 best_path->indexinfo->indextlist,
+										 best_path->indexscandir,
+										 best_path->estimated_num_nexts,
+										 best_path->estimated_num_seeks,
+										 best_path->path.yb_path_info);
+		index_scan_plan->yb_distinct_prefixlen =
+			best_path->yb_distinct_prefixlen;
+		scan_plan = (Scan *) index_scan_plan;
+	}
 
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);
 
@@ -4895,7 +4903,7 @@ create_nestloop_plan(PlannerInfo *root,
 		ListCell *l;
 		yb_hashClauseInfos =
 			palloc0(joinrestrictclauses->length * sizeof(YbBNLHashClauseInfo));
-		
+
 		/* YB: This length is later adjusted in setrefs.c. */
 		yb_num_hashClauseInfos = joinrestrictclauses->length;
 
@@ -4909,7 +4917,7 @@ create_nestloop_plan(PlannerInfo *root,
 		foreach(l, joinrestrictclauses)
 		{
 			Oid hashOpno = InvalidOid;
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);	
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
 			if (!list_member_ptr(joinclauses, rinfo->clause))
 			{
 				yb_num_hashClauseInfos--;
@@ -5615,7 +5623,7 @@ yb_get_fixed_batched_indexquals(PlannerInfo *root, IndexPath *index_path)
 	{
 		ListCell *lcc;
 		ListCell *lci;
-		
+
 		forboth(lcc, index_path->indexquals, lci, index_path->indexqualcols)
 		{
 			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lcc);

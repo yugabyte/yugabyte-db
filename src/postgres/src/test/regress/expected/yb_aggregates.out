@@ -572,12 +572,13 @@ EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY i
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT DISTINCT int_4 FROM ybaggtest;
-         QUERY PLAN
------------------------------
+                            QUERY PLAN
+------------------------------------------------------------------
  HashAggregate
    Group Key: int_4
-   ->  Seq Scan on ybaggtest
-(3 rows)
+   ->  Distinct Index Only Scan using ybaggtestindex on ybaggtest
+         Distinct Prefix: 4
+(4 rows)
 
 EXPLAIN (COSTS OFF) SELECT COUNT(distinct int_4), SUM(int_4) FROM ybaggtest;
          QUERY PLAN
