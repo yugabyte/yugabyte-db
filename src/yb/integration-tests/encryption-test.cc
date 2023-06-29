@@ -250,7 +250,7 @@ TEST_F(EncryptionTest, RotateKey) {
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
-TEST_F(EncryptionTest, DisableEncryption) {
+TEST_F(EncryptionTest, DisableEncryptionAndRestartCluster) {
   // Write 1000 values, disable encryption, and write 1000 more.
   WriteWorkload(0, kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
@@ -259,6 +259,9 @@ TEST_F(EncryptionTest, DisableEncryption) {
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
+  auto* tablet_server = external_mini_cluster()->tablet_server(0);
+  tablet_server->Shutdown();
+  ASSERT_OK(tablet_server->Restart());
 }
 
 TEST_F(EncryptionTest, EmptyTable) {
