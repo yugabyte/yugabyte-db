@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,6 +108,7 @@ func (plat Platform) Install() error {
 	if err := plat.createNecessaryDirectories(); err != nil {
 		return err
 	}
+
 	if err := plat.untarDevopsAndYugawarePackages(); err != nil {
 		return err
 	}
@@ -517,6 +519,70 @@ func (plat Platform) Upgrade() error {
 	return err
 }
 
+func (plat Platform) MigrateFromReplicated() error {
+	config.GenerateTemplate(plat)
+
+	if err := plat.createNecessaryDirectories(); err != nil {
+		return err
+	}
+	if err := plat.untarDevopsAndYugawarePackages(); err != nil {
+		return err
+	}
+	if err := plat.copyYbcPackages(); err != nil {
+		return err
+	}
+	if err := plat.copyNodeAgentPackages(); err != nil {
+		return err
+	}
+
+	if err := plat.symlinkReplicatedData(); err != nil {
+		return fmt.Errorf("failed to migrated releases directory: %w", err)
+	}
+	if err := plat.renameAndCreateSymlinks(); err != nil {
+		return err
+	}
+
+	// TODO: need to pull keys from replicated.
+	if err := createPemFormatKeyAndCert(); err != nil {
+		return err
+	}
+
+	//Create the platform.log file so that we can start platform as
+	//a background process for non-root.
+	logFile := common.GetSoftwareRoot() + "/yb-platform/yugaware/bin/platform.log"
+	createClosure := func() error {
+		_, err := common.Create(logFile)
+		return err
+	}
+	if err := createClosure(); err != nil {
+		log.Error("Failed to create " + logFile + ": " + err.Error())
+		return err
+	}
+
+	//Crontab based monitoring for non-root installs.
+	if !common.HasSudoAccess() {
+		if err := plat.CreateCronJob(); err != nil {
+			return err
+		}
+	} else {
+		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
+		userName := viper.GetString("service_username")
+		chownClosure := func() error {
+			return common.Chown(common.GetBaseInstall(), userName, userName, true)
+		}
+		if err := chownClosure(); err != nil {
+			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
+			return err
+		}
+	}
+
+	if err := plat.Start(); err != nil {
+		return err
+	}
+	log.Info("Finishing Platform migration")
+	return nil
+}
+
 func createPemFormatKeyAndCert() error {
 	keyFile := viper.GetString("server_key_path")
 	certFile := viper.GetString("server_cert_path")
@@ -565,6 +631,23 @@ func createPemFormatKeyAndCert() error {
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetSelfSignedCertsDir(), userName, userName, true)
+	}
+	return nil
+}
+
+func (plat Platform) symlinkReplicatedData() error {
+	// First do the previous releases.
+	releases, err := ioutil.ReadDir(filepath.Join(common.GetReplicatedBaseDir(), "releases/"))
+	if err != nil {
+		return fmt.Errorf("could not read replicated releases dir: %w", err)
+	}
+	for _, release := range releases {
+		src := filepath.Join(common.GetReplicatedBaseDir(), "releases", release.Name())
+		dest := filepath.Join(common.GetBaseInstall(), "data/yb-platform/releases", release.Name())
+		err = common.Symlink(src, dest)
+		if err != nil {
+			return fmt.Errorf("failed symlinked release %s: %w", release.Name(), err)
+		}
 	}
 	return nil
 }
