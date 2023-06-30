@@ -17,7 +17,7 @@ import type { ClusterTablet } from './ClusterTablet';
 
 
 /**
- * 
+ *
  * @export
  * @interface ClusterTabletListResponse
  */
@@ -29,6 +29,3 @@ export interface ClusterTabletListResponse  {
    */
   data: { [key: string]: ClusterTablet; };
 }
-
-
-

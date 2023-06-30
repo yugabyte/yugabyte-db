@@ -21,12 +21,9 @@
  */
 export interface IsLoadBalancerIdle  {
   /**
-   * 
+   *
    * @type {boolean}
    * @memberof IsLoadBalancerIdle
    */
   is_idle: boolean;
 }
-
-
-

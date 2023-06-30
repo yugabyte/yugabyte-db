@@ -21,18 +21,15 @@
  */
 export interface EncryptionInfo  {
   /**
-   * 
+   *
    * @type {boolean}
    * @memberof EncryptionInfo
    */
   encryption_at_rest?: boolean;
   /**
-   * 
+   *
    * @type {boolean}
    * @memberof EncryptionInfo
    */
   encryption_in_transit?: boolean;
 }
-
-
-

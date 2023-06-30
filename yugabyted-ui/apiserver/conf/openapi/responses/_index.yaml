@@ -124,16 +124,7 @@ GflagsResponse:
   content:
     application/json:
       schema:
-        title: Gflags Info
-        type: object
-        properties:
-          masterFlags:
-            type: object
-          tserverFlags:
-            type: object
-        required:
-          - masterFlags
-          - tserverFlags
+        $ref: '../schemas/_index.yaml#/GflagsInfo'
 AlertsResponse:
   description: Alerts information
   content:
@@ -148,3 +139,9 @@ AlertsResponse:
               $ref: '../schemas/_index.yaml#/AlertsInfo'
         required:
           - data
+TableInfoResponse:
+  description: Information for a single table
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/TableInfo'
