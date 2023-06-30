@@ -242,7 +242,7 @@ changes to the relevant target tablets.
 The following illustrative diagram shows what this might look like for
 one table:
 
-<img src="/images/architecture/replication/distribution-of-pollers.png" style="max-width:750px;"/>
+![distribution of pollers and where they pull data from and send it to](/images/architecture/replication/distribution-of-pollers-new.png)
 
 Here, the source universe is on the left with three TServers (the white
 boxes) each containing one tablet of the table (the boxes inside) with
@@ -415,7 +415,7 @@ if the source universe is lost.
 
 The following diagram shows an example active-passive deployment:
 
-<img src="/images/architecture/replication/active-standby-deployment-new.png" style="max-width:750px;"/>
+![example of active-passive deployment](/images/architecture/replication/active-standby-deployment-new.png)
 
 ### Active-active
 
@@ -436,8 +436,7 @@ stream is not re-replicated.
 
 The following diagram shows an example active-active deployment:
 
-<img src="/images/architecture/replication/active-active-deployment-new.png" style="max-width:750px;"/>
-
+![example of active-active deployment](/images/architecture/replication/active-active-deployment-new.png)
 
 ## Not supported deployment scenarios
 
