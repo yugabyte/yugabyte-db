@@ -12,6 +12,8 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
+import com.amazonaws.services.cloudtrail.AWSCloudTrail;
+import com.amazonaws.services.cloudtrail.AWSCloudTrailClientBuilder;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.AuthorizeSecurityGroupIngressRequest;
@@ -145,6 +147,14 @@ public class AWSCloudImpl implements CloudAPI {
     AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
     return AmazonEC2ClientBuilder.standard()
         .withRegion(regionCode)
+        .withCredentials(credentialsProvider)
+        .build();
+  }
+
+  public AWSCloudTrail getCloudTrailClient(Provider provider, String region) {
+    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
+    return AWSCloudTrailClientBuilder.standard()
+        .withRegion(region)
         .withCredentials(credentialsProvider)
         .build();
   }
