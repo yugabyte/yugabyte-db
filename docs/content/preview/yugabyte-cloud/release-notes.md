@@ -15,6 +15,18 @@ On this page:
 
 ## Releases
 
+### June 30, 2023
+
+**New Features**
+
+- Support for deploying clusters on Microsoft Azure, including:
+  - Global availability - deploy in 20 Azure regions worldwide.
+  - Azure Private Link - establish secure private network connectivity between your Azure Virtual Networks and YugabyteDB Managed clusters for greater data privacy and compliance.
+  - Horizontal and vertical scaling.
+  - Availability zone fault tolerance - deploy single region, multi-zone clusters to ensure high availability and fault tolerance in the same region.
+
+  Blog: [Presenting the Enterprise-Ready DBaaS on Azure](https://www.yugabyte.com/blog/enterprise-ready-dbaas-on-azure/)
+
 ### June 26, 2023
 
 **New Features**
