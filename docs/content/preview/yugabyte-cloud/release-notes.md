@@ -27,6 +27,8 @@ On this page:
 
   Blog: [Presenting the Enterprise-Ready DBaaS on Azure](https://www.yugabyte.com/blog/enterprise-ready-dbaas-on-azure/)
 
+<div style="position: relative; padding-bottom: calc(51.625% + 44px); height: 0;"><iframe src="https://app.supademo.com/embed/_AUexrYwJ1vNyKQsdA_di" frameborder="0" webkitallowfullscreen="true" mozallowfullscreen="true" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>
+
 ### June 26, 2023
 
 **New Features**
