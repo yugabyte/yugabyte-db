@@ -12,21 +12,29 @@
 
 #include "yb/cdc/cdc_state_table.h"
 
-#include "yb/cdc/cdc_service.h"
-#include "yb/client/schema.h"
-#include "yb/common/ql_type.h"
-#include "yb/common/ql_value.h"
-#include "yb/common/schema_pbutil.h"
+#include "yb/cdc/cdc_types.h"
+
+#include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/schema_pbutil.h"
+
 #include "yb/gutil/walltime.h"
-#include "yb/master/master_ddl.pb.h"
+
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_ddl.pb.h"
+
+#include "yb/util/atomic.h"
 #include "yb/util/logging.h"
 #include "yb/util/stol_utils.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DEFINE_RUNTIME_int32(cdc_state_table_num_tablets, 0,
@@ -43,9 +51,21 @@ DEFINE_RUNTIME_bool(enable_cdc_state_table_caching, true,
                   kCdcStateYBTableName.table_name(), entry->key.ToString()))
 
 namespace yb::cdc {
+
+static const char* const kCdcTabletId = "tablet_id";
+constexpr size_t kCdcTabletIdIdx = 0;
+static const char* const kCdcStreamId = "stream_id";
+constexpr size_t kCdcStreamIdIdx = 1;
+static const char* const kCdcCheckpoint  = "checkpoint";
+static const char* const kCdcData = "data";
+static const char* const kCdcLastReplicationTime = "last_replication_time";
+static const char* const kCDCSDKSafeTime = "cdc_sdk_safe_time";
+static const char* const kCDCSDKActiveTime = "active_time";
+static const char* const kCDCSDKSnapshotKey = "snapshot_key";
+
 namespace {
 const client::YBTableName kCdcStateYBTableName(
-    YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+    YQL_DATABASE_CQL, master::kSystemNamespaceName, kCdcStateTableName);
 
 std::optional<std::string> GetValueFromMap(const QLMapValuePB& map_value, const std::string& key) {
   for (int index = 0; index < map_value.keys_size(); ++index) {
@@ -79,18 +99,18 @@ void SerializeEntry(
   SerializeEntry(entry.key, cdc_table, req);
 
   if (entry.checkpoint) {
-    cdc_table->AddStringColumnValue(req, master::kCdcCheckpoint, entry.checkpoint->ToString());
+    cdc_table->AddStringColumnValue(req, kCdcCheckpoint, entry.checkpoint->ToString());
   }
 
   if (entry.last_replication_time) {
     cdc_table->AddTimestampColumnValue(
-        req, master::kCdcLastReplicationTime, *entry.last_replication_time);
+        req, kCdcLastReplicationTime, *entry.last_replication_time);
   }
 
   QLMapValuePB* map_value_pb = nullptr;
   auto get_map_value_pb = [&map_value_pb, &req, &cdc_table]() {
     if (!map_value_pb) {
-      map_value_pb = client::AddMapColumn(req, cdc_table->ColumnId(master::kCdcData));
+      map_value_pb = client::AddMapColumn(req, cdc_table->ColumnId(kCdcData));
     }
     return map_value_pb;
   };
@@ -116,11 +136,11 @@ Status DeserializeColumn(
     return Status::OK();
   }
 
-  if (column_name == master::kCdcCheckpoint) {
+  if (column_name == kCdcCheckpoint) {
     entry->checkpoint = VERIFY_PARSE_COLUMN(OpId::FromString(column.string_value()));
-  } else if (column_name == master::kCdcLastReplicationTime) {
+  } else if (column_name == kCdcLastReplicationTime) {
     entry->last_replication_time = column.timestamp_value().ToInt64();
-  } else if (column_name == master::kCdcData) {
+  } else if (column_name == kCdcData) {
     const auto& map_value = column.map_value();
 
     auto active_time_result =
@@ -145,8 +165,8 @@ Result<CDCStateTableEntry> DeserializeRow(
     const qlexpr::QLRow& row, const std::vector<std::string>& columns) {
   DCHECK_GE(columns.size(), 2);
   CDCStateTableEntry entry(
-      row.column(master::kCdcTabletIdIdx).string_value(),
-      row.column(master::kCdcStreamIdIdx).string_value());
+      row.column(kCdcTabletIdIdx).string_value(),
+      row.column(kCdcStreamIdIdx).string_value());
 
   for (size_t i = 2; i < columns.size(); i++) {
     RETURN_NOT_OK(DeserializeColumn(row.column(i), columns[i], &entry));
@@ -191,12 +211,12 @@ Result<master::CreateTableRequestPB> CDCStateTable::GenerateCreateCdcStateTableR
   req.set_table_type(TableType::YQL_TABLE_TYPE);
 
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn(master::kCdcTabletId)->HashPrimaryKey()->Type(DataType::STRING);
-  schema_builder.AddColumn(master::kCdcStreamId)->PrimaryKey()->Type(DataType::STRING);
-  schema_builder.AddColumn(master::kCdcCheckpoint)->Type(DataType::STRING);
-  schema_builder.AddColumn(master::kCdcData)
+  schema_builder.AddColumn(kCdcTabletId)->HashPrimaryKey()->Type(DataType::STRING);
+  schema_builder.AddColumn(kCdcStreamId)->PrimaryKey()->Type(DataType::STRING);
+  schema_builder.AddColumn(kCdcCheckpoint)->Type(DataType::STRING);
+  schema_builder.AddColumn(kCdcData)
       ->Type(QLType::CreateTypeMap(DataType::STRING, DataType::STRING));
-  schema_builder.AddColumn(master::kCdcLastReplicationTime)->Type(DataType::TIMESTAMP);
+  schema_builder.AddColumn(kCdcLastReplicationTime)->Type(DataType::TIMESTAMP);
 
   client::YBSchema yb_schema;
   RETURN_NOT_OK(schema_builder.Build(&yb_schema));
@@ -246,12 +266,12 @@ Result<std::shared_ptr<client::TableHandle>> CDCStateTable::GetTable() {
 }
 
 Result<client::YBClient*> CDCStateTable::GetClient() {
-  DCHECK(async_client_init_ != nullptr) << "CDCStateTable::Init() must be called first";
+  if (!client_) {
+    client_ = async_client_init_->client();
+  }
 
-  auto* client = async_client_init_->client();
-  SCHECK(client, IllegalState, "CDC Client not initialized or shutting down");
-
-  return client;
+  SCHECK(client_, IllegalState, "CDC Client not initialized or shutting down");
+  return client_;
 }
 
 Result<std::shared_ptr<client::YBSession>> CDCStateTable::GetSession() {
@@ -311,16 +331,14 @@ Status CDCStateTable::DeleteEntries(const std::vector<CDCStateTableKey>& entry_k
 }
 
 Result<CDCStateTableRange> CDCStateTable::GetTableRange(
-    CDCStateTableEntrySelector&& field_filter, Status* iteration_status,
-    client::TableFilter filter) {
+    CDCStateTableEntrySelector&& field_filter, Status* iteration_status) {
   std::vector<std::string> columns;
-  columns.emplace_back(master::kCdcTabletId);
-  columns.emplace_back(master::kCdcStreamId);
+  columns.emplace_back(kCdcTabletId);
+  columns.emplace_back(kCdcStreamId);
   MoveCollection(&field_filter.columns_, &columns);
   VLOG_WITH_FUNC(1) << yb::ToString(columns);
 
-  return CDCStateTableRange(
-      VERIFY_RESULT(GetTable()), iteration_status, std::move(columns), std::move(filter));
+  return CDCStateTableRange(VERIFY_RESULT(GetTable()), iteration_status, std::move(columns));
 }
 
 Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
@@ -333,7 +351,7 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
   VLOG_WITH_FUNC(1) << yb::ToString(key) << ", Columns: " << yb::ToString(columns);
 
   const auto kCdcStreamIdColumnId =
-      narrow_cast<ColumnIdRep>(Schema::first_column_id() + master::kCdcStreamIdIdx);
+      narrow_cast<ColumnIdRep>(Schema::first_column_id() + kCdcStreamIdIdx);
 
   auto cdc_table = VERIFY_RESULT(GetTable());
   auto session = VERIFY_RESULT(GetSession());
@@ -376,15 +394,15 @@ Result<CDCStateTableEntry> CdcStateTableIterator::operator*() const {
 }
 
 CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeCheckpoint() {
-  columns_.insert(master::kCdcCheckpoint);
+  columns_.insert(kCdcCheckpoint);
   return std::move(*this);
 }
 CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeLastReplicationTime() {
-  columns_.insert(master::kCdcLastReplicationTime);
+  columns_.insert(kCdcLastReplicationTime);
   return std::move(*this);
 }
 CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeData() {
-  columns_.insert(master::kCdcData);
+  columns_.insert(kCdcData);
   return std::move(*this);
 }
 
@@ -406,7 +424,7 @@ CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeSnapshotKey() {
 
 CDCStateTableRange::CDCStateTableRange(
     const std::shared_ptr<client::TableHandle>& table, Status* failure_status,
-    std::vector<std::string>&& columns, client::TableFilter filter)
+    std::vector<std::string>&& columns)
     : table_(table) {
   options_.columns = std::move(columns);
 
@@ -414,10 +432,6 @@ CDCStateTableRange::CDCStateTableRange(
     *failure_status = status.CloneAndPrepend(
         Format("Scan of table $0 failed", kCdcStateYBTableName.table_name()));
   };
-
-  if (filter) {
-    options_.filter = std::move(filter);
-  }
 }
 
 }  // namespace yb::cdc

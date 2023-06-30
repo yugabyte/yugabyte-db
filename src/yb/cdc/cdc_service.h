@@ -20,7 +20,7 @@
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_service.service.h"
-#include "yb/cdc/cdc_state_table.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_util.h"
 #include "yb/client/async_initializer.h"
 
@@ -70,13 +70,8 @@ static const char* const kRecordFormat = "record_format";
 static const char* const kRetentionSec = "retention_sec";
 static const char* const kSourceType = "source_type";
 static const char* const kCheckpointType = "checkpoint_type";
-static const char* const kIdType = "id_type";
 static const char* const kStreamState = "state";
 static const char* const kNamespaceId = "NAMESPACEID";
-static const char* const kTableId = "TABLEID";
-static const char* const kCDCSDKSafeTime = "cdc_sdk_safe_time";
-static const char* const kCDCSDKActiveTime = "active_time";
-static const char* const kCDCSDKSnapshotKey = "snapshot_key";
 static const char* const kCDCSDKSnapshotDoneKey = "snapshot_done_key";
 struct TabletCheckpoint {
   OpId op_id;

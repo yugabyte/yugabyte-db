@@ -12,6 +12,8 @@
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
+#include "yb/cdc/cdc_state_table.h"
+
 namespace yb {
 namespace cdc {
 
@@ -480,25 +482,25 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestTabletSplitBeforeBootstrap)) {
 
   // We are checking the 'cdc_state' table just after tablet split is succesfull, but since we
   // haven't started streaming from the parent tablet, we should only see 2 rows.
-  client::TableHandle table_handle;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table_handle.Open(cdc_state_table, test_client()));
-
   uint seen_rows = 0;
   TabletId parent_tablet_id = tablets[0].tablet_id();
-  for (const auto& row : client::TableRange(table_handle)) {
-    const auto& tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-    const auto& checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
-    LOG(INFO) << "Read cdc_state table row for tablet_id: " << tablet_id
-              << " and stream_id: " << stream_id << ", with checkpoint: " << checkpoint;
+  CDCStateTable cdc_state_table(test_client());
+  Status s;
+  for (auto row_result : ASSERT_RESULT(
+           cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    const auto& checkpoint = *row.checkpoint;
+    LOG(INFO) << "Read cdc_state table row for tablet_id: " << row.key.tablet_id
+              << " and stream_id: " << row.key.stream_id << ", with checkpoint: " << checkpoint;
 
-    if (tablet_id != tablets[0].tablet_id()) {
+    if (row.key.tablet_id != tablets[0].tablet_id()) {
       // Both children should have the min OpId(-1.-1) as the checkpoint.
-      ASSERT_EQ(checkpoint, OpId::Invalid().ToString());
+      ASSERT_EQ(checkpoint, OpId::Invalid());
     }
     seen_rows += 1;
   }
+  ASSERT_OK(s);
   ASSERT_EQ(seen_rows, 2);
 
   // Since we haven't started polling yet, the checkpoint in the tablet peers would be OpId(-1.-1).
@@ -548,27 +550,26 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCStateTableAfterTabletSplit
 
   // We are checking the 'cdc_state' table just after tablet split is succesfull, so we must see 3
   // entries, one for the parent tablet and two for the children tablets.
-  client::TableHandle table_handle;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table_handle.Open(cdc_state_table, test_client()));
-
   uint seen_rows = 0;
   TabletId parent_tablet_id = tablets[0].tablet_id();
-  for (const auto& row : client::TableRange(table_handle)) {
-    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-    auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-    auto checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
-    LOG(INFO) << "Read cdc_state table row for tablet_id: " << tablet_id
-              << " and stream_id: " << stream_id << ", with checkpoint: " << checkpoint;
+  CDCStateTable cdc_state_table(test_client());
+  Status s;
+  for (auto row_result : ASSERT_RESULT(
+           cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    auto& checkpoint = *row.checkpoint;
+    LOG(INFO) << "Read cdc_state table row for tablet_id: " << row.key.tablet_id
+              << " and stream_id: " << row.key.stream_id << ", with checkpoint: " << checkpoint;
 
-    if (tablet_id != tablets[0].tablet_id()) {
+    if (row.key.tablet_id != tablets[0].tablet_id()) {
       // Both children should have the min OpId(0.0) as the checkpoint.
-      ASSERT_EQ(checkpoint, OpId::Min().ToString());
+      ASSERT_EQ(checkpoint, OpId::Min());
     }
 
     seen_rows += 1;
   }
+  ASSERT_OK(s);
 
   ASSERT_EQ(seen_rows, 3);
 }
@@ -620,30 +621,29 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitReported
   // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
   SleepFor(MonoDelta::FromSeconds(2));
 
-  client::TableHandle table_handle;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table_handle.Open(cdc_state_table, test_client()));
-
   bool saw_row_child_one = false;
   bool saw_row_child_two = false;
   bool saw_row_parent = false;
   // We should still see the entry corresponding to the parent tablet.
   TabletId parent_tablet_id = tablets[0].tablet_id();
-  for (const auto& row : client::TableRange(table_handle)) {
-    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-    auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-    LOG(INFO) << "Read cdc_state table row with tablet_id: " << tablet_id
-              << " stream_id: " << stream_id;
+  CDCStateTable cdc_state_table(test_client());
+  Status s;
+  for (auto row_result :
+       ASSERT_RESULT(cdc_state_table.GetTableRange({} /* just key columns */, &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    LOG(INFO) << "Read cdc_state table row with tablet_id: " << row.key.tablet_id
+              << " stream_id: " << row.key.stream_id;
 
-    if (tablet_id == tablets_after_split[0].tablet_id()) {
+    if (row.key.tablet_id == tablets_after_split[0].tablet_id()) {
       saw_row_child_one = true;
-    } else if (tablet_id == tablets_after_split[1].tablet_id()) {
+    } else if (row.key.tablet_id == tablets_after_split[1].tablet_id()) {
       saw_row_child_two = true;
-    } else if (tablet_id == parent_tablet_id) {
+    } else if (row.key.tablet_id == parent_tablet_id) {
       saw_row_parent = true;
     }
   }
+  ASSERT_OK(s);
 
   ASSERT_TRUE(saw_row_child_one && saw_row_child_two && saw_row_parent);
 
@@ -678,17 +678,18 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitReported
   saw_row_child_one = false;
   saw_row_child_two = false;
   // We should no longer see the entry corresponding to the parent tablet.
-  for (const auto& row : client::TableRange(table_handle)) {
-    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-    auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-    LOG(INFO) << "Read cdc_state table row with tablet_id: " << tablet_id
-              << " stream_id: " << stream_id;
+  for (const auto& row_result :
+       ASSERT_RESULT(cdc_state_table.GetTableRange({} /* just key columns */, &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    LOG(INFO) << "Read cdc_state table row with tablet_id: " << row.key.tablet_id
+              << " stream_id: " << row.key.stream_id;
 
-    ASSERT_TRUE(parent_tablet_id != tablet_id);
+    ASSERT_TRUE(parent_tablet_id != row.key.tablet_id);
 
-    if (tablet_id == tablets_after_split[0].tablet_id()) {
+    if (row.key.tablet_id == tablets_after_split[0].tablet_id()) {
       saw_row_child_one = true;
-    } else if (tablet_id == tablets_after_split[1].tablet_id()) {
+    } else if (row.key.tablet_id == tablets_after_split[1].tablet_id()) {
       saw_row_child_two = true;
     }
   }

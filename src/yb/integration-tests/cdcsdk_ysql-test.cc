@@ -12,6 +12,8 @@
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
+#include "yb/cdc/cdc_state_table.h"
+
 namespace yb {
 
 using client::YBTableName;
@@ -1069,18 +1071,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStream
   DropTable(&test_cluster_, kTableName);
 
   // Wait for bg thread to cleanup entries from cdc_state.
-  client::TableHandle table_handle_cdc;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table_handle_cdc.Open(cdc_state_table, test_client()));
+  CDCStateTable cdc_state_table(test_client());
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        for (const auto& row : client::TableRange(table_handle_cdc)) {
-          auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-          if (stream_id == create_resp.stream_id()) {
+        Status s;
+        for (auto row_result : VERIFY_RESULT(cdc_state_table.GetTableRange(
+                 CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+          RETURN_NOT_OK(row_result);
+          auto& row = *row_result;
+          if (row.key.stream_id == create_resp.stream_id()) {
             return false;
           }
         }
+        RETURN_NOT_OK(s);
         return true;
       },
       MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
@@ -1447,21 +1450,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultpleActiveStreamOnSameTabl
   }
 
   OpId min_checkpoint = OpId::Max();
-  client::TableHandle table_handle_cdc;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table_handle_cdc.Open(cdc_state_table, test_client()));
-  for (const auto& row : client::TableRange(table_handle_cdc)) {
-    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-    auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-    auto checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
-    LOG(INFO) << "Read cdc_state table with tablet_id: " << tablet_id << " stream_id: " << stream_id
-              << " checkpoint is: " << checkpoint;
-    auto result = OpId::FromString(checkpoint);
-    ASSERT_OK(result);
-    OpId row_checkpoint = *result;
-    min_checkpoint = min(min_checkpoint, row_checkpoint);
+
+  CDCStateTable cdc_state_table(test_client());
+  Status s;
+  for (auto row_result : ASSERT_RESULT(
+           cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+
+    LOG(INFO) << "Read cdc_state table with tablet_id: " << row.key.tablet_id
+              << " stream_id: " << row.key.stream_id << " checkpoint is: " << *row.checkpoint;
+    min_checkpoint = min(min_checkpoint, *row.checkpoint);
   }
+  ASSERT_OK(s);
 
   ASSERT_OK(WaitFor(
       [&]() {
@@ -1566,24 +1567,22 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestActiveAndInActiveStreamOnSame
   OpId overall_min_checkpoint = OpId::Max();
   OpId active_stream_checkpoint;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 100000;
-  client::TableHandle table_handle_cdc;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table_handle_cdc.Open(cdc_state_table, test_client()));
-  for (const auto& row : client::TableRange(table_handle_cdc)) {
-    auto read_tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-    auto read_stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-    auto read_checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
+
+  CDCStateTable cdc_state_table(test_client());
+  Status s;
+  for (auto row_result : ASSERT_RESULT(
+           cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+
     GetChangesResponsePB latest_change_resp = ASSERT_RESULT(
         GetChangesFromCDC(stream_id[0], tablets, &change_resp[0].cdc_sdk_checkpoint()));
-    auto result = OpId::FromString(read_checkpoint);
-    ASSERT_OK(result);
-    if (read_tablet_id == tablets[0].tablet_id() && stream_id[0] == read_stream_id) {
-      LOG(INFO) << "Read cdc_state table with tablet_id: " << read_tablet_id
-                << " stream_id: " << read_stream_id << " checkpoint is: " << read_checkpoint;
-      active_stream_checkpoint = *result;
+    if (row.key.tablet_id == tablets[0].tablet_id() && stream_id[0] == row.key.stream_id) {
+      LOG(INFO) << "Read cdc_state table with tablet_id: " << row.key.tablet_id
+                << " stream_id: " << row.key.stream_id << " checkpoint is: " << *row.checkpoint;
+      active_stream_checkpoint = *row.checkpoint;
     } else {
-      overall_min_checkpoint = min(overall_min_checkpoint, *result);
+      overall_min_checkpoint = min(overall_min_checkpoint, *row.checkpoint);
     }
   }
 
@@ -3034,34 +3033,22 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCreateStreamAfterSetCheckpoin
   LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
 
   // Forcefully update the checkpoint of the stream as MAX.
-  OpId commit_op_id = OpId::Max();
-  client::TableHandle cdc_state;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(cdc_state.Open(cdc_state_table, test_client()));
-  const auto op = cdc_state.NewUpdateOp();
-  auto* const req = op->mutable_request();
-  QLAddStringHashValue(req, tablets[0].tablet_id());
-  QLAddStringRangeValue(req, stream_id);
-  cdc_state.AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
-  auto* condition = req->mutable_if_expr()->mutable_condition();
-  condition->set_op(QL_OP_EXISTS);
-  auto session = test_client()->NewSession();
-  EXPECT_OK(session->TEST_ApplyAndFlush(op));
+  auto max_commit_op_id = OpId::Max();
+  CDCStateTable cdc_state_table(test_client());
+  CDCStateTableEntry entry(tablets[0].tablet_id(), stream_id);
+  entry.checkpoint = max_commit_op_id;
+  ASSERT_OK(cdc_state_table.UpdateEntries({entry}));
 
   // Now Read the cdc_state table check checkpoint is updated to MAX.
 
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto row = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
-            &cdc_state, session.get(), tablets[0].tablet_id(), stream_id,
-            {master::kCdcCheckpoint}));
-        return row && row->column(0).string_value() == OpId::Max().ToString();
-      },
-      MonoDelta::FromSeconds(60),
-      "Failed to read from cdc_state table."));
+  auto entry_opt = ASSERT_RESULT(
+      cdc_state_table.TryFetchEntry(entry.key, CDCStateTableEntrySelector().IncludeCheckpoint()));
+  ASSERT_TRUE(entry_opt.has_value()) << "Row not found in cdc_state table";
+  ASSERT_EQ(*entry_opt->checkpoint, max_commit_op_id);
+
   VerifyCdcStateMatches(
-      test_client(), stream_id, tablets[0].tablet_id(), commit_op_id.term, commit_op_id.index);
+      test_client(), stream_id, tablets[0].tablet_id(), max_commit_op_id.term,
+      max_commit_op_id.index);
 
   CDCStreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
@@ -4864,35 +4851,20 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
   // Here we are creating a scenario where active_time is not set in the cdc_state table because of
   // older server version, if we upgrade the server where active_time is part of cdc_state table,
   // GetChanges call should successful not intents GCed error.
-  client::TableHandle cdc_state;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(cdc_state.Open(cdc_state_table, test_client()));
+  CDCStateTable cdc_state_table(test_client());
+  auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(entry_opt.has_value());
+  entry_opt->active_time = std::nullopt;
 
-  const auto op = cdc_state.NewUpdateOp();
-  auto* const req = op->mutable_request();
-  QLAddStringHashValue(req, tablets[0].tablet_id());
-  QLAddStringRangeValue(req, stream_id);
-  // Intensionally set the active_time field to null
-  cdc_state.AddStringColumnValue(req, master::kCdcData, "");
-
-  auto* condition = req->mutable_if_expr()->mutable_condition();
-  condition->set_op(QL_OP_EXISTS);
-  auto session = test_client()->NewSession();
-  EXPECT_OK(session->TEST_ApplyAndFlush(op));
+  ASSERT_OK(cdc_state_table.DeleteEntries({entry_opt->key}));
+  ASSERT_OK(cdc_state_table.InsertEntries({*entry_opt}));
 
   // Now Read the cdc_state table check active_time is set to null.
-
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto row = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
-            &cdc_state, session.get(), tablets[0].tablet_id(), stream_id,
-            {master::kCdcData}));
-
-        return row && row->column(0).IsNull();
-      },
-      MonoDelta::FromSeconds(60),
-      "Failed to update active_time null in cdc_state table."));
+  entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(entry_opt.has_value());
+  ASSERT_TRUE(!entry_opt->active_time.has_value());
 
   SleepFor(MonoDelta::FromSeconds(10));
 
@@ -4935,10 +4907,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
   // Here we are creating a scenario where active_time is not set in the cdc_state table because of
   // older server version, if we upgrade the server where active_time is part of cdc_state table,
   // GetChanges call should successful not intents GCed error.
-  client::TableHandle cdc_state;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(cdc_state.Open(cdc_state_table, test_client()));
+  CDCStateTable cdc_state_table(test_client());
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
@@ -4955,20 +4924,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
   change_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
 
-  const auto op = cdc_state.NewUpdateOp();
-  auto* const req = op->mutable_request();
-  QLAddStringHashValue(req, tablets[0].tablet_id());
-  QLAddStringRangeValue(req, stream_id);
-  // Intensionally set the active_time field to null
-  cdc_state.AddStringColumnValue(req, master::kCdcData, "");
-  // And set back only active time, so that safe _time does not exist.
-  auto map_value_pb = client::AddMapColumn(req, Schema::first_column_id() + master::kCdcDataIdx);
-  client::AddMapEntryToColumn(
-      map_value_pb, kCDCSDKActiveTime, std::to_string(GetCurrentTimeMicros()));
-  auto* condition = req->mutable_if_expr()->mutable_condition();
-  condition->set_op(QL_OP_EXISTS);
-  auto session = test_client()->NewSession();
-  EXPECT_OK(session->TEST_ApplyAndFlush(op));
+  auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(entry_opt.has_value());
+  entry_opt->cdc_sdk_safe_time = std::nullopt;
+
+  ASSERT_OK(cdc_state_table.DeleteEntries({entry_opt->key}));
+  ASSERT_OK(cdc_state_table.InsertEntries({*entry_opt}));
+
+  // Now Read the cdc_state table check cdc_sdk_safe_time is set to null.
+  entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(entry_opt.has_value());
+  ASSERT_TRUE(!entry_opt->cdc_sdk_safe_time.has_value());
 
   // We confirm if 'UpdatePeersAndMetrics' thread has updated the checkpoint in tablet tablet peer.
   for (uint tserver_index = 0; tserver_index < num_tservers; tserver_index++) {

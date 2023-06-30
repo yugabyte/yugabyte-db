@@ -30,6 +30,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/meta_cache.h"
@@ -483,9 +484,6 @@ class XClusterTest : public XClusterTestBase,
   }
 
   Status FlushProducerTabletsAndGCLog() {
-    // hk!!! remove
-    google::SetVLOGLevel("tablet_peer*", 4);
-    google::SetVLOGLevel("log*", 4);
     RETURN_NOT_OK(producer_cluster()->FlushTablets());
     RETURN_NOT_OK(producer_cluster()->CompactTablets());
     for (size_t i = 0; i < producer_cluster()->num_tablet_servers(); ++i) {
@@ -650,7 +648,6 @@ TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
     WriteWorkload(0, 100, producer_client(), producer_table->name());
   }
 
-  SleepFor(MonoDelta::FromSeconds(10));
   cdc::BootstrapProducerRequestPB req;
   cdc::BootstrapProducerResponsePB resp;
 
@@ -674,26 +671,27 @@ TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
-  client::TableHandle table;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, producer_client()));
+  cdc::CDCStateTable cdc_state_table(producer_client());
+  Status s;
+  auto table_range = ASSERT_RESULT(
+      cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
 
   // 2 tables with 8 tablets each.
-  ASSERT_EQ(tables_vector.size() * kNTabletsPerTable, boost::size(client::TableRange(table)));
-  for (const auto& row : client::TableRange(table)) {
-    string stream_id = row.column(0).string_value();
-    tablet_bootstraps[stream_id]++;
+  ASSERT_EQ(
+      tables_vector.size() * kNTabletsPerTable,
+      std::distance(table_range.begin(), table_range.end()));
 
-    string checkpoint = row.column(2).string_value();
-    auto s = OpId::FromString(checkpoint);
-    ASSERT_OK(s);
-    OpId op_id = *s;
-    ASSERT_GT(op_id.index, 0);
+  for (auto row_result : table_range) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    tablet_bootstraps[row.key.stream_id]++;
+    ASSERT_TRUE(row.checkpoint);
+    ASSERT_GT(row.checkpoint->index, 0);
 
-    LOG(INFO) << "Bootstrap id " << stream_id
-              << " for tablet " << row.column(1).string_value();
+    LOG(INFO) << "Bootstrap id " << row.key.stream_id << " for tablet " << row.key.tablet_id << " "
+              << " has checkpoint " << *row.checkpoint;
   }
+  ASSERT_OK(s);
 
   ASSERT_EQ(tablet_bootstraps.size(), producer_tables.size());
   // Check that each bootstrap id has 8 tablets.

@@ -28,7 +28,7 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_service_context.h"
 #include "yb/cdc/cdc_state_table.h"
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/client/client.h"
@@ -190,8 +190,6 @@ using client::internal::RemoteTabletServer;
 using rpc::RpcContext;
 
 constexpr int kMaxDurationForTabletLookup = 50;
-const client::YBTableName kCdcStateTableName(
-    YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
 
 MonoTime test_expire_time_cdc_log_init_failure = MonoTime::kUninitialized;
 
@@ -2374,7 +2372,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
   RETURN_NOT_OK(iteration_status);
 
   YB_LOG_EVERY_N_SECS(INFO, 300) << "Read " << count << " records from "
-                                 << kCdcStateTableName.table_name();
+                                 << kCdcStateTableName;
   return tablet_min_checkpoint_map;
 }
 

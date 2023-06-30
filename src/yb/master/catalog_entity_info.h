@@ -38,7 +38,7 @@
 
 #include <boost/bimap.hpp>
 
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/common/entity_ids.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
