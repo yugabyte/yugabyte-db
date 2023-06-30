@@ -13,15 +13,24 @@ import { array, boolean, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import { YBModal, YBModalProps } from '../../../../../redesign/components';
-import { ProviderCode, RegionOperationLabel, VPCSetupType } from '../../constants';
+import {
+  KubernetesProvider,
+  ProviderCode,
+  RegionOperationLabel,
+  VPCSetupType
+} from '../../constants';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
 import { ConfigureK8sAvailabilityZoneField } from './ConfigureK8sAvailabilityZoneField';
 import { K8sCertIssuerType, K8sRegionFieldLabel, RegionOperation } from './constants';
 import { getRegionOptions } from './utils';
 import { generateLowerCaseAlphanumericId, getIsRegionFormDisabled } from '../utils';
+import { useQuery } from 'react-query';
+import { api, regionMetadataQueryKey } from '../../../../../redesign/helpers/api';
+import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 
 interface ConfigureK8sRegionModalProps extends YBModalProps {
   configuredRegions: K8sRegionField[];
+  kubernetesProvider: KubernetesProvider;
   onRegionSubmit: (region: K8sRegionField) => void;
   onClose: () => void;
   regionOperation: RegionOperation;
@@ -80,6 +89,7 @@ const useStyles = makeStyles((theme) => ({
 export const ConfigureK8sRegionModal = ({
   configuredRegions,
   isProviderFormDisabled,
+  kubernetesProvider,
   onRegionSubmit,
   onClose,
   regionOperation,
@@ -87,6 +97,12 @@ export const ConfigureK8sRegionModal = ({
   vpcSetupType,
   ...modalProps
 }: ConfigureK8sRegionModalProps) => {
+  const classes = useStyles();
+  const regionMetadataQuery = useQuery(
+    regionMetadataQueryKey.detail(ProviderCode.KUBERNETES),
+    () => api.fetchRegionMetadata(ProviderCode.KUBERNETES, kubernetesProvider),
+    { refetchOnMount: false, refetchOnWindowFocus: false }
+  );
   const validationSchema = object().shape({
     regionData: object().required(`${K8sRegionFieldLabel.REGION} is required.`),
     zones: array().of(
@@ -101,7 +117,6 @@ export const ConfigureK8sRegionModal = ({
     defaultValues: regionSelection,
     resolver: yupResolver(validationSchema)
   });
-  const classes = useStyles();
 
   const onSubmit: SubmitHandler<ConfigureK8sRegionFormValues> = async (formValues) => {
     if (formValues.zones.length <= 0) {
@@ -128,13 +143,23 @@ export const ConfigureK8sRegionModal = ({
     onClose();
   };
 
+  if (regionMetadataQuery.isLoading || regionMetadataQuery.isIdle) {
+    return <YBLoading />;
+  }
+  if (regionMetadataQuery.isError) {
+    return <YBErrorIndicator customErrorMessage="Error fetching region metadata." />;
+  }
+
   const configuredRegionCodes = configuredRegions.map((configuredRegion) => configuredRegion.code);
-  const regionOptions = getRegionOptions(ProviderCode.KUBERNETES).filter(
-    (regionOption) =>
-      regionSelection?.code === regionOption.value.code ||
-      !configuredRegionCodes.includes(regionOption.value.code)
-  );
+  const regionOptions = getRegionOptions(regionMetadataQuery.data)
+    .filter(
+      (regionOption) =>
+        regionSelection?.code === regionOption.value.code ||
+        !configuredRegionCodes.includes(regionOption.value.code)
+    )
+    .sort((regionOptionA, regionOptionB) => (regionOptionA.label > regionOptionB.label ? 1 : -1));
   const isFormDisabled = isProviderFormDisabled || getIsRegionFormDisabled(formMethods.formState);
+
   return (
     <FormProvider {...formMethods}>
       <YBModal
