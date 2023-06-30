@@ -516,9 +516,13 @@ transactions.
 ### Transactional-mode limitations
 
 With transactional mode,
+- no writes are allowed in the target universe
 - active-active is not supported
 - YCQL is not yet supported
-- no writes are allowed in the target universe
+
+When the source universe is lost, an explicit decision must be made to
+switch over to the standby universe and point-in-time recovery must run;
+this is expected to increase recovery time by a minute or so.
 
 ### Bootstrapping replication
 
