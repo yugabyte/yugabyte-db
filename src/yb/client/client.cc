@@ -1065,11 +1065,11 @@ Status YBClient::GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {
   return Status::OK();
 }
 
-Status YBClient::GetTServerUUID(std::string &node_uuid) {
+Result<std::string> YBClient::GetTServerUUID() {
   if (data_->meta_cache_->local_tserver())
-    node_uuid = data_->meta_cache_->local_tserver()->permanent_uuid();
+    return data_->meta_cache_->local_tserver()->permanent_uuid();
 
-  return Status::OK();
+  return "";
 }
 
 Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,

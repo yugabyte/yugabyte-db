@@ -327,9 +327,7 @@ class PgClientServiceImpl::Impl {
       const PgGetTServerUUIDRequestPB& req,
       PgGetTServerUUIDResponsePB* resp,
       rpc::RpcContext* context) {
-    std::string node_uuid;
-    RETURN_NOT_OK(client().GetTServerUUID(node_uuid));
-    resp->set_node_uuid(node_uuid);
+    resp->set_node_uuid(VERIFY_RESULT(client().GetTServerUUID()));
     return Status::OK();
   }
 
