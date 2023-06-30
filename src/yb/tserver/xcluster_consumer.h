@@ -22,6 +22,7 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_util.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_types.pb.h"

@@ -34,7 +34,7 @@
 #include "yb/tserver/xcluster_poller.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 
 #include "yb/client/error.h"
 #include "yb/client/client.h"

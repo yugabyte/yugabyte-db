@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string>
 
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/tserver/xcluster_output_client_interface.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/rpc/rpc.h"

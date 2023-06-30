@@ -12,6 +12,8 @@
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
+#include "yb/cdc/cdc_state_table.h"
+
 namespace yb {
 namespace cdc {
   Result<string> CDCSDKYsqlTest::GetUniverseId(Cluster* cluster) {
@@ -34,23 +36,17 @@ namespace cdc {
   void CDCSDKYsqlTest::VerifyCdcStateMatches(
       client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id,
       const uint64_t term, const uint64_t index) {
-    client::TableHandle table;
-    client::YBTableName cdc_state_table(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    ASSERT_OK(table.Open(cdc_state_table, client));
-    auto session = client->NewSession();
+    CDCStateTable cdc_state_table(client);
 
-    auto row = ASSERT_RESULT(FetchCdcStreamInfo(
-        &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
+    auto row = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+        {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
+    ASSERT_TRUE(row);
 
     LOG(INFO) << strings::Substitute(
         "Verifying tablet: $0, stream: $1, op_id: $2", tablet_id, stream_id,
         OpId(term, index).ToString());
 
-    string checkpoint = row.column(0).string_value();
-    auto result = OpId::FromString(checkpoint);
-    ASSERT_OK(result);
-    OpId op_id = *result;
+    OpId op_id = *row->checkpoint;
 
     ASSERT_EQ(op_id.term, term);
     ASSERT_EQ(op_id.index, index);
@@ -88,18 +84,13 @@ namespace cdc {
   void CDCSDKYsqlTest::VerifyStreamDeletedFromCdcState(
       client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id,
       int timeout_secs) {
-    client::TableHandle table;
-    const client::YBTableName cdc_state_table(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    ASSERT_OK(table.Open(cdc_state_table, client));
-    auto session = client->NewSession();
+    CDCStateTable cdc_state_table(client);
 
     // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
     // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {
-          auto row = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
-              &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
+          auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry({tablet_id, stream_id}));
           return !row;
         },
         MonoDelta::FromSeconds(timeout_secs),
@@ -108,41 +99,28 @@ namespace cdc {
 
   Result<OpId> CDCSDKYsqlTest::GetStreamCheckpointInCdcState(
       client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id) {
-    client::TableHandle table;
-    const client::YBTableName cdc_state_table(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    RETURN_NOT_OK(table.Open(cdc_state_table, client));
-    auto session = client->NewSession();
+    CDCStateTable cdc_state_table(client);
+    auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
+        {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
+    SCHECK(row, IllegalState, "Row not found in cdc_state table");
 
-    auto row = VERIFY_RESULT(FetchCdcStreamInfo(
-        &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
-
-    auto op_id_result = OpId::FromString(row.column(0).string_value());
-    RETURN_NOT_OK(op_id_result);
-    auto op_id = *op_id_result;
-
-    return op_id;
+    return *row->checkpoint;
   }
 
   void CDCSDKYsqlTest::VerifyStreamCheckpointInCdcState(
       client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id,
       OpIdExpectedValue op_id_expected_value,
       int timeout_secs) {
-    client::TableHandle table;
-    const client::YBTableName cdc_state_table(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    ASSERT_OK(table.Open(cdc_state_table, client));
-    auto session = client->NewSession();
+    CDCStateTable cdc_state_table(client);
 
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {
-          auto row = VERIFY_RESULT(FetchCdcStreamInfo(
-              &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
-          auto op_id_result = OpId::FromString(row.column(0).string_value());
-          if (!op_id_result.ok()) {
+          auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
+              {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
+          if (!row) {
             return false;
           }
-          auto op_id = *op_id_result;
+          auto& op_id = *row->checkpoint;
 
           switch (op_id_expected_value) {
             case OpIdExpectedValue::MaxOpId:
@@ -1822,79 +1800,47 @@ namespace cdc {
 
   Result<int64_t> CDCSDKYsqlTest::GetLastActiveTimeFromCdcStateTable(
       const CDCStreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
-    auto session = client->NewSession();
-    client::TableHandle table;
-    const client::YBTableName cdc_state_table(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    RETURN_NOT_OK(table.Open(cdc_state_table, client));
+    CDCStateTable cdc_state_table(client);
 
-    auto row = VERIFY_RESULT(FetchCdcStreamInfo(
-        &table, session.get(), tablet_id, stream_id, {master::kCdcData}));
+    auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
+        {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeActiveTime()));
+    SCHECK(
+        row, IllegalState, "CDC state table entry for tablet $0 stream $1 not found", tablet_id,
+        stream_id);
 
-    const auto& last_active_time_string =
-        row.column(0).map_value().values().Get(0).string_value();
-
-    auto last_active_time = VERIFY_RESULT(CheckedStoInt<int64_t>(last_active_time_string));
-    return last_active_time;
+    return *row->active_time;
   }
 
   Result<std::tuple<uint64, std::string>> CDCSDKYsqlTest::GetSnapshotDetailsFromCdcStateTable(
       const CDCStreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
-    auto session = client->NewSession();
-    client::TableHandle table;
-    const client::YBTableName cdc_state_table(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    RETURN_NOT_OK(table.Open(cdc_state_table, client));
+    CDCStateTable cdc_state_table(client);
+    auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
+        {tablet_id, stream_id},
+        CDCStateTableEntrySelector().IncludeCDCSDKSafeTime().IncludeSnapshotKey()));
+    SCHECK(
+        row, IllegalState, "CDC state table entry for tablet $0 stream $1 not found", tablet_id,
+        stream_id);
+    SCHECK(
+        row->cdc_sdk_safe_time, IllegalState,
+        "CDC SDK safe time not found for tablet $0 stream $1 not found", tablet_id, stream_id);
+    SCHECK(
+        row->snapshot_key, IllegalState,
+        "CDC SDK snapshot key not found for tablet $0 stream $1 not found", tablet_id, stream_id);
 
-    auto row = VERIFY_RESULT(FetchCdcStreamInfo(
-        &table, session.get(), tablet_id, stream_id, {master::kCdcData}));
-
-    int32_t snapshot_time_index = -1;
-    int32_t snasphot_key_index = -1;
-    for (int32_t i = 0; i < row.column(0).map_value().keys().size(); ++i) {
-      const auto& key_pb = row.column(0).map_value().keys().Get(i);
-      if (key_pb.string_value() == kCDCSDKSafeTime) {
-        snapshot_time_index = i;
-      } else if (key_pb.string_value() == kCDCSDKSnapshotKey) {
-        snasphot_key_index = i;
-      }
-    }
-
-    if (snasphot_key_index == -1) {
-      return STATUS(InvalidArgument, "Did not find snapshot key details in cdc_state table");
-    }
-
-    uint64 snapshot_time = 0;
-    if (snapshot_time_index != -1) {
-      const auto& snapshot_time_string =
-          row.column(0).map_value().values().Get(snapshot_time_index).string_value();
-      snapshot_time = VERIFY_RESULT(CheckedStol<uint64>(snapshot_time_string));
-    }
-
-    std::string snapshot_key = "";
-    if (snasphot_key_index != -1) {
-      snapshot_key = row.column(0).map_value().values().Get(snasphot_key_index).string_value();
-    }
-
-    return std::make_pair(snapshot_time, snapshot_key);
+    return std::make_pair(*row->cdc_sdk_safe_time, *row->snapshot_key);
   }
 
   Result<int64_t> CDCSDKYsqlTest::GetSafeHybridTimeFromCdcStateTable(
       const CDCStreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
-    auto session = client->NewSession();
-    client::TableHandle table;
-    const client::YBTableName cdc_state_table(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    RETURN_NOT_OK(table.Open(cdc_state_table, client));
+    CDCStateTable cdc_state_table(client);
+    auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
+        {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCDCSDKSafeTime()));
 
-    auto row = VERIFY_RESULT(FetchCdcStreamInfo(
-        &table, session.get(), tablet_id, stream_id, {master::kCdcData}));
+    SCHECK(
+        row, IllegalState, "CDC state table entry for tablet $0 stream $1 not found", tablet_id,
+        stream_id);
 
-    const auto& safe_hybrid_time_string =
-        row.column(0).map_value().values().Get(1).string_value();
-
-    auto safe_hybrid_time = VERIFY_RESULT(CheckedStoInt<int64_t>(safe_hybrid_time_string));
-    return safe_hybrid_time;
+    return *row->cdc_sdk_safe_time;
   }
 
   void CDCSDKYsqlTest::ValidateColumnCounts(const GetChangesResponsePB& resp,
@@ -1946,31 +1892,24 @@ namespace cdc {
   void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
       const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
       const CDCStreamId& stream_id) {
-    const client::YBTableName cdc_state_table(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-
-    client::TableIteratorOptions options;
-    options.columns = std::vector<std::string>{master::kCdcTabletId, master::kCdcStreamId};
+    CDCStateTable cdc_state_table(test_client());
+    Status s;
+    auto table_range = ASSERT_RESULT(cdc_state_table.GetTableRange({}, &s));
 
     ASSERT_OK(WaitFor(
-        [&]() {
-          client::TableHandle table;
+        [&]() -> Result<bool> {
           std::unordered_set<TabletId> seen_tablet_ids;
-          auto s = table.Open(cdc_state_table, client);
-          if (!s.ok()) {
-            return false;
-          }
-
           uint32_t seen_rows = 0;
-          for (const auto& row : client::TableRange(table, options)) {
-            const auto& cur_stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-            if (cur_stream_id != stream_id && stream_id != "") {
+          for (auto row_result : table_range) {
+            RETURN_NOT_OK(row_result);
+            auto& row = *row_result;
+            if (row.key.stream_id != stream_id && stream_id != "") {
               continue;
             }
-            const auto& tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-            seen_tablet_ids.insert(tablet_id);
+            seen_tablet_ids.insert(row.key.tablet_id);
             seen_rows += 1;
           }
+          RETURN_NOT_OK(s);
 
           return (
               expected_tablet_ids == seen_tablet_ids && seen_rows == expected_tablet_ids.size());
@@ -2812,47 +2751,36 @@ namespace cdc {
       const CDCStreamId stream_id, const std::string& tablet_id) {
     // Read the cdc_state table safe should be set to valid value.
     CdcStateTableRow expected_row;
-    client::TableHandle table_handle_cdc;
-    client::YBTableName cdc_state_table(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    if (!table_handle_cdc.Open(cdc_state_table, test_client()).ok()) {
-      return STATUS_FORMAT(NotFound, "Failed to open cdc_state table");
-    }
-
-    for (const auto& row : client::TableRange(table_handle_cdc)) {
-      auto read_tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-      auto read_stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-      auto read_checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
-      auto result = OpId::FromString(read_checkpoint);
-      if (!result.ok()) {
-        return STATUS_FORMAT(NotFound, "Failed to decode the checkpoint.");
-      }
+    CDCStateTable cdc_state_table(test_client());
+    Status s;
+    auto table_range =
+        VERIFY_RESULT(cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeAll(), &s));
+    for (auto row_result : table_range) {
+      RETURN_NOT_OK(row_result);
+      auto& row = *row_result;
 
       HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
       int64_t last_active_time_cdc_state_table = 0;
-      if (!row.column(3).IsNull()) {
-        auto& map_value = row.column(3).map_value();
 
-        auto safe_time_result = GetIntValueFromMap<uint64_t>(map_value, kCDCSDKSafeTime);
-        if (safe_time_result.ok()) {
-          cdc_sdk_safe_time = HybridTime::FromPB(safe_time_result.get());
-        }
-
-        auto last_active_time_result = GetIntValueFromMap<int64_t>(map_value, kCDCSDKActiveTime);
-        if (last_active_time_result.ok()) {
-          last_active_time_cdc_state_table = last_active_time_result.get();
-        }
+      if (row.cdc_sdk_safe_time) {
+        cdc_sdk_safe_time = HybridTime(*row.cdc_sdk_safe_time);
       }
-      if (read_tablet_id == tablet_id && read_stream_id == stream_id) {
-        LOG(INFO) << "Read cdc_state table with tablet_id: " << read_tablet_id
-                  << " stream_id: " << read_stream_id << " checkpoint is: " << read_checkpoint
+
+      if (row.active_time) {
+        last_active_time_cdc_state_table = *row.active_time;
+      }
+
+      if (row.key.tablet_id == tablet_id && row.key.stream_id == stream_id) {
+        LOG(INFO) << "Read cdc_state table with tablet_id: " << row.key.tablet_id
+                  << " stream_id: " << row.key.stream_id << " checkpoint is: " << *row.checkpoint
                   << " last_active_time_cdc_state_table: " << last_active_time_cdc_state_table
                   << " cdc_sdk_safe_time: " << cdc_sdk_safe_time;
-        expected_row.op_id = *result;
+        expected_row.op_id = *row.checkpoint;
         expected_row.cdc_sdk_safe_time = cdc_sdk_safe_time;
         expected_row.cdc_sdk_latest_active_time = last_active_time_cdc_state_table;
       }
     }
+    RETURN_NOT_OK(s);
     return expected_row;
   }
 

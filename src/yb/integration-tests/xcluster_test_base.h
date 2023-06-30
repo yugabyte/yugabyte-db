@@ -18,7 +18,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/cdc/cdc_consumer.pb.h"
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 
 #include "yb/client/transaction_manager.h"
 
@@ -100,6 +100,7 @@ class XClusterTestBase : public YBTest {
     HybridTime::TEST_SetPrettyToString(true);
 
     google::SetVLOGLevel("xcluster*", 4);
+    google::SetVLOGLevel("cdc*", 4);
     YBTest::SetUp();
 
     // We normally disable setting up transactional replication for CQL tables because the
