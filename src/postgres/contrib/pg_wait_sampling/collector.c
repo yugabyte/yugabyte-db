@@ -441,6 +441,10 @@ pgws_collector_main(Datum main_arg)
 
 		ResetLatch(&MyProc->procLatch);
 
+		// ereport(LOG, (errmsg("pg_wait_sampling collector sampling")));
+		// YBCPingPggate();
+		// YBCActiveUniverseHistory();
+
 		/* Handle request if any */
 		if (pgws_collector_hdr->request != NO_REQUEST)
 		{
