@@ -179,7 +179,7 @@ public class TaskExecutor {
   private static void writeTaskWaitMetric(
       TaskType taskType, Instant scheduledTime, Instant startTime, TaskType parentTaskType) {
     COMMISSIONER_TASK_WAITING_SEC
-        .labels(taskType.name(), parentTaskType == null ? "No parent " : parentTaskType.name())
+        .labels(taskType.name(), parentTaskType == null ? "No parent" : parentTaskType.name())
         .observe(getDurationSeconds(scheduledTime, startTime));
   }
 
@@ -190,7 +190,7 @@ public class TaskExecutor {
         .labels(
             taskType.name(),
             state.name(),
-            parentTaskType == null ? "No parent " : parentTaskType.name())
+            parentTaskType == null ? "No parent" : parentTaskType.name())
         .observe(getDurationSeconds(startTime, endTime));
   }
 
@@ -796,6 +796,7 @@ public class TaskExecutor {
       Throwable t = null;
       TaskType taskType = taskInfo.getTaskType();
       taskStartTime = Instant.now();
+      Map<String, TaskType> taskLables = this.getTaskMetricLabels();
 
       try {
         if (log.isDebugEnabled()) {
@@ -804,7 +805,11 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
-        this.getTaskWaitMetricLabels(taskType);
+        writeTaskWaitMetric(
+            taskType,
+            taskScheduledTime,
+            taskStartTime,
+            taskLables.containsKey("parentTaskType") ? taskLables.get("parentTaskType") : null);
         publishBeforeTask();
         if (getAbortTime() != null) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
@@ -838,7 +843,12 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
-        this.getTaskStateMetricLabels(taskType);
+        writeTaskStateMetric(
+            taskType,
+            taskStartTime,
+            taskCompletionTime,
+            getTaskState(),
+            taskLables.containsKey("parentTaskType") ? taskLables.get("parentTaskType") : null);
         task.terminate();
         publishAfterTask(t);
       }
@@ -869,9 +879,7 @@ public class TaskExecutor {
       taskInfo.update();
     }
 
-    protected abstract void getTaskWaitMetricLabels(TaskType taskType);
-
-    protected abstract void getTaskStateMetricLabels(TaskType taskType);
+    protected abstract Map<String, TaskType> getTaskMetricLabels();
 
     protected abstract Instant getAbortTime();
 
@@ -1062,14 +1070,11 @@ public class TaskExecutor {
       subTaskGroups.clear();
     }
 
+    // Add extra labels here. Currently not required in RunnableTask
     @Override
-    protected void getTaskWaitMetricLabels(TaskType taskType) {
-      writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime, null);
-    }
-
-    @Override
-    protected void getTaskStateMetricLabels(TaskType taskType) {
-      writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState(), null);
+    protected Map<String, TaskType> getTaskMetricLabels() {
+      Map<String, TaskType> extraTaskLabels = new ConcurrentHashMap<>();
+      return extraTaskLabels;
     }
 
     @Override
@@ -1223,14 +1228,6 @@ public class TaskExecutor {
       }
     }
 
-    private void setParentTaskInfo() {
-      if (parentRunnableTask != null) {
-        UUID parentTaskUUID = parentRunnableTask.getTaskUUID();
-        Optional<TaskInfo> parentTaskInfoOptional = TaskInfo.maybeGet(parentTaskUUID);
-        parentTaskInfo = parentTaskInfoOptional.isPresent() ? parentTaskInfoOptional.get() : null;
-      }
-    }
-
     @Override
     public void run() {
       // Sets the top-level user task UUID.
@@ -1259,22 +1256,10 @@ public class TaskExecutor {
     }
 
     @Override
-    protected void getTaskWaitMetricLabels(TaskType taskType) {
-      writeTaskWaitMetric(
-          taskType,
-          taskScheduledTime,
-          taskStartTime,
-          parentTaskInfo == null ? null : parentTaskInfo.getTaskType());
-    }
-
-    @Override
-    protected void getTaskStateMetricLabels(TaskType taskType) {
-      writeTaskStateMetric(
-          taskType,
-          taskStartTime,
-          taskCompletionTime,
-          getTaskState(),
-          parentTaskInfo == null ? null : parentTaskInfo.getTaskType());
+    protected Map<String, TaskType> getTaskMetricLabels() {
+      Map<String, TaskType> extraTaskLabels = new ConcurrentHashMap<>();
+      extraTaskLabels.putIfAbsent("parentTaskType", parentRunnableTask.getTaskType());
+      return extraTaskLabels;
     }
 
     @Override
@@ -1305,7 +1290,6 @@ public class TaskExecutor {
       taskInfo.setParentUuid(parentRunnableTask.getTaskUUID());
       taskInfo.setPosition(position);
       taskInfo.save();
-      setParentTaskInfo();
     }
   }
 }
