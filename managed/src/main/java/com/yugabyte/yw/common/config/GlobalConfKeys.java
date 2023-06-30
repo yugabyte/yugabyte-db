@@ -323,6 +323,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable YBA's custom CA trust-store",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enforceCertVerificationBackupRestore =
+      new ConfKeyInfo<>(
+          "yb.certVerifyBackupRestore.is_enforced",
+          ScopeType.GLOBAL,
+          "Server certificate verification for S3 backup/restore",
+          "Enforce server certificate verification during S3 backup/restore",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> javaxNetSslTrustStore =
       new ConfKeyInfo<>(
           "yb.wellKnownCA.trustStore.path",
