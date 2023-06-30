@@ -15,24 +15,21 @@
 
 
 /**
- * 
+ *
  * @export
  * @interface NodeDataMetricsActiveConnections
  */
 export interface NodeDataMetricsActiveConnections  {
   /**
-   * 
+   *
    * @type {number}
    * @memberof NodeDataMetricsActiveConnections
    */
   ysql: number;
   /**
-   * 
+   *
    * @type {number}
    * @memberof NodeDataMetricsActiveConnections
    */
   ycql: number;
 }
-
-
-

@@ -51,6 +51,3 @@ export interface ClusterNodeInfo  {
    */
   num_cores: number;
 }
-
-
-

@@ -21,12 +21,9 @@
  */
 export interface VersionInfo  {
   /**
-   * 
+   *
    * @type {string}
    * @memberof VersionInfo
    */
   version?: string;
 }
-
-
-
