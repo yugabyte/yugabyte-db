@@ -20,7 +20,7 @@ On this page:
 **New Features**
 
 - Support for deploying clusters on Microsoft Azure, including:
-  - Global availability - deploy in 15 Azure regions worldwide.
+  - Global availability - deploy in 20 Azure regions worldwide.
   - Azure Private Link - establish secure private network connectivity between your Azure Virtual Networks and YugabyteDB Managed clusters for greater data privacy and compliance.
   - Horizontal and vertical scaling.
   - Availability zone fault tolerance - deploy single region, multi-zone clusters to ensure high availability and fault tolerance in the same region.
