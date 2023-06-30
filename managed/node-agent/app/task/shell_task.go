@@ -11,7 +11,6 @@ import (
 	"node-agent/util"
 	"os"
 	"os/exec"
-	"os/user"
 	"regexp"
 	"sort"
 	"strconv"
@@ -114,43 +113,37 @@ func (s *ShellTask) redactCommandArgs(args ...string) []string {
 	return redacted
 }
 
-func (s *ShellTask) command(ctx context.Context, name string, arg ...string) (*exec.Cmd, error) {
+func (s *ShellTask) command(
+	ctx context.Context,
+	userDetail *util.UserDetail,
+	name string,
+	arg ...string,
+) (*exec.Cmd, error) {
 	cmd := exec.CommandContext(ctx, name, arg...)
-	userAcc, err := user.Current()
-	if err != nil {
-		return nil, err
-	}
-	if s.user != "" && userAcc.Username != s.user {
-		var uid, gid uint32
-		userAcc, uid, gid, err = util.UserInfo(s.user)
-		if err != nil {
-			return nil, err
-		}
-		util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
-			userAcc.Username, uid, gid)
+	if !userDetail.IsCurrent {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 		cmd.SysProcAttr.Credential = &syscall.Credential{
-			Uid: uid,
-			Gid: gid,
+			Uid: userDetail.UserID,
+			Gid: userDetail.GroupID,
 		}
 	}
-	pwd := userAcc.HomeDir
+	pwd := userDetail.User.HomeDir
 	if pwd == "" {
 		pwd = "/tmp"
 	}
 	os.Setenv("PWD", pwd)
 	os.Setenv("HOME", pwd)
 	for _, userVar := range userVariables {
-		os.Setenv(userVar, userAcc.Username)
+		os.Setenv(userVar, userDetail.User.Username)
 	}
 	cmd.Dir = pwd
 	return cmd, nil
 }
 
-func (s *ShellTask) userEnv(ctx context.Context) []string {
+func (s *ShellTask) userEnv(ctx context.Context, userDetail *util.UserDetail) []string {
 	env := []string{}
 	// Interactive shell to source ~/.bashrc.
-	cmd, err := s.command(ctx, "bash")
+	cmd, err := s.command(ctx, userDetail, "bash")
 	env = append(env, os.Environ()...)
 	// Create a pseudo tty (non stdin) to act like SSH login.
 	// Otherwise, the child process is stopped because it is a background process.
@@ -183,8 +176,14 @@ func (s *ShellTask) userEnv(ctx context.Context) []string {
 
 // Command returns a command with the environment set.
 func (s *ShellTask) Command(ctx context.Context, name string, arg ...string) (*exec.Cmd, error) {
-	env := s.userEnv(ctx)
-	cmd, err := s.command(ctx, name, arg...)
+	userDetail, err := util.UserInfo(s.user)
+	if err != nil {
+		return nil, err
+	}
+	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
+		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
+	env := s.userEnv(ctx, userDetail)
+	cmd, err := s.command(ctx, userDetail, name, arg...)
 	if err != nil {
 		util.FileLogger().Warnf(ctx, "Failed to create command %s. Error: %s", name, err.Error())
 		return nil, err
