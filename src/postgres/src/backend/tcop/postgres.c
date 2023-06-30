@@ -1904,6 +1904,9 @@ exec_bind_message(StringInfo input_message)
 	 */
 	PortalStart(portal, params, 0, InvalidSnapshot);
 
+	if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
+		YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
+
 	/*
 	 * Apply the result format requests to the portal.
 	 */
@@ -2093,6 +2096,9 @@ exec_execute_message(const char *portal_name, long max_rows)
 	 */
 	if (max_rows <= 0)
 		max_rows = FETCH_ALL;
+
+	if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
+		YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
 
 	completed = PortalRun(portal,
 						  max_rows,
@@ -5620,6 +5626,9 @@ PostgresMain(int argc, char *argv[],
 								/* Set the output format */
 								PortalSetResultFormat(portal, nformats, formats);
 
+								if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
+									YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
+
 								/* Now ready to retry the execute step. */
 								yb_exec_execute_message(portal_name,
 														max_rows,
@@ -5672,6 +5681,8 @@ PostgresMain(int argc, char *argv[],
 				MemoryContextSwitchTo(MessageContext);
 
 				HandleFunctionRequest(&input_message);
+
+				ereport(LOG, (errmsg("Fastpath function call")));
 
 				/* commit the function-invocation transaction */
 				finish_xact_command();
