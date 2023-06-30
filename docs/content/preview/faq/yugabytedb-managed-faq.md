@@ -22,7 +22,7 @@ rightNav:
 
 - [What is YugabyteDB Managed?](#what-is-yugabytedb-managed)
 - [How is YugabyteDB Managed priced?](#how-is-yugabytedb-managed-priced)
-- [What regions in AWS and GCP are available?](#what-regions-in-aws-and-gcp-are-available)
+- [What regions are available?](#what-regions-are-available)
 
 ##### Clusters
 
@@ -63,7 +63,7 @@ rightNav:
 
 ### What is YugabyteDB Managed?
 
-YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS).
+YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
 
 You access your YugabyteDB Managed clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using [YugabyteDB Managed](https://cloud.yugabyte.com/login).
 
@@ -81,9 +81,9 @@ Yugabyte bills for its services as follows:
 
 For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../../yugabyte-cloud/cloud-admin/cloud-billing-costs/).
 
-### What regions in AWS and GCP are available?
+### What regions are available?
 
-Refer to [Cloud provider regions](../../yugabyte-cloud/release-notes/#cloud-provider-regions) for a list currently supported regions.
+Refer to [Cloud provider regions](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#cloud-provider-regions) for a list currently supported regions.
 
 YugabyteDB Managed supports all the regions that have robust infrastructure and sufficient demand from customers. If there are regions you would like added, reach out to {{% support-cloud %}}.
 
@@ -101,7 +101,7 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 | :------ | :------ | :-------- |
 | Cluster | Single Node | Any |
 | vCPU/Storage | Up to 2 vCPU / 4 GB Memory / 10 GB storage | Any |
-| [Regions](../../yugabyte-cloud/release-notes/#cloud-provider-regions) | All | All |
+| [Regions](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#cloud-provider-regions) | All | All |
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/) |
 | [VPC networking](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) | No | Yes |
 | [Fault tolerance](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#fault-tolerance) | None (Single node, RF-1) | Multi node RF-3 clusters with region, availability zone, and node level |
