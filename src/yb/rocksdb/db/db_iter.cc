@@ -309,10 +309,11 @@ class DBIter final : public Iterator {
 
   const KeyValueEntry& FastNext();
   const KeyValueEntry& Next() override;
-  void Prev() override;
-  void Seek(const Slice& target) override;
-  void SeekToFirst() override;
-  void SeekToLast() override;
+  const KeyValueEntry& Prev() override;
+  const KeyValueEntry& Seek(Slice target) override;
+  const KeyValueEntry& SeekToFirst() override;
+  const KeyValueEntry& SeekToLast() override;
+
   bool ScanForward(
       Slice upperbound, KeyFilterCallback* key_filter_callback,
       ScanCallback* scan_callback) override;
@@ -650,7 +651,7 @@ void DBIter::MergeValuesNewToOld() {
   }
 }
 
-void DBIter::Prev() {
+const KeyValueEntry& DBIter::Prev() {
   DCHECK(entry_);
 
   if (direction_ == kForward) {
@@ -663,6 +664,7 @@ void DBIter::Prev() {
               .compare(prefix_start_.GetKey()) != 0) {
     SetInvalid();
   }
+  return entry_;
 }
 
 void DBIter::ReverseToBackward() {
@@ -697,11 +699,6 @@ void DBIter::ReverseToBackward() {
 }
 
 void DBIter::PrevInternal() {
-  if (!iter_->Valid()) {
-    SetInvalid();
-    return;
-  }
-
   ParsedInternalKey ikey;
 
   for (;;) {
@@ -958,7 +955,7 @@ void DBIter::FindParseableKey(ParsedInternalKey* ikey, Direction direction) {
   }
 }
 
-void DBIter::Seek(const Slice& target) {
+const KeyValueEntry& DBIter::Seek(Slice target) {
   key_buffer_.Clear();
   auto target_size = target.size();
   char* out = key_buffer_.GrowByAtLeast(target_size + sizeof(uint64_t));
@@ -982,9 +979,10 @@ void DBIter::Seek(const Slice& target) {
   if (entry_ && prefix_extractor_ && prefix_same_as_start_) {
     prefix_start_.SetKey(prefix_extractor_->Transform(target));
   }
+  return entry_;
 }
 
-void DBIter::SeekToFirst() {
+const KeyValueEntry& DBIter::SeekToFirst() {
   // Don't use iter_::Seek() if we set a prefix extractor
   // because prefix seek will be used.
   if (prefix_extractor_ != nullptr) {
@@ -1008,9 +1006,10 @@ void DBIter::SeekToFirst() {
   if (entry_ && prefix_extractor_ && prefix_same_as_start_) {
     prefix_start_.SetKey(prefix_extractor_->Transform(entry_.key));
   }
+  return entry_;
 }
 
-void DBIter::SeekToLast() {
+const KeyValueEntry& DBIter::SeekToLast() {
   // Don't use iter_::Seek() if we set a prefix extractor
   // because prefix seek will be used.
   if (prefix_extractor_ != nullptr) {
@@ -1040,7 +1039,7 @@ void DBIter::SeekToLast() {
       iter_->Prev();
       if (!iter_->Valid()) {
         SetInvalid();
-        return;
+        return entry_;
       }
     }
   }
@@ -1049,6 +1048,7 @@ void DBIter::SeekToLast() {
   if (entry_ && prefix_extractor_ && prefix_same_as_start_) {
     prefix_start_.SetKey(prefix_extractor_->Transform(entry_.key));
   }
+  return entry_;
 }
 
 // PRE: iterator is valid and direction is kForward.
@@ -1116,13 +1116,13 @@ void ArenaWrappedDBIter::SetIterUnderDBIter(InternalIterator* iter) {
 }
 
 inline const KeyValueEntry& ArenaWrappedDBIter::Entry() const { return db_iter_->Entry(); }
-inline void ArenaWrappedDBIter::SeekToFirst() { db_iter_->SeekToFirst(); }
-inline void ArenaWrappedDBIter::SeekToLast() { db_iter_->SeekToLast(); }
-inline void ArenaWrappedDBIter::Seek(const Slice& target) {
-  db_iter_->Seek(target);
+inline const KeyValueEntry& ArenaWrappedDBIter::SeekToFirst() { return db_iter_->SeekToFirst(); }
+inline const KeyValueEntry& ArenaWrappedDBIter::SeekToLast() { return db_iter_->SeekToLast(); }
+inline const KeyValueEntry& ArenaWrappedDBIter::Seek(Slice target) {
+  return db_iter_->Seek(target);
 }
 inline const KeyValueEntry& ArenaWrappedDBIter::Next() { return db_iter_->Next(); }
-inline void ArenaWrappedDBIter::Prev() { db_iter_->Prev(); }
+inline const KeyValueEntry& ArenaWrappedDBIter::Prev() { return db_iter_->Prev(); }
 inline Status ArenaWrappedDBIter::status() const { return db_iter_->status(); }
 inline Status ArenaWrappedDBIter::PinData() { return db_iter_->PinData(); }
 inline Status ArenaWrappedDBIter::GetProperty(std::string prop_name,

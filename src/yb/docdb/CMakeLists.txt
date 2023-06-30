@@ -65,6 +65,7 @@ set(DOCDB_SRCS
         compaction_file_filter.cc
         intent_aware_iterator.cc
         intent_iterator.cc
+        iter_util.cc
         key_bounds.cc
         kv_debug.cc
         lock_batch.cc

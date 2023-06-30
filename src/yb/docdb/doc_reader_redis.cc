@@ -102,7 +102,7 @@ Status BuildSubDocument(
   VLOG(3) << "BuildSubDocument data: " << data << " read_time: " << iter->read_time()
           << " low_ts: " << low_ts;
   for (;;) {
-    auto key_data = VERIFY_RESULT(iter->Fetch());
+    auto key_data = VERIFY_RESULT_REF(iter->Fetch());
     if (!key_data) {
       break;
     }
@@ -220,6 +220,7 @@ Status BuildSubDocument(
           num_values_observed));
 
     }
+    iter->Revalidate();
     if (descendant.value_type() == ValueEntryType::kInvalid) {
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
@@ -307,7 +308,7 @@ Status FindLastWriteTime(
   Slice value;
   EncodedDocHybridTime pre_doc_ht(*max_overwrite_time);
   RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &pre_doc_ht, &value));
-  if (!VERIFY_RESULT(iter->Fetch())) {
+  if (!VERIFY_RESULT_REF(iter->Fetch())) {
     return Status::OK();
   }
 
@@ -463,6 +464,7 @@ Status GetRedisSubDocument(
     *data.result = SubDocument(ValueEntryType::kInvalid);
     int64 num_values_observed = 0;
     IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
+    db_iter->Revalidate();
     RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_overwrite_ht,
                                    &num_values_observed));
     *data.doc_found = data.result->value_type() != ValueEntryType::kInvalid;

@@ -663,11 +663,10 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
   HybridTime result;
   VLOG(3) << "Doing iter->Seek " << *doc_key_;
   iter->Seek(*doc_key_);
-  if (VERIFY_RESULT(iter->Fetch())) {
+  if (VERIFY_RESULT_REF(iter->Fetch())) {
     const auto bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
-    result = VERIFY_RESULT(
-        iter->FindOldestRecord(sub_key_slice, min_read_time));
+    result = VERIFY_RESULT(iter->FindOldestRecord(sub_key_slice, min_read_time));
     VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
             << SubDocKey::DebugSliceToString(sub_key_slice);
   } else {

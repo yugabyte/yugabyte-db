@@ -93,7 +93,7 @@ class IntentAwareIteratorIf {
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
-  virtual Result<FetchedEntry> Fetch() = 0;
+  virtual Result<const FetchedEntry&> Fetch() = 0;
 
   virtual void SetUpperbound(Slice upperbound) = 0;
 

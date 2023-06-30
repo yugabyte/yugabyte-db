@@ -130,8 +130,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
     const dockv::ReaderProjection* static_projection;
   };
 
-  Result<DocReaderResult> FetchRow(FetchedEntry* fetched_entry, dockv::PgTableRow* table_row);
-  Result<DocReaderResult> FetchRow(FetchedEntry* fetched_entry, QLTableRowPair table_row);
+  Result<DocReaderResult> FetchRow(const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row);
+  Result<DocReaderResult> FetchRow(const FetchedEntry& fetched_entry, QLTableRowPair table_row);
 
   Status FillRow(QLTableRowPair table_row);
   Status FillRow(dockv::PgTableRow* table_row);
@@ -148,7 +148,6 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   // DocReader result returned by the previous fetch.
   DocReaderResult prev_doc_found_ = DocReaderResult::kNotFound;
-  FetchedEntry current_entry_;
 
   const DocDBStatistics* statistics_;
 };

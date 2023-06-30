@@ -43,15 +43,15 @@ class BoundedRocksDbIterator final : public rocksdb::Iterator {
 
   const rocksdb::KeyValueEntry& Entry() const override;
 
-  void SeekToFirst() override;
+  const rocksdb::KeyValueEntry& SeekToFirst() override;
 
-  void SeekToLast() override;
+  const rocksdb::KeyValueEntry& SeekToLast() override;
 
-  void Seek(const Slice& target) override;
+  const rocksdb::KeyValueEntry& Seek(Slice target) override;
 
   const rocksdb::KeyValueEntry& Next() override;
 
-  void Prev() override;
+  const rocksdb::KeyValueEntry& Prev() override;
 
   Status status() const override;
 
@@ -74,6 +74,8 @@ class BoundedRocksDbIterator final : public rocksdb::Iterator {
   void UseFastNext(bool value) override;
 
  private:
+  const rocksdb::KeyValueEntry& FilterEntry(const rocksdb::KeyValueEntry& entry) const;
+
   std::unique_ptr<rocksdb::Iterator> iterator_;
   const KeyBounds* key_bounds_;
 };
