@@ -31,11 +31,15 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 import java.io.InputStream;
+import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -44,9 +48,13 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.CloudType;
 import org.yb.ybc.S3ProxySetting;
@@ -54,9 +62,9 @@ import org.yb.ybc.S3ProxySetting;
 @Singleton
 @Slf4j
 public class AWSUtil implements CloudUtil {
-
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
   @Inject IAMTemporaryCredentialsProvider iamCredsProvider;
+  @Inject CustomCAStoreManager customCAStoreManager;
+  @Inject RuntimeConfGetter runtimeConfGetter;
 
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
@@ -64,16 +72,12 @@ public class AWSUtil implements CloudUtil {
   private static final String AWS_STANDARD_HOST_BASE_PATTERN = "s3([.](.+)|)[.]amazonaws[.]com";
   public static final String AWS_DEFAULT_REGION = "us-east-1";
   public static final String AWS_DEFAULT_ENDPOINT = "s3.amazonaws.com";
-  public static final String AWS_DEFAULT_REGIONAL_STS_ENDPOINT = "sts.us-east-1.amazonaws.com";
 
   public static final String YBC_AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
   public static final String YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
-  public static final String YBC_AWS_PATH_STYLE_ACCESS = "PATH_STYLE_ACCESS";
   public static final String YBC_AWS_ENDPOINT_FIELDNAME = "AWS_ENDPOINT";
   public static final String YBC_AWS_DEFAULT_REGION_FIELDNAME = "AWS_DEFAULT_REGION";
   public static final String YBC_AWS_ACCESS_TOKEN_FIELDNAME = "AWS_ACCESS_TOKEN";
-
-  private static final String ZULU_TIME_FORMAT = "yyyy-MM-dd'T'HH:mm:ss'Z'";
   private static final Pattern standardHostBaseCompiled =
       Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
 
@@ -86,7 +90,7 @@ public class AWSUtil implements CloudUtil {
     }
     for (String location : locations) {
       try {
-        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+        maybeDisableCertVerification();
         AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
         String[] bucketSplit = getSplitLocationValue(location);
         String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
@@ -104,13 +108,12 @@ public class AWSUtil implements CloudUtil {
           }
         }
       } catch (SdkClientException e) {
-        log.error(
-            String.format(
-                "Credential cannot list objects in the specified backup location %s: {}", location),
-            e.getMessage());
-        return false;
+        String msg = String.format("Cannot list objects in backup location %s", location);
+        log.error(msg, e);
+        throw new PlatformServiceException(
+            PRECONDITION_FAILED, msg + ": " + e.getLocalizedMessage());
       } finally {
-        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+        maybeEnableCertVerification();
       }
     }
     return true;
@@ -139,7 +142,7 @@ public class AWSUtil implements CloudUtil {
     String keyLocation =
         objectPrefix.substring(0, objectPrefix.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
     try {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      maybeDisableCertVerification();
       AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
       ListObjectsV2Result listObjectsResult = s3Client.listObjectsV2(bucketName, keyLocation);
       if (listObjectsResult.getKeyCount() == 0) {
@@ -153,7 +156,7 @@ public class AWSUtil implements CloudUtil {
       log.error("Error while deleting key object from bucket " + bucketName, e.getErrorMessage());
       throw e;
     } finally {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+      maybeEnableCertVerification();
     }
   }
 
@@ -184,7 +187,7 @@ public class AWSUtil implements CloudUtil {
     return StringUtils.isBlank(region) ? fallbackRegion : region;
   }
 
-  public static AmazonS3 createS3Client(CustomerConfigStorageS3Data s3Data)
+  public AmazonS3 createS3Client(CustomerConfigStorageS3Data s3Data)
       throws AmazonS3Exception, PlatformServiceException {
     AmazonS3ClientBuilder s3ClientBuilder = AmazonS3ClientBuilder.standard();
     if (s3Data.isIAMInstanceProfile) {
@@ -220,12 +223,46 @@ public class AWSUtil implements CloudUtil {
     } else {
       s3ClientBuilder.withRegion(region);
     }
+    ClientConfiguration clientConfig = null;
     if (s3Data.proxySetting != null) {
-      ClientConfiguration cc = getClientConfiguration(s3Data.proxySetting);
-      s3ClientBuilder.withClientConfiguration(cc);
+      clientConfig = getClientConfiguration(s3Data.proxySetting);
     }
     try {
-      return s3ClientBuilder.build();
+      Boolean caStoreEnabled = customCAStoreManager.isEnabled();
+      Boolean caCertUploaded = customCAStoreManager.areCustomCAsPresent();
+      // Adding enforce certification check as well so customers don't fail scheduled backups
+      // immediately after upgrading to releases having CA store enabled. This gives time to the
+      // customer to add CA certificates and make their configuration more secure.
+      Boolean certVerificationEnforced =
+          runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore);
+      if (caStoreEnabled && caCertUploaded && certVerificationEnforced) {
+        KeyStore ybaAndJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+        try {
+          TrustManagerFactory trustFactory =
+              TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+          trustFactory.init(ybaAndJavaKeyStore);
+          TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
+          SecureRandom secureRandom = new SecureRandom();
+          SSLContext sslContext = SSLContext.getInstance("TLS");
+          sslContext.init(null, ybaJavaTrustManagers, secureRandom);
+          SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(sslContext);
+          if (clientConfig == null) {
+            clientConfig = new ClientConfiguration();
+          }
+          clientConfig.getApacheHttpClientConfig().setSslSocketFactory(sslSocketFactory);
+          return s3ClientBuilder.withClientConfiguration(clientConfig).build();
+        } catch (Exception e) {
+          log.error("Could not create S3 client", e);
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              String.format("Could not create S3 client", e.getLocalizedMessage()));
+        }
+      } else {
+        if (caStoreEnabled && !certVerificationEnforced) {
+          log.warn("CA store feature is enabled but certificate verification is not enforced.");
+        }
+        return s3ClientBuilder.build();
+      }
     } catch (SdkClientException e) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to create S3 client, error: %s", e.getMessage()));
@@ -249,11 +286,11 @@ public class AWSUtil implements CloudUtil {
   public String getBucketRegion(String bucketName, CustomerConfigStorageS3Data s3Data)
       throws SdkClientException {
     try {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      maybeDisableCertVerification();
       AmazonS3 client = createS3Client(s3Data);
       return getBucketRegion(bucketName, client);
     } finally {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+      maybeEnableCertVerification();
     }
   }
 
@@ -298,11 +335,7 @@ public class AWSUtil implements CloudUtil {
       throws Exception {
     for (String backupLocation : backupLocations) {
       try {
-        // Disable cert checking while connecting with s3
-        // Enabling it can potentially fail when s3 compatible storages like
-        // Dell ECS are provided and custom certs are needed to connect
-        // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
-        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+        maybeDisableCertVerification();
         AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
         String[] splitLocation = getSplitLocationValue(backupLocation);
         String bucketName = splitLocation[0];
@@ -332,17 +365,15 @@ public class AWSUtil implements CloudUtil {
         log.error(" Error in deleting objects at location " + backupLocation, e.getErrorMessage());
         throw e;
       } finally {
-        // Re-enable cert checking as it applies globally
-        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+        maybeEnableCertVerification();
       }
     }
   }
 
   @Override
-  public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
-      throws Exception {
+  public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath) {
     try {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      maybeDisableCertVerification();
       AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
       String[] splitLocation = getSplitLocationValue(cloudPath);
       String bucketName = splitLocation[0];
@@ -354,7 +385,7 @@ public class AWSUtil implements CloudUtil {
       }
       return object.getObjectContent();
     } finally {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+      maybeEnableCertVerification();
     }
   }
 
@@ -527,7 +558,7 @@ public class AWSUtil implements CloudUtil {
   public Map<String, String> listBuckets(CustomerConfigData configData) {
     Map<String, String> bucketHostBaseMap = new HashMap<>();
     try {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      maybeDisableCertVerification();
       CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
       if ((StringUtils.isBlank(s3Data.awsAccessKeyId)
               || StringUtils.isBlank(s3Data.awsSecretAccessKey))
@@ -556,7 +587,7 @@ public class AWSUtil implements CloudUtil {
     } catch (SdkClientException e) {
       log.error("Error while listing S3 buckets {}", e.getMessage());
     } finally {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+      maybeEnableCertVerification();
     }
     return bucketHostBaseMap;
   }
@@ -569,5 +600,21 @@ public class AWSUtil implements CloudUtil {
     }
     regionLocationsMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data.backupLocation);
     return regionLocationsMap;
+  }
+
+  public void maybeDisableCertVerification() {
+    // Disable cert checking while connecting with s3
+    // Enabling it can potentially fail when s3 compatible storages like
+    // Dell ECS are provided and custom certs are needed to connect
+    // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
+    if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+    }
+  }
+
+  public void maybeEnableCertVerification() {
+    if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+    }
   }
 }
