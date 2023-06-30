@@ -168,11 +168,11 @@ Here's how it works:
 
 1. You deploy two YugabyteDB universes (typically) in different regions. Each universe automatically replicates data in itself synchronously for strong consistency.
 
-2. You then set up cross universe asynchronous replication from one universe to another. This can be either bi-directional in active-active configurations, or uni-directional in active-passive configurations.
+2. You then set up xCluster asynchronous replication from one universe to another. This can be either bi-directional in active-active configurations, or uni-directional in active-passive configurations.
 
 **Deployment**
 
-To deploy a cross-universe replication universe, first [deploy your source universe](#single-region-multi-zone-cluster), then contact {{% support-cloud %}} to add the target universe.
+To deploy a xCluster replication universe, first [deploy your source universe](#single-region-multi-zone-cluster), then contact {{% support-cloud %}} to add the target universe.
 
 **Learn more**
 
@@ -184,7 +184,7 @@ In an active-passive configuration, one universe handles writes, and asynchronou
 
 The target universe can be used to serve low-latency reads that are timeline consistent to clients nearby. They can also be used for disaster recovery. In the event of a source universe failure, clients can connect to the replicated target universe.
 
-This configuration is used for use cases such as data recovery, auditing, and compliance. You can also use cross universe replication to migrate data from a data center to the cloud or from one cloud to another. In situations that tolerate eventual consistency, clients in the same region as the target universes can get low latency reads.
+This configuration is used for use cases such as data recovery, auditing, and compliance. You can also use xCluster replication to migrate data from a data center to the cloud or from one cloud to another. In situations that tolerate eventual consistency, clients in the same region as the target universes can get low latency reads.
 
 ![Multi-region deployment with single-direction xCluster replication between universe](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-3.png)
 
@@ -207,7 +207,7 @@ This configuration is used for use cases such as data recovery, auditing, and co
 
 ### Active-active
 
-In an active-active configuration, both universes can handle writes to potentially the same data. Writes to either universe are asynchronously replicated to the other universe with a timestamp for the update. Cross universe with bi-directional replication is used for disaster recovery.
+In an active-active configuration, both universes can handle writes to potentially the same data. Writes to either universe are asynchronously replicated to the other universe with a timestamp for the update. xCluster with bi-directional replication is used for disaster recovery.
 
 ![Multi-region deployment with bi-directional xCluster replication between universes](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-4.png)
 
