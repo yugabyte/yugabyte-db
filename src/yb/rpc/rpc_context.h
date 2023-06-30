@@ -46,6 +46,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/wait_state.h"
 
 namespace google {
 namespace protobuf {
@@ -311,6 +312,8 @@ class RpcContext {
   void CloseConnection();
 
   std::string ToString() const;
+
+  util::WaitStateInfoPtr wait_state();
 
  private:
   std::shared_ptr<YBInboundCall> call_;

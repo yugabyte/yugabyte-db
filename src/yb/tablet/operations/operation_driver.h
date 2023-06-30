@@ -52,10 +52,10 @@
 #include "yb/util/lockfree.h"
 #include "yb/util/opid.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 
 namespace yb {
 class ThreadPool;
-
 namespace tablet {
 class MvccManager;
 class OperationTracker;
@@ -164,6 +164,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   const MonoTime& start_time() const { return start_time_; }
 
   Trace* trace() { return trace_.get(); }
+  util::WaitStateInfoPtr wait_state() { return wait_state_; }
 
   Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override;
 
@@ -264,6 +265,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   // Trace object for tracing any operations started by this driver.
   scoped_refptr<Trace> trace_;
+  util::WaitStateInfoPtr wait_state_;
 
   const MonoTime start_time_;
 

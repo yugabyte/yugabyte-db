@@ -82,6 +82,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/url-coding.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -1505,6 +1506,7 @@ Status RaftConsensus::Update(
     return STATUS(IllegalState, "Rejected: --TEST_follower_reject_update_consensus_requests "
                                 "is set to true.");
   }
+  SET_WAIT_STATUS(util::WaitStateCode::Updating);
 
   TEST_PAUSE_IF_FLAG(TEST_follower_pause_update_consensus_requests);
 
@@ -1548,6 +1550,7 @@ Status RaftConsensus::Update(
     }
 
     LongOperationTracker operation_tracker("UpdateReplica", 1s);
+    SET_WAIT_STATUS(util::WaitStateCode::UpdateReplica);
     result = VERIFY_RESULT(UpdateReplica(request_ptr, response));
 
     auto delay = TEST_delay_update_.load(std::memory_order_acquire);
@@ -1577,6 +1580,7 @@ Status RaftConsensus::Update(
   }
 
   RETURN_NOT_OK(ExecuteHook(POST_UPDATE));
+  SET_WAIT_STATUS(util::WaitStateCode::DoneUpdate);
   return Status::OK();
 }
 

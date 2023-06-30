@@ -60,6 +60,7 @@
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/wait_state.h"
 
 namespace google {
 namespace protobuf {
@@ -79,7 +80,6 @@ struct InboundCallTiming {
   MonoTime time_handled;    // Time the call handler was kicked off.
   MonoTime time_completed;  // Time the call handler completed.
 };
-
 class InboundCallHandler {
  public:
   virtual void Handle(InboundCallPtr call) = 0;
@@ -222,6 +222,10 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // that trace_ is not null and can be used for collecting the requested data.
   void EnsureTraceCreated() EXCLUDES(mutex_);
 
+  util::WaitStateInfoPtr wait_state() {
+    // return &wait_state_;
+    return wait_state_;
+  };
  protected:
   ThreadPoolTask* BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit);
 
@@ -261,6 +265,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // The trace buffer.
   scoped_refptr<Trace> trace_holder_ GUARDED_BY(mutex_);
   std::atomic<Trace*> trace_ = nullptr;
+
+  util::WaitStateInfoPtr wait_state_;
 
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
